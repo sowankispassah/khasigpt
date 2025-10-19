@@ -26,6 +26,14 @@ export async function middleware(request: NextRequest) {
 
   try {
     const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+    if (!authSecret) {
+      console.warn(
+        "AUTH_SECRET/NEXTAUTH_SECRET not configured. Allowing request to proceed without auth."
+      );
+      return NextResponse.next();
+    }
+
     let token = null;
 
     try {
