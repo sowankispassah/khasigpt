@@ -1520,25 +1520,49 @@ export async function updateModelConfig({
   outputCostPerMillion?: number;
 }): Promise<ModelConfig | null> {
   try {
-    const nullableKeys: Array<
-      keyof Pick<
-        ModelConfig,
-        "description" | "systemPrompt" | "codeTemplate" | "reasoningTag" | "config"
-      >
-    > = ["description", "systemPrompt", "codeTemplate", "reasoningTag", "config"];
+    const updateData: Partial<typeof modelConfig.$inferInsert> = {};
 
-    const normalizedPatch: Partial<ModelConfig> = { ...patch };
-
-    for (const key of nullableKeys) {
-      if (key in normalizedPatch && normalizedPatch[key] === null) {
-        normalizedPatch[key] = sql`NULL` as unknown as ModelConfig[typeof key];
-      }
+    if (patch.provider !== undefined) {
+      updateData.provider = patch.provider;
+    }
+    if (patch.providerModelId !== undefined) {
+      updateData.providerModelId = patch.providerModelId;
+    }
+    if (patch.displayName !== undefined) {
+      updateData.displayName = patch.displayName;
+    }
+    if (patch.description !== undefined) {
+      updateData.description = patch.description ?? "";
+    }
+    if (patch.systemPrompt !== undefined) {
+      updateData.systemPrompt = patch.systemPrompt ?? null;
+    }
+    if (patch.codeTemplate !== undefined) {
+      updateData.codeTemplate = patch.codeTemplate ?? null;
+    }
+    if (patch.reasoningTag !== undefined) {
+      updateData.reasoningTag = patch.reasoningTag ?? null;
+    }
+    if (patch.supportsReasoning !== undefined) {
+      updateData.supportsReasoning = patch.supportsReasoning;
+    }
+    if (patch.config !== undefined) {
+      updateData.config = patch.config ?? null;
+    }
+    if (patch.isEnabled !== undefined) {
+      updateData.isEnabled = patch.isEnabled;
+    }
+    if (patch.inputCostPerMillion !== undefined) {
+      updateData.inputCostPerMillion = patch.inputCostPerMillion;
+    }
+    if (patch.outputCostPerMillion !== undefined) {
+      updateData.outputCostPerMillion = patch.outputCostPerMillion;
     }
 
     const [updated] = await db
       .update(modelConfig)
       .set({
-        ...normalizedPatch,
+        ...updateData,
         updatedAt: new Date(),
       })
       .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
