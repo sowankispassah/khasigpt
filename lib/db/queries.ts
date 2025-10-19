@@ -1467,17 +1467,27 @@ export async function listModelConfigs({
   limit?: number;
 } = {}): Promise<ModelConfig[]> {
   try {
-    let builder = db.select().from(modelConfig);
+    const baseBuilder = db.select().from(modelConfig);
 
-    if (onlyDeleted) {
-      builder = builder.where(isNotNull(modelConfig.deletedAt));
-    } else if (!includeDeleted) {
-      builder = builder.where(isNull(modelConfig.deletedAt));
-    }
+    const deletedCondition = onlyDeleted
+      ? (isNotNull(modelConfig.deletedAt) as SQL<boolean>)
+      : !includeDeleted
+        ? (isNull(modelConfig.deletedAt) as SQL<boolean>)
+        : undefined;
 
-    if (!includeDisabled) {
-      builder = builder.where(eq(modelConfig.isEnabled, true));
-    }
+    const enabledCondition = includeDisabled
+      ? undefined
+      : (eq(modelConfig.isEnabled, true) as SQL<boolean>);
+
+    const whereCondition =
+      deletedCondition && enabledCondition
+        ? (and(deletedCondition, enabledCondition) as SQL<boolean>)
+        : deletedCondition ?? enabledCondition;
+
+    const builder =
+      whereCondition !== undefined
+        ? baseBuilder.where(whereCondition)
+        : baseBuilder;
 
     return await builder.orderBy(desc(modelConfig.createdAt)).limit(limit);
   } catch (_error) {
