@@ -1109,7 +1109,7 @@ export async function listChats({
       conditions.push(isNull(chat.deletedAt) as SQL<boolean>);
     }
 
-    let query = db
+    const baseQuery = db
       .select({
         id: chat.id,
         createdAt: chat.createdAt,
@@ -1123,13 +1123,15 @@ export async function listChats({
       .from(chat)
       .leftJoin(user, eq(chat.userId, user.id));
 
-    if (conditions.length > 0) {
-      const whereCondition =
-        conditions.length === 1
+    const whereCondition =
+      conditions.length === 0
+        ? undefined
+        : conditions.length === 1
           ? conditions[0]
           : (and(...conditions) as SQL<boolean>);
-      query = query.where(whereCondition);
-    }
+
+    const query =
+      whereCondition !== undefined ? baseQuery.where(whereCondition) : baseQuery;
 
     return await query
       .orderBy(desc(chat.createdAt))
