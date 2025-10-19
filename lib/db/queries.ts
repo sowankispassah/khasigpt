@@ -1520,10 +1520,25 @@ export async function updateModelConfig({
   outputCostPerMillion?: number;
 }): Promise<ModelConfig | null> {
   try {
+    const nullableKeys: Array<
+      keyof Pick<
+        ModelConfig,
+        "description" | "systemPrompt" | "codeTemplate" | "reasoningTag" | "config"
+      >
+    > = ["description", "systemPrompt", "codeTemplate", "reasoningTag", "config"];
+
+    const normalizedPatch: Partial<ModelConfig> = { ...patch };
+
+    for (const key of nullableKeys) {
+      if (key in normalizedPatch && normalizedPatch[key] === null) {
+        normalizedPatch[key] = sql`NULL` as unknown as ModelConfig[typeof key];
+      }
+    }
+
     const [updated] = await db
       .update(modelConfig)
       .set({
-        ...patch,
+        ...normalizedPatch,
         updatedAt: new Date(),
       })
       .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
