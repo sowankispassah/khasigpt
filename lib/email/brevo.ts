@@ -32,11 +32,11 @@ function getBrevoClient() {
   }
 
   const client = new Brevo.TransactionalEmailsApi();
-  client.authentications.apiKey.apiKey = apiKey;
+  client.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
 
   const partnerKey = process.env.BREVO_PARTNER_KEY;
   if (partnerKey) {
-    client.authentications.partnerKey.apiKey = partnerKey;
+    client.setApiKey(Brevo.TransactionalEmailsApiApiKeys.partnerKey, partnerKey);
   }
 
   brevoEmailClient = client;
