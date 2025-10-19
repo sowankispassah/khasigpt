@@ -1,17 +1,12 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
+import { getToken } from "@auth/core/jwt";
+
+import { isDevelopmentEnvironment } from "./lib/constants";
 
 const ADMIN_PATH_PREFIX = "/admin";
 
-const PUBLIC_AUTH_PAGES = [
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
-];
-
-export default auth((req) => {
-  const { pathname } = req.nextUrl;
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
   if (pathname.startsWith("/ping")) {
     return new Response("pong", { status: 200 });
@@ -21,30 +16,66 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
+  const PUBLIC_AUTH_PAGES = [
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+  ];
   const isAuthPage = PUBLIC_AUTH_PAGES.includes(pathname);
-  const isAdminRoute = pathname.startsWith(ADMIN_PATH_PREFIX);
-  const session = req.auth;
 
-  if (!session) {
-    if (isAuthPage) {
+  try {
+    const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+    if (!authSecret) {
+      console.warn(
+        "AUTH_SECRET/NEXTAUTH_SECRET not configured. Allowing request to proceed without auth."
+      );
       return NextResponse.next();
     }
 
-    const loginUrl = new URL("/login", req.nextUrl);
-    loginUrl.searchParams.set("callbackUrl", req.nextUrl.href);
-    return NextResponse.redirect(loginUrl);
-  }
+    let token = null;
 
-  if (isAdminRoute && session.user?.role !== "admin") {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
-  }
+    try {
+      token = await getToken({
+        req: request,
+        secret: authSecret,
+        secureCookie: !isDevelopmentEnvironment,
+      });
+    } catch (error) {
+      console.error("Failed to read auth token in middleware", error);
+    }
 
-  if (session && isAuthPage) {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
-  }
+    const isAdminRoute = pathname.startsWith(ADMIN_PATH_PREFIX);
 
-  return NextResponse.next();
-});
+    if (!token) {
+      if (isAuthPage) {
+        return NextResponse.next();
+      }
+
+      const callbackUrl = encodeURIComponent(request.url);
+      return NextResponse.redirect(
+        new URL(`/login?callbackUrl=${callbackUrl}`, request.url)
+      );
+    }
+
+    if (isAdminRoute && token.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    if (token && isAuthPage) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error("Unhandled middleware error", error);
+    if (isAuthPage) {
+      return NextResponse.next();
+    }
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+}
 
 export const config = {
   matcher: [
