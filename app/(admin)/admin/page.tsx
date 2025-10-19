@@ -9,15 +9,32 @@ import {
   listUsers,
 } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminOverviewPage() {
-  const [userCount, chatCount, recentUsers, recentChats, recentAudits] =
-    await Promise.all([
+  let userCount = 0;
+  let chatCount = 0;
+  let recentUsers: Awaited<ReturnType<typeof listUsers>> = [];
+  let recentChats: Awaited<ReturnType<typeof listChats>> = [];
+  let recentAudits: Awaited<ReturnType<typeof listAuditLog>> = [];
+
+  try {
+    [
+      userCount,
+      chatCount,
+      recentUsers,
+      recentChats,
+      recentAudits,
+    ] = await Promise.all([
       getUserCount(),
       getChatCount(),
       listUsers({ limit: 5 }),
       listChats({ limit: 5 }),
       listAuditLog({ limit: 5 }),
     ]);
+  } catch (error) {
+    console.error("Failed to load admin overview data", error);
+  }
 
   return (
     <div className="flex flex-col gap-10">
