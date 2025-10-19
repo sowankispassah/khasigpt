@@ -20,7 +20,7 @@ export function useMessages({
   const [hasSentMessage, setHasSentMessage] = useState(false);
 
   useEffect(() => {
-    if (status === "submitted") {
+    if (status !== "ready" && status !== "streaming" && status !== "error") {
       setHasSentMessage(true);
     }
   }, [status]);

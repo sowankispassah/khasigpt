@@ -62,7 +62,7 @@ function PureMessages({
   useDataStream();
 
   useEffect(() => {
-    if (status === "submitted") {
+    if (status !== "ready" && status !== "streaming" && status !== "error") {
       requestAnimationFrame(() => {
         const container = messagesContainerRef.current;
         if (container) {
@@ -115,7 +115,10 @@ function PureMessages({
             />
           ))}
 
-          {status === "submitted" && isLastUserMessage && (
+          {status !== "ready" &&
+            status !== "streaming" &&
+            status !== "error" &&
+            isLastUserMessage && (
             <div className="flex w-full items-start gap-2 md:gap-3 justify-start">
               <div className="min-w-[1.5rem]" />
               <div className="flex flex-col gap-2">

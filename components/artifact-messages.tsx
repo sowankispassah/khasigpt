@@ -63,7 +63,9 @@ function PureArtifactMessages({
         />
       ))}
 
-      {status === "submitted" &&
+      {status !== "ready" &&
+        status !== "streaming" &&
+        status !== "error" &&
         messages.length > 0 &&
         messages.at(-1)?.role === "user" && <ThinkingMessage />}
 

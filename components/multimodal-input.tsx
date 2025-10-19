@@ -270,7 +270,7 @@ function PureMultimodalInput({
         className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
         onSubmit={(event) => {
           event.preventDefault();
-          if (status === "submitted" || status === "streaming") {
+          if (status !== "ready" && status !== "error") {
             toast.error("Please wait for the model to finish its response!");
           } else {
             submitForm();
@@ -346,7 +346,7 @@ function PureMultimodalInput({
               disabled={
                 !input.trim() ||
                 uploadQueue.length > 0 ||
-                status === "streaming"
+                (status !== "ready" && status !== "error")
               }
               status={status}
             >
@@ -395,7 +395,7 @@ function PureAttachmentsButton({
     <Button
       className="aspect-square h-8 rounded-lg p-1 transition-colors hover:bg-accent"
       data-testid="attachments-button"
-      disabled={status === "submitted" || status === "streaming" || isReasoningModel}
+      disabled={(status !== "ready" && status !== "error") || isReasoningModel}
       onClick={(event) => {
         event.preventDefault();
         fileInputRef.current?.click();
