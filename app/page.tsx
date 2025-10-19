@@ -1,1 +1,5 @@
-export { default } from "./(chat)/page";
+import ChatPage from "./(chat)/page";
+
+export default async function RootPage() {
+  return ChatPage();
+}
