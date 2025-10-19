@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { getToken } from "@auth/core/jwt";
 
 import { isDevelopmentEnvironment } from "./lib/constants";
 
