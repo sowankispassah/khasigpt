@@ -24,9 +24,18 @@ export async function middleware(request: NextRequest) {
   const isAuthPage = PUBLIC_AUTH_PAGES.includes(pathname);
 
   try {
+    const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+    if (!secret) {
+      console.warn(
+        "AUTH_SECRET/NEXTAUTH_SECRET not configured. Allowing request to proceed without auth."
+      );
+      return NextResponse.next();
+    }
+
     const token = await getToken({
       req: request as any,
-      secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+      secret,
       secureCookie: !isDevelopmentEnvironment,
     });
 
