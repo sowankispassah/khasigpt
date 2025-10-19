@@ -14,15 +14,19 @@ config({ path: ".env.local" });
 config({ path: ".env", override: false });
 
 const runMigrate = async () => {
+  const isVercel = process.env.VERCEL === "1";
+  const migrationsExplicitlyEnabled =
+    process.env.RUN_MIGRATIONS_ON_VERCEL === "true";
   const shouldSkipMigrations =
-    process.env.SKIP_MIGRATIONS === "true";
+    process.env.SKIP_MIGRATIONS === "true" ||
+    (isVercel && !migrationsExplicitlyEnabled);
 
   if (shouldSkipMigrations) {
     console.log(
       "? Skipping migrations because",
       process.env.SKIP_MIGRATIONS === "true"
         ? "SKIP_MIGRATIONS is true."
-        : "of the current environment configuration."
+        : "we are running on Vercel and RUN_MIGRATIONS_ON_VERCEL is not true."
     );
     return;
   }
@@ -48,8 +52,10 @@ const runMigrate = async () => {
 };
 
 runMigrate().catch((err) => {
+  const isVercel = process.env.VERCEL === "1";
   const shouldIgnoreFailure =
-    process.env.IGNORE_MIGRATION_FAILURES === "true";
+    process.env.IGNORE_MIGRATION_FAILURES === "true" ||
+    (isVercel && process.env.RUN_MIGRATIONS_ON_VERCEL !== "true");
 
   if (shouldIgnoreFailure) {
     console.error("? Migration failed (ignored)");
