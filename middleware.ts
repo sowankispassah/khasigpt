@@ -1,73 +1,7 @@
-import { type NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import { isDevelopmentEnvironment } from "./lib/constants";
+import { NextResponse } from "next/server";
 
-const ADMIN_PATH_PREFIX = "/admin";
-
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  if (pathname.startsWith("/ping")) {
-    return new Response("pong", { status: 200 });
-  }
-
-  if (pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
-  }
-
-  const PUBLIC_AUTH_PAGES = [
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/reset-password",
-  ];
-  const isAuthPage = PUBLIC_AUTH_PAGES.includes(pathname);
-
-  try {
-    const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-
-    if (!secret) {
-      console.warn(
-        "AUTH_SECRET/NEXTAUTH_SECRET not configured. Allowing request to proceed without auth."
-      );
-      return NextResponse.next();
-    }
-
-    const token = await getToken({
-      req: request as any,
-      secret,
-      secureCookie: !isDevelopmentEnvironment,
-    });
-
-    const isAdminRoute = pathname.startsWith(ADMIN_PATH_PREFIX);
-
-    if (!token) {
-      if (isAuthPage) {
-        return NextResponse.next();
-      }
-
-      const callbackUrl = encodeURIComponent(request.url);
-      return NextResponse.redirect(
-        new URL(`/login?callbackUrl=${callbackUrl}`, request.url)
-      );
-    }
-
-    if (isAdminRoute && token.role !== "admin") {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-
-    if (token && isAuthPage) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-
-    return NextResponse.next();
-  } catch (error) {
-    console.error("Unhandled middleware error", error);
-    if (isAuthPage) {
-      return NextResponse.next();
-    }
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
+export function middleware() {
+  return NextResponse.next();
 }
 
 export const config = {
