@@ -1153,13 +1153,18 @@ export async function getChatCount({
   onlyDeleted?: boolean;
 } = {}): Promise<number> {
   try {
-    let builder = db.select({ total: count(chat.id) }).from(chat);
+    const baseBuilder = db.select({ total: count(chat.id) }).from(chat);
 
-    if (onlyDeleted) {
-      builder = builder.where(isNotNull(chat.deletedAt));
-    } else if (!includeDeleted) {
-      builder = builder.where(isNull(chat.deletedAt));
-    }
+    const filterCondition = onlyDeleted
+      ? (isNotNull(chat.deletedAt) as SQL<boolean>)
+      : !includeDeleted
+        ? (isNull(chat.deletedAt) as SQL<boolean>)
+        : undefined;
+
+    const builder =
+      filterCondition !== undefined
+        ? baseBuilder.where(filterCondition)
+        : baseBuilder;
 
     const [result] = await builder;
     return Number(result?.total ?? 0);
