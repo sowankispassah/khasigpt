@@ -1104,9 +1104,9 @@ export async function listChats({
     const conditions: SQL<boolean>[] = [];
 
     if (onlyDeleted) {
-      conditions.push(isNotNull(chat.deletedAt));
+      conditions.push(isNotNull(chat.deletedAt) as SQL<boolean>);
     } else if (!includeDeleted) {
-      conditions.push(isNull(chat.deletedAt));
+      conditions.push(isNull(chat.deletedAt) as SQL<boolean>);
     }
 
     let query = db
@@ -1124,7 +1124,11 @@ export async function listChats({
       .leftJoin(user, eq(chat.userId, user.id));
 
     if (conditions.length > 0) {
-      query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
+      const whereCondition =
+        conditions.length === 1
+          ? conditions[0]
+          : (and(...conditions) as SQL<boolean>);
+      query = query.where(whereCondition);
     }
 
     return await query
