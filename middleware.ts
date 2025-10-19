@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "./app/(auth)/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "./app/(auth)/auth.config";
 
+const { auth: edgeAuth } = NextAuth(authConfig);
 const ADMIN_PATH_PREFIX = "/admin";
 
 export async function middleware(request: NextRequest) {
@@ -22,7 +24,7 @@ export async function middleware(request: NextRequest) {
   ];
   const isAuthPage = PUBLIC_AUTH_PAGES.includes(pathname);
 
-  const session = await auth();
+  const session = await edgeAuth(request);
   const isAdminRoute = pathname.startsWith(ADMIN_PATH_PREFIX);
 
   if (!session) {

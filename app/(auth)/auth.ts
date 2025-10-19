@@ -2,7 +2,6 @@ import { compare } from "bcrypt-ts";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
-import type { Provider } from "next-auth/providers";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { ensureOAuthUser, getUser } from "@/lib/db/queries";
@@ -26,7 +25,7 @@ declare module "next-auth" {
   }
 }
 
-const providers: Provider[] = [
+const providers: any[] = [
   Credentials({
     credentials: {},
     async authorize({ email, password }: any) {
@@ -79,7 +78,7 @@ export const {
   ...authConfig,
   providers,
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account }: { user: any; account?: any }) {
       if (account?.provider === "google") {
         if (!user.email) {
           return false;
@@ -92,7 +91,7 @@ export const {
 
       return true;
     },
-    jwt({ token, user }) {
+    jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.id = user.id as string;
         token.role = (user.role as UserRole) ?? "regular";
@@ -102,7 +101,7 @@ export const {
 
       return token;
     },
-    session({ session, token }) {
+    session({ session, token }: { session: any; token: any }) {
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
