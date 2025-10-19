@@ -1637,17 +1637,31 @@ export async function listPricingPlans({
   limit?: number;
 } = {}): Promise<PricingPlan[]> {
   try {
-    let builder = db.select().from(pricingPlan);
+    const baseBuilder = db.select().from(pricingPlan);
+
+    const filters: SQL<boolean>[] = [];
 
     if (onlyDeleted) {
-      builder = builder.where(isNotNull(pricingPlan.deletedAt));
+      filters.push(isNotNull(pricingPlan.deletedAt) as SQL<boolean>);
     } else if (!includeDeleted) {
-      builder = builder.where(isNull(pricingPlan.deletedAt));
+      filters.push(isNull(pricingPlan.deletedAt) as SQL<boolean>);
     }
 
     if (!includeInactive) {
-      builder = builder.where(eq(pricingPlan.isActive, true));
+      filters.push(eq(pricingPlan.isActive, true) as SQL<boolean>);
     }
+
+    const whereCondition =
+      filters.length === 0
+        ? undefined
+        : filters.length === 1
+          ? filters[0]
+          : (and(...filters) as SQL<boolean>);
+
+    const builder =
+      whereCondition !== undefined
+        ? baseBuilder.where(whereCondition)
+        : baseBuilder;
 
     return await builder.orderBy(desc(pricingPlan.createdAt)).limit(limit);
   } catch (_error) {
