@@ -2047,7 +2047,7 @@ export async function createUserSubscription({
 
       if (!plan.isActive) {
         throw new ChatSDKError(
-          "bad_request:billing",
+          "bad_request:pricing_plan",
           "Selected plan is not currently active"
         );
       }
