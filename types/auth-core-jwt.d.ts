@@ -31,7 +31,14 @@ declare module "@auth/core/jwt" {
     salt: string;
   }): Promise<JWT | null>;
 
-  export function getToken<R extends boolean = false>(
-    params: GetTokenParams<R>
-  ): Promise<R extends true ? string : JWT | null>;
+export function getToken<R extends boolean = false>(
+  params: GetTokenParams<R>
+): Promise<R extends true ? string : JWT | null>;
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    role?: string;
+  }
 }
