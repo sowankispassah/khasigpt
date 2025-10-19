@@ -9,9 +9,17 @@ import { toast } from "@/components/toast";
 
 import { type RegisterActionState, register } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
-import { useAuthCallback } from "../use-auth-callback";
+import { AuthCallbackProvider, useAuthCallback } from "../use-auth-callback";
 
 export default function Page() {
+  return (
+    <AuthCallbackProvider>
+      <RegisterContent />
+    </AuthCallbackProvider>
+  );
+}
+
+function RegisterContent() {
   const { callbackUrl } = useAuthCallback();
   const [email, setEmail] = useState("");
   const [isSuccessful, setIsSuccessful] = useState(false);

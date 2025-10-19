@@ -11,9 +11,17 @@ import { toast } from "@/components/toast";
 
 import { type LoginActionState, login } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
-import { useAuthCallback } from "../use-auth-callback";
+import { AuthCallbackProvider, useAuthCallback } from "../use-auth-callback";
 
 export default function Page() {
+  return (
+    <AuthCallbackProvider>
+      <LoginContent />
+    </AuthCallbackProvider>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const { callbackUrl, clearCallback } = useAuthCallback();
   const [email, setEmail] = useState("");
@@ -66,12 +74,7 @@ export default function Page() {
         <AuthForm
           action={handleSubmit}
           defaultEmail={email}
-          lead={
-            <GoogleSignInSection
-              callbackUrl={callbackUrl}
-              mode="login"
-            />
-          }
+          lead={<GoogleSignInSection callbackUrl={callbackUrl} mode="login" />}
         >
           <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
           <div className="mt-2 text-right text-sm">
@@ -94,7 +97,6 @@ export default function Page() {
             {" for free."}
           </p>
         </AuthForm>
-
       </div>
     </div>
   );

@@ -1,9 +1,17 @@
 "use client";
 
+import { Suspense, createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
 
 const CALLBACK_STORAGE_KEY = "auth.callbackUrl";
+
+type AuthCallbackValue = {
+  callbackUrl: string;
+  setCallbackUrl: (value: string) => void;
+  clearCallback: () => void;
+};
+
+const AuthCallbackContext = createContext<AuthCallbackValue | null>(null);
 
 function removeCallbackParamFromUrl() {
   if (typeof window === "undefined") {
@@ -23,7 +31,7 @@ function removeCallbackParamFromUrl() {
   window.history.replaceState(window.history.state, "", nextUrl);
 }
 
-export function useAuthCallback(defaultUrl = "/") {
+function useAuthCallbackValue(defaultUrl = "/"): AuthCallbackValue {
   const searchParams = useSearchParams();
   const [callbackUrl, setCallbackUrl] = useState(defaultUrl);
 
@@ -61,5 +69,56 @@ export function useAuthCallback(defaultUrl = "/") {
     setCallbackUrl(value);
   }, []);
 
-  return { callbackUrl, setCallbackUrl: updateCallback, clearCallback };
+  return useMemo(
+    () => ({
+      callbackUrl,
+      setCallbackUrl: updateCallback,
+      clearCallback,
+    }),
+    [callbackUrl, updateCallback, clearCallback]
+  );
+}
+
+function AuthCallbackProviderInner({
+  children,
+  defaultUrl,
+}: {
+  children: ReactNode;
+  defaultUrl?: string;
+}) {
+  const value = useAuthCallbackValue(defaultUrl);
+
+  return (
+    <AuthCallbackContext.Provider value={value}>
+      {children}
+    </AuthCallbackContext.Provider>
+  );
+}
+
+export function AuthCallbackProvider({
+  children,
+  defaultUrl = "/",
+}: {
+  children: ReactNode;
+  defaultUrl?: string;
+}) {
+  return (
+    <Suspense fallback={null}>
+      <AuthCallbackProviderInner defaultUrl={defaultUrl}>
+        {children}
+      </AuthCallbackProviderInner>
+    </Suspense>
+  );
+}
+
+export function useAuthCallback() {
+  const context = useContext(AuthCallbackContext);
+
+  if (!context) {
+    throw new Error(
+      "useAuthCallback must be used within an AuthCallbackProvider"
+    );
+  }
+
+  return context;
 }
