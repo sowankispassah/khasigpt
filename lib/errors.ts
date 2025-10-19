@@ -20,7 +20,8 @@ export type Surface =
   | "activate_gateway"
   | "credits"
   | "pricing_plan"
-  | "usage";
+  | "usage"
+  | "configuration";
 
 export type ErrorCode = `${ErrorType}:${Surface}`;
 
@@ -40,6 +41,7 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   credits: "response",
   pricing_plan: "response",
   usage: "response",
+  configuration: "response",
 };
 
 export class ChatSDKError extends Error {
@@ -120,6 +122,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "You need to sign in to view this document. Please sign in and try again.";
     case "bad_request:document":
       return "The request to create or update the document was invalid. Please check your input and try again.";
+    case "bad_request:configuration":
+      return "A required configuration value is missing or invalid. Please review your setup.";
 
     default:
       return "Something went wrong. Please try again later.";
