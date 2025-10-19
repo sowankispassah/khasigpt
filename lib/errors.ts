@@ -18,7 +18,8 @@ export type Surface =
   | "document"
   | "suggestions"
   | "activate_gateway"
-  | "credits";
+  | "credits"
+  | "pricing_plan";
 
 export type ErrorCode = `${ErrorType}:${Surface}`;
 
@@ -36,6 +37,7 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   suggestions: "response",
   activate_gateway: "response",
   credits: "response",
+  pricing_plan: "response",
 };
 
 export class ChatSDKError extends Error {
