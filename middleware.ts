@@ -16,11 +16,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req: request,
-    secret: process.env.AUTH_SECRET,
-    secureCookie: !isDevelopmentEnvironment,
-  });
+  const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  let token = null;
+
+  try {
+    token = await getToken({
+      req: request,
+      secret: authSecret,
+      secureCookie: !isDevelopmentEnvironment,
+    });
+  } catch (error) {
+    console.error("Failed to read auth token in middleware", error);
+  }
 
   const PUBLIC_AUTH_PAGES = [
     "/login",
