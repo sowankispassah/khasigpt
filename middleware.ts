@@ -16,49 +16,57 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-  let token = null;
-
-  try {
-    token = await getToken({
-      req: request,
-      secret: authSecret,
-      secureCookie: !isDevelopmentEnvironment,
-    });
-  } catch (error) {
-    console.error("Failed to read auth token in middleware", error);
-  }
-
   const PUBLIC_AUTH_PAGES = [
     "/login",
     "/register",
     "/forgot-password",
     "/reset-password",
   ];
-
   const isAuthPage = PUBLIC_AUTH_PAGES.includes(pathname);
-  const isAdminRoute = pathname.startsWith(ADMIN_PATH_PREFIX);
 
-  if (!token) {
+  try {
+    const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+    let token = null;
+
+    try {
+      token = await getToken({
+        req: request,
+        secret: authSecret,
+        secureCookie: !isDevelopmentEnvironment,
+      });
+    } catch (error) {
+      console.error("Failed to read auth token in middleware", error);
+    }
+
+    const isAdminRoute = pathname.startsWith(ADMIN_PATH_PREFIX);
+
+    if (!token) {
+      if (isAuthPage) {
+        return NextResponse.next();
+      }
+
+      const callbackUrl = encodeURIComponent(request.url);
+      return NextResponse.redirect(
+        new URL(`/login?callbackUrl=${callbackUrl}`, request.url)
+      );
+    }
+
+    if (isAdminRoute && token.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    if (token && isAuthPage) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error("Unhandled middleware error", error);
     if (isAuthPage) {
       return NextResponse.next();
     }
-
-    const callbackUrl = encodeURIComponent(request.url);
-    return NextResponse.redirect(
-      new URL(`/login?callbackUrl=${callbackUrl}`, request.url)
-    );
+    return NextResponse.redirect(new URL("/login", request.url));
   }
-
-  if (isAdminRoute && token.role !== "admin") {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  if (token && isAuthPage) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {
