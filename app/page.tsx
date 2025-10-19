@@ -1,5 +1,5 @@
-import ChatPage from "./(chat)/page";
+import { redirect } from "next/navigation";
 
-export default async function RootPage() {
-  return ChatPage();
+export default function RootPage() {
+  redirect("/(chat)");
 }
