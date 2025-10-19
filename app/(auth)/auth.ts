@@ -111,8 +111,8 @@ export const {
     },
     session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id;
-        session.user.role = token.role ?? "regular";
+        session.user.id = (token.id ?? session.user.id) as string;
+        session.user.role = (token.role as UserRole | undefined) ?? "regular";
       }
 
       return session;
