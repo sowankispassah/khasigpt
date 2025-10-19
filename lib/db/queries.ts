@@ -19,6 +19,7 @@ import {
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { TOKENS_PER_CREDIT } from "../constants";
@@ -57,6 +58,12 @@ import {
   type UserSubscription,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
+
+try {
+  setDefaultResultOrder("ipv4first");
+} catch (_error) {
+  // Older Node runtimes may not support setDefaultResultOrder; ignore.
+}
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
