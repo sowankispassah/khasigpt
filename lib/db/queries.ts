@@ -1210,6 +1210,7 @@ export async function getAppSetting<T>(key: string): Promise<T | null> {
     if (isTableMissingError(_error)) {
       return null;
     }
+    console.error("getAppSetting failed", _error);
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load application setting"
@@ -1501,6 +1502,7 @@ export async function listModelConfigs({
     if (isTableMissingError(_error)) {
       return [];
     }
+    console.error("listModelConfigs failed", _error);
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to list model configurations"
