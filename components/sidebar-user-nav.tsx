@@ -70,37 +70,55 @@ export function SidebarUserNav({ user }: { user: User }) {
             data-testid="user-nav-menu"
             side="top"
           >
-          <DropdownMenuItem
-            className="cursor-pointer"
-            data-testid="user-nav-item-profile"
-            onSelect={() => {
-              router.push("/profile");
-            }}
-          >
-            Profile
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="cursor-pointer"
-            data-testid="user-nav-item-theme"
-            onSelect={() =>
-              setTheme(resolvedTheme === "dark" ? "light" : "dark")
-            }
-          >
-            {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
-          </DropdownMenuItem>
-          {isAdmin && (
             <DropdownMenuItem
               className="cursor-pointer"
-              data-testid="user-nav-item-admin"
+              data-testid="user-nav-item-profile"
               onSelect={() => {
-                router.push("/admin");
+                router.push("/profile");
               }}
             >
-              Open admin console
+              Profile
             </DropdownMenuItem>
-          )}
-          <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-theme"
+              onSelect={() =>
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }
+            >
+              {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-privacy"
+              onSelect={() => {
+                router.push("/privacy-policy");
+              }}
+            >
+              Privacy Policy
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-terms"
+              onSelect={() => {
+                router.push("/terms-of-service");
+              }}
+            >
+              Terms of Service
+            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem
+                className="cursor-pointer"
+                data-testid="user-nav-item-admin"
+                onSelect={() => {
+                  router.push("/admin");
+                }}
+              >
+                Open admin console
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">
               <button
                 className="w-full cursor-pointer"
