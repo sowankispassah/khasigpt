@@ -41,6 +41,12 @@ function RegisterContent() {
         type: "error",
         description: "Failed validating your submission!",
       });
+    } else if (state.status === "terms_unaccepted") {
+      toast({
+        type: "error",
+        description:
+          "You must accept the Terms of Service and Privacy Policy to continue.",
+      });
     } else if (state.status === "verification_sent") {
       toast({
         type: "success",
@@ -76,6 +82,28 @@ function RegisterContent() {
             />
           }
         >
+          <div className="flex items-start gap-3 rounded-md border border-input bg-muted/40 px-3 py-3 text-sm text-muted-foreground dark:bg-muted/60">
+            <input
+              className="mt-1 h-4 w-4 shrink-0 rounded border border-input"
+              id="acceptTerms"
+              name="acceptTerms"
+              type="checkbox"
+              required
+            />
+            <label className="space-y-1" htmlFor="acceptTerms">
+              <span className="font-medium text-foreground">
+                I agree to the{" "}
+                <Link className="text-primary underline" href="/terms-of-service">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link className="text-primary underline" href="/privacy-policy">
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+          </div>
           <SubmitButton isSuccessful={isSuccessful}>Sign Up</SubmitButton>
           {state.status === "verification_sent" ? (
             <p className="mt-4 rounded-md bg-muted/50 px-3 py-2 text-center text-muted-foreground text-sm">

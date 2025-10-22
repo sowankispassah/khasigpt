@@ -56,7 +56,8 @@ export type RegisterActionState = {
     | "verification_sent"
     | "failed"
     | "user_exists"
-    | "invalid_data";
+    | "invalid_data"
+    | "terms_unaccepted";
 };
 
 export const register = async (
@@ -64,6 +65,11 @@ export const register = async (
   formData: FormData
 ): Promise<RegisterActionState> => {
   try {
+    const acceptTerms = formData.get("acceptTerms") === "on";
+    if (!acceptTerms) {
+      return { status: "terms_unaccepted" };
+    }
+
     const validatedData = authFormSchema.parse({
       email: formData.get("email"),
       password: formData.get("password"),
