@@ -406,6 +406,46 @@ export async function setArtifactsEnabledAction(formData: FormData) {
   revalidatePath("/admin/settings");
 }
 
+export async function updatePrivacyPolicyAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const content = formData.get("content")?.toString().trim() ?? "";
+
+  await setAppSetting({ key: "privacyPolicy", value: content });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "legal.privacy.update",
+    target: { document: "privacyPolicy" },
+  });
+
+  revalidatePath("/privacy-policy");
+  revalidatePath("/admin/settings");
+
+  redirect("/admin/settings?notice=privacy-updated");
+}
+
+export async function updateTermsOfServiceAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const content = formData.get("content")?.toString().trim() ?? "";
+
+  await setAppSetting({ key: "termsOfService", value: content });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "legal.terms.update",
+    target: { document: "termsOfService" },
+  });
+
+  revalidatePath("/terms-of-service");
+  revalidatePath("/admin/settings");
+
+  redirect("/admin/settings?notice=terms-updated");
+}
+
 function parseInteger(value: FormDataEntryValue | null | undefined) {
   return Math.round(parseNumber(value));
 }

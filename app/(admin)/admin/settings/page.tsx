@@ -1,4 +1,9 @@
-import { listActiveSubscriptionSummaries, listModelConfigs, listPricingPlans } from "@/lib/db/queries";
+import {
+  getAppSetting,
+  listActiveSubscriptionSummaries,
+  listModelConfigs,
+  listPricingPlans,
+} from "@/lib/db/queries";
 import {
   createModelConfigAction,
   deleteModelConfigAction,
@@ -9,10 +14,16 @@ import {
   updatePricingPlanAction,
   deletePricingPlanAction,
   hardDeletePricingPlanAction,
+  updatePrivacyPolicyAction,
+  updateTermsOfServiceAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminSettingsNotice } from "./notice";
-import { TOKENS_PER_CREDIT } from "@/lib/constants";
+import {
+  DEFAULT_PRIVACY_POLICY,
+  DEFAULT_TERMS_OF_SERVICE,
+  TOKENS_PER_CREDIT,
+} from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -58,10 +69,18 @@ export default async function AdminSettingsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
 
-  const [modelsRaw, plansRaw, activeSubscriptions] = await Promise.all([
+  const [
+    modelsRaw,
+    plansRaw,
+    activeSubscriptions,
+    privacyPolicySetting,
+    termsOfServiceSetting,
+  ] = await Promise.all([
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
     listActiveSubscriptionSummaries({ limit: 10 }),
+    getAppSetting<string>("privacyPolicy"),
+    getAppSetting<string>("termsOfService"),
   ]);
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -70,11 +89,74 @@ export default async function AdminSettingsPage({
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
 
+  const privacyPolicyContent =
+    privacyPolicySetting && privacyPolicySetting.trim().length > 0
+      ? privacyPolicySetting
+      : DEFAULT_PRIVACY_POLICY;
+  const termsOfServiceContent =
+    termsOfServiceSetting && termsOfServiceSetting.trim().length > 0
+      ? termsOfServiceSetting
+      : DEFAULT_TERMS_OF_SERVICE;
+
   return (
     <>
       <AdminSettingsNotice notice={notice} />
 
       <div className="flex flex-col gap-10">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Legal content</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Update the copy shown on the public Privacy Policy and Terms of Service pages.
+            Basic Markdown (## headings and bullet lists) is supported.
+          </p>
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <form action={updatePrivacyPolicyAction} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium" htmlFor="privacy-policy-content">
+                  Privacy policy content
+                </label>
+                <textarea
+                  className="min-h-[16rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
+                  defaultValue={privacyPolicyContent}
+                  id="privacy-policy-content"
+                  name="content"
+                  required
+                />
+                <p className="text-muted-foreground text-xs">
+                  This text appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/privacy-policy</code>.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <ActionSubmitButton pendingLabel="Saving...">
+                  Save privacy policy
+                </ActionSubmitButton>
+              </div>
+            </form>
+
+            <form action={updateTermsOfServiceAction} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium" htmlFor="terms-of-service-content">
+                  Terms of service content
+                </label>
+                <textarea
+                  className="min-h-[16rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
+                  defaultValue={termsOfServiceContent}
+                  id="terms-of-service-content"
+                  name="content"
+                  required
+                />
+                <p className="text-muted-foreground text-xs">
+                  This text appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/terms-of-service</code>.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <ActionSubmitButton pendingLabel="Saving...">
+                  Save terms of service
+                </ActionSubmitButton>
+              </div>
+            </form>
+          </div>
+        </section>
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Pricing plans</h2>
           <p className="text-muted-foreground mt-1 text-sm">

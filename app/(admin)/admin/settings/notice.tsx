@@ -15,6 +15,8 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "model-deleted": { type: "success", message: "Model configuration deleted." },
   "model-hard-deleted": { type: "success", message: "Model configuration permanently deleted." },
   "model-defaulted": { type: "success", message: "Default model updated." },
+  "privacy-updated": { type: "success", message: "Privacy policy updated." },
+  "terms-updated": { type: "success", message: "Terms of service updated." },
 };
 
 export function AdminSettingsNotice({ notice }: { notice?: string }) {

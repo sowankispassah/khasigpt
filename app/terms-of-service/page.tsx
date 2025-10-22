@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
 
+import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/constants";
+import { getAppSetting } from "@/lib/db/queries";
+
 export const metadata: Metadata = {
   title: "Terms of Service",
   description:
     "Understand the terms and conditions that govern your use of Khasigpt.",
 };
 
-export default function TermsOfServicePage() {
+export default async function TermsOfServicePage() {
+  const stored = await getAppSetting<string>("termsOfService");
+  const content =
+    stored && stored.trim().length > 0
+      ? stored.trim()
+      : DEFAULT_TERMS_OF_SERVICE;
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-8 px-6 py-12 md:py-16">
       <header className="space-y-2">
@@ -20,75 +29,51 @@ export default function TermsOfServicePage() {
       </header>
 
       <section className="space-y-4 text-sm leading-7 text-muted-foreground md:text-base md:leading-8">
-        <p>
-          These Terms of Service (&quot;Terms&quot;) govern your access to and
-          use of Khasigpt. By creating an account or using the platform, you
-          agree to comply with these Terms. If you do not agree, you may not use
-          the service.
-        </p>
-
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-foreground">Account Responsibilities</h2>
-          <p>
-            You are responsible for safeguarding your account credentials and
-            for any activity under your account. Notify us immediately of any
-            unauthorized use. We may suspend or terminate accounts that violate
-            these Terms or disrupt the service.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-foreground">Acceptable Use</h2>
-          <p>
-            You agree not to misuse Khasigpt, including uploading unlawful
-            content, attempting to interfere with the service, or using the
-            platform to infringe upon intellectual property rights. We reserve
-            the right to remove content or restrict access at our discretion.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-foreground">Intellectual Property</h2>
-          <p>
-            Khasigpt retains ownership of the platform, including software,
-            documentation, and branding. You retain ownership of content you
-            create, but grant us a limited license to host and process it as
-            needed to provide the service.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-foreground">Disclaimers</h2>
-          <p>
-            The service is provided on an &quot;as is&quot; basis without
-            warranties of any kind. We do not guarantee that the platform will
-            be uninterrupted or error-free. To the fullest extent permitted by
-            law, Khasigpt is not liable for damages arising from your use of the
-            service.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-foreground">Changes</h2>
-          <p>
-            We may modify these Terms from time to time. If changes are
-            significant, we will provide notice through the app or by email.
-            Continued use of the service after updates constitutes acceptance of
-            the revised Terms.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-foreground">Contact</h2>
-          <p>
-            Questions about these Terms can be directed to{" "}
-            <a className="text-primary underline" href="mailto:support@khasigpt.com">
-              support@khasigpt.com
-            </a>
-            .
-          </p>
-        </div>
+        {renderLegalContent(content)}
       </section>
     </div>
   );
+}
+
+function renderLegalContent(content: string) {
+  const blocks = content.split(/\n{2,}/).map((block) => block.trim());
+
+  return blocks
+    .filter(Boolean)
+    .map((block, index) => {
+      if (/^#{1,6}\s/.test(block)) {
+        const match = block.match(/^#{1,6}/);
+        const level = match ? match[0].length : 2;
+        const headingText = block.replace(/^#{1,6}\s*/, "").trim();
+        const HeadingTag = `h${Math.min(level + 1, 6)}` as keyof JSX.IntrinsicElements;
+
+        return (
+          <HeadingTag
+            className="text-xl font-semibold text-foreground"
+            key={`heading-${index}`}
+          >
+            {headingText}
+          </HeadingTag>
+        );
+      }
+
+      const lines = block.split("\n").map((line) => line.trim());
+      const isList = lines.every((line) => line.startsWith("- "));
+
+      if (isList) {
+        return (
+          <ul className="list-disc space-y-2 pl-5" key={`list-${index}`}>
+            {lines.map((line, itemIndex) => (
+              <li key={`list-item-${index}-${itemIndex}`}>
+                {line.replace(/^-+\s*/, "")}
+              </li>
+            ))}
+          </ul>
+        );
+      }
+
+      return (
+        <p key={`paragraph-${index}`}>{block.replace(/\n+/g, " ")}</p>
+      );
+    });
 }
