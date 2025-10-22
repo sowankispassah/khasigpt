@@ -15,7 +15,7 @@ export default async function PrivacyPolicyPage() {
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-8 px-6 py-12 md:py-16">
+    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary">Khasigpt</p>
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
@@ -29,6 +29,15 @@ export default async function PrivacyPolicyPage() {
       <section className="space-y-4 text-sm leading-7 text-muted-foreground md:text-base md:leading-8">
         {renderLegalContent(content)}
       </section>
+
+      <div>
+        <Link
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
+          href="/"
+        >
+          ← Back to home
+        </Link>
+      </div>
     </div>
   );
 }
