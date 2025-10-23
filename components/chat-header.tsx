@@ -83,7 +83,7 @@ function PureChatHeader({
 
         {status === "loading" ? (
           <Button className="h-8 w-8" disabled variant="outline">
-            <LoaderIcon className="animate-spin" size={16} />
+            <span className="animate-spin"><LoaderIcon size={16} /></span>
             <span className="sr-only">Loading user menu</span>
           </Button>
         ) : user ? (

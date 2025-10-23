@@ -100,7 +100,7 @@ export function AppSidebar({
                 {status === "loading" ? (
                   <Button className="h-8 w-8" disabled variant="outline">
                     <span className="sr-only">Loading user menu</span>
-                    <LoaderIcon className="animate-spin" size={16} />
+                    <span className="animate-spin"><LoaderIcon size={16} /></span>
                   </Button>
                 ) : activeUser ? (
                   <UserDropdownMenu
