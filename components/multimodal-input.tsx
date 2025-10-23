@@ -59,7 +59,11 @@ function PureMultimodalInput({
   selectedVisibilityType,
   selectedModelId,
   onModelChange,
+<<<<<<< HEAD
   suggestedPrompts,
+=======
+  suggestedPrompts = [],
+>>>>>>> 69b7a67 (chore: apply repository updates)
 }: {
   chatId: string;
   input: string;
@@ -75,7 +79,11 @@ function PureMultimodalInput({
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
+<<<<<<< HEAD
   suggestedPrompts: string[];
+=======
+  suggestedPrompts?: string[];
+>>>>>>> 69b7a67 (chore: apply repository updates)
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -380,7 +388,11 @@ export const MultimodalInput = memo(
     if (prevProps.selectedModelId !== nextProps.selectedModelId) {
       return false;
     }
+<<<<<<< HEAD
     if (!equal(prevProps.suggestedPrompts, nextProps.suggestedPrompts)) {
+=======
+    if (!equal(prevProps.suggestedPrompts ?? [], nextProps.suggestedPrompts ?? [])) {
+>>>>>>> 69b7a67 (chore: apply repository updates)
       return false;
     }
 
