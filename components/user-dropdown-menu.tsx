@@ -17,6 +17,7 @@ type UserDropdownMenuProps = {
   onSignOut: () => void;
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
+  userEmail?: string;
 };
 
 export function UserDropdownMenu({
@@ -28,6 +29,7 @@ export function UserDropdownMenu({
   onSignOut,
   side = "top",
   align = "end",
+  userEmail,
 }: UserDropdownMenuProps) {
   const handleSelect = (
     event: Event,
@@ -41,11 +43,23 @@ export function UserDropdownMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
-        className="w-(--radix-popper-anchor-width)"
+        className="min-w-[14rem]"
         data-testid="user-nav-menu"
         side={side}
         align={align}
       >
+        {userEmail ? (
+          <DropdownMenuItem
+            className="cursor-pointer font-medium text-foreground"
+            data-testid="user-nav-item-email"
+            onSelect={(event) =>
+              handleSelect(event, () => onNavigate("/profile"))
+            }
+          >
+            {userEmail}
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer"
           data-testid="user-nav-item-profile"
@@ -56,15 +70,6 @@ export function UserDropdownMenu({
           Profile
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer"
-          data-testid="user-nav-item-theme"
-          onSelect={(event) =>
-            handleSelect(event, onToggleTheme)
-          }
-        >
-          {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
-        </DropdownMenuItem>
         <DropdownMenuItem
           className="cursor-pointer"
           data-testid="user-nav-item-privacy"
@@ -94,6 +99,15 @@ export function UserDropdownMenu({
             Open admin console
           </DropdownMenuItem>
         )}
+        <DropdownMenuItem
+          className="cursor-pointer"
+          data-testid="user-nav-item-theme"
+          onSelect={(event) =>
+            handleSelect(event, onToggleTheme)
+          }
+        >
+          {resolvedTheme === "light" ? "Dark mode" : "Light mode"}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer text-destructive focus:text-destructive"

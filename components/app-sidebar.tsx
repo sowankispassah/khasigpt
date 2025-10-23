@@ -119,6 +119,7 @@ export function AppSidebar({
                     }}
                     resolvedTheme={resolvedTheme}
                     side="bottom"
+                    userEmail={activeUser.email ?? undefined}
                     trigger={
                       <Button className="h-8 w-8" size="icon" variant="outline">
                         <EllipsisVertical size={18} />

@@ -86,6 +86,7 @@ function PureChatHeader({
             onToggleTheme={handleToggleTheme}
             resolvedTheme={resolvedTheme}
             side="bottom"
+            userEmail={user.email ?? undefined}
             trigger={
               <Button className="h-8 w-8" size="icon" variant="outline">
                 <EllipsisVertical size={18} />
