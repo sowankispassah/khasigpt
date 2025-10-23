@@ -6,10 +6,59 @@ import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
+const siteName = "KhasiGPT";
+const siteTitle = "KhasiGPT · Khasi Language AI Chatbot";
+const siteDescription =
+  "Chat with KhasiGPT, the AI assistant built for Khasi speakers. Write, translate, and explore ideas in Khasi with cultural context and accurate language support.";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://chat.vercel.ai"),
-  title: "Next.js Chatbot Template",
-  description: "Next.js chatbot template using the AI SDK.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: siteTitle,
+    template: `%s · ${siteName}`,
+  },
+  description: siteDescription,
+  keywords: [
+    "KhasiGPT",
+    "Khasi AI",
+    "Khasi chatbot",
+    "Khasi language",
+    "AI assistant",
+    "Khasi translation",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName,
+    title: siteTitle,
+    description: siteDescription,
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "KhasiGPT – Khasi language AI assistant",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
 };
 
 export const viewport = {
