@@ -5,10 +5,8 @@ import { auth } from "@/app/(auth)/auth";
 import { Chat } from "@/components/chat";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { loadChatModels } from "@/lib/ai/models";
-import {
-  getChatById,
-  getMessagesByChatId,
-} from "@/lib/db/queries";
+import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
+import { getChatById, getMessagesByChatId } from "@/lib/db/queries";
 import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
@@ -19,7 +17,12 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   if (!chat) {
     notFound();
   }
-  const session = await auth();
+
+  const [session, modelsResult, suggestedPrompts] = await Promise.all([
+    auth(),
+    loadChatModels(),
+    loadSuggestedPrompts(),
+  ]);
 
   if (!session) {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
@@ -30,7 +33,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     redirect("/");
   }
 
-  const { defaultModel, models } = await loadChatModels();
+  const { defaultModel, models } = modelsResult;
 
   if (chat.visibility === "private" && !isAdmin) {
     if (!session.user) {
@@ -71,6 +74,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           initialMessages={uiMessages}
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
+          suggestedPrompts={suggestedPrompts}
         />
         <DataStreamHandler />
       </>
@@ -87,6 +91,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         initialMessages={uiMessages}
         initialVisibilityType={chat.visibility}
         isReadonly={session?.user?.id !== chat.userId}
+        suggestedPrompts={suggestedPrompts}
       />
       <DataStreamHandler />
     </>

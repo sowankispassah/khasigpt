@@ -16,10 +16,12 @@ import {
   hardDeletePricingPlanAction,
   updatePrivacyPolicyAction,
   updateTermsOfServiceAction,
+  updateSuggestedPromptsAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminSettingsNotice } from "./notice";
 import {
+  DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_PRIVACY_POLICY,
   DEFAULT_TERMS_OF_SERVICE,
   TOKENS_PER_CREDIT,
@@ -75,12 +77,14 @@ export default async function AdminSettingsPage({
     activeSubscriptions,
     privacyPolicySetting,
     termsOfServiceSetting,
+    suggestedPromptsSetting,
   ] = await Promise.all([
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
     listActiveSubscriptionSummaries({ limit: 10 }),
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
+    getAppSetting<string[]>("suggestedPrompts"),
   ]);
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -97,12 +101,49 @@ export default async function AdminSettingsPage({
     termsOfServiceSetting && termsOfServiceSetting.trim().length > 0
       ? termsOfServiceSetting
       : DEFAULT_TERMS_OF_SERVICE;
+  const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
+    ? suggestedPromptsSetting.filter(
+        (item) => typeof item === "string" && item.trim().length > 0
+      )
+    : [];
+  const suggestedPrompts =
+    suggestedPromptsList.length > 0
+      ? suggestedPromptsList
+      : DEFAULT_SUGGESTED_PROMPTS;
 
   return (
     <>
       <AdminSettingsNotice notice={notice} />
 
       <div className="flex flex-col gap-10">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Suggested prompts</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Customize the quick-start prompts that appear on the home screen. Enter one prompt per line.
+          </p>
+          <form action={updateSuggestedPromptsAction} className="mt-6 flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="suggested-prompts">
+                Home screen presets
+              </label>
+              <textarea
+                className="min-h-[12rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
+                defaultValue={suggestedPrompts.join("\n")}
+                id="suggested-prompts"
+                name="prompts"
+                required
+              />
+              <p className="text-muted-foreground text-xs">
+                Separate prompts with new lines. The first four prompts are shown by default.
+              </p>
+            </div>
+            <div className="flex justify-end">
+              <ActionSubmitButton pendingLabel="Saving...">
+                Save suggested prompts
+              </ActionSubmitButton>
+            </div>
+          </form>
+        </section>
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Legal content</h2>
           <p className="text-muted-foreground mt-1 text-sm">

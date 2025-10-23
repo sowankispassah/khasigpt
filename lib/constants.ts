@@ -12,6 +12,13 @@ export const DUMMY_PASSWORD =
 
 export const TOKENS_PER_CREDIT = 100;
 
+export const DEFAULT_SUGGESTED_PROMPTS = [
+  "What are the advantages of using Next.js?",
+  "Write code to demonstrate Dijkstra's algorithm",
+  "Help me write an essay about Silicon Valley",
+  "What is the weather in San Francisco?",
+];
+
 export const DEFAULT_PRIVACY_POLICY = `
 Khasigpt is committed to safeguarding your privacy. This Privacy Policy explains what information we collect, how we use it, and the choices you have regarding your personal data.
 

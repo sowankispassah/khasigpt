@@ -450,6 +450,36 @@ function parseInteger(value: FormDataEntryValue | null | undefined) {
   return Math.round(parseNumber(value));
 }
 
+export async function updateSuggestedPromptsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const promptsValue = formData.get("prompts")?.toString() ?? "";
+  const prompts = promptsValue
+    .split(/\r?\n/)
+    .map((prompt) => prompt.trim())
+    .filter((prompt) => prompt.length > 0);
+
+  if (!prompts.length) {
+    throw new Error("At least one suggested prompt is required");
+  }
+
+  await setAppSetting({ key: "suggestedPrompts", value: prompts });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "ui.suggested_prompts.update",
+    target: { feature: "suggestedPrompts" },
+    metadata: { count: prompts.length },
+  });
+
+  revalidatePath("/", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/admin/settings");
+
+  redirect("/admin/settings?notice=suggested-prompts-updated");
+}
+
 export async function createPricingPlanAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();

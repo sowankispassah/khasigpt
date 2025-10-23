@@ -40,6 +40,7 @@ export function Chat({
   initialVisibilityType,
   isReadonly,
   autoResume,
+  suggestedPrompts,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -47,6 +48,7 @@ export function Chat({
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
   autoResume: boolean;
+  suggestedPrompts: string[];
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -226,14 +228,15 @@ export function Chat({
               onModelChange={setCurrentModelId}
               selectedModelId={currentModelId}
               selectedVisibilityType={visibilityType}
-              sendMessage={sendMessage}
-              setAttachments={setAttachments}
-              setInput={setInput}
-              setMessages={setMessages}
-              status={status}
-              stop={stop}
-            />
-          )}
+          sendMessage={sendMessage}
+          setAttachments={setAttachments}
+          setInput={setInput}
+          setMessages={setMessages}
+          status={status}
+          stop={stop}
+          suggestedPrompts={suggestedPrompts}
+        />
+      )}
         </div>
       </div>
 

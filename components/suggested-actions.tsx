@@ -4,6 +4,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { motion } from "framer-motion";
 import { memo } from "react";
 import type { ChatMessage } from "@/lib/types";
+import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
 import { Suggestion } from "./elements/suggestion";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -11,15 +12,18 @@ type SuggestedActionsProps = {
   chatId: string;
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   selectedVisibilityType: VisibilityType;
+  prompts?: string[];
 };
 
-function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
-  const suggestedActions = [
-    "What are the advantages of using Next.js?",
-    "Write code to demonstrate Dijkstra's algorithm",
-    "Help me write an essay about Silicon Valley",
-    "What is the weather in San Francisco?",
-  ];
+function PureSuggestedActions({
+  chatId,
+  sendMessage,
+  prompts,
+}: SuggestedActionsProps) {
+  const normalizedPrompts =
+    prompts?.map((prompt) => prompt.trim()).filter((prompt) => prompt.length > 0) ?? [];
+  const suggestedActions =
+    normalizedPrompts.length > 0 ? normalizedPrompts : DEFAULT_SUGGESTED_PROMPTS;
 
   return (
     <div
@@ -61,6 +65,16 @@ export const SuggestedActions = memo(
     }
     if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType) {
       return false;
+    }
+    const prevPrompts = prevProps.prompts ?? [];
+    const nextPrompts = nextProps.prompts ?? [];
+    if (prevPrompts.length !== nextPrompts.length) {
+      return false;
+    }
+    for (let index = 0; index < prevPrompts.length; index += 1) {
+      if (prevPrompts[index] !== nextPrompts[index]) {
+        return false;
+      }
     }
 
     return true;

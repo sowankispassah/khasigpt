@@ -17,6 +17,7 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "model-defaulted": { type: "success", message: "Default model updated." },
   "privacy-updated": { type: "success", message: "Privacy policy updated." },
   "terms-updated": { type: "success", message: "Terms of service updated." },
+  "suggested-prompts-updated": { type: "success", message: "Suggested prompts updated." },
 };
 
 export function AdminSettingsNotice({ notice }: { notice?: string }) {
