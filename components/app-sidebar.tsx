@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { UserDropdownMenu } from "./user-dropdown-menu";
-import { toast } from "./toast";
 
 export function AppSidebar({
   user,
@@ -111,14 +110,6 @@ export function AppSidebar({
                       router.push(path);
                     }}
                     onSignOut={() => {
-                      if (status === "loading") {
-                        toast({
-                          type: "error",
-                          description:
-                            "Checking authentication status, please try again!",
-                        });
-                        return;
-                      }
                       setOpenMobile(false);
                       signOut({ redirectTo: "/login" });
                     }}

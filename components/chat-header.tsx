@@ -14,7 +14,6 @@ import { LoaderIcon, PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
 import { UserDropdownMenu } from "./user-dropdown-menu";
-import { toast } from "./toast";
 
 function PureChatHeader({
   chatId,
@@ -43,14 +42,6 @@ function PureChatHeader({
   };
 
   const handleSignOut = () => {
-    if (status === "loading") {
-      toast({
-        type: "error",
-        description: "Checking authentication status, please try again!",
-      });
-      return;
-    }
-
     signOut({ redirectTo: "/login" });
   };
 
