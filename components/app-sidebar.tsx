@@ -3,20 +3,23 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
+import { signOut, useSession } from "next-auth/react";
+import { useTheme } from "next-themes";
 import { useTransition } from "react";
+import { EllipsisVertical } from "lucide-react";
 import { LoaderIcon, PlusIcon } from "@/components/icons";
 import { SidebarHistory } from "@/components/sidebar-history";
-import { SidebarUserNav } from "@/components/sidebar-user-nav";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { UserDropdownMenu } from "./user-dropdown-menu";
+import { toast } from "./toast";
 
 export function AppSidebar({
   user,
@@ -25,7 +28,13 @@ export function AppSidebar({
 }) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
+  const { data: sessionData, status } = useSession();
+  const { setTheme, resolvedTheme } = useTheme();
   const [isPending, startTransition] = useTransition();
+
+  const activeUser = sessionData?.user ?? user;
+  const userEmail = activeUser?.email ?? "";
+  const isAdmin = activeUser?.role === "admin";
 
   const createNewChatHref = () => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -61,37 +70,80 @@ export function AppSidebar({
                 Chatbot
               </span>
             </Link>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  className="h-8 p-1 md:h-fit md:p-2"
-                  data-testid="new-chat-button"
-                  disabled={isPending}
-                  aria-busy={isPending}
-                  onClick={handleNewChat}
-                  type="button"
-                  variant="ghost"
-                >
-                  {isPending ? (
-                    <span className="flex items-center justify-center animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                  ) : (
-                    <PlusIcon />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent align="end" className="hidden md:block">
-                New Chat
-              </TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    className="h-8 px-2 md:h-fit md:px-2"
+                    data-testid="new-chat-button"
+                    disabled={isPending}
+                    aria-busy={isPending}
+                    onClick={handleNewChat}
+                    type="button"
+                    variant="outline"
+                  >
+                    {isPending ? (
+                      <span className="flex items-center justify-center animate-spin">
+                        <LoaderIcon size={16} />
+                      </span>
+                    ) : (
+                      <PlusIcon />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent align="end">
+                  New Chat
+                </TooltipContent>
+              </Tooltip>
+
+              <div className="md:hidden">
+                {status === "loading" ? (
+                  <Button className="h-8 w-8" disabled variant="outline">
+                    <span className="sr-only">Loading user menu</span>
+                    <LoaderIcon className="animate-spin" size={16} />
+                  </Button>
+                ) : activeUser ? (
+                  <UserDropdownMenu
+                    align="end"
+                    isAdmin={isAdmin}
+                    onNavigate={(path) => {
+                      setOpenMobile(false);
+                      router.push(path);
+                    }}
+                    onSignOut={() => {
+                      if (status === "loading") {
+                        toast({
+                          type: "error",
+                          description:
+                            "Checking authentication status, please try again!",
+                        });
+                        return;
+                      }
+                      setOpenMobile(false);
+                      signOut({ redirectTo: "/login" });
+                    }}
+                    onToggleTheme={() => {
+                      setTheme(resolvedTheme === "dark" ? "light" : "dark");
+                      setOpenMobile(false);
+                    }}
+                    resolvedTheme={resolvedTheme}
+                    side="bottom"
+                    trigger={
+                      <Button className="h-8 w-8" size="icon" variant="outline">
+                        <EllipsisVertical size={18} />
+                        <span className="sr-only">Open user menu</span>
+                      </Button>
+                    }
+                  />
+                ) : null}
+              </div>
+            </div>
           </div>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarHistory user={user} />
       </SidebarContent>
-      <SidebarFooter>{user && <SidebarUserNav user={user} />}</SidebarFooter>
     </Sidebar>
   );
 }

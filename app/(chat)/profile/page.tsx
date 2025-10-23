@@ -59,7 +59,16 @@ export default async function ProfilePage() {
   const showFreeCredits = freeCreditsRemaining > 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-8">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:gap-8">
+      <div>
+        <Link
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
+          href="/"
+        >
+          ← Back to home
+        </Link>
+      </div>
+
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">Profile</h1>
         <p className="text-muted-foreground text-sm">
@@ -192,6 +201,7 @@ export default async function ProfilePage() {
           </table>
         </div>
       </section>
+
     </div>
   );
 }
