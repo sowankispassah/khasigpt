@@ -996,6 +996,32 @@ export async function updateUserPassword({
   }
 }
 
+export async function updateUserDateOfBirth({
+  id,
+  dateOfBirth,
+}: {
+  id: string;
+  dateOfBirth: string;
+}) {
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        dateOfBirth,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update date of birth"
+    );
+  }
+}
+
 export async function updateUserRole({
   id,
   role,

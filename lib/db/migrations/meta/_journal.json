@@ -120,6 +120,13 @@
       "when": 1763418000000,
       "tag": "0018_payment-transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1763419800000,
+      "tag": "0019_user-date-of-birth",
+      "breakpoints": true
     }
   ]
 }

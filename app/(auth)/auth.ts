@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
-import { ensureOAuthUser, getUser } from "@/lib/db/queries";
+import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
 import { authConfig } from "./auth.config";
 
 export type UserRole = "regular" | "admin";
@@ -14,6 +14,7 @@ declare module "next-auth" {
     user: {
       id: string;
       role: UserRole;
+      dateOfBirth: string | null;
     } & DefaultSession["user"];
   }
 
@@ -22,6 +23,7 @@ declare module "next-auth" {
     id?: string;
     email?: string | null;
     role: UserRole;
+    dateOfBirth?: string | null;
   }
 }
 
@@ -91,12 +93,20 @@ export const {
 
       return true;
     },
-    jwt({ token, user }: { token: any; user?: any }) {
+    jwt: async ({ token, user }: { token: any; user?: any }) => {
       if (user) {
         token.id = user.id as string;
         token.role = (user.role as UserRole) ?? "regular";
-      } else if (!token.role) {
-        token.role = "regular";
+        token.dateOfBirth = user.dateOfBirth ?? null;
+      } else {
+        if (!token.role) {
+          token.role = "regular";
+        }
+
+        if (token.id && (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null)) {
+          const record = await getUserById(token.id as string);
+          token.dateOfBirth = record?.dateOfBirth ?? null;
+        }
       }
 
       return token;
@@ -105,6 +115,7 @@ export const {
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
+        session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
       }
 
       return session;

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import Script from "next/script";
+import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { FeatureFlagsProvider } from "@/components/feature-flags-provider";
@@ -19,6 +20,10 @@ export default async function Layout({
 }) {
   const [featureFlags, { models, defaultModel }, session, cookieStore] =
     await Promise.all([loadFeatureFlags(), loadChatModels(), auth(), cookies()]);
+
+  if (session?.user && !session.user.dateOfBirth) {
+    redirect("/complete-profile");
+  }
 
   const balance = session?.user
     ? await getUserBalanceSummary(session.user.id)

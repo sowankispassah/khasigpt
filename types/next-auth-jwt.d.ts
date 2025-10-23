@@ -12,6 +12,7 @@ declare module "next-auth/jwt" {
   export interface JWT extends Record<string, unknown> {
     id?: string;
     role?: string;
+    dateOfBirth?: string | null;
   }
 
   export function getToken<R extends boolean = false>(

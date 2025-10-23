@@ -43,7 +43,7 @@ export function UserDropdownMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
-        className="min-w-[14rem]"
+        className="min-w-[16rem]"
         data-testid="user-nav-menu"
         side={side}
         align={align}
