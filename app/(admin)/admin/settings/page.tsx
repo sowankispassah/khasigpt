@@ -251,7 +251,7 @@ export default async function AdminSettingsPage({
               <input
                 className="rounded-md border bg-background px-3 py-2 text-sm"
                 id="plan-tokens"
-                min="1"
+                min={0}
                 name="tokenAllowance"
                 placeholder="100000"
                 required
@@ -268,7 +268,7 @@ export default async function AdminSettingsPage({
               <input
                 className="rounded-md border bg-background px-3 py-2 text-sm"
                 id="plan-duration"
-                min="1"
+                min={0}
                 name="billingCycleDays"
                 placeholder="90"
                 required
@@ -360,7 +360,7 @@ export default async function AdminSettingsPage({
                             <input
                               className="rounded-md border bg-background px-3 py-2 text-sm"
                               defaultValue={plan.tokenAllowance}
-                              min="1"
+                              min={0}
                               name="tokenAllowance"
                               type="number"
                             />
@@ -372,7 +372,7 @@ export default async function AdminSettingsPage({
                             <input
                               className="rounded-md border bg-background px-3 py-2 text-sm"
                               defaultValue={plan.billingCycleDays}
-                              min="1"
+                              min={0}
                               name="billingCycleDays"
                               type="number"
                             />

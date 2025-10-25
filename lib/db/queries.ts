@@ -17,8 +17,8 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import postgres, { type Options as PostgresOptions } from "postgres";
 import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -69,9 +69,34 @@ try {
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
 
+const parseOr = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+type GlobalDbState = {
+  postgresClient?: ReturnType<typeof postgres>;
+  drizzleDb?: PostgresJsDatabase;
+};
+
+const globalDbState = globalThis as typeof globalThis & GlobalDbState;
+
+const poolConfig: PostgresOptions = {
+  max: parseOr(process.env.POSTGRES_POOL_SIZE, 3),
+  idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
+  max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
+};
+
 // biome-ignore lint: Forbidden non-null assertion.
-const client = postgres(process.env.POSTGRES_URL!);
-const db = drizzle(client);
+const client =
+  globalDbState.postgresClient ?? postgres(process.env.POSTGRES_URL!, poolConfig);
+
+globalDbState.postgresClient ??= client;
+
+const db =
+  globalDbState.drizzleDb ?? drizzle(client);
+
+globalDbState.drizzleDb ??= db;
 
 function normalizeEmailValue(email: string): string {
   return email.trim().toLowerCase();

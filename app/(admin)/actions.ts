@@ -487,20 +487,13 @@ export async function createPricingPlanAction(formData: FormData) {
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim() ?? "";
   const priceInRupees = parseNumber(formData.get("priceInRupees"));
-  const tokenAllowance = parseInteger(formData.get("tokenAllowance"));
-  const billingCycleDays = parseInteger(formData.get("billingCycleDays"));
+  const tokenAllowance = Math.max(0, parseInteger(formData.get("tokenAllowance")));
+  const billingCycleDays = Math.max(0, parseInteger(formData.get("billingCycleDays")));
   const isActive = parseBoolean(formData.get("isActive"));
 
   if (!name) {
     throw new Error("Plan name is required");
   }
-  if (tokenAllowance <= 0) {
-    throw new Error("Token allowance must be greater than zero");
-  }
-  if (billingCycleDays <= 0) {
-    throw new Error("Billing cycle must be at least 1 day");
-  }
-
   const plan = await createPricingPlan({
     name,
     description,
@@ -553,7 +546,7 @@ export async function updatePricingPlanAction(formData: FormData) {
   }
   if (formData.has("billingCycleDays")) {
     updates.billingCycleDays = Math.max(
-      1,
+      0,
       parseInteger(formData.get("billingCycleDays"))
     );
   }
