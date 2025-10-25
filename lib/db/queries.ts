@@ -18,7 +18,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import postgres, { type Options as PostgresOptions } from "postgres";
+import postgres from "postgres";
 import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -81,7 +81,7 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-const poolConfig: PostgresOptions = {
+const poolConfig = {
   max: parseOr(process.env.POSTGRES_POOL_SIZE, 3),
   idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
   max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
