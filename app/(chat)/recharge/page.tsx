@@ -4,11 +4,14 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { Button } from "@/components/ui/button";
+import { PageUserMenu } from "@/components/page-user-menu";
 import { RechargePlans } from "@/components/recharge-plans";
 import {
   getUserBalanceSummary,
   listPricingPlans,
+  getAppSetting,
 } from "@/lib/db/queries";
+import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 
 export default async function RechargePage() {
   const session = await auth();
@@ -17,9 +20,10 @@ export default async function RechargePage() {
     redirect("/login?callbackUrl=/recharge");
   }
 
-  const [plans, balance] = await Promise.all([
+  const [plans, balance, recommendedPlanSetting] = await Promise.all([
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
+    getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
   ]);
 
   const activePlanId = balance.plan?.id ?? null;
@@ -30,18 +34,23 @@ export default async function RechargePage() {
     return a.priceInPaise - b.priceInPaise;
   });
 
-  let recommendedPlanId: string | null = null;
-  let highestPrice = -Infinity;
-  let highestAllowance = -Infinity;
+  let recommendedPlanId: string | null =
+    recommendedPlanSetting && sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
+      ? recommendedPlanSetting
+      : null;
 
-  for (const plan of sortedPlans) {
-    if (
-      plan.priceInPaise > highestPrice ||
-      (plan.priceInPaise === highestPrice && plan.tokenAllowance > highestAllowance)
-    ) {
-      recommendedPlanId = plan.id;
-      highestPrice = plan.priceInPaise;
-      highestAllowance = plan.tokenAllowance;
+  if (!recommendedPlanId) {
+    let highestPrice = -Infinity;
+    let highestAllowance = -Infinity;
+    for (const plan of sortedPlans) {
+      if (
+        plan.priceInPaise > highestPrice ||
+        (plan.priceInPaise === highestPrice && plan.tokenAllowance > highestAllowance)
+      ) {
+        recommendedPlanId = plan.id;
+        highestPrice = plan.priceInPaise;
+        highestAllowance = plan.tokenAllowance;
+      }
     }
   }
 
@@ -51,11 +60,12 @@ export default async function RechargePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
+      <PageUserMenu />
       <header className="flex flex-col gap-6">
         <div>
           <Button asChild variant="link" className="px-0 text-sm font-medium">
             <a className="inline-flex items-center gap-2 text-primary underline-offset-4 hover:underline" href="/">
-              ← Back to home
+              &larr; Back to home
             </a>
           </Button>
         </div>

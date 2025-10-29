@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from "react";
+import { EllipsisVertical } from "lucide-react";
+import useSWR from "swr";
 
 import {
   DropdownMenu,
@@ -9,6 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
   trigger: React.ReactNode;
@@ -21,6 +25,113 @@ type UserDropdownMenuProps = {
   align?: "start" | "center" | "end";
   userEmail?: string;
 };
+
+export function getInitials(name?: string | null, email?: string | null) {
+  const source = name ?? email ?? "";
+  if (!source) {
+    return "U";
+  }
+
+  const parts = source
+    .replace(/[^a-zA-Z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0 && email) {
+    return email.slice(0, 1).toUpperCase();
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 1).toUpperCase();
+  }
+
+  return parts[0][0].toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  "#EF4444",
+  "#F97316",
+  "#F59E0B",
+  "#10B981",
+  "#3B82F6",
+  "#6366F1",
+  "#8B5CF6",
+  "#EC4899",
+];
+
+export function getAvatarColor(key?: string | null) {
+  const value = key ?? "";
+  if (!value) {
+    return AVATAR_COLORS[0];
+  }
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  const index = Math.abs(hash) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index];
+}
+
+type BasicUser = {
+  name?: string | null;
+  email?: string | null;
+  imageVersion?: string | null;
+};
+
+type UserMenuTriggerProps = React.ComponentPropsWithoutRef<"button"> & {
+  user: BasicUser;
+};
+
+export const UserMenuTrigger = React.forwardRef<
+  HTMLButtonElement,
+  UserMenuTriggerProps
+>(({ user, className, ...props }, ref) => {
+  const initials = getInitials(user.name, user.email);
+  const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
+  const avatarKey =
+    user.imageVersion === undefined
+      ? null
+      : `/api/profile/avatar?v=${encodeURIComponent(
+          user.imageVersion ?? "none"
+        )}`;
+  const { data } = useSWR<{ image: string | null }>(avatarKey, fetcher, {
+    revalidateOnFocus: false,
+  });
+  const avatarSrc = data?.image ?? null;
+
+  return (
+    <button
+      ref={ref}
+      className={cn(
+        "flex items-center gap-2 rounded-full border border-border bg-muted/40 px-2 py-1 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer",
+        className
+      )}
+      type="button"
+      {...props}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground">
+        <EllipsisVertical size={16} />
+      </span>
+      <Avatar className="h-8 w-8">
+        <AvatarImage
+          alt={user.name ?? user.email ?? "User avatar"}
+          className="object-cover"
+          src={avatarSrc ?? undefined}
+        />
+        <AvatarFallback
+          className="text-xs font-semibold text-white uppercase"
+          style={{ backgroundColor: avatarColor }}
+        >
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+      <span className="sr-only">Open user menu</span>
+    </button>
+  );
+});
+
+UserMenuTrigger.displayName = "UserMenuTrigger";
 
 export function UserDropdownMenu({
   trigger,
@@ -142,7 +253,7 @@ export function UserDropdownMenu({
           className="cursor-pointer flex flex-col items-start gap-1"
           data-testid="user-nav-item-manage-subscriptions"
           onSelect={(event) =>
-            handleSelect(event, () => onNavigate("/profile"))
+            handleSelect(event, () => onNavigate("/subscriptions"))
           }
         >
           Manage Subscriptions

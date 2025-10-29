@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 type PlanForClient = {
   id: string;
@@ -29,9 +29,10 @@ type RechargePlansProps = {
   };
 };
 
-type StatusMessage =
-  | { type: "success" | "error" | "info"; message: string }
-  | null;
+type StatusMessage = {
+  type: "success" | "error" | "info";
+  message: string;
+} | null;
 
 declare global {
   interface Window {
@@ -44,7 +45,9 @@ let checkoutLoader: Promise<void> | null = null;
 
 function loadRazorpayCheckout() {
   if (typeof window === "undefined") {
-    return Promise.reject(new Error("Razorpay is only available in the browser."));
+    return Promise.reject(
+      new Error("Razorpay is only available in the browser.")
+    );
   }
   if (window.Razorpay) {
     return Promise.resolve();
@@ -93,8 +96,6 @@ export function RechargePlans({
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusMessage>(null);
 
-  const hasMultiplePlans = plans.length > 1;
-
   const sortedPlans = useMemo(() => {
     return [...plans].sort((a, b) => {
       if (a.priceInPaise === b.priceInPaise) {
@@ -124,11 +125,18 @@ export function RechargePlans({
 
         if (!orderResponse.ok) {
           const errorBody = await orderResponse.json().catch(() => null);
-          throw new Error(errorBody?.message ?? "Failed to initialize payment.");
+          throw new Error(
+            errorBody?.message ?? "Failed to initialize payment."
+          );
         }
 
-        const { key, orderId, amount, currency, plan: orderPlan } =
-          (await orderResponse.json()) as RazorpayOrderResponse;
+        const {
+          key,
+          orderId,
+          amount,
+          currency,
+          plan: orderPlan,
+        } = (await orderResponse.json()) as RazorpayOrderResponse;
 
         const Razorpay = window.Razorpay;
         if (!Razorpay) {
@@ -145,24 +153,32 @@ export function RechargePlans({
             order_id: orderId,
             handler: async (response: RazorpaySuccessResponse) => {
               try {
-                const verifyResponse = await fetch("/api/billing/razorpay/verify", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    orderId: response.razorpay_order_id,
-                    paymentId: response.razorpay_payment_id,
-                    signature: response.razorpay_signature,
-                  }),
-                });
+                const verifyResponse = await fetch(
+                  "/api/billing/razorpay/verify",
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      orderId: response.razorpay_order_id,
+                      paymentId: response.razorpay_payment_id,
+                      signature: response.razorpay_signature,
+                    }),
+                  }
+                );
 
                 if (!verifyResponse.ok) {
-                  const errorBody = await verifyResponse.json().catch(() => null);
-                  throw new Error(errorBody?.message ?? "Failed to confirm payment.");
+                  const errorBody = await verifyResponse
+                    .json()
+                    .catch(() => null);
+                  throw new Error(
+                    errorBody?.message ?? "Failed to confirm payment."
+                  );
                 }
 
                 setStatus({
                   type: "success",
-                  message: "Payment successful. Your credits have been updated.",
+                  message:
+                    "Payment successful. Your credits have been updated.",
                 });
                 router.refresh();
                 resolve();
@@ -211,7 +227,7 @@ export function RechargePlans({
         setLoadingPlanId(null);
       }
     },
-    [router, user.name, user.email, user.contact],
+    [router, user.name, user.email, user.contact]
   );
 
   return (
@@ -220,9 +236,12 @@ export function RechargePlans({
         <div
           className={cn(
             "rounded-md border px-4 py-3 text-sm",
-            status.type === "success" && "border-green-500/60 bg-green-500/10 text-green-600",
-            status.type === "error" && "border-red-500/60 bg-red-500/10 text-red-600",
-            status.type === "info" && "border-muted bg-muted/20 text-muted-foreground",
+            status.type === "success" &&
+              "border-green-500/60 bg-green-500/10 text-green-600",
+            status.type === "error" &&
+              "border-red-500/60 bg-red-500/10 text-red-600",
+            status.type === "info" &&
+              "border-muted bg-muted/20 text-muted-foreground"
           )}
         >
           {status.message}
@@ -233,11 +252,7 @@ export function RechargePlans({
         {sortedPlans.map((plan) => {
           const credits = Math.floor(plan.tokenAllowance / TOKENS_PER_CREDIT);
           const isActive = activePlanId === plan.id;
-          const isRecommended =
-            hasMultiplePlans &&
-            plan.priceInPaise > 0 &&
-            recommendedPlanId === plan.id &&
-            !isActive;
+          const isRecommended = recommendedPlanId === plan.id;
           const isFreePlan = plan.priceInPaise === 0;
           const isCurrentFreePlan = isFreePlan && (isActive || !activePlanId);
           const effectiveIsActive = isActive || isCurrentFreePlan;
@@ -264,99 +279,107 @@ export function RechargePlans({
 
           const buttonLabel = effectiveIsActive
             ? isFreePlan
-              ? "Current Plan"
-              : "Recharge again"
+            ? "Previously Recharged"
+            : "Recharge again"
             : isFreePlan
               ? "Free Plan"
               : `Get ${plan.name}`;
 
-          const buttonVariant =
-            isFreePlan && effectiveIsActive
-              ? "outline"
-              : isRecommended || effectiveIsActive
-                ? "default"
-                : "outline";
+          const buttonVariant = isFreePlan ? "outline" : "default";
 
           const isLoading = loadingPlanId === plan.id;
 
           return (
             <div
-              key={plan.id}
               className={cn(
-                "relative flex h-full flex-col rounded-2xl border bg-card/80 p-6 shadow-sm transition hover:border-primary hover:shadow-lg",
+                "relative flex h-full flex-col rounded-2xl border bg-card/80 p-6 pb-6 shadow-sm transition hover:border-primary hover:shadow-lg",
                 effectiveIsActive && "border-primary ring-1 ring-primary/40",
-                isRecommended && "border-amber-400/60",
+                isRecommended && "border-amber-400/60"
               )}
+              key={plan.id}
             >
               {isRecommended ? (
-                <span className="absolute right-5 top-5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-600">
-                  Recommended
-                </span>
-              ) : null}
-              {effectiveIsActive ? (
-                <span className="absolute right-5 top-5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                  Current plan
-                </span>
+                <div className="-translate-x-1/2 absolute top-2.5 left-1/2 flex">
+                  <span className="rounded-full bg-amber-500/15 px-2 py-[2px] font-semibold text-[11px] text-amber-600">
+                    Recommended
+                  </span>
+                </div>
               ) : null}
 
-              <div className="flex flex-1 flex-col space-y-4">
-                <div className="space-y-1">
-                  <h3 className="text-xl font-semibold">{plan.name}</h3>
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={cn(
-                        "text-3xl font-bold",
-                        plan.priceInPaise === 0 && "text-foreground/80",
-                      )}
-                    >
-                      {priceLabel}
-                    </span>
+              <div className="flex flex-1 flex-col space-y-4 pt-2">
+                <div className="flex flex-1 flex-col space-y-4">
+                  <div className="space-y-1">
+                    <h3 className="font-semibold text-xl">{plan.name}</h3>
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className={cn(
+                          "font-bold text-3xl",
+                          plan.priceInPaise === 0 && "text-foreground/80"
+                        )}
+                      >
+                        {priceLabel}
+                      </span>
+                    </div>
                   </div>
+
+                  {plan.tokenAllowance > 0 || plan.billingCycleDays > 0 ? (
+                    <div className="text-muted-foreground text-sm leading-6">
+                      {plan.tokenAllowance > 0 ? (
+                        <p>{credits.toLocaleString()} credits</p>
+                      ) : null}
+                      {plan.billingCycleDays > 0 ? (
+                        <p>Validity: {plan.billingCycleDays} days</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {features.length > 0 ? (
+                    <div className="space-y-2">
+                      <ul className="space-y-2 text-sm">
+                        {features.map((feature, featureIndex) => {
+                          const lines = feature.split(/\n/);
+                          return lines.map((line, lineIndex) => (
+                            <li
+                              className="flex items-start gap-2"
+                              key={`${featureIndex}-${lineIndex}`}
+                            >
+                              <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                              <span>{line}</span>
+                            </li>
+                          ));
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
 
-                {plan.tokenAllowance > 0 || plan.billingCycleDays > 0 ? (
-                  <div className="text-muted-foreground text-sm leading-6">
-                    {plan.tokenAllowance > 0 ? (
-                      <p>{credits.toLocaleString()} credits</p>
-                    ) : null}
-                    {plan.billingCycleDays > 0 ? (
-                      <p>Validity: {plan.billingCycleDays} days</p>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {features.length > 0 ? (
-                  <div className="space-y-2">
-                    <ul className="space-y-2 text-sm">
-                      {features.map((feature, featureIndex) => {
-                        const lines = feature.split(/\n/);
-                        return lines.map((line, lineIndex) => (
-                          <li className="flex items-start gap-2" key={`${featureIndex}-${lineIndex}`}>
-                            <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-                            <span>{line}</span>
-                          </li>
-                        ));
-                      })}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-auto pt-6">
-                {isFreePlan ? (
-                  <Button className="w-full rounded-full" disabled variant={buttonVariant}>
-                    {buttonLabel}
-                  </Button>
-                ) : (
-                  <Button
-                    className="w-full rounded-full"
-                    disabled={isLoading}
-                    variant={buttonVariant}
-                    onClick={() => handleCheckout(plan)}
-                  >
-                    {isLoading ? "Processing..." : buttonLabel}
-                  </Button>
-                )}
+                <div className="mt-auto space-y-3 pt-6">
+                  {effectiveIsActive ? (
+                    <div className="rounded-md bg-primary/5 px-3 py-2 text-center font-medium text-primary text-xs">
+                      Previously recharged
+                    </div>
+                  ) : null}
+                  {isFreePlan ? (
+                    <Button
+                      className="w-full rounded-full"
+                      disabled
+                      type="button"
+                      variant={buttonVariant}
+                    >
+                      {buttonLabel}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full rounded-full"
+                      disabled={isLoading}
+                      onClick={() => handleCheckout(plan)}
+                      type="button"
+                      variant={buttonVariant}
+                    >
+                      {isLoading ? "Processing..." : buttonLabel}
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           );

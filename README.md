@@ -91,5 +91,5 @@ If these are absent, the Google button is hidden and only email/password and ver
 
 - Admins manage credit plans from `/admin/settings`, including pricing, token allowance, and billing cycle.
 - Users can recharge at `/recharge`; plans convert tokens into display credits (1 credit = 100 tokens).
-- The `/analytics` dashboard summarises total consumption, daily trends, per-session usage, and plan validity.
+- The `/subscriptions` dashboard summarises total consumption, daily trends, per-session usage, and plan validity.
 

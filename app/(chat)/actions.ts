@@ -84,5 +84,5 @@ export async function rechargeSubscriptionAction(formData: FormData) {
   revalidatePath("/", "layout");
   revalidatePath("/chat");
   revalidatePath("/recharge");
-  revalidatePath("/analytics");
+  revalidatePath("/subscriptions");
 }

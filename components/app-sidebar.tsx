@@ -6,7 +6,6 @@ import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useTransition } from "react";
-import { EllipsisVertical } from "lucide-react";
 import { LoaderIcon, PlusIcon } from "@/components/icons";
 import { SidebarHistory } from "@/components/sidebar-history";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { UserDropdownMenu } from "./user-dropdown-menu";
+import { UserDropdownMenu, UserMenuTrigger } from "./user-dropdown-menu";
 
 export function AppSidebar({
   user,
@@ -121,10 +120,14 @@ export function AppSidebar({
                     side="bottom"
                     userEmail={activeUser.email ?? undefined}
                     trigger={
-                      <Button className="h-8 w-8" size="icon" variant="outline">
-                        <EllipsisVertical size={18} />
-                        <span className="sr-only">Open user menu</span>
-                      </Button>
+                      <UserMenuTrigger
+                        className="px-1.5"
+                        user={{
+                          name: activeUser.name,
+                          email: activeUser.email,
+                          imageVersion: activeUser.imageVersion ?? null,
+                        }}
+                      />
                     }
                   />
                 ) : null}

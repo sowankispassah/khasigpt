@@ -37,6 +37,7 @@ export const user = pgTable("User", {
     .notNull()
     .default("credentials"),
   isActive: boolean("isActive").notNull().default(true),
+  image: text("image"),
   dateOfBirth: date("dateOfBirth"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),

@@ -30,6 +30,7 @@ import {
   getMessagesByChatId,
   recordTokenUsage,
   getActiveSubscriptionForUser,
+  hasAnySubscriptionForUser,
   saveChat,
   saveMessages,
   updateChatLastContextById,
@@ -132,8 +133,16 @@ export async function POST(request: Request) {
       session.user.id
     );
 
+    let hasSubscriptionHistory = false;
+
+    if (!activeSubscription) {
+      hasSubscriptionHistory = await hasAnySubscriptionForUser(session.user.id);
+    }
+
     const hasFreeDailyAllowance =
-      !activeSubscription && messageCount < FREE_MESSAGES_PER_DAY;
+      !activeSubscription &&
+      !hasSubscriptionHistory &&
+      messageCount < FREE_MESSAGES_PER_DAY;
 
     if (!activeSubscription && !hasFreeDailyAllowance) {
       return new ChatSDKError(

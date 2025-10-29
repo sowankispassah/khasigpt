@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageUserMenu } from "@/components/page-user-menu";
 import type { Metadata } from "next";
 
 import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/constants";

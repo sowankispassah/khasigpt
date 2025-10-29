@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { memo } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { EllipsisVertical } from "lucide-react";
 import { useWindowSize } from "usehooks-ts";
 
 import { SidebarToggle } from "@/components/sidebar-toggle";
@@ -13,7 +12,9 @@ import { Button } from "@/components/ui/button";
 import { LoaderIcon, PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
-import { UserDropdownMenu } from "./user-dropdown-menu";
+import { UserDropdownMenu, UserMenuTrigger } from "./user-dropdown-menu";
+
+
 
 function PureChatHeader({
   chatId,
@@ -78,24 +79,29 @@ function PureChatHeader({
             <span className="sr-only">Loading user menu</span>
           </Button>
         ) : user ? (
-          <UserDropdownMenu
-            align="end"
-            isAdmin={user.role === "admin"}
-            onNavigate={handleNavigate}
-            onSignOut={handleSignOut}
+          <>
+            <UserDropdownMenu
+              align="end"
+              isAdmin={user.role === "admin"}
+              onNavigate={handleNavigate}
+              onSignOut={handleSignOut}
             onToggleTheme={handleToggleTheme}
             resolvedTheme={resolvedTheme}
             side="bottom"
             userEmail={user.email ?? undefined}
             trigger={
-              <Button className="h-8 w-8" size="icon" variant="outline">
-                <EllipsisVertical size={18} />
-                <span className="sr-only">Open user menu</span>
-              </Button>
+                <UserMenuTrigger
+                  user={{
+                    name: user.name,
+                    email: user.email,
+                    imageVersion: user.imageVersion ?? null,
+                  }}
+                />
             }
           />
-        ) : null}
-      </div>
+        </>
+      ) : null}
+    </div>
     </header>
   );
 }

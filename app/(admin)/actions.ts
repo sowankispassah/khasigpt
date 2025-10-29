@@ -24,7 +24,7 @@ import {
   hardDeletePricingPlan,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import { TOKENS_PER_CREDIT } from "@/lib/constants";
+import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 
 async function requireAdmin() {
   const session = await auth();
@@ -512,7 +512,7 @@ export async function createPricingPlanAction(formData: FormData) {
 
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
-  revalidatePath("/analytics");
+  revalidatePath("/subscriptions");
 
   redirect("/admin/settings?notice=plan-created");
 }
@@ -575,9 +575,36 @@ export async function updatePricingPlanAction(formData: FormData) {
 
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
-  revalidatePath("/analytics");
+  revalidatePath("/subscriptions");
 
   redirect("/admin/settings?notice=plan-updated");
+}
+
+export async function setRecommendedPricingPlanAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const rawValue = formData.get("planId");
+  const planId = rawValue ? rawValue.toString().trim() : "";
+  const value = planId.length > 0 ? planId : null;
+
+  await setAppSetting({
+    key: RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+    value,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "billing.plan.recommendation.update",
+    target: { planId: value },
+    metadata: { planId: value },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/recharge");
+  revalidatePath("/subscriptions");
+
+  redirect("/admin/settings?notice=plan-recommendation-updated");
 }
 
 export async function deletePricingPlanAction(formData: FormData) {
@@ -599,7 +626,7 @@ export async function deletePricingPlanAction(formData: FormData) {
 
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
-  revalidatePath("/analytics");
+  revalidatePath("/subscriptions");
 
   redirect("/admin/settings?notice=plan-deleted");
 }
@@ -623,7 +650,7 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
 
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
-  revalidatePath("/analytics");
+  revalidatePath("/subscriptions");
 
   redirect("/admin/settings?notice=plan-hard-deleted");
 }
@@ -669,7 +696,7 @@ export async function grantUserCreditsAction(formData: FormData) {
   });
 
   revalidatePath("/admin/users");
-  revalidatePath("/analytics");
+  revalidatePath("/subscriptions");
   revalidatePath("/recharge");
 }
 

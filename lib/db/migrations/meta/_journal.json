@@ -127,6 +127,13 @@
       "when": 1763419800000,
       "tag": "0019_user-date-of-birth",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1761670813712,
+      "tag": "0020_user_profile_image",
+      "breakpoints": true
     }
   ]
 }

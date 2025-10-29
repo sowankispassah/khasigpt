@@ -10,6 +10,7 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "plan-updated": { type: "success", message: "Pricing plan updated." },
   "plan-deleted": { type: "success", message: "Pricing plan deleted." },
   "plan-hard-deleted": { type: "success", message: "Pricing plan permanently deleted." },
+  "plan-recommendation-updated": { type: "success", message: "Recommended plan updated." },
   "model-created": { type: "success", message: "Model configuration created." },
   "model-updated": { type: "success", message: "Model configuration updated." },
   "model-deleted": { type: "success", message: "Model configuration deleted." },

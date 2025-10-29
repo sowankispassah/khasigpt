@@ -166,12 +166,17 @@ export async function createUser(email: string, password: string): Promise<User>
   }
 }
 
-export async function createOAuthUser(email: string): Promise<User> {
+export async function createOAuthUser(email: string, image: string | null = null): Promise<User> {
   const normalizedEmail = normalizeEmailValue(email);
   try {
     const [created] = await db
       .insert(user)
-      .values({ email: normalizedEmail, isActive: true, authProvider: "google" })
+      .values({
+        email: normalizedEmail,
+        isActive: true,
+        authProvider: "google",
+        image,
+      })
       .returning();
 
     return created;
@@ -208,7 +213,10 @@ export async function createGuestUser() {
   }
 }
 
-export async function ensureOAuthUser(email: string): Promise<User> {
+export async function ensureOAuthUser(
+  email: string,
+  profile?: { image?: string | null }
+): Promise<User> {
   const normalizedEmail = normalizeEmailValue(email);
   const [existing] = await getUser(normalizedEmail);
 
@@ -231,10 +239,21 @@ export async function ensureOAuthUser(email: string): Promise<User> {
       userRecord = updatedProvider ?? userRecord;
     }
 
+    if (
+      profile?.image &&
+      (!userRecord.image || userRecord.image !== profile.image)
+    ) {
+      const updatedImage = await updateUserImage({
+        id: userRecord.id,
+        image: profile.image,
+      });
+      userRecord = updatedImage ?? userRecord;
+    }
+
     return userRecord;
   }
 
-  return await createOAuthUser(normalizedEmail);
+  return await createOAuthUser(normalizedEmail, profile?.image ?? null);
 }
 
 export async function deleteEmailVerificationTokensForUser({
@@ -1043,6 +1062,32 @@ export async function updateUserDateOfBirth({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update date of birth"
+    );
+  }
+}
+
+export async function updateUserImage({
+  id,
+  image,
+}: {
+  id: string;
+  image: string | null;
+}) {
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        image,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update user profile image"
     );
   }
 }
@@ -2081,6 +2126,42 @@ export async function getActiveSubscriptionForUser(
   }
 }
 
+export async function hasAnySubscriptionForUser(
+  userId: string
+): Promise<boolean> {
+  try {
+    const [existing] = await db
+      .select({ id: userSubscription.id })
+      .from(userSubscription)
+      .where(eq(userSubscription.userId, userId))
+      .limit(1);
+
+    return Boolean(existing);
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to verify subscription history"
+    );
+  }
+}
+
+async function getLatestSubscriptionForUser(
+  executor: any,
+  userId: string
+): Promise<UserSubscription | null> {
+  const [latest] = await executor
+    .select()
+    .from(userSubscription)
+    .where(eq(userSubscription.userId, userId))
+    .orderBy(desc(userSubscription.updatedAt))
+    .limit(1);
+
+  return latest ?? null;
+}
+
 export async function createUserSubscription({
   userId,
   planId,
@@ -2267,8 +2348,10 @@ export async function getUserBalanceSummary(
 ): Promise<UserBalanceSummary> {
   try {
     const subscription = await getActiveSubscriptionForUser(userId);
+    const latestSubscription =
+      subscription ?? (await getLatestSubscriptionForUser(db, userId));
 
-    if (!subscription) {
+    if (!latestSubscription) {
       return EMPTY_BALANCE;
     }
 
@@ -2277,26 +2360,26 @@ export async function getUserBalanceSummary(
       .from(pricingPlan)
       .where(
         and(
-          eq(pricingPlan.id, subscription.planId),
+          eq(pricingPlan.id, latestSubscription.planId),
           isNull(pricingPlan.deletedAt)
         )
       )
       .limit(1);
 
-    const tokensRemaining = Math.max(0, subscription.tokenBalance);
-    const tokensTotal = Math.max(0, subscription.tokenAllowance);
+    const tokensRemaining = Math.max(0, latestSubscription.tokenBalance);
+    const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
     const creditsRemaining = Math.floor(tokensRemaining / TOKENS_PER_CREDIT);
     const creditsTotal = Math.floor(tokensTotal / TOKENS_PER_CREDIT);
 
     return {
-      subscription,
+      subscription: latestSubscription,
       plan: plan ?? null,
       tokensRemaining,
       tokensTotal,
       creditsRemaining,
       creditsTotal,
-      expiresAt: subscription.expiresAt,
-      startedAt: subscription.startedAt,
+      expiresAt: latestSubscription.expiresAt,
+      startedAt: latestSubscription.startedAt,
     };
   } catch (_error) {
     if (isTableMissingError(_error)) {
@@ -2375,9 +2458,10 @@ export async function recordTokenUsage({
   }
 
   const now = new Date();
+  let exhausted = false;
 
   try {
-    return await db.transaction(async (tx) => {
+    const usage = await db.transaction(async (tx) => {
       let inputRate = DEFAULT_COST_PER_MILLION;
       let outputRate = DEFAULT_COST_PER_MILLION;
 
@@ -2425,10 +2509,23 @@ export async function recordTokenUsage({
         tokensToDeduct > 0 &&
         subscription.tokenBalance < tokensToDeduct
       ) {
-        throw new ChatSDKError(
-          "payment_required:credits",
-          "Insufficient credits remaining"
-        );
+        const consumedTokens = Math.max(0, subscription.tokenBalance);
+
+        await tx
+          .update(userSubscription)
+          .set({
+            tokenBalance: 0,
+            tokensUsed: Math.min(
+              subscription.tokenAllowance,
+              subscription.tokensUsed + consumedTokens
+            ),
+            status: "exhausted",
+            updatedAt: now,
+          })
+          .where(eq(userSubscription.id, subscription.id));
+
+        exhausted = true;
+        return null;
       }
 
       const [usage] = await tx
@@ -2457,8 +2554,24 @@ export async function recordTokenUsage({
         })
         .where(eq(userSubscription.id, subscription.id));
 
-      return usage;
+      return usage ?? null;
     });
+
+    if (exhausted) {
+      throw new ChatSDKError(
+        "payment_required:credits",
+        "Insufficient credits remaining"
+      );
+    }
+
+    if (!usage) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to record token usage"
+      );
+    }
+
+    return usage;
   } catch (error) {
     if (error instanceof ChatSDKError) {
       throw error;
@@ -2715,15 +2828,13 @@ async function getActiveSubscriptionInternal(
   return subscription;
 }
 
-function normalizeCostRate(
-  rate: number | null | undefined
-): number | null {
+function normalizeCostRate(rate: number | null | undefined): number | null {
   if (typeof rate !== "number" || Number.isNaN(rate)) {
     return null;
   }
 
-  if (rate < 0) {
-    return 0;
+  if (rate <= 0) {
+    return null;
   }
 
   return rate;
@@ -2757,8 +2868,13 @@ function calculateTokenDeduction({
   const total = weightedInput + weightedOutput;
 
   if (!Number.isFinite(total) || total <= 0) {
-    return 0;
+    return TOKENS_PER_CREDIT;
   }
 
-  return Math.max(1, Math.ceil(total));
+  const creditsToDeduct = Math.max(
+    1,
+    Math.ceil(total / TOKENS_PER_CREDIT)
+  );
+
+  return creditsToDeduct * TOKENS_PER_CREDIT;
 }

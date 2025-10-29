@@ -14,6 +14,7 @@ import {
   updatePricingPlanAction,
   deletePricingPlanAction,
   hardDeletePricingPlanAction,
+  setRecommendedPricingPlanAction,
   updatePrivacyPolicyAction,
   updateTermsOfServiceAction,
   updateSuggestedPromptsAction,
@@ -25,6 +26,7 @@ import {
   DEFAULT_PRIVACY_POLICY,
   DEFAULT_TERMS_OF_SERVICE,
   TOKENS_PER_CREDIT,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
 } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 
@@ -78,6 +80,7 @@ export default async function AdminSettingsPage({
     privacyPolicySetting,
     termsOfServiceSetting,
     suggestedPromptsSetting,
+    recommendedPlanSetting,
   ] = await Promise.all([
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
@@ -85,6 +88,7 @@ export default async function AdminSettingsPage({
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
     getAppSetting<string[]>("suggestedPrompts"),
+    getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
   ]);
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -92,6 +96,15 @@ export default async function AdminSettingsPage({
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
+
+  const recommendedPlanId =
+    recommendedPlanSetting &&
+    activePlans.some((plan) => plan.id === recommendedPlanSetting)
+      ? recommendedPlanSetting
+      : null;
+  const recommendedPlanName = recommendedPlanId
+    ? activePlans.find((plan) => plan.id === recommendedPlanId)?.name ?? null
+    : null;
 
   const privacyPolicyContent =
     privacyPolicySetting && privacyPolicySetting.trim().length > 0
@@ -204,6 +217,14 @@ export default async function AdminSettingsPage({
             Define recharge tiers that control how many tokens and credits users receive.
             Plans become available immediately.
           </p>
+          <div className="mt-3 rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
+            <div>Current recommended plan: {recommendedPlanName ?? "None selected"}</div>
+            {recommendedPlanSetting && !recommendedPlanId ? (
+              <div className="text-amber-600">
+                The previously selected plan is no longer active. Choose a new recommended plan below.
+              </div>
+            ) : null}
+          </div>
 
           <form action={createPricingPlanAction} className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
@@ -303,6 +324,7 @@ export default async function AdminSettingsPage({
               activePlans.map((plan) => {
                 const priceInRupees = plan.priceInPaise / 100;
                 const credits = Math.floor(plan.tokenAllowance / TOKENS_PER_CREDIT);
+                const isRecommendedPlan = recommendedPlanId === plan.id;
 
                 return (
                   <details
@@ -310,7 +332,14 @@ export default async function AdminSettingsPage({
                     className="overflow-hidden rounded-lg border bg-background"
                   >
                     <summary className="flex cursor-pointer items-center justify-between gap-4 bg-muted/50 px-4 py-3 text-sm font-medium">
-                      <span>{plan.name}</span>
+                      <span className="flex items-center gap-2">
+                        <span>{plan.name}</span>
+                        {isRecommendedPlan ? (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            Recommended
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="text-muted-foreground text-xs">
                         {plan.isActive ? "Active" : "Inactive"}
                       </span>
@@ -401,6 +430,35 @@ export default async function AdminSettingsPage({
                       </form>
 
                       <div className="flex flex-col justify-between gap-4">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-sm font-medium">
+                              {isRecommendedPlan ? "Recommended plan" : "Not recommended"}
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {isRecommendedPlan ? (
+                                <form action={setRecommendedPricingPlanAction}>
+                                  <input name="planId" type="hidden" value="" />
+                                  <ActionSubmitButton pendingLabel="Updating..." variant="outline">
+                                    Remove recommendation
+                                  </ActionSubmitButton>
+                                </form>
+                              ) : (
+                                <form action={setRecommendedPricingPlanAction}>
+                                  <input name="planId" type="hidden" value={plan.id} />
+                                  <ActionSubmitButton pendingLabel="Updating..." disabled={!plan.isActive}>
+                                    Set as recommended
+                                  </ActionSubmitButton>
+                                </form>
+                              )}
+                            </div>
+                          </div>
+                          {!plan.isActive && !isRecommendedPlan ? (
+                            <p className="text-xs text-muted-foreground">
+                              Activate this plan before setting it as recommended.
+                            </p>
+                          ) : null}
+                        </div>
                         <dl className="grid gap-2 text-sm">
                           <div className="flex items-center justify-between">
                             <dt className="text-muted-foreground">

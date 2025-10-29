@@ -15,6 +15,7 @@ declare module "next-auth" {
       id: string;
       role: UserRole;
       dateOfBirth: string | null;
+      imageVersion: string | null;
     } & DefaultSession["user"];
   }
 
@@ -24,6 +25,8 @@ declare module "next-auth" {
     email?: string | null;
     role: UserRole;
     dateOfBirth?: string | null;
+    image?: string | null;
+    imageVersion?: string | null;
   }
 }
 
@@ -56,7 +59,19 @@ const providers: any[] = [
         return null;
       }
 
-      return { ...user, role: user.role } as typeof user & { role: UserRole };
+      const { image, ...rest } = user;
+      const imageVersion =
+        image && user.updatedAt instanceof Date
+          ? user.updatedAt.toISOString()
+          : image
+            ? new Date().toISOString()
+            : null;
+
+      return {
+        ...rest,
+        role: user.role,
+        imageVersion,
+      } as typeof rest & { role: UserRole; imageVersion: string | null };
     },
   }),
 ];
@@ -86,27 +101,76 @@ export const {
           return false;
         }
 
-        const dbUser = await ensureOAuthUser(user.email);
+        const profileImage =
+          typeof user.image === "string" ? user.image : null;
+        const dbUser = await ensureOAuthUser(user.email, {
+          image: profileImage,
+        });
         user.id = dbUser.id;
         user.role = dbUser.role as UserRole;
+        user.image = null;
+        user.imageVersion =
+          dbUser.image && dbUser.updatedAt instanceof Date
+            ? dbUser.updatedAt.toISOString()
+            : dbUser.image
+              ? new Date().toISOString()
+              : null;
+        user.dateOfBirth = dbUser.dateOfBirth ?? user.dateOfBirth ?? null;
       }
 
       return true;
     },
-    jwt: async ({ token, user }: { token: any; user?: any }) => {
+    jwt: async ({
+      token,
+      user,
+      trigger,
+      session,
+    }: {
+      token: any;
+      user?: any;
+      trigger?: "signIn" | "signUp" | "update" | undefined;
+      session?: Record<string, unknown>;
+    }) => {
       if (user) {
         token.id = user.id as string;
         token.role = (user.role as UserRole) ?? "regular";
         token.dateOfBirth = user.dateOfBirth ?? null;
+        token.imageVersion = user.imageVersion ?? null;
       } else {
         if (!token.role) {
           token.role = "regular";
         }
+      }
 
-        if (token.id && (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null)) {
-          const record = await getUserById(token.id as string);
-          token.dateOfBirth = record?.dateOfBirth ?? null;
+      if (trigger === "update" && session) {
+        if ("imageVersion" in session) {
+          token.imageVersion = (session.imageVersion as string | null) ?? null;
         }
+        if ("dateOfBirth" in session) {
+          token.dateOfBirth = (session.dateOfBirth as string | null) ?? null;
+        }
+      }
+
+      if (
+        token.id &&
+        (typeof token.dateOfBirth === "undefined" ||
+          token.dateOfBirth === null ||
+          typeof token.imageVersion === "undefined")
+      ) {
+        const record = await getUserById(token.id as string);
+        if (record) {
+          if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
+            token.dateOfBirth = record.dateOfBirth ?? null;
+          }
+          token.imageVersion =
+            record.image && record.updatedAt instanceof Date
+              ? record.updatedAt.toISOString()
+              : record.image
+                ? new Date().toISOString()
+                : null;
+        }
+      } else if (typeof token.imageVersion === "undefined") {
+        token.imageVersion = null;
       }
 
       return token;
@@ -116,6 +180,7 @@ export const {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
         session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
+        session.user.imageVersion = (token.imageVersion ?? null) as string | null;
       }
 
       return session;
