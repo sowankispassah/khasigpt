@@ -10,6 +10,7 @@ import {
   hardDeleteChatById,
   restoreChatById,
   createModelConfig,
+  getModelConfigByKey,
   updateModelConfig,
   deleteModelConfig,
   hardDeleteModelConfig,
@@ -182,22 +183,41 @@ export async function createModelConfigAction(formData: FormData) {
     formData.get("outputCostPerMillion")
   );
 
-  const created = await createModelConfig({
+  const existingConfig = await getModelConfigByKey({
     key,
-    provider: provider as any,
-    providerModelId,
-    displayName,
-    description,
-    systemPrompt,
-    codeTemplate,
-    supportsReasoning,
-    reasoningTag,
-    config,
-    isEnabled,
-    isDefault,
-    inputCostPerMillion,
-    outputCostPerMillion,
+    includeDeleted: true,
   });
+
+  if (existingConfig) {
+    if (existingConfig.deletedAt) {
+      redirect("/admin/settings?notice=model-key-soft-deleted");
+    } else {
+      redirect("/admin/settings?notice=model-key-conflict");
+    }
+  }
+
+  let created: Awaited<ReturnType<typeof createModelConfig>>;
+  try {
+    created = await createModelConfig({
+      key,
+      provider: provider as any,
+      providerModelId,
+      displayName,
+      description,
+      systemPrompt,
+      codeTemplate,
+      supportsReasoning,
+      reasoningTag,
+      config,
+      isEnabled,
+      isDefault,
+      inputCostPerMillion,
+      outputCostPerMillion,
+    });
+  } catch (error) {
+    console.error("Failed to create model configuration", error);
+    redirect("/admin/settings?notice=model-create-error");
+  }
 
   await createAuditLogEntry({
     actorId: actor.id,

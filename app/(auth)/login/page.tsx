@@ -110,7 +110,7 @@ function LoginContent() {
         <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
           <h2>
             KhasiGPT is your smart AI assistant designed to understand and speak
-            the Khasi language.
+            Khasi language.
           </h2>
           <br />
           <h3 className="font-semibold text-xl dark:text-zinc-50">

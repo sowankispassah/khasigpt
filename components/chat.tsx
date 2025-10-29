@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -21,10 +22,7 @@ import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Vote } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import type {
-  Attachment,
-  ChatMessage
-} from "@/lib/types";
+import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
@@ -219,24 +217,33 @@ export function Chat({
         />
 
         <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
-          {!isReadonly && (
-            <MultimodalInput
-              attachments={attachments}
-              chatId={id}
-              input={input}
-              messages={messages}
-              onModelChange={setCurrentModelId}
-              selectedModelId={currentModelId}
-              selectedVisibilityType={visibilityType}
-          sendMessage={sendMessage}
-          setAttachments={setAttachments}
-          setInput={setInput}
-          setMessages={setMessages}
-          status={status}
-          stop={stop}
-          suggestedPrompts={suggestedPrompts}
-        />
-      )}
+          {isReadonly ? null : (
+            <div className="flex w-full flex-col gap-2">
+              <MultimodalInput
+                attachments={attachments}
+                chatId={id}
+                input={input}
+                messages={messages}
+                onModelChange={setCurrentModelId}
+                selectedModelId={currentModelId}
+                selectedVisibilityType={visibilityType}
+                sendMessage={sendMessage}
+                setAttachments={setAttachments}
+                setInput={setInput}
+                setMessages={setMessages}
+                status={status}
+                stop={stop}
+                suggestedPrompts={suggestedPrompts}
+              />
+              <p className="px-2 text-center text-muted-foreground text-xs">
+                KhasiGPT or other AI Models can make mistakes. Check important
+                details.{" "}
+                <Link className="underline" href="/privacy-policy">
+                  See privacy policy.
+                </Link>
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -248,8 +255,8 @@ export function Chat({
           <AlertDialogHeader>
             <AlertDialogTitle>Credit top-up required</AlertDialogTitle>
             <AlertDialogDescription>
-              You've used all of your free daily messages. Top up credits to keep
-              chatting without interruptions.
+              You've used all of your free daily messages. Top up credits to
+              keep chatting without interruptions.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -298,22 +305,3 @@ export function Chat({
     </>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

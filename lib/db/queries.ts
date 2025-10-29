@@ -1555,6 +1555,36 @@ export async function getModelConfigById({
   }
 }
 
+export async function getModelConfigByKey({
+  key,
+  includeDeleted = false,
+}: {
+  key: string;
+  includeDeleted?: boolean;
+}): Promise<ModelConfig | null> {
+  try {
+    const condition = includeDeleted
+      ? eq(modelConfig.key, key)
+      : and(eq(modelConfig.key, key), isNull(modelConfig.deletedAt));
+
+    const [configResult] = await db
+      .select()
+      .from(modelConfig)
+      .where(condition)
+      .limit(1);
+
+    return configResult ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load model configuration"
+    );
+  }
+}
+
 export async function listModelConfigs({
   includeDisabled = false,
   includeDeleted = false,

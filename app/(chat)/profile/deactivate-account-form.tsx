@@ -39,7 +39,8 @@ export function DeactivateAccountForm() {
           Deactivate account
         </h2>
         <p className="text-muted-foreground text-sm">
-          This process cannot be undone. Contact support for further assistance.
+          This process cannot be undone. You can ontact support for any further
+          assistance.
         </p>
       </div>
 
