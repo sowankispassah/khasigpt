@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import * as React from "react";
 import { EllipsisVertical } from "lucide-react";
+import * as React from "react";
 import useSWR from "swr";
-
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +11,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -102,15 +101,15 @@ export const UserMenuTrigger = React.forwardRef<
 
   return (
     <button
-      ref={ref}
       className={cn(
-        "flex items-center gap-2 rounded-full border border-border bg-muted/40 px-2 py-1 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer",
+        "flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/40 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className
       )}
+      ref={ref}
       type="button"
       {...props}
     >
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground">
+      <span className="flex h-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground">
         <EllipsisVertical size={16} />
       </span>
       <Avatar className="h-8 w-8">
@@ -120,7 +119,7 @@ export const UserMenuTrigger = React.forwardRef<
           src={avatarSrc ?? undefined}
         />
         <AvatarFallback
-          className="text-xs font-semibold text-white uppercase"
+          className="font-semibold text-white text-xs uppercase"
           style={{ backgroundColor: avatarColor }}
         >
           {initials}
@@ -185,7 +184,7 @@ export function UserDropdownMenu({
           const label =
             data.plan.name && priceLabel
               ? `${data.plan.name} (${priceLabel})`
-              : data.plan.name ?? priceLabel ?? null;
+              : (data.plan.name ?? priceLabel ?? null);
 
           setPlanLabel(label ?? "Free Plan");
         } else {
@@ -211,10 +210,7 @@ export function UserDropdownMenu({
     };
   }, []);
 
-  const handleSelect = (
-    event: Event,
-    callback: () => void,
-  ) => {
+  const handleSelect = (event: Event, callback: () => void) => {
     event.preventDefault();
     callback();
   };
@@ -223,10 +219,10 @@ export function UserDropdownMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
+        align={align}
         className="min-w-[16rem]"
         data-testid="user-nav-menu"
         side={side}
-        align={align}
       >
         {userEmail ? (
           <DropdownMenuItem
@@ -250,7 +246,7 @@ export function UserDropdownMenu({
           Profile
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="cursor-pointer flex flex-col items-start gap-1"
+          className="flex cursor-pointer flex-col items-start gap-1"
           data-testid="user-nav-item-manage-subscriptions"
           onSelect={(event) =>
             handleSelect(event, () => onNavigate("/subscriptions"))
@@ -258,7 +254,7 @@ export function UserDropdownMenu({
         >
           Manage Subscriptions
           <span className="text-muted-foreground text-xs opacity-80">
-            {isPlanLoading ? "Checking plan..." : planLabel ?? "Free Plan"}
+            {isPlanLoading ? "Checking plan..." : (planLabel ?? "Free Plan")}
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -303,9 +299,7 @@ export function UserDropdownMenu({
         <DropdownMenuItem
           className="cursor-pointer"
           data-testid="user-nav-item-theme"
-          onSelect={(event) =>
-            handleSelect(event, onToggleTheme)
-          }
+          onSelect={(event) => handleSelect(event, onToggleTheme)}
         >
           {resolvedTheme === "light" ? "Dark mode" : "Light mode"}
         </DropdownMenuItem>
