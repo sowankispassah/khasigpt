@@ -1,8 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/app/(auth)/auth";
-import { createAuditLogEntry, updateUserPassword } from "@/lib/db/queries";
+import { auth, signOut } from "@/app/(auth)/auth";
+import {
+  createAuditLogEntry,
+  updateUserActiveState,
+  updateUserPassword,
+} from "@/lib/db/queries";
 
 async function requireUser() {
   const session = await auth();
@@ -15,6 +19,11 @@ async function requireUser() {
 }
 
 export type UpdatePasswordState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | { status: "success"; message: string };
+
+export type DeactivateAccountState =
   | { status: "idle" }
   | { status: "error"; message: string }
   | { status: "success"; message: string };
@@ -57,5 +66,40 @@ export async function updatePasswordAction(
   return {
     status: "success",
     message: "Password updated successfully.",
+  };
+}
+
+export async function deactivateAccountAction(
+  _prevState: DeactivateAccountState,
+  formData: FormData
+): Promise<DeactivateAccountState> {
+  const user = await requireUser();
+  void formData;
+
+  const updated = await updateUserActiveState({
+    id: user.id,
+    isActive: false,
+  });
+
+  if (!updated) {
+    return {
+      status: "error",
+      message: "We could not deactivate your account. Please try again.",
+    };
+  }
+
+  await createAuditLogEntry({
+    actorId: user.id,
+    action: "user.account.deactivate",
+    target: { userId: user.id },
+  });
+
+  await signOut({
+    redirectTo: "/login?status=account-deactivated",
+  });
+
+  return {
+    status: "success",
+    message: "Account deactivated.",
   };
 }

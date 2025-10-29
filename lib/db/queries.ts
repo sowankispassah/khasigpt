@@ -224,11 +224,7 @@ export async function ensureOAuthUser(
     let userRecord = existing;
 
     if (!userRecord.isActive) {
-      const updated = await updateUserActiveState({
-        id: userRecord.id,
-        isActive: true,
-      });
-      userRecord = updated ?? userRecord;
+      throw new ChatSDKError("forbidden:auth", "account_inactive");
     }
 
     if (userRecord.authProvider !== "google") {

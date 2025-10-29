@@ -5,6 +5,7 @@ import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
+import { ChatSDKError } from "@/lib/errors";
 import { authConfig } from "./auth.config";
 
 export type UserRole = "regular" | "admin";
@@ -30,6 +31,8 @@ declare module "next-auth" {
   }
 }
 
+const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
+
 const providers: any[] = [
   Credentials({
     credentials: {},
@@ -49,8 +52,8 @@ const providers: any[] = [
       }
 
       if (!user.isActive) {
-        await compare(password, DUMMY_PASSWORD);
-        return null;
+        await compare(password, user.password ?? DUMMY_PASSWORD);
+        throw new Error(ACCOUNT_INACTIVE_ERROR);
       }
 
       const passwordsMatch = await compare(password, user.password);
@@ -86,6 +89,8 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   );
 }
 
+const ACCOUNT_INACTIVE_REDIRECT = "/login?error=AccountInactive";
+
 export const {
   handlers: { GET, POST },
   auth,
@@ -103,19 +108,29 @@ export const {
 
         const profileImage =
           typeof user.image === "string" ? user.image : null;
-        const dbUser = await ensureOAuthUser(user.email, {
-          image: profileImage,
-        });
-        user.id = dbUser.id;
-        user.role = dbUser.role as UserRole;
-        user.image = null;
-        user.imageVersion =
-          dbUser.image && dbUser.updatedAt instanceof Date
-            ? dbUser.updatedAt.toISOString()
-            : dbUser.image
-              ? new Date().toISOString()
-              : null;
-        user.dateOfBirth = dbUser.dateOfBirth ?? user.dateOfBirth ?? null;
+        try {
+          const dbUser = await ensureOAuthUser(user.email, {
+            image: profileImage,
+          });
+          user.id = dbUser.id;
+          user.role = dbUser.role as UserRole;
+          user.image = null;
+          user.imageVersion =
+            dbUser.image && dbUser.updatedAt instanceof Date
+              ? dbUser.updatedAt.toISOString()
+              : dbUser.image
+                ? new Date().toISOString()
+                : null;
+          user.dateOfBirth = dbUser.dateOfBirth ?? user.dateOfBirth ?? null;
+        } catch (error) {
+          if (
+            error instanceof ChatSDKError &&
+            error.cause === "account_inactive"
+          ) {
+            return ACCOUNT_INACTIVE_REDIRECT;
+          }
+          throw error;
+        }
       }
 
       return true;

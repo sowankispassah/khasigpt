@@ -104,14 +104,6 @@ export function GoogleSignInSection({
         )}
         <span>{LABELS[mode]}</span>
       </Button>
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center" aria-hidden="true">
-          <div className="w-full border-t border-border" />
-        </div>
-        <p className="relative mx-auto w-fit bg-background px-2 text-muted-foreground text-xs uppercase">
-          Or continue with email
-        </p>
-      </div>
     </div>
   );
 }

@@ -20,7 +20,13 @@ const authFormSchema = z.object({
 });
 
 export type LoginActionState = {
-  status: "idle" | "in_progress" | "success" | "failed" | "invalid_data";
+  status:
+    | "idle"
+    | "in_progress"
+    | "success"
+    | "failed"
+    | "invalid_data"
+    | "inactive";
 };
 
 export const login = async (
@@ -33,16 +39,33 @@ export const login = async (
       password: formData.get("password"),
     });
 
-    await signIn("credentials", {
+    const [existingUser] = await getUser(validatedData.email);
+    if (existingUser && !existingUser.isActive) {
+      return { status: "inactive" };
+    }
+
+    const result = await signIn("credentials", {
       email: validatedData.email,
       password: validatedData.password,
       redirect: false,
     });
 
+    if (result?.error === "AccountInactive") {
+      return { status: "inactive" };
+    }
+
+    if (result?.error) {
+      return { status: "failed" };
+    }
+
     return { status: "success" };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { status: "invalid_data" };
+    }
+
+    if (error instanceof Error && error.message === "AccountInactive") {
+      return { status: "inactive" };
     }
 
     return { status: "failed" };

@@ -5,6 +5,7 @@ import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
 import { PasswordForm } from "./password-form";
 import { AvatarForm } from "./avatar-form";
+import { DeactivateAccountForm } from "./deactivate-account-form";
 import { getUserById } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,8 @@ export default async function ProfilePage() {
 
         <PasswordForm />
       </section>
+
+      <DeactivateAccountForm />
     </div>
   );
 }
