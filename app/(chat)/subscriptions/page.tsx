@@ -24,10 +24,10 @@ const SESSIONS_PAGE_SIZE = 10;
 type RangeOption = (typeof RANGE_OPTIONS)[number];
 
 type SubscriptionsPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     range?: string | string[];
     sessionsPage?: string | string[];
-  };
+  }>;
 };
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -39,13 +39,14 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
 export default async function SubscriptionsPage({
   searchParams,
 }: SubscriptionsPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const session = await auth();
 
   if (!session?.user) {
     redirect("/login");
   }
 
-  const rangeParam = toSingleValue(searchParams?.range);
+  const rangeParam = toSingleValue(resolvedSearchParams?.range);
   const requestedRange = Number.parseInt(rangeParam ?? "", 10);
   const range: RangeOption = RANGE_OPTIONS.includes(
     requestedRange as RangeOption
@@ -60,7 +61,9 @@ export default async function SubscriptionsPage({
     getSessionTokenUsageForUser(session.user.id),
   ]);
 
-  const sessionsPageParam = toSingleValue(searchParams?.sessionsPage);
+  const sessionsPageParam = toSingleValue(
+    resolvedSearchParams?.sessionsPage
+  );
   let sessionsPage = Number.parseInt(sessionsPageParam ?? "", 10);
   if (!Number.isFinite(sessionsPage) || sessionsPage < 1) {
     sessionsPage = 1;
