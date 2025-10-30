@@ -106,13 +106,18 @@ function LoginContent() {
 
   return (
     <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
-      <div className="flex w-full max-w-md flex-col gap-12 overflow-hidden rounded-2xl">
+      <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
         <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
-          <h2>
+          <h3 className="text-muted-foreground text-sm">
             KhasiGPT is your smart AI assistant designed to understand and speak
             Khasi language.
-          </h2>
+          </h3>
           <br />
+          <img
+            alt="KhasiGPT logo"
+            className="h-14 w-auto"
+            src="/images/khasigptlogo.png"
+          />
           <h3 className="font-semibold text-xl dark:text-zinc-50">
             Sign In To KhasiGPT
           </h3>
@@ -132,15 +137,17 @@ function LoginContent() {
           lead={<GoogleSignInSection callbackUrl={callbackUrl} mode="login" />}
           onShowCredentials={() => setShowEmailFields(true)}
         >
-          <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
-          <div className="mt-2 text-right text-sm">
-            <button
-              className="cursor-pointer text-muted-foreground underline-offset-4 hover:underline"
-              onClick={() => router.push("/forgot-password")}
-              type="button"
-            >
-              Forgot password?
-            </button>
+          <div className="flex flex-col gap-1.5">
+            <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
+            <div className="text-right text-sm">
+              <button
+                className="cursor-pointer text-muted-foreground underline-offset-4 hover:underline"
+                onClick={() => router.push("/forgot-password")}
+                type="button"
+              >
+                Forgot password?
+              </button>
+            </div>
           </div>
         </AuthForm>
         <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">

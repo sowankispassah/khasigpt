@@ -19,11 +19,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { UserDropdownMenu, UserMenuTrigger } from "./user-dropdown-menu";
 
-export function AppSidebar({
-  user,
-}: {
-  user: User | undefined;
-}) {
+export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const { data: sessionData, status } = useSession();
@@ -58,30 +54,37 @@ export function AppSidebar({
         <SidebarMenu>
           <div className="flex flex-row items-center justify-between">
             <Link
-              className="flex flex-row items-center gap-3"
+              className="flex flex-row items-center"
               href="/"
               onClick={() => {
                 setOpenMobile(false);
               }}
             >
+              <img
+                alt="KhasiGPT logo"
+                className="h-8 w-6.5 rounded-md object-contain"
+                height={32}
+                src="/images/khasigptlogo.png"
+                width={24}
+              />
               <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                Chatbot
+                KhasiGPT
               </span>
             </Link>
             <div className="flex items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-busy={isPending}
                     className="h-8 px-2 md:h-fit md:px-2"
                     data-testid="new-chat-button"
                     disabled={isPending}
-                    aria-busy={isPending}
                     onClick={handleNewChat}
                     type="button"
                     variant="outline"
                   >
                     {isPending ? (
-                      <span className="flex items-center justify-center animate-spin">
+                      <span className="flex animate-spin items-center justify-center">
                         <LoaderIcon size={16} />
                       </span>
                     ) : (
@@ -89,49 +92,10 @@ export function AppSidebar({
                     )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent align="end">
-                  New Chat
-                </TooltipContent>
+                <TooltipContent align="end">New Chat</TooltipContent>
               </Tooltip>
 
-              <div className="md:hidden">
-                {status === "loading" ? (
-                  <Button className="h-8 w-8" disabled variant="outline">
-                    <span className="sr-only">Loading user menu</span>
-                    <span className="animate-spin"><LoaderIcon size={16} /></span>
-                  </Button>
-                ) : activeUser ? (
-                  <UserDropdownMenu
-                    align="end"
-                    isAdmin={isAdmin}
-                    onNavigate={(path) => {
-                      setOpenMobile(false);
-                      router.push(path);
-                    }}
-                    onSignOut={() => {
-                      setOpenMobile(false);
-                      signOut({ redirectTo: "/login" });
-                    }}
-                    onToggleTheme={() => {
-                      setTheme(resolvedTheme === "dark" ? "light" : "dark");
-                      setOpenMobile(false);
-                    }}
-                    resolvedTheme={resolvedTheme}
-                    side="bottom"
-                    userEmail={activeUser.email ?? undefined}
-                    trigger={
-                      <UserMenuTrigger
-                        className="px-1.5"
-                        user={{
-                          name: activeUser.name,
-                          email: activeUser.email,
-                          imageVersion: activeUser.imageVersion ?? null,
-                        }}
-                      />
-                    }
-                  />
-                ) : null}
-              </div>
+              <div className="md:hidden" />
             </div>
           </div>
         </SidebarMenu>
@@ -142,4 +106,3 @@ export function AppSidebar({
     </Sidebar>
   );
 }
-

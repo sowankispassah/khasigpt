@@ -74,16 +74,16 @@ function RegisterContent() {
     <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
       <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
         <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
+          <img
+            alt="KhasiGPT logo"
+            className="h-16 w-auto"
+            src="/images/khasigptlogo.png"
+          />
           <p className="text-muted-foreground text-sm">
             KhasiGPT is your smart AI assistant designed to understand and speak
             Khasi language.
           </p>
           <br />
-          <img
-            alt="KhasiGPT logo"
-            className="h-14 w-auto"
-            src="/images/khasigptlogo.png"
-          />
           <h3 className="font-semibold text-xl dark:text-zinc-50">
             Sign Up To KhasiGPT
           </h3>
@@ -147,3 +147,4 @@ function RegisterContent() {
     </div>
   );
 }
+
