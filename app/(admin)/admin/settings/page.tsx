@@ -17,6 +17,7 @@ import {
   setRecommendedPricingPlanAction,
   updatePrivacyPolicyAction,
   updateTermsOfServiceAction,
+  updateAboutContentAction,
   updateSuggestedPromptsAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
@@ -25,6 +26,7 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_PRIVACY_POLICY,
   DEFAULT_TERMS_OF_SERVICE,
+  DEFAULT_ABOUT_US,
   TOKENS_PER_CREDIT,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
 } from "@/lib/constants";
@@ -79,6 +81,7 @@ export default async function AdminSettingsPage({
     activeSubscriptions,
     privacyPolicySetting,
     termsOfServiceSetting,
+    aboutUsSetting,
     suggestedPromptsSetting,
     recommendedPlanSetting,
   ] = await Promise.all([
@@ -87,6 +90,7 @@ export default async function AdminSettingsPage({
     listActiveSubscriptionSummaries({ limit: 10 }),
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
+    getAppSetting<string>("aboutUsContent"),
     getAppSetting<string[]>("suggestedPrompts"),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
   ]);
@@ -114,6 +118,10 @@ export default async function AdminSettingsPage({
     termsOfServiceSetting && termsOfServiceSetting.trim().length > 0
       ? termsOfServiceSetting
       : DEFAULT_TERMS_OF_SERVICE;
+  const aboutContent =
+    aboutUsSetting && aboutUsSetting.trim().length > 0
+      ? aboutUsSetting
+      : DEFAULT_ABOUT_US;
   const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
     ? suggestedPromptsSetting.filter(
         (item) => typeof item === "string" && item.trim().length > 0
@@ -158,11 +166,32 @@ export default async function AdminSettingsPage({
           </form>
         </section>
         <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Legal content</h2>
+          <h2 className="text-lg font-semibold">Public page content</h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            Update the copy shown on the public Privacy Policy and Terms of Service pages.
+            Update the copy shown on the public About, Privacy Policy, and Terms of Service pages.
             Basic Markdown (## headings and bullet lists) is supported.
           </p>
+          <form action={updateAboutContentAction} className="mt-6 flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="about-content">
+                About page content
+              </label>
+              <textarea
+                className="min-h-[16rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
+                defaultValue={aboutContent}
+                id="about-content"
+                name="content"
+              />
+              <p className="text-muted-foreground text-xs">
+                This text appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/about</code>. If left empty, a default message is shown.
+              </p>
+            </div>
+            <div className="flex justify-end">
+              <ActionSubmitButton pendingLabel="Saving...">
+                Save about page
+              </ActionSubmitButton>
+            </div>
+          </form>
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <form action={updatePrivacyPolicyAction} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
@@ -1099,3 +1128,8 @@ export default async function AdminSettingsPage({
     </>
   );
 }
+
+
+
+
+

@@ -29,6 +29,7 @@ import { generateUUID } from "../utils";
 import {
   appSetting,
   auditLog,
+  contactMessage,
   chat,
   document,
   emailVerificationToken,
@@ -45,6 +46,8 @@ import {
   vote,
   type AppSetting,
   type AuditLog,
+  type ContactMessage,
+  type ContactMessageStatus,
   type Chat,
   type DBMessage,
   type EmailVerificationToken,
@@ -1393,6 +1396,149 @@ export async function listAuditLog({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to list audit log entries"
+    );
+  }
+}
+
+export type CreateContactMessageInput = {
+  name: string;
+  email: string;
+  phone?: string | null;
+  subject: string;
+  message: string;
+  status?: ContactMessageStatus;
+};
+
+export async function createContactMessage(
+  input: CreateContactMessageInput
+): Promise<ContactMessage> {
+  try {
+    const normalizedEmail = normalizeEmailValue(input.email);
+    const now = new Date();
+
+    const [record] = await db
+      .insert(contactMessage)
+      .values({
+        name: input.name,
+        email: normalizedEmail,
+        phone: input.phone ?? null,
+        subject: input.subject,
+        message: input.message,
+        status: input.status ?? "new",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!record) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to store contact message"
+      );
+    }
+
+    return record;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Contact messages table is missing. Run the latest migrations and try again."
+      );
+    }
+
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to store contact message"
+    );
+  }
+}
+
+export async function listContactMessages({
+  limit = 50,
+  offset = 0,
+  status,
+}: {
+  limit?: number;
+  offset?: number;
+  status?: ContactMessageStatus | "all";
+} = {}): Promise<ContactMessage[]> {
+  try {
+    let query = db
+      .select()
+      .from(contactMessage)
+      .orderBy(desc(contactMessage.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    if (status && status !== "all") {
+      query = query.where(eq(contactMessage.status, status));
+    }
+
+    return await query;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list contact messages"
+    );
+  }
+}
+
+export async function getContactMessageCount({
+  status,
+}: {
+  status?: ContactMessageStatus | "all";
+} = {}): Promise<number> {
+  try {
+    let query = db
+      .select({ value: count() })
+      .from(contactMessage);
+
+    if (status && status !== "all") {
+      query = query.where(eq(contactMessage.status, status));
+    }
+
+    const [result] = await query;
+    return result?.value ?? 0;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return 0;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to count contact messages"
+    );
+  }
+}
+
+export async function updateContactMessageStatus({
+  id,
+  status,
+}: {
+  id: string;
+  status: ContactMessageStatus;
+}): Promise<ContactMessage | null> {
+  try {
+    const now = new Date();
+    const [updated] = await db
+      .update(contactMessage)
+      .set({
+        status,
+        updatedAt: now,
+      })
+      .where(eq(contactMessage.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update contact message status"
     );
   }
 }
@@ -2756,6 +2902,29 @@ function isTableMissingError(error: unknown): boolean {
     message.includes("undefined_table") ||
     stack.includes("does not exist") ||
     stack.includes("undefined_table")
+  );
+}
+
+function isColumnMissingError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const message =
+    "message" in error && error.message
+      ? String((error as { message?: unknown }).message)
+      : "";
+
+  const stack =
+    "stack" in error && error.stack
+      ? String((error as { stack?: unknown }).stack)
+      : "";
+
+  return (
+    message.includes(`column "${columnName}"`) ||
+    message.includes("undefined_column") ||
+    stack.includes(`column "${columnName}"`) ||
+    stack.includes("undefined_column")
   );
 }
 

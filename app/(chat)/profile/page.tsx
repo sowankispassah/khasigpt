@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
@@ -24,10 +25,11 @@ export default async function ProfilePage() {
       <PageUserMenu />
       <div>
         <Link
-          className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
           href="/"
         >
-          ← Back to home
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          Back to home
         </Link>
       </div>
 
@@ -65,7 +67,7 @@ export default async function ProfilePage() {
           </div>
           <p className="text-muted-foreground text-sm">
             Want to review your plan or credits? Visit the{" "}
-            <Link className="underline" href="/subscriptions">
+            <Link className="font-semibold text-primary transition-colors hover:text-primary/80" href="/subscriptions">
               subscriptions dashboard
             </Link>
             .

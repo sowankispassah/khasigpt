@@ -7,6 +7,7 @@ import { useActionState, useEffect, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 import { SubmitButton } from "@/components/submit-button";
+import { PageUserMenu } from "@/components/page-user-menu";
 
 import { type LoginActionState, login } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -105,62 +106,65 @@ function LoginContent() {
   };
 
   return (
-    <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
-      <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
-        <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
-          <h3 className="text-muted-foreground text-sm">
-            KhasiGPT is your smart AI assistant designed to understand and speak
-            Khasi language.
-          </h3>
-          <br />
-          <img
-            alt="KhasiGPT logo"
-            className="h-14 w-auto"
-            src="/images/khasigptlogo.png"
-          />
-          <h3 className="font-semibold text-xl dark:text-zinc-50">
-            Sign In To KhasiGPT
-          </h3>
-          {errorMessage ? (
-            <div
-              className="mt-3 w-full rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-left text-destructive text-sm"
-              role="alert"
-            >
-              {errorMessage}
-            </div>
-          ) : null}
-        </div>
-        <AuthForm
-          action={handleSubmit}
-          credentialsVisible={showEmailFields}
-          defaultEmail={email}
-          lead={<GoogleSignInSection callbackUrl={callbackUrl} mode="login" />}
-          onShowCredentials={() => setShowEmailFields(true)}
-        >
-          <div className="flex flex-col gap-1.5">
-            <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
-            <div className="text-right text-sm">
-              <button
-                className="cursor-pointer text-muted-foreground underline-offset-4 hover:underline"
-                onClick={() => router.push("/forgot-password")}
-                type="button"
+    <>
+      <PageUserMenu />
+      <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
+        <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
+          <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
+            <h3 className="text-muted-foreground text-sm">
+              KhasiGPT is your smart AI assistant designed to understand and speak
+              Khasi language.
+            </h3>
+            <img
+              alt="KhasiGPT logo"
+              className="mt-4 h-7 w-auto dark:invert dark:brightness-150"
+              src="/images/khasigptlogo.png"
+            />
+            <h3 className="font-semibold text-xl dark:text-zinc-50">
+              Sign In To KhasiGPT
+            </h3>
+            {errorMessage ? (
+              <div
+                className="mt-3 w-full rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-left text-destructive text-sm"
+                role="alert"
               >
-                Forgot password?
-              </button>
-            </div>
+                {errorMessage}
+              </div>
+            ) : null}
           </div>
-        </AuthForm>
-        <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
-          {"Don't have an account? "}
-          <Link
-            className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
-            href="/register"
+          <AuthForm
+            action={handleSubmit}
+            credentialsVisible={showEmailFields}
+            defaultEmail={email}
+            lead={<GoogleSignInSection callbackUrl={callbackUrl} mode="login" />}
+            onShowCredentials={() => setShowEmailFields(true)}
           >
-            Sign up
-          </Link>
-          {" for free."}
-        </p>
+            <div className="flex flex-col gap-1.5">
+              <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
+              <div className="text-right text-sm">
+                <button
+                  className="cursor-pointer text-muted-foreground underline-offset-4 hover:underline"
+                  onClick={() => router.push("/forgot-password")}
+                  type="button"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            </div>
+          </AuthForm>
+          <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
+            {"Don't have an account? "}
+            <Link
+              className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
+              href="/register"
+            >
+              Sign up
+            </Link>
+            {" for free."}
+          </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
+

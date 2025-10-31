@@ -9,6 +9,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, fetcher } from "@/lib/utils";
@@ -16,10 +19,11 @@ import { cn, fetcher } from "@/lib/utils";
 type UserDropdownMenuProps = {
   trigger: React.ReactNode;
   isAdmin: boolean;
+  isAuthenticated: boolean;
   resolvedTheme: string | undefined;
   onToggleTheme: () => void;
   onNavigate: (path: string) => void;
-  onSignOut: () => void;
+  onSignOut?: () => void;
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
   userEmail?: string;
@@ -135,6 +139,7 @@ UserMenuTrigger.displayName = "UserMenuTrigger";
 export function UserDropdownMenu({
   trigger,
   isAdmin,
+  isAuthenticated,
   resolvedTheme,
   onToggleTheme,
   onNavigate,
@@ -144,13 +149,20 @@ export function UserDropdownMenu({
   userEmail,
 }: UserDropdownMenuProps) {
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
-  const [isPlanLoading, setIsPlanLoading] = React.useState(true);
+  const [isPlanLoading, setIsPlanLoading] = React.useState(false);
 
   React.useEffect(() => {
+    if (!isAuthenticated) {
+      setPlanLabel(null);
+      setIsPlanLoading(false);
+      return;
+    }
+
     let isMounted = true;
 
     const loadPlan = async () => {
       try {
+        setIsPlanLoading(true);
         const response = await fetch("/api/billing/balance", {
           cache: "no-store",
         });
@@ -208,12 +220,55 @@ export function UserDropdownMenu({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const handleSelect = (event: Event, callback: () => void) => {
     event.preventDefault();
     callback();
   };
+
+  const showSignOut = Boolean(isAuthenticated && onSignOut);
+
+  const infoLinks = (
+    <>
+      <DropdownMenuItem
+        className="cursor-pointer"
+        data-testid="user-nav-item-about"
+        onSelect={(event) =>
+          handleSelect(event, () => onNavigate("/about"))
+        }
+      >
+        About Us
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        className="cursor-pointer"
+        data-testid="user-nav-item-contact"
+        onSelect={(event) =>
+          handleSelect(event, () => onNavigate("/about#contact"))
+        }
+      >
+        Contact Us
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        className="cursor-pointer"
+        data-testid="user-nav-item-privacy"
+        onSelect={(event) =>
+          handleSelect(event, () => onNavigate("/privacy-policy"))
+        }
+      >
+        Privacy Policy
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        className="cursor-pointer"
+        data-testid="user-nav-item-terms"
+        onSelect={(event) =>
+          handleSelect(event, () => onNavigate("/terms-of-service"))
+        }
+      >
+        Terms of Service
+      </DropdownMenuItem>
+    </>
+  );
 
   return (
     <DropdownMenu>
@@ -224,7 +279,7 @@ export function UserDropdownMenu({
         data-testid="user-nav-menu"
         side={side}
       >
-        {userEmail ? (
+        {userEmail && isAuthenticated ? (
           <DropdownMenuItem
             className="cursor-pointer font-medium text-foreground"
             data-testid="user-nav-item-email"
@@ -235,67 +290,70 @@ export function UserDropdownMenu({
             {userEmail}
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer"
-          data-testid="user-nav-item-profile"
-          onSelect={(event) =>
-            handleSelect(event, () => onNavigate("/profile"))
-          }
-        >
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="flex cursor-pointer flex-col items-start gap-1"
-          data-testid="user-nav-item-manage-subscriptions"
-          onSelect={(event) =>
-            handleSelect(event, () => onNavigate("/subscriptions"))
-          }
-        >
-          Manage Subscriptions
-          <span className="text-muted-foreground text-xs opacity-80">
-            {isPlanLoading ? "Checking plan..." : (planLabel ?? "Free Plan")}
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="cursor-pointer"
-          data-testid="user-nav-item-upgrade-plan"
-          onSelect={(event) =>
-            handleSelect(event, () => onNavigate("/recharge"))
-          }
-        >
-          Upgrade plan
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer"
-          data-testid="user-nav-item-privacy"
-          onSelect={(event) =>
-            handleSelect(event, () => onNavigate("/privacy-policy"))
-          }
-        >
-          Privacy Policy
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="cursor-pointer"
-          data-testid="user-nav-item-terms"
-          onSelect={(event) =>
-            handleSelect(event, () => onNavigate("/terms-of-service"))
-          }
-        >
-          Terms of Service
-        </DropdownMenuItem>
-        {isAdmin && (
-          <DropdownMenuItem
-            className="cursor-pointer"
-            data-testid="user-nav-item-admin"
-            onSelect={(event) =>
-              handleSelect(event, () => onNavigate("/admin"))
-            }
-          >
-            Open admin console
-          </DropdownMenuItem>
+        {isAuthenticated && (
+          <>
+            {userEmail ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-profile"
+              onSelect={(event) =>
+                handleSelect(event, () => onNavigate("/profile"))
+              }
+            >
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="flex cursor-pointer flex-col items-start gap-1"
+              data-testid="user-nav-item-manage-subscriptions"
+              onSelect={(event) =>
+                handleSelect(event, () => onNavigate("/subscriptions"))
+              }
+            >
+              Manage Subscriptions
+              <span className="text-muted-foreground text-xs opacity-80">
+                {isPlanLoading ? "Checking plan..." : planLabel ?? "Free Plan"}
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-upgrade-plan"
+              onSelect={(event) =>
+                handleSelect(event, () => onNavigate("/recharge"))
+              }
+            >
+              Upgrade plan
+            </DropdownMenuItem>
+            {isAdmin ? (
+              <DropdownMenuItem
+                className="cursor-pointer"
+                data-testid="user-nav-item-admin"
+                onSelect={(event) =>
+                  handleSelect(event, () => onNavigate("/admin"))
+                }
+              >
+                Open admin console
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+          </>
         )}
+
+        {isAuthenticated ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger
+              className="cursor-pointer"
+              data-testid="user-nav-item-more"
+            >
+              Resources
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="min-w-[12rem]">
+              {infoLinks}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : (
+          infoLinks
+        )}
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer"
           data-testid="user-nav-item-theme"
@@ -303,15 +361,22 @@ export function UserDropdownMenu({
         >
           {resolvedTheme === "light" ? "Dark mode" : "Light mode"}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer text-destructive focus:text-destructive"
-          data-testid="user-nav-item-auth"
-          onSelect={(event) => handleSelect(event, onSignOut)}
-        >
-          Sign out
-        </DropdownMenuItem>
+        {showSignOut ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer text-destructive focus:text-destructive"
+              data-testid="user-nav-item-auth"
+              onSelect={(event) =>
+                onSignOut && handleSelect(event, onSignOut)
+              }
+            >
+              Sign out
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
+

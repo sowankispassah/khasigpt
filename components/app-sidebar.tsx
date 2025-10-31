@@ -17,7 +17,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { UserDropdownMenu, UserMenuTrigger } from "./user-dropdown-menu";
 
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
@@ -62,7 +61,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
             >
               <img
                 alt="KhasiGPT logo"
-                className="h-8 w-6.5 rounded-md object-contain"
+                className="h-8 w-6 rounded-md object-contain dark:invert dark:brightness-150"
                 height={32}
                 src="/images/khasigptlogo.png"
                 width={24}

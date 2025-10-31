@@ -6,6 +6,7 @@ import { useActionState, useEffect, useState } from "react";
 import { AuthForm } from "@/components/auth-form";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
+import { PageUserMenu } from "@/components/page-user-menu";
 
 import { type RegisterActionState, register } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -71,32 +72,33 @@ function RegisterContent() {
   };
 
   return (
-    <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
-      <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
-        <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
-          <p className="text-muted-foreground text-sm">
-            KhasiGPT is your smart AI assistant designed to understand and speak
-            Khasi language.
-          </p>
-          <br />
-          <img
-            alt="KhasiGPT logo"
-            className="h-14 w-auto"
-            src="/images/khasigptlogo.png"
-          />
-          <h3 className="font-semibold text-xl dark:text-zinc-50">
-            Sign Up To KhasiGPT
-          </h3>
-        </div>
-        <AuthForm
-          action={handleSubmit}
-          credentialsVisible={showEmailFields}
-          defaultEmail={email}
-          lead={
-            <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
-          }
-          onShowCredentials={() => setShowEmailFields(true)}
-        >
+    <>
+      <PageUserMenu />
+      <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
+        <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
+          <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
+            <p className="text-muted-foreground text-sm">
+              KhasiGPT is your smart AI assistant designed to understand and speak
+              Khasi language.
+            </p>
+            <img
+              alt="KhasiGPT logo"
+              className="mt-4 h-7 w-auto dark:invert dark:brightness-150"
+              src="/images/khasigptlogo.png"
+            />
+            <h3 className="font-semibold text-xl dark:text-zinc-50">
+              Sign Up To KhasiGPT
+            </h3>
+          </div>
+          <AuthForm
+            action={handleSubmit}
+            credentialsVisible={showEmailFields}
+            defaultEmail={email}
+            lead={
+              <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
+            }
+            onShowCredentials={() => setShowEmailFields(true)}
+          >
           <div className="flex items-start gap-3 rounded-md border border-input bg-muted/40 px-3 py-3 text-muted-foreground text-sm dark:bg-muted/60">
             <input
               className="mt-1 h-4 w-4 shrink-0 rounded border border-input"
@@ -145,5 +147,6 @@ function RegisterContent() {
         </p>
       </div>
     </div>
+    </>
   );
 }

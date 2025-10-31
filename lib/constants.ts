@@ -63,3 +63,7 @@ We may update these Terms from time to time. Material changes will be announced 
 ## Contact
 For questions about these Terms, email support@khasigpt.com.
 `.trim();
+
+export const DEFAULT_ABOUT_US = `
+KhasiGPT is crafted by the Khasi Digital Collective to bring reliable AI assistance to Khasi speakers. Use this space to highlight your story, partnerships, or mission. Update the content from the Admin Settings panel whenever your team has news to share.
+`.trim();

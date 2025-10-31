@@ -21,6 +21,7 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "model-create-error": { type: "error", message: "Failed to create the model configuration. Check your inputs and try again." },
   "privacy-updated": { type: "success", message: "Privacy policy updated." },
   "terms-updated": { type: "success", message: "Terms of service updated." },
+  "about-updated": { type: "success", message: "About page content updated." },
   "suggested-prompts-updated": { type: "success", message: "Suggested prompts updated." },
 };
 

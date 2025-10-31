@@ -1,5 +1,6 @@
 "use client";
 
+import { EllipsisVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -46,6 +47,7 @@ export function PageUserMenu({ className }: { className?: string }) {
         <UserDropdownMenu
           align="end"
           isAdmin={user.role === "admin"}
+          isAuthenticated
           onNavigate={handleNavigate}
           onSignOut={handleSignOut}
           onToggleTheme={handleToggleTheme}
@@ -63,13 +65,24 @@ export function PageUserMenu({ className }: { className?: string }) {
           }
         />
       ) : (
-        <Button
-          className="h-8 px-3"
-          onClick={() => router.push("/login")}
-          variant="outline"
-        >
-          Sign in
-        </Button>
+        <UserDropdownMenu
+          align="end"
+          isAdmin={false}
+          isAuthenticated={false}
+          onNavigate={handleNavigate}
+          onToggleTheme={handleToggleTheme}
+          resolvedTheme={resolvedTheme}
+          side="bottom"
+          trigger={
+            <button
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              type="button"
+            >
+              <EllipsisVertical size={16} />
+              <span className="sr-only">Open menu</span>
+            </button>
+          }
+        />
       )}
     </div>
   );

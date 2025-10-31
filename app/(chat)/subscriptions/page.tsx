@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -167,13 +168,14 @@ export default async function SubscriptionsPage({
       <PageUserMenu />
       <div className="flex items-center gap-3">
         <Link
-          className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
           href="/"
         >
-          ← Back to home
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          Back to home
         </Link>
         <Link
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-muted-foreground/80"
           href="/profile"
         >
           Manage profile

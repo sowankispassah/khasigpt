@@ -1,9 +1,10 @@
 "use server";
 
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { Button } from "@/components/ui/button";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { RechargePlans } from "@/components/recharge-plans";
 import {
@@ -63,11 +64,13 @@ export default async function RechargePage() {
       <PageUserMenu />
       <header className="flex flex-col gap-6">
         <div>
-          <Button asChild variant="link" className="px-0 text-sm font-medium">
-            <a className="inline-flex items-center gap-2 text-primary underline-offset-4 hover:underline" href="/">
-              &larr; Back to home
-            </a>
-          </Button>
+          <Link
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+            href="/"
+          >
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+            Back to home
+          </Link>
         </div>
         <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
           <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

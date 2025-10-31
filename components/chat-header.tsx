@@ -79,29 +79,28 @@ function PureChatHeader({
             <span className="sr-only">Loading user menu</span>
           </Button>
         ) : user ? (
-          <>
-            <UserDropdownMenu
-              align="end"
-              isAdmin={user.role === "admin"}
-              onNavigate={handleNavigate}
-              onSignOut={handleSignOut}
+          <UserDropdownMenu
+            align="end"
+            isAdmin={user.role === "admin"}
+            isAuthenticated
+            onNavigate={handleNavigate}
+            onSignOut={handleSignOut}
             onToggleTheme={handleToggleTheme}
             resolvedTheme={resolvedTheme}
             side="bottom"
             userEmail={user.email ?? undefined}
             trigger={
-                <UserMenuTrigger
-                  user={{
-                    name: user.name,
-                    email: user.email,
-                    imageVersion: user.imageVersion ?? null,
-                  }}
-                />
+              <UserMenuTrigger
+                user={{
+                  name: user.name,
+                  email: user.email,
+                  imageVersion: user.imageVersion ?? null,
+                }}
+              />
             }
           />
-        </>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
     </header>
   );
 }

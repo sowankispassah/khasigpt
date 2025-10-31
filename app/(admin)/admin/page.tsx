@@ -1,11 +1,13 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 
 import {
   getChatCount,
+  getContactMessageCount,
   getUserCount,
   listAuditLog,
   listChats,
+  listContactMessages,
   listUsers,
 } from "@/lib/db/queries";
 
@@ -14,9 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function AdminOverviewPage() {
   let userCount = 0;
   let chatCount = 0;
+  let contactMessageCount = 0;
   let recentUsers: Awaited<ReturnType<typeof listUsers>> = [];
   let recentChats: Awaited<ReturnType<typeof listChats>> = [];
   let recentAudits: Awaited<ReturnType<typeof listAuditLog>> = [];
+  let recentContactMessages: Awaited<
+    ReturnType<typeof listContactMessages>
+  > = [];
 
   try {
     [
@@ -25,12 +31,16 @@ export default async function AdminOverviewPage() {
       recentUsers,
       recentChats,
       recentAudits,
+      contactMessageCount,
+      recentContactMessages,
     ] = await Promise.all([
       getUserCount(),
       getChatCount(),
       listUsers({ limit: 5 }),
       listChats({ limit: 5 }),
       listAuditLog({ limit: 5 }),
+      getContactMessageCount(),
+      listContactMessages({ limit: 5 }),
     ]);
   } catch (error) {
     console.error("Failed to load admin overview data", error);
@@ -38,7 +48,7 @@ export default async function AdminOverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Total users" value={userCount} />
         <MetricCard label="Total chats" value={chatCount} />
         <MetricCard
@@ -51,9 +61,14 @@ export default async function AdminOverviewPage() {
           value={recentAudits.length}
           description="Last 5 records"
         />
+        <MetricCard
+          label="Contact requests"
+          value={contactMessageCount}
+          description="Total messages received"
+        />
       </section>
 
-      <section className="grid gap-8 lg:grid-cols-2">
+      <section className="grid gap-8 xl:grid-cols-3">
         <DataPanel title="Newest users">
           <table className="w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
@@ -110,6 +125,56 @@ export default async function AdminOverviewPage() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </DataPanel>
+
+        <DataPanel title="Latest contact requests">
+          <table className="w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="py-2 text-left">Subject</th>
+                <th className="py-2 text-left">From</th>
+                <th className="py-2 text-left">Phone</th>
+                <th className="py-2 text-left">Received</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentContactMessages.length === 0 ? (
+                <tr>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={4}
+                  >
+                    No contact requests yet.
+                  </td>
+                </tr>
+              ) : (
+                recentContactMessages.map((message) => (
+                  <tr key={message.id} className="border-t text-sm">
+                    <td className="py-2">
+                      <div className="font-medium">{message.subject}</div>
+                      <p className="text-muted-foreground text-xs line-clamp-2">
+                        {message.message}
+                      </p>
+                    </td>
+                    <td className="py-2">
+                      <div className="font-medium">{message.name}</div>
+                      <span className="text-muted-foreground text-xs">
+                        {message.email}
+                      </span>
+                    </td>
+                    <td className="py-2 text-muted-foreground text-xs">
+                      {message.phone ? message.phone : "N/A"}
+                    </td>
+                    <td className="py-2 text-muted-foreground">
+                      {formatDistanceToNow(new Date(message.createdAt), {
+                        addSuffix: true,
+                      })}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </DataPanel>
@@ -181,3 +246,6 @@ function DataPanel({
     </section>
   );
 }
+
+
+

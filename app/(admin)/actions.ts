@@ -466,6 +466,26 @@ export async function updateTermsOfServiceAction(formData: FormData) {
   redirect("/admin/settings?notice=terms-updated");
 }
 
+export async function updateAboutContentAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const content = formData.get("content")?.toString().trim() ?? "";
+
+  await setAppSetting({ key: "aboutUsContent", value: content });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "company.about.update",
+    target: { document: "aboutUsContent" },
+  });
+
+  revalidatePath("/about");
+  revalidatePath("/admin/settings");
+
+  redirect("/admin/settings?notice=about-updated");
+}
+
 function parseInteger(value: FormDataEntryValue | null | undefined) {
   return Math.round(parseNumber(value));
 }

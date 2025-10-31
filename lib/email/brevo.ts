@@ -163,3 +163,56 @@ export async function sendPasswordResetEmail({
     );
   }
 }
+
+type ContactMessagePayload = {
+  senderName: string;
+  senderEmail: string;
+  subject: string;
+  message: string;
+};
+
+export async function sendContactMessageEmail({
+  senderName,
+  senderEmail,
+  subject,
+  message,
+}: ContactMessagePayload) {
+  const supportEmail = process.env.BREVO_SENDER_EMAIL;
+  const supportName = process.env.BREVO_SENDER_NAME ?? "Support";
+
+  if (!supportEmail) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      "Brevo sender email is not configured"
+    );
+  }
+
+  const client = getBrevoClient();
+  const email = new Brevo.SendSmtpEmail();
+
+  email.subject = subject.trim().length > 0 ? subject : "New contact request";
+  email.sender = { email: supportEmail, name: supportName };
+  email.replyTo = { email: senderEmail, name: senderName };
+  email.to = [{ email: supportEmail, name: supportName }];
+  email.textContent =
+    `You received a new contact request from ${senderName} (${senderEmail}).\n\n` +
+    `${message}`;
+  email.htmlContent = `
+    <html>
+      <body style="font-family: Arial, sans-serif;">
+        <p><strong>New inquiry from:</strong> ${senderName} (${senderEmail})</p>
+        <p><strong>Subject:</strong> ${email.subject}</p>
+        <p style="white-space:pre-wrap;">${message}</p>
+      </body>
+    </html>
+  `;
+
+  try {
+    await client.sendTransacEmail(email);
+  } catch (error) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      error instanceof Error ? error.message : "Failed to send contact message"
+    );
+  }
+}

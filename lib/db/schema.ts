@@ -367,6 +367,36 @@ export const auditLog = pgTable("AuditLog", {
 
 export type AuditLog = InferSelectModel<typeof auditLog>;
 
+export const contactMessageStatusEnum = pgEnum("contact_message_status", [
+  "new",
+  "in_progress",
+  "resolved",
+  "archived",
+]);
+export type ContactMessageStatus =
+  (typeof contactMessageStatusEnum.enumValues)[number];
+
+export const contactMessage = pgTable(
+  "ContactMessage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 128 }).notNull(),
+    email: varchar("email", { length: 128 }).notNull(),
+    phone: varchar("phone", { length: 32 }),
+    subject: varchar("subject", { length: 200 }).notNull(),
+    message: text("message").notNull(),
+    status: contactMessageStatusEnum("status").notNull().default("new"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("ContactMessage_status_idx").on(table.status),
+    createdIdx: index("ContactMessage_created_idx").on(table.createdAt),
+  })
+);
+
+export type ContactMessage = InferSelectModel<typeof contactMessage>;
+
 export const tokenUsage = pgTable(
   "token_usage",
   {
