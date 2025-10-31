@@ -119,8 +119,9 @@ export async function submitContactFormAction(
       message: "Thanks! We'll reach out soon.",
     };
   } catch (error) {
-    const cause =
-      error instanceof ChatSDKError ? (error.cause ?? error.message) : "Something went wrong.";
+    const cause = error instanceof ChatSDKError
+      ? String(error.cause ?? error.message ?? "Something went wrong.")
+      : "Something went wrong.";
 
     return {
       status: "error",
@@ -136,3 +137,4 @@ export async function submitContactFormAction(
     };
   }
 }
+
