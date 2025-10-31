@@ -150,6 +150,8 @@ export function UserDropdownMenu({
 }: UserDropdownMenuProps) {
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
+  const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
+  const ignoreNextResourcesOpenRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -227,51 +229,100 @@ export function UserDropdownMenu({
     callback();
   };
 
-  const showSignOut = Boolean(isAuthenticated && onSignOut);
+  const handleMenuOpenChange = React.useCallback((open: boolean) => {
+    if (!open) {
+      ignoreNextResourcesOpenRef.current = false;
+      setIsResourcesOpen(false);
+    }
+  }, []);
 
-  const infoLinks = (
-    <>
-      <DropdownMenuItem
-        className="cursor-pointer"
-        data-testid="user-nav-item-about"
-        onSelect={(event) =>
-          handleSelect(event, () => onNavigate("/about"))
-        }
-      >
-        About Us
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        className="cursor-pointer"
-        data-testid="user-nav-item-contact"
-        onSelect={(event) =>
-          handleSelect(event, () => onNavigate("/about#contact"))
-        }
-      >
-        Contact Us
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        className="cursor-pointer"
-        data-testid="user-nav-item-privacy"
-        onSelect={(event) =>
-          handleSelect(event, () => onNavigate("/privacy-policy"))
-        }
-      >
-        Privacy Policy
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        className="cursor-pointer"
-        data-testid="user-nav-item-terms"
-        onSelect={(event) =>
-          handleSelect(event, () => onNavigate("/terms-of-service"))
-        }
-      >
-        Terms of Service
-      </DropdownMenuItem>
-    </>
+  const toggleResources = React.useCallback(() => {
+    setIsResourcesOpen((prev) => {
+      const next = !prev;
+      ignoreNextResourcesOpenRef.current = !next;
+      return next;
+    });
+  }, []);
+
+  const handleResourcesPointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleResources();
+    },
+    [toggleResources]
   );
 
+  const handleResourcesKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleResources();
+      }
+    },
+    [toggleResources]
+  );
+
+  const handleResourcesOpenChange = React.useCallback((open: boolean) => {
+    if (open) {
+      if (ignoreNextResourcesOpenRef.current) {
+        ignoreNextResourcesOpenRef.current = false;
+        return;
+      }
+      setIsResourcesOpen(true);
+      return;
+    }
+
+    ignoreNextResourcesOpenRef.current = false;
+    setIsResourcesOpen(false);
+  }, []);
+
+  const showSignOut = Boolean(isAuthenticated && onSignOut);
+
+  const infoLinks = [
+    {
+      label: "About Us",
+      path: "/about",
+      testId: "user-nav-item-about",
+    },
+    {
+      label: "Contact Us",
+      path: "/about#contact",
+      testId: "user-nav-item-contact",
+    },
+    {
+      label: "Privacy Policy",
+      path: "/privacy-policy",
+      testId: "user-nav-item-privacy",
+    },
+    {
+      label: "Terms of Service",
+      path: "/terms-of-service",
+      testId: "user-nav-item-terms",
+    },
+  ];
+
+  const renderInfoLinks = (className?: string) =>
+    infoLinks.map((item) => (
+      <DropdownMenuItem
+        key={item.path}
+        className={cn("cursor-pointer", className)}
+        data-testid={item.testId}
+        onSelect={(event) =>
+          handleSelect(event, () => {
+            ignoreNextResourcesOpenRef.current = false;
+            setIsResourcesOpen(false);
+            onNavigate(item.path);
+          })
+        }
+      >
+        {item.label}
+      </DropdownMenuItem>
+    ));
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={handleMenuOpenChange}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}
@@ -338,21 +389,30 @@ export function UserDropdownMenu({
           </>
         )}
 
-        {isAuthenticated ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger
-              className="cursor-pointer"
-              data-testid="user-nav-item-more"
-            >
-              Resources
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="min-w-[12rem]">
-              {infoLinks}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : (
-          infoLinks
-        )}
+        <DropdownMenuSub
+          onOpenChange={handleResourcesOpenChange}
+          open={isResourcesOpen}
+        >
+          <DropdownMenuSubTrigger
+            className={cn(
+              "flex w-full cursor-pointer items-center justify-between [&>svg]:transition-transform sm:w-auto sm:justify-start",
+              "[&>svg]:rotate-90 data-[state=open]:[&>svg]:-rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
+            )}
+            data-testid="user-nav-item-more"
+            onKeyDown={handleResourcesKeyDown}
+            onPointerDown={handleResourcesPointerDown}
+          >
+            Resources
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent
+            align="start"
+            className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg"
+            side="bottom"
+            sideOffset={2}
+          >
+            {renderInfoLinks()}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer"
