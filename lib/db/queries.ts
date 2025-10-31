@@ -1,4 +1,4 @@
-import "server-only";
+﻿import "server-only";
 
 import {
   and,
@@ -1463,18 +1463,18 @@ export async function listContactMessages({
   status?: ContactMessageStatus | "all";
 } = {}): Promise<ContactMessage[]> {
   try {
-    let query = db
-      .select()
-      .from(contactMessage)
+    const baseQuery = db.select().from(contactMessage);
+    const filteredQuery =
+      status && status !== "all"
+        ? baseQuery.where(eq(contactMessage.status, status))
+        : baseQuery;
+
+    const finalQuery = filteredQuery
       .orderBy(desc(contactMessage.createdAt))
       .limit(limit)
       .offset(offset);
 
-    if (status && status !== "all") {
-      query = query.where(eq(contactMessage.status, status));
-    }
-
-    return await query;
+    return await finalQuery;
   } catch (error) {
     if (isTableMissingError(error)) {
       return [];
@@ -1492,15 +1492,13 @@ export async function getContactMessageCount({
   status?: ContactMessageStatus | "all";
 } = {}): Promise<number> {
   try {
-    let query = db
-      .select({ value: count() })
-      .from(contactMessage);
+    const baseQuery = db.select({ value: count() }).from(contactMessage);
+    const filteredQuery =
+      status && status !== "all"
+        ? baseQuery.where(eq(contactMessage.status, status))
+        : baseQuery;
 
-    if (status && status !== "all") {
-      query = query.where(eq(contactMessage.status, status));
-    }
-
-    const [result] = await query;
+    const [result] = await filteredQuery;
     return result?.value ?? 0;
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -3073,3 +3071,5 @@ function calculateTokenDeduction({
 
   return creditsToDeduct * TOKENS_PER_CREDIT;
 }
+
+
