@@ -406,8 +406,6 @@ export function UserDropdownMenu({
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
             className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg"
-            side="bottom"
-            sideOffset={2}
           >
             {renderInfoLinks()}
           </DropdownMenuSubContent>
