@@ -43,6 +43,9 @@ export default async function AdminLayout({
             <Link className="hover:underline" href="/admin/settings">
               Settings
             </Link>
+            <Link className="hover:underline" href="/admin/translations">
+              Translations
+            </Link>
           </nav>
         </div>
       </header>

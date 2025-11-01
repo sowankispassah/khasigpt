@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { cookies } from "next/headers";
+
+import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import { PageUserMenu } from "@/components/page-user-menu";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
+import { getTranslationBundle, registerTranslationKeys } from "@/lib/i18n/dictionary";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const siteName = "KhasiGPT";
@@ -102,15 +108,21 @@ const THEME_COLOR_SCRIPT = `(function() {
   updateThemeColor();
 })();`;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value;
+  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
+  const { languages, activeLanguage, dictionary } =
+    await getTranslationBundle(preferredLanguage);
+
   return (
     <html
       className={`${geist.variable} ${geistMono.variable}`}
-      lang="en"
+      lang={activeLanguage.code}
       suppressHydrationWarning
     >
       <head>
@@ -127,8 +139,17 @@ export default function RootLayout({
           disableTransitionOnChange
           enableSystem
         >
-          <Toaster position="top-center" />
-          <SessionProvider>{children}</SessionProvider>
+          <LanguageProvider
+            activeLanguage={activeLanguage}
+            dictionary={dictionary}
+            languages={languages}
+          >
+            <SessionProvider>
+              <PageUserMenu />
+              {children}
+            </SessionProvider>
+            <Toaster position="top-center" />
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 
-import { PageUserMenu } from "@/components/page-user-menu";
 import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
 import { SessionUsagePagination } from "@/components/session-usage-pagination";
 import { auth } from "@/app/(auth)/auth";
@@ -165,7 +164,6 @@ export default async function SubscriptionsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:gap-8">
-      <PageUserMenu />
       <div className="flex items-center gap-3">
         <Link
           className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"

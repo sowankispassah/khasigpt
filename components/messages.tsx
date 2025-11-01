@@ -10,6 +10,8 @@ import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
 import { LoaderIcon } from "./icons";
 import { PreviewMessage } from "./message";
+import { SuggestedActions } from "./suggested-actions";
+import type { VisibilityType } from "./visibility-selector";
 
 type MessagesProps = {
   chatId: string;
@@ -21,6 +23,9 @@ type MessagesProps = {
   isReadonly: boolean;
   isArtifactVisible: boolean;
   selectedModelId: string;
+  sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
+  suggestedPrompts: string[];
+  selectedVisibilityType: VisibilityType;
 };
 
 function PureMessages({
@@ -32,6 +37,9 @@ function PureMessages({
   regenerate,
   isReadonly,
   selectedModelId,
+  sendMessage,
+  suggestedPrompts,
+  selectedVisibilityType,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
@@ -83,6 +91,31 @@ function PureMessages({
     }
   }, [status, streamingSignature, isAtBottom, scrollToBottom]);
 
+  if (messages.length === 0) {
+    return (
+      <div
+        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch flex-1 touch-pan-y overflow-y-scroll"
+        ref={messagesContainerRef}
+        style={{ overflowAnchor: "none" }}
+      >
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-1 flex-col px-2 py-6 md:px-4">
+          <div className="flex flex-1 items-center justify-center">
+            <Greeting />
+          </div>
+          <div className="mt-10 w-full max-w-3xl self-center">
+            <SuggestedActions
+              chatId={chatId}
+              prompts={suggestedPrompts}
+              selectedVisibilityType={selectedVisibilityType}
+              sendMessage={sendMessage}
+            />
+          </div>
+          <div className="h-0" ref={messagesEndRef} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="overscroll-behavior-contain -webkit-overflow-scrolling-touch flex-1 touch-pan-y overflow-y-scroll"
@@ -91,8 +124,6 @@ function PureMessages({
     >
       <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
         <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
-          {messages.length === 0 && <Greeting />}
-
           {messages.map((message, index) => (
             <PreviewMessage
               chatId={chatId}
@@ -131,10 +162,7 @@ function PureMessages({
             </div>
           )}
 
-          <div
-            className="min-h-[24px] min-w-[24px] shrink-0"
-            ref={messagesEndRef}
-          />
+          <div className="min-h-[24px] min-w-[24px] shrink-0" ref={messagesEndRef} />
         </ConversationContent>
       </Conversation>
 
@@ -163,6 +191,9 @@ export const Messages = memo(PureMessages, (prevProps, nextProps) => {
   if (prevProps.selectedModelId !== nextProps.selectedModelId) {
     return false;
   }
+  if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType) {
+    return false;
+  }
   if (prevProps.messages.length !== nextProps.messages.length) {
     return false;
   }
@@ -170,6 +201,12 @@ export const Messages = memo(PureMessages, (prevProps, nextProps) => {
     return false;
   }
   if (!equal(prevProps.votes, nextProps.votes)) {
+    return false;
+  }
+  if (
+    (prevProps.suggestedPrompts ?? []).join("||") !==
+    (nextProps.suggestedPrompts ?? []).join("||")
+  ) {
     return false;
   }
 

@@ -5,7 +5,6 @@ import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { PageUserMenu } from "@/components/page-user-menu";
 import { RechargePlans } from "@/components/recharge-plans";
 import {
   getUserBalanceSummary,
@@ -61,7 +60,6 @@ export default async function RechargePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
-      <PageUserMenu />
       <header className="flex flex-col gap-6">
         <div>
           <Link

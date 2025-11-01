@@ -6,7 +6,6 @@ import { useActionState, useEffect, useState } from "react";
 import { AuthForm } from "@/components/auth-form";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
-import { PageUserMenu } from "@/components/page-user-menu";
 
 import { type RegisterActionState, register } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -73,7 +72,6 @@ function RegisterContent() {
 
   return (
     <>
-      <PageUserMenu />
       <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
         <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
           <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">

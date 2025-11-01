@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
 import { PasswordForm } from "./password-form";
 import { AvatarForm } from "./avatar-form";
@@ -22,7 +21,6 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:gap-8">
-      <PageUserMenu />
       <div>
         <Link
           className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"

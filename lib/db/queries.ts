@@ -29,6 +29,7 @@ import { generateUUID } from "../utils";
 import {
   appSetting,
   auditLog,
+  language,
   contactMessage,
   chat,
   document,
@@ -38,6 +39,8 @@ import {
   passwordResetToken,
   paymentTransaction,
   pricingPlan,
+  translationKey,
+  translationValue,
   stream,
   suggestion,
   tokenUsage,
@@ -46,6 +49,7 @@ import {
   vote,
   type AppSetting,
   type AuditLog,
+  type Language,
   type ContactMessage,
   type ContactMessageStatus,
   type Chat,
@@ -55,6 +59,8 @@ import {
   type PasswordResetToken,
   type PaymentTransaction,
   type PricingPlan,
+  type TranslationKey,
+  type TranslationValue,
   type Suggestion,
   type TokenUsage,
   type User,
@@ -96,7 +102,7 @@ const client =
 
 globalDbState.postgresClient ??= client;
 
-const db =
+export const db =
   globalDbState.drizzleDb ?? drizzle(client);
 
 globalDbState.drizzleDb ??= db;
@@ -3070,6 +3076,144 @@ function calculateTokenDeduction({
   );
 
   return creditsToDeduct * TOKENS_PER_CREDIT;
+}
+
+export type TranslationTableEntry = {
+  keyId: TranslationKey["id"];
+  key: TranslationKey["key"];
+  defaultText: TranslationKey["defaultText"];
+  description: TranslationKey["description"];
+  updatedAt: TranslationKey["updatedAt"];
+  translations: Record<
+    Language["code"],
+    {
+      translationId: TranslationValue["id"];
+      languageId: Language["id"];
+      value: TranslationValue["value"];
+      updatedAt: TranslationValue["updatedAt"];
+    }
+  >;
+};
+
+export async function listTranslationEntries(): Promise<
+  TranslationTableEntry[]
+> {
+  const keys = await db
+    .select({
+      id: translationKey.id,
+      key: translationKey.key,
+      defaultText: translationKey.defaultText,
+      description: translationKey.description,
+      updatedAt: translationKey.updatedAt,
+    })
+    .from(translationKey)
+    .orderBy(asc(translationKey.key));
+
+  if (keys.length === 0) {
+    return [];
+  }
+
+  const values = await db
+    .select({
+      id: translationValue.id,
+      translationKeyId: translationValue.translationKeyId,
+      languageId: translationValue.languageId,
+      value: translationValue.value,
+      updatedAt: translationValue.updatedAt,
+      languageCode: language.code,
+    })
+    .from(translationValue)
+    .innerJoin(language, eq(translationValue.languageId, language.id));
+
+  const entries = new Map<TranslationKey["id"], TranslationTableEntry>();
+
+  for (const key of keys) {
+    entries.set(key.id, {
+      keyId: key.id,
+      key: key.key,
+      defaultText: key.defaultText,
+      description: key.description,
+      updatedAt: key.updatedAt,
+      translations: {},
+    });
+  }
+
+  for (const value of values) {
+    const entry = entries.get(value.translationKeyId);
+    if (!entry) {
+      continue;
+    }
+
+    entry.translations[value.languageCode] = {
+      translationId: value.id,
+      languageId: value.languageId,
+      value: value.value,
+      updatedAt: value.updatedAt,
+    };
+  }
+
+  return Array.from(entries.values());
+}
+
+export async function updateTranslationDefaultText({
+  keyId,
+  defaultText,
+  description,
+}: {
+  keyId: TranslationKey["id"];
+  defaultText: string;
+  description?: string | null;
+}) {
+  await db
+    .update(translationKey)
+    .set({
+      defaultText,
+      description: description ?? null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(translationKey.id, keyId));
+}
+
+export async function upsertTranslationValueEntry({
+  translationKeyId,
+  languageId,
+  value,
+}: {
+  translationKeyId: TranslationValue["translationKeyId"];
+  languageId: TranslationValue["languageId"];
+  value: string;
+}) {
+  await db
+    .insert(translationValue)
+    .values({
+      translationKeyId,
+      languageId,
+      value,
+    })
+    .onConflictDoUpdate({
+      target: [translationValue.translationKeyId, translationValue.languageId],
+      set: {
+        value,
+        updatedAt: sql`now()`,
+      },
+    });
+}
+
+export async function deleteTranslationValueEntry({
+  translationKeyId,
+  languageId,
+}: {
+  translationKeyId: TranslationValue["translationKeyId"];
+  languageId: TranslationValue["languageId"];
+}) {
+  await db
+    .delete(translationValue)
+    .where(
+      and(
+        eq(translationValue.translationKeyId, translationKeyId),
+        eq(translationValue.languageId, languageId)
+      )
+    );
 }
 
 

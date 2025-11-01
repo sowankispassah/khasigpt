@@ -36,6 +36,8 @@ yarn-error.log*
 .vercel
 .env*.local
 
+.env.example
+
 # editors
 .cursor/
 

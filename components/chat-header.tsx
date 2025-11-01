@@ -2,17 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { memo } from "react";
-import { useSession, signOut } from "next-auth/react";
-import { useTheme } from "next-themes";
 import { useWindowSize } from "usehooks-ts";
 
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 
-import { LoaderIcon, PlusIcon } from "./icons";
+import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
-import { UserDropdownMenu, UserMenuTrigger } from "./user-dropdown-menu";
 
 
 
@@ -27,24 +24,8 @@ function PureChatHeader({
 }) {
   const router = useRouter();
   const { open } = useSidebar();
-  const { data: session, status } = useSession();
-  const { setTheme, resolvedTheme } = useTheme();
 
   const { width: windowWidth } = useWindowSize();
-
-  const user = session?.user;
-
-  const handleNavigate = (path: string) => {
-    router.push(path);
-  };
-
-  const handleToggleTheme = () => {
-    setTheme(resolvedTheme === "dark" ? "light" : "dark");
-  };
-
-  const handleSignOut = () => {
-    signOut({ redirectTo: "/login" });
-  };
 
   return (
     <header className="sticky top-0 flex items-center gap-2 bg-background px-2 py-1.5 md:px-2">
@@ -72,34 +53,6 @@ function PureChatHeader({
             <span className="md:sr-only">New Chat</span>
           </Button>
         )}
-
-        {status === "loading" ? (
-          <Button className="h-8 w-8" disabled variant="outline">
-            <span className="animate-spin"><LoaderIcon size={16} /></span>
-            <span className="sr-only">Loading user menu</span>
-          </Button>
-        ) : user ? (
-          <UserDropdownMenu
-            align="end"
-            isAdmin={user.role === "admin"}
-            isAuthenticated
-            onNavigate={handleNavigate}
-            onSignOut={handleSignOut}
-            onToggleTheme={handleToggleTheme}
-            resolvedTheme={resolvedTheme}
-            side="bottom"
-            userEmail={user.email ?? undefined}
-            trigger={
-              <UserMenuTrigger
-                user={{
-                  name: user.name,
-                  email: user.email,
-                  imageVersion: user.imageVersion ?? null,
-                }}
-              />
-            }
-          />
-        ) : null}
       </div>
     </header>
   );

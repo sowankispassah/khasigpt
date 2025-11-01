@@ -1,0 +1,287 @@
+Running Codex on Windows
+Resources
+Codex
+ChatGPT
+Blog
+Search
+⌘K
+Search the docs
+⌘
+K
+/
+Ctrl
+K
+Close
+Primary navigation
+Codex
+Resources
+Codex
+ChatGPT
+Blog
+Home
+Categories
+Code
+Cookbooks
+Guides
+Videos
+Topics
+Agents
+Audio & Voice
+Image generation
+Video generation
+Tools
+Computer use
+Fine-tuning
+Scaling
+Home
+Quickstart
+Concepts
+Pricing
+Changelog
+Codex CLI
+Overview
+CLI Reference
+Configuration
+Codex IDE Extension
+Set up your IDE
+Configuration
+IDE → Cloud tasks
+Codex Cloud
+Delegate to Codex
+Environments
+Code Review
+Internet Access
+Codex SDK
+Overview
+TypeScript
+GitHub Action
+Guides
+Agents SDK
+Prompting Codex
+Model Context Protocol (MCP)
+Autofix CI
+Enterprise Admin
+Security Admin
+Codex on Windows
+Integrations
+Slack
+Resources
+AGENTS.md
+Codex on GitHub
+Apps SDK
+Agentic Commerce
+All posts
+Recent
+Using Codex for education at Dagster Labs
+How Codex ran OpenAI DevDay 2025
+Why we built the Responses API
+Developer notes on the Realtime API
+Hello, world!
+Home
+Quickstart
+Concepts
+Pricing
+Changelog
+Codex CLI
+Overview
+CLI Reference
+Configuration
+Codex IDE Extension
+Set up your IDE
+Configuration
+IDE → Cloud tasks
+Codex Cloud
+Delegate to Codex
+Environments
+Code Review
+Internet Access
+Codex SDK
+Overview
+TypeScript
+GitHub Action
+Guides
+Agents SDK
+Prompting Codex
+Model Context Protocol (MCP)
+Autofix CI
+Enterprise Admin
+Security Admin
+Codex on Windows
+Integrations
+Slack
+Resources
+AGENTS.md
+Codex on GitHub
+Running Codex on Windows
+Best practices for running Codex on Windows
+For best performance on Windows, install and use
+Windows Subsystem for Linux
+(WSL2).
+Codex is trained to operate in Unix-style environments; running inside WSL2 gives you a Linux shell, unix-style semantics, and tooling that match how Codex is designed to work best.
+For example, when running Codex CLI on Linux, the agent can take advantage of built-in Linux sandboxing to automatically edit files while constraining edits to your workspace or run commands network-disabled.
+Using Codex IDE extension with WSL
+Codex IDE extension includes first-class WSL support. To make sure any commands the agent runs come from your Linux environment (instead of spawning Windows shells), add the following to your VS Code
+settings.json
+(run
+Preferences: Open Settings (JSON)
+from the Command Palette):
+{
+"chatgpt.preferWsl"
+:
+true
+}
+When this flag is set, the extension automatically launches the agent inside WSL, so its terminal sessions, sandboxing, and file edits all happen in the Linux workspace. If you don’t have WSL installed or enabled, the extension will recommend that you enable it with a prompt:
+Using Codex CLI with WSL
+Run these commands in an elevated PowerShell or Windows Terminal:
+# Install default Linux distribution (like Ubuntu)
+wsl
+--
+install
+# Start a shell inside of Windows Subsystem for Linux
+wsl
+# https://learn.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-wsl
+# Install Node.js in WSL
+curl
+-
+o
+-
+https:
+//
+raw.githubusercontent.com
+/
+nvm
+-
+sh
+/
+nvm
+/
+master
+/
+install.sh
+|
+bash
+# In a new tab or after exiting and running `wsl` again to install Node.js
+nvm install
+22
+# Install and run Codex in WSL
+npm i
+-
+g @openai
+/
+codex
+codex
+Work on code inside WSL
+Working in Windows-mounted paths like
+/mnt/c/…
+can be slower than when working in them in Windows. Keep your repos under your Linux home directory (like
+~/code/my-app
+) for faster I/O and fewer symlink/permission issues:
+mkdir
+-p
+~/code
+&&
+cd
+~/code
+git
+clone
+https://github.com/your/repo.git
+cd
+repo
+If you need Windows access to files, they’re under
+\wsl$\Ubuntu\home&lt;user>
+in Explorer.
+Launch VS Code from inside WSL
+For a detailed walkthrough, follow the
+official VS Code WSL tutorial
+.
+Prerequisites
+Windows with WSL installed - we recommend an Ubuntu distribution. Install by shift+clicking on Powershell to open as an Administrator, then running
+wsl --install
+.
+VS Code with the
+WSL extension
+installed.
+Open VS Code from a WSL terminal
+# From your WSL shell
+cd
+~/code/your-project
+code
+.
+This opens a WSL remote window, installs the VS Code Server if needed, and ensures integrated terminals run in Linux.
+Confirm you’re connected to WSL
+Look for the green status bar that shows
+WSL: <distro>
+.
+Integrated terminals should display Linux paths (such as
+/home/...
+) instead of
+C:\
+.
+You can verify with:
+echo
+$WSL_DISTRO_NAME
+which should print your distribution name.
+If you don’t see “WSL: …” in the status bar, press
+Ctrl+Shift+P
+, pick
+WSL: Reopen Folder in WSL
+, and keep your repo under
+/home/...
+(not
+C:\
+) for best performance.
+Running Codex on Windows: common patterns
+For Codex CLI, start
+wsl
+then
+cd
+into your project and run
+codex
+to use of Linux-based sandboxing.
+For Codex IDE extension, the default mode
+Chat
+will ask you to approve file edits and running commands. Or you can select
+Agent (full access)
+- exercise caution when using this as this allows the agent to run unsandboxed without approval.
+Recommended model
+On Windows, we recommend using
+gpt-5
+with
+medium
+reasoning (the Windows default for CLI versions >=
+0.45.0
+and VS Code extension versions >=
+0.4.19
+).
+Troubleshooting & FAQ
+Installed extension, but it’s unreponsive
+Your system may be missing C++ development tools, which some native dependencies require:
+Visual Studio Build Tools (C++ workload)
+Microsoft Visual C++ Redistributable (x64)
+With winget:
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e
+Then fully restart VS Code after installation.
+If it feels slow on large repos
+Make sure you’re not working under
+/mnt/c
+. Move the repo to WSL (e.g.,
+~/code/…
+).
+Allocate more memory/CPU to WSL if constrained; update WSL to latest:
+wsl
+--
+update
+wsl
+--
+shutdown
+VS Code in WSL can’t find
+codex
+Verify the binary exists and is on PATH inside WSL:
+which
+codex
+||
+echo
+"codex not found"
+If the binary is not found, try installing by
+following the instructions
+earlier in this guide.

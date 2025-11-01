@@ -14,6 +14,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTranslation } from "@/components/language-provider";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -152,6 +153,13 @@ export function UserDropdownMenu({
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const ignoreNextResourcesOpenRef = React.useRef(false);
+  const {
+    languages: translationLanguages,
+    activeLanguage,
+    translate,
+    setLanguage,
+    isUpdating: isLanguageUpdating,
+  } = useTranslation();
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -198,15 +206,15 @@ export function UserDropdownMenu({
           const label =
             data.plan.name && priceLabel
               ? `${data.plan.name} (${priceLabel})`
-              : (data.plan.name ?? priceLabel ?? null);
+              : data.plan.name ?? priceLabel ?? null;
 
-          setPlanLabel(label ?? "Free Plan");
+          setPlanLabel(label ?? null);
         } else {
-          setPlanLabel("Free Plan");
+          setPlanLabel(null);
         }
       } catch (_error) {
         if (isMounted) {
-          setPlanLabel("Free Plan");
+          setPlanLabel(null);
         }
       } finally {
         if (isMounted) {
@@ -278,26 +286,37 @@ export function UserDropdownMenu({
     setIsResourcesOpen(false);
   }, []);
 
+  const handleLanguageSelect = React.useCallback(
+    (event: Event, code: string) => {
+      handleSelect(event, () => setLanguage(code));
+    },
+    [setLanguage]
+  );
+
   const showSignOut = Boolean(isAuthenticated && onSignOut);
 
   const infoLinks = [
     {
-      label: "About Us",
+      labelKey: "user_menu.resources.about",
+      defaultLabel: "About Us",
       path: "/about",
       testId: "user-nav-item-about",
     },
     {
-      label: "Contact Us",
+      labelKey: "user_menu.resources.contact",
+      defaultLabel: "Contact Us",
       path: "/about#contact",
       testId: "user-nav-item-contact",
     },
     {
-      label: "Privacy Policy",
+      labelKey: "user_menu.resources.privacy",
+      defaultLabel: "Privacy Policy",
       path: "/privacy-policy",
       testId: "user-nav-item-privacy",
     },
     {
-      label: "Terms of Service",
+      labelKey: "user_menu.resources.terms",
+      defaultLabel: "Terms of Service",
       path: "/terms-of-service",
       testId: "user-nav-item-terms",
     },
@@ -317,9 +336,15 @@ export function UserDropdownMenu({
           })
         }
       >
-        {item.label}
+        {translate(item.labelKey, item.defaultLabel)}
       </DropdownMenuItem>
     ));
+
+  const activeLanguageLabel = translate("user_menu.language.active", "Active");
+  const updatingLanguageLabel = translate(
+    "user_menu.language.updating",
+    "Updating…"
+  );
 
   return (
     <DropdownMenu onOpenChange={handleMenuOpenChange}>
@@ -351,7 +376,7 @@ export function UserDropdownMenu({
                 handleSelect(event, () => onNavigate("/profile"))
               }
             >
-              Profile
+              {translate("user_menu.profile", "Profile")}
             </DropdownMenuItem>
             <DropdownMenuItem
               className="flex cursor-pointer flex-col items-start gap-1"
@@ -360,9 +385,21 @@ export function UserDropdownMenu({
                 handleSelect(event, () => onNavigate("/subscriptions"))
               }
             >
-              Manage Subscriptions
+              {translate(
+                "user_menu.manage_subscriptions",
+                "Manage Subscriptions"
+              )}
               <span className="text-muted-foreground text-xs opacity-80">
-                {isPlanLoading ? "Checking plan..." : planLabel ?? "Free Plan"}
+                {isPlanLoading
+                  ? translate(
+                      "user_menu.manage_subscriptions_status_checking",
+                      "Checking plan..."
+                    )
+                  : planLabel ??
+                    translate(
+                      "user_menu.manage_subscriptions_status_fallback",
+                      "Free Plan"
+                    )}
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -372,7 +409,7 @@ export function UserDropdownMenu({
                 handleSelect(event, () => onNavigate("/recharge"))
               }
             >
-              Upgrade plan
+              {translate("user_menu.upgrade_plan", "Upgrade plan")}
             </DropdownMenuItem>
             {isAdmin ? (
               <DropdownMenuItem
@@ -382,7 +419,10 @@ export function UserDropdownMenu({
                   handleSelect(event, () => onNavigate("/admin"))
                 }
               >
-                Open admin console
+                {translate(
+                  "user_menu.open_admin_console",
+                  "Open admin console"
+                )}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuSeparator />
@@ -402,12 +442,50 @@ export function UserDropdownMenu({
             onKeyDown={handleResourcesKeyDown}
             onPointerDown={handleResourcesPointerDown}
           >
-            Resources
+            {translate("user_menu.resources", "Resources")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
             className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg"
           >
             {renderInfoLinks()}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger
+            className="flex w-full cursor-pointer items-center justify-between sm:w-auto sm:justify-start"
+            data-testid="user-nav-item-language"
+          >
+            {translate("user_menu.language", "Language")}
+            <span className="text-muted-foreground text-xs">
+              {activeLanguage.name}
+            </span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
+            {translationLanguages.map((language) => (
+              <DropdownMenuItem
+                key={language.code}
+                className={cn(
+                  "cursor-pointer justify-between",
+                  language.code === activeLanguage.code
+                    ? "font-medium text-primary"
+                    : undefined
+                )}
+                data-testid={`user-nav-language-${language.code}`}
+                disabled={
+                  isLanguageUpdating && language.code !== activeLanguage.code
+                }
+                onSelect={(event) => handleLanguageSelect(event, language.code)}
+              >
+                {language.name}
+                <span className="text-muted-foreground text-xs">
+                  {language.code === activeLanguage.code
+                    ? isLanguageUpdating
+                      ? updatingLanguageLabel
+                      : activeLanguageLabel
+                    : null}
+                </span>
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSeparator />
@@ -416,7 +494,9 @@ export function UserDropdownMenu({
           data-testid="user-nav-item-theme"
           onSelect={(event) => handleSelect(event, onToggleTheme)}
         >
-          {resolvedTheme === "light" ? "Dark mode" : "Light mode"}
+          {resolvedTheme === "light"
+            ? translate("user_menu.theme.dark", "Dark mode")
+            : translate("user_menu.theme.light", "Light mode")}
         </DropdownMenuItem>
         {showSignOut ? (
           <>
@@ -428,7 +508,7 @@ export function UserDropdownMenu({
                 onSignOut && handleSelect(event, onSignOut)
               }
             >
-              Sign out
+              {translate("user_menu.sign_out", "Sign out")}
             </DropdownMenuItem>
           </>
         ) : null}

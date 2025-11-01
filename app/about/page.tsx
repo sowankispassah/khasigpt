@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { cookies } from "next/headers";
 
-import { PageUserMenu } from "@/components/page-user-menu";
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { getTranslationsForKeys } from "@/lib/i18n/dictionary";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = {
@@ -14,13 +15,38 @@ export const metadata: Metadata = {
 };
 
 export default async function AboutPage() {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const stored = await getAppSetting<string>("aboutUsContent");
   const content =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_ABOUT_US;
+  const translations = await getTranslationsForKeys(preferredLanguage, [
+    {
+      key: "navigation.back_to_home",
+      defaultText: "Back to home",
+    },
+    {
+      key: "about.title",
+      defaultText: "About KhasiGPT",
+    },
+    {
+      key: "about.subtitle",
+      defaultText:
+        "We build AI tools that understand Khasi culture, language, and the people who use them every day.",
+    },
+    {
+      key: "about.contact_heading",
+      defaultText: "Contact the team",
+    },
+    {
+      key: "about.contact_caption",
+      defaultText:
+        "Share feedback, partnership ideas, or support questions. We usually reply within one working day.",
+    },
+  ]);
 
   return (
     <>
-      <PageUserMenu />
       <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-10 px-6 py-12 md:py-16">
         <div>
           <Link
@@ -28,17 +54,17 @@ export default async function AboutPage() {
             href="/"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back to home
+            {translations["navigation.back_to_home"] ?? "Back to home"}
           </Link>
         </div>
 
         <header className="space-y-3 text-center md:text-left">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-            About KhasiGPT
+            {translations["about.title"] ?? "About KhasiGPT"}
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            We build AI tools that understand Khasi culture, language, and the
-            people who use them every day.
+            {translations["about.subtitle"] ??
+              "We build AI tools that understand Khasi culture, language, and the people who use them every day."}
           </p>
         </header>
   
@@ -50,10 +76,12 @@ export default async function AboutPage() {
           id="contact"
           className="rounded-xl border border-border bg-card p-6 shadow-sm"
         >
-          <h2 className="text-xl font-semibold">Contact the team</h2>
+          <h2 className="text-xl font-semibold">
+            {translations["about.contact_heading"] ?? "Contact the team"}
+          </h2>
           <p className="text-muted-foreground mt-2 text-sm">
-            Share feedback, partnership ideas, or support questions. We usually
-            reply within one working day.
+            {translations["about.contact_caption"] ??
+              "Share feedback, partnership ideas, or support questions. We usually reply within one working day."}
           </p>
           <div className="mt-6">
             <ContactForm />

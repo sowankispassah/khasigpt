@@ -8,12 +8,14 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { LoaderIcon } from "@/components/icons";
 import { UserDropdownMenu, UserMenuTrigger } from "@/components/user-dropdown-menu";
+import { useTranslation } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
 export function PageUserMenu({ className }: { className?: string }) {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
+  const { translate } = useTranslation();
 
   const user = session?.user ?? null;
 
@@ -38,7 +40,9 @@ export function PageUserMenu({ className }: { className?: string }) {
     >
       {status === "loading" ? (
         <Button className="h-8 w-8" disabled variant="outline">
-          <span className="sr-only">Loading user menu</span>
+          <span className="sr-only">
+            {translate("user_menu.loading", "Loading user menu")}
+          </span>
           <span className="animate-spin">
             <LoaderIcon size={16} />
           </span>
@@ -79,7 +83,9 @@ export function PageUserMenu({ className }: { className?: string }) {
               type="button"
             >
               <EllipsisVertical size={16} />
-              <span className="sr-only">Open menu</span>
+              <span className="sr-only">
+                {translate("user_menu.open_menu", "Open menu")}
+              </span>
             </button>
           }
         />

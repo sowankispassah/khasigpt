@@ -210,9 +210,12 @@ export function Chat({
           isReadonly={isReadonly}
           messages={messages}
           regenerate={regenerate}
+          selectedVisibilityType={visibilityType}
           selectedModelId={currentModelId}
+          sendMessage={sendMessage}
           setMessages={setMessages}
           status={status}
+          suggestedPrompts={suggestedPrompts}
           votes={votes}
         />
 
@@ -227,14 +230,13 @@ export function Chat({
                 onModelChange={setCurrentModelId}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
-                sendMessage={sendMessage}
-                setAttachments={setAttachments}
-                setInput={setInput}
-                setMessages={setMessages}
-                status={status}
-                stop={stop}
-                suggestedPrompts={suggestedPrompts}
-              />
+              sendMessage={sendMessage}
+              setAttachments={setAttachments}
+              setInput={setInput}
+              setMessages={setMessages}
+              status={status}
+              stop={stop}
+            />
               <p className="px-2 text-center text-muted-foreground text-xs">
                 KhasiGPT or other AI Models can make mistakes. Check important
                 details.{" "}

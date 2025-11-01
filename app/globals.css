@@ -157,6 +157,23 @@
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
   }
+
+  a,
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled="true"],
+  :disabled {
+    cursor: not-allowed;
+  }
 }
 
 @utility text-balance {

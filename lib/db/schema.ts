@@ -204,6 +204,65 @@ export const appSetting = pgTable("AppSetting", {
 
 export type AppSetting = InferSelectModel<typeof appSetting>;
 
+export const language = pgTable(
+  "language",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: varchar("code", { length: 16 }).notNull().unique(),
+    name: varchar("name", { length: 64 }).notNull(),
+    isDefault: boolean("isDefault").notNull().default(false),
+    isActive: boolean("isActive").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex("language_code_idx").on(table.code),
+  })
+);
+
+export type Language = InferSelectModel<typeof language>;
+
+export const translationKey = pgTable(
+  "translation_key",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: varchar("key", { length: 128 }).notNull().unique(),
+    defaultText: text("defaultText").notNull(),
+    description: text("description"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    keyIdx: uniqueIndex("translation_key_key_idx").on(table.key),
+  })
+);
+
+export type TranslationKey = InferSelectModel<typeof translationKey>;
+
+export const translationValue = pgTable(
+  "translation_value",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    translationKeyId: uuid("translationKeyId")
+      .notNull()
+      .references(() => translationKey.id, { onDelete: "cascade" }),
+    languageId: uuid("languageId")
+      .notNull()
+      .references(() => language.id, { onDelete: "cascade" }),
+    value: text("value").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    keyLanguageIdx: uniqueIndex("translation_value_key_lang_idx").on(
+      table.translationKeyId,
+      table.languageId
+    ),
+  })
+);
+
+export type TranslationValue = InferSelectModel<typeof translationValue>;
+
 export const chat = pgTable("Chat", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   createdAt: timestamp("createdAt").notNull(),

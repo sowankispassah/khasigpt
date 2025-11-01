@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { PageUserMenu } from "@/components/page-user-menu";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 
 import { DEFAULT_PRIVACY_POLICY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { getTranslationsForKeys } from "@/lib/i18n/dictionary";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -13,13 +14,28 @@ export const metadata: Metadata = {
 };
 
 export default async function PrivacyPolicyPage() {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const stored = await getAppSetting<string>("privacyPolicy");
   const content =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
+  const translations = await getTranslationsForKeys(preferredLanguage, [
+    {
+      key: "navigation.back_to_home",
+      defaultText: "Back to home",
+    },
+    {
+      key: "legal.privacy.title",
+      defaultText: "Privacy Policy",
+    },
+    {
+      key: "legal.last_updated_prefix",
+      defaultText: "Last updated",
+    },
+  ]);
 
   return (
     <>
-      <PageUserMenu />
       <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
         <div>
           <Link
@@ -27,17 +43,18 @@ export default async function PrivacyPolicyPage() {
             href="/"
           >
             <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            Back to home
+            {translations["navigation.back_to_home"] ?? "Back to home"}
           </Link>
         </div>
 
         <header className="space-y-2">
           <p className="text-sm font-medium text-primary">Khasigpt</p>
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-            Privacy Policy
+            {translations["legal.privacy.title"] ?? "Privacy Policy"}
           </h1>
           <p className="text-muted-foreground">
-            Last updated: {new Date().getFullYear()}
+            {(translations["legal.last_updated_prefix"] ?? "Last updated") +
+              `: ${new Date().getFullYear()}`}
           </p>
         </header>
 
