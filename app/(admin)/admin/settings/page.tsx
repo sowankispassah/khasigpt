@@ -15,10 +15,10 @@ import {
   deletePricingPlanAction,
   hardDeletePricingPlanAction,
   setRecommendedPricingPlanAction,
-  updatePrivacyPolicyAction,
-  updateTermsOfServiceAction,
   updateAboutContentAction,
   updateSuggestedPromptsAction,
+  updatePrivacyPolicyByLanguageAction,
+  updateTermsOfServiceByLanguageAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminSettingsNotice } from "./notice";
@@ -31,6 +31,9 @@ import {
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
 } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
+import { getAllLanguages } from "@/lib/i18n/languages";
+import { LanguagePromptsForm } from "./language-prompts-form";
+import { LanguageContentForm } from "./language-content-form";
 
 export const dynamic = "force-dynamic";
 
@@ -82,8 +85,13 @@ export default async function AdminSettingsPage({
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
+    aboutUsContentByLanguageSetting,
+    privacyPolicyByLanguageSetting,
+    termsOfServiceByLanguageSetting,
     suggestedPromptsSetting,
+    suggestedPromptsByLanguageSetting,
     recommendedPlanSetting,
+    languages,
   ] = await Promise.all([
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
@@ -91,8 +99,13 @@ export default async function AdminSettingsPage({
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
     getAppSetting<string>("aboutUsContent"),
+    getAppSetting<Record<string, string>>("aboutUsContentByLanguage"),
+    getAppSetting<Record<string, string>>("privacyPolicyByLanguage"),
+    getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
     getAppSetting<string[]>("suggestedPrompts"),
+    getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+    getAllLanguages(),
   ]);
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -122,6 +135,43 @@ export default async function AdminSettingsPage({
     aboutUsSetting && aboutUsSetting.trim().length > 0
       ? aboutUsSetting
       : DEFAULT_ABOUT_US;
+  const normalizedAboutContentByLanguage: Record<string, string> = {};
+  if (
+    aboutUsContentByLanguageSetting &&
+    typeof aboutUsContentByLanguageSetting === "object" &&
+    !Array.isArray(aboutUsContentByLanguageSetting)
+  ) {
+    for (const [code, value] of Object.entries(aboutUsContentByLanguageSetting)) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        normalizedAboutContentByLanguage[code] = value.trim();
+      }
+    }
+  }
+  const normalizedPrivacyPolicyByLanguage: Record<string, string> = {};
+  if (
+    privacyPolicyByLanguageSetting &&
+    typeof privacyPolicyByLanguageSetting === "object" &&
+    !Array.isArray(privacyPolicyByLanguageSetting)
+  ) {
+    for (const [code, value] of Object.entries(privacyPolicyByLanguageSetting)) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        normalizedPrivacyPolicyByLanguage[code] = value.trim();
+      }
+    }
+  }
+  const normalizedTermsOfServiceByLanguage: Record<string, string> = {};
+  if (
+    termsOfServiceByLanguageSetting &&
+    typeof termsOfServiceByLanguageSetting === "object" &&
+    !Array.isArray(termsOfServiceByLanguageSetting)
+  ) {
+    for (const [code, value] of Object.entries(termsOfServiceByLanguageSetting)) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        normalizedTermsOfServiceByLanguage[code] = value.trim();
+      }
+    }
+  }
+  const activeLanguagesList = languages.filter((language) => language.isActive);
   const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
     ? suggestedPromptsSetting.filter(
         (item) => typeof item === "string" && item.trim().length > 0
@@ -131,6 +181,81 @@ export default async function AdminSettingsPage({
     suggestedPromptsList.length > 0
       ? suggestedPromptsList
       : DEFAULT_SUGGESTED_PROMPTS;
+  const normalizedSuggestedPromptsByLanguage: Record<string, string[]> = {};
+  if (
+    suggestedPromptsByLanguageSetting &&
+    typeof suggestedPromptsByLanguageSetting === "object" &&
+    !Array.isArray(suggestedPromptsByLanguageSetting)
+  ) {
+    for (const [code, value] of Object.entries(
+      suggestedPromptsByLanguageSetting as Record<string, unknown>
+    )) {
+      if (!Array.isArray(value)) {
+        continue;
+      }
+
+      const normalized = value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter((item) => item.length > 0);
+
+      if (normalized.length > 0) {
+        normalizedSuggestedPromptsByLanguage[code] = normalized;
+      }
+    }
+  }
+
+  const languagePromptConfigs = activeLanguagesList.map((language) => {
+    const stored = normalizedSuggestedPromptsByLanguage[language.code];
+    const promptsForLanguage =
+      stored && stored.length > 0 ? stored : suggestedPrompts;
+
+    return {
+      language,
+      prompts: promptsForLanguage,
+    };
+  });
+  const languageAboutConfigs = activeLanguagesList.map((language) => {
+    const stored = normalizedAboutContentByLanguage[language.code];
+    const contentForLanguage =
+      stored && stored.length > 0
+        ? stored
+        : language.isDefault
+          ? aboutContent
+          : "";
+
+    return {
+      language,
+      content: contentForLanguage,
+    };
+  });
+  const languagePrivacyConfigs = activeLanguagesList.map((language) => {
+    const stored = normalizedPrivacyPolicyByLanguage[language.code];
+    const contentForLanguage =
+      stored && stored.length > 0
+        ? stored
+        : language.isDefault
+          ? privacyPolicyContent
+          : "";
+
+    return {
+      language,
+      content: contentForLanguage,
+    };
+  });
+  const languageTermsConfigs = activeLanguagesList.map((language) => {
+    const stored = normalizedTermsOfServiceByLanguage[language.code];
+    const contentForLanguage =
+      stored && stored.length > 0
+        ? stored
+        : language.isDefault
+          ? termsOfServiceContent
+          : "";
+
+    return {
+      language,
+      content: contentForLanguage,
+    };
+  });
 
   return (
     <>
@@ -140,30 +265,24 @@ export default async function AdminSettingsPage({
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Suggested prompts</h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            Customize the quick-start prompts that appear on the home screen. Enter one prompt per line.
+            Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language. If a language has no custom prompts, the default language prompts are used.
           </p>
-          <form action={updateSuggestedPromptsAction} className="mt-6 flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="suggested-prompts">
-                Home screen presets
-              </label>
-              <textarea
-                className="min-h-[12rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
-                defaultValue={suggestedPrompts.join("\n")}
-                id="suggested-prompts"
-                name="prompts"
-                required
-              />
-              <p className="text-muted-foreground text-xs">
-                Separate prompts with new lines. The first four prompts are shown by default.
-              </p>
+          {languagePromptConfigs.length === 0 ? (
+            <div className="mt-6 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
+              No active languages are configured. Add a language before managing prompts.
             </div>
-            <div className="flex justify-end">
-              <ActionSubmitButton pendingLabel="Saving...">
-                Save suggested prompts
-              </ActionSubmitButton>
+          ) : (
+            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              {languagePromptConfigs.map(({ language, prompts }) => (
+                <LanguagePromptsForm
+                  key={language.id}
+                  initialPrompts={prompts}
+                  language={language}
+                  onSubmit={updateSuggestedPromptsAction}
+                />
+              ))}
             </div>
-          </form>
+          )}
         </section>
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Public page content</h2>
@@ -171,74 +290,95 @@ export default async function AdminSettingsPage({
             Update the copy shown on the public About, Privacy Policy, and Terms of Service pages.
             Basic Markdown (## headings and bullet lists) is supported.
           </p>
-          <form action={updateAboutContentAction} className="mt-6 flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="about-content">
-                About page content
-              </label>
-              <textarea
-                className="min-h-[16rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
-                defaultValue={aboutContent}
-                id="about-content"
-                name="content"
-              />
-              <p className="text-muted-foreground text-xs">
-                This text appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/about</code>. If left empty, a default message is shown.
-              </p>
+          {activeLanguagesList.length === 0 ? (
+            <div className="mt-6 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
+              No active languages are configured. Add a language before managing public page content.
             </div>
-            <div className="flex justify-end">
-              <ActionSubmitButton pendingLabel="Saving...">
-                Save about page
-              </ActionSubmitButton>
-            </div>
-          </form>
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <form action={updatePrivacyPolicyAction} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="privacy-policy-content">
-                  Privacy policy content
-                </label>
-                <textarea
-                  className="min-h-[16rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
-                  defaultValue={privacyPolicyContent}
-                  id="privacy-policy-content"
-                  name="content"
-                  required
-                />
-                <p className="text-muted-foreground text-xs">
-                  This text appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/privacy-policy</code>.
-                </p>
+          ) : (
+            <div className="mt-6 space-y-10">
+              <div className="space-y-4">
+                <h3 className="text-base font-semibold">About page content</h3>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {languageAboutConfigs.map(({ language, content }) => (
+                <LanguageContentForm
+                  key={language.id}
+                  contentLabel="about content"
+                  helperText={{
+                    default:
+                      "Shown on the about page when no localized version is available.",
+                    localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
+                  }}
+                  initialContent={content}
+                  language={language}
+                  onSubmit={updateAboutContentAction}
+                  placeholders={{
+                        default: "Enter about content",
+                        localized: "Provide localized about content",
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="flex justify-end">
-                <ActionSubmitButton pendingLabel="Saving...">
-                  Save privacy policy
-                </ActionSubmitButton>
-              </div>
-            </form>
 
-            <form action={updateTermsOfServiceAction} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="terms-of-service-content">
-                  Terms of service content
-                </label>
-                <textarea
-                  className="min-h-[16rem] rounded-md border bg-background px-3 py-2 text-sm leading-6"
-                  defaultValue={termsOfServiceContent}
-                  id="terms-of-service-content"
-                  name="content"
-                  required
-                />
-                <p className="text-muted-foreground text-xs">
-                  This text appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/terms-of-service</code>.
-                </p>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold">Privacy policy content</h3>
+                  <p className="text-muted-foreground text-xs">
+                    Appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/privacy-policy</code>.
+                  </p>
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {languagePrivacyConfigs.map(({ language, content }) => (
+                    <LanguageContentForm
+                      key={language.id}
+                      contentLabel="privacy policy"
+                      helperText={{
+                        default:
+                          "Shown on the privacy policy page when no localized version is available.",
+                        localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
+                      }}
+                      initialContent={content}
+                      language={language}
+                      onSubmit={updatePrivacyPolicyByLanguageAction}
+                      placeholders={{
+                        default: "Enter privacy policy content",
+                        localized: "Provide localized privacy policy content",
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="flex justify-end">
-                <ActionSubmitButton pendingLabel="Saving...">
-                  Save terms of service
-                </ActionSubmitButton>
+
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold">Terms of service content</h3>
+                  <p className="text-muted-foreground text-xs">
+                    Appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/terms-of-service</code>.
+                  </p>
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {languageTermsConfigs.map(({ language, content }) => (
+                    <LanguageContentForm
+                      key={language.id}
+                      contentLabel="terms of service"
+                      helperText={{
+                        default:
+                          "Shown on the terms of service page when no localized version is available.",
+                        localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
+                      }}
+                      initialContent={content}
+                      language={language}
+                      onSubmit={updateTermsOfServiceByLanguageAction}
+                      placeholders={{
+                        default: "Enter terms of service content",
+                        localized: "Provide localized terms of service content",
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
-            </form>
-          </div>
+            </div>
+          )}
         </section>
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Pricing plans</h2>

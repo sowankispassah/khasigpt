@@ -3,6 +3,8 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 
+import { useTranslation } from "@/components/language-provider";
+
 type DailyUsageRangeSelectProps = {
   currentRange: number;
   options: readonly number[];
@@ -15,6 +17,7 @@ export function DailyUsageRangeSelect({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { translate } = useTranslation();
 
   const paramsSnapshot = useMemo(
     () => new URLSearchParams(searchParams.toString()),
@@ -41,7 +44,7 @@ export function DailyUsageRangeSelect({
         className="text-xs font-medium text-muted-foreground"
         htmlFor="daily-usage-range"
       >
-        Range
+        {translate("subscriptions.range.label", "Range")}
       </label>
       <select
         className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -51,7 +54,10 @@ export function DailyUsageRangeSelect({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            Last {option} days
+            {translate(
+              "subscriptions.range.option",
+              "Last {days} days"
+            ).replace("{days}", String(option))}
           </option>
         ))}
       </select>

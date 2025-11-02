@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 import { auth } from "@/app/(auth)/auth";
 import { RechargePlans } from "@/components/recharge-plans";
@@ -12,6 +13,7 @@ import {
   getAppSetting,
 } from "@/lib/db/queries";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 export default async function RechargePage() {
   const session = await auth();
@@ -20,11 +22,17 @@ export default async function RechargePage() {
     redirect("/login?callbackUrl=/recharge");
   }
 
-  const [plans, balance, recommendedPlanSetting] = await Promise.all([
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+
+  const [{ dictionary }, plans, balance, recommendedPlanSetting] = await Promise.all([
+    getTranslationBundle(preferredLanguage),
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
   ]);
+
+  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
   const activePlanId = balance.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
@@ -67,17 +75,21 @@ export default async function RechargePage() {
             href="/"
           >
             <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            Back to home
+            {t("navigation.back_to_home", "Back to home")}
           </Link>
         </div>
         <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
           <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Pricing
+            {t("recharge.tagline", "Pricing")}
           </span>
-          <h1 className="text-3xl font-semibold md:text-4xl">Choose your plan</h1>
+          <h1 className="text-3xl font-semibold md:text-4xl">
+            {t("recharge.title", "Choose your plan")}
+          </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Unlock more capacity and features by picking a plan that scales with your
-            needs. Activate instantly and start building without interruption.
+            {t(
+              "recharge.subtitle",
+              "Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
+            )}
           </p>
         </div>
       </header>
@@ -102,11 +114,13 @@ export default async function RechargePage() {
       />
 
       <section className="rounded-2xl border bg-card/80 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Current balance</h2>
+        <h2 className="text-lg font-semibold">
+          {t("recharge.current_balance.title", "Current balance")}
+        </h2>
         <dl className="mt-4 grid gap-6 sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-              Credits remaining
+              {t("recharge.current_balance.remaining", "Credits remaining")}
             </dt>
             <dd className="mt-2 text-2xl font-semibold">
               {balance.creditsRemaining.toLocaleString()}{" "}
@@ -118,7 +132,7 @@ export default async function RechargePage() {
           {balance.expiresAt ? (
             <div>
               <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                Credits valid until
+                {t("recharge.current_balance.valid_until", "Credits valid until")}
               </dt>
               <dd className="mt-2 text-lg font-semibold">
                 {expiryFormatter.format(balance.expiresAt)}

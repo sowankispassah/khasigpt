@@ -14,6 +14,8 @@ import {
   getUserBalanceSummary,
 } from "@/lib/db/queries";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -54,12 +56,19 @@ export default async function SubscriptionsPage({
     ? (requestedRange as RangeOption)
     : 14;
 
-  const [balance, totals, rawDailyUsage, sessionUsage] = await Promise.all([
-    getUserBalanceSummary(session.user.id),
-    getTokenUsageTotalsForUser(session.user.id),
-    getDailyTokenUsageForUser(session.user.id, range),
-    getSessionTokenUsageForUser(session.user.id),
-  ]);
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+
+  const [{ dictionary }, balance, totals, rawDailyUsage, sessionUsage] =
+    await Promise.all([
+      getTranslationBundle(preferredLanguage),
+      getUserBalanceSummary(session.user.id),
+      getTokenUsageTotalsForUser(session.user.id),
+      getDailyTokenUsageForUser(session.user.id, range),
+      getSessionTokenUsageForUser(session.user.id),
+    ]);
+
+  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
   const sessionsPageParam = toSingleValue(
     resolvedSearchParams?.sessionsPage
@@ -97,8 +106,8 @@ export default async function SubscriptionsPage({
   const currentPlanLabel = hasPaidPlan
     ? planPriceLabel
       ? `${plan?.name} (${planPriceLabel})`
-      : plan?.name ?? "Active plan"
-    : "No plan yet";
+      : plan?.name ?? t("subscriptions.plan_overview.active_plan", "Active plan")
+    : t("subscriptions.plan_overview.no_plan", "No plan yet");
 
   const freeCreditsRemaining = isManualPlan
     ? balance.creditsRemaining
@@ -118,10 +127,15 @@ export default async function SubscriptionsPage({
   const expiryDateLabel =
     expiresAt !== null
       ? format(expiresAt, "dd MMM yyyy")
-      : "No active plan";
+      : t("subscriptions.plan_overview.no_active_plan", "No active plan");
   const expiryDaysLabel =
     expiresAt !== null && daysRemaining !== null
-      ? `(${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left)`
+      ? t(
+          "subscriptions.plan_overview.days_remaining",
+          "({count} day{plural} left)"
+        )
+          .replace("{count}", String(daysRemaining))
+          .replace("{plural}", daysRemaining === 1 ? "" : "s")
       : null;
 
   const dailySeries = buildDailySeries(rawDailyUsage, range);
@@ -170,35 +184,43 @@ export default async function SubscriptionsPage({
           href="/"
         >
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-          Back to home
+          {t("navigation.back_to_home", "Back to home")}
         </Link>
         <Link
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-muted-foreground/80"
           href="/profile"
         >
-          Manage profile
+          {t("subscriptions.manage_profile", "Manage profile")}
         </Link>
       </div>
 
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Subscriptions & Credits</h1>
+        <h1 className="text-2xl font-semibold">
+          {t("subscriptions.title", "Subscriptions & Credits")}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          Track your current plan, credit balance, and recent usage.
+          {t(
+            "subscriptions.subtitle",
+            "Track your current plan, credit balance, and recent usage."
+          )}
         </p>
       </header>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total credits used" value={formatCredits(totals.totalTokens)} />
         <MetricCard
-          label="Credits remaining"
+          label={t("subscriptions.metric.total_used", "Total credits used")}
+          value={formatCredits(totals.totalTokens)}
+        />
+        <MetricCard
+          label={t("subscriptions.metric.remaining", "Credits remaining")}
           value={balance.creditsRemaining.toLocaleString()}
         />
         <MetricCard
-          label="Credits allocated"
+          label={t("subscriptions.metric.allocated", "Credits allocated")}
           value={balance.creditsTotal.toLocaleString()}
         />
         <MetricCard
-          label="Plan expires"
+          label={t("subscriptions.metric.plan_expires", "Plan expires")}
           value={
             <div className="flex flex-col">
               <span className="text-2xl font-semibold">{expiryDateLabel}</span>
@@ -214,28 +236,42 @@ export default async function SubscriptionsPage({
 
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Plan overview</h2>
+          <h2 className="text-lg font-semibold">
+            {t("subscriptions.plan_overview.title", "Plan overview")}
+          </h2>
           <dl className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Current plan</dt>
+              <dt className="text-muted-foreground">
+                {t("subscriptions.plan_overview.current_plan", "Current plan")}
+              </dt>
               <dd>{currentPlanLabel}</dd>
             </div>
             {showFreeCredits ? (
               <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">Free credits</dt>
-                <dd>{freeCreditsRemaining.toLocaleString()} credits</dd>
+                <dt className="text-muted-foreground">
+                  {t("subscriptions.plan_overview.free_credits", "Free credits")}
+                </dt>
+                <dd>
+                  {freeCreditsRemaining.toLocaleString()} {t("subscriptions.unit.credits", "credits")}
+                </dd>
               </div>
             ) : null}
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Credits remaining</dt>
+              <dt className="text-muted-foreground">
+                {t("subscriptions.plan_overview.credits_remaining", "Credits remaining")}
+              </dt>
               <dd>{balance.creditsRemaining.toLocaleString()}</dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Credits allocated</dt>
+              <dt className="text-muted-foreground">
+                {t("subscriptions.plan_overview.credits_allocated", "Credits allocated")}
+              </dt>
               <dd>{balance.creditsTotal.toLocaleString()}</dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Plan expires</dt>
+              <dt className="text-muted-foreground">
+                {t("subscriptions.plan_overview.plan_expires", "Plan expires")}
+              </dt>
               <dd>
                 <div className="flex flex-col items-end">
                   <span>{expiryDateLabel}</span>
@@ -251,16 +287,21 @@ export default async function SubscriptionsPage({
         </div>
 
         <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Quick actions</h2>
+          <h2 className="text-lg font-semibold">
+            {t("subscriptions.quick_actions.title", "Quick actions")}
+          </h2>
           <p className="text-muted-foreground mt-2 text-sm">
-            Need more credits? Visit the{" "}
+            {t("subscriptions.quick_actions.recharge_prefix", "Need more credits? Visit the")}{" "}
             <Link className="underline" href="/recharge">
-              recharge page
+              {t("subscriptions.quick_actions.recharge_link", "recharge page")}
             </Link>
             .
           </p>
           <p className="text-muted-foreground text-sm">
-            Prefer emailed invoices or receipts? Contact support and we&apos;ll help out.
+            {t(
+              "subscriptions.quick_actions.support",
+              "Prefer emailed invoices or receipts? Contact support and we'll help out."
+            )}
           </p>
         </div>
       </section>
@@ -268,9 +309,11 @@ export default async function SubscriptionsPage({
       <section className="rounded-lg border bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Daily usage</h2>
+            <h2 className="text-lg font-semibold">
+              {t("subscriptions.daily_usage.title", "Daily usage")}
+            </h2>
             <p className="text-muted-foreground text-sm">
-              Credits consumed per day.
+              {t("subscriptions.daily_usage.subtitle", "Credits consumed per day.")}
             </p>
           </div>
           <DailyUsageRangeSelect currentRange={range} options={RANGE_OPTIONS} />
@@ -278,7 +321,10 @@ export default async function SubscriptionsPage({
 
         {maxTokens === 0 ? (
           <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 text-sm text-muted-foreground">
-            No usage recorded in this range.
+            {t(
+              "subscriptions.daily_usage.empty",
+              "No usage recorded in this range."
+            )}
           </div>
         ) : (
           <>
@@ -377,8 +423,12 @@ export default async function SubscriptionsPage({
             </div>
             {peakEntry ? (
               <p className="mt-2 text-xs text-muted-foreground">
-                Peak day: {format(peakEntry.day, "MMM d")} •{" "}
-                {formatCredits(peakEntry.totalTokens)} credits
+                {t(
+                  "subscriptions.daily_usage.peak_day",
+                  "Peak day: {date} • {credits} credits"
+                )
+                  .replace("{date}", format(peakEntry.day, "MMM d"))
+                  .replace("{credits}", formatCredits(peakEntry.totalTokens))}
               </p>
             ) : null}
           </>
@@ -386,23 +436,35 @@ export default async function SubscriptionsPage({
       </section>
 
       <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Usage by session</h2>
+        <h2 className="text-lg font-semibold">
+          {t("subscriptions.session_usage.title", "Usage by session")}
+        </h2>
         <p className="text-muted-foreground text-sm">
-          Total credits used across your recent chats.
+          {t(
+            "subscriptions.session_usage.subtitle",
+            "Total credits used across your recent chats."
+          )}
         </p>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
               <tr>
-                <th className="py-2 text-left">Chat ID</th>
-                <th className="py-2 text-right">Credits used</th>
+                <th className="py-2 text-left">
+                  {t("subscriptions.session_usage.headers.chat_id", "Chat ID")}
+                </th>
+                <th className="py-2 text-right">
+                  {t(
+                    "subscriptions.session_usage.headers.credits_used",
+                    "Credits used"
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody>
               {displayedSessions.length === 0 ? (
                 <tr>
                   <td className="py-4 text-muted-foreground" colSpan={2}>
-                    No usage recorded yet.
+                    {t("subscriptions.session_usage.empty", "No usage recorded yet.")}
                   </td>
                 </tr>
               ) : (

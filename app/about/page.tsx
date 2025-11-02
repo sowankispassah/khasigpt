@@ -5,7 +5,8 @@ import { cookies } from "next/headers";
 
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
-import { getTranslationsForKeys } from "@/lib/i18n/dictionary";
+import { getTranslationBundle, registerTranslationKeys } from "@/lib/i18n/dictionary";
+import { resolveLanguage } from "@/lib/i18n/languages";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = {
@@ -18,9 +19,11 @@ export default async function AboutPage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const stored = await getAppSetting<string>("aboutUsContent");
-  const content =
+  const storedByLanguage = await getAppSetting<Record<string, string>>("aboutUsContentByLanguage");
+  const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_ABOUT_US;
-  const translations = await getTranslationsForKeys(preferredLanguage, [
+
+  await registerTranslationKeys([
     {
       key: "navigation.back_to_home",
       defaultText: "Back to home",
@@ -32,18 +35,51 @@ export default async function AboutPage() {
     {
       key: "about.subtitle",
       defaultText:
-        "We build AI tools that understand Khasi culture, language, and the people who use them every day.",
+        "We build AI assistance that understand Khasi culture, language, and the people who use them every day.",
     },
     {
-      key: "about.contact_heading",
+      key: "contact.form.heading",
       defaultText: "Contact the team",
     },
     {
-      key: "about.contact_caption",
+      key: "contact.form.caption",
       defaultText:
         "Share feedback, partnership ideas, or support questions. We usually reply within one working day.",
     },
   ]);
+  const { dictionary } = await getTranslationBundle(preferredLanguage);
+  const { activeLanguage, languages } = await resolveLanguage(preferredLanguage);
+
+  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
+
+  const normalizedAboutMap: Record<string, string> = {};
+  if (
+    storedByLanguage &&
+    typeof storedByLanguage === "object" &&
+    !Array.isArray(storedByLanguage)
+  ) {
+    for (const [code, value] of Object.entries(storedByLanguage)) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        normalizedAboutMap[code] = value.trim();
+      }
+    }
+  }
+
+  const defaultLanguage =
+    languages.find((language) => language.isDefault) ?? languages[0] ?? null;
+
+  const defaultLanguageContent = defaultLanguage
+    ? normalizedAboutMap[defaultLanguage.code]
+    : undefined;
+
+  const localizedContent = normalizedAboutMap[activeLanguage.code];
+
+  const content =
+    (localizedContent && localizedContent.trim().length > 0
+      ? localizedContent
+      : defaultLanguageContent && defaultLanguageContent.trim().length > 0
+        ? defaultLanguageContent
+        : englishContent) ?? englishContent;
 
   return (
     <>
@@ -54,17 +90,19 @@ export default async function AboutPage() {
             href="/"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            {translations["navigation.back_to_home"] ?? "Back to home"}
+            {t("navigation.back_to_home", "Back to home")}
           </Link>
         </div>
 
         <header className="space-y-3 text-center md:text-left">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-            {translations["about.title"] ?? "About KhasiGPT"}
+            {t("about.title", "About KhasiGPT")}
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            {translations["about.subtitle"] ??
-              "We build AI tools that understand Khasi culture, language, and the people who use them every day."}
+            {t(
+              "about.subtitle",
+              "We build AI assistance that understand Khasi culture, language, and the people who use them every day."
+            )}
           </p>
         </header>
   
@@ -77,11 +115,13 @@ export default async function AboutPage() {
           className="rounded-xl border border-border bg-card p-6 shadow-sm"
         >
           <h2 className="text-xl font-semibold">
-            {translations["about.contact_heading"] ?? "Contact the team"}
+            {t("contact.form.heading", "Contact the team")}
           </h2>
           <p className="text-muted-foreground mt-2 text-sm">
-            {translations["about.contact_caption"] ??
-              "Share feedback, partnership ideas, or support questions. We usually reply within one working day."}
+            {t(
+              "contact.form.caption",
+              "Share feedback, partnership ideas, or support questions. We usually reply within one working day."
+            )}
           </p>
           <div className="mt-6">
             <ContactForm />
@@ -134,4 +174,3 @@ function renderAboutContent(content: string) {
       );
     });
 }
-

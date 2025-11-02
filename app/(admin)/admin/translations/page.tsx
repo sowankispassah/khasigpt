@@ -6,9 +6,9 @@ import {
   getAllLanguages,
   type LanguageOption,
 } from "@/lib/i18n/languages";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ActionSubmitButton } from "@/components/action-submit-button";
 
 import { saveDefaultTextAction, saveTranslationValueAction } from "./translation-actions";
 
@@ -151,9 +151,15 @@ function TranslationTable({
                     placeholder="Optional description"
                   />
                   <div className="flex items-center gap-2">
-                    <Button size="sm" type="submit" variant="outline">
+                    <ActionSubmitButton
+                      pendingLabel="Saving..."
+                      size="sm"
+                      type="submit"
+                      variant="outline"
+                      successMessage="Default text saved"
+                    >
                       Save
-                    </Button>
+                    </ActionSubmitButton>
                     <span className="text-muted-foreground text-xs">
                       Updated{" "}
                       {entry.updatedAt
@@ -184,9 +190,19 @@ function TranslationTable({
                         rows={3}
                       />
                       <div className="flex items-center gap-2">
-                        <Button size="sm" type="submit" variant="outline">
+                        <ActionSubmitButton
+                          pendingLabel="Saving..."
+                          size="sm"
+                          type="submit"
+                          variant="outline"
+                          successMessage={
+                            translation?.value
+                              ? `${language.name} translation saved`
+                              : `${language.name} translation cleared (falls back to English)`
+                          }
+                        >
                           {translation?.value ? "Update" : "Save"}
-                        </Button>
+                        </ActionSubmitButton>
                         <span className="text-muted-foreground text-xs">
                           {translation?.updatedAt
                             ? `Updated ${translation.updatedAt.toLocaleString()}`

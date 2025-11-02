@@ -15,6 +15,7 @@ import {
   deleteModelConfig,
   hardDeleteModelConfig,
   setDefaultModelConfig,
+  getAppSetting,
   setAppSetting,
   updateUserActiveState,
   updateUserRole,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
+import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 
 async function requireAdmin() {
   const session = await auth();
@@ -470,20 +472,215 @@ export async function updateAboutContentAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
 
+  const requestedLanguageCode =
+    formData.get("languageCode")?.toString().trim().toLowerCase() ?? "";
+  const language =
+    requestedLanguageCode.length > 0
+      ? await getLanguageByCode(requestedLanguageCode)
+      : await getDefaultLanguage();
+
+  if (!language) {
+    throw new Error("Selected language is not available");
+  }
+
+  if (!language.isActive && !language.isDefault) {
+    throw new Error("Selected language is not available");
+  }
+
   const content = formData.get("content")?.toString().trim() ?? "";
 
-  await setAppSetting({ key: "aboutUsContent", value: content });
+  if (!content) {
+    throw new Error("About content cannot be empty");
+  }
+
+  const existingByLanguage = await getAppSetting<unknown>(
+    "aboutUsContentByLanguage"
+  );
+  const aboutContentByLanguage: Record<string, string> = {};
+
+  if (
+    existingByLanguage &&
+    typeof existingByLanguage === "object" &&
+    !Array.isArray(existingByLanguage)
+  ) {
+    for (const [code, value] of Object.entries(
+      existingByLanguage as Record<string, unknown>
+    )) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        aboutContentByLanguage[code] = value.trim();
+      }
+    }
+  }
+
+  aboutContentByLanguage[language.code] = content;
+
+  await setAppSetting({
+    key: "aboutUsContentByLanguage",
+    value: aboutContentByLanguage,
+  });
+
+  if (language.isDefault) {
+    await setAppSetting({ key: "aboutUsContent", value: content });
+  }
 
   await createAuditLogEntry({
     actorId: actor.id,
     action: "company.about.update",
     target: { document: "aboutUsContent" },
+    metadata: { language: language.code },
   });
 
   revalidatePath("/about");
   revalidatePath("/admin/settings");
 
-  redirect("/admin/settings?notice=about-updated");
+  return {
+    success: true as const,
+    languageCode: language.code,
+  };
+}
+
+export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const requestedLanguageCode =
+    formData.get("languageCode")?.toString().trim().toLowerCase() ?? "";
+  const language =
+    requestedLanguageCode.length > 0
+      ? await getLanguageByCode(requestedLanguageCode)
+      : await getDefaultLanguage();
+
+  if (!language) {
+    throw new Error("Selected language is not available");
+  }
+
+  if (!language.isActive && !language.isDefault) {
+    throw new Error("Selected language is not available");
+  }
+
+  const content = formData.get("content")?.toString().trim() ?? "";
+
+  if (!content) {
+    throw new Error("Privacy policy content cannot be empty");
+  }
+
+  const existingByLanguage = await getAppSetting<unknown>(
+    "privacyPolicyByLanguage"
+  );
+  const privacyContentByLanguage: Record<string, string> = {};
+
+  if (
+    existingByLanguage &&
+    typeof existingByLanguage === "object" &&
+    !Array.isArray(existingByLanguage)
+  ) {
+    for (const [code, value] of Object.entries(
+      existingByLanguage as Record<string, unknown>
+    )) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        privacyContentByLanguage[code] = value.trim();
+      }
+    }
+  }
+
+  privacyContentByLanguage[language.code] = content;
+
+  await setAppSetting({
+    key: "privacyPolicyByLanguage",
+    value: privacyContentByLanguage,
+  });
+
+  if (language.isDefault) {
+    await setAppSetting({ key: "privacyPolicy", value: content });
+  }
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "legal.privacy.update",
+    target: { document: "privacyPolicy" },
+    metadata: { language: language.code },
+  });
+
+  revalidatePath("/privacy-policy");
+  revalidatePath("/admin/settings");
+
+  return {
+    success: true as const,
+    languageCode: language.code,
+  };
+}
+
+export async function updateTermsOfServiceByLanguageAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const requestedLanguageCode =
+    formData.get("languageCode")?.toString().trim().toLowerCase() ?? "";
+  const language =
+    requestedLanguageCode.length > 0
+      ? await getLanguageByCode(requestedLanguageCode)
+      : await getDefaultLanguage();
+
+  if (!language) {
+    throw new Error("Selected language is not available");
+  }
+
+  if (!language.isActive && !language.isDefault) {
+    throw new Error("Selected language is not available");
+  }
+
+  const content = formData.get("content")?.toString().trim() ?? "";
+
+  if (!content) {
+    throw new Error("Terms of service content cannot be empty");
+  }
+
+  const existingByLanguage = await getAppSetting<unknown>(
+    "termsOfServiceByLanguage"
+  );
+  const termsContentByLanguage: Record<string, string> = {};
+
+  if (
+    existingByLanguage &&
+    typeof existingByLanguage === "object" &&
+    !Array.isArray(existingByLanguage)
+  ) {
+    for (const [code, value] of Object.entries(
+      existingByLanguage as Record<string, unknown>
+    )) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        termsContentByLanguage[code] = value.trim();
+      }
+    }
+  }
+
+  termsContentByLanguage[language.code] = content;
+
+  await setAppSetting({
+    key: "termsOfServiceByLanguage",
+    value: termsContentByLanguage,
+  });
+
+  if (language.isDefault) {
+    await setAppSetting({ key: "termsOfService", value: content });
+  }
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "legal.terms.update",
+    target: { document: "termsOfService" },
+    metadata: { language: language.code },
+  });
+
+  revalidatePath("/terms-of-service");
+  revalidatePath("/admin/settings");
+
+  return {
+    success: true as const,
+    languageCode: language.code,
+  };
 }
 
 function parseInteger(value: FormDataEntryValue | null | undefined) {
@@ -493,6 +690,17 @@ function parseInteger(value: FormDataEntryValue | null | undefined) {
 export async function updateSuggestedPromptsAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
+
+  const requestedLanguageCode =
+    formData.get("languageCode")?.toString().trim().toLowerCase() ?? "";
+  const language =
+    requestedLanguageCode.length > 0
+      ? await getLanguageByCode(requestedLanguageCode)
+      : await getDefaultLanguage();
+
+  if (!language || !language.isActive) {
+    throw new Error("Selected language is not available");
+  }
 
   const promptsValue = formData.get("prompts")?.toString() ?? "";
   const prompts = promptsValue
@@ -504,12 +712,48 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
     throw new Error("At least one suggested prompt is required");
   }
 
-  await setAppSetting({ key: "suggestedPrompts", value: prompts });
+  const existingByLanguage = await getAppSetting<unknown>(
+    "suggestedPromptsByLanguage"
+  );
+  const promptsByLanguage: Record<string, string[]> = {};
+
+  if (
+    existingByLanguage &&
+    typeof existingByLanguage === "object" &&
+    !Array.isArray(existingByLanguage)
+  ) {
+    for (const [code, value] of Object.entries(
+      existingByLanguage as Record<string, unknown>
+    )) {
+      if (!Array.isArray(value)) {
+        continue;
+      }
+
+      const normalized = value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter((item) => item.length > 0);
+
+      if (normalized.length > 0) {
+        promptsByLanguage[code] = normalized;
+      }
+    }
+  }
+
+  promptsByLanguage[language.code] = prompts;
+
+  await setAppSetting({
+    key: "suggestedPromptsByLanguage",
+    value: promptsByLanguage,
+  });
+
+  if (language.isDefault) {
+    await setAppSetting({ key: "suggestedPrompts", value: prompts });
+  }
 
   await createAuditLogEntry({
     actorId: actor.id,
     action: "ui.suggested_prompts.update",
-    target: { feature: "suggestedPrompts" },
+    target: { feature: "suggestedPrompts", language: language.code },
     metadata: { count: prompts.length },
   });
 
@@ -517,7 +761,11 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
   revalidatePath("/chat");
   revalidatePath("/admin/settings");
 
-  redirect("/admin/settings?notice=suggested-prompts-updated");
+  return {
+    success: true as const,
+    languageCode: language.code,
+    count: prompts.length,
+  };
 }
 
 export async function createPricingPlanAction(formData: FormData) {

@@ -1,19 +1,15 @@
 "use client";
 
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { getProviders, signIn } from "next-auth/react";
+import { useTranslation } from "@/components/language-provider";
 
 type GoogleSignInSectionProps = {
   callbackUrl: string;
   mode: "login" | "register";
-};
-
-const LABELS: Record<GoogleSignInSectionProps["mode"], string> = {
-  login: "Continue with Google",
-  register: "Sign up with Google",
 };
 
 const GoogleIcon = (props: ComponentProps<"svg">) => (
@@ -48,6 +44,12 @@ export function GoogleSignInSection({
 }: GoogleSignInSectionProps) {
   const [isPending, setIsPending] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
+  const { translate } = useTranslation();
+  const buttonLabel = useMemo(() => {
+    return mode === "register"
+      ? translate("auth.continue_with_google.register", "Sign up with Google")
+      : translate("auth.continue_with_google.login", "Continue with Google");
+  }, [mode, translate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -102,7 +104,7 @@ export function GoogleSignInSection({
         ) : (
           <GoogleIcon className="h-4 w-4" />
         )}
-        <span>{LABELS[mode]}</span>
+        <span>{buttonLabel}</span>
       </Button>
     </div>
   );

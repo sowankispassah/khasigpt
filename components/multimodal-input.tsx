@@ -42,6 +42,7 @@ import {
 import { PreviewAttachment } from "./preview-attachment";
 import { Button } from "./ui/button";
 import type { VisibilityType } from "./visibility-selector";
+import { useTranslation } from "@/components/language-provider";
 
 function PureMultimodalInput({
   chatId,
@@ -77,6 +78,11 @@ function PureMultimodalInput({
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
+  const { translate } = useTranslation();
+  const inputPlaceholder = useMemo(
+    () => translate("chat.input.placeholder", "Send a message..."),
+    [translate]
+  );
 
   const fallbackModelId = useMemo(() => {
     if (!models.length) {
@@ -212,11 +218,24 @@ function PureMultimodalInput({
         };
       }
       const { error } = await response.json();
-      toast.error(error);
+      const fallbackError = translate(
+        "chat.upload.error_generic",
+        "Failed to upload file, please try again!"
+      );
+      const errorMessage =
+        typeof error === "string" && error.trim().length > 0
+          ? error
+          : fallbackError;
+      toast.error(errorMessage);
     } catch (_error) {
-      toast.error("Failed to upload file, please try again!");
+      toast.error(
+        translate(
+          "chat.upload.error_generic",
+          "Failed to upload file, please try again!"
+        )
+      );
     }
-  }, []);
+  }, [translate]);
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -260,7 +279,12 @@ function PureMultimodalInput({
         onSubmit={(event) => {
           event.preventDefault();
           if (status !== "ready" && status !== "error") {
-            toast.error("Please wait for the model to finish its response!");
+            toast.error(
+              translate(
+                "chat.input.wait_for_response",
+                "Please wait for the model to finish its response!"
+              )
+            );
           } else {
             submitForm();
           }
@@ -308,7 +332,7 @@ function PureMultimodalInput({
             maxHeight={200}
             minHeight={44}
             onChange={handleInput}
-            placeholder="Send a message..."
+            placeholder={inputPlaceholder}
             ref={textareaRef}
             rows={1}
             value={input}

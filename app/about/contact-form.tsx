@@ -2,6 +2,8 @@
 
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
 
+import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import { submitContactFormAction, type ContactFormState } from "./actions";
 
 const initialState: ContactFormState = { status: "idle" };
@@ -28,6 +30,7 @@ export function ContactForm() {
     FormData
   >(submitContactFormAction, initialState);
   const [values, setValues] = useState<FormValues>(emptyValues);
+  const { translate } = useTranslation();
 
   useEffect(() => {
     if (state.status === "success") {
@@ -53,13 +56,15 @@ export function ContactForm() {
     >
       <div className="grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Name</span>
+          <span className="text-sm font-medium">
+            {translate("contact.form.field.name", "Name")}
+          </span>
           <input
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             value={values.name}
             onChange={handleChange("name")}
             name="name"
-            placeholder="Your name"
+            placeholder={translate("contact.form.placeholder.name", "Your name")}
             required
             type="text"
           />
@@ -70,13 +75,15 @@ export function ContactForm() {
           ) : null}
         </label>
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Email</span>
+          <span className="text-sm font-medium">
+            {translate("contact.form.field.email", "Email")}
+          </span>
           <input
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             value={values.email}
             onChange={handleChange("email")}
             name="email"
-            placeholder="you@example.com"
+            placeholder={translate("contact.form.placeholder.email", "you@example.com")}
             required
             type="email"
           />
@@ -87,13 +94,15 @@ export function ContactForm() {
           ) : null}
         </label>
         <label className="flex flex-col gap-2 md:col-span-2">
-          <span className="text-sm font-medium">Phone (optional)</span>
+          <span className="text-sm font-medium">
+            {translate("contact.form.field.phone", "Phone (optional)")}
+          </span>
           <input
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             value={values.phone}
             onChange={handleChange("phone")}
             name="phone"
-            placeholder="+91 98765 43210"
+            placeholder={translate("contact.form.placeholder.phone", "+91 98765 43210")}
             type="tel"
           />
           {state.status === "error" && state.errors?.phone ? (
@@ -104,13 +113,15 @@ export function ContactForm() {
         </label>
       </div>
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium">Subject</span>
+        <span className="text-sm font-medium">
+          {translate("contact.form.field.subject", "Subject")}
+        </span>
         <input
           className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           value={values.subject}
           onChange={handleChange("subject")}
           name="subject"
-          placeholder="How can we help?"
+          placeholder={translate("contact.form.placeholder.subject", "How can we help?")}
           required
           type="text"
         />
@@ -121,13 +132,18 @@ export function ContactForm() {
         ) : null}
       </label>
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium">Message</span>
+        <span className="text-sm font-medium">
+          {translate("contact.form.field.message", "Message")}
+        </span>
         <textarea
           className="min-h-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           value={values.message}
           onChange={handleChange("message")}
           name="message"
-          placeholder="Share a few details about your request..."
+          placeholder={translate(
+            "contact.form.placeholder.message",
+            "Share a few details about your request..."
+          )}
           required
         />
         {state.status === "error" && state.errors?.message ? (
@@ -142,16 +158,39 @@ export function ContactForm() {
           disabled={isPending}
           type="submit"
         >
-          {isPending ? "Sending..." : "Send message"}
+          {isPending ? (
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 animate-spin">
+                <LoaderIcon size={16} />
+              </span>
+              <span>
+                {translate("contact.form.submit.sending", "Sending...")}
+              </span>
+            </span>
+          ) : (
+            translate("contact.form.submit.default", "Send message")
+          )}
         </button>
         <div
           aria-live="polite"
           className="min-h-[1rem] text-sm text-muted-foreground"
         >
           {state.status === "error" ? (
-            <span className="text-destructive">{state.message}</span>
+            <span className="text-destructive">
+              {state.message && state.message.trim().length > 0
+                ? state.message
+                : translate(
+                    "contact.form.submit.error_generic",
+                    "Please review the highlighted fields."
+                  )}
+            </span>
           ) : state.status === "success" ? (
-            <span className="text-emerald-500">{state.message}</span>
+            <span className="text-emerald-500">
+              {translate(
+                "contact.form.submit.success",
+                "Thanks! We'll reach out soon."
+              )}
+            </span>
           ) : null}
         </div>
       </div>

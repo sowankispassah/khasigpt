@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 import { SubmitButton } from "@/components/submit-button";
+import { useTranslation } from "@/components/language-provider";
 
 import { type LoginActionState, login } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -24,18 +25,16 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { callbackUrl, clearCallback } = useAuthCallback();
+  const { translate } = useTranslation();
   const [email, setEmail] = useState("");
-  const inactiveAccountMessage =
+  const hasInactiveParam =
     searchParams?.get("error") === "AccountInactive" ||
-    searchParams?.get("error_description") === "AccountInactive"
-      ? "This account is inactive due to not verified or previous deleted. Please contact support."
-      : null;
-  const [showEmailFields, setShowEmailFields] = useState(
-    inactiveAccountMessage !== null
-  );
+    searchParams?.get("error_description") === "AccountInactive";
+  const [showEmailFields, setShowEmailFields] = useState(hasInactiveParam);
   const [isSuccessful, setIsSuccessful] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(
-    inactiveAccountMessage
+  type LoginErrorKey = null | "invalid" | "invalid_data" | "inactive";
+  const [errorKey, setErrorKey] = useState<LoginErrorKey>(
+    hasInactiveParam ? "inactive" : null
   );
 
   const [state, formAction] = useActionState<LoginActionState, FormData>(
@@ -47,23 +46,39 @@ function LoginContent() {
 
   const { update: updateSession } = useSession();
 
+  const errorMessages = useMemo(
+    () => ({
+      invalid: translate(
+        "login.error.invalid_credentials",
+        "Invalid credentials. Please try again."
+      ),
+      invalid_data: translate(
+        "login.error.invalid_data",
+        "Your submission was invalid. Please check the form and retry."
+      ),
+      inactive: translate(
+        "login.error.inactive",
+        "This account is inactive due to not verified or previous deleted. Please contact support."
+      ),
+    }),
+    [translate]
+  );
+
+  const errorMessage = errorKey ? errorMessages[errorKey] : null;
+
   useEffect(() => {
     if (state.status === "failed") {
       setShowEmailFields(true);
-      setErrorMessage("Invalid credentials. Please try again.");
+      setErrorKey("invalid");
     } else if (state.status === "invalid_data") {
       setShowEmailFields(true);
-      setErrorMessage(
-        "Your submission was invalid. Please check the form and retry."
-      );
+      setErrorKey("invalid_data");
     } else if (state.status === "inactive") {
       setShowEmailFields(true);
-      setErrorMessage(
-        "This account is inactive due to not verified or previous deleted. Please contact support."
-      );
+      setErrorKey("inactive");
     } else if (state.status === "success") {
       setIsSuccessful(true);
-      setErrorMessage(null);
+      setErrorKey(null);
       void updateSession().finally(() => {
         clearCallback();
         router.replace(callbackUrl);
@@ -80,9 +95,7 @@ function LoginContent() {
       errorDescription === "AccountInactive"
     ) {
       setShowEmailFields(true);
-      setErrorMessage(
-        "This account is inactive due to not verified or previous deleted. Please contact support."
-      );
+      setErrorKey("inactive");
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         url.searchParams.delete("error");
@@ -110,8 +123,10 @@ function LoginContent() {
         <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
           <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
             <h3 className="text-muted-foreground text-sm">
-              KhasiGPT is your smart AI assistant designed to understand and speak
-              Khasi language.
+              {translate(
+                "auth.subtitle",
+                "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
+              )}
             </h3>
             <img
               alt="KhasiGPT logo"
@@ -119,7 +134,7 @@ function LoginContent() {
               src="/images/khasigptlogo.png"
             />
             <h3 className="font-semibold text-xl dark:text-zinc-50">
-              Sign In To KhasiGPT
+              {translate("login.title", "Sign In To KhasiGPT")}
             </h3>
             {errorMessage ? (
               <div
@@ -135,30 +150,37 @@ function LoginContent() {
             credentialsVisible={showEmailFields}
             defaultEmail={email}
             lead={<GoogleSignInSection callbackUrl={callbackUrl} mode="login" />}
+            emailButtonLabel={translate(
+              "login.continue_with_email",
+              "Continue with Email"
+            )}
             onShowCredentials={() => setShowEmailFields(true)}
           >
             <div className="flex flex-col gap-1.5">
-              <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
+              <SubmitButton isSuccessful={isSuccessful}>
+                {translate("login.cta", "Sign in")}
+              </SubmitButton>
               <div className="text-right text-sm">
                 <button
                   className="cursor-pointer text-muted-foreground underline-offset-4 hover:underline"
                   onClick={() => router.push("/forgot-password")}
                   type="button"
                 >
-                  Forgot password?
+                  {translate("login.forgot_password", "Forgot password?")}
                 </button>
               </div>
             </div>
           </AuthForm>
           <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
-            {"Don't have an account? "}
+            {translate("login.signup_prompt_prefix", "Don't have an account?")}{" "}
             <Link
               className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
               href="/register"
             >
-              Sign up
+              {translate("login.signup_prompt_link", "Sign up")}
             </Link>
-            {" for free."}
+            {" "}
+            {translate("login.signup_prompt_suffix", "for free.")}
           </p>
         </div>
       </div>

@@ -4,9 +4,11 @@ import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
+import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/components/language-provider";
 
 type PlanForClient = {
   id: string;
@@ -95,6 +97,7 @@ export function RechargePlans({
   const router = useRouter();
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusMessage>(null);
+  const { translate } = useTranslation();
 
   const sortedPlans = useMemo(() => {
     return [...plans].sort((a, b) => {
@@ -126,7 +129,11 @@ export function RechargePlans({
         if (!orderResponse.ok) {
           const errorBody = await orderResponse.json().catch(() => null);
           throw new Error(
-            errorBody?.message ?? "Failed to initialize payment."
+            errorBody?.message ??
+              translate(
+                "recharge.status.initialize_failed",
+                "Failed to initialize payment."
+              )
           );
         }
 
@@ -140,7 +147,12 @@ export function RechargePlans({
 
         const Razorpay = window.Razorpay;
         if (!Razorpay) {
-          throw new Error("Razorpay is not available.");
+          throw new Error(
+            translate(
+              "recharge.status.razorpay_unavailable",
+              "Razorpay is not available."
+            )
+          );
         }
 
         await new Promise<void>((resolve, reject) => {
@@ -149,7 +161,9 @@ export function RechargePlans({
             amount,
             currency,
             name: orderPlan?.name ?? plan.name,
-            description: orderPlan?.description ?? "Recharge credits",
+            description:
+              orderPlan?.description ??
+              translate("recharge.plan.checkout_description", "Recharge credits"),
             order_id: orderId,
             handler: async (response: RazorpaySuccessResponse) => {
               try {
@@ -171,14 +185,20 @@ export function RechargePlans({
                     .json()
                     .catch(() => null);
                   throw new Error(
-                    errorBody?.message ?? "Failed to confirm payment."
+                    errorBody?.message ??
+                      translate(
+                        "recharge.status.verify_failed",
+                        "Failed to confirm payment."
+                      )
                   );
                 }
 
                 setStatus({
                   type: "success",
-                  message:
-                    "Payment successful. Your credits have been updated.",
+                  message: translate(
+                    "recharge.status.success",
+                    "Payment successful. Your credits have been updated."
+                  ),
                 });
                 router.refresh();
                 resolve();
@@ -190,7 +210,7 @@ export function RechargePlans({
               ondismiss: () => {
                 setStatus({
                   type: "info",
-                  message: "Payment cancelled.",
+                  message: translate("recharge.status.cancelled", "Payment cancelled."),
                 });
                 resolve();
               },
@@ -210,7 +230,10 @@ export function RechargePlans({
               type: "error",
               message:
                 response?.error?.description ??
-                "Payment failed. Please try again or contact support.",
+                translate(
+                  "recharge.status.failure_generic",
+                  "Payment failed. Please try again or contact support."
+                ),
             });
             resolve();
           });
@@ -221,7 +244,10 @@ export function RechargePlans({
         const message =
           error instanceof Error
             ? error.message
-            : "Something went wrong while processing the payment.";
+            : translate(
+                "recharge.status.error_generic",
+                "Something went wrong while processing the payment."
+              );
         setStatus({ type: "error", message });
       } finally {
         setLoadingPlanId(null);
@@ -259,7 +285,7 @@ export function RechargePlans({
 
           const priceLabel =
             plan.priceInPaise === 0
-              ? "Free"
+              ? translate("recharge.plan.price.free", "Free")
               : `₹${(plan.priceInPaise / 100).toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
@@ -279,11 +305,11 @@ export function RechargePlans({
 
           const buttonLabel = effectiveIsActive
             ? isFreePlan
-            ? "Previously Recharged"
-            : "Recharge again"
+              ? translate("recharge.plan.pill.active", "Previously recharged")
+              : translate("recharge.plan.button.recharge_again", "Recharge again")
             : isFreePlan
-              ? "Free Plan"
-              : `Get ${plan.name}`;
+              ? translate("recharge.plan.button.free", "Free Plan")
+              : translate("recharge.plan.button.get", "Get {plan}").replace("{plan}", plan.name);
 
           const buttonVariant = isFreePlan ? "outline" : "default";
 
@@ -301,7 +327,7 @@ export function RechargePlans({
               {isRecommended ? (
                 <div className="-translate-x-1/2 absolute top-2.5 left-1/2 flex">
                   <span className="rounded-full bg-amber-500/15 px-2 py-[2px] font-semibold text-[11px] text-amber-600">
-                    Recommended
+                    {translate("recharge.plan.badge.recommended", "Recommended")}
                   </span>
                 </div>
               ) : null}
@@ -325,10 +351,23 @@ export function RechargePlans({
                   {plan.tokenAllowance > 0 || plan.billingCycleDays > 0 ? (
                     <div className="text-muted-foreground text-sm leading-6">
                       {plan.tokenAllowance > 0 ? (
-                        <p>{credits.toLocaleString()} credits</p>
+                        <p>
+                          {translate(
+                            "recharge.plan.credits",
+                            "{credits} credits"
+                          ).replace(
+                            "{credits}",
+                            credits.toLocaleString()
+                          )}
+                        </p>
                       ) : null}
                       {plan.billingCycleDays > 0 ? (
-                        <p>Validity: {plan.billingCycleDays} days</p>
+                        <p>
+                          {translate(
+                            "recharge.plan.validity",
+                            "Validity: {days} days"
+                          ).replace("{days}", String(plan.billingCycleDays))}
+                        </p>
                       ) : null}
                     </div>
                   ) : null}
@@ -356,7 +395,10 @@ export function RechargePlans({
                 <div className="mt-auto space-y-3 pt-6">
                   {effectiveIsActive ? (
                     <div className="rounded-md bg-primary/5 px-3 py-2 text-center font-medium text-primary text-xs">
-                      Previously recharged
+                      {translate(
+                        "recharge.plan.pill.active",
+                        "Previously recharged"
+                      )}
                     </div>
                   ) : null}
                   {isFreePlan ? (
@@ -376,7 +418,21 @@ export function RechargePlans({
                       type="button"
                       variant={buttonVariant}
                     >
-                      {isLoading ? "Processing..." : buttonLabel}
+                      {isLoading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="h-4 w-4 animate-spin">
+                            <LoaderIcon size={16} />
+                          </span>
+                          <span>
+                            {translate(
+                              "recharge.plan.button.processing",
+                              "Processing..."
+                            )}
+                          </span>
+                        </span>
+                      ) : (
+                        buttonLabel
+                      )}
                     </Button>
                   )}
                 </div>

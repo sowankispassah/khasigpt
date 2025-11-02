@@ -8,10 +8,13 @@ import { generateUUID } from "@/lib/utils";
 import { auth } from "../(auth)/auth";
 
 export default async function Page() {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+
   const [session, modelsResult, suggestedPrompts] = await Promise.all([
     auth(),
     loadChatModels(),
-    loadSuggestedPrompts(),
+    loadSuggestedPrompts(preferredLanguage),
   ]);
 
   const { defaultModel, models } = modelsResult;
@@ -22,7 +25,6 @@ export default async function Page() {
 
   const id = generateUUID();
 
-  const cookieStore = await cookies();
   const modelIdFromCookie = cookieStore.get("chat-model");
   const fallbackModelId =
     modelIdFromCookie?.value ??

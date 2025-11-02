@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationsForKeys } from "@/lib/i18n/dictionary";
+import { resolveLanguage } from "@/lib/i18n/languages";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -17,10 +18,41 @@ export default async function TermsOfServicePage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const stored = await getAppSetting<string>("termsOfService");
-  const content =
+  const storedByLanguage = await getAppSetting<Record<string, string>>(
+    "termsOfServiceByLanguage"
+  );
+  const englishContent =
     stored && stored.trim().length > 0
       ? stored.trim()
       : DEFAULT_TERMS_OF_SERVICE;
+  const { activeLanguage, languages } = await resolveLanguage(preferredLanguage);
+
+  const normalizedContentByLanguage: Record<string, string> = {};
+  if (
+    storedByLanguage &&
+    typeof storedByLanguage === "object" &&
+    !Array.isArray(storedByLanguage)
+  ) {
+    for (const [code, value] of Object.entries(storedByLanguage)) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        normalizedContentByLanguage[code] = value.trim();
+      }
+    }
+  }
+
+  const defaultLanguage =
+    languages.find((language) => language.isDefault) ?? languages[0] ?? null;
+  const defaultLanguageContent = defaultLanguage
+    ? normalizedContentByLanguage[defaultLanguage.code]
+    : undefined;
+  const localizedContent = normalizedContentByLanguage[activeLanguage.code];
+  const resolvedContent =
+    (localizedContent && localizedContent.trim().length > 0
+      ? localizedContent
+      : defaultLanguageContent && defaultLanguageContent.trim().length > 0
+        ? defaultLanguageContent
+        : englishContent) ?? englishContent;
+
   const translations = await getTranslationsForKeys(preferredLanguage, [
     {
       key: "navigation.back_to_home",
@@ -61,7 +93,7 @@ export default async function TermsOfServicePage() {
         </header>
 
         <section className="space-y-4 text-sm leading-7 text-muted-foreground md:text-base md:leading-8">
-          {renderLegalContent(content)}
+          {renderLegalContent(resolvedContent)}
         </section>
       </div>
     </>

@@ -3,6 +3,8 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useTransition } from "react";
 
+import { useTranslation } from "@/components/language-provider";
+
 type SessionUsagePaginationProps = {
   range: number;
   sessionsPage: number;
@@ -18,6 +20,7 @@ export function SessionUsagePagination({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const { translate } = useTranslation();
 
   const paramsSnapshot = useMemo(
     () => new URLSearchParams(searchParams.toString()),
@@ -58,7 +61,7 @@ export function SessionUsagePagination({
       {isPending ? (
         <span className="flex items-center gap-2 text-muted-foreground">
           <span className="h-3 w-3 animate-spin rounded-full border border-current border-r-transparent" />
-          Updating...
+          {translate("subscriptions.pagination.updating", "Updating...")}
         </span>
       ) : null}
 
@@ -69,11 +72,16 @@ export function SessionUsagePagination({
           onClick={() => navigateToPage(sessionsPage - 1)}
           type="button"
         >
-          View fewer sessions
+          {translate("subscriptions.pagination.prev", "View fewer sessions")}
         </button>
 
         <span className="text-muted-foreground text-xs">
-          Page {sessionsPage} of {totalPages}
+          {translate(
+            "subscriptions.pagination.page",
+            "Page {current} of {total}"
+          )
+            .replace("{current}", String(sessionsPage))
+            .replace("{total}", String(totalPages))}
         </span>
 
         {canGoForward ? (
@@ -83,11 +91,11 @@ export function SessionUsagePagination({
             onClick={() => navigateToPage(sessionsPage + 1)}
             type="button"
           >
-            View more sessions
+            {translate("subscriptions.pagination.next", "View more sessions")}
           </button>
         ) : (
           <span className="text-muted-foreground text-xs">
-            No more data
+            {translate("subscriptions.pagination.no_more", "No more data")}
           </span>
         )}
       </div>

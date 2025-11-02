@@ -13,10 +13,12 @@ import { useSWRConfig } from "swr";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LoaderIcon } from "@/components/icons";
 import {
   getAvatarColor,
   getInitials,
 } from "@/components/user-dropdown-menu";
+import { useTranslation } from "@/components/language-provider";
 
 const ACCEPTED_TYPES = [
   "image/png",
@@ -43,11 +45,15 @@ export function AvatarForm({
   const [preview, setPreview] = useState<string | null>(initialImage);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"upload" | "remove" | null>(
+    null
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error" | null>(
     null
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { translate } = useTranslation();
 
   const initials = useMemo(
     () => getInitials(userName, userEmail),
@@ -94,14 +100,24 @@ export function AvatarForm({
     if (!ACCEPTED_TYPES.includes(file.type as (typeof ACCEPTED_TYPES)[number])) {
       setSelectedFile(null);
       setMessageType("error");
-      setMessage("Please choose a PNG, JPG, or WEBP image.");
+      setMessage(
+        translate(
+          "profile.picture.error.file_type",
+          "Please choose a PNG, JPG, or WEBP image."
+        )
+      );
       return;
     }
 
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
       setSelectedFile(null);
       setMessageType("error");
-      setMessage("Images must be 2MB or smaller.");
+      setMessage(
+        translate(
+          "profile.picture.error.file_size",
+          "Images must be 2MB or smaller."
+        )
+      );
       return;
     }
 
@@ -122,11 +138,17 @@ export function AvatarForm({
 
     if (!selectedFile) {
       setMessageType("error");
-      setMessage("Choose an image before uploading.");
+      setMessage(
+        translate(
+          "profile.picture.error.choose_before_upload",
+          "Choose an image before uploading."
+        )
+      );
       return;
     }
 
     setIsSaving(true);
+    setPendingAction("upload");
     resetFeedback();
 
     const formData = new FormData();
@@ -144,7 +166,10 @@ export function AvatarForm({
         setMessage(
           body?.cause ??
             body?.message ??
-            "Failed to update profile image. Please try again."
+            translate(
+              "profile.picture.error.upload_generic",
+              "Failed to update profile image. Please try again."
+            )
         );
         return;
       }
@@ -158,7 +183,12 @@ export function AvatarForm({
       setSelectedFile(null);
       setPreview(body.image);
       setMessageType("success");
-      setMessage("Profile picture updated.");
+      setMessage(
+        translate(
+          "profile.picture.success.upload",
+          "Profile picture updated."
+        )
+      );
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
         currentVersion === undefined
@@ -177,14 +207,21 @@ export function AvatarForm({
     } catch (error) {
       console.error("Failed to upload profile image", error);
       setMessageType("error");
-      setMessage("Unexpected error while uploading image. Please try again.");
+      setMessage(
+        translate(
+          "profile.picture.error.unexpected",
+          "Unexpected error while uploading image. Please try again."
+        )
+      );
     } finally {
       setIsSaving(false);
+      setPendingAction(null);
     }
   };
 
   const handleRemove = async () => {
     setIsSaving(true);
+    setPendingAction("remove");
     resetFeedback();
 
     try {
@@ -198,7 +235,10 @@ export function AvatarForm({
         setMessage(
           body?.cause ??
             body?.message ??
-            "Failed to remove profile image. Please try again."
+            translate(
+              "profile.picture.error.remove_generic",
+              "Failed to remove profile image. Please try again."
+            )
         );
         return;
       }
@@ -213,7 +253,12 @@ export function AvatarForm({
       setSelectedFile(null);
       setPreview(null);
       setMessageType("success");
-      setMessage("Profile picture removed.");
+      setMessage(
+        translate(
+          "profile.picture.success.remove",
+          "Profile picture removed."
+        )
+      );
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
         currentVersion === undefined
@@ -228,9 +273,15 @@ export function AvatarForm({
     } catch (error) {
       console.error("Failed to remove profile image", error);
       setMessageType("error");
-      setMessage("Unexpected error while removing image. Please try again.");
+      setMessage(
+        translate(
+          "profile.picture.error.unexpected_remove",
+          "Unexpected error while removing image. Please try again."
+        )
+      );
     } finally {
       setIsSaving(false);
+      setPendingAction(null);
     }
   };
 
@@ -258,18 +309,24 @@ export function AvatarForm({
             type="file"
           />
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              onClick={handleChooseImage}
-              type="button"
-              variant="outline"
-            >
-              Choose image
+            <Button onClick={handleChooseImage} type="button" variant="outline">
+              {translate("profile.picture.choose", "Choose image")}
             </Button>
-            <Button
-              disabled={isSaving || !selectedFile}
-              type="submit"
-            >
-              {isSaving ? "Saving..." : selectedFile ? "Save changes" : "Upload"}
+            <Button disabled={isSaving || !selectedFile} type="submit">
+              {isSaving && pendingAction === "upload" ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin">
+                    <LoaderIcon size={16} />
+                  </span>
+                  <span>
+                    {translate("profile.picture.saving", "Saving...")}
+                  </span>
+                </span>
+              ) : selectedFile ? (
+                translate("profile.picture.save_changes", "Save changes")
+              ) : (
+                translate("profile.picture.upload", "Upload")
+              )}
             </Button>
             {showRemoveButton ? (
               <Button
@@ -278,12 +335,26 @@ export function AvatarForm({
                 type="button"
                 variant="ghost"
               >
-                Remove
+                {isSaving && pendingAction === "remove" ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin">
+                      <LoaderIcon size={16} />
+                    </span>
+                    <span>
+                      {translate("profile.picture.saving", "Saving...")}
+                    </span>
+                  </span>
+                ) : (
+                  translate("profile.picture.remove", "Remove")
+                )}
               </Button>
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            PNG, JPG, or WEBP up to 2 MB.
+            {translate(
+              "profile.picture.size_help",
+              "PNG, JPG, or WEBP up to 2 MB."
+            )}
           </p>
         </div>
       </div>

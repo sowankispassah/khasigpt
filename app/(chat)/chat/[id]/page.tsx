@@ -7,6 +7,7 @@ import { DataStreamHandler } from "@/components/data-stream-handler";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { getChatById, getMessagesByChatId } from "@/lib/db/queries";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
@@ -18,11 +19,16 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     notFound();
   }
 
-  const [session, modelsResult, suggestedPrompts] = await Promise.all([
-    auth(),
-    loadChatModels(),
-    loadSuggestedPrompts(),
-  ]);
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const [session, modelsResult, suggestedPrompts, translationBundle] =
+    await Promise.all([
+      auth(),
+      loadChatModels(),
+      loadSuggestedPrompts(preferredLanguage),
+      getTranslationBundle(preferredLanguage),
+    ]);
+  const { dictionary } = translationBundle;
 
   if (!session) {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
@@ -51,7 +57,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   const uiMessages = convertToUIMessages(messagesFromDb);
 
-  const cookieStore = await cookies();
   const chatModelFromCookie = cookieStore.get("chat-model");
   const fallbackModelId =
     chatModelFromCookie?.value ??
@@ -65,7 +70,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     return (
       <>
         {deletedBanner && (
-          <DeletedNotice />
+          <DeletedNotice dictionary={dictionary} />
         )}
         <Chat
           autoResume={true}
@@ -83,7 +88,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   return (
     <>
-      {deletedBanner && <DeletedNotice />}
+      {deletedBanner && <DeletedNotice dictionary={dictionary} />}
       <Chat
         autoResume={true}
         id={chat.id}
@@ -98,10 +103,11 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   );
 }
 
-function DeletedNotice() {
+function DeletedNotice({ dictionary }: { dictionary: Record<string, string> }) {
   return (
     <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-      This chat has been deleted. You are viewing it in read-only mode.
+      {dictionary["chat.deleted_notice"] ??
+        "This chat has been deleted. You are viewing it in read-only mode."}
     </div>
   );
 }

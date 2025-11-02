@@ -39,8 +39,8 @@ export async function createAuthenticatedContext({
   const password = generateId();
 
   await page.goto("http://localhost:3000/register");
-  await page.getByPlaceholder("user@acme.com").click();
-  await page.getByPlaceholder("user@acme.com").fill(email);
+  await page.getByPlaceholder("Your Email Address").click();
+  await page.getByPlaceholder("Your Email Address").fill(email);
   await page.getByLabel("Password").click();
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign Up" }).click();

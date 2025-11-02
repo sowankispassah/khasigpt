@@ -16,15 +16,18 @@ import {
   GlobeIcon,
   LockIcon,
 } from "./icons";
+import { useTranslation } from "@/components/language-provider";
 
 export type VisibilityType = "private" | "public";
 
-const visibilities: Array<{
+type VisibilityConfig = {
   id: VisibilityType;
   label: string;
   description: string;
   icon: ReactNode;
-}> = [
+};
+
+const BASE_VISIBILITY_CONFIGS: VisibilityConfig[] = [
   {
     id: "private",
     label: "Private",
@@ -48,15 +51,40 @@ export function VisibilitySelector({
   selectedVisibilityType: VisibilityType;
 } & React.ComponentProps<typeof Button>) {
   const [open, setOpen] = useState(false);
+  const { translate } = useTranslation();
 
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId,
     initialVisibilityType: selectedVisibilityType,
   });
 
+  const visibilities = useMemo(() => {
+    return BASE_VISIBILITY_CONFIGS.map((config) => {
+      if (config.id === "private") {
+        return {
+          ...config,
+          label: translate("visibility.private.label", config.label),
+          description: translate(
+            "visibility.private.description",
+            config.description
+          ),
+        };
+      }
+
+      return {
+        ...config,
+        label: translate("visibility.public.label", config.label),
+        description: translate(
+          "visibility.public.description",
+          config.description
+        ),
+      };
+    });
+  }, [translate]);
+
   const selectedVisibility = useMemo(
     () => visibilities.find((visibility) => visibility.id === visibilityType),
-    [visibilityType]
+    [visibilities, visibilityType]
   );
 
   return (

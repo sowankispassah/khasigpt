@@ -17,6 +17,8 @@ import {
   type DeactivateAccountState,
   deactivateAccountAction,
 } from "./actions";
+import { useTranslation } from "@/components/language-provider";
+import { LoaderIcon } from "@/components/icons";
 
 const initialState: DeactivateAccountState = { status: "idle" };
 
@@ -27,6 +29,7 @@ export function DeactivateAccountForm() {
     DeactivateAccountState,
     FormData
   >(deactivateAccountAction, initialState);
+  const { translate } = useTranslation();
 
   return (
     <form
@@ -36,11 +39,13 @@ export function DeactivateAccountForm() {
     >
       <div className="space-y-1">
         <h2 className="font-semibold text-destructive text-lg">
-          Deactivate account
+          {translate("profile.deactivate.title", "Deactivate account")}
         </h2>
         <p className="text-muted-foreground text-sm">
-          This process cannot be undone. You can ontact support for any further
-          assistance.
+          {translate(
+            "profile.deactivate.description",
+            "This process cannot be undone. You can contact support for any further assistance."
+          )}
         </p>
       </div>
 
@@ -58,32 +63,53 @@ export function DeactivateAccountForm() {
             onClick={() => setOpen(true)}
             type="button"
           >
-            Deactivate account
+            {translate("profile.deactivate.button", "Deactivate account")}
           </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete account?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete your account?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
-              disabled={isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                setOpen(false);
-                formRef.current?.requestSubmit();
-              }}
-            >
-              {isPending ? "Deactivating..." : "Deactivate"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {translate("profile.deactivate.confirm_title", "Are you sure?")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {translate(
+                  "profile.deactivate.confirm_description",
+                  "Your account will be disabled and you will be signed out."
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isPending}>
+                {translate("profile.deactivate.confirm_cancel", "Cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
+                disabled={isPending}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setOpen(false);
+                  formRef.current?.requestSubmit();
+                }}
+              >
+                {isPending ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin">
+                      <LoaderIcon size={16} />
+                    </span>
+                    <span>
+                      {translate(
+                        "profile.deactivate.confirm_action_pending",
+                        "Deactivating..."
+                      )}
+                    </span>
+                  </span>
+                ) : (
+                  translate("profile.deactivate.confirm_action", "Deactivate")
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
     </form>
   );
 }

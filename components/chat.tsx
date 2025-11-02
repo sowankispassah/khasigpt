@@ -24,6 +24,7 @@ import type { Vote } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { useTranslation } from "@/components/language-provider";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -52,6 +53,7 @@ export function Chat({
     chatId: id,
     initialVisibilityType,
   });
+  const { translate } = useTranslation();
 
   const { mutate } = useSWRConfig();
   const { setDataStream } = useDataStream();
@@ -238,10 +240,15 @@ export function Chat({
               stop={stop}
             />
               <p className="px-2 text-center text-muted-foreground text-xs">
-                KhasiGPT or other AI Models can make mistakes. Check important
-                details.{" "}
+                {translate(
+                  "chat.disclaimer.text",
+                  "KhasiGPT or other AI Models can make mistakes. Check important details."
+                )}{" "}
                 <Link className="underline" href="/privacy-policy">
-                  See privacy policy.
+                  {translate(
+                    "chat.disclaimer.privacy_link",
+                    "See privacy policy."
+                  )}
                 </Link>
               </p>
             </div>
@@ -255,21 +262,33 @@ export function Chat({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Credit top-up required</AlertDialogTitle>
+            <AlertDialogTitle>
+              {translate(
+                "chat.recharge.alert.title",
+                "Credit top-up required"
+              )}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              You've used all of your free daily messages. Top up credits to
-              keep chatting without interruptions.
+              {translate(
+                "chat.recharge.alert.description",
+                "You've used all of your free daily messages. Top up credits to keep chatting without interruptions."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogCancel>
+              {translate("common.close", "Close")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setShowRechargeDialog(false);
                 router.push("/recharge");
               }}
             >
-              Go to recharge
+              {translate(
+                "chat.recharge.alert.confirm",
+                "Go to recharge"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -281,15 +300,28 @@ export function Chat({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Activate AI Gateway</AlertDialogTitle>
+            <AlertDialogTitle>
+              {translate("chat.gateway.alert.title", "Activate AI Gateway")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This application requires{" "}
-              {process.env.NODE_ENV === "production" ? "the owner" : "you"} to
-              activate Vercel AI Gateway.
+              {translate(
+                "chat.gateway.alert.description",
+                "This application requires {subject} to activate Vercel AI Gateway."
+              ).replace(
+                "{subject}",
+                process.env.NODE_ENV === "production"
+                  ? translate(
+                      "chat.gateway.alert.subject.owner",
+                      "the owner"
+                    )
+                  : translate("chat.gateway.alert.subject.you", "you")
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {translate("common.cancel", "Cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 window.open(
@@ -299,7 +331,7 @@ export function Chat({
                 window.location.href = "/";
               }}
             >
-              Activate
+              {translate("chat.gateway.alert.confirm", "Activate")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
