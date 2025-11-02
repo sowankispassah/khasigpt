@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
@@ -24,6 +24,9 @@ import {
   updatePricingPlan,
   deletePricingPlan,
   hardDeletePricingPlan,
+  createLanguageEntry,
+  getLanguageByIdRaw,
+  updateLanguageActiveState,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
@@ -681,6 +684,101 @@ export async function updateTermsOfServiceByLanguageAction(
     success: true as const,
     languageCode: language.code,
   };
+}
+
+export async function createLanguageAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const isActive = parseBoolean(formData.get("isActive") ?? "on");
+
+  const normalizedCode = code.toLowerCase();
+
+  if (!normalizedCode || !name) {
+    redirect("/admin/settings?notice=language-create-error");
+  }
+
+  if (!/^[a-z0-9-]{2,16}$/.test(normalizedCode)) {
+    redirect("/admin/settings?notice=language-code-invalid");
+  }
+
+  try {
+    await createLanguageEntry({
+      code: normalizedCode,
+      name,
+      isDefault: false,
+      isActive,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("already exists")) {
+      redirect("/admin/settings?notice=language-create-duplicate");
+    }
+    console.error("Failed to create language", error);
+    redirect("/admin/settings?notice=language-create-error");
+  }
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "translation.language.create",
+    target: { languageCode: normalizedCode },
+    metadata: { name, isActive },
+  });
+
+  revalidateTag("languages");
+  revalidatePath("/", "layout");
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/translations");
+
+  redirect("/admin/settings?notice=language-created");
+}
+
+export async function updateLanguageStatusAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const intent = formData.get("intent")?.toString().trim();
+
+  if (!languageId || !intent) {
+    redirect("/admin/settings?notice=language-update-error");
+  }
+
+  const targetLanguage = await getLanguageByIdRaw(languageId);
+
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=language-update-error");
+  }
+
+  const shouldActivate = intent === "activate";
+  if (intent !== "activate" && intent !== "deactivate") {
+    redirect("/admin/settings?notice=language-update-error");
+  }
+
+  if (targetLanguage.isDefault && !shouldActivate) {
+    redirect("/admin/settings?notice=language-default-inactive");
+  }
+
+  if (targetLanguage.isActive === shouldActivate) {
+    redirect("/admin/settings?notice=language-updated");
+  }
+
+  await updateLanguageActiveState({ id: targetLanguage.id, isActive: shouldActivate });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "translation.language.toggle",
+    target: { languageCode: targetLanguage.code },
+    metadata: { isActive: shouldActivate },
+  });
+
+  revalidateTag("languages");
+  revalidatePath("/", "layout");
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/translations");
+
+  redirect("/admin/settings?notice=language-updated");
 }
 
 function parseInteger(value: FormDataEntryValue | null | undefined) {

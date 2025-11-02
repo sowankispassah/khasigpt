@@ -3216,4 +3216,87 @@ export async function deleteTranslationValueEntry({
     );
 }
 
+export async function createLanguageEntry({
+  code,
+  name,
+  isDefault = false,
+  isActive = true,
+}: {
+  code: string;
+  name: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+}): Promise<Language> {
+  const normalizedCode = code.trim().toLowerCase();
+  const normalizedName = name.trim();
+
+  if (!normalizedCode) {
+    throw new Error("Language code is required");
+  }
+
+  if (!/^[a-z0-9-]{2,16}$/.test(normalizedCode)) {
+    throw new Error("Language code must be 2-16 characters and use lowercase letters, numbers, or hyphens.");
+  }
+
+  if (!normalizedName) {
+    throw new Error("Language name is required");
+  }
+
+  if (normalizedName.length > 64) {
+    throw new Error("Language name must be 1-64 characters.");
+  }
+
+  const [existing] = await db
+    .select({ id: language.id })
+    .from(language)
+    .where(eq(language.code, normalizedCode))
+    .limit(1);
+
+  if (existing) {
+    throw new Error("Language code already exists");
+  }
+
+  if (isDefault) {
+    await db.update(language).set({ isDefault: false });
+  }
+
+  const [inserted] = await db
+    .insert(language)
+    .values({
+      code: normalizedCode,
+      name: normalizedName,
+      isDefault,
+      isActive,
+    })
+    .returning();
+
+  return inserted;
+}
+
+export async function getLanguageByIdRaw(id: string): Promise<Language | null> {
+  const [row] = await db
+    .select()
+    .from(language)
+    .where(eq(language.id, id))
+    .limit(1);
+
+  return row ?? null;
+}
+
+export async function updateLanguageActiveState({
+  id,
+  isActive,
+}: {
+  id: string;
+  isActive: boolean;
+}) {
+  await db
+    .update(language)
+    .set({
+      isActive,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(language.id, id));
+}
+
 

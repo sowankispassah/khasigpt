@@ -34,7 +34,7 @@ export function PageUserMenu({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "fixed right-4 top-2 z-40 flex items-center gap-2",
+        "fixed right-2 top-1.5 z-40 flex items-center",
         className
       )}
     >

@@ -19,6 +19,8 @@ import {
   updateSuggestedPromptsAction,
   updatePrivacyPolicyByLanguageAction,
   updateTermsOfServiceByLanguageAction,
+  createLanguageAction,
+  updateLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminSettingsNotice } from "./notice";
@@ -262,6 +264,132 @@ export default async function AdminSettingsPage({
       <AdminSettingsNotice notice={notice} />
 
       <div className="flex flex-col gap-10">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Languages</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Add new languages or toggle their availability. Default language must stay active.
+          </p>
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
+            <form
+              action={createLanguageAction}
+              className="flex flex-col gap-4 rounded-lg border bg-background p-4"
+            >
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium" htmlFor="language-code">
+                  Language code
+                </label>
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  id="language-code"
+                  name="code"
+                  pattern="[a-z0-9-]{2,16}"
+                  placeholder="fr"
+                  required
+                  title="Use 2-16 lowercase letters, numbers, or hyphens."
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium" htmlFor="language-name">
+                  Language name
+                </label>
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  id="language-name"
+                  name="name"
+                  placeholder="French"
+                  required
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  className="h-4 w-4"
+                  defaultChecked
+                  name="isActive"
+                  type="checkbox"
+                />
+                Active immediately
+              </label>
+              <ActionSubmitButton pendingLabel="Adding..." type="submit">
+                Add language
+              </ActionSubmitButton>
+            </form>
+            <div className="overflow-x-auto rounded-lg border bg-background">
+              <table className="w-full min-w-[480px] border-collapse text-sm">
+                <thead className="border-b bg-muted/40 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Language</th>
+                    <th className="px-4 py-3 text-left">Code</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {languages.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-3 text-muted-foreground text-sm" colSpan={4}>
+                        No languages configured yet.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {languages.map((language) => {
+                    const statusBadge = language.isActive
+                      ? "text-emerald-600 bg-emerald-500/10"
+                      : "text-muted-foreground bg-muted/60";
+
+                    return (
+                      <tr key={language.id} className="align-middle">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium">{language.name}</span>
+                            {language.isDefault ? (
+                              <span className="inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
+                                Default
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{language.code}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge}`}
+                          >
+                            {language.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {language.isDefault ? (
+                            <span className="text-muted-foreground text-xs">
+                              Default language
+                            </span>
+                          ) : (
+                            <form
+                              action={updateLanguageStatusAction}
+                              className="inline-flex items-center justify-end"
+                            >
+                              <input name="languageId" type="hidden" value={language.id} />
+                              <input
+                                name="intent"
+                                type="hidden"
+                                value={language.isActive ? "deactivate" : "activate"}
+                              />
+                              <ActionSubmitButton
+                                pendingLabel={language.isActive ? "Disabling..." : "Enabling..."}
+                                size="sm"
+                                variant="outline"
+                              >
+                                {language.isActive ? "Deactivate" : "Activate"}
+                              </ActionSubmitButton>
+                            </form>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Suggested prompts</h2>
           <p className="text-muted-foreground mt-1 text-sm">

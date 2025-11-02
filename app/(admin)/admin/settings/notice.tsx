@@ -23,6 +23,13 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "terms-updated": { type: "success", message: "Terms of service updated." },
   "about-updated": { type: "success", message: "About page content updated." },
   "suggested-prompts-updated": { type: "success", message: "Suggested prompts updated." },
+  "language-created": { type: "success", message: "Language added successfully." },
+  "language-create-error": { type: "error", message: "Failed to add language. Please try again." },
+  "language-create-duplicate": { type: "error", message: "Language code already exists. Choose a different code." },
+  "language-code-invalid": { type: "error", message: "Language code must be 2-16 characters using lowercase letters, numbers, or hyphens." },
+  "language-updated": { type: "success", message: "Language status updated." },
+  "language-update-error": { type: "error", message: "Failed to update language status. Please try again." },
+  "language-default-inactive": { type: "error", message: "The default language cannot be deactivated." },
 };
 
 export function AdminSettingsNotice({ notice }: { notice?: string }) {

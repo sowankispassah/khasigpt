@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { unstable_cache } from "next/cache";
 
 import { asc, eq } from "drizzle-orm";
 
@@ -21,36 +21,60 @@ const serializeLanguage = (entry: typeof language.$inferSelect): LanguageOption 
   isActive: entry.isActive,
 });
 
-export const getAllLanguages = cache(async (): Promise<LanguageOption[]> => {
-  const rows = await db
-    .select()
-    .from(language)
-    .orderBy(asc(language.name));
+const getAllLanguagesCached = unstable_cache(
+  async (): Promise<LanguageOption[]> => {
+    const rows = await db
+      .select()
+      .from(language)
+      .orderBy(asc(language.name));
 
-  return rows.map(serializeLanguage);
-});
+    return rows.map(serializeLanguage);
+  },
+  ["languages:all"],
+  { tags: ["languages"] }
+);
 
-export const getActiveLanguages = cache(async (): Promise<LanguageOption[]> => {
-  const rows = await db
-    .select()
-    .from(language)
-    .where(eq(language.isActive, true))
-    .orderBy(asc(language.name));
+export const getAllLanguages = async (): Promise<LanguageOption[]> => {
+  return getAllLanguagesCached();
+};
 
-  return rows.map(serializeLanguage);
-});
+const getActiveLanguagesCached = unstable_cache(
+  async (): Promise<LanguageOption[]> => {
+    const rows = await db
+      .select()
+      .from(language)
+      .where(eq(language.isActive, true))
+      .orderBy(asc(language.name));
 
-export const getLanguageByCode = cache(async (code: string) => {
-  const [row] = await db
-    .select()
-    .from(language)
-    .where(eq(language.code, code))
-    .limit(1);
+    return rows.map(serializeLanguage);
+  },
+  ["languages:active"],
+  { tags: ["languages"] }
+);
 
-  return row ? serializeLanguage(row) : null;
-});
+export const getActiveLanguages = async (): Promise<LanguageOption[]> => {
+  return getActiveLanguagesCached();
+};
 
-export const getDefaultLanguage = cache(async () => {
+const getLanguageByCodeCached = unstable_cache(
+  async (code: string) => {
+    const [row] = await db
+      .select()
+      .from(language)
+      .where(eq(language.code, code))
+      .limit(1);
+
+    return row ? serializeLanguage(row) : null;
+  },
+  ["languages:by-code"],
+  { tags: ["languages"] }
+);
+
+export const getLanguageByCode = async (code: string) => {
+  return getLanguageByCodeCached(code);
+};
+
+export const getDefaultLanguage = async () => {
   const active = await getActiveLanguages();
   const activeDefault = active.find((entry) => entry.isDefault);
   if (activeDefault) {
@@ -61,9 +85,14 @@ export const getDefaultLanguage = cache(async () => {
     return active[0]!;
   }
 
-  const all = await getAllLanguages();
+  const rows = await db
+    .select()
+    .from(language)
+    .orderBy(asc(language.name));
+
+  const all = rows.map(serializeLanguage);
   return all[0] ?? null;
-});
+};
 
 export async function resolveLanguage(preferredCode?: string | null) {
   const [languages, preferred] = await Promise.all([
