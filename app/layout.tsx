@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { cookies } from "next/headers";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -203,6 +204,7 @@ export default async function RootLayout({
               {children}
             </SessionProvider>
             <Toaster position="top-center" />
+            <SpeedInsights />
           </LanguageProvider>
         </ThemeProvider>
       </body>
