@@ -255,13 +255,15 @@ function mapModelPricingRows(configs: ModelConfig[], usdToInr: number): ModelPri
 export default async function AdminAccountPage({
   searchParams,
 }: {
-  searchParams?: SearchParams;
+  searchParams?: Promise<SearchParams>;
 }) {
-  const from = parseDate(searchParams?.from);
-  const to = parseDate(searchParams?.to);
-  const page = Math.max(1, Number.parseInt(searchParams?.page ?? "1", 10));
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+
+  const from = parseDate(resolvedSearchParams?.from);
+  const to = parseDate(resolvedSearchParams?.to);
+  const page = Math.max(1, Number.parseInt(resolvedSearchParams?.page ?? "1", 10));
   const pageSize = Math.min(
-    Math.max(1, Number.parseInt(searchParams?.pageSize ?? String(DEFAULT_PAGE_SIZE), 10)),
+    Math.max(1, Number.parseInt(resolvedSearchParams?.pageSize ?? String(DEFAULT_PAGE_SIZE), 10)),
     MAX_PAGE_SIZE
   );
 
@@ -493,20 +495,20 @@ export default async function AdminAccountPage({
             Page {page} of {totalPages}
           </span>
           <div className="flex items-center gap-2">
-            <PaginationLink
-              direction="prev"
-              disabled={page <= 1}
-              label="Previous"
-              page={page - 1}
-              searchParams={searchParams}
-            />
-            <PaginationLink
-              direction="next"
-              disabled={page >= totalPages}
-              label="Next"
-              page={page + 1}
-              searchParams={searchParams}
-            />
+          <PaginationLink
+            direction="prev"
+            disabled={page <= 1}
+            label="Previous"
+            page={page - 1}
+            searchParams={resolvedSearchParams}
+          />
+          <PaginationLink
+            direction="next"
+            disabled={page >= totalPages}
+            label="Next"
+            page={page + 1}
+            searchParams={resolvedSearchParams}
+          />
           </div>
         </div>
       </section>
@@ -573,20 +575,20 @@ export default async function AdminAccountPage({
             Page {page} of {rechargeTotalPages}
           </span>
           <div className="flex items-center gap-2">
-            <PaginationLink
-              direction="prev"
-              disabled={page <= 1}
-              label="Previous"
-              page={page - 1}
-              searchParams={searchParams}
-            />
-            <PaginationLink
-              direction="next"
-              disabled={page >= rechargeTotalPages}
-              label="Next"
-              page={page + 1}
-              searchParams={searchParams}
-            />
+          <PaginationLink
+            direction="prev"
+            disabled={page <= 1}
+            label="Previous"
+            page={page - 1}
+            searchParams={resolvedSearchParams}
+          />
+          <PaginationLink
+            direction="next"
+            disabled={page >= rechargeTotalPages}
+            label="Next"
+            page={page + 1}
+            searchParams={resolvedSearchParams}
+          />
           </div>
         </div>
       </section>
