@@ -39,6 +39,8 @@ export const loadChatModels = cache(async () => {
       codeTemplate: null,
       inputCostPerMillion: 0,
       outputCostPerMillion: 0,
+      inputProviderCostPerMillion: 0,
+      outputProviderCostPerMillion: 0,
     };
 
     return {

@@ -79,6 +79,8 @@ export type ModelSummary = {
   codeTemplate: string | null;
   inputCostPerMillion: number;
   outputCostPerMillion: number;
+  inputProviderCostPerMillion: number;
+  outputProviderCostPerMillion: number;
 };
 
 export function mapToModelSummary(config: ModelConfig): ModelSummary {
@@ -95,5 +97,11 @@ export function mapToModelSummary(config: ModelConfig): ModelSummary {
     codeTemplate: config.codeTemplate ?? null,
     inputCostPerMillion: Number(config.inputCostPerMillion ?? 0),
     outputCostPerMillion: Number(config.outputCostPerMillion ?? 0),
+    inputProviderCostPerMillion: Number(
+      config.inputProviderCostPerMillion ?? 0
+    ),
+    outputProviderCostPerMillion: Number(
+      config.outputProviderCostPerMillion ?? 0
+    ),
   };
 }

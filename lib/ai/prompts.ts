@@ -1,23 +1,12 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/artifact";
 
-export const regularPrompt =
-  "You are a concise, reliable assistant. Prefer short, direct answers.";
-
 export type RequestHints = {
   latitude: Geo["latitude"];
   longitude: Geo["longitude"];
   city: Geo["city"];
   country: Geo["country"];
 };
-
-export const getRequestPromptFromHints = (requestHints: RequestHints) => `\
-About the origin of user's request:
-- lat: ${requestHints.latitude}
-- lon: ${requestHints.longitude}
-- city: ${requestHints.city}
-- country: ${requestHints.country}
-`;
 
 export const systemPrompt = ({
   selectedChatModel,
@@ -27,15 +16,9 @@ export const systemPrompt = ({
   selectedChatModel: string;
   requestHints: RequestHints;
   modelSystemPrompt: string | null;
-}) => {
-  const requestPrompt = getRequestPromptFromHints(requestHints);
-  const basePrompt = modelSystemPrompt?.trim() ?? regularPrompt;
-
-  if (selectedChatModel === "chat-model-reasoning") {
-    return `${basePrompt}\n\n${requestPrompt}`;
-  }
-
-  return `${basePrompt}\n\n${requestPrompt}`;
+}): string | null => {
+  const trimmedPrompt = modelSystemPrompt?.trim();
+  return trimmedPrompt && trimmedPrompt.length > 0 ? trimmedPrompt : null;
 };
 
 export const codePrompt = `

@@ -112,6 +112,12 @@ export const modelConfig = pgTable("ModelConfig", {
   outputCostPerMillion: doublePrecision("outputCostPerMillion")
     .notNull()
     .default(0),
+  inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
+    .notNull()
+    .default(0),
+  outputProviderCostPerMillion: doublePrecision("outputProviderCostPerMillion")
+    .notNull()
+    .default(0),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   deletedAt: timestamp("deletedAt"),

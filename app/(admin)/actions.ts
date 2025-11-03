@@ -201,6 +201,12 @@ export async function createModelConfigAction(formData: FormData) {
   const outputCostPerMillion = parseNumber(
     formData.get("outputCostPerMillion")
   );
+  const inputProviderCostPerMillion = parseNumber(
+    formData.get("inputProviderCostPerMillion")
+  );
+  const outputProviderCostPerMillion = parseNumber(
+    formData.get("outputProviderCostPerMillion")
+  );
 
   const existingConfig = await getModelConfigByKey({
     key,
@@ -232,6 +238,8 @@ export async function createModelConfigAction(formData: FormData) {
       isDefault,
       inputCostPerMillion,
       outputCostPerMillion,
+      inputProviderCostPerMillion,
+      outputProviderCostPerMillion,
     });
   } catch (error) {
     console.error("Failed to create model configuration", error);
@@ -276,6 +284,8 @@ export async function updateModelConfigAction(formData: FormData) {
     isDefault?: boolean;
     inputCostPerMillion?: number;
     outputCostPerMillion?: number;
+    inputProviderCostPerMillion?: number;
+    outputProviderCostPerMillion?: number;
   } = {};
 
   const provider = formData.get("provider");
@@ -336,6 +346,18 @@ export async function updateModelConfigAction(formData: FormData) {
   if (formData.has("outputCostPerMillion")) {
     patch.outputCostPerMillion = parseNumber(
       formData.get("outputCostPerMillion")
+    );
+  }
+
+  if (formData.has("inputProviderCostPerMillion")) {
+    patch.inputProviderCostPerMillion = parseNumber(
+      formData.get("inputProviderCostPerMillion")
+    );
+  }
+
+  if (formData.has("outputProviderCostPerMillion")) {
+    patch.outputProviderCostPerMillion = parseNumber(
+      formData.get("outputProviderCostPerMillion")
     );
   }
 

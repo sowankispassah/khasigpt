@@ -229,7 +229,7 @@ export async function POST(request: Request) {
       execute: ({ writer: dataStream }) => {
         const result = streamText({
           model: languageModel,
-          system: systemInstruction,
+          ...(systemInstruction ? { system: systemInstruction } : {}),
           messages: convertToModelMessages(uiMessages),
           experimental_transform: smoothStream({ chunking: "word" }),
           experimental_telemetry: {

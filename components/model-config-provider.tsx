@@ -20,6 +20,8 @@ type ModelSummary = {
   codeTemplate: string | null;
   inputCostPerMillion: number;
   outputCostPerMillion: number;
+  inputProviderCostPerMillion: number;
+  outputProviderCostPerMillion: number;
 };
 
 type ModelConfigContextValue = {

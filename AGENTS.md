@@ -9,4 +9,7 @@
 - This ensures users can instantly recognize interactive elements.  
 
 ## 3. Visual Feedback on Actions
-- When a user clicks any **button**, especially those that trigger updates, submissions, the interface must display a **loading indicator** (spinner, progress bar, or animation) without needing to refresh the page at all. 
+- When a user clicks any **button**, especially those that trigger updates, submissions, the interface must display a **loading indicator** (spinner, progress bar, or animation) without needing to refresh the page at all.  
+
+## 4. Direct SQL Query for Manual Data Insertion
+- When new data is created in the database, provide a **SQL query** to add to db instead of asking to run `npm exec tsx lib/db/migrate.ts`.  

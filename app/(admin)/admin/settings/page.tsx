@@ -1133,6 +1133,39 @@ export default async function AdminSettingsPage({
               />
             </div>
 
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="inputProviderCostPerMillion">
+                Provider input cost (USD / 1M tokens)
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={0}
+                id="inputProviderCostPerMillion"
+                min={0}
+                name="inputProviderCostPerMillion"
+                step="0.000001"
+                type="number"
+              />
+              <p className="text-muted-foreground text-xs">
+                Private reference so you can compare user pricing versus your provider costs.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="outputProviderCostPerMillion">
+                Provider output cost (USD / 1M tokens)
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={0}
+                id="outputProviderCostPerMillion"
+                min={0}
+                name="outputProviderCostPerMillion"
+                step="0.000001"
+                type="number"
+              />
+            </div>
+
             <div className="md:col-span-2 flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="description">
                 Description
@@ -1250,8 +1283,35 @@ export default async function AdminSettingsPage({
                 No models configured yet.
               </p>
             ) : (
-              activeModels.map((model) => (
-                <details key={model.id} className="rounded-md border bg-background p-4">
+              activeModels.map((model) => {
+                const chargeInputRate = Number(model.inputCostPerMillion ?? 0);
+                const chargeOutputRate = Number(model.outputCostPerMillion ?? 0);
+                const providerInputRate = Number(
+                  model.inputProviderCostPerMillion ?? 0
+                );
+                const providerOutputRate = Number(
+                  model.outputProviderCostPerMillion ?? 0
+                );
+                const totalChargeRate = chargeInputRate + chargeOutputRate;
+                const totalProviderRate =
+                  providerInputRate + providerOutputRate;
+                const marginPerMillion = totalChargeRate - totalProviderRate;
+                const marginPerCredit =
+                  (marginPerMillion / 1_000_000) * TOKENS_PER_CREDIT;
+                const marginPercentage =
+                  totalChargeRate > 0
+                    ? (marginPerMillion / totalChargeRate) * 100
+                    : 0;
+                const formatUsd = (value: number) =>
+                  value.toLocaleString("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                    minimumFractionDigits: value >= 1 ? 2 : 4,
+                    maximumFractionDigits: 6,
+                  });
+
+                return (
+                  <details key={model.id} className="rounded-md border bg-background p-4">
                   <summary className="flex flex-col gap-1 cursor-pointer">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{model.displayName}</span>
@@ -1335,6 +1395,96 @@ export default async function AdminSettingsPage({
                           step="0.000001"
                           type="number"
                         />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium">
+                          Provider input cost (USD / 1M tokens)
+                        </label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          defaultValue={model.inputProviderCostPerMillion ?? 0}
+                          min={0}
+                          name="inputProviderCostPerMillion"
+                          step="0.000001"
+                          type="number"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium">
+                          Provider output cost (USD / 1M tokens)
+                        </label>
+                        <input
+                          className="rounded-md border bg-background px-3 py-2 text-sm"
+                          defaultValue={model.outputProviderCostPerMillion ?? 0}
+                          min={0}
+                          name="outputProviderCostPerMillion"
+                          step="0.000001"
+                          type="number"
+                        />
+                        <p className="text-muted-foreground text-xs">
+                          Only visible here — use it to track your real spend versus credits charged.
+                        </p>
+                      </div>
+
+                      <div className="md:col-span-2 rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
+                        <h4 className="text-sm font-semibold text-foreground">
+                          Margin snapshot (per {TOKENS_PER_CREDIT.toLocaleString()} tokens)
+                        </h4>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              User pricing (1M tokens)
+                            </p>
+                            <p>
+                              Input: {formatUsd(chargeInputRate)}
+                            </p>
+                            <p>
+                              Output: {formatUsd(chargeOutputRate)}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Provider cost (1M tokens)
+                            </p>
+                            <p>
+                              Input: {formatUsd(providerInputRate)}
+                            </p>
+                            <p>
+                              Output: {formatUsd(providerOutputRate)}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Gross margin / 1M tokens
+                            </p>
+                            <p className={marginPerMillion < 0 ? "text-destructive" : undefined}>
+                              {formatUsd(marginPerMillion)}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Gross margin / credit
+                            </p>
+                            <p className={marginPerCredit < 0 ? "text-destructive" : undefined}>
+                              {formatUsd(marginPerCredit)}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Margin percentage
+                            </p>
+                            <p className={marginPercentage < 0 ? "text-destructive" : undefined}>
+                              {Number.isFinite(marginPercentage)
+                                ? `${marginPercentage.toFixed(2)}%`
+                                : "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-muted-foreground mt-3 text-xs">
+                          These values update when you save changes. They help estimate how much each credit earns after provider costs.
+                        </p>
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -1478,7 +1628,8 @@ export default async function AdminSettingsPage({
                     </div>
                   </div>
                 </details>
-              ))
+              );
+            })
             )}
           </div>
 

@@ -74,6 +74,56 @@ try {
   // Older Node runtimes may not support setDefaultResultOrder; ignore.
 }
 
+export type DateRange = {
+  start?: Date;
+  end?: Date;
+};
+
+function normalizeEndOfDay(date: Date) {
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function buildDateRangeConditions<T>(column: T, range?: DateRange): SQL<boolean>[] {
+  if (!range) {
+    return [];
+  }
+
+  const conditions: SQL<boolean>[] = [];
+
+  if (range.start) {
+    conditions.push(gte(column as any, range.start) as SQL<boolean>);
+  }
+
+  if (range.end) {
+    conditions.push(lte(column as any, normalizeEndOfDay(range.end)) as SQL<boolean>);
+  }
+
+  return conditions;
+}
+
+const SUBUNIT_DIVISORS: Record<string, number> = {
+  INR: 100,
+  USD: 100,
+};
+
+function convertSubunitAmount(amount: number, currency: string): number {
+  const numericAmount =
+    typeof amount === "number"
+      ? amount
+      : typeof amount === "string"
+        ? Number.parseFloat(amount)
+        : Number.NaN;
+
+  if (!Number.isFinite(numericAmount)) {
+    return 0;
+  }
+
+  const divisor = SUBUNIT_DIVISORS[currency?.toUpperCase() ?? ""] ?? 100;
+  return numericAmount / divisor;
+}
+
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
@@ -1612,6 +1662,8 @@ export async function createModelConfig({
   isDefault = false,
   inputCostPerMillion = DEFAULT_COST_PER_MILLION,
   outputCostPerMillion = DEFAULT_COST_PER_MILLION,
+  inputProviderCostPerMillion = 0,
+  outputProviderCostPerMillion = 0,
 }: {
   key: string;
   provider: ModelConfig["provider"];
@@ -1627,6 +1679,8 @@ export async function createModelConfig({
   isDefault?: boolean;
   inputCostPerMillion?: number;
   outputCostPerMillion?: number;
+  inputProviderCostPerMillion?: number;
+  outputProviderCostPerMillion?: number;
 }): Promise<ModelConfig> {
   const now = new Date();
 
@@ -1648,6 +1702,8 @@ export async function createModelConfig({
         isDefault,
         inputCostPerMillion,
         outputCostPerMillion,
+        inputProviderCostPerMillion,
+        outputProviderCostPerMillion,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -1799,6 +1855,8 @@ export async function updateModelConfig({
   isEnabled?: boolean;
   inputCostPerMillion?: number;
   outputCostPerMillion?: number;
+  inputProviderCostPerMillion?: number;
+  outputProviderCostPerMillion?: number;
 }): Promise<ModelConfig | null> {
   try {
     const updateData: Partial<typeof modelConfig.$inferInsert> = {};
@@ -1838,6 +1896,14 @@ export async function updateModelConfig({
     }
     if (patch.outputCostPerMillion !== undefined) {
       updateData.outputCostPerMillion = patch.outputCostPerMillion;
+    }
+    if (patch.inputProviderCostPerMillion !== undefined) {
+      updateData.inputProviderCostPerMillion =
+        patch.inputProviderCostPerMillion;
+    }
+    if (patch.outputProviderCostPerMillion !== undefined) {
+      updateData.outputProviderCostPerMillion =
+        patch.outputProviderCostPerMillion;
     }
 
     const [updated] = await db
@@ -3273,6 +3339,592 @@ export async function createLanguageEntry({
   return inserted;
 }
 
+export type CurrencyTotal = {
+  currency: string;
+  amount: number;
+};
+
+export async function listPaidRechargeTotals(
+  range?: DateRange
+): Promise<CurrencyTotal[]> {
+  try {
+    const dateConditions = buildDateRangeConditions(paymentTransaction.updatedAt, range);
+
+    const rows = await db
+      .select({
+        currency: paymentTransaction.currency,
+        amount: sql<number>`COALESCE(SUM(${paymentTransaction.amount}), 0)`,
+      })
+      .from(paymentTransaction)
+      .where(
+        dateConditions.length > 0
+          ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+          : eq(paymentTransaction.status, PAYMENT_STATUS_PAID)
+      )
+      .groupBy(paymentTransaction.currency);
+
+    return rows.map((row) => ({
+      currency: row.currency ?? "INR",
+      amount: convertSubunitAmount(row.amount ?? 0, row.currency ?? "INR"),
+    }));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load recharge totals"
+    );
+  }
+}
+
+export type TokenUsageTotals = {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  providerCostUsd: number;
+};
+
+export async function getTokenUsageTotals(
+  range?: DateRange
+): Promise<TokenUsageTotals> {
+  try {
+    const conditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+
+    const baseQuery = db
+      .select({
+        totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+        totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+        providerCostUsd: sql<number>`
+          COALESCE(SUM(
+            (
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+            ) / 1000000.0
+          ), 0)
+        `,
+      })
+      .from(tokenUsage)
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
+
+    const query = conditions.length
+      ? baseQuery.where(and(...conditions))
+      : baseQuery;
+
+    const [row] = await query;
+
+    return {
+      totalInputTokens: row?.totalInputTokens ?? 0,
+      totalOutputTokens: row?.totalOutputTokens ?? 0,
+      providerCostUsd: row?.providerCostUsd ?? 0,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        providerCostUsd: 0,
+      };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load token usage totals"
+    );
+  }
+}
+
+export type DailyFinancialMetric = {
+  date: string;
+  recharge: Record<string, number>;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  providerCostUsd: number;
+};
+
+export async function getDailyFinancialMetrics(
+  range?: DateRange
+): Promise<DailyFinancialMetric[]> {
+  try {
+    const rechargeDate = sql<string>`date_trunc('day', ${paymentTransaction.createdAt})::date`;
+    const rechargeDateConditions = buildDateRangeConditions(
+      paymentTransaction.createdAt,
+      range
+    );
+    const rechargeWhere =
+      rechargeDateConditions.length > 0
+        ? and(
+            eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+            ...rechargeDateConditions
+          )
+        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
+
+    const rechargeRows = await db
+      .select({
+        date: rechargeDate,
+        currency: paymentTransaction.currency,
+        amount: sql<number>`COALESCE(SUM(${paymentTransaction.amount}), 0)`,
+      })
+      .from(paymentTransaction)
+      .where(rechargeWhere)
+      .groupBy(rechargeDate, paymentTransaction.currency)
+      .orderBy(rechargeDate);
+
+    const usageDate = sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`;
+    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+
+    const usageQueryBase = db
+      .select({
+        date: usageDate,
+        totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+        totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+        providerCostUsd: sql<number>`
+          COALESCE(SUM(
+            (
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+            ) / 1000000.0
+          ), 0)
+        `,
+      })
+      .from(tokenUsage)
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
+
+    const usageWhere =
+      usageConditions.length > 0 ? and(...usageConditions) : undefined;
+
+    const usageQuery = usageWhere
+      ? usageQueryBase.where(usageWhere)
+      : usageQueryBase;
+
+    const usageRows = await usageQuery
+      .groupBy(usageDate)
+      .orderBy(usageDate);
+
+    const metricsMap = new Map<string, DailyFinancialMetric>();
+
+    for (const row of rechargeRows) {
+      const date = row.date;
+      if (!metricsMap.has(date)) {
+        metricsMap.set(date, {
+          date,
+          recharge: {},
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          providerCostUsd: 0,
+        });
+      }
+      const metric = metricsMap.get(date)!;
+      const currency = row.currency ?? "INR";
+      metric.recharge[currency] =
+        (metric.recharge[currency] ?? 0) +
+        convertSubunitAmount(row.amount ?? 0, currency);
+    }
+
+    for (const row of usageRows) {
+      const date = row.date;
+      if (!metricsMap.has(date)) {
+        metricsMap.set(date, {
+          date,
+          recharge: {},
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          providerCostUsd: 0,
+        });
+      }
+      const metric = metricsMap.get(date)!;
+      metric.totalInputTokens += row.totalInputTokens ?? 0;
+      metric.totalOutputTokens += row.totalOutputTokens ?? 0;
+      metric.providerCostUsd += row.providerCostUsd ?? 0;
+    }
+
+    return Array.from(metricsMap.values()).sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load financial metrics"
+    );
+  }
+}
+
+export type UserFinancialRecord = {
+  date: string;
+  userId: string;
+  email: string | null;
+  currency: string;
+  rechargeAmount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  providerCostUsd: number;
+};
+
+export type UserFinancialRecordsResult = {
+  total: number;
+  records: UserFinancialRecord[];
+};
+
+export async function getUserFinancialRecords({
+  range,
+  limit = 20,
+  offset = 0,
+}: {
+  range?: DateRange;
+  limit?: number;
+  offset?: number;
+}): Promise<UserFinancialRecordsResult> {
+  try {
+    const rechargeDate = sql<string>`date_trunc('day', ${paymentTransaction.createdAt})::date`;
+    const rechargeConditions = buildDateRangeConditions(
+      paymentTransaction.createdAt,
+      range
+    );
+
+    const rechargeWhere =
+      rechargeConditions.length > 0
+        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...rechargeConditions)
+        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
+
+    const rechargeRows = await db
+      .select({
+        date: rechargeDate,
+        userId: paymentTransaction.userId,
+        email: user.email,
+        currency: paymentTransaction.currency,
+        amount: sql<number>`COALESCE(SUM(${paymentTransaction.amount}), 0)`,
+      })
+      .from(paymentTransaction)
+      .innerJoin(user, eq(paymentTransaction.userId, user.id))
+      .where(rechargeWhere)
+      .groupBy(rechargeDate, paymentTransaction.userId, user.email, paymentTransaction.currency);
+
+    const usageDate = sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`;
+    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+
+    const usageQueryBase = db
+      .select({
+        date: usageDate,
+        userId: tokenUsage.userId,
+        totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+        totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+        providerCostUsd: sql<number>`
+          COALESCE(SUM(
+            (
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+            ) / 1000000.0
+          ), 0)
+        `,
+      })
+      .from(tokenUsage)
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
+
+    const usageWhere = usageConditions.length > 0 ? and(...usageConditions) : undefined;
+
+    const usageQuery = usageWhere
+      ? usageQueryBase.where(usageWhere)
+      : usageQueryBase;
+
+    const usageRows = await usageQuery.groupBy(usageDate, tokenUsage.userId);
+
+    const map = new Map<string, UserFinancialRecord>();
+
+    for (const row of rechargeRows) {
+      const key = `${row.userId ?? "unknown"}::${row.date}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          date: row.date,
+          userId: row.userId ?? "unknown",
+          email: row.email ?? null,
+          currency: row.currency ?? "INR",
+          rechargeAmount: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          providerCostUsd: 0,
+        });
+      }
+      const record = map.get(key)!;
+      record.currency = row.currency ?? record.currency ?? "INR";
+      record.rechargeAmount += convertSubunitAmount(
+        row.amount ?? 0,
+        row.currency ?? "INR"
+      );
+    }
+
+    for (const row of usageRows) {
+      const key = `${row.userId ?? "unknown"}::${row.date}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          date: row.date,
+          userId: row.userId ?? "unknown",
+          email: null,
+          currency: "INR",
+          rechargeAmount: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          providerCostUsd: 0,
+        });
+      }
+      const record = map.get(key)!;
+      record.totalInputTokens += row.totalInputTokens ?? 0;
+      record.totalOutputTokens += row.totalOutputTokens ?? 0;
+      record.providerCostUsd += row.providerCostUsd ?? 0;
+    }
+
+    const dataset = Array.from(map.values()).sort((a, b) => {
+      if (a.date !== b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return a.userId.localeCompare(b.userId);
+    });
+
+    const total = dataset.length;
+    const paged = dataset.slice(offset, offset + limit);
+
+    return { total, records: paged };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return { total: 0, records: [] };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load transaction records"
+    );
+  }
+}
+
+export type ChatFinancialSummary = {
+  chatId: string;
+  userId: string | null;
+  email: string | null;
+  chatCreatedAt: Date | null;
+  usageStartedAt: Date | null;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  userChargeUsd: number;
+  providerCostUsd: number;
+};
+
+export type ChatFinancialSummariesResult = {
+  total: number;
+  totals: {
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    userChargeUsd: number;
+    providerCostUsd: number;
+  };
+  records: ChatFinancialSummary[];
+};
+
+export async function listChatFinancialSummaries({
+  range,
+  limit = 25,
+  offset = 0,
+}: {
+  range?: DateRange;
+  limit?: number;
+  offset?: number;
+}): Promise<ChatFinancialSummariesResult> {
+  try {
+    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+
+    const query = db
+      .select({
+        chatId: tokenUsage.chatId,
+        userId: tokenUsage.userId,
+        email: user.email,
+        chatCreatedAt: chat.createdAt,
+        usageStartedAt: sql<Date>`MIN(${tokenUsage.createdAt})`,
+        totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+        totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+        userChargeUsd: sql<number>`
+          COALESCE(SUM(
+            (
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputCostPerMillion}, 0)
+            ) / 1000000.0
+          ), 0)
+        `,
+        providerCostUsd: sql<number>`
+          COALESCE(SUM(
+            (
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+            ) / 1000000.0
+          ), 0)
+        `,
+      })
+      .from(tokenUsage)
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+      .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
+      .leftJoin(user, eq(tokenUsage.userId, user.id))
+      .groupBy(
+        tokenUsage.chatId,
+        tokenUsage.userId,
+        user.email,
+        chat.createdAt
+      );
+
+    const usageRows = await (usageConditions.length > 0
+      ? query.where(and(...usageConditions))
+      : query
+    ).orderBy(desc(sql<Date>`MIN(${tokenUsage.createdAt})`));
+
+    const total = usageRows.length;
+
+    const aggregates = usageRows.reduce(
+      (acc, row) => {
+        acc.totalInputTokens += row.totalInputTokens ?? 0;
+        acc.totalOutputTokens += row.totalOutputTokens ?? 0;
+        acc.userChargeUsd += row.userChargeUsd ?? 0;
+        acc.providerCostUsd += row.providerCostUsd ?? 0;
+        return acc;
+      },
+      {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        userChargeUsd: 0,
+        providerCostUsd: 0,
+      }
+    );
+
+    const records = usageRows.slice(offset, offset + limit);
+
+    return {
+      total,
+      totals: aggregates,
+      records,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        total: 0,
+        totals: {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          userChargeUsd: 0,
+          providerCostUsd: 0,
+        },
+        records: [],
+      };
+    }
+
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load chat financial summaries"
+    );
+  }
+}
+
+export type RechargeRecord = {
+  orderId: string;
+  userId: string;
+  email: string | null;
+  planId: string;
+  planName: string | null;
+  currency: string;
+  amount: number;
+  status: PaymentTransaction["status"];
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date | null;
+};
+
+export type RechargeRecordsResult = {
+  total: number;
+  records: RechargeRecord[];
+};
+
+export async function listRechargeRecords({
+  range,
+  limit = 25,
+  offset = 0,
+}: {
+  range?: DateRange;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<RechargeRecordsResult> {
+  try {
+    const dateConditions = buildDateRangeConditions(paymentTransaction.createdAt, range);
+
+    let query = db
+      .select({
+        orderId: paymentTransaction.orderId,
+        userId: paymentTransaction.userId,
+        email: user.email,
+        planId: paymentTransaction.planId,
+        planName: pricingPlan.name,
+        currency: paymentTransaction.currency,
+        amount: paymentTransaction.amount,
+        status: paymentTransaction.status,
+        createdAt: paymentTransaction.createdAt,
+        updatedAt: paymentTransaction.updatedAt,
+        expiresAt: sql<Date | null>`MAX(${userSubscription.expiresAt})`,
+      })
+      .from(paymentTransaction)
+      .leftJoin(user, eq(paymentTransaction.userId, user.id))
+      .leftJoin(pricingPlan, eq(paymentTransaction.planId, pricingPlan.id))
+      .leftJoin(
+        userSubscription,
+        and(
+          eq(userSubscription.userId, paymentTransaction.userId),
+          eq(userSubscription.planId, paymentTransaction.planId)
+        )
+      )
+      .where(eq(paymentTransaction.status, PAYMENT_STATUS_PAID))
+      .groupBy(
+        paymentTransaction.orderId,
+        paymentTransaction.userId,
+        user.email,
+        paymentTransaction.planId,
+        pricingPlan.name,
+        paymentTransaction.currency,
+        paymentTransaction.amount,
+        paymentTransaction.status,
+        paymentTransaction.createdAt,
+        paymentTransaction.updatedAt
+      )
+      .orderBy(desc(paymentTransaction.createdAt));
+
+    query = query.where(
+      dateConditions.length > 0
+        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID)
+    );
+
+    const rows = await query;
+    const total = rows.length;
+    const paged = rows.slice(offset, offset + limit);
+
+    return {
+      total,
+      records: paged.map((row) => ({
+        orderId: row.orderId,
+        userId: row.userId,
+        email: row.email ?? null,
+        planId: row.planId,
+        planName: row.planName ?? null,
+        currency: row.currency,
+        amount: typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0),
+        status: row.status,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        expiresAt: row.expiresAt ?? null,
+      })),
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return { total: 0, records: [] };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load recharge records"
+    );
+  }
+}
+
 export async function getTranslationKeyByKey(key: string) {
   const [row] = await db
     .select()
@@ -3338,5 +3990,3 @@ export async function updateLanguageActiveState({
     })
     .where(eq(language.id, id));
 }
-
-
