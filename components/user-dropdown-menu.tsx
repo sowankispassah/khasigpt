@@ -152,7 +152,9 @@ export function UserDropdownMenu({
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
+  const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
   const ignoreNextResourcesOpenRef = React.useRef(false);
+  const ignoreNextLanguageOpenRef = React.useRef(false);
   const {
     languages: translationLanguages,
     activeLanguage,
@@ -240,7 +242,9 @@ export function UserDropdownMenu({
   const handleMenuOpenChange = React.useCallback((open: boolean) => {
     if (!open) {
       ignoreNextResourcesOpenRef.current = false;
+      ignoreNextLanguageOpenRef.current = false;
       setIsResourcesOpen(false);
+      setIsLanguageOpen(false);
     }
   }, []);
 
@@ -288,7 +292,11 @@ export function UserDropdownMenu({
 
   const handleLanguageSelect = React.useCallback(
     (event: Event, code: string) => {
-      handleSelect(event, () => setLanguage(code));
+      handleSelect(event, () => {
+        setLanguage(code);
+        setIsLanguageOpen(false);
+        ignoreNextLanguageOpenRef.current = false;
+      });
     },
     [setLanguage]
   );
@@ -429,13 +437,10 @@ export function UserDropdownMenu({
           </>
         )}
 
-        <DropdownMenuSub
-          onOpenChange={handleResourcesOpenChange}
-          open={isResourcesOpen}
-        >
+        <DropdownMenuSub onOpenChange={handleResourcesOpenChange} open={isResourcesOpen}>
           <DropdownMenuSubTrigger
             className={cn(
-              "flex w-full cursor-pointer items-center justify-between [&>svg]:transition-transform sm:w-auto sm:justify-start",
+              "flex w-full cursor-pointer items-center justify-between gap-2 [&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform sm:w-auto sm:justify-start",
               "[&>svg]:rotate-90 data-[state=open]:[&>svg]:-rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
             )}
             data-testid="user-nav-item-more"
@@ -450,14 +455,54 @@ export function UserDropdownMenu({
             {renderInfoLinks()}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        <DropdownMenuSub>
+        <DropdownMenuSub
+          onOpenChange={(open) => {
+            if (open) {
+              if (ignoreNextLanguageOpenRef.current) {
+                ignoreNextLanguageOpenRef.current = false;
+                return;
+              }
+              setIsLanguageOpen(true);
+              return;
+            }
+            ignoreNextLanguageOpenRef.current = false;
+            setIsLanguageOpen(false);
+          }}
+          open={isLanguageOpen}
+        >
           <DropdownMenuSubTrigger
-            className="flex w-full cursor-pointer items-center justify-between sm:w-auto sm:justify-start"
+            className={cn(
+              "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start",
+              "[&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform",
+              "[&>svg]:rotate-90 data-[state=open]:[&>svg]:-rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
+            )}
             data-testid="user-nav-item-language"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setIsLanguageOpen((prev) => {
+                const next = !prev;
+                ignoreNextLanguageOpenRef.current = !next;
+                return next;
+              });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsLanguageOpen((prev) => {
+                  const next = !prev;
+                  ignoreNextLanguageOpenRef.current = !next;
+                  return next;
+                });
+              }
+            }}
           >
-            {translate("user_menu.language", "Language")}
-            <span className="text-muted-foreground text-xs">
-              {activeLanguage.name}
+            <span className="flex items-center gap-2">
+              {translate("user_menu.language", "Language")}
+              <span className="text-muted-foreground text-xs">
+                {activeLanguage.name}
+              </span>
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
