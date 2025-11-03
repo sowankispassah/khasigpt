@@ -13,7 +13,11 @@ import {
   getAppSetting,
 } from "@/lib/db/queries";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import {
+  getTranslationBundle,
+  getTranslationsForKeys,
+  registerTranslationKeys,
+} from "@/lib/i18n/dictionary";
 
 export default async function RechargePage() {
   const session = await auth();
@@ -25,12 +29,37 @@ export default async function RechargePage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [{ dictionary }, plans, balance, recommendedPlanSetting] = await Promise.all([
-    getTranslationBundle(preferredLanguage),
+  const [plans, balance, recommendedPlanSetting] = await Promise.all([
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
   ]);
+
+  const planTranslationDefinitions = plans.flatMap((plan) => [
+    {
+      key: `recharge.plan.${plan.id}.name`,
+      defaultText: plan.name,
+      description: `Pricing plan name for ${plan.name}`,
+    },
+    {
+      key: `recharge.plan.${plan.id}.description`,
+      defaultText: plan.description ?? "",
+      description: `Pricing plan details for ${plan.name}`,
+    },
+  ]);
+
+  if (planTranslationDefinitions.length > 0) {
+    await registerTranslationKeys(planTranslationDefinitions);
+  }
+
+  const [bundle, planTranslations] = await Promise.all([
+    getTranslationBundle(preferredLanguage),
+    planTranslationDefinitions.length > 0
+      ? getTranslationsForKeys(preferredLanguage, planTranslationDefinitions)
+      : Promise.resolve<Record<string, string>>({}),
+  ]);
+
+  const dictionary = bundle.dictionary;
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
@@ -65,6 +94,30 @@ export default async function RechargePage() {
   const expiryFormatter = new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",
   });
+  const localizedPlans = sortedPlans.map((plan) => {
+    const nameKey = `recharge.plan.${plan.id}.name`;
+    const descriptionKey = `recharge.plan.${plan.id}.description`;
+
+    const localizedName =
+      planTranslations[nameKey]?.trim().length
+        ? planTranslations[nameKey]
+        : plan.name;
+
+    const rawDescription = plan.description ?? "";
+    const translatedDescription = planTranslations[descriptionKey]?.trim() ?? "";
+    const localizedDescription =
+      translatedDescription.length > 0
+        ? translatedDescription
+        : rawDescription.trim().length > 0
+          ? rawDescription
+          : null;
+
+    return {
+      ...plan,
+      name: localizedName,
+      description: localizedDescription,
+    };
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
@@ -95,7 +148,7 @@ export default async function RechargePage() {
       </header>
 
       <RechargePlans
-        plans={sortedPlans.map((plan) => ({
+        plans={localizedPlans.map((plan) => ({
           id: plan.id,
           name: plan.name,
           description: plan.description,

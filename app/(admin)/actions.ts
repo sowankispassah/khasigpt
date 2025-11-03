@@ -24,6 +24,10 @@ import {
   updatePricingPlan,
   deletePricingPlan,
   hardDeletePricingPlan,
+  getPricingPlanById,
+  upsertTranslationValueEntry,
+  deleteTranslationValueEntry,
+  getTranslationKeyByKey,
   createLanguageEntry,
   getLanguageByIdRaw,
   updateLanguageActiveState,
@@ -31,6 +35,7 @@ import {
 import type { UserRole } from "@/lib/db/schema";
 import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
+import { registerTranslationKeys } from "@/lib/i18n/dictionary";
 
 async function requireAdmin() {
   const session = await auth();
@@ -158,6 +163,15 @@ function parseNumber(value: FormDataEntryValue | null | undefined) {
 
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isRedirectErrorLike(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const digest = (error as { digest?: unknown }).digest;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT;");
 }
 
 export async function createModelConfigAction(formData: FormData) {
@@ -781,6 +795,150 @@ export async function updateLanguageStatusAction(formData: FormData) {
   redirect("/admin/settings?notice=language-updated");
 }
 
+export async function updatePlanTranslationAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const planId = formData.get("planId")?.toString();
+  const languageCodeRaw = formData.get("languageCode")?.toString();
+
+  if (!planId || !languageCodeRaw) {
+    redirect("/admin/settings?notice=plan-translation-error");
+  }
+
+  try {
+    const plan = await getPricingPlanById({ id: planId!, includeDeleted: true });
+    if (!plan) {
+      throw new Error("Plan not found");
+    }
+
+    const languageCode = languageCodeRaw!.trim().toLowerCase();
+    const language = languageCode.length > 0 ? await getLanguageByCode(languageCode) : null;
+
+    if (!language) {
+      throw new Error("Language not found");
+    }
+
+    if (!language.isActive && !language.isDefault) {
+      throw new Error("Language is not active");
+    }
+
+    const nameInput = formData.get("name")?.toString() ?? "";
+    const descriptionInput = formData.get("description")?.toString() ?? "";
+    const trimmedName = nameInput.trim();
+    const trimmedDescription = descriptionInput.trim();
+
+    const definitions = [
+      {
+        key: `recharge.plan.${plan.id}.name`,
+        defaultText: plan.name,
+      },
+      {
+        key: `recharge.plan.${plan.id}.description`,
+        defaultText: plan.description ?? "",
+      },
+    ];
+
+    await registerTranslationKeys(definitions);
+
+    const [nameKey, descriptionKey] = await Promise.all(
+      definitions.map((definition) => getTranslationKeyByKey(definition.key))
+    );
+
+    if (!nameKey || !descriptionKey) {
+      throw new Error("Failed to load translation keys");
+    }
+
+    if (language.isDefault) {
+      const updates: {
+        name?: string;
+        description?: string | null;
+      } = {};
+
+      if (trimmedName && trimmedName !== plan.name) {
+        updates.name = trimmedName;
+      }
+
+      if (trimmedDescription !== (plan.description ?? "")) {
+        updates.description = trimmedDescription;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await updatePricingPlan({
+          id: plan.id,
+          updates,
+        });
+
+        const refreshedPlan = await getPricingPlanById({
+          id: plan.id,
+          includeDeleted: true,
+        });
+
+        if (refreshedPlan) {
+          await registerTranslationKeys([
+            {
+              key: `recharge.plan.${refreshedPlan.id}.name`,
+              defaultText: refreshedPlan.name,
+            },
+            {
+              key: `recharge.plan.${refreshedPlan.id}.description`,
+              defaultText: refreshedPlan.description ?? "",
+            },
+          ]);
+        }
+      }
+    } else {
+      if (trimmedName) {
+        await upsertTranslationValueEntry({
+          translationKeyId: nameKey.id,
+          languageId: language.id,
+          value: trimmedName,
+        });
+      } else {
+        await deleteTranslationValueEntry({
+          translationKeyId: nameKey.id,
+          languageId: language.id,
+        });
+      }
+
+      if (trimmedDescription) {
+        await upsertTranslationValueEntry({
+          translationKeyId: descriptionKey.id,
+          languageId: language.id,
+          value: trimmedDescription,
+        });
+      } else {
+        await deleteTranslationValueEntry({
+          translationKeyId: descriptionKey.id,
+          languageId: language.id,
+        });
+      }
+    }
+
+    await createAuditLogEntry({
+      actorId: actor.id,
+      action: "billing.plan.translate",
+      target: { planId: plan.id, language: language.code },
+      metadata: {
+        nameLength: trimmedName.length,
+        descriptionLength: trimmedDescription.length,
+      },
+    });
+
+    revalidatePath("/admin/settings");
+    revalidatePath("/admin/translations");
+    revalidatePath("/recharge");
+
+    redirect("/admin/settings?notice=plan-translation-updated");
+  } catch (error) {
+    if (isRedirectErrorLike(error)) {
+      throw error;
+    }
+    console.error("Failed to update plan translation", error);
+    redirect("/admin/settings?notice=plan-translation-error");
+  }
+}
+
 function parseInteger(value: FormDataEntryValue | null | undefined) {
   return Math.round(parseNumber(value));
 }
@@ -889,6 +1047,17 @@ export async function createPricingPlanAction(formData: FormData) {
     isActive,
   });
 
+  await registerTranslationKeys([
+    {
+      key: `recharge.plan.${plan.id}.name`,
+      defaultText: plan.name,
+    },
+    {
+      key: `recharge.plan.${plan.id}.description`,
+      defaultText: description,
+    },
+  ]);
+
   await createAuditLogEntry({
     actorId: actor.id,
     action: "billing.plan.create",
@@ -951,6 +1120,20 @@ export async function updatePricingPlanAction(formData: FormData) {
       isActive?: boolean;
     },
   });
+
+  const updatedPlan = await getPricingPlanById({ id, includeDeleted: true });
+  if (updatedPlan) {
+    await registerTranslationKeys([
+      {
+        key: `recharge.plan.${updatedPlan.id}.name`,
+        defaultText: updatedPlan.name,
+      },
+      {
+        key: `recharge.plan.${updatedPlan.id}.description`,
+        defaultText: updatedPlan.description ?? "",
+      },
+    ]);
+  }
 
   await createAuditLogEntry({
     actorId: actor.id,

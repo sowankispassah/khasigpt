@@ -3,6 +3,7 @@ import {
   listActiveSubscriptionSummaries,
   listModelConfigs,
   listPricingPlans,
+  getTranslationValuesForKeys,
 } from "@/lib/db/queries";
 import {
   createModelConfigAction,
@@ -21,6 +22,7 @@ import {
   updateTermsOfServiceByLanguageAction,
   createLanguageAction,
   updateLanguageStatusAction,
+  updatePlanTranslationAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminSettingsNotice } from "./notice";
@@ -34,6 +36,7 @@ import {
 } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { getAllLanguages } from "@/lib/i18n/languages";
+import { registerTranslationKeys } from "@/lib/i18n/dictionary";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { LanguageContentForm } from "./language-content-form";
 
@@ -258,6 +261,50 @@ export default async function AdminSettingsPage({
       content: contentForLanguage,
     };
   });
+
+  const planTranslationDefinitions = activePlans.flatMap((plan) => [
+    {
+      key: `recharge.plan.${plan.id}.name`,
+      defaultText: plan.name,
+    },
+    {
+      key: `recharge.plan.${plan.id}.description`,
+      defaultText: plan.description ?? "",
+    },
+  ]);
+
+  if (planTranslationDefinitions.length > 0) {
+    await registerTranslationKeys(planTranslationDefinitions);
+  }
+
+  const planTranslationKeys = planTranslationDefinitions.map((definition) => definition.key);
+  const planTranslationValuesByLanguage =
+    planTranslationKeys.length > 0
+      ? await getTranslationValuesForKeys(planTranslationKeys)
+      : {};
+
+  const planTranslationsByLanguage: Record<
+    string,
+    Record<string, { name: string; description: string }>
+  > = {};
+
+  for (const language of activeLanguagesList) {
+    const languageValues = planTranslationValuesByLanguage[language.code] ?? {};
+    const planMap: Record<string, { name: string; description: string }> = {};
+
+    for (const plan of activePlans) {
+      planMap[plan.id] = {
+        name: language.isDefault
+          ? plan.name
+          : languageValues[`recharge.plan.${plan.id}.name`] ?? "",
+        description: language.isDefault
+          ? plan.description ?? ""
+          : languageValues[`recharge.plan.${plan.id}.description`] ?? "",
+      };
+    }
+
+    planTranslationsByLanguage[language.code] = planMap;
+  }
 
   return (
     <>
@@ -622,6 +669,9 @@ export default async function AdminSettingsPage({
                 const priceInRupees = plan.priceInPaise / 100;
                 const credits = Math.floor(plan.tokenAllowance / TOKENS_PER_CREDIT);
                 const isRecommendedPlan = recommendedPlanId === plan.id;
+                const nonDefaultLanguages = activeLanguagesList.filter(
+                  (language) => !language.isDefault,
+                );
 
                 return (
                   <details
@@ -642,26 +692,29 @@ export default async function AdminSettingsPage({
                       </span>
                     </summary>
                     <div className="grid gap-6 border-t p-4 md:grid-cols-[3fr,2fr]">
-                      <form action={updatePricingPlanAction} className="flex flex-col gap-4">
+                      <div className="space-y-6">
+                        <form action={updatePricingPlanAction} className="flex flex-col gap-4">
                         <input name="id" type="hidden" value={plan.id} />
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium" htmlFor="plan-update-name">
-                            Plan name
+                          <label className="text-sm font-medium" htmlFor={`plan-update-name-${plan.id}`}>
+                            Plan name (English)
                           </label>
                           <input
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             defaultValue={plan.name}
+                            id={`plan-update-name-${plan.id}`}
                             name="name"
                             required
                           />
                         </div>
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium" htmlFor="plan-update-description">
-                            Description
+                          <label className="text-sm font-medium" htmlFor={`plan-update-description-${plan.id}`}>
+                            Description (English)
                           </label>
                           <textarea
                             className="rounded-md border bg-background px-3 py-2 text-sm"
                             defaultValue={plan.description ?? ""}
+                            id={`plan-update-description-${plan.id}`}
                             name="description"
                           />
                         </div>
@@ -726,6 +779,81 @@ export default async function AdminSettingsPage({
                         </div>
                       </form>
 
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-muted-foreground">
+                          Localized content
+                        </h4>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {nonDefaultLanguages.length === 0 ? (
+                            <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
+                              Add another language to provide localized plan details.
+                            </div>
+                          ) : (
+                            nonDefaultLanguages.map((language) => {
+                              const translation =
+                                planTranslationsByLanguage[language.code]?.[plan.id] ?? {
+                                  name: "",
+                                  description: "",
+                                };
+                              const formId = `plan-translation-${plan.id}-${language.code}`;
+
+                              return (
+                                <form
+                                  action={updatePlanTranslationAction}
+                                  className="flex flex-col gap-3 rounded-lg border bg-background p-3"
+                                  key={formId}
+                                >
+                                  <input name="planId" type="hidden" value={plan.id} />
+                                  <input name="languageCode" type="hidden" value={language.code} />
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium">{language.name}</span>
+                                    <span className="text-muted-foreground text-xs">
+                                      {language.code.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-medium" htmlFor={`${formId}-name`}>
+                                      Plan name
+                                    </label>
+                                    <input
+                                      className="rounded-md border bg-background px-3 py-2 text-sm"
+                                      defaultValue={translation.name}
+                                      id={`${formId}-name`}
+                                      name="name"
+                                      placeholder="Enter localized name"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col gap-2">
+                                    <label className="text-xs font-medium" htmlFor={`${formId}-description`}>
+                                      Description
+                                    </label>
+                                    <textarea
+                                      className="rounded-md border bg-background px-3 py-2 text-sm"
+                                      defaultValue={translation.description}
+                                      id={`${formId}-description`}
+                                      name="description"
+                                      placeholder="Enter localized description"
+                                    />
+                                    <p className="text-muted-foreground text-[11px]">
+                                      Leave blank to fall back to English.
+                                    </p>
+                                  </div>
+                                  <div className="flex justify-end">
+                                    <ActionSubmitButton
+                                      pendingLabel="Saving..."
+                                      size="sm"
+                                      variant="outline"
+                                    >
+                                      {`Save ${language.name}`}
+                                    </ActionSubmitButton>
+                                  </div>
+                                </form>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </div>
                       <div className="flex flex-col justify-between gap-4">
                         <div className="flex flex-col gap-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">

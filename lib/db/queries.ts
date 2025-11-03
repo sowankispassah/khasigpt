@@ -3273,6 +3273,46 @@ export async function createLanguageEntry({
   return inserted;
 }
 
+export async function getTranslationKeyByKey(key: string) {
+  const [row] = await db
+    .select()
+    .from(translationKey)
+    .where(eq(translationKey.key, key))
+    .limit(1);
+
+  return row ?? null;
+}
+
+export async function getTranslationValuesForKeys(keys: string[]) {
+  if (!keys.length) {
+    return {} as Record<string, Record<string, string>>;
+  }
+
+  const rows = await db
+    .select({
+      key: translationKey.key,
+      value: translationValue.value,
+      languageCode: language.code,
+    })
+    .from(translationValue)
+    .innerJoin(
+      translationKey,
+      eq(translationValue.translationKeyId, translationKey.id)
+    )
+    .innerJoin(language, eq(translationValue.languageId, language.id))
+    .where(inArray(translationKey.key, keys));
+
+  const result: Record<string, Record<string, string>> = {};
+  for (const row of rows) {
+    if (!result[row.languageCode]) {
+      result[row.languageCode] = {};
+    }
+    result[row.languageCode][row.key] = row.value;
+  }
+
+  return result;
+}
+
 export async function getLanguageByIdRaw(id: string): Promise<Language | null> {
   const [row] = await db
     .select()

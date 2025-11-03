@@ -30,6 +30,8 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "language-updated": { type: "success", message: "Language status updated." },
   "language-update-error": { type: "error", message: "Failed to update language status. Please try again." },
   "language-default-inactive": { type: "error", message: "The default language cannot be deactivated." },
+  "plan-translation-updated": { type: "success", message: "Plan translation saved." },
+  "plan-translation-error": { type: "error", message: "Failed to save plan translation." },
 };
 
 export function AdminSettingsNotice({ notice }: { notice?: string }) {
