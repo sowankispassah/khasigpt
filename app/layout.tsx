@@ -14,9 +14,57 @@ import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const siteName = "KhasiGPT";
-const siteTitle = "KhasiGPT – Khasi Language AI Chatbot";
+const siteTitle = "KhasiGPT – Khasi Language AI Assistance";
 const siteDescription =
   "Chat with KhasiGPT, the AI assistant built for Khasi speakers. Write, translate, and explore ideas in Khasi with cultural context and accurate language support.";
+const siteLogo = new URL("/images/khasigptlogo.png", siteUrl).toString();
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${siteUrl}/#organization`,
+      name: siteName,
+      url: siteUrl,
+      logo: siteLogo,
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${siteUrl}/#website`,
+      url: siteUrl,
+      name: siteTitle,
+      publisher: {
+        "@id": `${siteUrl}/#organization`,
+      },
+      inLanguage: "en",
+    },
+    {
+      "@type": "SiteNavigationElement",
+      name: "Chat",
+      url: `${siteUrl}/chat`,
+    },
+    {
+      "@type": "SiteNavigationElement",
+      name: "About",
+      url: `${siteUrl}/about`,
+    },
+    {
+      "@type": "SiteNavigationElement",
+      name: "Pricing",
+      url: `${siteUrl}/chat/recharge`,
+    },
+    {
+      "@type": "SiteNavigationElement",
+      name: "Privacy Policy",
+      url: `${siteUrl}/privacy-policy`,
+    },
+    {
+      "@type": "SiteNavigationElement",
+      name: "Terms of Service",
+      url: `${siteUrl}/terms-of-service`,
+    },
+  ],
+} as const;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -130,6 +178,12 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
           }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+          type="application/ld+json"
         />
       </head>
       <body className="antialiased" suppressHydrationWarning>
