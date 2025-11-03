@@ -1,6 +1,6 @@
 import { streamObject } from "ai";
 import { z } from "zod";
-import { codePrompt, updateDocumentPrompt } from "@/lib/ai/prompts";
+import { buildUpdatePrompt } from "@/lib/ai/prompts";
 import { getArtifactLanguageModel } from "@/lib/ai/providers";
 import { createDocumentHandler } from "@/lib/artifacts/server";
 
@@ -11,8 +11,7 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
 
     const { fullStream } = streamObject({
       model: getArtifactLanguageModel(),
-      system: codePrompt,
-      prompt: title,
+      prompt: `Generate code for: ${title}`,
       schema: z.object({
         code: z.string(),
       }),
@@ -44,8 +43,7 @@ export const codeDocumentHandler = createDocumentHandler<"code">({
 
     const { fullStream } = streamObject({
       model: getArtifactLanguageModel(),
-      system: updateDocumentPrompt(document.content, "code"),
-      prompt: description,
+      prompt: buildUpdatePrompt(description, document.content, "code"),
       schema: z.object({
         code: z.string(),
       }),

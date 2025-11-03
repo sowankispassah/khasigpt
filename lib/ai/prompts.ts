@@ -21,18 +21,16 @@ export const systemPrompt = ({
   return trimmedPrompt && trimmedPrompt.length > 0 ? trimmedPrompt : null;
 };
 
-export const codePrompt = `
-Return a single Python script that runs as-is, prints its result, uses only the standard library, and omits extra narration.
-`;
-
-export const sheetPrompt = `
-Respond with CSV only: first row headers, following rows data. No prose, no code fences.
-`;
-
-export const updateDocumentPrompt = (
+export const buildUpdatePrompt = (
+  description: string,
   currentContent: string | null,
   type: ArtifactKind
 ) => {
+  const trimmedDescription = description.trim();
+  if (!currentContent || currentContent.trim().length === 0) {
+    return trimmedDescription;
+  }
+
   const mediaType =
     type === "code"
       ? "code snippet"
@@ -40,7 +38,8 @@ export const updateDocumentPrompt = (
         ? "spreadsheet"
         : "document";
 
-  return `Update the following ${mediaType} according to the request. Return only the revised content.
+  return `${trimmedDescription}
 
-${currentContent ?? ""}`;
+Existing ${mediaType}:
+${currentContent}`;
 };

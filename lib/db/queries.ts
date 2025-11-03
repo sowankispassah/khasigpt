@@ -3888,13 +3888,14 @@ export async function listRechargeRecords({
       )
       .orderBy(desc(paymentTransaction.createdAt));
 
-    query = query.where(
+    const whereClause =
       dateConditions.length > 0
         ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
-        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID)
-    );
+        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
 
-    const rows = await query;
+    const filteredQuery = query.where(whereClause);
+
+    const rows = await filteredQuery;
     const total = rows.length;
     const paged = rows.slice(offset, offset + limit);
 
