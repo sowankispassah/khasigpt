@@ -10,6 +10,7 @@ import {
   listContactMessages,
   listUsers,
 } from "@/lib/db/queries";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -68,24 +69,37 @@ export default async function AdminOverviewPage() {
         />
       </section>
 
-      <section className="grid gap-8 xl:grid-cols-3">
+      <section className="grid items-stretch gap-8 xl:grid-cols-2">
         <DataPanel title="Newest users">
-          <table className="w-full text-sm">
-            <thead className="text-muted-foreground text-xs uppercase">
+          <table className="min-w-[640px] w-full table-fixed text-sm">
+            <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="py-2 text-left">Email</th>
-                <th className="py-2 text-left">Role</th>
-                <th className="py-2 text-left">Status</th>
-                <th className="py-2 text-left">Created</th>
+                <th className="px-4 py-3 text-left font-medium">Email</th>
+                <th className="px-4 py-3 text-left font-medium">Role</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-left font-medium">Created</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/60 text-sm">
               {recentUsers.map((user) => (
-                <tr key={user.id} className="border-t text-sm">
-                  <td className="py-2">{user.email}</td>
-                  <td className="py-2 capitalize">{user.role}</td>
-                  <td className="py-2">{user.isActive ? "Active" : "Suspended"}</td>
-                  <td className="py-2 text-muted-foreground">
+                <tr key={user.id} className="bg-card/70 transition hover:bg-muted/20">
+                  <td className="px-4 py-3">
+                    <span className="block truncate font-medium">{user.email}</span>
+                  </td>
+                  <td className="px-4 py-3 capitalize">{user.role}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-semibold",
+                        user.isActive
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      )}
+                    >
+                      {user.isActive ? "Active" : "Suspended"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
                   </td>
                 </tr>
@@ -94,56 +108,21 @@ export default async function AdminOverviewPage() {
           </table>
         </DataPanel>
 
-        <DataPanel title="Latest chats">
-          <table className="w-full text-sm">
-            <thead className="text-muted-foreground text-xs uppercase">
-              <tr>
-                <th className="py-2 text-left">Chat</th>
-                <th className="py-2 text-left">Owner</th>
-                <th className="py-2 text-left">Visibility</th>
-                <th className="py-2 text-left">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentChats.map((chat) => (
-                <tr key={chat.id} className="border-t text-sm">
-                  <td className="py-2">
-                    <div className="flex flex-col">
-                      <Link
-                        className="text-sm font-medium text-primary hover:underline"
-                        href={`/chat/${chat.id}?admin=1`}
-                      >
-                        {chat.title || "Untitled chat"}
-                      </Link>
-                      <span className="font-mono text-xs text-muted-foreground">{chat.id}</span>
-                    </div>
-                  </td>
-                  <td className="py-2">{chat.userEmail ?? chat.userId}</td>
-                  <td className="py-2 capitalize">{chat.visibility}</td>
-                  <td className="py-2 text-muted-foreground">
-                    {formatDistanceToNow(new Date(chat.createdAt), { addSuffix: true })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </DataPanel>
-
         <DataPanel title="Latest contact requests">
-          <table className="w-full text-sm">
-            <thead className="text-muted-foreground text-xs uppercase">
+          <table className="min-w-[680px] w-full table-fixed text-sm">
+            <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="py-2 text-left">Subject</th>
-                <th className="py-2 text-left">From</th>
-                <th className="py-2 text-left">Phone</th>
-                <th className="py-2 text-left">Received</th>
+                <th className="px-4 py-3 text-left font-medium">Subject</th>
+                <th className="px-4 py-3 text-left font-medium">From</th>
+                <th className="px-4 py-3 text-left font-medium">Phone</th>
+                <th className="px-4 py-3 text-left font-medium">Received</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/60 text-sm">
               {recentContactMessages.length === 0 ? (
                 <tr>
                   <td
-                    className="py-6 text-center text-muted-foreground"
+                    className="px-4 py-8 text-center text-muted-foreground"
                     colSpan={4}
                   >
                     No contact requests yet.
@@ -151,23 +130,23 @@ export default async function AdminOverviewPage() {
                 </tr>
               ) : (
                 recentContactMessages.map((message) => (
-                  <tr key={message.id} className="border-t text-sm">
-                    <td className="py-2">
-                      <div className="font-medium">{message.subject}</div>
-                      <p className="text-muted-foreground text-xs line-clamp-2">
+                  <tr key={message.id} className="bg-card/70 transition hover:bg-muted/20">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">{message.subject}</div>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                         {message.message}
                       </p>
                     </td>
-                    <td className="py-2">
+                    <td className="px-4 py-3">
                       <div className="font-medium">{message.name}</div>
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-xs text-muted-foreground">
                         {message.email}
                       </span>
                     </td>
-                    <td className="py-2 text-muted-foreground text-xs">
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
                       {message.phone ? message.phone : "N/A"}
                     </td>
-                    <td className="py-2 text-muted-foreground">
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(message.createdAt), {
                         addSuffix: true,
                       })}
@@ -179,6 +158,47 @@ export default async function AdminOverviewPage() {
           </table>
         </DataPanel>
       </section>
+
+      <DataPanel title="Latest chats">
+        <table className="min-w-[720px] w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium">Chat</th>
+              <th className="px-4 py-3 text-left font-medium">Owner</th>
+              <th className="px-4 py-3 text-left font-medium">Visibility</th>
+              <th className="px-4 py-3 text-left font-medium">Created</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60 text-sm">
+            {recentChats.map((chat) => (
+              <tr key={chat.id} className="bg-card/70 transition hover:bg-muted/20">
+                <td className="px-4 py-3">
+                  <Link
+                    className="line-clamp-1 font-semibold text-primary hover:underline"
+                    href={`/chat/${chat.id}?admin=1`}
+                    title={`${chat.title || "Untitled chat"} • ${chat.id}`}
+                  >
+                    {chat.title || "Untitled chat"}
+                  </Link>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="block truncate" title={chat.userEmail ?? chat.userId}>
+                    {chat.userEmail ?? chat.userId}
+                  </span>
+                </td>
+                <td className="px-4 py-3 capitalize">
+                  <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+                    {chat.visibility}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(chat.createdAt), { addSuffix: true })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </DataPanel>
 
       <DataPanel title="Recent audit activity">
         <table className="w-full text-sm">
@@ -240,9 +260,17 @@ function DataPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border bg-card p-4 shadow-sm">
-      <h2 className="text-base font-semibold">{title}</h2>
-      <div className="mt-4 overflow-x-auto">{children}</div>
+    <section className="flex h-full flex-col rounded-xl border bg-card/80 p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h2>
+      </div>
+      <div className="relative mt-4 grow overflow-hidden">
+        <div className="h-full overflow-auto rounded-lg border border-border/60 bg-background/60">
+          {children}
+        </div>
+      </div>
     </section>
   );
 }
