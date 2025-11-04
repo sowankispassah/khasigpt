@@ -157,6 +157,21 @@ const THEME_COLOR_SCRIPT = `(function() {
   updateThemeColor();
 })();`;
 
+let staticTranslationsReady: Promise<void> | null = null;
+
+async function ensureStaticTranslationKeys() {
+  if (!staticTranslationsReady) {
+    staticTranslationsReady = registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS).catch(
+      (error) => {
+        staticTranslationsReady = null;
+        throw error;
+      }
+    );
+  }
+
+  return staticTranslationsReady;
+}
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -164,7 +179,7 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value;
-  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
+  await ensureStaticTranslationKeys();
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
 
