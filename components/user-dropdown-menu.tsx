@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTranslation } from "@/components/language-provider";
+import { LoaderIcon } from "@/components/icons";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -25,6 +26,9 @@ type UserDropdownMenuProps = {
   onToggleTheme: () => void;
   onNavigate: (path: string) => void;
   onSignOut?: () => void;
+  onActionStart?: () => void;
+  onMenuClose?: () => void;
+  isBusy?: boolean;
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
   userEmail?: string;
@@ -85,12 +89,13 @@ type BasicUser = {
 
 type UserMenuTriggerProps = React.ComponentPropsWithoutRef<"button"> & {
   user: BasicUser;
+  isBusy?: boolean;
 };
 
 export const UserMenuTrigger = React.forwardRef<
   HTMLButtonElement,
   UserMenuTriggerProps
->(({ user, className, ...props }, ref) => {
+>(({ user, className, isBusy = false, ...props }, ref) => {
   const initials = getInitials(user.name, user.email);
   const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
   const avatarKey =
@@ -107,15 +112,24 @@ export const UserMenuTrigger = React.forwardRef<
   return (
     <button
       className={cn(
-        "flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/40 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "relative flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/40 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        isBusy && "pointer-events-none opacity-70",
         className
       )}
+      aria-busy={isBusy}
+      disabled={isBusy}
       ref={ref}
       type="button"
       {...props}
     >
       <span className="flex h-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground">
-        <EllipsisVertical size={16} />
+        {isBusy ? (
+          <span className="animate-spin">
+            <LoaderIcon size={16} />
+          </span>
+        ) : (
+          <EllipsisVertical size={16} />
+        )}
       </span>
       <Avatar className="h-8 w-8">
         <AvatarImage
@@ -145,6 +159,9 @@ export function UserDropdownMenu({
   onToggleTheme,
   onNavigate,
   onSignOut,
+  onActionStart,
+  onMenuClose,
+  isBusy = false,
   side = "top",
   align = "end",
   userEmail,
@@ -234,8 +251,16 @@ export function UserDropdownMenu({
     };
   }, [isAuthenticated]);
 
-  const handleSelect = (event: Event, callback: () => void) => {
+  const handleSelect = (
+    event: Event,
+    actionType: "navigate" | "theme" | "signOut" | "language" | "resources",
+    callback: () => void
+  ) => {
     event.preventDefault();
+    if (isBusy) {
+      return;
+    }
+    onActionStart?.();
     callback();
   };
 
@@ -292,7 +317,7 @@ export function UserDropdownMenu({
 
   const handleLanguageSelect = React.useCallback(
     (event: Event, code: string) => {
-      handleSelect(event, () => {
+      handleSelect(event, "language", () => {
         setLanguage(code);
         setIsLanguageOpen(false);
         ignoreNextLanguageOpenRef.current = false;
@@ -337,7 +362,7 @@ export function UserDropdownMenu({
         className={cn("cursor-pointer", className)}
         data-testid={item.testId}
         onSelect={(event) =>
-          handleSelect(event, () => {
+          handleSelect(event, "navigate", () => {
             ignoreNextResourcesOpenRef.current = false;
             setIsResourcesOpen(false);
             onNavigate(item.path);
@@ -368,7 +393,7 @@ export function UserDropdownMenu({
             className="cursor-pointer font-medium text-foreground"
             data-testid="user-nav-item-email"
             onSelect={(event) =>
-              handleSelect(event, () => onNavigate("/profile"))
+              handleSelect(event, "navigate", () => onNavigate("/profile"))
             }
           >
             {userEmail}
@@ -381,7 +406,7 @@ export function UserDropdownMenu({
               className="cursor-pointer"
               data-testid="user-nav-item-profile"
               onSelect={(event) =>
-                handleSelect(event, () => onNavigate("/profile"))
+                handleSelect(event, "navigate", () => onNavigate("/profile"))
               }
             >
               {translate("user_menu.profile", "Profile")}
@@ -390,7 +415,7 @@ export function UserDropdownMenu({
               className="flex cursor-pointer flex-col items-start gap-1"
               data-testid="user-nav-item-manage-subscriptions"
               onSelect={(event) =>
-                handleSelect(event, () => onNavigate("/subscriptions"))
+                handleSelect(event, "navigate", () => onNavigate("/subscriptions"))
               }
             >
               {translate(
@@ -414,7 +439,7 @@ export function UserDropdownMenu({
               className="cursor-pointer"
               data-testid="user-nav-item-upgrade-plan"
               onSelect={(event) =>
-                handleSelect(event, () => onNavigate("/recharge"))
+                handleSelect(event, "navigate", () => onNavigate("/recharge"))
               }
             >
               {translate("user_menu.upgrade_plan", "Upgrade plan")}
@@ -424,7 +449,7 @@ export function UserDropdownMenu({
                 className="cursor-pointer"
                 data-testid="user-nav-item-admin"
                 onSelect={(event) =>
-                  handleSelect(event, () => onNavigate("/admin"))
+                  handleSelect(event, "navigate", () => onNavigate("/admin"))
                 }
               >
                 {translate(
@@ -537,7 +562,7 @@ export function UserDropdownMenu({
         <DropdownMenuItem
           className="cursor-pointer"
           data-testid="user-nav-item-theme"
-          onSelect={(event) => handleSelect(event, onToggleTheme)}
+          onSelect={(event) => handleSelect(event, "theme", onToggleTheme)}
         >
           {resolvedTheme === "light"
             ? translate("user_menu.theme.dark", "Dark mode")
@@ -550,7 +575,7 @@ export function UserDropdownMenu({
               className="cursor-pointer text-destructive focus:text-destructive"
               data-testid="user-nav-item-auth"
               onSelect={(event) =>
-                onSignOut && handleSelect(event, onSignOut)
+                onSignOut && handleSelect(event, "signOut", onSignOut)
               }
             >
               {translate("user_menu.sign_out", "Sign out")}

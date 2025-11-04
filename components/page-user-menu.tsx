@@ -1,6 +1,7 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -16,20 +17,43 @@ export function PageUserMenu({ className }: { className?: string }) {
   const { data: session, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
   const { translate } = useTranslation();
-
+  const [isActionPending, setIsActionPending] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const user = session?.user ?? null;
 
+  useEffect(() => {
+    if (!isPending && user) {
+      setIsActionPending(false);
+    }
+  }, [isPending, user]);
+
+  const beginAction = () => {
+    setIsActionPending(true);
+  };
+
   const handleNavigate = (path: string) => {
-    router.push(path);
+    beginAction();
+    startTransition(() => {
+      router.push(path);
+    });
   };
 
   const handleToggleTheme = () => {
+    beginAction();
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
+    setTimeout(() => setIsActionPending(false), 250);
   };
 
   const handleSignOut = () => {
-    signOut({ redirectTo: "/login" });
+    beginAction();
+    void signOut({ redirectTo: "/login" });
   };
+
+  const handleMenuClosed = () => {
+    setIsActionPending(false);
+  };
+
+  const isBusy = status === "loading" || isPending || isActionPending;
 
   return (
     <div
@@ -52,6 +76,9 @@ export function PageUserMenu({ className }: { className?: string }) {
           align="end"
           isAdmin={user.role === "admin"}
           isAuthenticated
+          isBusy={isBusy}
+          onActionStart={beginAction}
+          onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
           onSignOut={handleSignOut}
           onToggleTheme={handleToggleTheme}
@@ -60,6 +87,7 @@ export function PageUserMenu({ className }: { className?: string }) {
           userEmail={user.email ?? undefined}
           trigger={
             <UserMenuTrigger
+              isBusy={isBusy}
               user={{
                 name: user.name,
                 email: user.email,
@@ -73,16 +101,28 @@ export function PageUserMenu({ className }: { className?: string }) {
           align="end"
           isAdmin={false}
           isAuthenticated={false}
+          isBusy={isBusy}
+          onActionStart={beginAction}
+          onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
           trigger={
             <button
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className={cn(
+                "relative flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                isBusy && "pointer-events-none opacity-70"
+              )}
               type="button"
             >
-              <EllipsisVertical size={16} />
+              {isBusy ? (
+                <span className="animate-spin">
+                  <LoaderIcon size={16} />
+                </span>
+              ) : (
+                <EllipsisVertical size={16} />
+              )}
               <span className="sr-only">
                 {translate("user_menu.open_menu", "Open menu")}
               </span>
