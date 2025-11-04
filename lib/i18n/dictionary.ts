@@ -1,6 +1,11 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
-import { db } from "@/lib/db/queries";
+import {
+  db,
+  deleteAppSetting,
+  getAppSetting,
+  setAppSetting,
+} from "@/lib/db/queries";
 import {
   translationKey,
   translationValue,
@@ -44,6 +49,26 @@ const parsedTimeout = Number.parseInt(
 );
 const TRANSLATION_QUERY_TIMEOUT_MS =
   Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 2000;
+
+const parsedInitialTimeout = Number.parseInt(
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "5000",
+  10
+);
+const TRANSLATION_INITIAL_TIMEOUT_MS =
+  Number.isFinite(parsedInitialTimeout) && parsedInitialTimeout > 0
+    ? parsedInitialTimeout
+    : 5000;
+
+const parsedCacheTtl = Number.parseInt(
+  process.env.TRANSLATION_CACHE_TTL_MS ?? `${1000 * 60 * 60 * 6}`,
+  10
+);
+const TRANSLATION_CACHE_TTL_MS =
+  Number.isFinite(parsedCacheTtl) && parsedCacheTtl > 0
+    ? parsedCacheTtl
+    : 1000 * 60 * 60 * 6;
+
+const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
 
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]
@@ -109,6 +134,8 @@ export async function registerTranslationKeys(
           updatedAt: sql`now()`,
         },
       });
+
+    await invalidateTranslationBundleCache();
   } catch (error) {
     console.error("[i18n] Failed to register translation keys.", error);
   }
@@ -151,19 +178,50 @@ type TranslationBundle = {
   dictionary: Record<string, string>;
 };
 
-const BUNDLE_CACHE = new Map<
-  string,
-  {
-    data: TranslationBundle;
-    inflight?: Promise<void>;
-  }
->();
+type CachedBundle = {
+  data: TranslationBundle;
+  inflight?: Promise<void>;
+};
+
+type PersistedBundle = TranslationBundle & {
+  cachedAt: string;
+};
+
+const BUNDLE_CACHE = new Map<string, CachedBundle>();
 
 const FALLBACK_BUNDLE: TranslationBundle = {
   languages: [FALLBACK_LANGUAGE],
   activeLanguage: FALLBACK_LANGUAGE,
   dictionary: mergeWithStaticDictionary({}),
 };
+
+async function persistBundle(key: string, bundle: TranslationBundle) {
+  await setAppSetting({
+    key: `${TRANSLATION_CACHE_PREFIX}${key}`,
+    value: {
+      ...bundle,
+      cachedAt: new Date().toISOString(),
+    } satisfies PersistedBundle,
+  });
+}
+
+async function readPersistedBundle(
+  key: string
+): Promise<PersistedBundle | null> {
+  const stored = await getAppSetting<PersistedBundle>(
+    `${TRANSLATION_CACHE_PREFIX}${key}`
+  );
+
+  if (!stored) {
+    return null;
+  }
+
+  if (!("cachedAt" in stored)) {
+    return null;
+  }
+
+  return stored;
+}
 
 function cacheKeyForLanguage(code?: string | null) {
   const normalized = code?.trim().toLowerCase();
@@ -185,8 +243,11 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
       );
     }
   )
-    .then((bundle) => {
+    .then(async (bundle) => {
       BUNDLE_CACHE.set(key, { data: bundle });
+      await persistBundle(key, bundle).catch((error) => {
+        console.error("[i18n] Failed to persist translation bundle.", error);
+      });
     })
     .catch((error) => {
       console.error("[i18n] Falling back to static translations.", error);
@@ -212,13 +273,86 @@ export async function getTranslationBundle(
   const key = cacheKeyForLanguage(preferredCode);
   const cached = BUNDLE_CACHE.get(key);
   if (cached) {
-    scheduleBundleRefresh(key, preferredCode);
+    if (!cached.inflight) {
+      const persisted = await readPersistedBundle(key);
+      if (!persisted) {
+        scheduleBundleRefresh(key, preferredCode);
+      } else if (
+        Date.now() - new Date(persisted.cachedAt).getTime() >
+        TRANSLATION_CACHE_TTL_MS
+      ) {
+        scheduleBundleRefresh(key, preferredCode);
+      }
+    }
     return cached.data;
   }
 
-  BUNDLE_CACHE.set(key, { data: FALLBACK_BUNDLE });
-  scheduleBundleRefresh(key, preferredCode);
-  return FALLBACK_BUNDLE;
+  const persisted = await readPersistedBundle(key);
+  if (persisted) {
+    const { cachedAt, ...bundle } = persisted;
+    BUNDLE_CACHE.set(key, { data: bundle });
+    if (Date.now() - new Date(cachedAt).getTime() > TRANSLATION_CACHE_TTL_MS) {
+      scheduleBundleRefresh(key, preferredCode);
+    }
+    return bundle;
+  }
+
+  try {
+    const bundle = await withTimeout(
+      loadTranslationBundle(preferredCode),
+      TRANSLATION_INITIAL_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[i18n] Initial bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
+        );
+      }
+    );
+    BUNDLE_CACHE.set(key, { data: bundle });
+    await persistBundle(key, bundle).catch((error) => {
+      console.error("[i18n] Failed to persist translation bundle.", error);
+    });
+    return bundle;
+  } catch (error) {
+    console.error("[i18n] Falling back to static translations.", error);
+    BUNDLE_CACHE.set(key, { data: FALLBACK_BUNDLE });
+    scheduleBundleRefresh(key, preferredCode);
+    return FALLBACK_BUNDLE;
+  }
+}
+
+export async function invalidateTranslationBundleCache(
+  languageCodes?: string[]
+) {
+  const targetSet = new Set<string>();
+
+  if (languageCodes && languageCodes.length > 0) {
+    for (const code of languageCodes) {
+      targetSet.add(cacheKeyForLanguage(code));
+    }
+  } else {
+    for (const key of BUNDLE_CACHE.keys()) {
+      targetSet.add(key);
+    }
+  }
+
+  targetSet.add("__default");
+
+  const targets = Array.from(targetSet);
+
+  for (const key of targets) {
+    BUNDLE_CACHE.delete(key);
+  }
+
+  await Promise.all(
+    targets.map((key) =>
+      deleteAppSetting(`${TRANSLATION_CACHE_PREFIX}${key}`).catch((error) => {
+        console.error(
+          `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
+          error
+        );
+      })
+    )
+  );
 }
 
 export async function getTranslationForKey(

@@ -10,6 +10,7 @@ import {
   updateTranslationDefaultText,
 } from "@/lib/db/queries";
 import { getLanguageByCode } from "@/lib/i18n/languages";
+import { invalidateTranslationBundleCache } from "@/lib/i18n/dictionary";
 
 const TRANSLATIONS_PATH = "/admin/translations";
 
@@ -53,6 +54,8 @@ export async function saveDefaultTextAction(formData: FormData) {
     defaultText,
     description,
   });
+
+  await invalidateTranslationBundleCache();
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -103,6 +106,8 @@ export async function saveTranslationValueAction(formData: FormData) {
       languageId: languageOption.id,
     });
   }
+
+  await invalidateTranslationBundleCache([languageOption.code]);
 
   await createAuditLogEntry({
     actorId: actor.id,

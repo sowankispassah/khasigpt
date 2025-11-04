@@ -60,7 +60,9 @@ const PureChatItem = ({
           </span>
           {isNavigating ? (
             <span className="text-sidebar-foreground/70">
-              <LoaderIcon size={14} />
+              <span className="flex h-3.5 w-3.5 items-center justify-center animate-spin">
+                <LoaderIcon size={14} />
+              </span>
             </span>
           ) : null}
         </button>

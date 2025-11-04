@@ -35,7 +35,10 @@ import {
 import type { UserRole } from "@/lib/db/schema";
 import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
-import { registerTranslationKeys } from "@/lib/i18n/dictionary";
+import {
+  invalidateTranslationBundleCache,
+  registerTranslationKeys,
+} from "@/lib/i18n/dictionary";
 
 async function requireAdmin() {
   const session = await auth();
@@ -762,6 +765,8 @@ export async function createLanguageAction(formData: FormData) {
     metadata: { name, isActive },
   });
 
+  await invalidateTranslationBundleCache([normalizedCode]);
+
   revalidateTag("languages");
   revalidatePath("/", "layout");
   revalidatePath("/admin/settings");
@@ -801,6 +806,8 @@ export async function updateLanguageStatusAction(formData: FormData) {
   }
 
   await updateLanguageActiveState({ id: targetLanguage.id, isActive: shouldActivate });
+
+  await invalidateTranslationBundleCache([targetLanguage.code]);
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -936,6 +943,8 @@ export async function updatePlanTranslationAction(formData: FormData) {
         });
       }
     }
+
+    await invalidateTranslationBundleCache([language.code]);
 
     await createAuditLogEntry({
       actorId: actor.id,

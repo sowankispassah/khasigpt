@@ -1397,6 +1397,17 @@ export async function setAppSetting<T>({
   }
 }
 
+export async function deleteAppSetting(key: string) {
+  try {
+    await db.delete(appSetting).where(eq(appSetting.key, key));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to delete application setting"
+    );
+  }
+}
+
 export async function createAuditLogEntry({
   actorId,
   action,
