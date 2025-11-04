@@ -40,14 +40,22 @@ export default async function AdminOverviewPage() {
     promise: Promise<T>,
     fallback: T
   ): Promise<T> {
+    const startedAt = Date.now();
     try {
-      return await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
+      const result = await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
         console.warn(
           `[admin] Query "${label}" timed out after ${QUERY_TIMEOUT_MS}ms.`
         );
       });
+      const duration = Date.now() - startedAt;
+      console.info(`[admin] Query "${label}" succeeded in ${duration}ms.`);
+      return result;
     } catch (error) {
-      console.error(`[admin] Failed to load ${label}`, error);
+      const duration = Date.now() - startedAt;
+      console.error(
+        `[admin] Failed to load ${label} after ${duration}ms`,
+        error
+      );
       return fallback;
     }
   }
