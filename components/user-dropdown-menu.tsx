@@ -371,7 +371,9 @@ export function UserDropdownMenu({
   const renderPendingIndicator = (visible: boolean) =>
     visible ? (
       <span className="text-muted-foreground">
-        <LoaderIcon size={14} className="animate-spin" />
+        <span className="inline-flex animate-spin">
+          <LoaderIcon size={14} />
+        </span>
       </span>
     ) : null;
 
