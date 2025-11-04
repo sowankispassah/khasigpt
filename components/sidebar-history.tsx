@@ -100,7 +100,14 @@ export function getChatHistoryPaginationKey(
 
 export function SidebarHistory({ user }: { user: User | undefined }) {
   const { setOpenMobile } = useSidebar();
-  const { id } = useParams();
+  const params = useParams();
+  const idParam = params?.id;
+  const activeChatId =
+    typeof idParam === "string"
+      ? idParam
+      : Array.isArray(idParam)
+        ? idParam[0] ?? null
+        : null;
 
   const {
     data: paginatedChatHistories,
@@ -128,10 +135,13 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     : false;
 
   useEffect(() => {
-    if (!isNavigating) {
+    if (!isNavigating && navigatingChatId) {
+      if (navigatingChatId === activeChatId) {
+        setOpenMobile(false);
+      }
       setNavigatingChatId(null);
     }
-  }, [isNavigating]);
+  }, [isNavigating, navigatingChatId, activeChatId, setOpenMobile]);
 
   useEffect(() => {
     if (!paginatedChatHistories || paginatedChatHistories.length === 0) {
@@ -181,7 +191,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
     setShowDeleteDialog(false);
 
-    if (deleteId === id) {
+    if (deleteId === activeChatId) {
       router.push("/");
     }
   };
@@ -268,7 +278,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                         {groupedChats.today.map((chat) => (
                           <ChatItem
                             chat={chat}
-                            isActive={chat.id === id}
+                            isActive={chat.id === activeChatId}
                             isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
@@ -276,7 +286,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                               setShowDeleteDialog(true);
                             }}
                             onOpen={handleOpenChat}
-                            setOpenMobile={setOpenMobile}
                           />
                         ))}
                       </div>
@@ -293,7 +302,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                         {groupedChats.yesterday.map((chat) => (
                           <ChatItem
                             chat={chat}
-                            isActive={chat.id === id}
+                            isActive={chat.id === activeChatId}
                             isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
@@ -301,7 +310,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                               setShowDeleteDialog(true);
                             }}
                             onOpen={handleOpenChat}
-                            setOpenMobile={setOpenMobile}
                           />
                         ))}
                       </div>
@@ -318,7 +326,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                         {groupedChats.lastWeek.map((chat) => (
                           <ChatItem
                             chat={chat}
-                            isActive={chat.id === id}
+                            isActive={chat.id === activeChatId}
                             isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
@@ -326,7 +334,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                               setShowDeleteDialog(true);
                             }}
                             onOpen={handleOpenChat}
-                            setOpenMobile={setOpenMobile}
                           />
                         ))}
                       </div>
@@ -343,7 +350,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                         {groupedChats.lastMonth.map((chat) => (
                           <ChatItem
                             chat={chat}
-                            isActive={chat.id === id}
+                            isActive={chat.id === activeChatId}
                             isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
@@ -351,7 +358,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                               setShowDeleteDialog(true);
                             }}
                             onOpen={handleOpenChat}
-                            setOpenMobile={setOpenMobile}
                           />
                         ))}
                       </div>
@@ -368,7 +374,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                         {groupedChats.older.map((chat) => (
                           <ChatItem
                             chat={chat}
-                            isActive={chat.id === id}
+                            isActive={chat.id === activeChatId}
                             isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
@@ -376,7 +382,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                               setShowDeleteDialog(true);
                             }}
                             onOpen={handleOpenChat}
-                            setOpenMobile={setOpenMobile}
                           />
                         ))}
                       </div>

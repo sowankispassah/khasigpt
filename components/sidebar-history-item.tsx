@@ -32,14 +32,12 @@ const PureChatItem = ({
   isNavigating,
   onDelete,
   onOpen,
-  setOpenMobile,
 }: {
   chat: Chat;
   isActive: boolean;
   isNavigating: boolean;
   onDelete: (chatId: string) => void;
   onOpen: (chatId: string) => void;
-  setOpenMobile: (open: boolean) => void;
 }) => {
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId: chat.id,
@@ -53,7 +51,6 @@ const PureChatItem = ({
           aria-busy={isNavigating}
           className="flex w-full items-center gap-2 truncate text-left"
           onClick={() => {
-            setOpenMobile(false);
             onOpen(chat.id);
           }}
           type="button"

@@ -41,6 +41,10 @@ export function PageUserMenu({ className }: { className?: string }) {
   };
 
   const handleNavigate = (path: string) => {
+    if (path === pathname) {
+      setIsActionPending(false);
+      return;
+    }
     beginAction();
     router.push(path);
   };
