@@ -49,7 +49,7 @@ export default async function RechargePage() {
   ]);
 
   if (planTranslationDefinitions.length > 0) {
-    await registerTranslationKeys(planTranslationDefinitions);
+    void registerTranslationKeys(planTranslationDefinitions);
   }
 
   const [bundle, planTranslations] = await Promise.all([

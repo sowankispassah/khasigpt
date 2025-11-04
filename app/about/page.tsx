@@ -23,7 +23,7 @@ export default async function AboutPage() {
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_ABOUT_US;
 
-  await registerTranslationKeys([
+  void registerTranslationKeys([
     {
       key: "navigation.back_to_home",
       defaultText: "Back to home",

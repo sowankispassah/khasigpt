@@ -38,6 +38,41 @@ const mergeWithStaticDictionary = (dictionary: Record<string, string>) => {
   return { ...STATIC_DICTIONARY_BASE, ...dictionary };
 };
 
+const parsedTimeout = Number.parseInt(
+  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "2000",
+  10
+);
+const TRANSLATION_QUERY_TIMEOUT_MS =
+  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 2000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("translation_query_timeout"));
+      }
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        }
+      })
+      .catch((error) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        }
+      });
+  });
+}
+
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]
 ) {
@@ -107,36 +142,43 @@ export async function registerTranslationKeys(
   }
 }
 
+async function loadTranslationBundle(preferredCode?: string | null) {
+  const { activeLanguage, languages } = await resolveLanguage(preferredCode);
+
+  const rows = await db
+    .select({
+      key: translationKey.key,
+      defaultText: translationKey.defaultText,
+      value: translationValue.value,
+    })
+    .from(translationKey)
+    .leftJoin(
+      translationValue,
+      and(
+        eq(translationValue.translationKeyId, translationKey.id),
+        eq(translationValue.languageId, activeLanguage.id)
+      )
+    )
+    .orderBy(asc(translationKey.key));
+
+  const dictionary: Record<string, string> = {};
+  for (const row of rows) {
+    dictionary[row.key] = row.value ?? row.defaultText;
+  }
+
+  return {
+    languages,
+    activeLanguage,
+    dictionary: mergeWithStaticDictionary(dictionary),
+  };
+}
+
 export const getTranslationBundle = cache(async (preferredCode?: string | null) => {
   try {
-    const { activeLanguage, languages } = await resolveLanguage(preferredCode);
-
-    const rows = await db
-      .select({
-        key: translationKey.key,
-        defaultText: translationKey.defaultText,
-        value: translationValue.value,
-      })
-      .from(translationKey)
-      .leftJoin(
-        translationValue,
-        and(
-          eq(translationValue.translationKeyId, translationKey.id),
-          eq(translationValue.languageId, activeLanguage.id)
-        )
-      )
-      .orderBy(asc(translationKey.key));
-
-    const dictionary: Record<string, string> = {};
-    for (const row of rows) {
-      dictionary[row.key] = row.value ?? row.defaultText;
-    }
-
-    return {
-      languages,
-      activeLanguage,
-      dictionary: mergeWithStaticDictionary(dictionary),
-    };
+    return await withTimeout(
+      loadTranslationBundle(preferredCode),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
   } catch (error) {
     console.error("[i18n] Falling back to static translations.", error);
     return {
@@ -151,26 +193,32 @@ export async function getTranslationForKey(
   preferredCode: string | null | undefined,
   definition: TranslationDefinition
 ) {
+  void registerTranslationKeys([definition]);
+
   try {
-    await registerTranslationKeys([definition]);
+    const { activeLanguage } = await withTimeout(
+      resolveLanguage(preferredCode),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
 
-    const { activeLanguage } = await resolveLanguage(preferredCode);
-
-    const [result] = await db
-      .select({
-        value: translationValue.value,
-        defaultText: translationKey.defaultText,
-      })
-      .from(translationKey)
-      .leftJoin(
-        translationValue,
-        and(
-          eq(translationValue.translationKeyId, translationKey.id),
-          eq(translationValue.languageId, activeLanguage.id)
+    const [result] = await withTimeout(
+      db
+        .select({
+          value: translationValue.value,
+          defaultText: translationKey.defaultText,
+        })
+        .from(translationKey)
+        .leftJoin(
+          translationValue,
+          and(
+            eq(translationValue.translationKeyId, translationKey.id),
+            eq(translationValue.languageId, activeLanguage.id)
+          )
         )
-      )
-      .where(eq(translationKey.key, definition.key))
-      .limit(1);
+        .where(eq(translationKey.key, definition.key))
+        .limit(1),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
 
     return result?.value ?? result?.defaultText ?? definition.defaultText;
   } catch (error) {
@@ -190,27 +238,33 @@ export async function getTranslationsForKeys(
     return {};
   }
 
-  try {
-    await registerTranslationKeys(definitions);
+  void registerTranslationKeys(definitions);
 
-    const { activeLanguage } = await resolveLanguage(preferredCode);
+  try {
+    const { activeLanguage } = await withTimeout(
+      resolveLanguage(preferredCode),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
     const keys = definitions.map((definition) => definition.key);
 
-    const rows = await db
-      .select({
-        key: translationKey.key,
-        defaultText: translationKey.defaultText,
-        value: translationValue.value,
-      })
-      .from(translationKey)
-      .leftJoin(
-        translationValue,
-        and(
-          eq(translationValue.translationKeyId, translationKey.id),
-          eq(translationValue.languageId, activeLanguage.id)
+    const rows = await withTimeout(
+      db
+        .select({
+          key: translationKey.key,
+          defaultText: translationKey.defaultText,
+          value: translationValue.value,
+        })
+        .from(translationKey)
+        .leftJoin(
+          translationValue,
+          and(
+            eq(translationValue.translationKeyId, translationKey.id),
+            eq(translationValue.languageId, activeLanguage.id)
+          )
         )
-      )
-      .where(inArray(translationKey.key, keys));
+        .where(inArray(translationKey.key, keys)),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
 
     const result: Record<string, string> = {};
     for (const definition of definitions) {
