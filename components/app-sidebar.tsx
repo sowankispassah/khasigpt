@@ -6,6 +6,7 @@ import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useTransition } from "react";
+import Image from "next/image";
 import { LoaderIcon, PlusIcon } from "@/components/icons";
 import { SidebarHistory } from "@/components/sidebar-history";
 import { Button } from "@/components/ui/button";
@@ -53,16 +54,17 @@ export function AppSidebar({ user }: { user: User | undefined }) {
         <SidebarMenu>
           <div className="flex flex-row items-center justify-between">
             <Link
-              className="flex flex-row items-center"
+              className="flex cursor-pointer flex-row items-center"
               href="/"
               onClick={() => {
                 setOpenMobile(false);
               }}
             >
-              <img
+              <Image
                 alt="KhasiGPT logo"
                 className="h-8 w-6 rounded-md object-contain dark:invert dark:brightness-150"
                 height={32}
+                priority
                 src="/images/khasigptlogo.png"
                 width={24}
               />

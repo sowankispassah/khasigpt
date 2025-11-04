@@ -16,6 +16,62 @@ import {
 } from "@/components/icons";
 import { generateUUID } from "@/lib/utils";
 
+const PYODIDE_SRC = "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js";
+
+type LoadPyodideFunction = (options: { indexURL: string }) => Promise<any>;
+
+let pyodideScriptPromise: Promise<void> | null = null;
+
+async function ensurePyodideRuntime(): Promise<void> {
+  if (typeof window === "undefined") {
+    throw new Error("Pyodide runtime can only be loaded in the browser.");
+  }
+
+  if ((globalThis as { loadPyodide?: LoadPyodideFunction }).loadPyodide) {
+    return;
+  }
+
+  if (!pyodideScriptPromise) {
+    pyodideScriptPromise = new Promise((resolve, reject) => {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        `script[src="${PYODIDE_SRC}"]`
+      );
+
+      const scriptElement = existingScript ?? document.createElement("script");
+
+      const handleLoad = () => {
+        scriptElement.removeEventListener("error", handleError);
+        scriptElement.removeEventListener("load", handleLoad);
+        resolve();
+      };
+
+      const handleError = () => {
+        scriptElement.removeEventListener("error", handleError);
+        scriptElement.removeEventListener("load", handleLoad);
+        pyodideScriptPromise = null;
+        reject(new Error("Failed to load the Pyodide runtime."));
+      };
+
+      scriptElement.addEventListener("load", handleLoad, { once: true });
+      scriptElement.addEventListener("error", handleError, { once: true });
+
+      if (!existingScript) {
+        scriptElement.async = true;
+        scriptElement.crossOrigin = "anonymous";
+        scriptElement.src = PYODIDE_SRC;
+        document.head.appendChild(scriptElement);
+      }
+    });
+  }
+
+  await pyodideScriptPromise;
+
+  if (!(globalThis as { loadPyodide?: LoadPyodideFunction }).loadPyodide) {
+    pyodideScriptPromise = null;
+    throw new Error("Pyodide runtime failed to initialize.");
+  }
+}
+
 const OUTPUT_HANDLERS = {
   matplotlib: `
     import io
@@ -127,14 +183,23 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             {
               id: runId,
               contents: [],
-              status: "in_progress",
-            },
-          ],
-        }));
+            status: "in_progress",
+          },
+        ],
+      }));
 
         try {
-          // @ts-expect-error - loadPyodide is not defined
-          const currentPyodideInstance = await globalThis.loadPyodide({
+          await ensurePyodideRuntime();
+
+          const loadPyodide = (globalThis as {
+            loadPyodide?: LoadPyodideFunction;
+          }).loadPyodide;
+
+          if (!loadPyodide) {
+            throw new Error("Pyodide runtime is unavailable.");
+          }
+
+          const currentPyodideInstance = await loadPyodide({
             indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/",
           });
 
@@ -205,6 +270,11 @@ export const codeArtifact = new Artifact<"code", Metadata>({
               },
             ],
           }));
+          toast.error(
+            error?.message
+              ? `Code execution failed: ${error.message}`
+              : "Code execution failed. Please try again."
+          );
         }
       },
     },
