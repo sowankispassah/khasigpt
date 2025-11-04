@@ -60,31 +60,21 @@ export default async function AdminOverviewPage() {
     }
   }
 
-  [
-    userCount,
-    chatCount,
-    recentUsers,
-    recentChats,
-    recentAudits,
-    contactMessageCount,
-    recentContactMessages,
-  ] = await Promise.all([
-    safeQuery("user count", getUserCount(), 0),
-    safeQuery("chat count", getChatCount(), 0),
-    safeQuery("recent users", listUsers({ limit: 5 }), []),
-    safeQuery("recent chats", listChats({ limit: 5 }), []),
-    safeQuery("recent audit log entries", listAuditLog({ limit: 5 }), []),
-    safeQuery(
-      "contact message count",
-      getContactMessageCount(),
-      0
-    ),
-    safeQuery(
-      "recent contact messages",
-      listContactMessages({ limit: 5 }),
-      []
-    ),
-  ]);
+  userCount = await safeQuery("user count", getUserCount(), 0);
+  chatCount = await safeQuery("chat count", getChatCount(), 0);
+  recentUsers = await safeQuery("recent users", listUsers({ limit: 5 }), []);
+  recentChats = await safeQuery("recent chats", listChats({ limit: 5 }), []);
+  recentAudits = await safeQuery("recent audit log entries", listAuditLog({ limit: 5 }), []);
+  contactMessageCount = await safeQuery(
+    "contact message count",
+    getContactMessageCount(),
+    0
+  );
+  recentContactMessages = await safeQuery(
+    "recent contact messages",
+    listContactMessages({ limit: 5 }),
+    []
+  );
 
   return (
     <div className="flex flex-col gap-10">
