@@ -22,10 +22,49 @@ export async function registerTranslationKeys(
     return;
   }
 
+  const keys = definitions.map((definition) => definition.key);
+
+  const existing = await db
+    .select({
+      key: translationKey.key,
+      defaultText: translationKey.defaultText,
+      description: translationKey.description,
+    })
+    .from(translationKey)
+    .where(inArray(translationKey.key, keys));
+
+  const existingMap = new Map(
+    existing.map((entry) => [
+      entry.key,
+      {
+        defaultText: entry.defaultText,
+        description: entry.description ?? null,
+      },
+    ])
+  );
+
+  const definitionsToSync = definitions.filter((definition) => {
+    const current = existingMap.get(definition.key);
+    const description = definition.description ?? null;
+
+    if (!current) {
+      return true;
+    }
+
+    return (
+      current.defaultText !== definition.defaultText ||
+      current.description !== description
+    );
+  });
+
+  if (!definitionsToSync.length) {
+    return;
+  }
+
   await db
     .insert(translationKey)
     .values(
-      definitions.map(({ key, defaultText, description }) => ({
+      definitionsToSync.map(({ key, defaultText, description }) => ({
         key,
         defaultText,
         description: description ?? null,
