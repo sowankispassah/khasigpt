@@ -4,7 +4,7 @@ import { isToday, isYesterday, subMonths, subWeeks } from "date-fns";
 import { motion } from "framer-motion";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "next-auth";
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import {
@@ -116,6 +116,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { translate } = useTranslation();
+  const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
+  const [isNavigating, startNavigation] = useTransition();
 
   const hasReachedEnd = paginatedChatHistories
     ? paginatedChatHistories.some((page) => page.hasMore === false)
@@ -124,6 +126,30 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   const hasEmptyChatHistory = paginatedChatHistories
     ? paginatedChatHistories.every((page) => page.chats.length === 0)
     : false;
+
+  useEffect(() => {
+    if (!isNavigating) {
+      setNavigatingChatId(null);
+    }
+  }, [isNavigating]);
+
+  useEffect(() => {
+    if (!paginatedChatHistories || paginatedChatHistories.length === 0) {
+      return;
+    }
+
+    const firstPage = paginatedChatHistories[0]?.chats ?? [];
+    for (const chat of firstPage.slice(0, 10)) {
+      void router.prefetch(`/chat/${chat.id}`);
+    }
+  }, [paginatedChatHistories, router]);
+
+  const handleOpenChat = (chatId: string) => {
+    setNavigatingChatId(chatId);
+    startNavigation(() => {
+      router.push(`/chat/${chatId}`);
+    });
+  };
 
   const handleDelete = () => {
     const deletePromise = fetch(`/api/chat?id=${deleteId}`, {
@@ -243,11 +269,13 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
                               setShowDeleteDialog(true);
                             }}
+                            onOpen={handleOpenChat}
                             setOpenMobile={setOpenMobile}
                           />
                         ))}
@@ -266,11 +294,13 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
                               setShowDeleteDialog(true);
                             }}
+                            onOpen={handleOpenChat}
                             setOpenMobile={setOpenMobile}
                           />
                         ))}
@@ -289,11 +319,13 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
                               setShowDeleteDialog(true);
                             }}
+                            onOpen={handleOpenChat}
                             setOpenMobile={setOpenMobile}
                           />
                         ))}
@@ -312,11 +344,13 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
                               setShowDeleteDialog(true);
                             }}
+                            onOpen={handleOpenChat}
                             setOpenMobile={setOpenMobile}
                           />
                         ))}
@@ -335,11 +369,13 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isNavigating={isNavigating && navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
                               setShowDeleteDialog(true);
                             }}
+                            onOpen={handleOpenChat}
                             setOpenMobile={setOpenMobile}
                           />
                         ))}

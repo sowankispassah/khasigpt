@@ -1,8 +1,8 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 
@@ -14,18 +14,27 @@ import { cn } from "@/lib/utils";
 
 export function PageUserMenu({ className }: { className?: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
   const { translate } = useTranslation();
   const [isActionPending, setIsActionPending] = useState(false);
-  const [isPending, startTransition] = useTransition();
   const user = session?.user ?? null;
 
   useEffect(() => {
-    if (!isPending && user) {
-      setIsActionPending(false);
+    setIsActionPending(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (user) {
+      void router.prefetch("/profile");
+      void router.prefetch("/subscriptions");
+      void router.prefetch("/recharge");
+      if (user.role === "admin") {
+        void router.prefetch("/admin");
+      }
     }
-  }, [isPending, user]);
+  }, [router, user]);
 
   const beginAction = () => {
     setIsActionPending(true);
@@ -33,9 +42,7 @@ export function PageUserMenu({ className }: { className?: string }) {
 
   const handleNavigate = (path: string) => {
     beginAction();
-    startTransition(() => {
-      router.push(path);
-    });
+    router.push(path);
   };
 
   const handleToggleTheme = () => {
@@ -53,7 +60,7 @@ export function PageUserMenu({ className }: { className?: string }) {
     setIsActionPending(false);
   };
 
-  const isBusy = status === "loading" || isPending || isActionPending;
+  const isBusy = status === "loading" || isActionPending;
 
   return (
     <div

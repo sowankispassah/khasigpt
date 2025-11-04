@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { memo } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Chat } from "@/lib/db/schema";
@@ -10,6 +9,7 @@ import {
   ShareIcon,
   TrashIcon,
 } from "./icons";
+import { LoaderIcon } from "./icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,12 +29,16 @@ import {
 const PureChatItem = ({
   chat,
   isActive,
+  isNavigating,
   onDelete,
+  onOpen,
   setOpenMobile,
 }: {
   chat: Chat;
   isActive: boolean;
+  isNavigating: boolean;
   onDelete: (chatId: string) => void;
+  onOpen: (chatId: string) => void;
   setOpenMobile: (open: boolean) => void;
 }) => {
   const { visibilityType, setVisibilityType } = useChatVisibility({
@@ -45,9 +49,24 @@ const PureChatItem = ({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
-        <Link href={`/chat/${chat.id}`} onClick={() => setOpenMobile(false)}>
-          <span>{chat.title}</span>
-        </Link>
+        <button
+          aria-busy={isNavigating}
+          className="flex w-full items-center gap-2 truncate text-left"
+          onClick={() => {
+            setOpenMobile(false);
+            onOpen(chat.id);
+          }}
+          type="button"
+        >
+          <span className="flex-1 truncate">
+            {chat.title}
+          </span>
+          {isNavigating ? (
+            <span className="text-sidebar-foreground/70">
+              <LoaderIcon className="h-3.5 w-3.5 animate-spin" />
+            </span>
+          ) : null}
+        </button>
       </SidebarMenuButton>
 
       <DropdownMenu modal={true}>
@@ -114,6 +133,9 @@ const PureChatItem = ({
 
 export const ChatItem = memo(PureChatItem, (prevProps, nextProps) => {
   if (prevProps.isActive !== nextProps.isActive) {
+    return false;
+  }
+  if (prevProps.isNavigating !== nextProps.isNavigating) {
     return false;
   }
   return true;

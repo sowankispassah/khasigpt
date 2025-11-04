@@ -1,0 +1,49 @@
+app/(chat)/actions.ts:    chatId: message.chatId,
+app/(chat)/actions.ts:  chatId,
+app/(chat)/actions.ts:  chatId: string;
+app/(chat)/actions.ts:  await updateChatVisiblityById({ chatId, visibility });
+app/(chat)/subscriptions/page.tsx:                  <tr key={entry.chatId} className="border-t">
+app/(chat)/subscriptions/page.tsx:                    <td className="py-2 font-mono text-xs">{entry.chatId}</td>
+app/(admin)/admin/account/transaction-export-button.tsx:  chatId: string;
+app/(admin)/admin/account/transaction-export-button.tsx:          row.chatId,
+app/(chat)/api/vote/route.ts:  const chatId = searchParams.get("chatId");
+app/(chat)/api/vote/route.ts:  if (!chatId) {
+app/(chat)/api/vote/route.ts:      "Parameter chatId is required."
+app/(chat)/api/vote/route.ts:  const chat = await getChatById({ id: chatId });
+app/(chat)/api/vote/route.ts:  const votes = await getVotesByChatId({ id: chatId });
+app/(chat)/api/vote/route.ts:    chatId,
+app/(chat)/api/vote/route.ts:  }: { chatId: string; messageId: string; type: "up" | "down" } =
+app/(chat)/api/vote/route.ts:  if (!chatId || !messageId || !type) {
+app/(chat)/api/vote/route.ts:      "Parameters chatId, messageId, and type are required."
+app/(chat)/api/vote/route.ts:  const chat = await getChatById({ id: chatId });
+app/(chat)/api/vote/route.ts:    chatId,
+app/(admin)/actions.ts:export async function deleteChatAction({ chatId }: { chatId: string }) {
+app/(admin)/actions.ts:  await deleteChatById({ id: chatId });
+app/(admin)/actions.ts:    target: { chatId },
+app/(admin)/actions.ts:export async function hardDeleteChatAction({ chatId }: { chatId: string }) {
+app/(admin)/actions.ts:  await hardDeleteChatById({ id: chatId });
+app/(admin)/actions.ts:    target: { chatId },
+app/(admin)/actions.ts:export async function restoreChatAction({ chatId }: { chatId: string }) {
+app/(admin)/actions.ts:  await restoreChatById({ id: chatId });
+app/(admin)/actions.ts:    target: { chatId },
+app/(admin)/admin/account/page.tsx:  chatId: string;
+app/(admin)/admin/account/page.tsx:      chatId: record.chatId ?? "(unknown)",
+app/(admin)/admin/account/page.tsx:    chatId: row.chatId,
+app/(admin)/admin/account/page.tsx:                    <tr key={`${row.chatId}-${dateLabel}`} className="border-t text-sm">
+app/(admin)/admin/account/page.tsx:                      <td className="py-2 font-mono text-xs">{row.chatId.slice(0, 12)}</td>
+app/(admin)/admin/chats/page.tsx:                        await deleteChatAction({ chatId: chat.id });
+app/(admin)/admin/chats/page.tsx:                          await restoreChatAction({ chatId: chat.id });
+app/(admin)/admin/chats/page.tsx:                          await hardDeleteChatAction({ chatId: chat.id });
+app/(chat)/api/chat/route.ts:          chatId: id,
+app/(chat)/api/chat/route.ts:      console.warn("Failed to persist user message", { chatId: id }, error);
+app/(chat)/api/chat/route.ts:    await createStreamId({ streamId, chatId: id });
+app/(chat)/api/chat/route.ts:            chatId: id,
+app/(chat)/api/chat/route.ts:          console.warn("Failed to persist assistant messages", { chatId: id }, error);
+app/(chat)/api/chat/route.ts:              chatId: id,
+app/(chat)/api/chat/route.ts:                chatId: id,
+app/(chat)/api/chat/route.ts:            console.warn("Unable to record token usage", { chatId: id }, err);
+app/(chat)/api/chat/[id]/stream/route.ts:  const { id: chatId } = await params;
+app/(chat)/api/chat/[id]/stream/route.ts:  if (!chatId) {
+app/(chat)/api/chat/[id]/stream/route.ts:    chat = await getChatById({ id: chatId });
+app/(chat)/api/chat/[id]/stream/route.ts:  const streamIds = await getStreamIdsByChatId({ chatId });
+app/(chat)/api/chat/[id]/stream/route.ts:    const messages = await getMessagesByChatId({ id: chatId });
