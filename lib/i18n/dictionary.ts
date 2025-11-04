@@ -1,4 +1,3 @@
-import { cache } from "react";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/queries";
@@ -146,21 +145,79 @@ async function loadTranslationBundle(preferredCode?: string | null) {
   };
 }
 
-export const getTranslationBundle = cache(async (preferredCode?: string | null) => {
-  try {
-    return await withTimeout(
-      loadTranslationBundle(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
-  } catch (error) {
-    console.error("[i18n] Falling back to static translations.", error);
-    return {
-      languages: [FALLBACK_LANGUAGE],
-      activeLanguage: FALLBACK_LANGUAGE,
-      dictionary: mergeWithStaticDictionary({}),
-    };
+type TranslationBundle = {
+  languages: LanguageOption[];
+  activeLanguage: LanguageOption;
+  dictionary: Record<string, string>;
+};
+
+const BUNDLE_CACHE = new Map<
+  string,
+  {
+    data: TranslationBundle;
+    inflight?: Promise<void>;
   }
-});
+>();
+
+const FALLBACK_BUNDLE: TranslationBundle = {
+  languages: [FALLBACK_LANGUAGE],
+  activeLanguage: FALLBACK_LANGUAGE,
+  dictionary: mergeWithStaticDictionary({}),
+};
+
+function cacheKeyForLanguage(code?: string | null) {
+  const normalized = code?.trim().toLowerCase();
+  return normalized && normalized.length > 0 ? normalized : "__default";
+}
+
+function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
+  const existing = BUNDLE_CACHE.get(key);
+  if (existing?.inflight) {
+    return;
+  }
+
+  const inflight = withTimeout(
+    loadTranslationBundle(preferredCode),
+    TRANSLATION_QUERY_TIMEOUT_MS,
+    () => {
+      console.warn(
+        `[i18n] Bundle refresh timed out after ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${key}".`
+      );
+    }
+  )
+    .then((bundle) => {
+      BUNDLE_CACHE.set(key, { data: bundle });
+    })
+    .catch((error) => {
+      console.error("[i18n] Falling back to static translations.", error);
+    })
+    .finally(() => {
+      const current = BUNDLE_CACHE.get(key);
+      if (current) {
+        current.inflight = undefined;
+      }
+    });
+
+  BUNDLE_CACHE.set(key, {
+    data: existing?.data ?? FALLBACK_BUNDLE,
+    inflight: inflight.then(() => {}),
+  });
+}
+
+export async function getTranslationBundle(
+  preferredCode?: string | null
+): Promise<TranslationBundle> {
+  const key = cacheKeyForLanguage(preferredCode);
+  const cached = BUNDLE_CACHE.get(key);
+  if (cached) {
+    scheduleBundleRefresh(key, preferredCode);
+    return cached.data;
+  }
+
+  BUNDLE_CACHE.set(key, { data: FALLBACK_BUNDLE });
+  scheduleBundleRefresh(key, preferredCode);
+  return FALLBACK_BUNDLE;
+}
 
 export async function getTranslationForKey(
   preferredCode: string | null | undefined,
