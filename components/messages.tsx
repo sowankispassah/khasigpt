@@ -1,7 +1,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import equal from "fast-deep-equal";
 import { ArrowDownIcon } from "lucide-react";
-import { memo, useEffect } from "react";
+import { memo, useEffect, useRef } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
@@ -52,6 +52,7 @@ function PureMessages({
   } = useMessages({
     status,
   });
+  const mountedChatRef = useRef<string | null>(null);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
       ? lastMessage.parts
@@ -82,6 +83,17 @@ function PureMessages({
       });
     }
   }, [status, messagesContainerRef]);
+
+  useEffect(() => {
+    if (mountedChatRef.current !== chatId) {
+      mountedChatRef.current = chatId;
+      if (messages.length > 0) {
+        requestAnimationFrame(() => {
+          scrollToBottom("auto");
+        });
+      }
+    }
+  }, [chatId, messages.length, scrollToBottom]);
 
   useEffect(() => {
     if (status === "streaming" && streamingSignature !== null && isAtBottom) {
