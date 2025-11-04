@@ -28,20 +28,26 @@ export const authProviderEnum = pgEnum("auth_provider", [
 ]);
 export type AuthProvider = (typeof authProviderEnum.enumValues)[number];
 
-export const user = pgTable("User", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  email: varchar("email", { length: 64 }).notNull(),
-  password: varchar("password", { length: 64 }),
-  role: userRoleEnum("role").notNull().default("regular"),
-  authProvider: authProviderEnum("authProvider")
-    .notNull()
-    .default("credentials"),
-  isActive: boolean("isActive").notNull().default(true),
-  image: text("image"),
-  dateOfBirth: date("dateOfBirth"),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+export const user = pgTable(
+  "User",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    email: varchar("email", { length: 64 }).notNull(),
+    password: varchar("password", { length: 64 }),
+    role: userRoleEnum("role").notNull().default("regular"),
+    authProvider: authProviderEnum("authProvider")
+      .notNull()
+      .default("credentials"),
+    isActive: boolean("isActive").notNull().default(true),
+    image: text("image"),
+    dateOfBirth: date("dateOfBirth"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    createdAtIdx: index("User_createdAt_idx").on(table.createdAt),
+  })
+);
 
 export type User = InferSelectModel<typeof user>;
 
@@ -269,19 +275,25 @@ export const translationValue = pgTable(
 
 export type TranslationValue = InferSelectModel<typeof translationValue>;
 
-export const chat = pgTable("Chat", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  createdAt: timestamp("createdAt").notNull(),
-  title: text("title").notNull(),
-  userId: uuid("userId")
-    .notNull()
-    .references(() => user.id),
-  visibility: varchar("visibility", { enum: ["public", "private"] })
-    .notNull()
-    .default("private"),
-  lastContext: jsonb("lastContext").$type<AppUsage | null>(),
-  deletedAt: timestamp("deletedAt"),
-});
+export const chat = pgTable(
+  "Chat",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    createdAt: timestamp("createdAt").notNull(),
+    title: text("title").notNull(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    visibility: varchar("visibility", { enum: ["public", "private"] })
+      .notNull()
+      .default("private"),
+    lastContext: jsonb("lastContext").$type<AppUsage | null>(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  (table) => ({
+    createdAtIdx: index("Chat_createdAt_idx").on(table.createdAt),
+  })
+);
 
 export type Chat = InferSelectModel<typeof chat>;
 
@@ -421,14 +433,20 @@ export const stream = pgTable(
 
 export type Stream = InferSelectModel<typeof stream>;
 
-export const auditLog = pgTable("AuditLog", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  actorId: uuid("actorId").notNull().references(() => user.id),
-  action: varchar("action", { length: 128 }).notNull(),
-  target: jsonb("target").notNull(),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-});
+export const auditLog = pgTable(
+  "AuditLog",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorId: uuid("actorId").notNull().references(() => user.id),
+    action: varchar("action", { length: 128 }).notNull(),
+    target: jsonb("target").notNull(),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    createdAtIdx: index("AuditLog_createdAt_idx").on(table.createdAt),
+  })
+);
 
 export type AuditLog = InferSelectModel<typeof auditLog>;
 
