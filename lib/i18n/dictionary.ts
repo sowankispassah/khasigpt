@@ -7,6 +7,7 @@ import {
   translationValue,
 } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { withTimeout } from "@/lib/utils/async";
 
 import { resolveLanguage, type LanguageOption } from "./languages";
 
@@ -44,34 +45,6 @@ const parsedTimeout = Number.parseInt(
 );
 const TRANSLATION_QUERY_TIMEOUT_MS =
   Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 2000;
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        reject(new Error("translation_query_timeout"));
-      }
-    }, timeoutMs);
-
-    promise
-      .then((value) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          resolve(value);
-        }
-      })
-      .catch((error) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          reject(error);
-        }
-      });
-  });
-}
 
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]

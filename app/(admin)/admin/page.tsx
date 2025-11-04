@@ -11,6 +11,7 @@ import {
   listUsers,
 } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
@@ -25,27 +26,57 @@ export default async function AdminOverviewPage() {
     ReturnType<typeof listContactMessages>
   > = [];
 
-  try {
-    [
-      userCount,
-      chatCount,
-      recentUsers,
-      recentChats,
-      recentAudits,
-      contactMessageCount,
-      recentContactMessages,
-    ] = await Promise.all([
-      getUserCount(),
-      getChatCount(),
-      listUsers({ limit: 5 }),
-      listChats({ limit: 5 }),
-      listAuditLog({ limit: 5 }),
-      getContactMessageCount(),
-      listContactMessages({ limit: 5 }),
-    ]);
-  } catch (error) {
-    console.error("Failed to load admin overview data", error);
+  const queryTimeoutRaw = Number.parseInt(
+    process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
+    10
+  );
+  const QUERY_TIMEOUT_MS =
+    Number.isFinite(queryTimeoutRaw) && queryTimeoutRaw > 0
+      ? queryTimeoutRaw
+      : 4000;
+
+  async function safeQuery<T>(
+    label: string,
+    promise: Promise<T>,
+    fallback: T
+  ): Promise<T> {
+    try {
+      return await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
+        console.warn(
+          `[admin] Query "${label}" timed out after ${QUERY_TIMEOUT_MS}ms.`
+        );
+      });
+    } catch (error) {
+      console.error(`[admin] Failed to load ${label}`, error);
+      return fallback;
+    }
   }
+
+  [
+    userCount,
+    chatCount,
+    recentUsers,
+    recentChats,
+    recentAudits,
+    contactMessageCount,
+    recentContactMessages,
+  ] = await Promise.all([
+    safeQuery("user count", getUserCount(), 0),
+    safeQuery("chat count", getChatCount(), 0),
+    safeQuery("recent users", listUsers({ limit: 5 }), []),
+    safeQuery("recent chats", listChats({ limit: 5 }), []),
+    safeQuery("recent audit log entries", listAuditLog({ limit: 5 }), []),
+    safeQuery(
+      "contact message count",
+      getContactMessageCount(),
+      0
+    ),
+    safeQuery(
+      "recent contact messages",
+      listContactMessages({ limit: 5 }),
+      []
+    ),
+  ]);
 
   return (
     <div className="flex flex-col gap-10">
