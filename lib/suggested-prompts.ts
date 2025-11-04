@@ -2,7 +2,7 @@ import { cache } from "react";
 
 import { getAppSetting } from "@/lib/db/queries";
 import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
-import { resolveLanguage } from "@/lib/i18n/languages";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 type SuggestedPromptsMap = Record<string, string[]>;
 
@@ -27,7 +27,7 @@ function isPromptsMap(value: unknown): value is SuggestedPromptsMap {
 async function fetchSuggestedPrompts(
   preferredLanguageCode?: string | null
 ): Promise<string[]> {
-  const { activeLanguage, languages } = await resolveLanguage(preferredLanguageCode);
+  const { activeLanguage, languages } = await getTranslationBundle(preferredLanguageCode);
 
   try {
     const storedMap = await getAppSetting<unknown>("suggestedPromptsByLanguage");

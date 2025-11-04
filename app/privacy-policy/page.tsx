@@ -5,8 +5,7 @@ import { cookies } from "next/headers";
 
 import { DEFAULT_PRIVACY_POLICY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
-import { getTranslationsForKeys } from "@/lib/i18n/dictionary";
-import { resolveLanguage } from "@/lib/i18n/languages";
+import { getTranslationBundle, getTranslationsForKeys } from "@/lib/i18n/dictionary";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -23,7 +22,7 @@ export default async function PrivacyPolicyPage() {
   );
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
-  const { activeLanguage, languages } = await resolveLanguage(preferredLanguage);
+  const { activeLanguage, languages } = await getTranslationBundle(preferredLanguage);
 
   const normalizedContentByLanguage: Record<string, string> = {};
   if (

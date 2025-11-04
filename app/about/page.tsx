@@ -6,7 +6,6 @@ import { cookies } from "next/headers";
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle, registerTranslationKeys } from "@/lib/i18n/dictionary";
-import { resolveLanguage } from "@/lib/i18n/languages";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = {
@@ -47,8 +46,7 @@ export default async function AboutPage() {
         "Share feedback, partnership ideas, or support questions. We usually reply within one working day.",
     },
   ]);
-  const { dictionary } = await getTranslationBundle(preferredLanguage);
-  const { activeLanguage, languages } = await resolveLanguage(preferredLanguage);
+  const { dictionary, activeLanguage, languages } = await getTranslationBundle(preferredLanguage);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
