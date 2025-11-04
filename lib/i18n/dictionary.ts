@@ -11,7 +11,6 @@ import {
   translationValue,
 } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
-import { withTimeout } from "@/lib/utils/async";
 
 import { getAllLanguages, resolveLanguage, type LanguageOption } from "./languages";
 
@@ -69,6 +68,31 @@ const TRANSLATION_CACHE_TTL_MS =
     : 1000 * 60 * 60 * 6;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
+
+function logIfSlow<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  onSlow: () => void
+): Promise<T> {
+  if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) {
+    return promise;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    timer = null;
+    try {
+      onSlow();
+    } catch {
+      // ignore logging failures
+    }
+  }, timeoutMs);
+
+  return promise.finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
+}
 
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]
@@ -234,12 +258,12 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     return;
   }
 
-  const inflight = withTimeout(
+  const inflight = logIfSlow(
     loadTranslationBundle(preferredCode),
     TRANSLATION_QUERY_TIMEOUT_MS,
     () => {
       console.warn(
-        `[i18n] Bundle refresh timed out after ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${key}".`
+        `[i18n] Bundle refresh exceeded ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${key}".`
       );
     }
   )
@@ -298,12 +322,12 @@ export async function getTranslationBundle(
   }
 
   try {
-    const bundle = await withTimeout(
+    const bundle = await logIfSlow(
       loadTranslationBundle(preferredCode),
       TRANSLATION_INITIAL_TIMEOUT_MS,
       () => {
         console.warn(
-          `[i18n] Initial bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
+          `[i18n] Initial bundle load exceeded ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
         );
       }
     );
@@ -375,12 +399,17 @@ export async function getTranslationForKey(
   definition: TranslationDefinition
 ) {
   try {
-    const { activeLanguage } = await withTimeout(
+    const { activeLanguage } = await logIfSlow(
       resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
+      TRANSLATION_QUERY_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[i18n] Resolving language exceeded ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${definition.key}".`
+        );
+      }
     );
 
-    const [result] = await withTimeout(
+    const [result] = await logIfSlow(
       db
         .select({
           value: translationValue.value,
@@ -396,7 +425,12 @@ export async function getTranslationForKey(
         )
         .where(eq(translationKey.key, definition.key))
         .limit(1),
-      TRANSLATION_QUERY_TIMEOUT_MS
+      TRANSLATION_QUERY_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[i18n] Translation lookup exceeded ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${definition.key}".`
+        );
+      }
     );
 
     return result?.value ?? result?.defaultText ?? definition.defaultText;
@@ -418,13 +452,18 @@ export async function getTranslationsForKeys(
   }
 
   try {
-    const { activeLanguage } = await withTimeout(
+    const { activeLanguage } = await logIfSlow(
       resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
+      TRANSLATION_QUERY_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[i18n] Resolving language exceeded ${TRANSLATION_QUERY_TIMEOUT_MS}ms for bulk translation request.`
+        );
+      }
     );
     const keys = definitions.map((definition) => definition.key);
 
-    const rows = await withTimeout(
+    const rows = await logIfSlow(
       db
         .select({
           key: translationKey.key,
@@ -440,7 +479,12 @@ export async function getTranslationsForKeys(
           )
         )
         .where(inArray(translationKey.key, keys)),
-      TRANSLATION_QUERY_TIMEOUT_MS
+      TRANSLATION_QUERY_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[i18n] Bulk translation lookup exceeded ${TRANSLATION_QUERY_TIMEOUT_MS}ms for ${keys.length} keys.`
+        );
+      }
     );
 
     const result: Record<string, string> = {};
