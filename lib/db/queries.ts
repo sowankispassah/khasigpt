@@ -3849,7 +3849,12 @@ export async function listRechargeRecords({
   try {
     const dateConditions = buildDateRangeConditions(paymentTransaction.createdAt, range);
 
-    let query = db
+    const whereClause =
+      dateConditions.length > 0
+        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
+
+    const rows = await db
       .select({
         orderId: paymentTransaction.orderId,
         userId: paymentTransaction.userId,
@@ -3873,7 +3878,7 @@ export async function listRechargeRecords({
           eq(userSubscription.planId, paymentTransaction.planId)
         )
       )
-      .where(eq(paymentTransaction.status, PAYMENT_STATUS_PAID))
+      .where(whereClause)
       .groupBy(
         paymentTransaction.orderId,
         paymentTransaction.userId,
@@ -3888,14 +3893,6 @@ export async function listRechargeRecords({
       )
       .orderBy(desc(paymentTransaction.createdAt));
 
-    const whereClause =
-      dateConditions.length > 0
-        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
-        : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
-
-    const filteredQuery = query.where(whereClause);
-
-    const rows = await filteredQuery;
     const total = rows.length;
     const paged = rows.slice(offset, offset + limit);
 
