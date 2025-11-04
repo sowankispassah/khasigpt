@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
-import { getTranslationBundle, registerTranslationKeys } from "@/lib/i18n/dictionary";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = {
@@ -22,30 +22,6 @@ export default async function AboutPage() {
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_ABOUT_US;
 
-  void registerTranslationKeys([
-    {
-      key: "navigation.back_to_home",
-      defaultText: "Back to home",
-    },
-    {
-      key: "about.title",
-      defaultText: "About KhasiGPT",
-    },
-    {
-      key: "about.subtitle",
-      defaultText:
-        "We build AI assistance that understand Khasi culture, language, and the people who use them every day.",
-    },
-    {
-      key: "contact.form.heading",
-      defaultText: "Contact the team",
-    },
-    {
-      key: "contact.form.caption",
-      defaultText:
-        "Share feedback, partnership ideas, or support questions. We usually reply within one working day.",
-    },
-  ]);
   const { dictionary, activeLanguage, languages } = await getTranslationBundle(preferredLanguage);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;

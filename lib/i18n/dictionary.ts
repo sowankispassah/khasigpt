@@ -13,7 +13,7 @@ import {
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import { withTimeout } from "@/lib/utils/async";
 
-import { resolveLanguage, type LanguageOption } from "./languages";
+import { getAllLanguages, resolveLanguage, type LanguageOption } from "./languages";
 
 export type TranslationDefinition = {
   key: string;
@@ -355,12 +355,25 @@ export async function invalidateTranslationBundleCache(
   );
 }
 
+export async function publishAllTranslations() {
+  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
+  await invalidateTranslationBundleCache();
+
+  const languages = await getAllLanguages();
+  const activeCodes = languages
+    .filter((language) => language.isActive)
+    .map((language) => language.code);
+
+  await Promise.all([
+    getTranslationBundle(undefined),
+    ...activeCodes.map((code) => getTranslationBundle(code)),
+  ]);
+}
+
 export async function getTranslationForKey(
   preferredCode: string | null | undefined,
   definition: TranslationDefinition
 ) {
-  void registerTranslationKeys([definition]);
-
   try {
     const { activeLanguage } = await withTimeout(
       resolveLanguage(preferredCode),
@@ -403,8 +416,6 @@ export async function getTranslationsForKeys(
   if (!definitions.length) {
     return {};
   }
-
-  void registerTranslationKeys(definitions);
 
   try {
     const { activeLanguage } = await withTimeout(

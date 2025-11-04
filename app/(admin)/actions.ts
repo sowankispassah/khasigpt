@@ -1089,6 +1089,8 @@ export async function createPricingPlanAction(formData: FormData) {
     },
   ]);
 
+  await invalidateTranslationBundleCache();
+
   await createAuditLogEntry({
     actorId: actor.id,
     action: "billing.plan.create",
@@ -1164,6 +1166,8 @@ export async function updatePricingPlanAction(formData: FormData) {
         defaultText: updatedPlan.description ?? "",
       },
     ]);
+
+    await invalidateTranslationBundleCache();
   }
 
   await createAuditLogEntry({

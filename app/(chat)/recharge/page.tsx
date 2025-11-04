@@ -16,7 +16,6 @@ import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
   getTranslationBundle,
   getTranslationsForKeys,
-  registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
 
 export default async function RechargePage() {
@@ -47,10 +46,6 @@ export default async function RechargePage() {
       description: `Pricing plan details for ${plan.name}`,
     },
   ]);
-
-  if (planTranslationDefinitions.length > 0) {
-    void registerTranslationKeys(planTranslationDefinitions);
-  }
 
   const [bundle, planTranslations] = await Promise.all([
     getTranslationBundle(preferredLanguage),

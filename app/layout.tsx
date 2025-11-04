@@ -10,8 +10,7 @@ import { PageUserMenu } from "@/components/page-user-menu";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
-import { getTranslationBundle, registerTranslationKeys } from "@/lib/i18n/dictionary";
-import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const siteName = "KhasiGPT";
@@ -157,21 +156,6 @@ const THEME_COLOR_SCRIPT = `(function() {
   updateThemeColor();
 })();`;
 
-let staticTranslationsReady: Promise<void> | null = null;
-
-function ensureStaticTranslationKeys() {
-  if (!staticTranslationsReady) {
-    staticTranslationsReady = registerTranslationKeys(
-      STATIC_TRANSLATION_DEFINITIONS
-    ).catch((error) => {
-      console.error("[i18n] Failed to register static translation keys.", error);
-      staticTranslationsReady = null;
-    });
-  }
-
-  return staticTranslationsReady;
-}
-
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -179,7 +163,6 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value;
-  void ensureStaticTranslationKeys();
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
 

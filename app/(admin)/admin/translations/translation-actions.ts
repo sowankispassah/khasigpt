@@ -10,7 +10,10 @@ import {
   updateTranslationDefaultText,
 } from "@/lib/db/queries";
 import { getLanguageByCode } from "@/lib/i18n/languages";
-import { invalidateTranslationBundleCache } from "@/lib/i18n/dictionary";
+import {
+  invalidateTranslationBundleCache,
+  publishAllTranslations,
+} from "@/lib/i18n/dictionary";
 
 const TRANSLATIONS_PATH = "/admin/translations";
 
@@ -123,4 +126,21 @@ export async function saveTranslationValueAction(formData: FormData) {
   });
 
   revalidatePath(TRANSLATIONS_PATH);
+}
+
+export async function publishTranslationsAction() {
+  const actor = await requireAdminUser();
+
+  await publishAllTranslations();
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "translation.publish",
+    target: { type: "all-translations" },
+  });
+
+  revalidatePath(TRANSLATIONS_PATH);
+  revalidatePath("/recharge");
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/translations");
 }

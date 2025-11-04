@@ -36,7 +36,6 @@ import {
 } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { getAllLanguages } from "@/lib/i18n/languages";
-import { registerTranslationKeys } from "@/lib/i18n/dictionary";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { LanguageContentForm } from "./language-content-form";
 
@@ -272,10 +271,6 @@ export default async function AdminSettingsPage({
       defaultText: plan.description ?? "",
     },
   ]);
-
-  if (planTranslationDefinitions.length > 0) {
-    await registerTranslationKeys(planTranslationDefinitions);
-  }
 
   const planTranslationKeys = planTranslationDefinitions.map((definition) => definition.key);
   const planTranslationValuesByLanguage =

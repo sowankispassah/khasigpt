@@ -113,23 +113,15 @@ export const UserMenuTrigger = React.forwardRef<
     <button
       className={cn(
         "relative flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/40 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        isBusy && "pointer-events-none opacity-70",
         className
       )}
       aria-busy={isBusy}
-      disabled={isBusy}
       ref={ref}
       type="button"
       {...props}
     >
       <span className="flex h-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground">
-        {isBusy ? (
-          <span className="animate-spin">
-            <LoaderIcon size={16} />
-          </span>
-        ) : (
-          <EllipsisVertical size={16} />
-        )}
+        <EllipsisVertical size={16} />
       </span>
       <Avatar className="h-8 w-8">
         <AvatarImage
@@ -170,6 +162,8 @@ export function UserDropdownMenu({
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
+  const [pendingAction, setPendingAction] = React.useState<string | null>(null);
+  const [pendingLanguageCode, setPendingLanguageCode] = React.useState<string | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const ignoreNextLanguageOpenRef = React.useRef(false);
   const {
@@ -251,16 +245,26 @@ export function UserDropdownMenu({
     };
   }, [isAuthenticated]);
 
+  React.useEffect(() => {
+    if (!isBusy) {
+      setPendingAction(null);
+    }
+  }, [isBusy]);
+
   const handleSelect = (
     event: Event,
-    actionType: "navigate" | "theme" | "signOut" | "language" | "resources",
+    actionType: "navigate" | "theme" | "signOut" | "language",
+    actionId: string | null,
     callback: () => void
   ) => {
     event.preventDefault();
-    if (isBusy) {
+    if (isBusy && actionType !== "language") {
       return;
     }
     onActionStart?.();
+    if (actionType !== "language") {
+      setPendingAction(actionId ?? actionType);
+    }
     callback();
   };
 
@@ -270,6 +274,8 @@ export function UserDropdownMenu({
       ignoreNextLanguageOpenRef.current = false;
       setIsResourcesOpen(false);
       setIsLanguageOpen(false);
+      setPendingAction(null);
+      setPendingLanguageCode(null);
     }
   }, []);
 
@@ -317,14 +323,21 @@ export function UserDropdownMenu({
 
   const handleLanguageSelect = React.useCallback(
     (event: Event, code: string) => {
-      handleSelect(event, "language", () => {
+      handleSelect(event, "language", code, () => {
+        setPendingLanguageCode(code);
         setLanguage(code);
-        setIsLanguageOpen(false);
-        ignoreNextLanguageOpenRef.current = false;
       });
     },
     [setLanguage]
   );
+
+  React.useEffect(() => {
+    if (!isLanguageUpdating && pendingLanguageCode) {
+      setPendingLanguageCode(null);
+      setIsLanguageOpen(false);
+      ignoreNextLanguageOpenRef.current = false;
+    }
+  }, [isLanguageUpdating, pendingLanguageCode]);
 
   const showSignOut = Boolean(isAuthenticated && onSignOut);
 
@@ -355,6 +368,13 @@ export function UserDropdownMenu({
     },
   ];
 
+  const renderPendingIndicator = (visible: boolean) =>
+    visible ? (
+      <span className="text-muted-foreground">
+        <LoaderIcon size={14} className="animate-spin" />
+      </span>
+    ) : null;
+
   const renderInfoLinks = (className?: string) =>
     infoLinks.map((item) => (
       <DropdownMenuItem
@@ -362,22 +382,22 @@ export function UserDropdownMenu({
         className={cn("cursor-pointer", className)}
         data-testid={item.testId}
         onSelect={(event) =>
-          handleSelect(event, "navigate", () => {
+          handleSelect(event, "navigate", item.path, () => {
             ignoreNextResourcesOpenRef.current = false;
             setIsResourcesOpen(false);
             onNavigate(item.path);
           })
         }
       >
-        {translate(item.labelKey, item.defaultLabel)}
+        <span className="flex w-full items-center justify-between gap-2">
+          {translate(item.labelKey, item.defaultLabel)}
+          {renderPendingIndicator(pendingAction === item.path)}
+        </span>
       </DropdownMenuItem>
     ));
 
   const activeLanguageLabel = translate("user_menu.language.active", "Active");
-  const updatingLanguageLabel = translate(
-    "user_menu.language.updating",
-    "Updating…"
-  );
+  const updatingLanguageLabel = translate("user_menu.language.updating", "Updating…");
 
   return (
     <DropdownMenu onOpenChange={handleMenuOpenChange}>
@@ -393,10 +413,18 @@ export function UserDropdownMenu({
             className="cursor-pointer font-medium text-foreground"
             data-testid="user-nav-item-email"
             onSelect={(event) =>
-              handleSelect(event, "navigate", () => onNavigate("/profile"))
+              handleSelect(
+                event,
+                "navigate",
+                "navigate:profile-email",
+                () => onNavigate("/profile")
+              )
             }
           >
-            {userEmail}
+            <span className="flex w-full items-center justify-between gap-2">
+              {userEmail}
+              {renderPendingIndicator(pendingAction === "navigate:profile-email")}
+            </span>
           </DropdownMenuItem>
         ) : null}
         {isAuthenticated && (
@@ -406,22 +434,38 @@ export function UserDropdownMenu({
               className="cursor-pointer"
               data-testid="user-nav-item-profile"
               onSelect={(event) =>
-                handleSelect(event, "navigate", () => onNavigate("/profile"))
+                handleSelect(
+                  event,
+                  "navigate",
+                  "navigate:profile",
+                  () => onNavigate("/profile")
+                )
               }
             >
-              {translate("user_menu.profile", "Profile")}
+              <span className="flex w-full items-center justify-between gap-2">
+                {translate("user_menu.profile", "Profile")}
+                {renderPendingIndicator(pendingAction === "navigate:profile")}
+              </span>
             </DropdownMenuItem>
             <DropdownMenuItem
               className="flex cursor-pointer flex-col items-start gap-1"
               data-testid="user-nav-item-manage-subscriptions"
               onSelect={(event) =>
-                handleSelect(event, "navigate", () => onNavigate("/subscriptions"))
+                handleSelect(
+                  event,
+                  "navigate",
+                  "navigate:subscriptions",
+                  () => onNavigate("/subscriptions")
+                )
               }
             >
-              {translate(
-                "user_menu.manage_subscriptions",
-                "Manage Subscriptions"
-              )}
+              <span className="flex w-full items-center justify-between gap-2">
+                {translate(
+                  "user_menu.manage_subscriptions",
+                  "Manage Subscriptions"
+                )}
+                {renderPendingIndicator(pendingAction === "navigate:subscriptions")}
+              </span>
               <span className="text-muted-foreground text-xs opacity-80">
                 {isPlanLoading
                   ? translate(
@@ -439,23 +483,39 @@ export function UserDropdownMenu({
               className="cursor-pointer"
               data-testid="user-nav-item-upgrade-plan"
               onSelect={(event) =>
-                handleSelect(event, "navigate", () => onNavigate("/recharge"))
+                handleSelect(
+                  event,
+                  "navigate",
+                  "navigate:recharge",
+                  () => onNavigate("/recharge")
+                )
               }
             >
-              {translate("user_menu.upgrade_plan", "Upgrade plan")}
+              <span className="flex w-full items-center justify-between gap-2">
+                {translate("user_menu.upgrade_plan", "Upgrade plan")}
+                {renderPendingIndicator(pendingAction === "navigate:recharge")}
+              </span>
             </DropdownMenuItem>
             {isAdmin ? (
               <DropdownMenuItem
                 className="cursor-pointer"
                 data-testid="user-nav-item-admin"
                 onSelect={(event) =>
-                  handleSelect(event, "navigate", () => onNavigate("/admin"))
+                  handleSelect(
+                    event,
+                    "navigate",
+                    "navigate:admin",
+                    () => onNavigate("/admin")
+                  )
                 }
               >
-                {translate(
-                  "user_menu.open_admin_console",
-                  "Open admin console"
-                )}
+                <span className="flex w-full items-center justify-between gap-2">
+                  {translate(
+                    "user_menu.open_admin_console",
+                    "Open admin console"
+                  )}
+                  {renderPendingIndicator(pendingAction === "navigate:admin")}
+                </span>
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuSeparator />
@@ -547,12 +607,18 @@ export function UserDropdownMenu({
                 onSelect={(event) => handleLanguageSelect(event, language.code)}
               >
                 {language.name}
-                <span className="text-muted-foreground text-xs">
-                  {language.code === activeLanguage.code
-                    ? isLanguageUpdating
-                      ? updatingLanguageLabel
-                      : activeLanguageLabel
-                    : null}
+                <span className="flex items-center gap-2 text-muted-foreground text-xs">
+                  {pendingLanguageCode === language.code
+                    ? updatingLanguageLabel
+                    : language.code === activeLanguage.code
+                      ? isLanguageUpdating
+                        ? updatingLanguageLabel
+                        : activeLanguageLabel
+                      : null}
+                  {renderPendingIndicator(
+                    pendingLanguageCode === language.code ||
+                      (language.code === activeLanguage.code && isLanguageUpdating)
+                  )}
                 </span>
               </DropdownMenuItem>
             ))}
@@ -562,11 +628,14 @@ export function UserDropdownMenu({
         <DropdownMenuItem
           className="cursor-pointer"
           data-testid="user-nav-item-theme"
-          onSelect={(event) => handleSelect(event, "theme", onToggleTheme)}
+          onSelect={(event) => handleSelect(event, "theme", "theme", onToggleTheme)}
         >
-          {resolvedTheme === "light"
-            ? translate("user_menu.theme.dark", "Dark mode")
-            : translate("user_menu.theme.light", "Light mode")}
+          <span className="flex w-full items-center justify-between gap-2">
+            {resolvedTheme === "light"
+              ? translate("user_menu.theme.dark", "Dark mode")
+              : translate("user_menu.theme.light", "Light mode")}
+            {renderPendingIndicator(pendingAction === "theme")}
+          </span>
         </DropdownMenuItem>
         {showSignOut ? (
           <>
@@ -575,10 +644,14 @@ export function UserDropdownMenu({
               className="cursor-pointer text-destructive focus:text-destructive"
               data-testid="user-nav-item-auth"
               onSelect={(event) =>
-                onSignOut && handleSelect(event, "signOut", onSignOut)
+                onSignOut &&
+                handleSelect(event, "signOut", "signOut", onSignOut)
               }
             >
-              {translate("user_menu.sign_out", "Sign out")}
+              <span className="flex w-full items-center justify-between gap-2">
+                {translate("user_menu.sign_out", "Sign out")}
+                {renderPendingIndicator(pendingAction === "signOut")}
+              </span>
             </DropdownMenuItem>
           </>
         ) : null}
@@ -586,4 +659,3 @@ export function UserDropdownMenu({
     </DropdownMenu>
   );
 }
-

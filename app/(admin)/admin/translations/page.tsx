@@ -10,7 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 
-import { saveDefaultTextAction, saveTranslationValueAction } from "./translation-actions";
+import {
+  publishTranslationsAction,
+  saveDefaultTextAction,
+  saveTranslationValueAction,
+} from "./translation-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +69,7 @@ function TranslationSummary({
   totalEntries: number;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-background p-4 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
       <div className="flex flex-col">
         <span className="font-semibold text-base">
           {totalEntries} registered {totalEntries === 1 ? "string" : "strings"}
@@ -74,20 +78,33 @@ function TranslationSummary({
           {languages.length} active {languages.length === 1 ? "language" : "languages"}
         </span>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {languages.map((language) => (
-          <span
-            className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium tracking-wide"
-            key={language.id}
+      <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap gap-2">
+          {languages.map((language) => (
+            <span
+              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium tracking-wide"
+              key={language.id}
+            >
+              {language.name}
+              {language.isDefault ? (
+                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] uppercase text-primary-foreground">
+                  Default
+                </span>
+              ) : null}
+            </span>
+          ))}
+        </div>
+        <form action={publishTranslationsAction}>
+          <ActionSubmitButton
+            pendingLabel="Publishing..."
+            size="sm"
+            type="submit"
+            variant="default"
+            successMessage="Translations published"
           >
-            {language.name}
-            {language.isDefault ? (
-              <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] uppercase text-primary-foreground">
-                Default
-              </span>
-            ) : null}
-          </span>
-        ))}
+            Publish translations
+          </ActionSubmitButton>
+        </form>
       </div>
     </div>
   );

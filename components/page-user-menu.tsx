@@ -17,13 +17,19 @@ export function PageUserMenu({ className }: { className?: string }) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
-  const { translate } = useTranslation();
+  const { translate, isUpdating: isLanguageUpdating } = useTranslation();
   const [isActionPending, setIsActionPending] = useState(false);
   const user = session?.user ?? null;
 
   useEffect(() => {
     setIsActionPending(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isLanguageUpdating) {
+      setIsActionPending(false);
+    }
+  }, [isLanguageUpdating]);
 
   useEffect(() => {
     if (user) {
