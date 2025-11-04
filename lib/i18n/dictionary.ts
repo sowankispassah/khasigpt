@@ -6,6 +6,7 @@ import {
   translationKey,
   translationValue,
 } from "@/lib/db/schema";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 import { resolveLanguage } from "./languages";
 
@@ -102,6 +103,12 @@ export const getTranslationBundle = cache(async (preferredCode?: string | null) 
   const dictionary: Record<string, string> = {};
   for (const row of rows) {
     dictionary[row.key] = row.value ?? row.defaultText;
+  }
+
+  for (const definition of STATIC_TRANSLATION_DEFINITIONS) {
+    if (!(definition.key in dictionary)) {
+      dictionary[definition.key] = definition.defaultText;
+    }
   }
 
   return {
