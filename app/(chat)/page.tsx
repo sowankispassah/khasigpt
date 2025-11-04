@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Chat } from "@/components/chat";
 import { DataStreamHandler } from "@/components/data-stream-handler";
+import { ChatLoader } from "@/components/chat-loader";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { generateUUID } from "@/lib/utils";
@@ -35,7 +35,7 @@ export default async function Page() {
   if (!modelIdFromCookie) {
     return (
       <>
-        <Chat
+        <ChatLoader
           autoResume={false}
           id={id}
           initialChatModel={fallbackModelId}
@@ -52,7 +52,7 @@ export default async function Page() {
 
   return (
     <>
-      <Chat
+      <ChatLoader
         autoResume={false}
         id={id}
         initialChatModel={fallbackModelId}

@@ -6,8 +6,9 @@ import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useTransition } from "react";
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import { LoaderIcon, PlusIcon } from "@/components/icons";
-import { SidebarHistory } from "@/components/sidebar-history";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -17,6 +18,32 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+
+const SidebarHistory = dynamic(
+  () =>
+    import("@/components/sidebar-history").then(
+      (module) => module.SidebarHistory
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col gap-4 px-2 py-3">
+        <div className="h-3 w-16 animate-pulse rounded bg-sidebar-accent-foreground/15" />
+        <div className="flex flex-col gap-2">
+          {[1, 2, 3, 4, 5].map((item) => (
+            <div
+              className="flex h-8 animate-pulse items-center gap-2 rounded-md bg-sidebar-accent-foreground/10 px-2"
+              key={item}
+            >
+              <div className="h-4 w-5 rounded-full bg-sidebar-accent-foreground/20" />
+              <div className="h-3 flex-1 rounded bg-sidebar-accent-foreground/20" />
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
+  }
+);
 
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
@@ -53,16 +80,17 @@ export function AppSidebar({ user }: { user: User | undefined }) {
         <SidebarMenu>
           <div className="flex flex-row items-center justify-between">
             <Link
-              className="flex flex-row items-center"
+              className="flex cursor-pointer flex-row items-center"
               href="/"
               onClick={() => {
                 setOpenMobile(false);
               }}
             >
-              <img
+              <Image
                 alt="KhasiGPT logo"
                 className="h-8 w-6 rounded-md object-contain dark:invert dark:brightness-150"
                 height={32}
+                priority
                 src="/images/khasigptlogo.png"
                 width={24}
               />

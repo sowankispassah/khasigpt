@@ -25,6 +25,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "./ui/sidebar";
+import { preloadChat } from "./chat-loader";
 
 const PureChatItem = ({
   chat,
@@ -50,9 +51,12 @@ const PureChatItem = ({
         <button
           aria-busy={isNavigating}
           className="flex w-full items-center gap-2 truncate text-left"
+          onFocus={preloadChat}
           onClick={() => {
             onOpen(chat.id);
           }}
+          onMouseEnter={preloadChat}
+          onTouchStart={preloadChat}
           type="button"
         >
           <span className="flex-1 truncate">
