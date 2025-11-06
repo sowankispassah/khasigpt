@@ -6,6 +6,10 @@ import Google from "next-auth/providers/google";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import {
+  incrementRateLimit,
+  resetRateLimit,
+} from "@/lib/security/rate-limit";
 import { authConfig } from "./auth.config";
 
 export type UserRole = "regular" | "admin";
@@ -37,30 +41,50 @@ const providers: any[] = [
   Credentials({
     credentials: {},
     async authorize({ email, password }: any) {
+      const emailInput = typeof email === "string" ? email : "";
+      const normalizedEmail = emailInput.trim().toLowerCase();
+      const rateLimitKey = `login:${normalizedEmail || "unknown"}`;
+      const passwordInput = typeof password === "string" ? password : "";
+
+      const { allowed } = incrementRateLimit(rateLimitKey, {
+        limit: 5,
+        windowMs: 10 * 60 * 1000,
+      });
+
+      if (!allowed) {
+        await compare(passwordInput, DUMMY_PASSWORD);
+        throw new ChatSDKError(
+          "rate_limit:auth",
+          "Too many login attempts. Please try again later."
+        );
+      }
+
       const users = await getUser(email);
 
       if (users.length === 0) {
-        await compare(password, DUMMY_PASSWORD);
+        await compare(passwordInput, DUMMY_PASSWORD);
         return null;
       }
 
       const [user] = users;
 
       if (!user.password) {
-        await compare(password, DUMMY_PASSWORD);
+        await compare(passwordInput, DUMMY_PASSWORD);
         return null;
       }
 
       if (!user.isActive) {
-        await compare(password, user.password ?? DUMMY_PASSWORD);
+        await compare(passwordInput, user.password ?? DUMMY_PASSWORD);
         throw new Error(ACCOUNT_INACTIVE_ERROR);
       }
 
-      const passwordsMatch = await compare(password, user.password);
+      const passwordsMatch = await compare(passwordInput, user.password);
 
       if (!passwordsMatch) {
         return null;
       }
+
+      resetRateLimit(rateLimitKey);
 
       const { image, ...rest } = user;
       const imageVersion =

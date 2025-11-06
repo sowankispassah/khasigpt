@@ -15,12 +15,35 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function extractErrorPayload(body: any): { code: ErrorCode; details?: string } {
+  if (body && typeof body === "object") {
+    const code =
+      typeof body.code === "string" ? (body.code as ErrorCode) : "bad_request:api";
+    const details =
+      typeof body.details === "string"
+        ? body.details
+        : typeof body.cause === "string"
+          ? body.cause
+          : undefined;
+
+    return { code, details };
+  }
+
+  return { code: "bad_request:api" as ErrorCode };
+}
+
 export const fetcher = async (url: string) => {
   const response = await fetch(url);
 
   if (!response.ok) {
-    const { code, cause } = await response.json();
-    throw new ChatSDKError(code as ErrorCode, cause);
+    let body: any = null;
+    try {
+      body = await response.json();
+    } catch {
+      // ignore
+    }
+    const { code, details } = extractErrorPayload(body);
+    throw new ChatSDKError(code, details);
   }
 
   return response.json();
@@ -34,8 +57,14 @@ export async function fetchWithErrorHandlers(
     const response = await fetch(input, init);
 
     if (!response.ok) {
-      const { code, cause } = await response.json();
-      throw new ChatSDKError(code as ErrorCode, cause);
+      let body: any = null;
+      try {
+        body = await response.json();
+      } catch {
+        // ignore
+      }
+      const { code, details } = extractErrorPayload(body);
+      throw new ChatSDKError(code, details);
     }
 
     return response;
@@ -93,8 +122,18 @@ export function getTrailingMessageId({
   return trailingMessage.id;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function sanitizeText(text: string) {
-  return text.replace('<has_function_call>', '');
+  const withoutMarkers = text.replaceAll("<has_function_call>", "");
+  return escapeHtml(withoutMarkers);
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {

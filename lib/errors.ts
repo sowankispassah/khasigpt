@@ -80,7 +80,21 @@ export class ChatSDKError extends Error {
       );
     }
 
-    return Response.json({ code, message, cause }, { status: statusCode });
+    if (cause) {
+      console.error({
+        code,
+        message,
+        cause,
+      });
+    }
+
+    const responsePayload: Record<string, string> = { code, message };
+
+    if (process.env.NODE_ENV !== "production" && cause) {
+      responsePayload.details = cause;
+    }
+
+    return Response.json(responsePayload, { status: statusCode });
   }
 }
 

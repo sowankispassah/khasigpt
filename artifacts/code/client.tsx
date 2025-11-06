@@ -17,6 +17,8 @@ import {
 import { generateUUID } from "@/lib/utils";
 
 const PYODIDE_SRC = "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js";
+const PYODIDE_INTEGRITY =
+  "sha384-F2v7XcIqhmGFO1QaJt0TCAMrh9W9+AHLqarW3C/BwvctIZMYOwuGZmDNZfjEtyDo";
 
 type LoadPyodideFunction = (options: { indexURL: string }) => Promise<any>;
 
@@ -39,6 +41,13 @@ async function ensurePyodideRuntime(): Promise<void> {
 
       const scriptElement = existingScript ?? document.createElement("script");
 
+      if (!existingScript) {
+        scriptElement.async = true;
+      }
+
+      scriptElement.integrity = PYODIDE_INTEGRITY;
+      scriptElement.crossOrigin = "anonymous";
+
       const handleLoad = () => {
         scriptElement.removeEventListener("error", handleError);
         scriptElement.removeEventListener("load", handleLoad);
@@ -56,8 +65,6 @@ async function ensurePyodideRuntime(): Promise<void> {
       scriptElement.addEventListener("error", handleError, { once: true });
 
       if (!existingScript) {
-        scriptElement.async = true;
-        scriptElement.crossOrigin = "anonymous";
         scriptElement.src = PYODIDE_SRC;
         document.head.appendChild(scriptElement);
       }
