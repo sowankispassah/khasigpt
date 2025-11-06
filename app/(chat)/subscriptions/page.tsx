@@ -290,69 +290,46 @@ export default async function SubscriptionsPage({
       </section>
 
       <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-lg">
-              {t("subscriptions.sessions.title", "Session usage")}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              {t(
-                "subscriptions.sessions.subtitle",
-                "Recent chat activity and token consumption by session."
-              )}
-            </p>
-          </div>
-          <SessionUsagePagination
-            range={range}
-            sessionsPage={sessionsPage}
-            totalPages={totalSessionPages}
-          />
-        </div>
-        <div className="mt-4 overflow-hidden rounded-lg border">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+        <h2 className="font-semibold text-lg">
+          {t("subscriptions.session_usage.title", "Usage by session")}
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          {t(
+            "subscriptions.session_usage.subtitle",
+            "Total credits used across your recent chats."
+          )}
+        </p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">
-                  {t("subscriptions.sessions.headers.session", "Session")}
+                <th className="py-2 text-left">
+                  {t("subscriptions.session_usage.headers.chat_id", "Chat ID")}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
-                  {t("subscriptions.sessions.headers.date", "Date")}
-                </th>
-                <th className="px-4 py-3 text-right font-medium">
-                  {t("subscriptions.sessions.headers.tokens", "Tokens used")}
+                <th className="py-2 text-right">
+                  {t(
+                    "subscriptions.session_usage.headers.credits_used",
+                    "Credits used"
+                  )}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/60">
+            <tbody>
               {displayedSessions.length === 0 ? (
                 <tr>
-                  <td
-                    className="px-4 py-8 text-center text-muted-foreground"
-                    colSpan={3}
-                  >
+                  <td className="py-4 text-muted-foreground" colSpan={2}>
                     {t(
-                      "subscriptions.sessions.empty",
-                      "No usage recorded for this period yet."
+                      "subscriptions.session_usage.empty",
+                      "No usage recorded yet."
                     )}
                   </td>
                 </tr>
               ) : (
-                displayedSessions.map((sessionRow) => (
-                  <tr key={sessionRow.id}>
-                    <td className="px-4 py-3">
-                      <Link
-                        className="font-medium text-primary hover:underline"
-                        href={`/chat/${sessionRow.chatId}`}
-                      >
-                        {sessionRow.chatTitle ??
-                          t("subscriptions.sessions.untitled", "Untitled chat")}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-sm">
-                      {format(new Date(sessionRow.createdAt), "dd MMM yyyy")}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {sessionRow.tokenCount.toLocaleString()}
+                displayedSessions.map((entry) => (
+                  <tr className="border-t" key={entry.chatId}>
+                    <td className="py-2 font-mono text-xs">{entry.chatId}</td>
+                    <td className="py-2 text-right">
+                      {formatCredits(entry.totalTokens)}
                     </td>
                   </tr>
                 ))
@@ -360,6 +337,11 @@ export default async function SubscriptionsPage({
             </tbody>
           </table>
         </div>
+        <SessionUsagePagination
+          range={range}
+          sessionsPage={sessionsPage}
+          totalPages={totalSessionPages}
+        />
       </section>
     </div>
   );
