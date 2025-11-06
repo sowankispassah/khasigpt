@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
@@ -8,8 +9,7 @@ type SuggestedPromptsMap = Record<string, string[]>;
 
 function isPromptsArray(value: unknown): value is string[] {
   return (
-    Array.isArray(value) &&
-    value.every((item) => typeof item === "string" && item.trim().length > 0)
+    Array.isArray(value) && value.every((item) => typeof item === "string")
   );
 }
 
@@ -22,6 +22,51 @@ function isPromptsMap(value: unknown): value is SuggestedPromptsMap {
     ([lang, prompts]) => typeof lang === "string" && isPromptsArray(prompts)
   );
 }
+
+function sanitizePrompts(prompts: string[]): string[] {
+  const unique = new Set<string>();
+
+  for (const prompt of prompts) {
+    const normalized = prompt.trim();
+    if (normalized.length === 0) {
+      continue;
+    }
+    unique.add(normalized);
+  }
+
+  return Array.from(unique);
+}
+
+const loadStoredPrompts = unstable_cache(
+  async () => {
+    try {
+      const [languageMapSetting, fallbackSetting] = await Promise.all([
+        getAppSetting<unknown>("suggestedPromptsByLanguage"),
+        getAppSetting<unknown>("suggestedPrompts"),
+      ]);
+
+      const byLanguage = isPromptsMap(languageMapSetting)
+        ? Object.fromEntries(
+            Object.entries(languageMapSetting).map(([code, prompts]) => [
+              code,
+              sanitizePrompts(prompts),
+            ])
+          )
+        : {};
+
+      const fallback = isPromptsArray(fallbackSetting)
+        ? sanitizePrompts(fallbackSetting)
+        : [];
+
+      return { byLanguage, fallback };
+    } catch (error) {
+      console.warn("Failed to load suggested prompts, using defaults.", error);
+      return { byLanguage: {}, fallback: [] };
+    }
+  },
+  ["suggested-prompts-config"],
+  { revalidate: 300, tags: ["suggested-prompts"] }
+);
 
 type SuggestedPromptsOptions = {
   preferredLanguageCode?: string | null;
@@ -49,51 +94,30 @@ async function fetchSuggestedPrompts({
     languageList.find((language) => language.isActive) ??
     null;
 
-  try {
-    const storedMap = await getAppSetting<unknown>(
-      "suggestedPromptsByLanguage"
-    );
+  const { byLanguage, fallback } = await loadStoredPrompts();
 
-    if (isPromptsMap(storedMap)) {
-      const activeLanguageCode = currentLanguage?.code;
-      if (activeLanguageCode) {
-        const fromLanguage = storedMap[activeLanguageCode];
-        if (isPromptsArray(fromLanguage) && fromLanguage.length > 0) {
-          return fromLanguage.map((prompt) => prompt.trim());
-        }
-      }
-
-      const defaultLanguage =
-        languageList.find((language) => language.isDefault) ??
-        languageList[0] ??
-        null;
-
-      if (defaultLanguage) {
-        const defaultPrompts = storedMap[defaultLanguage.code];
-        if (isPromptsArray(defaultPrompts) && defaultPrompts.length > 0) {
-          return defaultPrompts.map((prompt) => prompt.trim());
-        }
-      }
+  const activeLanguageCode = currentLanguage?.code;
+  if (activeLanguageCode) {
+    const fromLanguage = byLanguage[activeLanguageCode];
+    if (fromLanguage && fromLanguage.length > 0) {
+      return fromLanguage;
     }
-  } catch (error) {
-    console.warn(
-      "Failed to load language-specific prompts; falling back.",
-      error
-    );
   }
 
-  try {
-    const stored = await getAppSetting<unknown>("suggestedPrompts");
+  const defaultLanguage =
+    languageList.find((language) => language.isDefault) ??
+    languageList[0] ??
+    null;
 
-    if (isPromptsArray(stored)) {
-      const prompts = stored.map((item) => item.trim()).filter(Boolean);
-
-      if (prompts.length > 0) {
-        return prompts;
-      }
+  if (defaultLanguage) {
+    const defaultPrompts = byLanguage[defaultLanguage.code];
+    if (defaultPrompts && defaultPrompts.length > 0) {
+      return defaultPrompts;
     }
-  } catch (error) {
-    console.warn("Failed to load suggested prompts, using defaults.", error);
+  }
+
+  if (fallback.length > 0) {
+    return fallback;
   }
 
   return [...DEFAULT_SUGGESTED_PROMPTS];
