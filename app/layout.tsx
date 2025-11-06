@@ -1,17 +1,15 @@
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
-import { cookies } from "next/headers";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { LanguageProvider } from "@/components/language-provider";
-import { ThemeProvider } from "@/components/theme-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
-import { auth } from "@/app/(auth)/auth";
+import { ThemeProvider } from "@/components/theme-provider";
+import { loadRootContext } from "./root-context";
 
 import "./globals.css";
-import { SessionProvider } from "next-auth/react";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const siteName = "KhasiGPT";
@@ -162,15 +160,8 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value;
-  const { languages, activeLanguage, dictionary } =
-    await getTranslationBundle(preferredLanguage);
-
-  const sessionToken =
-    cookieStore.get("__Secure-authjs.session-token") ??
-    cookieStore.get("authjs.session-token");
-  const session = sessionToken ? await auth() : null;
+  const { languages, activeLanguage, dictionary, session } =
+    await loadRootContext();
 
   return (
     <html
@@ -179,11 +170,13 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: theme color must sync with runtime classes */}
         <script
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
           }}
         />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: structured data string is generated server-side */}
         <script
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData),

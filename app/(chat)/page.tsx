@@ -1,24 +1,29 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { DataStreamHandler } from "@/components/data-stream-handler";
 import { ChatLoader } from "@/components/chat-loader";
+import { DataStreamHandler } from "@/components/data-stream-handler";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { generateUUID } from "@/lib/utils";
-import { auth } from "../(auth)/auth";
+import { loadRootContext } from "../root-context";
 
 export default async function Page() {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const { session, preferredLanguage, activeLanguage, languages } =
+    await loadRootContext();
 
-  const session = await auth();
   if (!session) {
     redirect("/login");
   }
 
+  const cookieStore = cookies();
+
   const [modelsResult, suggestedPrompts] = await Promise.all([
     loadChatModels(),
-    loadSuggestedPrompts(preferredLanguage),
+    loadSuggestedPrompts({
+      preferredLanguageCode: preferredLanguage,
+      activeLanguage,
+      languages,
+    }),
   ]);
 
   const { defaultModel, models } = modelsResult;
@@ -27,10 +32,7 @@ export default async function Page() {
 
   const modelIdFromCookie = cookieStore.get("chat-model");
   const fallbackModelId =
-    modelIdFromCookie?.value ??
-    defaultModel?.id ??
-    models[0]?.id ??
-    "";
+    modelIdFromCookie?.value ?? defaultModel?.id ?? models[0]?.id ?? "";
 
   if (!modelIdFromCookie) {
     return (
@@ -42,8 +44,8 @@ export default async function Page() {
           initialMessages={[]}
           initialVisibilityType="private"
           isReadonly={false}
-          suggestedPrompts={suggestedPrompts}
           key={id}
+          suggestedPrompts={suggestedPrompts}
         />
         <DataStreamHandler />
       </>
@@ -59,8 +61,8 @@ export default async function Page() {
         initialMessages={[]}
         initialVisibilityType="private"
         isReadonly={false}
-        suggestedPrompts={suggestedPrompts}
         key={id}
+        suggestedPrompts={suggestedPrompts}
       />
       <DataStreamHandler />
     </>
