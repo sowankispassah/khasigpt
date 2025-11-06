@@ -9,8 +9,12 @@ import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { convertToUIMessages } from "@/lib/utils";
 import { loadRootContext } from "../../../root-context";
 
-export default async function Page({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const chat = await getChatById({ id, includeDeleted: true });
 
   if (!chat) {
