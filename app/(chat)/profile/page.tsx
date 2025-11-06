@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/app/(auth)/auth";
 import { PasswordForm } from "./password-form";
 import { AvatarForm } from "./avatar-form";
+import { NameForm } from "./name-form";
 import { DeactivateAccountForm } from "./deactivate-account-form";
 import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
@@ -70,6 +71,12 @@ export default async function ProfilePage() {
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <NameForm
+            initialFirstName={currentUser?.firstName ?? session.user.firstName ?? null}
+            initialLastName={currentUser?.lastName ?? session.user.lastName ?? null}
+          />
+        </div>
         <div className="rounded-lg border bg-card p-6 shadow-sm space-y-4">
           <div>
             <h2 className="text-lg font-semibold">

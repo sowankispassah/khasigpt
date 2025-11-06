@@ -13,6 +13,9 @@ declare module "next-auth/jwt" {
     id?: string;
     role?: string;
     dateOfBirth?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    imageVersion?: string | null;
   }
 
   export function getToken<R extends boolean = false>(

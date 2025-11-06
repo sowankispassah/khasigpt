@@ -1081,4 +1081,51 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Please review the highlighted fields.",
     description: "Generic error shown when the contact form validation fails.",
   },
+  {
+    key: "complete_profile.heading",
+    defaultText: "Almost there!",
+    description: "Heading for the profile completion page.",
+  },
+  {
+    key: "complete_profile.subheading",
+    defaultText:
+      "Please confirm your name and date of birth. We can only offer access to people who are at least 13 years old.",
+    description: "Subheading explaining why profile details are needed.",
+  },
+  {
+    key: "complete_profile.first_name.label",
+    defaultText: "First name",
+    description: "Label for the first name field during profile completion.",
+  },
+  {
+    key: "complete_profile.first_name.placeholder",
+    defaultText: "Enter your first name",
+    description: "Placeholder for the first name input.",
+  },
+  {
+    key: "complete_profile.last_name.label",
+    defaultText: "Last name",
+    description: "Label for the last name field during profile completion.",
+  },
+  {
+    key: "complete_profile.last_name.placeholder",
+    defaultText: "Enter your last name",
+    description: "Placeholder for the last name input.",
+  },
+  {
+    key: "complete_profile.dob.label",
+    defaultText: "Date of birth",
+    description: "Label for the date of birth field.",
+  },
+  {
+    key: "complete_profile.dob.helper",
+    defaultText:
+      "We use this to verify that you meet the minimum age requirement (13+).",
+    description: "Helper text explaining why date of birth is required.",
+  },
+  {
+    key: "complete_profile.submit",
+    defaultText: "Save and continue",
+    description: "Submit button label on the profile completion form.",
+  },
 ];

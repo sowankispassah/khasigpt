@@ -32,6 +32,7 @@ type UserDropdownMenuProps = {
   isBusy?: boolean;
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
+  userDisplayName?: string;
   userEmail?: string;
 };
 
@@ -158,6 +159,7 @@ export function UserDropdownMenu({
   isBusy = false,
   side = "top",
   align = "end",
+  userDisplayName,
   userEmail,
 }: UserDropdownMenuProps) {
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
@@ -433,6 +435,10 @@ export function UserDropdownMenu({
 
   const activeLanguageLabel = translate("user_menu.language.active", "Active");
   const updatingLanguageLabel = translate("user_menu.language.updating", "Updating…");
+  const primaryLabel =
+    (userDisplayName && userDisplayName.trim().length > 0
+      ? userDisplayName.trim()
+      : null) ?? userEmail ?? null;
 
   return (
     <DropdownMenu onOpenChange={handleMenuOpenChange}>
@@ -443,7 +449,7 @@ export function UserDropdownMenu({
         data-testid="user-nav-menu"
         side={side}
       >
-        {userEmail && isAuthenticated ? (
+        {primaryLabel && isAuthenticated ? (
           <DropdownMenuItem
             className="cursor-pointer font-medium text-foreground"
             data-testid="user-nav-item-email"
@@ -457,14 +463,14 @@ export function UserDropdownMenu({
             }
           >
             <span className="flex w-full items-center justify-between gap-2">
-              {userEmail}
+              {primaryLabel}
               {renderPendingIndicator(pendingAction === "navigate:profile-email")}
             </span>
           </DropdownMenuItem>
         ) : null}
         {isAuthenticated && (
           <>
-            {userEmail ? <DropdownMenuSeparator /> : null}
+            {primaryLabel ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
               className="cursor-pointer"
               data-testid="user-nav-item-profile"

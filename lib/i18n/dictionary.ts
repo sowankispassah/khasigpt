@@ -197,6 +197,10 @@ const FALLBACK_BUNDLE: TranslationBundle = {
   dictionary: mergeWithStaticDictionary({}),
 };
 
+const skipTranslationCache =
+  typeof process !== "undefined" &&
+  process.env.SKIP_TRANSLATION_CACHE === "1";
+
 async function persistBundle(key: string, bundle: TranslationBundle) {
   await setAppSetting({
     key: `${TRANSLATION_CACHE_PREFIX}${key}`,
@@ -366,10 +370,25 @@ export async function publishAllTranslations() {
     .filter((language) => language.isActive)
     .map((language) => language.code);
 
-  await Promise.all([
-    getTranslationBundle(undefined),
-    ...activeCodes.map((code) => getTranslationBundle(code)),
-  ]);
+  const previous = process.env.SKIP_TRANSLATION_CACHE;
+  if (!skipTranslationCache) {
+    process.env.SKIP_TRANSLATION_CACHE = "1";
+  }
+
+  try {
+    await Promise.all([
+      getTranslationBundle(undefined),
+      ...activeCodes.map((code) => getTranslationBundle(code)),
+    ]);
+  } finally {
+    if (!skipTranslationCache) {
+      if (typeof previous === "string") {
+        process.env.SKIP_TRANSLATION_CACHE = previous;
+      } else {
+        delete process.env.SKIP_TRANSLATION_CACHE;
+      }
+    }
+  }
 }
 
 export async function getTranslationForKey(

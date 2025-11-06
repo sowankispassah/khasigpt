@@ -1,4 +1,10 @@
-﻿import "server-only";
+﻿if (
+  typeof process === "undefined" ||
+  process.env.SKIP_TRANSLATION_CACHE !== "1"
+) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  require("server-only");
+}
 
 import {
   and,
@@ -225,7 +231,12 @@ export async function createUser(email: string, password: string): Promise<User>
   }
 }
 
-export async function createOAuthUser(email: string, image: string | null = null): Promise<User> {
+export async function createOAuthUser(
+  email: string,
+  image: string | null = null,
+  firstName: string | null = null,
+  lastName: string | null = null
+): Promise<User> {
   const normalizedEmail = normalizeEmailValue(email);
   try {
     const [created] = await db
@@ -235,6 +246,8 @@ export async function createOAuthUser(email: string, image: string | null = null
         isActive: true,
         authProvider: "google",
         image,
+        firstName: firstName ?? null,
+        lastName: lastName ?? null,
       })
       .returning();
 
@@ -274,7 +287,7 @@ export async function createGuestUser() {
 
 export async function ensureOAuthUser(
   email: string,
-  profile?: { image?: string | null }
+  profile?: { image?: string | null; firstName?: string | null; lastName?: string | null }
 ): Promise<User> {
   const normalizedEmail = normalizeEmailValue(email);
   const [existing] = await getUser(normalizedEmail);
@@ -305,10 +318,44 @@ export async function ensureOAuthUser(
       userRecord = updatedImage ?? userRecord;
     }
 
+    const nameUpdates: Partial<typeof user.$inferInsert> = {};
+    if (
+      profile?.firstName &&
+      profile.firstName.trim().length > 0 &&
+      profile.firstName.trim() !== (userRecord.firstName ?? "")
+    ) {
+      nameUpdates.firstName = profile.firstName.trim();
+    }
+
+    if (
+      profile?.lastName &&
+      profile.lastName.trim().length > 0 &&
+      profile.lastName.trim() !== (userRecord.lastName ?? "")
+    ) {
+      nameUpdates.lastName = profile.lastName.trim();
+    }
+
+    if (Object.keys(nameUpdates).length > 0) {
+      const [updated] = await db
+        .update(user)
+        .set({
+          ...nameUpdates,
+          updatedAt: new Date(),
+        })
+        .where(eq(user.id, userRecord.id))
+        .returning();
+      userRecord = updated ?? userRecord;
+    }
+
     return userRecord;
   }
 
-  return await createOAuthUser(normalizedEmail, profile?.image ?? null);
+  return await createOAuthUser(
+    normalizedEmail,
+    profile?.image ?? null,
+    profile?.firstName ?? null,
+    profile?.lastName ?? null
+  );
 }
 
 export async function deleteEmailVerificationTokensForUser({
@@ -1095,18 +1142,24 @@ export async function updateUserPassword({
   }
 }
 
-export async function updateUserDateOfBirth({
+export async function updateUserProfile({
   id,
   dateOfBirth,
+  firstName,
+  lastName,
 }: {
   id: string;
   dateOfBirth: string;
+  firstName: string;
+  lastName: string;
 }) {
   try {
     const [updated] = await db
       .update(user)
       .set({
         dateOfBirth,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         updatedAt: new Date(),
       })
       .where(eq(user.id, id))
@@ -1116,7 +1169,36 @@ export async function updateUserDateOfBirth({
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
-      "Failed to update date of birth"
+      "Failed to update profile"
+    );
+  }
+}
+
+export async function updateUserName({
+  id,
+  firstName,
+  lastName,
+}: {
+  id: string;
+  firstName: string;
+  lastName: string;
+}) {
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update name"
     );
   }
 }

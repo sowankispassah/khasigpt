@@ -20,7 +20,12 @@ export default async function Layout({
   const [featureFlags, { models, defaultModel }, session, cookieStore] =
     await Promise.all([loadFeatureFlags(), loadChatModels(), auth(), cookies()]);
 
-  if (session?.user && !session.user.dateOfBirth) {
+  if (
+    session?.user &&
+    (!session.user.dateOfBirth ||
+      !session.user.firstName ||
+      !session.user.lastName)
+  ) {
     redirect("/complete-profile");
   }
 

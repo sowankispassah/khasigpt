@@ -13,6 +13,10 @@ export type LanguageOption = {
   isActive: boolean;
 };
 
+const shouldBypassCache =
+  typeof process !== "undefined" &&
+  process.env.SKIP_TRANSLATION_CACHE === "1";
+
 const serializeLanguage = (entry: typeof language.$inferSelect): LanguageOption => ({
   id: entry.id,
   code: entry.code,
@@ -35,6 +39,13 @@ const getAllLanguagesCached = unstable_cache(
 );
 
 export const getAllLanguages = async (): Promise<LanguageOption[]> => {
+  if (shouldBypassCache) {
+    const rows = await db
+      .select()
+      .from(language)
+      .orderBy(asc(language.name));
+    return rows.map(serializeLanguage);
+  }
   return getAllLanguagesCached();
 };
 
@@ -53,6 +64,14 @@ const getActiveLanguagesCached = unstable_cache(
 );
 
 export const getActiveLanguages = async (): Promise<LanguageOption[]> => {
+  if (shouldBypassCache) {
+    const rows = await db
+      .select()
+      .from(language)
+      .where(eq(language.isActive, true))
+      .orderBy(asc(language.name));
+    return rows.map(serializeLanguage);
+  }
   return getActiveLanguagesCached();
 };
 
@@ -71,6 +90,14 @@ const getLanguageByCodeCached = unstable_cache(
 );
 
 export const getLanguageByCode = async (code: string) => {
+  if (shouldBypassCache) {
+    const [row] = await db
+      .select()
+      .from(language)
+      .where(eq(language.code, code))
+      .limit(1);
+    return row ? serializeLanguage(row) : null;
+  }
   return getLanguageByCodeCached(code);
 };
 

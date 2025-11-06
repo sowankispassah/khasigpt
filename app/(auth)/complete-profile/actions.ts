@@ -3,7 +3,7 @@
 import { z } from "zod";
 
 import { auth } from "../auth";
-import { updateUserDateOfBirth } from "@/lib/db/queries";
+import { updateUserProfile } from "@/lib/db/queries";
 
 export type CompleteProfileState =
   | { status: "idle" }
@@ -16,6 +16,16 @@ const dobSchema = z.object({
     .refine((value) => Boolean(value && value.trim().length > 0), {
       message: "Please select your date of birth.",
     }),
+  firstName: z
+    .string({ required_error: "Please enter your first name." })
+    .trim()
+    .min(1, "Please enter your first name.")
+    .max(64, "First name must be 64 characters or fewer."),
+  lastName: z
+    .string({ required_error: "Please enter your last name." })
+    .trim()
+    .min(1, "Please enter your last name.")
+    .max(64, "Last name must be 64 characters or fewer."),
 });
 
 function isAtLeast13YearsOld(dateString: string) {
@@ -44,7 +54,11 @@ export async function submitDateOfBirthAction(
     return { status: "error", message: "You need to sign in first." };
   }
 
-  const parsed = dobSchema.safeParse({ dob: formData.get("dob") });
+  const parsed = dobSchema.safeParse({
+    dob: formData.get("dob"),
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+  });
 
   if (!parsed.success) {
     const [error] = parsed.error.issues;
@@ -58,9 +72,11 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  await updateUserDateOfBirth({
+  await updateUserProfile({
     id: session.user.id,
     dateOfBirth: parsed.data.dob,
+    firstName: parsed.data.firstName,
+    lastName: parsed.data.lastName,
   });
 
   return { status: "success" };

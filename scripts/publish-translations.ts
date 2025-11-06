@@ -1,8 +1,9 @@
 import "dotenv/config";
 
-import { publishAllTranslations } from "../lib/i18n/dictionary";
+process.env.SKIP_TRANSLATION_CACHE ??= "1";
 
 async function main() {
+  const { publishAllTranslations } = await import("../lib/i18n/dictionary");
   await publishAllTranslations();
   console.log("Translations published successfully.");
 }

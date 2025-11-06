@@ -40,6 +40,8 @@ export const user = pgTable(
       .default("credentials"),
     isActive: boolean("isActive").notNull().default(true),
     image: text("image"),
+    firstName: varchar("firstName", { length: 64 }),
+    lastName: varchar("lastName", { length: 64 }),
     dateOfBirth: date("dateOfBirth"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),

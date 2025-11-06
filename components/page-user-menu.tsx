@@ -21,6 +21,18 @@ export function PageUserMenu({ className }: { className?: string }) {
   const [isActionPending, setIsActionPending] = useState(false);
   const user = session?.user ?? null;
   const hasPrefetchedRoutesRef = useRef(false);
+  const displayName = (() => {
+    const first = user?.firstName?.trim() ?? "";
+    const last = user?.lastName?.trim() ?? "";
+    const combined = [first, last].filter(Boolean).join(" ").trim();
+    if (combined.length > 0) {
+      return combined;
+    }
+    if (user?.name && user.name.trim().length > 0) {
+      return user.name.trim();
+    }
+    return null;
+  })();
 
   useEffect(() => {
     setIsActionPending(false);
@@ -121,6 +133,7 @@ export function PageUserMenu({ className }: { className?: string }) {
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
+          userDisplayName={displayName ?? undefined}
           userEmail={user.email ?? undefined}
           trigger={
             <UserMenuTrigger
@@ -146,6 +159,7 @@ export function PageUserMenu({ className }: { className?: string }) {
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
+          userDisplayName={undefined}
           trigger={
             <button
               className={cn(
