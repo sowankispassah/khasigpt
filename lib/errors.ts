@@ -88,11 +88,10 @@ export class ChatSDKError extends Error {
       });
     }
 
-    const responsePayload: Record<string, string> = { code, message };
-
-    if (process.env.NODE_ENV !== "production" && cause) {
-      responsePayload.details = cause;
-    }
+    const responsePayload =
+      process.env.NODE_ENV !== "production" && cause
+        ? { code, message, details: cause }
+        : { code, message };
 
     return Response.json(responsePayload, { status: statusCode });
   }
