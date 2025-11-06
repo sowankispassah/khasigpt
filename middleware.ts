@@ -14,9 +14,9 @@ function getClientKey(request: NextRequest) {
     request.headers.get("forwarded") ??
     "";
   const ip =
-    request.ip ??
     forwardedFor.split(",")[0]?.trim() ??
     request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-real-ip") ??
     "unknown";
   return ip;
 }
