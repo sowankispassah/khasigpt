@@ -92,6 +92,7 @@ export default async function SubscriptionsPage({
   const planPriceLabel = plan?.priceInPaise
     ? currencyFormatter.format(plan.priceInPaise / 100)
     : null;
+  const totalSpendInPaise = plan?.priceInPaise ?? null;
   const currentPlanLabel = hasPaidPlan
     ? planPriceLabel
       ? `${plan?.name} (${planPriceLabel})`
@@ -254,7 +255,12 @@ export default async function SubscriptionsPage({
                 {t("subscriptions.plan_overview.total_spend", "Total spend")}
               </p>
               <p className="font-semibold text-lg">
-                {currencyFormatter.format(balance.totalSpendInPaise / 100)}
+                {totalSpendInPaise !== null
+                  ? currencyFormatter.format(totalSpendInPaise / 100)
+                  : t(
+                      "subscriptions.plan_overview.total_spend_unavailable",
+                      "Not available"
+                    )}
               </p>
             </div>
           </div>
