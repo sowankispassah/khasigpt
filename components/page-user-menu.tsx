@@ -1,7 +1,7 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -20,6 +20,7 @@ export function PageUserMenu({ className }: { className?: string }) {
   const { translate, isUpdating: isLanguageUpdating } = useTranslation();
   const [isActionPending, setIsActionPending] = useState(false);
   const user = session?.user ?? null;
+  const hasPrefetchedRoutesRef = useRef(false);
 
   useEffect(() => {
     setIsActionPending(false);
@@ -32,13 +33,19 @@ export function PageUserMenu({ className }: { className?: string }) {
   }, [isLanguageUpdating]);
 
   useEffect(() => {
-    if (user) {
-      void router.prefetch("/profile");
-      void router.prefetch("/subscriptions");
-      void router.prefetch("/recharge");
-      if (user.role === "admin") {
-        void router.prefetch("/admin");
-      }
+    hasPrefetchedRoutesRef.current = false;
+  }, [user?.id]);
+
+  const prefetchUserRoutes = useCallback(() => {
+    if (!user || hasPrefetchedRoutesRef.current) {
+      return;
+    }
+    hasPrefetchedRoutesRef.current = true;
+    void router.prefetch("/profile");
+    void router.prefetch("/subscriptions");
+    void router.prefetch("/recharge");
+    if (user.role === "admin") {
+      void router.prefetch("/admin");
     }
   }, [router, user]);
 
@@ -70,6 +77,18 @@ export function PageUserMenu({ className }: { className?: string }) {
     setIsActionPending(false);
   };
 
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        prefetchUserRoutes();
+        setIsActionPending(false);
+      } else {
+        handleMenuClosed();
+      }
+    },
+    [prefetchUserRoutes]
+  );
+
   const isBusy = status === "loading" || isActionPending;
 
   return (
@@ -94,6 +113,7 @@ export function PageUserMenu({ className }: { className?: string }) {
           isAdmin={user.role === "admin"}
           isAuthenticated
           isBusy={isBusy}
+          onOpenChange={handleOpenChange}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
@@ -119,6 +139,7 @@ export function PageUserMenu({ className }: { className?: string }) {
           isAdmin={false}
           isAuthenticated={false}
           isBusy={isBusy}
+          onOpenChange={handleOpenChange}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}

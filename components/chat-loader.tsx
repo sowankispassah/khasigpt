@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect } from "react";
 import type { ChatMessage } from "@/lib/types";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -18,7 +19,7 @@ const ChatSkeleton = () => (
   </div>
 );
 
-type ChatProps = {
+type ChatLoaderProps = {
   id: string;
   initialMessages: ChatMessage[];
   initialChatModel: string;
@@ -28,14 +29,67 @@ type ChatProps = {
   suggestedPrompts: string[];
 };
 
-const ChatClient = dynamic<ChatProps>(
-  () => import("./chat").then((module) => module.Chat),
+let chatModulePromise: Promise<typeof import("./chat")> | null = null;
+
+function loadChatModule() {
+  if (!chatModulePromise) {
+    chatModulePromise = import("./chat");
+  }
+  return chatModulePromise;
+}
+
+export function preloadChat() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  void loadChatModule();
+}
+
+const ChatClient = dynamic<ChatLoaderProps>(
+  () => loadChatModule().then((module) => module.Chat),
   {
     ssr: false,
-    loading: () => <ChatSkeleton />,
+    loading: ChatSkeleton,
   }
 );
 
-export function ChatLoader(props: ChatProps) {
+export function ChatLoader(props: ChatLoaderProps) {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    let idleId: number | null = null;
+    let timeoutId: number | null = null;
+
+    const anyWindow = window as typeof window & {
+      requestIdleCallback?: (callback: () => void) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    const schedulePreload = () => {
+      if (typeof anyWindow.requestIdleCallback === "function") {
+        idleId = anyWindow.requestIdleCallback(() => {
+          preloadChat();
+        });
+      } else {
+        timeoutId = window.setTimeout(() => {
+          preloadChat();
+        }, 200);
+      }
+    };
+
+    schedulePreload();
+
+    return () => {
+      if (idleId !== null && typeof anyWindow.cancelIdleCallback === "function") {
+        anyWindow.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
   return <ChatClient {...props} />;
 }

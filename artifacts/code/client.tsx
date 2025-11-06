@@ -24,7 +24,7 @@ let pyodideScriptPromise: Promise<void> | null = null;
 
 async function ensurePyodideRuntime(): Promise<void> {
   if (typeof window === "undefined") {
-    throw new Error("Pyodide runtime can only be loaded in the browser.");
+    throw new Error("Pyodide runtime is only available in the browser.");
   }
 
   if ((globalThis as { loadPyodide?: LoadPyodideFunction }).loadPyodide) {
@@ -183,10 +183,10 @@ export const codeArtifact = new Artifact<"code", Metadata>({
             {
               id: runId,
               contents: [],
-            status: "in_progress",
-          },
-        ],
-      }));
+              status: "in_progress",
+            },
+          ],
+        }));
 
         try {
           await ensurePyodideRuntime();

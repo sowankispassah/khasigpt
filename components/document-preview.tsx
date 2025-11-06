@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import equal from "fast-deep-equal";
 import {
   type MouseEvent,
@@ -14,13 +15,62 @@ import { useArtifact } from "@/hooks/use-artifact";
 import type { Document } from "@/lib/db/schema";
 import { cn, fetcher } from "@/lib/utils";
 import type { ArtifactKind, UIArtifact } from "./artifact";
-import { CodeEditor } from "./code-editor";
 import { DocumentToolCall, DocumentToolResult } from "./document";
 import { InlineDocumentSkeleton } from "./document-skeleton";
 import { FileIcon, FullscreenIcon, ImageIcon, LoaderIcon } from "./icons";
-import { ImageEditor } from "./image-editor";
-import { SpreadsheetEditor } from "./sheet-editor";
-import { Editor } from "./text-editor";
+
+const LoadingPlaceholder = ({ label }: { label: string }) => (
+  <div className="flex w-full items-center justify-center gap-2 p-6 text-muted-foreground text-sm">
+    <span className="inline-flex animate-spin">
+      <LoaderIcon size={16} />
+    </span>
+    <span>{label}</span>
+  </div>
+);
+
+const CodeEditor = dynamic(
+  () =>
+    import("./code-editor").then((module) => ({
+      default: module.CodeEditor,
+    })),
+  {
+    ssr: false,
+    loading: () => <LoadingPlaceholder label="Loading code editor…" />,
+  }
+);
+
+const ImageEditor = dynamic(
+  () =>
+    import("./image-editor").then((module) => ({
+      default: module.ImageEditor,
+    })),
+  {
+    ssr: false,
+    loading: () => <LoadingPlaceholder label="Loading image…" />,
+  }
+);
+
+const SpreadsheetEditor = dynamic(
+  () =>
+    import("./sheet-editor").then((module) => ({
+      default: module.SpreadsheetEditor,
+    })),
+  {
+    ssr: false,
+    loading: () => <LoadingPlaceholder label="Loading spreadsheet…" />,
+  }
+);
+
+const TextEditor = dynamic(
+  () =>
+    import("./text-editor").then((module) => ({
+      default: module.Editor,
+    })),
+  {
+    ssr: false,
+    loading: () => <LoadingPlaceholder label="Loading document…" />,
+  }
+);
 
 type DocumentPreviewProps = {
   isReadonly: boolean;
@@ -267,7 +317,7 @@ const DocumentContent = ({ document }: { document: Document }) => {
   return (
     <div className={containerClassName}>
       {document.kind === "text" ? (
-        <Editor {...commonProps} onSaveContent={handleSaveContent} />
+        <TextEditor {...commonProps} onSaveContent={handleSaveContent} />
       ) : document.kind === "code" ? (
         <div className="relative flex w-full flex-1">
           <div className="absolute inset-0">

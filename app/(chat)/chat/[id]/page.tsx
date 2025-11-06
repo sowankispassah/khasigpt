@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { Chat } from "@/components/chat";
+import { ChatLoader } from "@/components/chat-loader";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -72,7 +72,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         {deletedBanner && (
           <DeletedNotice dictionary={dictionary} />
         )}
-        <Chat
+        <ChatLoader
           autoResume={true}
           id={chat.id}
           initialChatModel={fallbackModelId}
@@ -89,7 +89,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   return (
     <>
       {deletedBanner && <DeletedNotice dictionary={dictionary} />}
-      <Chat
+      <ChatLoader
         autoResume={true}
         id={chat.id}
         initialChatModel={fallbackModelId}

@@ -1,10 +1,9 @@
 "use client";
 
 import { isToday, isYesterday, subMonths, subWeeks } from "date-fns";
-import { motion } from "framer-motion";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "next-auth";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import {
@@ -28,6 +27,7 @@ import { fetcher } from "@/lib/utils";
 import { LoaderIcon } from "./icons";
 import { ChatItem } from "./sidebar-history-item";
 import { useTranslation } from "@/components/language-provider";
+import { preloadChat } from "./chat-loader";
 
 type GroupedChats = {
   today: Chat[];
@@ -124,7 +124,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { translate } = useTranslation();
   const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
-  const [isNavigating, startNavigation] = useTransition();
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const hasReachedEnd = paginatedChatHistories
     ? paginatedChatHistories.some((page) => page.hasMore === false)
@@ -135,15 +135,6 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     : false;
 
   useEffect(() => {
-    if (!isNavigating && navigatingChatId) {
-      if (navigatingChatId === activeChatId) {
-        setOpenMobile(false);
-      }
-      setNavigatingChatId(null);
-    }
-  }, [isNavigating, navigatingChatId, activeChatId, setOpenMobile]);
-
-  useEffect(() => {
     if (!paginatedChatHistories || paginatedChatHistories.length === 0) {
       return;
     }
@@ -152,13 +143,49 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     for (const chat of firstPage.slice(0, 10)) {
       void router.prefetch(`/chat/${chat.id}`);
     }
+
+    preloadChat();
   }, [paginatedChatHistories, router]);
+
+  useEffect(() => {
+    if (!navigatingChatId) {
+      return;
+    }
+    if (navigatingChatId === activeChatId) {
+      setNavigatingChatId(null);
+      setOpenMobile(false);
+    }
+  }, [activeChatId, navigatingChatId, setOpenMobile]);
+
+  useEffect(() => {
+    const sentinelNode = sentinelRef.current;
+    if (!sentinelNode) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !isValidating && !hasReachedEnd) {
+            setSize((size) => size + 1);
+            break;
+          }
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(sentinelNode);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasReachedEnd, isValidating, setSize]);
 
   const handleOpenChat = (chatId: string) => {
     setNavigatingChatId(chatId);
-    startNavigation(() => {
-      router.push(`/chat/${chatId}`);
-    });
+    preloadChat();
+    router.push(`/chat/${chatId}`);
   };
 
   const handleDelete = () => {
@@ -279,7 +306,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === activeChatId}
-                            isNavigating={isNavigating && navigatingChatId === chat.id}
+                            isNavigating={navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -303,7 +330,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === activeChatId}
-                            isNavigating={isNavigating && navigatingChatId === chat.id}
+                            isNavigating={navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -327,7 +354,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === activeChatId}
-                            isNavigating={isNavigating && navigatingChatId === chat.id}
+                            isNavigating={navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -351,7 +378,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === activeChatId}
-                            isNavigating={isNavigating && navigatingChatId === chat.id}
+                            isNavigating={navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -375,7 +402,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === activeChatId}
-                            isNavigating={isNavigating && navigatingChatId === chat.id}
+                            isNavigating={navigatingChatId === chat.id}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -391,13 +418,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
               })()}
           </SidebarMenu>
 
-          <motion.div
-            onViewportEnter={() => {
-              if (!isValidating && !hasReachedEnd) {
-                setSize((size) => size + 1);
-              }
-            }}
-          />
+          <div aria-hidden ref={sentinelRef} />
 
           {hasReachedEnd ? (
             <div className="mt-8 flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
