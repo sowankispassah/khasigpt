@@ -418,7 +418,11 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
               })()}
           </SidebarMenu>
 
-          <div aria-hidden ref={sentinelRef} />
+          <div
+            aria-hidden
+            className="pointer-events-none h-px w-full"
+            ref={sentinelRef}
+          />
 
           {hasReachedEnd ? (
             <div className="mt-8 flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
