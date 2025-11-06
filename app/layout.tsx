@@ -166,7 +166,11 @@ export default async function RootLayout({
   const preferredLanguage = cookieStore.get("lang")?.value;
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
-  const session = await auth();
+
+  const sessionToken =
+    cookieStore.get("__Secure-authjs.session-token") ??
+    cookieStore.get("authjs.session-token");
+  const session = sessionToken ? await auth() : null;
 
   return (
     <html
@@ -199,7 +203,7 @@ export default async function RootLayout({
             dictionary={dictionary}
             languages={languages}
           >
-            <SessionProvider session={session}>
+            <SessionProvider session={session ?? undefined}>
               <PageUserMenu />
               {children}
             </SessionProvider>
