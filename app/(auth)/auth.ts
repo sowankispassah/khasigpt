@@ -117,6 +117,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 const ACCOUNT_INACTIVE_REDIRECT = "/login?error=AccountInactive";
+const ACCOUNT_LINK_REQUIRED_REDIRECT = "/login?error=AccountLinkRequired";
 
 export const {
   handlers: { GET, POST },
@@ -171,11 +172,13 @@ export const {
               .trim();
           }
         } catch (error) {
-          if (
-            error instanceof ChatSDKError &&
-            error.cause === "account_inactive"
-          ) {
-            return ACCOUNT_INACTIVE_REDIRECT;
+          if (error instanceof ChatSDKError) {
+            if (error.cause === "account_inactive") {
+              return ACCOUNT_INACTIVE_REDIRECT;
+            }
+            if (error.cause === "account_link_required") {
+              return ACCOUNT_LINK_REQUIRED_REDIRECT;
+            }
           }
           throw error;
         }

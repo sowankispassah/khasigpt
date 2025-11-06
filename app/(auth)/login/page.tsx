@@ -27,14 +27,26 @@ function LoginContent() {
   const { callbackUrl, clearCallback } = useAuthCallback();
   const { translate } = useTranslation();
   const [email, setEmail] = useState("");
+  const errorParam = searchParams?.get("error");
+  const errorDescription = searchParams?.get("error_description");
   const hasInactiveParam =
-    searchParams?.get("error") === "AccountInactive" ||
-    searchParams?.get("error_description") === "AccountInactive";
-  const [showEmailFields, setShowEmailFields] = useState(hasInactiveParam);
+    errorParam === "AccountInactive" ||
+    errorDescription === "AccountInactive";
+  const hasLinkRequiredParam =
+    errorParam === "AccountLinkRequired" ||
+    errorDescription === "AccountLinkRequired";
+  const [showEmailFields, setShowEmailFields] = useState(
+    hasInactiveParam || hasLinkRequiredParam
+  );
   const [isSuccessful, setIsSuccessful] = useState(false);
-  type LoginErrorKey = null | "invalid" | "invalid_data" | "inactive";
+  type LoginErrorKey =
+    | null
+    | "invalid"
+    | "invalid_data"
+    | "inactive"
+    | "link_required";
   const [errorKey, setErrorKey] = useState<LoginErrorKey>(
-    hasInactiveParam ? "inactive" : null
+    hasInactiveParam ? "inactive" : hasLinkRequiredParam ? "link_required" : null
   );
 
   const [state, formAction] = useActionState<LoginActionState, FormData>(
@@ -59,6 +71,10 @@ function LoginContent() {
       inactive: translate(
         "login.error.inactive",
         "This account is inactive due to not verified or previous deleted. Please contact support."
+      ),
+      link_required: translate(
+        "login.error.link_required",
+        "Your email is already registered. Sign in with your password first, then link Google from account settings."
       ),
     }),
     [translate]
@@ -88,28 +104,29 @@ function LoginContent() {
   }, [state.status, callbackUrl, clearCallback]);
 
   useEffect(() => {
-    const errorParam = searchParams?.get("error");
-    const errorDescription = searchParams?.get("error_description");
-    if (
-      errorParam === "AccountInactive" ||
-      errorDescription === "AccountInactive"
-    ) {
+    if (hasInactiveParam) {
       setShowEmailFields(true);
       setErrorKey("inactive");
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("error");
-        url.searchParams.delete("error_description");
-        router.replace(
-          url.pathname +
-            (url.searchParams.toString().length > 0
-              ? `?${url.searchParams.toString()}`
-              : "") +
-            url.hash
-        );
-      }
+    } else if (hasLinkRequiredParam) {
+      setShowEmailFields(true);
+      setErrorKey("link_required");
+    } else {
+      return;
     }
-  }, [router, searchParams]);
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      url.searchParams.delete("error_description");
+      router.replace(
+        url.pathname +
+          (url.searchParams.toString().length > 0
+            ? `?${url.searchParams.toString()}`
+            : "") +
+          url.hash
+      );
+    }
+  }, [hasInactiveParam, hasLinkRequiredParam, router, searchParams]);
 
   const handleSubmit = (formData: FormData) => {
     setEmail(formData.get("email") as string);
