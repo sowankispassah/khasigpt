@@ -2,7 +2,6 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import type { Session } from "next-auth";
-import { cache } from "react";
 
 import { auth } from "@/app/(auth)/auth";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
@@ -12,7 +11,7 @@ export type RootContext = Awaited<ReturnType<typeof getTranslationBundle>> & {
   session: Session | null;
 };
 
-export const loadRootContext = cache(async (): Promise<RootContext> => {
+export async function loadRootContext(): Promise<RootContext> {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const sessionToken =
@@ -24,12 +23,14 @@ export const loadRootContext = cache(async (): Promise<RootContext> => {
     ? auth()
     : Promise.resolve(null);
 
-  const translation = await translationPromise;
-  const session = (await sessionPromise) as Session | null;
+  const [translation, session] = await Promise.all([
+    translationPromise,
+    sessionPromise,
+  ]);
 
   return {
     ...translation,
     preferredLanguage,
     session,
   };
-});
+}
