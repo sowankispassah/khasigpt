@@ -5,7 +5,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval' https://cdn.jsdelivr.net",
+      "script-src 'self' 'strict-dynamic' 'nonce-__NEXT_SCRIPT_NONCE__' https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.vercel-storage.com https://avatar.vercel.sh",
       "font-src 'self'",
