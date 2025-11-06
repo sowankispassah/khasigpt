@@ -13,14 +13,16 @@ export type RootContext = Awaited<ReturnType<typeof getTranslationBundle>> & {
 };
 
 export const loadRootContext = cache(async (): Promise<RootContext> => {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const sessionToken =
     cookieStore.get("__Secure-authjs.session-token") ??
     cookieStore.get("authjs.session-token");
 
   const translationPromise = getTranslationBundle(preferredLanguage);
-  const sessionPromise = sessionToken ? auth() : Promise.resolve(null);
+  const sessionPromise: Promise<Session | null> = sessionToken
+    ? auth()
+    : Promise.resolve(null);
 
   const translation = await translationPromise;
   const session = (await sessionPromise) as Session | null;

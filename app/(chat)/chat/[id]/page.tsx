@@ -38,7 +38,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     return notFound();
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   const [modelsResult, suggestedPrompts, messagesFromDb] = await Promise.all([
     loadChatModels(),

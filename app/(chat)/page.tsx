@@ -15,7 +15,7 @@ export default async function Page() {
     redirect("/login");
   }
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   const [modelsResult, suggestedPrompts] = await Promise.all([
     loadChatModels(),
