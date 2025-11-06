@@ -293,19 +293,15 @@ export async function ensureOAuthUser(
   const [existing] = await getUser(normalizedEmail);
 
   if (existing) {
-    let userRecord = existing;
-
-    if (!userRecord.isActive) {
+    if (!existing.isActive) {
       throw new ChatSDKError("forbidden:auth", "account_inactive");
     }
 
-    if (userRecord.authProvider !== "google") {
-      const updatedProvider = await updateUserAuthProvider({
-        id: userRecord.id,
-        authProvider: "google",
-      });
-      userRecord = updatedProvider ?? userRecord;
+    if (existing.authProvider !== "google") {
+      throw new ChatSDKError("forbidden:auth", "account_link_required");
     }
+
+    let userRecord = existing;
 
     if (
       profile?.image &&

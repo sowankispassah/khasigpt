@@ -8,11 +8,13 @@ import { useTranslation } from "@/components/language-provider";
 type DailyUsageRangeSelectProps = {
   currentRange: number;
   options: readonly number[];
+  className?: string;
 };
 
 export function DailyUsageRangeSelect({
   currentRange,
   options,
+  className,
 }: DailyUsageRangeSelectProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -39,9 +41,13 @@ export function DailyUsageRangeSelect({
   );
 
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div
+      className={`flex items-center gap-2 text-sm${
+        className ? ` ${className}` : ""
+      }`}
+    >
       <label
-        className="text-xs font-medium text-muted-foreground"
+        className="font-medium text-muted-foreground text-xs"
         htmlFor="daily-usage-range"
       >
         {translate("subscriptions.range.label", "Range")}
