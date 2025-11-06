@@ -28,6 +28,7 @@ type UserDropdownMenuProps = {
   onSignOut?: () => void;
   onActionStart?: () => void;
   onMenuClose?: () => void;
+  onOpenChange?: (open: boolean) => void;
   isBusy?: boolean;
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
@@ -153,6 +154,7 @@ export function UserDropdownMenu({
   onSignOut,
   onActionStart,
   onMenuClose,
+  onOpenChange,
   isBusy = false,
   side = "top",
   align = "end",
@@ -166,6 +168,8 @@ export function UserDropdownMenu({
   const [pendingLanguageCode, setPendingLanguageCode] = React.useState<string | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const ignoreNextLanguageOpenRef = React.useRef(false);
+  const planRequestAbortRef = React.useRef<AbortController | null>(null);
+  const planLoadTriggeredRef = React.useRef(false);
   const {
     languages: translationLanguages,
     activeLanguage,
@@ -174,76 +178,88 @@ export function UserDropdownMenu({
     isUpdating: isLanguageUpdating,
   } = useTranslation();
 
-  React.useEffect(() => {
+  const resetPlanState = React.useCallback(() => {
+    planRequestAbortRef.current?.abort();
+    planRequestAbortRef.current = null;
+    planLoadTriggeredRef.current = false;
+    setPlanLabel(null);
+    setIsPlanLoading(false);
+  }, []);
+
+  const fetchPlan = React.useCallback(async () => {
     if (!isAuthenticated) {
-      setPlanLabel(null);
-      setIsPlanLoading(false);
       return;
     }
 
-    let isMounted = true;
+    planRequestAbortRef.current?.abort();
+    const controller = new AbortController();
+    planRequestAbortRef.current = controller;
 
-    const loadPlan = async () => {
-      try {
-        setIsPlanLoading(true);
-        const response = await fetch("/api/billing/balance", {
-          cache: "no-store",
-        });
+    setIsPlanLoading(true);
 
-        if (!response.ok) {
-          throw new Error("Failed to load balance");
-        }
+    try {
+      const response = await fetch("/api/billing/balance", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
 
-        const data: {
-          plan: {
-            name?: string | null;
-            priceInPaise?: number | null;
-          } | null;
-        } = await response.json();
-
-        if (!isMounted) {
-          return;
-        }
-
-        if (data.plan) {
-          const formatter = new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: "INR",
-            maximumFractionDigits: 0,
-          });
-          const priceLabel =
-            typeof data.plan.priceInPaise === "number"
-              ? formatter.format(data.plan.priceInPaise / 100)
-              : null;
-
-          const label =
-            data.plan.name && priceLabel
-              ? `${data.plan.name} (${priceLabel})`
-              : data.plan.name ?? priceLabel ?? null;
-
-          setPlanLabel(label ?? null);
-        } else {
-          setPlanLabel(null);
-        }
-      } catch (_error) {
-        if (isMounted) {
-          setPlanLabel(null);
-        }
-      } finally {
-        if (isMounted) {
-          setIsPlanLoading(false);
-        }
+      if (!response.ok) {
+        throw new Error("Failed to load balance");
       }
-    };
 
-    if (typeof window !== "undefined") {
-      void loadPlan();
+      const data: {
+        plan: {
+          name?: string | null;
+          priceInPaise?: number | null;
+        } | null;
+      } = await response.json();
+
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      if (data.plan) {
+        const formatter = new Intl.NumberFormat("en-IN", {
+          style: "currency",
+          currency: "INR",
+          maximumFractionDigits: 0,
+        });
+        const priceLabel =
+          typeof data.plan.priceInPaise === "number"
+            ? formatter.format(data.plan.priceInPaise / 100)
+            : null;
+
+        const label =
+          data.plan.name && priceLabel
+            ? `${data.plan.name} (${priceLabel})`
+            : data.plan.name ?? priceLabel ?? null;
+
+        setPlanLabel(label ?? null);
+      } else {
+        setPlanLabel(null);
+      }
+    } catch (_error) {
+      if (!controller.signal.aborted) {
+        setPlanLabel(null);
+        planLoadTriggeredRef.current = false;
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsPlanLoading(false);
+      }
     }
-
-    return () => {
-      isMounted = false;
-    };
   }, [isAuthenticated]);
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      resetPlanState();
+    }
+  }, [isAuthenticated, resetPlanState]);
+
+  React.useEffect(() => {
+    return () => {
+      planRequestAbortRef.current?.abort();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!isBusy) {
@@ -268,16 +284,33 @@ export function UserDropdownMenu({
     callback();
   };
 
-  const handleMenuOpenChange = React.useCallback((open: boolean) => {
-    if (!open) {
+  const handleMenuOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (open) {
+        onOpenChange?.(true);
+        if (isAuthenticated && !planLoadTriggeredRef.current) {
+          planLoadTriggeredRef.current = true;
+          void fetchPlan();
+        }
+        return;
+      }
+
+      onOpenChange?.(false);
+      onMenuClose?.();
       ignoreNextResourcesOpenRef.current = false;
       ignoreNextLanguageOpenRef.current = false;
       setIsResourcesOpen(false);
       setIsLanguageOpen(false);
       setPendingAction(null);
       setPendingLanguageCode(null);
-    }
-  }, []);
+    },
+    [
+      fetchPlan,
+      isAuthenticated,
+      onMenuClose,
+      onOpenChange,
+    ]
+  );
 
   const toggleResources = React.useCallback(() => {
     setIsResourcesOpen((prev) => {

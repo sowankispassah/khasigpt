@@ -7,6 +7,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
+import { auth } from "@/app/(auth)/auth";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -165,6 +166,7 @@ export default async function RootLayout({
   const preferredLanguage = cookieStore.get("lang")?.value;
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
+  const session = await auth();
 
   return (
     <html
@@ -197,7 +199,7 @@ export default async function RootLayout({
             dictionary={dictionary}
             languages={languages}
           >
-            <SessionProvider>
+            <SessionProvider session={session}>
               <PageUserMenu />
               {children}
             </SessionProvider>

@@ -1,10 +1,9 @@
 "use client";
 
 import { isToday, isYesterday, subMonths, subWeeks } from "date-fns";
-import { motion } from "framer-motion";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "next-auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import {
@@ -125,6 +124,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { translate } = useTranslation();
   const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const hasReachedEnd = paginatedChatHistories
     ? paginatedChatHistories.some((page) => page.hasMore === false)
@@ -156,6 +156,31 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
       setOpenMobile(false);
     }
   }, [activeChatId, navigatingChatId, setOpenMobile]);
+
+  useEffect(() => {
+    const sentinelNode = sentinelRef.current;
+    if (!sentinelNode) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !isValidating && !hasReachedEnd) {
+            setSize((size) => size + 1);
+            break;
+          }
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(sentinelNode);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasReachedEnd, isValidating, setSize]);
 
   const handleOpenChat = (chatId: string) => {
     setNavigatingChatId(chatId);
@@ -393,13 +418,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
               })()}
           </SidebarMenu>
 
-          <motion.div
-            onViewportEnter={() => {
-              if (!isValidating && !hasReachedEnd) {
-                setSize((size) => size + 1);
-              }
-            }}
-          />
+          <div aria-hidden ref={sentinelRef} />
 
           {hasReachedEnd ? (
             <div className="mt-8 flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">

@@ -11,17 +11,17 @@ export default async function Page() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [session, modelsResult, suggestedPrompts] = await Promise.all([
-    auth(),
+  const session = await auth();
+  if (!session) {
+    redirect("/login");
+  }
+
+  const [modelsResult, suggestedPrompts] = await Promise.all([
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
   ]);
 
   const { defaultModel, models } = modelsResult;
-
-  if (!session) {
-    redirect("/login");
-  }
 
   const id = generateUUID();
 

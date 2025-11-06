@@ -56,15 +56,38 @@ const ChatClient = dynamic<ChatLoaderProps>(
 export function ChatLoader(props: ChatLoaderProps) {
   useEffect(() => {
     if (typeof window === "undefined") {
-      return;
+      return undefined;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      preloadChat();
-    }, 0);
+    let idleId: number | null = null;
+    let timeoutId: number | null = null;
+
+    const anyWindow = window as typeof window & {
+      requestIdleCallback?: (callback: () => void) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    const schedulePreload = () => {
+      if (typeof anyWindow.requestIdleCallback === "function") {
+        idleId = anyWindow.requestIdleCallback(() => {
+          preloadChat();
+        });
+      } else {
+        timeoutId = window.setTimeout(() => {
+          preloadChat();
+        }, 200);
+      }
+    };
+
+    schedulePreload();
 
     return () => {
-      window.clearTimeout(timeoutId);
+      if (idleId !== null && typeof anyWindow.cancelIdleCallback === "function") {
+        anyWindow.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, []);
 
