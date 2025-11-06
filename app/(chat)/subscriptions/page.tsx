@@ -303,7 +303,8 @@ export default async function SubscriptionsPage({
             </p>
           </div>
           <SessionUsagePagination
-            currentPage={sessionsPage}
+            range={range}
+            sessionsPage={sessionsPage}
             totalPages={totalSessionPages}
           />
         </div>
