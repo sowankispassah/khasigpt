@@ -252,7 +252,24 @@ export async function createOAuthUser(
       .returning();
 
     return created;
-  } catch (_error) {
+  } catch (error) {
+    const duplicateError =
+      (typeof (error as { code?: string }).code === "string" &&
+        (error as { code?: string }).code === "23505") ||
+      (error instanceof Error &&
+        error.message.toLowerCase().includes("duplicate key value"));
+
+    if (duplicateError) {
+      const [existing] = await getUser(normalizedEmail);
+      if (existing) {
+        if (existing.authProvider === "google") {
+          return existing;
+        }
+
+        throw new ChatSDKError("forbidden:auth", "account_link_required");
+      }
+    }
+
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to create OAuth user"
