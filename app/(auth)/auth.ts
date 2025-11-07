@@ -1,15 +1,12 @@
 import { compare } from "bcrypt-ts";
-import NextAuth, { type DefaultSession } from "next-auth";
+import NextAuth, { type DefaultSession, type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import {
-  incrementRateLimit,
-  resetRateLimit,
-} from "@/lib/security/rate-limit";
+import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
 import { authConfig } from "./auth.config";
 
 export type UserRole = "regular" | "admin";
@@ -119,12 +116,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 const ACCOUNT_INACTIVE_REDIRECT = "/login?error=AccountInactive";
 const ACCOUNT_LINK_REQUIRED_REDIRECT = "/login?error=AccountLinkRequired";
 
-export const {
-  handlers: { GET, POST },
-  auth,
-  signIn,
-  signOut,
-} = NextAuth({
+export const authOptions: NextAuthConfig = {
   ...authConfig,
   providers,
   callbacks: {
@@ -134,15 +126,14 @@ export const {
           return false;
         }
 
-        const profileImage =
-          typeof user.image === "string" ? user.image : null;
+        const profileImage = typeof user.image === "string" ? user.image : null;
         try {
           const fullName =
             typeof user.name === "string" ? user.name.trim() : "";
           const googleFirstName =
             typeof (user as Record<string, unknown>).given_name === "string"
               ? ((user as Record<string, string>).given_name ?? "").trim()
-              : fullName.split(" ")[0] ?? "";
+              : (fullName.split(" ")[0] ?? "");
           const googleLastName =
             typeof (user as Record<string, unknown>).family_name === "string"
               ? ((user as Record<string, string>).family_name ?? "").trim()
@@ -204,10 +195,8 @@ export const {
         token.imageVersion = user.imageVersion ?? null;
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
-      } else {
-        if (!token.role) {
-          token.role = "regular";
-        }
+      } else if (!token.role) {
+        token.role = "regular";
       }
 
       if (trigger === "update" && session) {
@@ -237,7 +226,10 @@ export const {
       ) {
         const record = await getUserById(token.id as string);
         if (record) {
-          if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
+          if (
+            typeof token.dateOfBirth === "undefined" ||
+            token.dateOfBirth === null
+          ) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
           token.imageVersion =
@@ -246,10 +238,16 @@ export const {
               : record.image
                 ? new Date().toISOString()
                 : null;
-          if (typeof token.firstName === "undefined" || token.firstName === null) {
+          if (
+            typeof token.firstName === "undefined" ||
+            token.firstName === null
+          ) {
             token.firstName = record.firstName ?? null;
           }
-          if (typeof token.lastName === "undefined" || token.lastName === null) {
+          if (
+            typeof token.lastName === "undefined" ||
+            token.lastName === null
+          ) {
             token.lastName = record.lastName ?? null;
           }
         }
@@ -271,7 +269,9 @@ export const {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
         session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
-        session.user.imageVersion = (token.imageVersion ?? null) as string | null;
+        session.user.imageVersion = (token.imageVersion ?? null) as
+          | string
+          | null;
         session.user.firstName = (token.firstName ?? null) as string | null;
         session.user.lastName = (token.lastName ?? null) as string | null;
         const computedName = [session.user.firstName, session.user.lastName]
@@ -286,4 +286,11 @@ export const {
       return session;
     },
   },
-});
+} as const;
+
+export const {
+  handlers: { GET, POST },
+  auth,
+  signIn,
+  signOut,
+} = NextAuth(authOptions);
