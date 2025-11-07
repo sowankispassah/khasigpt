@@ -1,5 +1,6 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import {
@@ -45,16 +46,25 @@ async function ensureModelConfigs(): Promise<ModelConfig[]> {
   return await listModelConfigs();
 }
 
-export const getModelRegistry = cache(async () => {
-  const configs = await ensureModelConfigs();
-  const defaultConfig =
-    configs.find((config) => config.isDefault) ?? configs[0] ?? null;
+const loadModelRegistry = unstable_cache(
+  async () => {
+    const configs = await ensureModelConfigs();
+    const defaultConfig =
+      configs.find((config) => config.isDefault) ?? configs[0] ?? null;
 
-  return {
-    configs,
-    defaultConfig,
-  };
-});
+    return {
+      configs,
+      defaultConfig,
+    };
+  },
+  ["model-registry"],
+  {
+    revalidate: 60,
+    tags: ["model-registry"],
+  }
+);
+
+export const getModelRegistry = cache(loadModelRegistry);
 
 export async function getModelConfigOrThrow(id: string): Promise<ModelConfig> {
   const config = await getModelConfigById({ id });
