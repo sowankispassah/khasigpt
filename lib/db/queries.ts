@@ -167,6 +167,28 @@ function normalizeEmailValue(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code =
+    "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : null;
+
+  if (code === "23505") {
+    return true;
+  }
+
+  const message =
+    "message" in error && typeof (error as { message?: unknown }).message === "string"
+      ? (error as { message: string }).message
+      : null;
+
+  return Boolean(message?.toLowerCase().includes("duplicate key value"));
+}
+
 const DEFAULT_COST_PER_MILLION = 1;
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
 
@@ -257,14 +279,31 @@ export async function createOAuthUser(
     if (created) {
       return created;
     }
-  } catch (_error) {
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      const existingUsers = await getUser(normalizedEmail);
+      const existingGoogleUser = existingUsers.find(
+        (record) => record.authProvider === "google"
+      );
+      if (existingGoogleUser) {
+        return existingGoogleUser;
+      }
+      if (existingUsers.length > 0) {
+        throw new ChatSDKError("forbidden:auth", "account_link_required");
+      }
+    }
+
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to create OAuth user"
     );
   }
 
-  const [existing] = await getUser(normalizedEmail);
+  const existingUsers = await getUser(normalizedEmail);
+  const existingGoogleUser = existingUsers.find(
+    (record) => record.authProvider === "google"
+  );
+  const existing = existingGoogleUser ?? existingUsers[0];
 
   if (!existing) {
     throw new ChatSDKError(
@@ -307,10 +346,18 @@ export async function createGuestUser() {
 
 export async function ensureOAuthUser(
   email: string,
-  profile?: { image?: string | null; firstName?: string | null; lastName?: string | null }
+  profile?: {
+    image?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  }
 ): Promise<User> {
   const normalizedEmail = normalizeEmailValue(email);
-  const [existing] = await getUser(normalizedEmail);
+  const existingUsers = await getUser(normalizedEmail);
+  const existingGoogleUser = existingUsers.find(
+    (record) => record.authProvider === "google"
+  );
+  const existing = existingGoogleUser ?? existingUsers[0];
 
   if (existing) {
     if (!existing.isActive) {
