@@ -38,6 +38,21 @@ declare module "next-auth" {
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
 
+function getAuthErrorCause(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  if (
+    "cause" in error &&
+    typeof (error as { cause?: unknown }).cause === "string"
+  ) {
+    return (error as { cause: string }).cause;
+  }
+
+  return null;
+}
+
 const providers: any[] = [
   Credentials({
     credentials: {},
@@ -163,14 +178,16 @@ export const authOptions: NextAuthConfig = {
               .trim();
           }
         } catch (error) {
-          if (error instanceof ChatSDKError) {
-            if (error.cause === "account_inactive") {
-              return ACCOUNT_INACTIVE_REDIRECT;
-            }
-            if (error.cause === "account_link_required") {
-              return ACCOUNT_LINK_REQUIRED_REDIRECT;
-            }
+          const cause = getAuthErrorCause(error);
+
+          if (cause === "account_inactive") {
+            return ACCOUNT_INACTIVE_REDIRECT;
           }
+
+          if (cause === "account_link_required") {
+            return ACCOUNT_LINK_REQUIRED_REDIRECT;
+          }
+
           throw error;
         }
       }
