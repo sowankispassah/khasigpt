@@ -11,9 +11,15 @@ const reactionSchema = z.object({
   type: z.enum(["like", "insightful", "support"]),
 });
 
+type PostRouteContext = {
+  params: {
+    postId: string;
+  };
+};
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: { postId: string } }
+  context: PostRouteContext
 ) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
@@ -32,7 +38,7 @@ export async function POST(
   try {
     const payload = reactionSchema.parse(await request.json());
     const result = await toggleForumPostReaction({
-      postId: params.postId,
+      postId: context.params.postId,
       userId: session.user.id,
       type: payload.type,
     });

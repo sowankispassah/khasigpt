@@ -8,15 +8,21 @@ import {
 } from "@/lib/forum/service";
 import { isForumEnabled } from "@/lib/forum/config";
 
+type ThreadViewRouteContext = {
+  params: {
+    slug: string;
+  };
+};
+
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { slug: string } }
+  context: ThreadViewRouteContext
 ) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
   }
   try {
-    const threadId = await resolveForumThreadId(params.slug);
+    const threadId = await resolveForumThreadId(context.params.slug);
 
     if (!threadId) {
       return NextResponse.json(

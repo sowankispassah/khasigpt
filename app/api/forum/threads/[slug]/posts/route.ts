@@ -12,9 +12,15 @@ const createPostSchema = z.object({
   parentPostId: z.string().uuid().optional(),
 });
 
+type ThreadPostRouteContext = {
+  params: {
+    slug: string;
+  };
+};
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: { slug: string } }
+  context: ThreadPostRouteContext
 ) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
@@ -33,7 +39,7 @@ export async function POST(
   try {
     const payload = createPostSchema.parse(await request.json());
     const post = await createForumPost({
-      threadSlug: params.slug,
+      threadSlug: context.params.slug,
       authorId: session.user.id,
       content: payload.content,
       parentPostId: payload.parentPostId ?? null,
