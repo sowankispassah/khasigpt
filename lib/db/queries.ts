@@ -1951,6 +1951,7 @@ export async function updateModelConfig({
   outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
+  freeMessagesPerDay?: number;
 }): Promise<ModelConfig | null> {
   try {
     const updateData: Partial<typeof modelConfig.$inferInsert> = {};
