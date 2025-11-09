@@ -23,6 +23,7 @@ import {
   forumThread,
   forumThreadSubscription,
   forumThreadTag,
+  forumThreadStatusEnum,
   type ForumPostReactionType,
   type ForumThreadStatus,
   user,
