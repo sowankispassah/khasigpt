@@ -177,7 +177,7 @@ export function UserDropdownMenu({
   const ignoreNextLanguageOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
-  const progressTimersRef = React.useRef<number[]>([]);
+  const progressTimersRef = React.useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const {
     languages: translationLanguages,
     activeLanguage,
