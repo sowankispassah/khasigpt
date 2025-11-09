@@ -39,7 +39,7 @@ function serializePost(post: ForumPostListItem): ForumPostListItemPayload {
 }
 
 type ThreadPageParams = {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 };
 
 export async function generateMetadata({
@@ -51,8 +51,9 @@ export async function generateMetadata({
       title: "Forum Thread",
     };
   }
+  const { slug } = await params;
   const detail = await getForumThreadDetail({
-    slug: params.slug,
+    slug,
     viewerUserId: null,
   });
 
@@ -73,9 +74,10 @@ export default async function ThreadPage({ params }: ThreadPageParams) {
   if (!forumEnabled) {
     notFound();
   }
+  const { slug } = await params;
   const session = await auth();
   const detail = await getForumThreadDetail({
-    slug: params.slug,
+    slug,
     viewerUserId: session?.user?.id ?? null,
   });
 
