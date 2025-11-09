@@ -262,10 +262,14 @@ export async function getForumOverview(
     const filters = [] as SQL<boolean>[];
 
     if (activeCategory) {
-      filters.push(eq(forumThread.categoryId, activeCategory.id));
+      filters.push(
+        eq(forumThread.categoryId, activeCategory.id) as SQL<boolean>
+      );
     }
     if (activeTag) {
-      filters.push(eq(filteredThreadTag.tagId, activeTag.id));
+      filters.push(
+        eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>
+      );
     }
     if (params.search && params.search.trim().length > 0) {
       const normalized = `%${params.search.trim().toLowerCase()}%`;
