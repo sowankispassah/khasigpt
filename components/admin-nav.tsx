@@ -21,7 +21,7 @@ export function AdminNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timersRef = useRef<number[]>([]);
+  const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((timerId) => {
