@@ -36,6 +36,7 @@ import type { UserRole } from "@/lib/db/schema";
 import {
   DEFAULT_FREE_MESSAGES_PER_DAY,
   FREE_MESSAGE_SETTINGS_KEY,
+  FORUM_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -133,6 +134,28 @@ export async function restoreChatAction({ chatId }: { chatId: string }) {
   });
 
   revalidatePath("/admin/chats");
+}
+
+export async function updateForumAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("forumEnabled"));
+
+  await setAppSetting({
+    key: FORUM_FEATURE_FLAG_KEY,
+    value: enabled,
+  });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "forum.toggle",
+    target: { setting: FORUM_FEATURE_FLAG_KEY },
+    metadata: { enabled },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/forum");
+  revalidatePath("/forum/[slug]");
 }
 
 function parseBoolean(value: FormDataEntryValue | null | undefined) {

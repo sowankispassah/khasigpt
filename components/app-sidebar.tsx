@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { LoaderIcon, PlusIcon } from "@/components/icons";
+import { PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -51,6 +51,46 @@ export function AppSidebar({ user }: { user: User | undefined }) {
   const { data: sessionData, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
   const [isPending, startTransition] = useTransition();
+  const [showProgress, setShowProgress] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const timersRef = useRef<number[]>([]);
+
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach((timerId) => {
+      clearTimeout(timerId);
+    });
+    timersRef.current = [];
+  }, []);
+
+  const startProgress = useCallback(() => {
+    clearTimers();
+    setShowProgress(true);
+    setProgress(12);
+    const timers = [
+      setTimeout(() => setProgress(40), 120),
+      setTimeout(() => setProgress(70), 260),
+      setTimeout(() => setProgress(90), 520),
+    ];
+    timersRef.current = timers;
+  }, [clearTimers]);
+
+  const resetProgress = useCallback(() => {
+    clearTimers();
+    setShowProgress(false);
+    setProgress(0);
+  }, [clearTimers]);
+
+  useEffect(() => {
+    if (!isPending) {
+      resetProgress();
+    }
+  }, [isPending, resetProgress]);
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+    };
+  }, [clearTimers]);
 
   const activeUser = sessionData?.user ?? user;
   const userEmail = activeUser?.email ?? "";
@@ -68,6 +108,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
       return;
     }
     const targetHref = createNewChatHref();
+    startProgress();
     startTransition(() => {
       setOpenMobile(false);
       router.push(targetHref);
@@ -75,8 +116,20 @@ export function AppSidebar({ user }: { user: User | undefined }) {
   };
 
   return (
-    <Sidebar className="group-data-[side=left]:border-r-0">
-      <SidebarHeader>
+    <>
+      {showProgress ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      ) : null}
+      <Sidebar className="group-data-[side=left]:border-r-0">
+        <SidebarHeader>
         <SidebarMenu>
           <div className="flex flex-row items-center justify-between">
             <Link
@@ -110,13 +163,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                     type="button"
                     variant="outline"
                   >
-                    {isPending ? (
-                      <span className="flex animate-spin items-center justify-center">
-                        <LoaderIcon size={16} />
-                      </span>
-                    ) : (
-                      <PlusIcon />
-                    )}
+                    <PlusIcon />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent align="end">New Chat</TooltipContent>
@@ -127,9 +174,10 @@ export function AppSidebar({ user }: { user: User | undefined }) {
           </div>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarHistory user={user} />
-      </SidebarContent>
-    </Sidebar>
+        <SidebarContent>
+          <SidebarHistory user={user} />
+        </SidebarContent>
+      </Sidebar>
+    </>
   );
 }

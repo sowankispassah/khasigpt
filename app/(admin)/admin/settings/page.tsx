@@ -24,6 +24,7 @@ import {
   updateLanguageStatusAction,
   updatePlanTranslationAction,
   updateFreeMessageSettingsAction,
+  updateForumAvailabilityAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { cn } from "@/lib/utils";
@@ -36,12 +37,14 @@ import {
   TOKENS_PER_CREDIT,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
+  FORUM_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { formatDistanceToNow } from "date-fns";
 import { getAllLanguages } from "@/lib/i18n/languages";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { LanguageContentForm } from "./language-content-form";
+import { parseForumEnabledSetting } from "@/lib/forum/config";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +104,7 @@ export default async function AdminSettingsPage({
     recommendedPlanSetting,
     languages,
     freeMessageSettings,
+    forumEnabledSetting,
   ] = await Promise.all([
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
@@ -116,6 +120,7 @@ export default async function AdminSettingsPage({
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
     getAllLanguages(),
     loadFreeMessageSettings(),
+    getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
   ]);
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -213,6 +218,7 @@ export default async function AdminSettingsPage({
       }
     }
   }
+  const forumEnabled = parseForumEnabledSetting(forumEnabledSetting);
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -322,6 +328,38 @@ export default async function AdminSettingsPage({
       <AdminSettingsNotice notice={notice} />
 
       <div className="flex flex-col gap-10">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold">Community forum</h2>
+              <p className="text-muted-foreground text-sm">
+                Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404.
+              </p>
+              <EnabledBadge enabled={forumEnabled} />
+            </div>
+            <form
+              action={updateForumAvailabilityAction}
+              className="flex flex-col gap-3 text-sm"
+            >
+              <input
+                name="forumEnabled"
+                type="hidden"
+                value={(!forumEnabled).toString()}
+              />
+              <ActionSubmitButton
+                pendingLabel={forumEnabled ? "Disabling…" : "Enabling…"}
+                successMessage="Forum availability updated."
+                variant={forumEnabled ? "destructive" : "default"}
+              >
+                {forumEnabled ? "Disable forum" : "Enable forum"}
+              </ActionSubmitButton>
+              <p className="text-muted-foreground text-xs">
+                Changes take effect immediately for all users.
+              </p>
+            </form>
+          </div>
+        </section>
+
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
             <div>

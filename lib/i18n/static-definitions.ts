@@ -1128,4 +1128,433 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Save and continue",
     description: "Submit button label on the profile completion form.",
   },
+  {
+    key: "forum.hero.tagline",
+    defaultText: "Community Forum",
+    description: "Eyebrow label above the forum hero heading.",
+  },
+  {
+    key: "forum.hero.title",
+    defaultText: "Discuss product ideas with KhasiGPT builders",
+    description: "Headline shown at the top of the forum page.",
+  },
+  {
+    key: "forum.hero.subtitle",
+    defaultText:
+      "Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance.",
+    description: "Supporting paragraph beneath the forum hero heading.",
+  },
+  {
+    key: "forum.hero.stats.total_label",
+    defaultText: "Total topics",
+    description: "Label beneath the total thread count in the hero stats.",
+  },
+  {
+    key: "forum.hero.stats.visible_label",
+    defaultText: "Visible now",
+    description: "Label beneath the currently visible thread count.",
+  },
+  {
+    key: "forum.hero.image_alt",
+    defaultText: "KhasiGPT community badge",
+    description: "Alt text for the badge image displayed on the forum hero.",
+  },
+  {
+    key: "forum.search.placeholder",
+    defaultText: "Search discussions, tags, or keywords",
+    description: "Placeholder text for the forum search input.",
+  },
+  {
+    key: "forum.search.submit",
+    defaultText: "Search",
+    description: "Search button label on the forum page.",
+  },
+  {
+    key: "forum.search.pending",
+    defaultText: "Searching…",
+    description: "Button label while the forum search is running.",
+  },
+  {
+    key: "forum.filters.label",
+    defaultText: "Active filters:",
+    description: "Label preceding the list of applied forum filters.",
+  },
+  {
+    key: "forum.filters.category",
+    defaultText: "Category: {value}",
+    description: "Badge label describing the active category filter.",
+  },
+  {
+    key: "forum.filters.tag",
+    defaultText: "Tag: #{value}",
+    description: "Badge label describing the active tag filter.",
+  },
+  {
+    key: "forum.filters.search",
+    defaultText: 'Search: "{value}"',
+    description: "Badge label describing the current search query filter.",
+  },
+  {
+    key: "forum.empty.title",
+    defaultText: "No discussions yet",
+    description: "Heading for the empty state when no forum threads exist.",
+  },
+  {
+    key: "forum.empty.subtitle",
+    defaultText: "Be the first to start a topic in this category.",
+    description: "Supporting text for the empty forum state.",
+  },
+  {
+    key: "forum.list.load_more",
+    defaultText: "Load more discussions",
+    description: "Button label to load additional forum threads.",
+  },
+  {
+    key: "forum.list.loading_more",
+    defaultText: "Loading…",
+    description: "Status text shown while more threads are loading.",
+  },
+  {
+    key: "forum.toast.load_more_error",
+    defaultText: "Unable to load more discussions right now.",
+    description: "Toast message shown when the load-more request fails.",
+  },
+  {
+    key: "forum.sidebar.categories.title",
+    defaultText: "Categories",
+    description: "Heading for the forum categories sidebar card.",
+  },
+  {
+    key: "forum.sidebar.categories.reset",
+    defaultText: "Reset",
+    description: "Link that clears all forum filters.",
+  },
+  {
+    key: "forum.sidebar.categories.all",
+    defaultText: "All discussions",
+    description: "Link that shows all forum threads regardless of category.",
+  },
+  {
+    key: "forum.sidebar.tags.title",
+    defaultText: "Trending Tags",
+    description: "Heading for the trending tags sidebar card.",
+  },
+  {
+    key: "forum.sidebar.tags.empty",
+    defaultText: "No tags available yet.",
+    description: "Message shown when no forum tags are available.",
+  },
+  {
+    key: "forum.composer.button",
+    defaultText: "Start a discussion",
+    description: "CTA button that opens the forum thread composer.",
+  },
+  {
+    key: "forum.composer.button_tooltip",
+    defaultText: "Sign in to start a discussion.",
+    description: "Tooltip shown when unauthenticated users hover the CTA.",
+  },
+  {
+    key: "forum.composer.sheet_title",
+    defaultText: "Start a discussion",
+    description: "Default heading inside the forum composer sheet.",
+  },
+  {
+    key: "forum.composer.sheet_title_with_name",
+    defaultText: "Hi {name}, share an update",
+    description: "Personalized heading when the user has a first name.",
+  },
+  {
+    key: "forum.composer.error.max_tags",
+    defaultText: "You can only select up to 5 tags.",
+    description: "Error shown when the tag selection limit is exceeded.",
+  },
+  {
+    key: "forum.composer.error.title_short",
+    defaultText: "Title must be at least 8 characters long.",
+    description: "Validation error for short thread titles.",
+  },
+  {
+    key: "forum.composer.error.category_required",
+    defaultText: "Please select a category.",
+    description: "Validation error when no category is selected.",
+  },
+  {
+    key: "forum.composer.error.content_short",
+    defaultText: "Describe your discussion in more detail.",
+    description: "Validation error for short thread bodies.",
+  },
+  {
+    key: "forum.composer.title.label",
+    defaultText: "Title",
+    description: "Label for the thread title input.",
+  },
+  {
+    key: "forum.composer.title.placeholder",
+    defaultText: "What would you like to discuss?",
+    description: "Placeholder for the thread title input.",
+  },
+  {
+    key: "forum.composer.category.label",
+    defaultText: "Category",
+    description: "Label for the category select input.",
+  },
+  {
+    key: "forum.composer.category.placeholder",
+    defaultText: "Select a category",
+    description: "Placeholder text for the category select input.",
+  },
+  {
+    key: "forum.composer.category.locked",
+    defaultText: "(locked)",
+    description: "Suffix shown next to locked categories.",
+  },
+  {
+    key: "forum.composer.details.label",
+    defaultText: "Details",
+    description: "Label for the discussion details textarea.",
+  },
+  {
+    key: "forum.composer.details.note",
+    defaultText: "(Markdown formatting supported soon)",
+    description: "Helper note beneath the composer details label.",
+  },
+  {
+    key: "forum.composer.details.placeholder",
+    defaultText:
+      "Share the full context, code snippets, or anything that helps the community respond faster.",
+    description: "Placeholder text for the thread body textarea.",
+  },
+  {
+    key: "forum.composer.tags.label",
+    defaultText: "Tags",
+    description: "Label for the tag chips selector.",
+  },
+  {
+    key: "forum.composer.tags.count",
+    defaultText: "{count}/5 selected",
+    description: "Helper text showing how many tags are selected.",
+  },
+  {
+    key: "forum.composer.tags.empty",
+    defaultText: "No tags available yet.",
+    description: "Message shown when there are no tags to choose from.",
+  },
+  {
+    key: "forum.composer.submit",
+    defaultText: "Publish discussion",
+    description: "Primary action button inside the composer sheet.",
+  },
+  {
+    key: "forum.composer.submit_pending",
+    defaultText: "Publishing…",
+    description: "Loading label shown while a thread is being published.",
+  },
+  {
+    key: "forum.composer.login_required.title",
+    defaultText: "Sign in to continue",
+    description: "Alert title shown when unauthenticated users open composer.",
+  },
+  {
+    key: "forum.composer.login_required.body",
+    defaultText:
+      "You need to be logged in to start a discussion. Please sign in and then return to the forum.",
+    description: "Description in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.cancel",
+    defaultText: "Not now",
+    description: "Cancel button text in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.confirm",
+    defaultText: "Go to login",
+    description: "Confirm button text in the login-required dialog.",
+  },
+  {
+    key: "forum.thread.pinned",
+    defaultText: "Pinned",
+    description: "Badge shown on pinned forum threads.",
+  },
+  {
+    key: "forum.thread.resolved",
+    defaultText: "Resolved",
+    description: "Badge shown on threads marked as resolved.",
+  },
+  {
+    key: "forum.thread.locked",
+    defaultText: "Locked",
+    description: "Badge shown on locked discussion threads.",
+  },
+  {
+    key: "forum.thread.subscribed",
+    defaultText: "Subscribed",
+    description: "Badge shown when the viewer follows a thread.",
+  },
+  {
+    key: "forum.thread.no_excerpt",
+    defaultText: "This discussion does not include a preview yet.",
+    description: "Fallback text when a thread lacks an excerpt.",
+  },
+  {
+    key: "forum.thread.meta.replies",
+    defaultText: "{count} replies",
+    description: "Label displaying the number of replies on a thread.",
+  },
+  {
+    key: "forum.thread.meta.views",
+    defaultText: "{count} views",
+    description: "Label displaying the number of views on a thread.",
+  },
+  {
+    key: "forum.badge.official",
+    defaultText: "Official",
+    description: "Label shown on forum content posted by an administrator.",
+  },
+  {
+    key: "forum.thread.relative.just_now",
+    defaultText: "just now",
+    description: "Fallback text for very recent timestamps.",
+  },
+  {
+    key: "forum.thread.toast.reply_posted",
+    defaultText: "Reply posted!",
+    description: "Toast shown after a reply is successfully created.",
+  },
+  {
+    key: "forum.thread.toast.resolve_success",
+    defaultText: "Thread marked as solved.",
+    description: "Toast shown after resolving a thread.",
+  },
+  {
+    key: "forum.thread.toast.reopen_success",
+    defaultText: "Thread reopened.",
+    description: "Toast shown after reopening a thread.",
+  },
+  {
+    key: "forum.thread.toast.delete_success",
+    defaultText: "Thread deleted.",
+    description: "Toast shown after deleting a thread.",
+  },
+  {
+    key: "forum.thread.toast.action_error",
+    defaultText: "Unable to update the thread. Please try again.",
+    description: "Generic error shown when a thread action fails.",
+  },
+  {
+    key: "forum.thread.toast.reaction_error",
+    defaultText: "Unable to update reaction.",
+    description: "Toast shown when toggling a reaction fails.",
+  },
+  {
+    key: "forum.thread.meta.started",
+    defaultText: "Started {date}",
+    description: "Label describing when the thread was created.",
+  },
+  {
+    key: "forum.thread.meta.updated",
+    defaultText: "Updated {timestamp}",
+    description: "Label describing the last reply timestamp.",
+  },
+  {
+    key: "forum.thread.action.follow",
+    defaultText: "Follow",
+    description: "Button text to subscribe to a thread.",
+  },
+  {
+    key: "forum.thread.action.unfollow",
+    defaultText: "Unfollow",
+    description: "Button text to unsubscribe from a thread.",
+  },
+  {
+    key: "forum.thread.action.updating",
+    defaultText: "Updating…",
+    description: "Label shown while the follow/unfollow action is pending.",
+  },
+  {
+    key: "forum.thread.back_to_forum",
+    defaultText: "Back to forum",
+    description: "Button label that returns the viewer to the forum listing page.",
+  },
+  {
+    key: "forum.thread.post.no_content",
+    defaultText: "This post does not include any content.",
+    description: "Fallback text when a reply has no body.",
+  },
+  {
+    key: "forum.thread.replies.empty",
+    defaultText: "No replies yet. Be the first to respond.",
+    description:
+      "Empty state message on the thread detail page when there are no replies.",
+  },
+  {
+    key: "forum.thread.reaction.like",
+    defaultText: "Helpful",
+    description: "Label for the helpful reaction button.",
+  },
+  {
+    key: "forum.thread.reaction.insightful",
+    defaultText: "Insightful",
+    description: "Label for the insightful reaction button.",
+  },
+  {
+    key: "forum.thread.reaction.support",
+    defaultText: "Support",
+    description: "Label for the support reaction button.",
+  },
+  {
+    key: "forum.thread.section.add_reply",
+    defaultText: "Add a reply",
+    description: "Heading above the reply composer on the thread detail view.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_in",
+    defaultText: "Share your insights, {name}…",
+    description: "Placeholder shown in the reply composer for signed-in users.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_out",
+    defaultText: "Sign in to join the conversation.",
+    description: "Placeholder shown when the viewer is logged out.",
+  },
+  {
+    key: "forum.thread.reply.submit",
+    defaultText: "Post reply",
+    description: "Submit button text for the reply composer.",
+  },
+  {
+    key: "forum.thread.reply.submit_pending",
+    defaultText: "Posting…",
+    description: "Button label while the reply submit request is pending.",
+  },
+  {
+    key: "forum.thread.reply.error_too_short",
+    defaultText: "Replies should be at least 8 characters.",
+    description: "Validation error when a reply is too short.",
+  },
+  {
+    key: "forum.thread.actions.menu",
+    defaultText: "Thread actions",
+    description: "Label for the thread actions dropdown menu.",
+  },
+  {
+    key: "forum.thread.actions.resolve",
+    defaultText: "Mark as solved",
+    description: "Menu item to mark a thread as resolved.",
+  },
+  {
+    key: "forum.thread.actions.reopen",
+    defaultText: "Reopen discussion",
+    description: "Menu item to reopen a resolved thread.",
+  },
+  {
+    key: "forum.thread.actions.delete",
+    defaultText: "Delete thread",
+    description: "Menu item to delete a thread.",
+  },
+  {
+    key: "forum.thread.actions.delete_confirm",
+    defaultText: "Are you sure you want to delete this thread? This action cannot be undone.",
+    description: "Confirmation message before deleting a thread.",
+  },
 ];

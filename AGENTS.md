@@ -9,7 +9,11 @@
 - This ensures users can instantly recognize interactive elements.  
 
 ## 3. Visual Feedback on Actions
-- When a user clicks any **button**, especially those that trigger updates or submissions, the interface must display a **loading indicator** (spinner, progress bar, or animation) without needing to refresh the page.  
+- Whenever a user interacts with any **clickable element**—whether it’s a **button**, **link**, **tab**, **navigation item**, or **back action**—the interface must provide **immediate visual feedback**.  
+- This feedback should appear **instantly upon click**, without requiring a page reload.  
+- The preferred visual indicator is a **custom progress bar** displayed at the **top of the viewport**, similar to how navigation between conversations currently works (`components/sidebar-history.tsx`).  
+- The progress bar should begin animating immediately upon click, move smoothly to indicate loading progress, and **disappear** once the new route or action has completed.   
+ 
 
 ## 4. Direct SQL Query for Manual Data Insertion
 - When new data is created in the database, provide a **SQL query** for manual insertion instead of running `npm exec tsx lib/db/migrate.ts`.  

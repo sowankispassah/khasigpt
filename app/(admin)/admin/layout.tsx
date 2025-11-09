@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
+import { AdminSearch } from "@/components/admin-search";
+import { AdminNav } from "@/components/admin-nav";
 
 export default async function AdminLayout({
   children,
@@ -24,32 +25,10 @@ export default async function AdminLayout({
               Manage users, models, and infrastructure activity
             </p>
           </div>
-          <nav className="flex items-center gap-3 text-sm font-medium">
-            <Link className="hover:underline" href="/admin">
-              Overview
-            </Link>
-            <Link className="hover:underline" href="/admin/account">
-              Account
-            </Link>
-            <Link className="hover:underline" href="/admin/users">
-              Users
-            </Link>
-            <Link className="hover:underline" href="/admin/chats">
-              Chats
-            </Link>
-            <Link className="hover:underline" href="/admin/contacts">
-              Contacts
-            </Link>
-            <Link className="hover:underline" href="/admin/logs">
-              Audit Log
-            </Link>
-            <Link className="hover:underline" href="/admin/settings">
-              Settings
-            </Link>
-            <Link className="hover:underline" href="/admin/translations">
-              Translations
-            </Link>
-          </nav>
+          <div className="flex flex-wrap items-center gap-3">
+            <AdminNav />
+            <AdminSearch />
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">

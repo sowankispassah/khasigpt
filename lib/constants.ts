@@ -13,6 +13,7 @@ export const DUMMY_PASSWORD =
 export const TOKENS_PER_CREDIT = 100;
 export const DEFAULT_FREE_MESSAGES_PER_DAY = 3;
 export const FREE_MESSAGE_SETTINGS_KEY = "chat.freeMessages";
+export const FORUM_FEATURE_FLAG_KEY = "forum.enabled";
 
 export const DEFAULT_SUGGESTED_PROMPTS = [
   "What are the advantages of using Next.js?",

@@ -1,11 +1,10 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
 import { DEFAULT_PRIVACY_POLICY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle, getTranslationsForKeys } from "@/lib/i18n/dictionary";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -69,13 +68,9 @@ export default async function PrivacyPolicyPage() {
     <>
       <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
         <div>
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-            href="/"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            {translations["navigation.back_to_home"] ?? "Back to home"}
-          </Link>
+          <BackToHomeButton
+            label={translations["navigation.back_to_home"] ?? "Back to home"}
+          />
         </div>
 
         <header className="space-y-2">

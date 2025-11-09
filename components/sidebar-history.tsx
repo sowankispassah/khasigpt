@@ -124,6 +124,8 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { translate } = useTranslation();
   const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
+  const [isNavigatingToChat, setIsNavigatingToChat] = useState(false);
+  const [navProgress, setNavProgress] = useState(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const hasReachedEnd = paginatedChatHistories
@@ -153,9 +155,27 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     }
     if (navigatingChatId === activeChatId) {
       setNavigatingChatId(null);
+      setIsNavigatingToChat(false);
+      setNavProgress(0);
       setOpenMobile(false);
     }
   }, [activeChatId, navigatingChatId, setOpenMobile]);
+
+  useEffect(() => {
+    if (!isNavigatingToChat) {
+      setNavProgress(0);
+      return;
+    }
+    setNavProgress(10);
+    const step1 = window.setTimeout(() => setNavProgress(40), 120);
+    const step2 = window.setTimeout(() => setNavProgress(70), 260);
+    const step3 = window.setTimeout(() => setNavProgress(90), 520);
+    return () => {
+      window.clearTimeout(step1);
+      window.clearTimeout(step2);
+      window.clearTimeout(step3);
+    };
+  }, [isNavigatingToChat]);
 
   useEffect(() => {
     const sentinelNode = sentinelRef.current;
@@ -184,6 +204,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
   const handleOpenChat = (chatId: string) => {
     setNavigatingChatId(chatId);
+    setIsNavigatingToChat(true);
     preloadChat();
     router.push(`/chat/${chatId}`);
   };
@@ -284,6 +305,17 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
   return (
     <>
+      {isNavigatingToChat ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${navProgress}%` }}
+          />
+        </div>
+      ) : null}
       <SidebarGroup>
         <SidebarGroupContent>
           <SidebarMenu>

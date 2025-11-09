@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { memo, useTransition } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useWindowSize } from "usehooks-ts";
 
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 
-import { LoaderIcon, PlusIcon } from "./icons";
+import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
 
@@ -25,10 +25,62 @@ function PureChatHeader({
   const router = useRouter();
   const { open } = useSidebar();
   const [isPending, startTransition] = useTransition();
+  const [showProgress, setShowProgress] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const timersRef = useRef<number[]>([]);
+
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach((timerId) => {
+      clearTimeout(timerId);
+    });
+    timersRef.current = [];
+  }, []);
+
+  const startProgress = useCallback(() => {
+    clearTimers();
+    setShowProgress(true);
+    setProgress(12);
+    const timers = [
+      setTimeout(() => setProgress(40), 120),
+      setTimeout(() => setProgress(70), 260),
+      setTimeout(() => setProgress(90), 520),
+    ];
+    timersRef.current = timers;
+  }, [clearTimers]);
+
+  const resetProgress = useCallback(() => {
+    clearTimers();
+    setShowProgress(false);
+    setProgress(0);
+  }, [clearTimers]);
+
+  useEffect(() => {
+    if (!isPending) {
+      resetProgress();
+    }
+  }, [isPending, resetProgress]);
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+    };
+  }, [clearTimers]);
 
   const { width: windowWidth } = useWindowSize();
 
   return (
+    <>
+      {showProgress ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      ) : null}
     <header className="sticky top-0 flex items-center gap-2 bg-background px-2 py-1.5 pr-[5rem] md:px-2 md:pr-[5rem]">
       <SidebarToggle />
 
@@ -50,6 +102,7 @@ function PureChatHeader({
               if (isPending) {
                 return;
               }
+              startProgress();
               startTransition(() => {
                 router.push("/");
                 router.refresh();
@@ -57,14 +110,7 @@ function PureChatHeader({
             }}
             variant="outline"
           >
-            {isPending ? (
-              <span className="flex items-center gap-1">
-                <span className="flex h-4 w-4 items-center justify-center animate-spin">
-                  <LoaderIcon size={14} />
-                </span>
-                <span className="md:sr-only">Loading</span>
-              </span>
-            ) : (
+            {(
               <>
                 <PlusIcon />
                 <span className="md:sr-only">New Chat</span>
@@ -74,6 +120,7 @@ function PureChatHeader({
         )}
       </div>
     </header>
+    </>
   );
 }
 

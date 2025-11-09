@@ -16,6 +16,58 @@ import {
   saveTranslationValueAction,
 } from "./translation-actions";
 
+const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
+  {
+    id: "forum",
+    label: "Forum Page",
+    description: "Thread listings, discussion composer, and community UI copy.",
+    prefixes: ["forum."],
+  },
+  {
+    id: "home",
+    label: "Home Page",
+    description: "Landing hero, feature highlights, and CTA blocks.",
+    prefixes: ["home.", "landing.", "hero.", "greeting."],
+  },
+  {
+    id: "auth",
+    label: "Authentication",
+    description: "Login, registration, and password reset flows.",
+    prefixes: ["auth.", "login.", "register.", "complete_profile."],
+  },
+  {
+    id: "profile",
+    label: "Profile & Billing",
+    description: "User menu, subscriptions, recharge, and profile settings.",
+    prefixes: ["profile.", "user_menu.", "subscriptions.", "recharge.", "settings."],
+  },
+  {
+    id: "about",
+    label: "About & Contact",
+    description: "About page sections and contact form labels.",
+    prefixes: ["about.", "contact."],
+  },
+  {
+    id: "privacy",
+    label: "Privacy Policy",
+    description: "Privacy policy headings and paragraphs.",
+    prefixes: ["privacy."],
+  },
+  {
+    id: "terms",
+    label: "Terms of Service",
+    description: "Terms of service content blocks.",
+    prefixes: ["terms."],
+  },
+];
+
+const FALLBACK_SECTION: SectionDefinition = {
+  id: "general",
+  label: "Shared & Other",
+  description: "Strings that are reused across multiple pages or not yet categorized.",
+  prefixes: [],
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function AdminTranslationsPage() {
@@ -28,6 +80,8 @@ export default async function AdminTranslationsPage() {
   const nonDefaultLanguages = activeLanguages.filter(
     (language) => !language.isDefault
   );
+  const sectionGroups =
+    entries.length > 0 ? organizeEntriesBySection(entries) : [];
 
   return (
     <div className="space-y-6">
@@ -52,10 +106,15 @@ export default async function AdminTranslationsPage() {
           in your components using the translation helper to populate this list.
         </div>
       ) : (
-        <TranslationTable
-          entries={entries}
-          nonDefaultLanguages={nonDefaultLanguages}
-        />
+        <>
+          <TranslationSectionNavigation
+            sections={sectionGroups}
+          />
+          <TranslationSections
+            sections={sectionGroups}
+            nonDefaultLanguages={nonDefaultLanguages}
+          />
+        </>
       )}
     </div>
   );
@@ -234,6 +293,127 @@ function TranslationTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+type SectionDefinition = {
+  id: string;
+  label: string;
+  description?: string;
+  prefixes: string[];
+};
+
+type TranslationSectionGroup = SectionDefinition & {
+  entries: TranslationTableEntry[];
+};
+
+function organizeEntriesBySection(
+  entries: TranslationTableEntry[]
+): TranslationSectionGroup[] {
+  const definitions = [...TRANSLATION_SECTION_DEFINITIONS, FALLBACK_SECTION];
+  const sectionMap = new Map<string, TranslationSectionGroup>();
+
+  for (const definition of definitions) {
+    sectionMap.set(definition.id, { ...definition, entries: [] });
+  }
+
+  for (const entry of entries) {
+    const matchedSection =
+      TRANSLATION_SECTION_DEFINITIONS.find((definition) =>
+        definition.prefixes.some((prefix) => entry.key.startsWith(prefix))
+      ) ?? FALLBACK_SECTION;
+
+    sectionMap.get(matchedSection.id)?.entries.push(entry);
+  }
+
+  return definitions.map((definition) => sectionMap.get(definition.id)!);
+}
+
+function TranslationSectionNavigation({
+  sections,
+}: {
+  sections: TranslationSectionGroup[];
+}) {
+  return (
+    <nav className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Jump to section
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {sections.map((section) => (
+          <a
+            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
+            href={`#translation-section-${section.id}`}
+            key={section.id}
+          >
+            {section.label}
+            <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
+              {section.entries.length}
+            </span>
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function TranslationSections({
+  sections,
+  nonDefaultLanguages,
+}: {
+  sections: TranslationSectionGroup[];
+  nonDefaultLanguages: LanguageOption[];
+}) {
+  return (
+    <div className="space-y-4">
+      {sections.map((section) => {
+        const isForumSection = section.id === "forum";
+        const hasEntries = section.entries.length > 0;
+
+        return (
+          <details
+            className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+            id={`translation-section-${section.id}`}
+            key={section.id}
+            {...(isForumSection ? { open: true } : {})}
+          >
+            <summary className="flex cursor-pointer flex-col gap-1 bg-muted/40 px-4 py-3 text-sm font-semibold text-foreground outline-none transition hover:bg-muted">
+              <div className="flex items-center justify-between gap-2">
+                <span>{section.label}</span>
+                <span className="text-muted-foreground text-xs font-normal">
+                  {section.entries.length}{" "}
+                  {section.entries.length === 1 ? "string" : "strings"}
+                </span>
+              </div>
+              {section.description ? (
+                <span className="text-muted-foreground text-xs font-normal">
+                  {section.description}
+                </span>
+              ) : null}
+            </summary>
+            <div className="border-t border-border">
+              {hasEntries ? (
+                <div className="p-4">
+                  <TranslationTable
+                    entries={section.entries}
+                    nonDefaultLanguages={nonDefaultLanguages}
+                  />
+                </div>
+              ) : (
+                <p className="px-4 py-6 text-sm text-muted-foreground">
+                  No translations have been registered for this section yet.
+                  Wrap copy in the translation helper using the suggested prefix{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs text-foreground">
+                    {section.prefixes[0] ?? "general."}
+                  </code>{" "}
+                  to populate this table.
+                </p>
+              )}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }

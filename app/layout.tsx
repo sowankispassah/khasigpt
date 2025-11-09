@@ -8,6 +8,7 @@ import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
+import { isForumEnabled } from "@/lib/forum/config";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -171,6 +172,7 @@ export default async function RootLayout({
     cookieStore.get("__Secure-authjs.session-token") ??
     cookieStore.get("authjs.session-token");
   const session = sessionToken ? await auth() : null;
+  const forumEnabled = await isForumEnabled();
 
   return (
     <html
@@ -204,7 +206,7 @@ export default async function RootLayout({
             languages={languages}
           >
             <SessionProvider session={session ?? undefined}>
-              <PageUserMenu />
+              <PageUserMenu forumEnabled={forumEnabled} />
               {children}
             </SessionProvider>
             <Toaster position="top-center" />

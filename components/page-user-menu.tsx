@@ -12,7 +12,13 @@ import { UserDropdownMenu, UserMenuTrigger } from "@/components/user-dropdown-me
 import { useTranslation } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
-export function PageUserMenu({ className }: { className?: string }) {
+export function PageUserMenu({
+  className,
+  forumEnabled = true,
+}: {
+  className?: string;
+  forumEnabled?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status } = useSession();
@@ -64,9 +70,9 @@ export function PageUserMenu({ className }: { className?: string }) {
   const beginAction = () => {
     setIsActionPending(true);
   };
-
   const handleNavigate = (path: string) => {
-    if (path === pathname) {
+    const isSameRoute = path === pathname;
+    if (isSameRoute) {
       setIsActionPending(false);
       return;
     }
@@ -125,6 +131,8 @@ export function PageUserMenu({ className }: { className?: string }) {
           isAdmin={user.role === "admin"}
           isAuthenticated
           isBusy={isBusy}
+          forumEnabled={forumEnabled}
+          currentPathname={pathname}
           onOpenChange={handleOpenChange}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -152,6 +160,8 @@ export function PageUserMenu({ className }: { className?: string }) {
           isAdmin={false}
           isAuthenticated={false}
           isBusy={isBusy}
+          forumEnabled={forumEnabled}
+          currentPathname={pathname}
           onOpenChange={handleOpenChange}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -166,15 +176,11 @@ export function PageUserMenu({ className }: { className?: string }) {
                 "relative flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 isBusy && "pointer-events-none opacity-70"
               )}
+              aria-busy={isBusy}
+              aria-disabled={isBusy}
               type="button"
             >
-              {isBusy ? (
-                <span className="animate-spin">
-                  <LoaderIcon size={16} />
-                </span>
-              ) : (
-                <EllipsisVertical size={16} />
-              )}
+              <EllipsisVertical size={16} />
               <span className="sr-only">
                 {translate("user_menu.open_menu", "Open menu")}
               </span>

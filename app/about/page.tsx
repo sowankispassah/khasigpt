@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { cookies } from "next/headers";
 
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { ContactForm } from "./contact-form";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 
 export const metadata: Metadata = {
   title: "About KhasiGPT",
@@ -59,13 +58,7 @@ export default async function AboutPage() {
     <>
       <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-10 px-6 py-12 md:py-16">
         <div>
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-            href="/"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            {t("navigation.back_to_home", "Back to home")}
-          </Link>
+          <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
         </div>
 
         <header className="space-y-3 text-center md:text-left">

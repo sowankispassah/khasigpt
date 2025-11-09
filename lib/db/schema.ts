@@ -519,3 +519,188 @@ export const tokenUsage = pgTable(
 );
 
 export type TokenUsage = InferSelectModel<typeof tokenUsage>;
+
+export const forumThreadStatusEnum = pgEnum("forum_thread_status", [
+  "open",
+  "resolved",
+  "locked",
+  "archived",
+]);
+export type ForumThreadStatus =
+  (typeof forumThreadStatusEnum.enumValues)[number];
+
+export const forumPostReactionTypeEnum = pgEnum("forum_post_reaction_type", [
+  "like",
+  "insightful",
+  "support",
+]);
+export type ForumPostReactionType =
+  (typeof forumPostReactionTypeEnum.enumValues)[number];
+
+export const forumCategory = pgTable(
+  "ForumCategory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    name: varchar("name", { length: 128 }).notNull(),
+    description: text("description"),
+    icon: varchar("icon", { length: 64 }),
+    position: integer("position").notNull().default(0),
+    isLocked: boolean("isLocked").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("ForumCategory_slug_idx").on(table.slug),
+    positionIdx: index("ForumCategory_position_idx").on(table.position),
+  })
+);
+
+export type ForumCategory = InferSelectModel<typeof forumCategory>;
+
+export const forumTag = pgTable(
+  "ForumTag",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    label: varchar("label", { length: 64 }).notNull(),
+    description: text("description"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("ForumTag_slug_idx").on(table.slug),
+  })
+);
+
+export type ForumTag = InferSelectModel<typeof forumTag>;
+
+export const forumThread = pgTable(
+  "ForumThread",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    categoryId: uuid("categoryId")
+      .notNull()
+      .references(() => forumCategory.id, { onDelete: "restrict" }),
+    authorId: uuid("authorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 200 }).notNull(),
+    slug: varchar("slug", { length: 220 }).notNull(),
+    summary: text("summary").notNull(),
+    status: forumThreadStatusEnum("status").notNull().default("open"),
+    isPinned: boolean("isPinned").notNull().default(false),
+    isLocked: boolean("isLocked").notNull().default(false),
+    totalReplies: integer("totalReplies").notNull().default(0),
+    viewCount: integer("viewCount").notNull().default(0),
+    lastReplyUserId: uuid("lastReplyUserId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    lastRepliedAt: timestamp("lastRepliedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("ForumThread_slug_idx").on(table.slug),
+    categoryIdx: index("ForumThread_category_idx").on(table.categoryId),
+    statusIdx: index("ForumThread_status_idx").on(table.status),
+    pinnedIdx: index("ForumThread_pinned_idx").on(table.isPinned),
+  })
+);
+
+export type ForumThread = InferSelectModel<typeof forumThread>;
+
+export const forumPost = pgTable(
+  "ForumPost",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("threadId")
+      .notNull()
+      .references(() => forumThread.id, { onDelete: "cascade" }),
+    authorId: uuid("authorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    parentPostId: uuid("parentPostId").references(() => forumPost.id, {
+      onDelete: "set null",
+    }),
+    content: text("content").notNull(),
+    isEdited: boolean("isEdited").notNull().default(false),
+    isDeleted: boolean("isDeleted").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    threadIdx: index("ForumPost_thread_idx").on(table.threadId),
+    authorIdx: index("ForumPost_author_idx").on(table.authorId),
+  })
+);
+
+export type ForumPost = InferSelectModel<typeof forumPost>;
+
+export const forumThreadTag = pgTable(
+  "ForumThreadTag",
+  {
+    threadId: uuid("threadId")
+      .notNull()
+      .references(() => forumThread.id, { onDelete: "cascade" }),
+    tagId: uuid("tagId")
+      .notNull()
+      .references(() => forumTag.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.threadId, table.tagId] }),
+    tagIdx: index("ForumThreadTag_tag_idx").on(table.tagId),
+  })
+);
+
+export type ForumThreadTag = InferSelectModel<typeof forumThreadTag>;
+
+export const forumThreadSubscription = pgTable(
+  "ForumThreadSubscription",
+  {
+    threadId: uuid("threadId")
+      .notNull()
+      .references(() => forumThread.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    notifyByEmail: boolean("notifyByEmail").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.threadId, table.userId] }),
+    userIdx: index("ForumThreadSubscription_user_idx").on(table.userId),
+  })
+);
+
+export type ForumThreadSubscription = InferSelectModel<
+  typeof forumThreadSubscription
+>;
+
+export const forumPostReaction = pgTable(
+  "ForumPostReaction",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    postId: uuid("postId")
+      .notNull()
+      .references(() => forumPost.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: forumPostReactionTypeEnum("type")
+      .notNull()
+      .default("like"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    postIdx: index("ForumPostReaction_post_idx").on(table.postId),
+    uniqueReactionIdx: uniqueIndex("ForumPostReaction_unique_idx").on(
+      table.postId,
+      table.userId,
+      table.type
+    ),
+  })
+);
+
+export type ForumPostReaction = InferSelectModel<typeof forumPostReaction>;
