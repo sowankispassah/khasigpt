@@ -142,13 +142,6 @@ async function ensureThreadOwner({
   return thread;
 }
 
-export type CreateForumCategoryInput = {
-  name: string;
-  description?: string | null;
-  position?: number;
-  isLocked?: boolean;
-};
-
 function mapUser(row: {
   id: string;
   firstName: string | null;
