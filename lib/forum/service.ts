@@ -43,6 +43,7 @@ import type {
   ForumTagSummary,
   ForumThreadDetailResult,
   ForumThreadListItem,
+  CreateForumCategoryInput,
   ForumUserSummary,
 } from "./types";
 export type {
@@ -57,7 +58,6 @@ export type {
   ForumThreadListItem,
   ForumThreadListItemPayload,
   ForumUserSummary,
-  CreateForumCategoryInput,
 } from "./types";
 
 const DEFAULT_LIMIT = 15;
