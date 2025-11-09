@@ -259,7 +259,7 @@ export async function getForumOverview(
 
     const lastReplyUser = alias(user, "lastReplyUser");
     const filteredThreadTag = alias(forumThreadTag, "filteredThreadTag");
-    const filters: SQL<boolean>[] = [];
+    const filters = [] as SQL<boolean>[];
 
     if (activeCategory) {
       filters.push(eq(forumThread.categoryId, activeCategory.id));
