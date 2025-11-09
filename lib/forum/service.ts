@@ -310,7 +310,9 @@ export async function getForumOverview(
           (LOWER(${forumThread.title}) LIKE ${normalized}
           OR LOWER(${forumThread.summary}) LIKE ${normalized})
         `;
-      filtersClause = filtersClause ? and(filtersClause, searchClause) : searchClause;
+      filtersClause = filtersClause
+        ? (and(filtersClause, searchClause) as SQL<boolean>)
+        : searchClause;
     }
 
     const cursor = parseCursor(params.cursor);
@@ -319,7 +321,9 @@ export async function getForumOverview(
         ${forumThread.updatedAt} < ${cursor.date}
         OR (${forumThread.updatedAt} = ${cursor.date} AND ${forumThread.id} < ${cursor.id})
       )`;
-      filtersClause = filtersClause ? and(filtersClause, cursorClause) : cursorClause;
+      filtersClause = filtersClause
+        ? (and(filtersClause, cursorClause) as SQL<boolean>)
+        : cursorClause;
     }
 
     if (filtersClause) {
