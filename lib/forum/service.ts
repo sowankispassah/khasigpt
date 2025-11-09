@@ -326,10 +326,6 @@ export async function getForumOverview(
         : cursorClause;
     }
 
-    if (filtersClause) {
-      baseQuery = baseQuery.where(filtersClause);
-    }
-
     if (activeTag) {
       baseQuery = baseQuery.innerJoin(
         filteredThreadTag,
@@ -337,11 +333,15 @@ export async function getForumOverview(
       );
     }
 
+    const queryWithFilters = filtersClause
+      ? baseQuery.where(filtersClause)
+      : baseQuery;
+
     const coalescedActivity = sql<Date>`
       COALESCE(${forumThread.lastRepliedAt}, ${forumThread.createdAt})
     `;
 
-    const threadRows = await baseQuery
+    const threadRows = await queryWithFilters
       .orderBy(
         desc(forumThread.isPinned),
         desc(coalescedActivity),
