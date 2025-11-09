@@ -21,7 +21,8 @@ export type Surface =
   | "credits"
   | "pricing_plan"
   | "usage"
-  | "configuration";
+  | "configuration"
+  | "forum";
 
 export type ErrorCode = `${ErrorType}:${Surface}`;
 
@@ -42,6 +43,7 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   pricing_plan: "response",
   usage: "response",
   configuration: "response",
+  forum: "response",
 };
 
 export class ChatSDKError extends Error {
