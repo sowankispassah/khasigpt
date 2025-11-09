@@ -620,9 +620,7 @@ export const forumPost = pgTable(
     authorId: uuid("authorId")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    parentPostId: uuid("parentPostId").references(() => forumPost.id, {
-      onDelete: "set null",
-    }),
+    parentPostId: uuid("parentPostId"),
     content: text("content").notNull(),
     isEdited: boolean("isEdited").notNull().default(false),
     isDeleted: boolean("isDeleted").notNull().default(false),
@@ -632,6 +630,11 @@ export const forumPost = pgTable(
   (table) => ({
     threadIdx: index("ForumPost_thread_idx").on(table.threadId),
     authorIdx: index("ForumPost_author_idx").on(table.authorId),
+    parentPostFk: foreignKey({
+      columns: [table.parentPostId],
+      foreignColumns: [table.id],
+      name: "ForumPost_parent_fk",
+    }).onDelete("set null"),
   })
 );
 
