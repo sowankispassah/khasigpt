@@ -11,6 +11,7 @@ const scriptSrc = isDevelopment
       "blob:",
       "data:",
       "https://cdn.jsdelivr.net",
+      "https://checkout.razorpay.com",
     ].join(" ")
   : [
       "script-src",
@@ -18,6 +19,7 @@ const scriptSrc = isDevelopment
       "'strict-dynamic'",
       "'nonce-__NEXT_SCRIPT_NONCE__'",
       "https://cdn.jsdelivr.net",
+      "https://checkout.razorpay.com",
     ].join(" ");
 
 const connectSrc = [
@@ -31,9 +33,18 @@ const connectSrc = [
   "https://api.anthropic.com",
   "https://generativelanguage.googleapis.com",
   "https://cdn.jsdelivr.net",
+  "https://checkout.razorpay.com",
+  "https://api.razorpay.com",
   ...(isDevelopment
     ? ["ws://localhost:*", "ws://127.0.0.1:*", "http://localhost:*", "http://127.0.0.1:*"]
     : []),
+].join(" ");
+
+const frameSrc = [
+  "frame-src",
+  "'self'",
+  "https://checkout.razorpay.com",
+  "https://api.razorpay.com",
 ].join(" ");
 
 const securityHeaders = [
@@ -46,6 +57,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https://*.vercel-storage.com https://avatar.vercel.sh",
       "font-src 'self'",
       connectSrc,
+      frameSrc,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
