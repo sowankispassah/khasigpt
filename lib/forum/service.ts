@@ -249,8 +249,8 @@ export async function getForumOverview(
   const activeCategory =
     params.categorySlug &&
     categories.find((category) => category.slug === params.categorySlug);
-    const activeTag =
-      params.tagSlug && tags.find((tag) => tag.slug === params.tagSlug);
+  const activeTag =
+    params.tagSlug && tags.find((tag) => tag.slug === params.tagSlug);
 
     const limit = Math.min(
       Math.max(params.limit ?? DEFAULT_LIMIT, MIN_LIMIT),
@@ -259,41 +259,6 @@ export async function getForumOverview(
 
     const lastReplyUser = alias(user, "lastReplyUser");
     const filteredThreadTag = alias(forumThreadTag, "filteredThreadTag");
-    const filters = [] as SQL<boolean>[];
-
-    if (activeCategory) {
-      filters.push(
-        eq(forumThread.categoryId, activeCategory.id) as SQL<boolean>
-      );
-    }
-    if (activeTag) {
-      filters.push(
-        eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>
-      );
-    }
-    if (params.search && params.search.trim().length > 0) {
-      const normalized = `%${params.search.trim().toLowerCase()}%`;
-      filters.push(
-        sql<boolean>`
-          (LOWER(${forumThread.title}) LIKE ${normalized}
-          OR LOWER(${forumThread.summary}) LIKE ${normalized})
-        `
-      );
-    }
-
-    const cursor = parseCursor(params.cursor);
-    if (cursor) {
-      filters.push(
-        or(
-          lt(forumThread.updatedAt, cursor.date),
-          and(
-            eq(forumThread.updatedAt, cursor.date),
-            lt(forumThread.id, cursor.id)
-          )
-        ) as SQL<boolean>
-      );
-    }
-
     let baseQuery = db
       .select({
         id: forumThread.id,
@@ -329,15 +294,43 @@ export async function getForumOverview(
       .innerJoin(forumCategory, eq(forumThread.categoryId, forumCategory.id))
       .leftJoin(lastReplyUser, eq(forumThread.lastReplyUserId, lastReplyUser.id));
 
+    let filtersClause: SQL<boolean> | undefined;
+
+    if (activeCategory) {
+      filtersClause = eq(forumThread.categoryId, activeCategory.id) as SQL<boolean>;
+    }
+    if (activeTag) {
+      filtersClause = filtersClause
+        ? and(filtersClause, eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>)
+        : (eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>);
+    }
+    if (params.search && params.search.trim().length > 0) {
+      const normalized = `%${params.search.trim().toLowerCase()}%`;
+      const searchClause = sql<boolean>`
+          (LOWER(${forumThread.title}) LIKE ${normalized}
+          OR LOWER(${forumThread.summary}) LIKE ${normalized})
+        `;
+      filtersClause = filtersClause ? and(filtersClause, searchClause) : searchClause;
+    }
+
+    const cursor = parseCursor(params.cursor);
+    if (cursor) {
+      const cursorClause = sql<boolean>`(
+        ${forumThread.updatedAt} < ${cursor.date}
+        OR (${forumThread.updatedAt} = ${cursor.date} AND ${forumThread.id} < ${cursor.id})
+      )`;
+      filtersClause = filtersClause ? and(filtersClause, cursorClause) : cursorClause;
+    }
+
+    if (filtersClause) {
+      baseQuery = baseQuery.where(filtersClause);
+    }
+
     if (activeTag) {
       baseQuery = baseQuery.innerJoin(
         filteredThreadTag,
         eq(filteredThreadTag.threadId, forumThread.id)
       );
-    }
-
-    if (filters.length > 0) {
-      baseQuery = baseQuery.where(and(...filters));
     }
 
     const coalescedActivity = sql<Date>`
