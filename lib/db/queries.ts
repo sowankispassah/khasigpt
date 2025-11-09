@@ -303,8 +303,14 @@ export async function ensureOAuthUser(
 
     let userRecord = existing;
 
+    const hasCustomAvatar =
+      typeof userRecord.image === "string" &&
+      (userRecord.image.startsWith("data:") ||
+        userRecord.image.startsWith("blob:"));
+
     if (
       profile?.image &&
+      !hasCustomAvatar &&
       (!userRecord.image || userRecord.image !== profile.image)
     ) {
       const updatedImage = await updateUserImage({
