@@ -290,7 +290,7 @@ export async function getForumOverview(
             eq(forumThread.updatedAt, cursor.date),
             lt(forumThread.id, cursor.id)
           )
-        )
+        ) as SQL<boolean>
       );
     }
 
