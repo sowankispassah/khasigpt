@@ -7,6 +7,10 @@ const API_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
+const CANONICAL_HOST =
+  process.env.CANONICAL_HOST?.toLowerCase() ?? "khasigpt.com";
+const SHOULD_ENFORCE_CANONICAL =
+  process.env.NODE_ENV === "production" && typeof CANONICAL_HOST === "string";
 
 function getClientKey(request: NextRequest) {
   const forwardedFor =
@@ -22,6 +26,20 @@ function getClientKey(request: NextRequest) {
 }
 
 export function middleware(request: NextRequest) {
+  const hostname = request.headers.get("host")?.toLowerCase();
+  if (
+    SHOULD_ENFORCE_CANONICAL &&
+    hostname &&
+    hostname !== CANONICAL_HOST &&
+    !hostname.startsWith("localhost") &&
+    hostname !== "127.0.0.1"
+  ) {
+    const redirectUrl = new URL(request.url);
+    redirectUrl.host = CANONICAL_HOST;
+    redirectUrl.protocol = "https:";
+    return NextResponse.redirect(redirectUrl, 308);
+  }
+
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const key = `api:${getClientKey(request)}`;
     const { allowed, resetAt } = incrementRateLimit(key, API_RATE_LIMIT);
@@ -51,5 +69,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/:path*"],
 };
