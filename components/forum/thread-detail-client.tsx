@@ -451,12 +451,14 @@ export function ThreadDetailClient({
     }
   };
 
-  const handleBackToForum = () => {
+  const handleBackToForum = async () => {
     if (isBackNavigating) {
       return;
     }
     setIsBackNavigating(true);
-    router.push("/forum").catch(() => {
+    try {
+      await router.push("/forum");
+    } catch {
       setIsBackNavigating(false);
       toast.error(
         translate(
@@ -464,7 +466,7 @@ export function ThreadDetailClient({
           "Unable to update the thread. Please try again."
         )
       );
-    });
+    }
   };
 
   return (
