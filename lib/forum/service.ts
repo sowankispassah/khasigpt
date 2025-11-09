@@ -1144,8 +1144,7 @@ export async function updateForumThreadStatus({
     .set({
       status,
       updatedAt: now,
-      lastRepliedAt:
-        status === "resolved" ? now : forumThread.lastRepliedAt,
+      lastRepliedAt: status === "resolved" ? now : sql`"ForumThread"."lastRepliedAt"`,
     })
     .where(eq(forumThread.id, thread.id));
 }
