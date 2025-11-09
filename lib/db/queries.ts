@@ -1026,16 +1026,12 @@ export async function updateChatLastContextById({
 
 export async function getMessageCountByUserId({
   id,
-  differenceInHours,
+  since,
 }: {
   id: string;
-  differenceInHours: number;
+  since: Date;
 }) {
   try {
-    const twentyFourHoursAgo = new Date(
-      Date.now() - differenceInHours * 60 * 60 * 1000
-    );
-
     const [stats] = await db
       .select({ count: count(message.id) })
       .from(message)
@@ -1043,7 +1039,7 @@ export async function getMessageCountByUserId({
       .where(
         and(
           eq(chat.userId, id),
-          gte(message.createdAt, twentyFourHoursAgo),
+          gte(message.createdAt, since),
           eq(message.role, "user")
         )
       )

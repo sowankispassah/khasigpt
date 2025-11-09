@@ -30,7 +30,6 @@ import {
   getMessagesByChatId,
   recordTokenUsage,
   getActiveSubscriptionForUser,
-  hasAnySubscriptionForUser,
   saveChat,
   saveMessages,
   updateChatLastContextById,
@@ -86,6 +85,15 @@ export function getStreamContext() {
 }
 
 const FREE_MESSAGES_PER_DAY = 3;
+const IST_OFFSET_MINUTES = 5.5 * 60;
+
+function getStartOfTodayInIST() {
+  const now = new Date();
+  const istMillis = now.getTime() + IST_OFFSET_MINUTES * 60 * 1000;
+  const istStart = new Date(istMillis);
+  istStart.setUTCHours(0, 0, 0, 0);
+  return new Date(istStart.getTime() - IST_OFFSET_MINUTES * 60 * 1000);
+}
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -121,7 +129,7 @@ export async function POST(request: Request) {
 
     const messageCount = await getMessageCountByUserId({
       id: session.user.id,
-      differenceInHours: 24,
+      since: getStartOfTodayInIST(),
     });
 
     if (maxMessagesPerDay !== null && messageCount > maxMessagesPerDay) {
@@ -133,18 +141,14 @@ export async function POST(request: Request) {
       session.user.id
     );
 
-    let hasSubscriptionHistory = false;
-
-    if (!activeSubscription) {
-      hasSubscriptionHistory = await hasAnySubscriptionForUser(session.user.id);
-    }
+    const hasActiveCredits =
+      Boolean(activeSubscription) &&
+      (activeSubscription.tokenBalance ?? 0) > 0;
 
     const hasFreeDailyAllowance =
-      !activeSubscription &&
-      !hasSubscriptionHistory &&
-      messageCount < FREE_MESSAGES_PER_DAY;
+      !hasActiveCredits && messageCount < FREE_MESSAGES_PER_DAY;
 
-    if (!activeSubscription && !hasFreeDailyAllowance) {
+    if (!hasActiveCredits && !hasFreeDailyAllowance) {
       return new ChatSDKError(
         "payment_required:credits",
         "You have no active credits remaining. Please recharge to continue."
