@@ -141,9 +141,8 @@ export async function POST(request: Request) {
       session.user.id
     );
 
-    const hasActiveCredits =
-      Boolean(activeSubscription) &&
-      (activeSubscription.tokenBalance ?? 0) > 0;
+    const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
+    const hasActiveCredits = activeTokenBalance > 0;
 
     const hasFreeDailyAllowance =
       !hasActiveCredits && messageCount < FREE_MESSAGES_PER_DAY;
