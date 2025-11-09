@@ -247,10 +247,14 @@ export async function getForumOverview(
   }
 
   const activeCategory =
-    params.categorySlug &&
-    categories.find((category) => category.slug === params.categorySlug);
+    typeof params.categorySlug === "string"
+      ? categories.find((category) => category.slug === params.categorySlug) ??
+        null
+      : null;
   const activeTag =
-    params.tagSlug && tags.find((tag) => tag.slug === params.tagSlug);
+    typeof params.tagSlug === "string"
+      ? tags.find((tag) => tag.slug === params.tagSlug) ?? null
+      : null;
 
     const limit = Math.min(
       Math.max(params.limit ?? DEFAULT_LIMIT, MIN_LIMIT),
