@@ -34,22 +34,31 @@ function serializeThread(
   };
 }
 
+type ForumPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
 export default async function ForumPage({
   searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+}: ForumPageProps) {
   const forumEnabled = await isForumEnabled();
   if (!forumEnabled) {
     notFound();
   }
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const session = await auth();
   const categorySlug =
-    typeof searchParams?.category === "string" ? searchParams.category : null;
+    typeof resolvedSearchParams?.category === "string"
+      ? resolvedSearchParams.category
+      : null;
   const tagSlug =
-    typeof searchParams?.tag === "string" ? searchParams.tag : null;
+    typeof resolvedSearchParams?.tag === "string"
+      ? resolvedSearchParams.tag
+      : null;
   const searchQuery =
-    typeof searchParams?.search === "string" ? searchParams.search : null;
+    typeof resolvedSearchParams?.search === "string"
+      ? resolvedSearchParams.search
+      : null;
 
   const overview = await getForumOverview({
     categorySlug,
