@@ -301,8 +301,8 @@ export async function getForumOverview(
     }
     if (activeTag) {
       filtersClause = filtersClause
-        ? and(filtersClause, eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>)
-        : (eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>);
+        ? (and(filtersClause, eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>) as SQL<boolean>)
+        : ((eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>) as SQL<boolean>);
     }
     if (params.search && params.search.trim().length > 0) {
       const normalized = `%${params.search.trim().toLowerCase()}%`;
