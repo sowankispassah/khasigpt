@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -13,7 +14,7 @@ import { isForumEnabled } from "@/lib/forum/config";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  _request: NextRequest,
   { params }: { params: { slug: string } }
 ) {
   if (!(await isForumEnabled())) {
@@ -47,7 +48,7 @@ const updateThreadSchema = z.object({
 });
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { slug: string } }
 ) {
   if (!(await isForumEnabled())) {
@@ -83,7 +84,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  _request: NextRequest,
   { params }: { params: { slug: string } }
 ) {
   if (!(await isForumEnabled())) {

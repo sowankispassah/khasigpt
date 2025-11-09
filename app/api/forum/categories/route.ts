@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -21,7 +22,7 @@ const createCategorySchema = z.object({
   isLocked: z.boolean().optional(),
 });
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
   }

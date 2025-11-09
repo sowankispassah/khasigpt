@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -22,7 +23,7 @@ const createThreadSchema = z.object({
     .optional(),
 });
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
   }
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
   }

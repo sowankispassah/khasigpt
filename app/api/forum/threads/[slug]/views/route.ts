@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
@@ -8,7 +9,7 @@ import {
 import { isForumEnabled } from "@/lib/forum/config";
 
 export async function POST(
-  _request: Request,
+  _request: NextRequest,
   { params }: { params: { slug: string } }
 ) {
   if (!(await isForumEnabled())) {
