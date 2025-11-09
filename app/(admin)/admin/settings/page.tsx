@@ -23,8 +23,10 @@ import {
   createLanguageAction,
   updateLanguageStatusAction,
   updatePlanTranslationAction,
+  updateFreeMessageSettingsAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { cn } from "@/lib/utils";
 import { AdminSettingsNotice } from "./notice";
 import {
   DEFAULT_SUGGESTED_PROMPTS,
@@ -33,7 +35,9 @@ import {
   DEFAULT_ABOUT_US,
   TOKENS_PER_CREDIT,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  DEFAULT_FREE_MESSAGES_PER_DAY,
 } from "@/lib/constants";
+import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { formatDistanceToNow } from "date-fns";
 import { getAllLanguages } from "@/lib/i18n/languages";
 import { LanguagePromptsForm } from "./language-prompts-form";
@@ -96,6 +100,7 @@ export default async function AdminSettingsPage({
     suggestedPromptsByLanguageSetting,
     recommendedPlanSetting,
     languages,
+    freeMessageSettings,
   ] = await Promise.all([
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
@@ -110,6 +115,7 @@ export default async function AdminSettingsPage({
     getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
     getAllLanguages(),
+    loadFreeMessageSettings(),
   ]);
 
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -246,6 +252,16 @@ export default async function AdminSettingsPage({
       content: contentForLanguage,
     };
   });
+
+  const isGlobalFreeMessageMode = freeMessageSettings.mode === "global";
+  const perModelInputClassName = cn(
+    "rounded-md border bg-background px-3 py-2 text-sm",
+    isGlobalFreeMessageMode &&
+      "cursor-not-allowed bg-muted text-muted-foreground opacity-60"
+  );
+  const perModelFieldDescription = isGlobalFreeMessageMode
+    ? "Managed by the global allowance above."
+    : "Complimentary messages per day for this model when a user has no active credits.";
   const languageTermsConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedTermsOfServiceByLanguage[language.code];
     const contentForLanguage =
@@ -306,6 +322,85 @@ export default async function AdminSettingsPage({
       <AdminSettingsNotice notice={notice} />
 
       <div className="flex flex-col gap-10">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Free message policy</h2>
+              <p className="text-muted-foreground mt-1 text-sm">
+                Choose whether complimentary daily messages come from each model or a single global allowance.
+              </p>
+            </div>
+          </div>
+          <form
+            action={updateFreeMessageSettingsAction}
+            className="mt-6 grid gap-6 md:grid-cols-2"
+          >
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Allowance mode</legend>
+              <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
+                <input
+                  className="mt-1 h-4 w-4"
+                  defaultChecked={freeMessageSettings.mode === "per-model"}
+                  name="mode"
+                  type="radio"
+                  value="per-model"
+                />
+                <span>
+                  <span className="font-medium">Per model allowances</span>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Each model can define its own complimentary daily messages.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
+                <input
+                  className="mt-1 h-4 w-4"
+                  defaultChecked={freeMessageSettings.mode === "global"}
+                  name="mode"
+                  type="radio"
+                  value="global"
+                />
+                <span>
+                  <span className="font-medium">One limit for all models</span>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Override per-model allowances and use the global value below.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="globalLimit">
+                Global daily free messages
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={freeMessageSettings.globalLimit}
+                id="globalLimit"
+                min={0}
+                name="globalLimit"
+                step={1}
+                type="number"
+              />
+              <p className="text-muted-foreground text-xs">
+                Used only when &ldquo;One limit for all models&rdquo; is selected.
+              </p>
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <ActionSubmitButton pendingLabel="Saving...">
+                Save policy
+              </ActionSubmitButton>
+            </div>
+          </form>
+          {isGlobalFreeMessageMode ? (
+            <div className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
+              Per-model inputs are locked because a global allowance of{" "}
+              {freeMessageSettings.globalLimit.toLocaleString()} messages per day is active.
+            </div>
+          ) : null}
+        </section>
+
         <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Languages</h2>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -1161,6 +1256,24 @@ export default async function AdminSettingsPage({
               />
             </div>
 
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="freeMessagesPerDay">
+                Daily free messages
+              </label>
+              <input
+                aria-disabled={isGlobalFreeMessageMode || undefined}
+                className={perModelInputClassName}
+                defaultValue={DEFAULT_FREE_MESSAGES_PER_DAY}
+                id="freeMessagesPerDay"
+                min={0}
+                name="freeMessagesPerDay"
+                readOnly={isGlobalFreeMessageMode}
+                step={1}
+                type="number"
+              />
+              <p className="text-muted-foreground text-xs">{perModelFieldDescription}</p>
+            </div>
+
             <div className="md:col-span-2 flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="description">
                 Description
@@ -1420,6 +1533,25 @@ export default async function AdminSettingsPage({
                         />
                         <p className="text-muted-foreground text-xs">
                           Only visible here — use it to track your real spend versus credits charged.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium">
+                          Daily free messages
+                        </label>
+                        <input
+                          aria-disabled={isGlobalFreeMessageMode || undefined}
+                          className={perModelInputClassName}
+                          defaultValue={model.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY}
+                          min={0}
+                          name="freeMessagesPerDay"
+                          readOnly={isGlobalFreeMessageMode}
+                          step={1}
+                          type="number"
+                        />
+                        <p className="text-muted-foreground text-xs">
+                          {perModelFieldDescription}
                         </p>
                       </div>
 

@@ -36,6 +36,7 @@ async function ensureModelConfigs(): Promise<ModelConfig[]> {
     config: null,
     isEnabled: true,
     isDefault: true,
+    freeMessagesPerDay: 3,
     inputCostPerMillion: 0,
     outputCostPerMillion: 0,
   });
@@ -81,6 +82,7 @@ export type ModelSummary = {
   outputCostPerMillion: number;
   inputProviderCostPerMillion: number;
   outputProviderCostPerMillion: number;
+  freeMessagesPerDay: number;
 };
 
 export function mapToModelSummary(config: ModelConfig): ModelSummary {
@@ -103,5 +105,6 @@ export function mapToModelSummary(config: ModelConfig): ModelSummary {
     outputProviderCostPerMillion: Number(
       config.outputProviderCostPerMillion ?? 0
     ),
+    freeMessagesPerDay: Number(config.freeMessagesPerDay ?? 3),
   };
 }

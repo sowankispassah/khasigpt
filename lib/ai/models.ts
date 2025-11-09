@@ -41,6 +41,7 @@ export const loadChatModels = cache(async () => {
       outputCostPerMillion: 0,
       inputProviderCostPerMillion: 0,
       outputProviderCostPerMillion: 0,
+      freeMessagesPerDay: 3,
     };
 
     return {

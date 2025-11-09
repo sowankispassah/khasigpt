@@ -28,7 +28,7 @@ import postgres from "postgres";
 import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
-import { TOKENS_PER_CREDIT } from "../constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
@@ -1751,6 +1751,7 @@ export async function createModelConfig({
   config = null,
   isEnabled = true,
   isDefault = false,
+  freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
   inputCostPerMillion = DEFAULT_COST_PER_MILLION,
   outputCostPerMillion = DEFAULT_COST_PER_MILLION,
   inputProviderCostPerMillion = 0,
@@ -1768,6 +1769,7 @@ export async function createModelConfig({
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   isDefault?: boolean;
+  freeMessagesPerDay?: number;
   inputCostPerMillion?: number;
   outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
@@ -1791,6 +1793,7 @@ export async function createModelConfig({
         config,
         isEnabled,
         isDefault,
+        freeMessagesPerDay,
         inputCostPerMillion,
         outputCostPerMillion,
         inputProviderCostPerMillion,
@@ -1995,6 +1998,9 @@ export async function updateModelConfig({
     if (patch.outputProviderCostPerMillion !== undefined) {
       updateData.outputProviderCostPerMillion =
         patch.outputProviderCostPerMillion;
+    }
+    if (patch.freeMessagesPerDay !== undefined) {
+      updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
     }
 
     const [updated] = await db

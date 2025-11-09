@@ -21,7 +21,8 @@ import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import { getModelRegistry } from "@/lib/ai/model-registry";
-import { isProductionEnvironment } from "@/lib/constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY, isProductionEnvironment } from "@/lib/constants";
+import { loadFreeMessageSettings } from "@/lib/free-messages";
 import {
   createStreamId,
   deleteChatById,
@@ -84,7 +85,6 @@ export function getStreamContext() {
   return globalStreamContext;
 }
 
-const FREE_MESSAGES_PER_DAY = 3;
 const IST_OFFSET_MINUTES = 5.5 * 60;
 
 function getStartOfTodayInIST() {
@@ -136,25 +136,10 @@ export async function POST(request: Request) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
 
-
-    const activeSubscription = await getActiveSubscriptionForUser(
-      session.user.id
-    );
-
-    const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
-    const hasActiveCredits = activeTokenBalance > 0;
-
-    const hasFreeDailyAllowance =
-      !hasActiveCredits && messageCount < FREE_MESSAGES_PER_DAY;
-
-    if (!hasActiveCredits && !hasFreeDailyAllowance) {
-      return new ChatSDKError(
-        "payment_required:credits",
-        "You have no active credits remaining. Please recharge to continue."
-      ).toResponse();
-    }
-
-    const registry = await getModelRegistry();
+    const [freeMessageSettings, registry] = await Promise.all([
+      loadFreeMessageSettings(),
+      getModelRegistry(),
+    ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
     );
@@ -167,6 +152,32 @@ export async function POST(request: Request) {
       return new ChatSDKError(
         "bad_request:api",
         "No chat models are enabled. Please contact an administrator."
+      ).toResponse();
+    }
+
+    const activeSubscription = await getActiveSubscriptionForUser(
+      session.user.id
+    );
+
+    const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
+    const hasActiveCredits = activeTokenBalance > 0;
+    const perModelAllowance = Math.max(
+      0,
+      modelConfig.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY
+    );
+    const globalAllowance = Math.max(0, freeMessageSettings.globalLimit);
+    const freeMessagesForModel =
+      freeMessageSettings.mode === "global"
+        ? globalAllowance
+        : perModelAllowance;
+
+    const hasFreeDailyAllowance =
+      !hasActiveCredits && messageCount < freeMessagesForModel;
+
+    if (!hasActiveCredits && !hasFreeDailyAllowance) {
+      return new ChatSDKError(
+        "payment_required:credits",
+        "You have no active credits remaining. Please recharge to continue."
       ).toResponse();
     }
 
@@ -314,7 +325,7 @@ export async function POST(request: Request) {
                 ? finalMergedUsage.outputTokens
                 : getUsageNumber(usageFallback.completionTokens);
 
-            if (inputTokens > 0 || outputTokens > 0) {
+            if (hasActiveCredits && (inputTokens > 0 || outputTokens > 0)) {
               await recordTokenUsage({
                 userId: session.user.id,
                 chatId: id,

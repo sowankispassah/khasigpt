@@ -33,7 +33,13 @@ import {
   updateLanguageActiveState,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
+import {
+  DEFAULT_FREE_MESSAGES_PER_DAY,
+  FREE_MESSAGE_SETTINGS_KEY,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  TOKENS_PER_CREDIT,
+} from "@/lib/constants";
+import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 import {
   invalidateTranslationBundleCache,
@@ -210,6 +216,12 @@ export async function createModelConfigAction(formData: FormData) {
   const outputProviderCostPerMillion = parseNumber(
     formData.get("outputProviderCostPerMillion")
   );
+  const freeMessagesRaw = formData.get("freeMessagesPerDay");
+  const resolvedFreeMessages =
+    freeMessagesRaw === null
+      ? DEFAULT_FREE_MESSAGES_PER_DAY
+      : parseNumber(freeMessagesRaw);
+  const freeMessagesPerDay = Math.max(0, Math.round(resolvedFreeMessages));
 
   const existingConfig = await getModelConfigByKey({
     key,
@@ -243,6 +255,7 @@ export async function createModelConfigAction(formData: FormData) {
       outputCostPerMillion,
       inputProviderCostPerMillion,
       outputProviderCostPerMillion,
+      freeMessagesPerDay,
     });
   } catch (error) {
     console.error("Failed to create model configuration", error);
@@ -289,6 +302,7 @@ export async function updateModelConfigAction(formData: FormData) {
     outputCostPerMillion?: number;
     inputProviderCostPerMillion?: number;
     outputProviderCostPerMillion?: number;
+    freeMessagesPerDay?: number;
   } = {};
 
   const provider = formData.get("provider");
@@ -361,6 +375,13 @@ export async function updateModelConfigAction(formData: FormData) {
   if (formData.has("outputProviderCostPerMillion")) {
     patch.outputProviderCostPerMillion = parseNumber(
       formData.get("outputProviderCostPerMillion")
+    );
+  }
+
+  if (formData.has("freeMessagesPerDay")) {
+    patch.freeMessagesPerDay = Math.max(
+      0,
+      Math.round(parseNumber(formData.get("freeMessagesPerDay")))
     );
   }
 
@@ -968,6 +989,42 @@ export async function updatePlanTranslationAction(formData: FormData) {
     console.error("Failed to update plan translation", error);
     redirect("/admin/settings?notice=plan-translation-error");
   }
+}
+
+export async function updateFreeMessageSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const modeInput = formData.get("mode");
+  const requestedMode = modeInput === "global" ? "global" : "per-model";
+  const globalLimitRaw = formData.get("globalLimit");
+  const resolvedGlobalLimit =
+    globalLimitRaw === null
+      ? DEFAULT_FREE_MESSAGES_PER_DAY
+      : parseNumber(globalLimitRaw);
+  const normalized = normalizeFreeMessageSettings({
+    mode: requestedMode,
+    globalLimit: resolvedGlobalLimit,
+  });
+
+  await setAppSetting({
+    key: FREE_MESSAGE_SETTINGS_KEY,
+    value: normalized,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "settings.update.free_messages",
+    target: { key: FREE_MESSAGE_SETTINGS_KEY },
+    metadata: normalized,
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=free-messages-updated");
 }
 
 function parseInteger(value: FormDataEntryValue | null | undefined) {

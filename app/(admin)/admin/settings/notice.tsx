@@ -32,6 +32,7 @@ const NOTICE_MESSAGES: Record<string, { message: string; type: "success" | "erro
   "language-default-inactive": { type: "error", message: "The default language cannot be deactivated." },
   "plan-translation-updated": { type: "success", message: "Plan translation saved." },
   "plan-translation-error": { type: "error", message: "Failed to save plan translation." },
+  "free-messages-updated": { type: "success", message: "Free message policy updated." },
 };
 
 export function AdminSettingsNotice({ notice }: { notice?: string }) {
