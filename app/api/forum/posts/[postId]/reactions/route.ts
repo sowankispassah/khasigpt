@@ -12,9 +12,9 @@ const reactionSchema = z.object({
 });
 
 type PostRouteContext = {
-  params: {
+  params: Promise<{
     postId: string;
-  };
+  }>;
 };
 
 export async function POST(
@@ -36,9 +36,10 @@ export async function POST(
   }
 
   try {
+    const { postId } = await context.params;
     const payload = reactionSchema.parse(await request.json());
     const result = await toggleForumPostReaction({
-      postId: context.params.postId,
+      postId,
       userId: session.user.id,
       type: payload.type,
     });

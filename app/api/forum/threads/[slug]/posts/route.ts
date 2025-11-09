@@ -13,9 +13,9 @@ const createPostSchema = z.object({
 });
 
 type ThreadPostRouteContext = {
-  params: {
+  params: Promise<{
     slug: string;
-  };
+  }>;
 };
 
 export async function POST(
@@ -37,9 +37,10 @@ export async function POST(
   }
 
   try {
+    const { slug } = await context.params;
     const payload = createPostSchema.parse(await request.json());
     const post = await createForumPost({
-      threadSlug: context.params.slug,
+      threadSlug: slug,
       authorId: session.user.id,
       content: payload.content,
       parentPostId: payload.parentPostId ?? null,

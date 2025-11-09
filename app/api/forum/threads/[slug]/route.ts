@@ -15,15 +15,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: NextRequest,
-  context: { params: { slug: string } }
+  context: { params: Promise<{ slug: string }> }
 ) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
   }
   try {
     const session = await auth();
+    const { slug } = await context.params;
     const detail = await getForumThreadDetail({
-      slug: context.params.slug,
+      slug,
       viewerUserId: session?.user?.id ?? null,
     });
 
@@ -49,7 +50,7 @@ const updateThreadSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: { slug: string } }
+  context: { params: Promise<{ slug: string }> }
 ) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
@@ -69,9 +70,10 @@ export async function PATCH(
     const payload = updateThreadSchema.parse(await request.json());
     const status = payload.action === "resolve" ? "resolved" : "open";
     const isAdmin = session.user.role === "admin";
+    const { slug } = await context.params;
 
     await updateForumThreadStatus({
-      slug: context.params.slug,
+      slug,
       userId: session.user.id,
       isAdmin,
       status,
@@ -85,7 +87,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  context: { params: { slug: string } }
+  context: { params: Promise<{ slug: string }> }
 ) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
@@ -102,8 +104,9 @@ export async function DELETE(
       );
     }
     const isAdmin = session.user.role === "admin";
+    const { slug } = await context.params;
     await deleteForumThread({
-      slug: context.params.slug,
+      slug,
       userId: session.user.id,
       isAdmin,
     });

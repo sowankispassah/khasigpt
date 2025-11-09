@@ -9,9 +9,9 @@ import {
 import { isForumEnabled } from "@/lib/forum/config";
 
 type ThreadViewRouteContext = {
-  params: {
+  params: Promise<{
     slug: string;
-  };
+  }>;
 };
 
 export async function POST(
@@ -22,7 +22,8 @@ export async function POST(
     return forumDisabledResponse();
   }
   try {
-    const threadId = await resolveForumThreadId(context.params.slug);
+    const { slug } = await context.params;
+    const threadId = await resolveForumThreadId(slug);
 
     if (!threadId) {
       return NextResponse.json(

@@ -15,9 +15,9 @@ const subscriptionSchema = z.object({
 });
 
 type ThreadSubscribeRouteContext = {
-  params: {
+  params: Promise<{
     slug: string;
-  };
+  }>;
 };
 
 export async function POST(
@@ -39,8 +39,9 @@ export async function POST(
   }
 
   try {
+    const { slug } = await context.params;
     const payload = subscriptionSchema.parse(await request.json());
-    const threadId = await resolveForumThreadId(context.params.slug);
+    const threadId = await resolveForumThreadId(slug);
 
     if (!threadId) {
       return NextResponse.json(
