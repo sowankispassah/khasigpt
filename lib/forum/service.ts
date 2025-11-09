@@ -709,11 +709,11 @@ async function ensureCategory(slug: string) {
     .limit(1);
 
   if (!category) {
-    throw new ChatSDKError("bad_request:validation", "Unknown forum category");
+    throw new ChatSDKError("bad_request:forum", "Unknown forum category");
   }
   if (category.isLocked) {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Category is locked for new discussions"
     );
   }
@@ -780,14 +780,14 @@ export async function createForumThread(input: CreateForumThreadInput) {
 
   if (title.length < 8) {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Title must be at least 8 characters long"
     );
   }
 
   if (content.length < 24) {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Post content must be at least 24 characters long"
     );
   }
@@ -902,7 +902,7 @@ export async function createForumPost(input: CreateForumPostInput) {
   const content = sanitizeForumContent(input.content);
   if (content.length < 8) {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Reply must be at least 8 characters long"
     );
   }
@@ -910,14 +910,14 @@ export async function createForumPost(input: CreateForumPostInput) {
   const thread = await ensureThreadBySlug(input.threadSlug);
   if (thread.isLocked) {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Thread is locked. New replies are disabled."
     );
   }
 
   if (thread.status === "archived") {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Thread is archived and cannot accept replies"
     );
   }
@@ -939,7 +939,7 @@ export async function createForumPost(input: CreateForumPostInput) {
 
     if (!parentPost || parentPost.threadId !== thread.id) {
       throw new ChatSDKError(
-        "bad_request:validation",
+        "bad_request:forum",
         "Reply must reference a post within the same thread"
       );
     }
@@ -1166,7 +1166,7 @@ export async function createForumCategory(input: CreateForumCategoryInput) {
   const name = sanitizeForumContent(input.name ?? "").replace(/\s+/g, " ").trim();
   if (name.length < 3) {
     throw new ChatSDKError(
-      "bad_request:validation",
+      "bad_request:forum",
       "Category name must be at least 3 characters long"
     );
   }

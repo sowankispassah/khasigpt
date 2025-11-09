@@ -139,6 +139,10 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "The request to create or update the document was invalid. Please check your input and try again.";
     case "bad_request:configuration":
       return "A required configuration value is missing or invalid. Please review your setup.";
+    case "bad_request:forum":
+      return "The forum request could not be processed. Please verify the category or parameters.";
+    case "not_found:forum":
+      return "The requested forum resource was not found.";
 
     default:
       return "Something went wrong. Please try again later.";
