@@ -1790,6 +1790,91 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Badge label for inactive coupons.",
   },
   {
+    key: "creator_dashboard.redemptions.title",
+    defaultText: "Recent redemptions",
+    description: "Section heading for the creator redemption history table.",
+  },
+  {
+    key: "creator_dashboard.redemptions.subtitle",
+    defaultText: "Track every subscription that used your coupon code.",
+    description: "Helper text explaining the redemption history section.",
+  },
+  {
+    key: "creator_dashboard.redemptions.empty",
+    defaultText: "No redemptions are recorded yet. Share your code to see activity here.",
+    description: "Empty-state message when no coupon redemptions exist.",
+  },
+  {
+    key: "creator_dashboard.redemptions.user",
+    defaultText: "User",
+    description: "Table column label for the masked user identifier.",
+  },
+  {
+    key: "creator_dashboard.redemptions.coupon",
+    defaultText: "Coupon",
+    description: "Table column label for the coupon code used in a redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.payment",
+    defaultText: "Payment",
+    description: "Table column label for the payment amount collected from the user.",
+  },
+  {
+    key: "creator_dashboard.redemptions.discount",
+    defaultText: "Discount",
+    description: "Table column label for the discount applied to the redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.reward",
+    defaultText: "Your reward",
+    description: "Table column label for the creator reward amount per redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.date",
+    defaultText: "Redeemed at",
+    description: "Table column label for the redemption date.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.label",
+    defaultText: "Sort by",
+    description: "Label preceding the redemption sorting controls.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.newest",
+    defaultText: "Newest",
+    description: "Button label to sort redemptions by newest first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.oldest",
+    defaultText: "Oldest",
+    description: "Button label to sort redemptions by oldest first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.highest",
+    defaultText: "Highest payment",
+    description: "Button label to sort redemptions by highest payment first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.lowest",
+    defaultText: "Lowest payment",
+    description: "Button label to sort redemptions by lowest payment first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.pagination",
+    defaultText: "Page {current} of {total}",
+    description: "Helper text describing the current pagination state.",
+  },
+  {
+    key: "common.previous",
+    defaultText: "Previous",
+    description: "Label for pagination controls that go to the previous page.",
+  },
+  {
+    key: "common.next",
+    defaultText: "Next",
+    description: "Label for pagination controls that go to the next page.",
+  },
+  {
     key: "creator_dashboard.table.last_used",
     defaultText: "Last: {date}",
     description: "Helper text showing the last redemption date for a coupon.",

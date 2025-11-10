@@ -2603,7 +2603,7 @@ export async function setCouponStatus({
 }
 
 const VALID_REWARD_STATUSES = new Set(["pending", "paid"]);
-const MAX_CREATOR_REDEMPTIONS = 200;
+const MAX_CREATOR_REDEMPTIONS_PAGE_SIZE = 50;
 
 export async function setCouponRewardStatus({
   id,
@@ -2706,17 +2706,6 @@ export type CreatorCouponSummary = {
     lastRedemptionAt: Date | null;
     estimatedRewardInPaise: number;
   }>;
-  redemptions: Array<{
-    id: string;
-    couponId: string;
-    couponCode: string;
-    orderId: string;
-    userLabel: string;
-    paymentAmountInPaise: number;
-    discountAmountInPaise: number;
-    rewardInPaise: number;
-    createdAt: Date;
-  }>;
   totals: {
     usageCount: number;
     totalRevenueInPaise: number;
@@ -2724,6 +2713,29 @@ export type CreatorCouponSummary = {
     totalRewardInPaise: number;
     pendingRewardInPaise: number;
   };
+};
+
+export type CreatorCouponRedemption = {
+  id: string;
+  couponId: string;
+  couponCode: string;
+  orderId: string;
+  userLabel: string;
+  paymentAmountInPaise: number;
+  discountAmountInPaise: number;
+  rewardInPaise: number;
+  createdAt: Date;
+};
+
+export type CreatorRedemptionSortField = "date" | "payment";
+
+export type CreatorCouponRedemptionsResult = {
+  redemptions: CreatorCouponRedemption[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  sortBy: CreatorRedemptionSortField;
+  sortDirection: "asc" | "desc";
 };
 
 export async function getCreatorCouponSummary(
@@ -2791,57 +2803,6 @@ export async function getCreatorCouponSummary(
         estimatedRewardInPaise: rewardInPaise,
       };
     });
-    const redemptionRows = await db
-      .select({
-        id: couponRedemption.id,
-        couponId: couponRedemption.couponId,
-        orderId: couponRedemption.orderId,
-        paymentAmount: couponRedemption.paymentAmount,
-        discountAmount: couponRedemption.discountAmount,
-        createdAt: couponRedemption.createdAt,
-        couponCode: coupon.code,
-        creatorRewardPercentage: coupon.creatorRewardPercentage,
-        userFirstName: user.firstName,
-        userLastName: user.lastName,
-        userEmail: user.email,
-      })
-      .from(couponRedemption)
-      .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
-      .innerJoin(user, eq(user.id, couponRedemption.userId))
-      .where(eq(coupon.creatorId, creatorId))
-      .orderBy(desc(couponRedemption.createdAt))
-      .limit(MAX_CREATOR_REDEMPTIONS);
-
-    const redemptions = redemptionRows.map((row) => {
-      const identifier =
-        [row.userFirstName, row.userLastName]
-          .filter(
-            (value): value is string =>
-              Boolean(value && typeof value === "string" && value.trim().length > 0)
-          )
-          .join("") ||
-        row.userEmail?.trim() ||
-        null;
-      const paymentAmountInPaise = toInteger(row.paymentAmount);
-      const discountAmountInPaise = toInteger(row.discountAmount);
-      const rewardInPaise = calculateRewardAmount(
-        paymentAmountInPaise + discountAmountInPaise,
-        row.creatorRewardPercentage ?? 0
-      );
-
-      return {
-        id: row.id,
-        couponId: row.couponId,
-        couponCode: row.couponCode,
-        orderId: row.orderId,
-        userLabel: maskUserIdentifier(identifier),
-        paymentAmountInPaise,
-        discountAmountInPaise,
-        rewardInPaise,
-        createdAt: row.createdAt,
-      };
-    });
-
     const totals = coupons.reduce(
       (acc, couponRow) => {
         acc.usageCount += couponRow.usageCount;
@@ -2875,7 +2836,6 @@ export async function getCreatorCouponSummary(
             .trim() || creatorRecord.email,
       },
       coupons,
-      redemptions,
       totals,
     };
   } catch (error) {
@@ -2888,6 +2848,128 @@ export async function getCreatorCouponSummary(
         ? error.message
         : "Failed to load creator summary";
     throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
+export async function getCreatorCouponRedemptions({
+  creatorId,
+  page = 1,
+  pageSize = 10,
+  sortBy = "date",
+  sortDirection = "desc",
+}: {
+  creatorId: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: CreatorRedemptionSortField;
+  sortDirection?: "asc" | "desc";
+}): Promise<CreatorCouponRedemptionsResult> {
+  const normalizedPage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
+  const normalizedPageSize =
+    Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.floor(pageSize) : 10;
+  const limit = Math.min(normalizedPageSize, MAX_CREATOR_REDEMPTIONS_PAGE_SIZE);
+  const offset = (normalizedPage - 1) * limit;
+  const normalizedSortBy: CreatorRedemptionSortField =
+    sortBy === "payment" ? "payment" : "date";
+  const normalizedSortDirection = sortDirection === "asc" ? "asc" : "desc";
+
+  const sortColumn =
+    normalizedSortBy === "payment"
+      ? couponRedemption.paymentAmount
+      : couponRedemption.createdAt;
+  const orderClause =
+    normalizedSortDirection === "asc" ? asc(sortColumn) : desc(sortColumn);
+
+  try {
+    const [rows, totalResult] = await Promise.all([
+      db
+        .select({
+          id: couponRedemption.id,
+          couponId: couponRedemption.couponId,
+          orderId: couponRedemption.orderId,
+          paymentAmount: couponRedemption.paymentAmount,
+          discountAmount: couponRedemption.discountAmount,
+          createdAt: couponRedemption.createdAt,
+          couponCode: coupon.code,
+          creatorRewardPercentage: coupon.creatorRewardPercentage,
+          userFirstName: user.firstName,
+          userLastName: user.lastName,
+          userEmail: user.email,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+        .innerJoin(user, eq(user.id, couponRedemption.userId))
+        .where(eq(coupon.creatorId, creatorId))
+        .orderBy(orderClause)
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+        .where(eq(coupon.creatorId, creatorId)),
+    ]);
+
+    const totalCount = toInteger(totalResult?.[0]?.count);
+
+    const redemptions: CreatorCouponRedemption[] = rows.map((row) => {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter(
+            (value): value is string =>
+              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      return {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        orderId: row.orderId,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+    });
+
+    return {
+      redemptions,
+      totalCount,
+      page: normalizedPage,
+      pageSize: limit,
+      sortBy: normalizedSortBy,
+      sortDirection: normalizedSortDirection,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        redemptions: [],
+        totalCount: 0,
+        page: normalizedPage,
+        pageSize: limit,
+        sortBy: normalizedSortBy,
+        sortDirection: normalizedSortDirection,
+      };
+    }
+    console.error("getCreatorCouponRedemptions failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load creator redemptions"
+    );
   }
 }
 

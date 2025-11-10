@@ -1,9 +1,13 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
-import { getCreatorCouponSummary } from "@/lib/db/queries";
+import {
+  getCreatorCouponRedemptions,
+  getCreatorCouponSummary,
+} from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +38,24 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
 });
 
-export default async function CreatorDashboardPage() {
+type SortKey = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
+const SORT_CONFIG: Record<
+  SortKey,
+  { sortBy: "date" | "payment"; sortDirection: "asc" | "desc" }
+> = {
+  date_desc: { sortBy: "date", sortDirection: "desc" },
+  date_asc: { sortBy: "date", sortDirection: "asc" },
+  amount_desc: { sortBy: "payment", sortDirection: "desc" },
+  amount_asc: { sortBy: "payment", sortDirection: "asc" },
+};
+const DEFAULT_SORT_KEY: SortKey = "date_desc";
+const PAGE_SIZE = 10;
+
+type DashboardPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+export default async function CreatorDashboardPage({ searchParams = {} }: DashboardPageProps) {
   const session = await auth();
 
   if (!session?.user) {
@@ -45,11 +66,37 @@ export default async function CreatorDashboardPage() {
     redirect("/");
   }
 
+  const rawSortParam =
+    typeof searchParams.sort === "string"
+      ? searchParams.sort
+      : Array.isArray(searchParams.sort)
+        ? searchParams.sort[0]
+        : undefined;
+  const sortKey = (rawSortParam as SortKey) && SORT_CONFIG[rawSortParam as SortKey]
+    ? (rawSortParam as SortKey)
+    : DEFAULT_SORT_KEY;
+  const sortConfig = SORT_CONFIG[sortKey];
+
+  const rawPageParam =
+    typeof searchParams.page === "string"
+      ? Number.parseInt(searchParams.page, 10)
+      : Array.isArray(searchParams.page)
+        ? Number.parseInt(searchParams.page[0] ?? "", 10)
+        : Number.NaN;
+  const currentPage = Number.isFinite(rawPageParam) && rawPageParam > 0 ? rawPageParam : 1;
+
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [bundle, summary] = await Promise.all([
+  const [bundle, summary, redemptionResult] = await Promise.all([
     getTranslationBundle(preferredLanguage),
     getCreatorCouponSummary(session.user.id),
+    getCreatorCouponRedemptions({
+      creatorId: session.user.id,
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      sortBy: sortConfig.sortBy,
+      sortDirection: sortConfig.sortDirection,
+    }),
   ]);
   const dictionary = bundle.dictionary;
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
@@ -61,7 +108,6 @@ export default async function CreatorDashboardPage() {
       email: session.user.email ?? null,
     },
     coupons: [],
-    redemptions: [],
     totals: {
       usageCount: 0,
       totalRevenueInPaise: 0,
@@ -73,6 +119,46 @@ export default async function CreatorDashboardPage() {
 
   const totalDiscount = couponSummary.totals.totalDiscountInPaise / 100;
   const totalReward = couponSummary.totals.totalRewardInPaise / 100;
+  const hasRedemptions = redemptionResult.redemptions.length > 0;
+  const totalPages =
+    redemptionResult.pageSize > 0
+      ? Math.max(1, Math.ceil(redemptionResult.totalCount / redemptionResult.pageSize))
+      : 1;
+  const hasPrev = redemptionResult.page > 1;
+  const hasNext = redemptionResult.page < totalPages;
+
+  const makeHref = (overrides?: { page?: number; sortKey?: SortKey }) => {
+    const params = new URLSearchParams();
+    const nextSortKey = overrides?.sortKey ?? sortKey;
+    if (nextSortKey !== DEFAULT_SORT_KEY) {
+      params.set("sort", nextSortKey);
+    }
+    const nextPage = overrides?.page ?? redemptionResult.page;
+    if (nextPage > 1) {
+      params.set("page", String(nextPage));
+    }
+    const query = params.toString();
+    return `/creator-dashboard${query ? `?${query}` : ""}`;
+  };
+
+  const sortOptions: Array<{ key: SortKey; label: string }> = [
+    {
+      key: "date_desc",
+      label: t("creator_dashboard.redemptions.sort.newest", "Newest"),
+    },
+    {
+      key: "date_asc",
+      label: t("creator_dashboard.redemptions.sort.oldest", "Oldest"),
+    },
+    {
+      key: "amount_desc",
+      label: t("creator_dashboard.redemptions.sort.highest", "Highest payment"),
+    },
+    {
+      key: "amount_asc",
+      label: t("creator_dashboard.redemptions.sort.lowest", "Lowest payment"),
+    },
+  ];
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
@@ -264,67 +350,126 @@ export default async function CreatorDashboardPage() {
             )}
           </p>
         </header>
-        {couponSummary.redemptions.length === 0 ? (
+        {hasRedemptions ? (
+          <>
+            <div className="flex flex-col gap-2 border-b px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground">
+                  {t("creator_dashboard.redemptions.sort.label", "Sort by")}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {sortOptions.map((option) => {
+                    const isActive = option.key === sortKey;
+                    return (
+                      <Link
+                        key={option.key}
+                        href={makeHref({ sortKey: option.key, page: 1 })}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        }`}
+                        aria-current={isActive ? "true" : "false"}
+                      >
+                        {option.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                <span>
+                  {t("creator_dashboard.redemptions.pagination", "Page {current} of {total}")
+                    .replace("{current}", redemptionResult.page.toString())
+                    .replace("{total}", totalPages.toString())}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Link
+                    href={hasPrev ? makeHref({ page: redemptionResult.page - 1 }) : "#"}
+                    aria-disabled={!hasPrev}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                      hasPrev
+                        ? "hover:bg-muted"
+                        : "cursor-not-allowed opacity-40"
+                    }`}
+                  >
+                    {t("common.previous", "Previous")}
+                  </Link>
+                  <Link
+                    href={hasNext ? makeHref({ page: redemptionResult.page + 1 }) : "#"}
+                    aria-disabled={!hasNext}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                      hasNext
+                        ? "hover:bg-muted"
+                        : "cursor-not-allowed opacity-40"
+                    }`}
+                  >
+                    {t("common.next", "Next")}
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">
+                      {t("creator_dashboard.redemptions.user", "User")}
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      {t("creator_dashboard.redemptions.coupon", "Coupon")}
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      {t("creator_dashboard.redemptions.payment", "Payment")}
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      {t("creator_dashboard.redemptions.discount", "Discount")}
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      {t("creator_dashboard.redemptions.reward", "Your reward")}
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      {t("creator_dashboard.redemptions.date", "Redeemed at")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/70">
+                  {redemptionResult.redemptions.map((redemption) => (
+                    <tr className="bg-card/60" key={redemption.id}>
+                      <td className="px-4 py-3 font-semibold tracking-wide">
+                        {redemption.userLabel}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {redemption.couponCode}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold">
+                          {currencyFormatter.format(redemption.paymentAmountInPaise / 100)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {currencyFormatter.format(redemption.discountAmountInPaise / 100)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold">
+                          {currencyFormatter.format(redemption.rewardInPaise / 100)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {formatDateSafe(redemption.createdAt) ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
           <div className="px-6 py-10 text-center text-muted-foreground text-sm">
             {t(
               "creator_dashboard.redemptions.empty",
               "No redemptions are recorded yet. Share your code to see activity here."
             )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.redemptions.user", "User")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.redemptions.coupon", "Coupon")}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.redemptions.payment", "Payment")}
-                  </th>
-          <th className="px-4 py-3 text-left font-medium">
-            {t("creator_dashboard.redemptions.discount", "Discount")}
-          </th>
-          <th className="px-4 py-3 text-left font-medium">
-            {t("creator_dashboard.redemptions.reward", "Your reward")}
-          </th>
-          <th className="px-4 py-3 text-left font-medium">
-            {t("creator_dashboard.redemptions.date", "Redeemed at")}
-          </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {couponSummary.redemptions.map((redemption) => (
-                  <tr className="bg-card/60" key={redemption.id}>
-                    <td className="px-4 py-3 font-semibold tracking-wide">
-                      {redemption.userLabel}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {redemption.couponCode}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-semibold">
-                        {currencyFormatter.format(redemption.paymentAmountInPaise / 100)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {currencyFormatter.format(redemption.discountAmountInPaise / 100)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-semibold">
-                        {currencyFormatter.format(redemption.rewardInPaise / 100)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {formatDateSafe(redemption.createdAt) ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </section>
