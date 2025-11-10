@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       notes: {
         planId: plan.id,
         userId: session.user.id,
-        couponCode: appliedCoupon?.code ?? undefined,
+        couponCode: appliedCoupon?.code ?? null,
       },
     });
 
