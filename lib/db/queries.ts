@@ -2615,7 +2615,7 @@ export async function recordCouponRedemptionFromTransaction(
           creatorId: coupon.creatorId,
         })
         .from(coupon)
-        .where(eq(coupon.id, transaction.couponId))
+        .where(eq(coupon.id, transaction.couponId as string))
         .limit(1);
 
       if (!couponRecord) {
