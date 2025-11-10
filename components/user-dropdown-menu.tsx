@@ -634,8 +634,8 @@ export function UserDropdownMenu({
                     event,
                     "navigate",
                     "navigate:creator",
-                    () => onNavigate("/creator"),
-                    { skipProgress: shouldSkipPathProgress("/creator") }
+                    () => onNavigate("/creator-dashboard"),
+                    { skipProgress: shouldSkipPathProgress("/creator-dashboard") }
                   )
                 }
               >

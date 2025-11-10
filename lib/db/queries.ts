@@ -149,6 +149,20 @@ function toInteger(value: number | string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function maskUserIdentifier(identifier: string | null | undefined): string {
+  const raw = identifier?.trim() ?? "";
+  const base = raw.includes("@")
+    ? raw.split("@")[0] ?? ""
+    : raw.replace(/\s+/g, "");
+  const source = base.replace(/\s+/g, "");
+  if (!source) {
+    return "User ****";
+  }
+  const visible = source.slice(0, 3) || source;
+  const maskLength = Math.max(source.length - visible.length, 4);
+  return `${visible}${"*".repeat(maskLength)}`;
+}
+
 function calculateRewardAmount(totalRevenueInPaise: number, rewardPercentage: number) {
   if (!(Number.isFinite(totalRevenueInPaise) && totalRevenueInPaise > 0)) {
     return 0;
@@ -2589,6 +2603,7 @@ export async function setCouponStatus({
 }
 
 const VALID_REWARD_STATUSES = new Set(["pending", "paid"]);
+const MAX_CREATOR_REDEMPTIONS = 200;
 
 export async function setCouponRewardStatus({
   id,
@@ -2691,6 +2706,17 @@ export type CreatorCouponSummary = {
     lastRedemptionAt: Date | null;
     estimatedRewardInPaise: number;
   }>;
+  redemptions: Array<{
+    id: string;
+    couponId: string;
+    couponCode: string;
+    orderId: string;
+    userLabel: string;
+    paymentAmountInPaise: number;
+    discountAmountInPaise: number;
+    rewardInPaise: number;
+    createdAt: Date;
+  }>;
   totals: {
     usageCount: number;
     totalRevenueInPaise: number;
@@ -2765,6 +2791,56 @@ export async function getCreatorCouponSummary(
         estimatedRewardInPaise: rewardInPaise,
       };
     });
+    const redemptionRows = await db
+      .select({
+        id: couponRedemption.id,
+        couponId: couponRedemption.couponId,
+        orderId: couponRedemption.orderId,
+        paymentAmount: couponRedemption.paymentAmount,
+        discountAmount: couponRedemption.discountAmount,
+        createdAt: couponRedemption.createdAt,
+        couponCode: coupon.code,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        userFirstName: user.firstName,
+        userLastName: user.lastName,
+        userEmail: user.email,
+      })
+      .from(couponRedemption)
+      .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+      .innerJoin(user, eq(user.id, couponRedemption.userId))
+      .where(eq(coupon.creatorId, creatorId))
+      .orderBy(desc(couponRedemption.createdAt))
+      .limit(MAX_CREATOR_REDEMPTIONS);
+
+    const redemptions = redemptionRows.map((row) => {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter(
+            (value): value is string =>
+              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      return {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        orderId: row.orderId,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+    });
 
     const totals = coupons.reduce(
       (acc, couponRow) => {
@@ -2799,16 +2875,19 @@ export async function getCreatorCouponSummary(
             .trim() || creatorRecord.email,
       },
       coupons,
+      redemptions,
       totals,
     };
   } catch (error) {
     if (isTableMissingError(error)) {
       return null;
     }
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to load creator summary"
-    );
+    console.error("getCreatorCouponSummary failed", error);
+    const cause =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load creator summary";
+    throw new ChatSDKError("bad_request:database", cause);
   }
 }
 

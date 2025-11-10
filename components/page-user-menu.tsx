@@ -66,7 +66,7 @@ export function PageUserMenu({
       void router.prefetch("/admin");
     }
     if (user.role === "creator") {
-      void router.prefetch("/creator");
+      void router.prefetch("/creator-dashboard");
     }
   }, [router, user]);
 
