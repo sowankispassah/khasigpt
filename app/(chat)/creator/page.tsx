@@ -12,10 +12,26 @@ const dateFormatter = new Intl.DateTimeFormat("en-IN", {
   dateStyle: "medium",
   timeZone: "Asia/Kolkata",
 });
+
+const formatDateSafe = (date: Date | string | null | undefined) => {
+  if (!date) {
+    return null;
+  }
+  try {
+    const value = typeof date === "string" ? new Date(date) : date;
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return dateFormatter.format(value);
+  } catch {
+    return null;
+  }
+};
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
-  maximumFractionDigits: 0,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 export default async function CreatorDashboardPage() {
@@ -141,12 +157,10 @@ export default async function CreatorDashboardPage() {
               </thead>
               <tbody className="divide-y divide-border/70">
                 {couponSummary.coupons.map((coupon) => {
-                  const validFromLabel = coupon.validFrom
-                    ? dateFormatter.format(coupon.validFrom)
-                    : "—";
-                  const validToLabel = coupon.validTo
-                    ? dateFormatter.format(coupon.validTo)
-                    : t("creator_dashboard.table.no_end", "No end date");
+                  const validFromLabel = formatDateSafe(coupon.validFrom) ?? "—";
+                  const validToLabel =
+                    formatDateSafe(coupon.validTo) ??
+                    t("creator_dashboard.table.no_end", "No end date");
                   const now = Date.now();
                   const isExpired = Boolean(
                     coupon.validTo && coupon.validTo.getTime() < now
@@ -188,7 +202,7 @@ export default async function CreatorDashboardPage() {
                           <p className="text-muted-foreground text-xs">
                             {t("creator_dashboard.table.last_used", "Last: {date}").replace(
                               "{date}",
-                              dateFormatter.format(coupon.lastRedemptionAt)
+                              formatDateSafe(coupon.lastRedemptionAt) ?? "—"
                             )}
                           </p>
                         ) : null}
@@ -198,7 +212,9 @@ export default async function CreatorDashboardPage() {
                           <div className="flex flex-col gap-1">
                             <span>
                               {coupon.creatorRewardPercentage}% •{" "}
-                              {currencyFormatter.format(coupon.estimatedRewardInPaise / 100)}
+                              <span className="font-semibold">
+                                {currencyFormatter.format(coupon.estimatedRewardInPaise / 100)}
+                              </span>
                             </span>
                             <span
                               className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${

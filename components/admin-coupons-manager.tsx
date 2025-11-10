@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   setCouponStatusAction,
@@ -48,6 +48,13 @@ export function AdminCouponsManager({
   creators: CreatorOption[];
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const formatCurrency = useCallback((valueInPaise: number) => {
+    const hasFraction = valueInPaise % 100 !== 0;
+    return (valueInPaise / 100).toLocaleString("en-IN", {
+      minimumFractionDigits: hasFraction ? 2 : 0,
+      maximumFractionDigits: hasFraction ? 2 : 0,
+    });
+  }, []);
 
   const selectedCoupon = useMemo(() => {
     return coupons.find((coupon) => coupon.id === selectedId) ?? null;
@@ -106,15 +113,11 @@ export function AdminCouponsManager({
         />
         <SummaryCard
           label="Recharge volume"
-          value={`₹${(summary.totalRevenue / 100).toLocaleString("en-IN", {
-            maximumFractionDigits: 0,
-          })}`}
+          value={`₹${formatCurrency(summary.totalRevenue)}`}
         />
         <SummaryCard
           label="Creator rewards"
-          value={`₹${(summary.totalReward / 100).toLocaleString("en-IN", {
-            maximumFractionDigits: 0,
-          })}`}
+          value={`₹${formatCurrency(summary.totalReward)}`}
         />
       </section>
 
@@ -167,9 +170,7 @@ export function AdminCouponsManager({
                         <div className="flex flex-col">
                           <span>{coupon.creatorRewardPercentage}%</span>
                           <span className="text-muted-foreground text-xs">
-                            ₹{(coupon.estimatedRewardInPaise / 100).toLocaleString("en-IN", {
-                              maximumFractionDigits: 0,
-                            })}
+                            ₹{formatCurrency(coupon.estimatedRewardInPaise)}
                           </span>
                         </div>
                       </td>
@@ -210,9 +211,7 @@ export function AdminCouponsManager({
                         {coupon.usageCount.toLocaleString("en-IN")}
                       </td>
                       <td className="px-3 py-3">
-                        ₹{(coupon.totalRevenueInPaise / 100).toLocaleString("en-IN", {
-                          maximumFractionDigits: 0,
-                        })}
+                        ₹{formatCurrency(coupon.totalRevenueInPaise)}
                       </td>
                       <td className="px-3 py-3">
                         <span
@@ -422,18 +421,14 @@ export function AdminCouponsManager({
                     {creator.usage.toLocaleString("en-IN")} redemptions
                   </p>
                 </div>
-                <div className="text-right text-sm">
-                  <div className="font-semibold">
-                    ₹{(creator.revenue / 100).toLocaleString("en-IN", {
-                      maximumFractionDigits: 0,
-                    })}
-                  </div>
-                  <div className="text-muted-foreground text-xs">
-                    Reward ₹{(creator.reward / 100).toLocaleString("en-IN", {
-                      maximumFractionDigits: 0,
-                    })}
-                  </div>
-                </div>
+                    <div className="text-right text-sm">
+                      <div className="font-semibold">
+                        ₹{formatCurrency(creator.revenue)}
+                      </div>
+                      <div className="text-muted-foreground text-xs">
+                        Reward ₹{formatCurrency(creator.reward)}
+                      </div>
+                    </div>
               </li>
             ))}
           </ul>

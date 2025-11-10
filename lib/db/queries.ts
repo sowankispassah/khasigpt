@@ -138,6 +138,32 @@ function normalizeCouponCode(code: string) {
   return code.trim().toUpperCase();
 }
 
+function toInteger(value: number | string | null | undefined): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function calculateRewardAmount(totalRevenueInPaise: number, rewardPercentage: number) {
+  if (!(Number.isFinite(totalRevenueInPaise) && totalRevenueInPaise > 0)) {
+    return 0;
+  }
+  if (!(Number.isFinite(rewardPercentage) && rewardPercentage > 0)) {
+    return 0;
+  }
+  const rawReward = (totalRevenueInPaise * rewardPercentage) / 100;
+  let reward = Math.round(rawReward);
+  if (reward <= 0 && rawReward > 0) {
+    reward = 1;
+  }
+  return reward;
+}
+
 function createCouponStatsSubquery() {
   return db
     .select({
@@ -2359,8 +2385,12 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
         .filter((value): value is string => Boolean(value && value.trim()))
         .join(" ");
 
-      const estimatedRewardInPaise = Math.round(
-        (row.totalRevenueInPaise ?? 0) * (row.creatorRewardPercentage ?? 0) / 100
+      const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+      const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+      const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+      const estimatedRewardInPaise = calculateRewardAmount(
+        grossRevenue,
+        row.creatorRewardPercentage ?? 0
       );
 
       return {
@@ -2379,8 +2409,8 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
         creatorName: computedName || row.creatorEmail || null,
         creatorEmail: row.creatorEmail,
         usageCount: row.usageCount ?? 0,
-        totalRevenueInPaise: row.totalRevenueInPaise ?? 0,
-        totalDiscountInPaise: row.totalDiscountInPaise ?? 0,
+        totalRevenueInPaise,
+        totalDiscountInPaise,
         lastRedemptionAt: row.lastRedemptionAt ?? null,
         estimatedRewardInPaise,
       };
@@ -2711,8 +2741,11 @@ export async function getCreatorCouponSummary(
       .orderBy(desc(coupon.createdAt));
 
     const coupons = couponRows.map((row) => {
-      const rewardInPaise = Math.round(
-        (row.totalRevenueInPaise ?? 0) * (row.creatorRewardPercentage ?? 0) / 100
+      const grossRevenue =
+        (row.totalRevenueInPaise ?? 0) + (row.totalDiscountInPaise ?? 0);
+      const rewardInPaise = calculateRewardAmount(
+        grossRevenue,
+        row.creatorRewardPercentage ?? 0
       );
       return {
         id: row.id,
