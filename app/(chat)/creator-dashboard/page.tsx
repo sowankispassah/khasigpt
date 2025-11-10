@@ -52,10 +52,11 @@ const DEFAULT_SORT_KEY: SortKey = "date_desc";
 const PAGE_SIZE = 10;
 
 type DashboardPageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function CreatorDashboardPage({ searchParams = {} }: DashboardPageProps) {
+export default async function CreatorDashboardPage({ searchParams }: DashboardPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   const session = await auth();
 
   if (!session?.user) {
@@ -67,10 +68,10 @@ export default async function CreatorDashboardPage({ searchParams = {} }: Dashbo
   }
 
   const rawSortParam =
-    typeof searchParams.sort === "string"
-      ? searchParams.sort
-      : Array.isArray(searchParams.sort)
-        ? searchParams.sort[0]
+    typeof resolvedSearchParams.sort === "string"
+      ? resolvedSearchParams.sort
+      : Array.isArray(resolvedSearchParams.sort)
+        ? resolvedSearchParams.sort[0]
         : undefined;
   const sortKey = (rawSortParam as SortKey) && SORT_CONFIG[rawSortParam as SortKey]
     ? (rawSortParam as SortKey)
@@ -78,10 +79,10 @@ export default async function CreatorDashboardPage({ searchParams = {} }: Dashbo
   const sortConfig = SORT_CONFIG[sortKey];
 
   const rawPageParam =
-    typeof searchParams.page === "string"
-      ? Number.parseInt(searchParams.page, 10)
-      : Array.isArray(searchParams.page)
-        ? Number.parseInt(searchParams.page[0] ?? "", 10)
+    typeof resolvedSearchParams.page === "string"
+      ? Number.parseInt(resolvedSearchParams.page, 10)
+      : Array.isArray(resolvedSearchParams.page)
+        ? Number.parseInt(resolvedSearchParams.page[0] ?? "", 10)
         : Number.NaN;
   const currentPage = Number.isFinite(rawPageParam) && rawPageParam > 0 ? rawPageParam : 1;
 
