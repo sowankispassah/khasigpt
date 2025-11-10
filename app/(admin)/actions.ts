@@ -31,6 +31,9 @@ import {
   createLanguageEntry,
   getLanguageByIdRaw,
   updateLanguageActiveState,
+  upsertCoupon,
+  setCouponStatus,
+  setCouponRewardStatus,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import {
@@ -195,6 +198,148 @@ function parseNumber(value: FormDataEntryValue | null | undefined) {
 
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseDateInput(value: FormDataEntryValue | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const normalized = value.toString().trim();
+  if (!normalized) {
+    return null;
+  }
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const IST_OFFSET_MINUTES = 330;
+
+function convertIstDateToUtc(date: Date, hours: number, minutes: number, seconds: number, ms: number) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  const istTimestamp = Date.UTC(year, month, day, hours, minutes, seconds, ms);
+  return new Date(istTimestamp - IST_OFFSET_MINUTES * 60 * 1000);
+}
+
+function normalizeStartOfDayIst(date: Date) {
+  return convertIstDateToUtc(date, 0, 0, 0, 0);
+}
+
+function normalizeEndOfDayIst(date: Date) {
+  return convertIstDateToUtc(date, 23, 59, 59, 999);
+}
+
+export async function upsertCouponAction(formData: FormData) {
+  const actor = await requireAdmin();
+
+  const couponIdRaw = formData.get("couponId");
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const discountPercentage = parseNumber(formData.get("discountPercentage"));
+  const creatorRewardPercentage = parseNumber(
+    formData.get("creatorRewardPercentage")
+  );
+  const creatorId = formData.get("creatorId")?.toString().trim() ?? "";
+  const validFromRaw = parseDateInput(formData.get("validFrom"));
+  const validToRaw = parseDateInput(formData.get("validTo"));
+  const description = formData.get("description")?.toString().trim() ?? null;
+  const isActive = parseBoolean(formData.get("isActive"));
+
+  if (!code || !creatorId || !validFromRaw) {
+    throw new Error("Coupon code, creator, and start date are required");
+  }
+
+  if (validToRaw && validToRaw < validFromRaw) {
+    throw new Error("Valid until date must be after the start date");
+  }
+
+  const validFrom = normalizeStartOfDayIst(validFromRaw);
+  const validTo = validToRaw ? normalizeEndOfDayIst(validToRaw) : null;
+
+  const couponRecord = await upsertCoupon({
+    id: couponIdRaw?.toString().trim() || undefined,
+    code,
+    discountPercentage,
+    creatorRewardPercentage,
+    creatorId,
+    validFrom,
+    validTo,
+    description,
+    isActive,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: couponIdRaw ? "coupon.update" : "coupon.create",
+    target: { couponId: couponRecord.id },
+    metadata: {
+      code: couponRecord.code,
+      creatorId,
+      discountPercentage,
+      creatorRewardPercentage: couponRecord.creatorRewardPercentage,
+    },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/recharge");
+}
+
+export async function setCouponStatusAction(formData: FormData) {
+  const actor = await requireAdmin();
+  const couponId = formData.get("couponId")?.toString().trim();
+  const isActive = parseBoolean(formData.get("isActive"));
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  await setCouponStatus({
+    id: couponId,
+    isActive,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "coupon.status.update",
+    target: { couponId },
+    metadata: { isActive },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/recharge");
+}
+
+export async function setCouponRewardStatusAction(formData: FormData) {
+  const actor = await requireAdmin();
+  const couponId = formData.get("couponId")?.toString().trim();
+  const rewardStatusRaw = formData.get("rewardStatus")?.toString().trim() ?? "";
+  const usageCount = parseNumber(formData.get("usageCount"));
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  if (usageCount <= 0) {
+    throw new Error("Cannot update reward status before any redemptions");
+  }
+
+  const normalizedStatus =
+    rewardStatusRaw === "paid" ? "paid" : "pending";
+
+  await setCouponRewardStatus({
+    id: couponId,
+    rewardStatus: normalizedStatus,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "coupon.reward_status.update",
+    target: { couponId },
+    metadata: { rewardStatus: normalizedStatus },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/recharge");
 }
 
 function isRedirectErrorLike(error: unknown): boolean {

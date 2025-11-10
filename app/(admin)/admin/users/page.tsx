@@ -2,6 +2,7 @@ import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } f
 import { auth } from "@/app/(auth)/auth";
 import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { RoleSubmitButton } from "@/components/role-submit-button";
 import {
   getUserBalanceSummary,
   listPricingPlans,
@@ -124,22 +125,36 @@ function RoleToggleForm({
   currentRole: UserRole;
   isSelf: boolean;
 }) {
-  const nextRole: UserRole = currentRole === "admin" ? "regular" : "admin";
-  const label = currentRole === "admin" ? "Revoke admin" : "Promote to admin";
+  const roles: UserRole[] = ["regular", "creator", "admin"];
 
   return (
     <form
-      action={async () => {
+      action={async (formData) => {
         "use server";
         if (isSelf) {
           return;
         }
-        await setUserRoleAction({ userId, role: nextRole });
+        const role = formData.get("role")?.toString() as UserRole | undefined;
+        if (!role || role === currentRole) {
+          return;
+        }
+        await setUserRoleAction({ userId, role });
       }}
+      className="flex items-center gap-2"
     >
-      <Button disabled={isSelf} size="sm" type="submit" variant="outline">
-        {label}
-      </Button>
+      <select
+        className="h-9 rounded-md border border-input bg-background px-2 text-sm capitalize"
+        defaultValue={currentRole}
+        disabled={isSelf}
+        name="role"
+      >
+        {roles.map((role) => (
+          <option className="capitalize" key={role} value={role}>
+            {role}
+          </option>
+        ))}
+      </select>
+      <RoleSubmitButton disabled={isSelf} />
     </form>
   );
 }

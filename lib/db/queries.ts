@@ -53,6 +53,8 @@ import {
   user,
   userSubscription,
   vote,
+  coupon,
+  couponRedemption,
   type AppSetting,
   type AuditLog,
   type Language,
@@ -71,6 +73,8 @@ import {
   type TokenUsage,
   type User,
   type UserSubscription,
+  type Coupon,
+  type CouponRedemption,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -128,6 +132,30 @@ function convertSubunitAmount(amount: number, currency: string): number {
 
   const divisor = SUBUNIT_DIVISORS[currency?.toUpperCase() ?? ""] ?? 100;
   return numericAmount / divisor;
+}
+
+function normalizeCouponCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+function createCouponStatsSubquery() {
+  return db
+    .select({
+      couponId: couponRedemption.couponId,
+      usageCount: sql<number>`COUNT(${couponRedemption.id})`.as("usageCount"),
+      totalDiscount: sql<number>`COALESCE(SUM(${couponRedemption.discountAmount}), 0)`.as(
+        "totalDiscount"
+      ),
+      totalRevenue: sql<number>`COALESCE(SUM(${couponRedemption.paymentAmount}), 0)`.as(
+        "totalRevenue"
+      ),
+      lastRedemptionAt: sql<Date | null>`MAX(${couponRedemption.createdAt})`.as(
+        "lastRedemptionAt"
+      ),
+    })
+    .from(couponRedemption)
+    .groupBy(couponRedemption.couponId)
+    .as("coupon_stats");
 }
 
 // Optionally, if not using email/pass login, you can
@@ -1318,6 +1346,21 @@ export async function listUsers({
   }
 }
 
+export async function listCreators(): Promise<User[]> {
+  try {
+    return await db
+      .select()
+      .from(user)
+      .where(eq(user.role, "creator"))
+      .orderBy(asc(user.firstName), asc(user.lastName));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to list creators");
+  }
+}
+
 export async function getUserCount(): Promise<number> {
   try {
     const [result] = await db.select({ total: count(user.id) }).from(user);
@@ -2258,6 +2301,482 @@ export async function hardDeletePricingPlan(id: string) {
   }
 }
 
+export type CouponWithStats = {
+  id: string;
+  code: string;
+  discountPercentage: number;
+  creatorRewardPercentage: number;
+  creatorRewardStatus: string;
+  creatorId: string;
+  creatorName: string | null;
+  creatorEmail: string | null;
+  validFrom: Date;
+  validTo: Date | null;
+  isActive: boolean;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  usageCount: number;
+  totalRevenueInPaise: number;
+  totalDiscountInPaise: number;
+  lastRedemptionAt: Date | null;
+  estimatedRewardInPaise: number;
+};
+
+export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
+  try {
+    const stats = createCouponStatsSubquery();
+
+    const rows = await db
+      .select({
+        id: coupon.id,
+        code: coupon.code,
+        discountPercentage: coupon.discountPercentage,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        creatorRewardStatus: coupon.creatorRewardStatus,
+        creatorId: coupon.creatorId,
+        validFrom: coupon.validFrom,
+        validTo: coupon.validTo,
+        isActive: coupon.isActive,
+        description: coupon.description,
+        createdAt: coupon.createdAt,
+        updatedAt: coupon.updatedAt,
+        creatorFirstName: user.firstName,
+        creatorLastName: user.lastName,
+        creatorEmail: user.email,
+        usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+        totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+        totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+        lastRedemptionAt: stats.lastRedemptionAt,
+      })
+      .from(coupon)
+      .leftJoin(user, eq(coupon.creatorId, user.id))
+      .leftJoin(stats, eq(stats.couponId, coupon.id))
+      .orderBy(desc(coupon.createdAt));
+
+    return rows.map((row) => {
+      const computedName = [row.creatorFirstName, row.creatorLastName]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .join(" ");
+
+      const estimatedRewardInPaise = Math.round(
+        (row.totalRevenueInPaise ?? 0) * (row.creatorRewardPercentage ?? 0) / 100
+      );
+
+      return {
+        id: row.id,
+        code: row.code,
+        discountPercentage: row.discountPercentage,
+        creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+        creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+        creatorId: row.creatorId,
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        isActive: row.isActive,
+        description: row.description,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        creatorName: computedName || row.creatorEmail || null,
+        creatorEmail: row.creatorEmail,
+        usageCount: row.usageCount ?? 0,
+        totalRevenueInPaise: row.totalRevenueInPaise ?? 0,
+        totalDiscountInPaise: row.totalDiscountInPaise ?? 0,
+        lastRedemptionAt: row.lastRedemptionAt ?? null,
+        estimatedRewardInPaise,
+      };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load coupon analytics"
+    );
+  }
+}
+
+export async function getCouponById(id: string): Promise<Coupon | null> {
+  try {
+    const [record] = await db
+      .select()
+      .from(coupon)
+      .where(eq(coupon.id, id))
+      .limit(1);
+
+    return record ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to load coupon");
+  }
+}
+
+export async function getCouponByCode(code: string): Promise<Coupon | null> {
+  const normalized = normalizeCouponCode(code);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const [record] = await db
+      .select()
+      .from(coupon)
+      .where(eq(coupon.code, normalized))
+      .limit(1);
+    return record ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to lookup coupon"
+    );
+  }
+}
+
+export async function upsertCoupon({
+  id,
+  code,
+  discountPercentage,
+  creatorRewardPercentage,
+  creatorId,
+  validFrom,
+  validTo,
+  description,
+  isActive = true,
+}: {
+  id?: string | null;
+  code: string;
+  discountPercentage: number;
+  creatorRewardPercentage?: number;
+  creatorId: string;
+  validFrom: Date;
+  validTo: Date | null;
+  description?: string | null;
+  isActive?: boolean;
+}): Promise<Coupon> {
+  const normalizedCode = normalizeCouponCode(code);
+  if (!normalizedCode) {
+    throw new ChatSDKError(
+      "bad_request:coupon",
+      "Coupon code is required"
+    );
+  }
+  const percentage = Math.min(Math.max(Math.round(discountPercentage), 1), 95);
+  const rewardPercentage = Math.min(
+    Math.max(Math.round(creatorRewardPercentage ?? 0), 0),
+    95
+  );
+  const now = new Date();
+
+  try {
+    if (id) {
+      const [updated] = await db
+        .update(coupon)
+        .set({
+          code: normalizedCode,
+          discountPercentage: percentage,
+          creatorRewardPercentage: rewardPercentage,
+          creatorId,
+          validFrom,
+          validTo: validTo ?? null,
+          description: description ?? null,
+          isActive,
+          updatedAt: now,
+        })
+        .where(eq(coupon.id, id))
+        .returning();
+
+      if (!updated) {
+        throw new ChatSDKError(
+          "not_found:coupon",
+          "Coupon not found"
+        );
+      }
+
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(coupon)
+      .values({
+        code: normalizedCode,
+        discountPercentage: percentage,
+        creatorRewardPercentage: rewardPercentage,
+        creatorId,
+        validFrom,
+        validTo: validTo ?? null,
+        description: description ?? null,
+        isActive,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!created) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to create coupon"
+      );
+    }
+
+    return created;
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to save coupon"
+    );
+  }
+}
+
+export async function setCouponStatus({
+  id,
+  isActive,
+}: {
+  id: string;
+  isActive: boolean;
+}): Promise<void> {
+  try {
+    await db
+      .update(coupon)
+      .set({
+        isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(coupon.id, id));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to update coupon");
+  }
+}
+
+const VALID_REWARD_STATUSES = new Set(["pending", "paid"]);
+
+export async function setCouponRewardStatus({
+  id,
+  rewardStatus,
+}: {
+  id: string;
+  rewardStatus: "pending" | "paid";
+}): Promise<void> {
+  if (!VALID_REWARD_STATUSES.has(rewardStatus)) {
+    throw new ChatSDKError("bad_request:coupon", "Invalid reward status");
+  }
+
+  try {
+    await db
+      .update(coupon)
+      .set({
+        creatorRewardStatus: rewardStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(coupon.id, id));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update reward status"
+    );
+  }
+}
+
+export async function recordCouponRedemptionFromTransaction(
+  transaction: PaymentTransaction
+): Promise<void> {
+  if (!transaction.couponId) {
+    return;
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: couponRedemption.id })
+        .from(couponRedemption)
+        .where(eq(couponRedemption.orderId, transaction.orderId))
+        .limit(1);
+
+      if (existing) {
+        return;
+      }
+
+      const [couponRecord] = await tx
+        .select({
+          id: coupon.id,
+          creatorId: coupon.creatorId,
+        })
+        .from(coupon)
+        .where(eq(coupon.id, transaction.couponId))
+        .limit(1);
+
+      if (!couponRecord) {
+        return;
+      }
+
+      await tx.insert(couponRedemption).values({
+        couponId: couponRecord.id,
+        userId: transaction.userId,
+        creatorId: couponRecord.creatorId,
+        planId: transaction.planId,
+        orderId: transaction.orderId,
+        paymentAmount: transaction.amount,
+        discountAmount: Math.max(0, transaction.discountAmount ?? 0),
+      });
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    console.error("Failed to record coupon redemption", error);
+  }
+}
+
+export type CreatorCouponSummary = {
+  creator: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
+  coupons: Array<{
+    id: string;
+    code: string;
+    discountPercentage: number;
+    creatorRewardPercentage: number;
+    creatorRewardStatus: string;
+    validFrom: Date;
+    validTo: Date | null;
+    isActive: boolean;
+    usageCount: number;
+    totalRevenueInPaise: number;
+    totalDiscountInPaise: number;
+    lastRedemptionAt: Date | null;
+    estimatedRewardInPaise: number;
+  }>;
+  totals: {
+    usageCount: number;
+    totalRevenueInPaise: number;
+    totalDiscountInPaise: number;
+    totalRewardInPaise: number;
+    pendingRewardInPaise: number;
+  };
+};
+
+export async function getCreatorCouponSummary(
+  creatorId: string
+): Promise<CreatorCouponSummary | null> {
+  try {
+    const [creatorRecord] = await db
+      .select({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      })
+      .from(user)
+      .where(eq(user.id, creatorId))
+      .limit(1);
+
+    if (!creatorRecord) {
+      return null;
+    }
+
+    const stats = createCouponStatsSubquery();
+    const couponRows = await db
+      .select({
+        id: coupon.id,
+        code: coupon.code,
+        discountPercentage: coupon.discountPercentage,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        creatorRewardStatus: coupon.creatorRewardStatus,
+        validFrom: coupon.validFrom,
+        validTo: coupon.validTo,
+        isActive: coupon.isActive,
+        usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+        totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+        totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+        lastRedemptionAt: stats.lastRedemptionAt,
+      })
+      .from(coupon)
+      .leftJoin(stats, eq(stats.couponId, coupon.id))
+      .where(eq(coupon.creatorId, creatorId))
+      .orderBy(desc(coupon.createdAt));
+
+    const coupons = couponRows.map((row) => {
+      const rewardInPaise = Math.round(
+        (row.totalRevenueInPaise ?? 0) * (row.creatorRewardPercentage ?? 0) / 100
+      );
+      return {
+        id: row.id,
+        code: row.code,
+        discountPercentage: row.discountPercentage,
+        creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+        creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        isActive: row.isActive,
+        usageCount: row.usageCount ?? 0,
+        totalRevenueInPaise: row.totalRevenueInPaise ?? 0,
+        totalDiscountInPaise: row.totalDiscountInPaise ?? 0,
+        lastRedemptionAt: row.lastRedemptionAt ?? null,
+        estimatedRewardInPaise: rewardInPaise,
+      };
+    });
+
+    const totals = coupons.reduce(
+      (acc, couponRow) => {
+        acc.usageCount += couponRow.usageCount;
+        acc.totalRevenueInPaise += couponRow.totalRevenueInPaise;
+        acc.totalDiscountInPaise += couponRow.totalDiscountInPaise;
+        acc.totalRewardInPaise += couponRow.estimatedRewardInPaise;
+        if (couponRow.creatorRewardStatus === "paid") {
+          acc.pendingRewardInPaise += 0;
+        } else {
+          acc.pendingRewardInPaise += couponRow.estimatedRewardInPaise;
+        }
+        return acc;
+      },
+      {
+        usageCount: 0,
+        totalRevenueInPaise: 0,
+        totalDiscountInPaise: 0,
+        totalRewardInPaise: 0,
+        pendingRewardInPaise: 0,
+      }
+    );
+
+    return {
+      creator: {
+        id: creatorRecord.id,
+        email: creatorRecord.email,
+        name:
+          [creatorRecord.firstName, creatorRecord.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || creatorRecord.email,
+      },
+      coupons,
+      totals,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load creator summary"
+    );
+  }
+}
+
 export async function createPaymentTransaction({
   userId,
   planId,
@@ -2265,6 +2784,9 @@ export async function createPaymentTransaction({
   amount,
   currency,
   notes = null,
+  couponId = null,
+  creatorId = null,
+  discountAmount = 0,
 }: {
   userId: string;
   planId: string;
@@ -2272,6 +2794,9 @@ export async function createPaymentTransaction({
   amount: number;
   currency: string;
   notes?: Record<string, unknown> | null;
+  couponId?: string | null;
+  creatorId?: string | null;
+  discountAmount?: number;
 }): Promise<PaymentTransaction> {
   try {
     return await db.transaction(async (tx) => {
@@ -2293,6 +2818,9 @@ export async function createPaymentTransaction({
           planId,
           amount,
           currency,
+          couponId,
+          creatorId,
+          discountAmount: Math.max(0, discountAmount ?? 0),
           notes: notes ?? null,
         })
         .returning();

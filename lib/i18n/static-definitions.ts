@@ -87,6 +87,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "SR-only label for the unauthenticated menu button.",
   },
   {
+    key: "user_menu.creator_dashboard",
+    defaultText: "Creator dashboard",
+    description: "Menu item linking to the creator performance dashboard.",
+  },
+  {
     key: "common.cancel",
     defaultText: "Cancel",
     description: "Generic cancel action label.",
@@ -936,6 +941,111 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Fallback status message when an unexpected error occurs.",
   },
   {
+    key: "recharge.dialog.title",
+    defaultText: "Review your recharge",
+    description: "Title for the order confirmation dialog on the recharge page.",
+  },
+  {
+    key: "recharge.dialog.description",
+    defaultText: "Confirm the plan details and apply a coupon before continuing to payment.",
+    description: "Helper text shown in the order confirmation dialog.",
+  },
+  {
+    key: "recharge.dialog.plan_placeholder",
+    defaultText: "Selected plan",
+    description: "Fallback label when the plan name is loading inside the dialog.",
+  },
+  {
+    key: "recharge.dialog.summary.discount",
+    defaultText: "Coupon discount",
+    description: "Label for the discount row in the order summary.",
+  },
+  {
+    key: "recharge.dialog.summary.total",
+    defaultText: "Total due",
+    description: "Label for the final amount row in the order summary.",
+  },
+  {
+    key: "recharge.dialog.coupon_label",
+    defaultText: "Coupon code",
+    description: "Label for the coupon input inside the order dialog.",
+  },
+  {
+    key: "recharge.dialog.coupon_helper",
+    defaultText: "Coupons are optional. Leave blank if you don't have one.",
+    description: "Helper text below the coupon input.",
+  },
+  {
+    key: "recharge.dialog.coupon_required",
+    defaultText: "Enter a coupon code to validate.",
+    description: "Inline error shown when the user tries to validate with an empty code.",
+  },
+  {
+    key: "recharge.dialog.coupon_invalid",
+    defaultText: "Coupon is invalid or expired.",
+    description: "Fallback error when coupon validation fails.",
+  },
+  {
+    key: "recharge.dialog.coupon_applied",
+    defaultText: "Coupon applied successfully.",
+    description: "Status message after a coupon validates in the dialog.",
+  },
+  {
+    key: "recharge.dialog.validate",
+    defaultText: "Validate coupon",
+    description: "Button label for validating a coupon in the dialog.",
+  },
+  {
+    key: "recharge.dialog.validating",
+    defaultText: "Validating...",
+    description: "Button label while the coupon validation request is pending.",
+  },
+  {
+    key: "recharge.dialog.proceed",
+    defaultText: "Proceed to payment",
+    description: "Primary CTA label in the order confirmation dialog.",
+  },
+  {
+    key: "recharge.status.coupon_applied",
+    defaultText: "Coupon {code} applied. You save {amount} on this recharge.",
+    description: "Toast message shown when a coupon is successfully applied.",
+  },
+  {
+    key: "recharge.coupon.label",
+    defaultText: "Have a coupon code?",
+    description: "Heading for the recharge coupon input section.",
+  },
+  {
+    key: "recharge.coupon.help",
+    defaultText: "Enter a creator coupon to unlock discounts during checkout.",
+    description: "Helper text beneath the coupon input label.",
+  },
+  {
+    key: "recharge.coupon.input_label",
+    defaultText: "Coupon code",
+    description: "Accessible label for the coupon code input.",
+  },
+  {
+    key: "recharge.coupon.placeholder",
+    defaultText: "CREATOR10",
+    description: "Placeholder text for the coupon input field.",
+  },
+  {
+    key: "recharge.coupon.clear",
+    defaultText: "Clear",
+    description: "Button label to clear the current coupon input.",
+  },
+  {
+    key: "recharge.coupon.applied_summary",
+    defaultText: "Coupon {code} will save you ₹{amount} on the next recharge.",
+    description: "Helper text displayed when a coupon is queued for checkout.",
+  },
+  {
+    key: "recharge.coupon.pending",
+    defaultText: "Coupons are validated when you start the payment.",
+    description: "Helper text shown when no coupon is active yet.",
+  },
+  {
     key: "recharge.plan.badge.recommended",
     defaultText: "Recommended",
     description: "Badge shown on the recommended plan card.",
@@ -1556,5 +1666,132 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "forum.thread.actions.delete_confirm",
     defaultText: "Are you sure you want to delete this thread? This action cannot be undone.",
     description: "Confirmation message before deleting a thread.",
+  },
+  {
+    key: "creator_dashboard.tagline",
+    defaultText: "Creator dashboard",
+    description: "Tagline shown at the top of the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.title",
+    defaultText: "Share coupons and track performance",
+    description: "Main heading for the creator dashboard page.",
+  },
+  {
+    key: "creator_dashboard.subtitle",
+    defaultText:
+      "Monitor how your community redeems coupons, how much revenue you helped generate, and when each code expires.",
+    description: "Subtitle describing the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.metrics.redemptions",
+    defaultText: "Total redemptions",
+    description: "Metric label indicating the total number of coupon redemptions.",
+  },
+  {
+    key: "creator_dashboard.metrics.revenue",
+    defaultText: "Recharge volume",
+    description: "Metric label for total recharge revenue generated by coupons.",
+  },
+  {
+    key: "creator_dashboard.metrics.savings",
+    defaultText: "User savings",
+    description: "Metric label showing the total discount unlocked for users.",
+  },
+  {
+    key: "creator_dashboard.metrics.rewards",
+    defaultText: "Your rewards",
+    description: "Metric label summarising creator reward payouts.",
+  },
+  {
+    key: "coupon.reward_status.pending",
+    defaultText: "Payment pending",
+    description: "Badge label when creator rewards are pending payment.",
+  },
+  {
+    key: "coupon.reward_status.paid",
+    defaultText: "Paid",
+    description: "Badge label when creator rewards are paid.",
+  },
+  {
+    key: "coupon.reward_status.none",
+    defaultText: "No redemptions yet",
+    description: "Helper text when rewards are unavailable due to zero redemptions.",
+  },
+  {
+    key: "creator_dashboard.coupons.title",
+    defaultText: "Your coupon codes",
+    description: "Section title for the coupon table on the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.coupons.subtitle",
+    defaultText: "Review status, validity, and performance for every code assigned to you.",
+    description: "Helper text beneath the coupon section heading.",
+  },
+  {
+    key: "creator_dashboard.coupons.empty",
+    defaultText:
+      "No coupons are assigned to you yet. Once an admin shares a code, it will appear here.",
+    description: "Empty-state text when a creator has no coupons.",
+  },
+  {
+    key: "creator_dashboard.table.code",
+    defaultText: "Code",
+    description: "Table column label for the coupon code.",
+  },
+  {
+    key: "creator_dashboard.table.discount",
+    defaultText: "Discount",
+    description: "Table column label for the coupon discount percentage.",
+  },
+  {
+    key: "creator_dashboard.table.validity",
+    defaultText: "Validity",
+    description: "Table column label for coupon validity dates.",
+  },
+  {
+    key: "creator_dashboard.table.status",
+    defaultText: "Status",
+    description: "Table column label for coupon status.",
+  },
+  {
+    key: "creator_dashboard.table.usage",
+    defaultText: "Usage",
+    description: "Table column label for coupon redemption counts.",
+  },
+  {
+    key: "creator_dashboard.table.revenue",
+    defaultText: "Revenue",
+    description: "Table column label for revenue generated per coupon.",
+  },
+  {
+    key: "creator_dashboard.table.reward",
+    defaultText: "Reward",
+    description: "Table column label for creator reward percentage and payout.",
+  },
+  {
+    key: "creator_dashboard.table.no_end",
+    defaultText: "No end date",
+    description: "Helper text when a coupon has no expiration.",
+  },
+  {
+    key: "creator_dashboard.status.expired",
+    defaultText: "Expired",
+    description: "Badge label for expired coupons.",
+  },
+  {
+    key: "creator_dashboard.status.active",
+    defaultText: "Active",
+    description: "Badge label for active coupons.",
+  },
+  {
+    key: "creator_dashboard.status.inactive",
+    defaultText: "Inactive",
+    description: "Badge label for inactive coupons.",
+  },
+  {
+    key: "creator_dashboard.table.last_used",
+    defaultText: "Last: {date}",
+    description: "Helper text showing the last redemption date for a coupon.",
   },
 ];

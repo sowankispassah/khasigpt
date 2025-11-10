@@ -1,11 +1,20 @@
 "use client";
 
+import type React from "react";
 import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/components/language-provider";
@@ -80,6 +89,12 @@ type RazorpayOrderResponse = {
     name: string;
     description: string | null;
   };
+  originalAmount?: number;
+  discountAmount: number;
+  appliedCoupon: {
+    code: string;
+    discountPercentage: number;
+  } | null;
 };
 
 type RazorpaySuccessResponse = {
@@ -95,8 +110,21 @@ export function RechargePlans({
   user,
 }: RechargePlansProps) {
   const router = useRouter();
-  const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusMessage>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanForClient | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [couponValidation, setCouponValidation] = useState<{
+    code: string;
+    discountAmount: number;
+    discountPercentage: number;
+    finalAmount: number;
+  } | null>(null);
+  const [couponFeedback, setCouponFeedback] = useState<
+    { type: "success" | "error"; message: string } | null
+  >(null);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const { translate } = useTranslation();
 
   const sortedPlans = useMemo(() => {
@@ -108,14 +136,68 @@ export function RechargePlans({
     });
   }, [plans]);
 
-  const handleCheckout = useCallback(
-    async (plan: PlanForClient) => {
+  const resetDialogState = useCallback(() => {
+    setCouponInput("");
+    setCouponValidation(null);
+    setCouponFeedback(null);
+  }, []);
+
+  const openPlanDialog = useCallback(
+    (plan: PlanForClient) => {
+      setSelectedPlan(plan);
+      resetDialogState();
+      setIsDialogOpen(true);
+    },
+    [resetDialogState]
+  );
+
+  const closePlanDialog = useCallback(() => {
+    setIsDialogOpen(false);
+    setSelectedPlan(null);
+    resetDialogState();
+  }, [resetDialogState]);
+
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        if (isProcessingPayment) {
+          return;
+        }
+        closePlanDialog();
+      }
+    },
+    [closePlanDialog, isProcessingPayment]
+  );
+
+  const normalizedCouponInput = couponInput.trim().toUpperCase();
+  const isCouponDirty =
+    normalizedCouponInput.length > 0 &&
+    couponValidation?.code !== normalizedCouponInput;
+  const appliedDiscount =
+    couponValidation && couponValidation.code === normalizedCouponInput
+      ? couponValidation.discountAmount
+      : 0;
+  const selectedPlanPrice = selectedPlan?.priceInPaise ?? 0;
+  const finalAmountInPaise = Math.max(selectedPlanPrice - appliedDiscount, 0);
+
+  const formatPaise = useCallback((value: number) => {
+    const hasFraction = value % 100 !== 0;
+    return `₹${(value / 100).toLocaleString("en-IN", {
+      minimumFractionDigits: hasFraction ? 2 : 0,
+      maximumFractionDigits: hasFraction ? 2 : 0,
+    })}`;
+  }, []);
+
+
+  const processCheckout = useCallback(
+    async (plan: PlanForClient, couponCode?: string | null) => {
       if (plan.priceInPaise === 0) {
-        return;
+        return true;
       }
 
+      let success = false;
       try {
-        setLoadingPlanId(plan.id);
+        setIsProcessingPayment(true);
         setStatus(null);
 
         await loadRazorpayCheckout();
@@ -123,7 +205,10 @@ export function RechargePlans({
         const orderResponse = await fetch("/api/billing/razorpay/order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planId: plan.id }),
+          body: JSON.stringify({
+            planId: plan.id,
+            couponCode: couponCode ?? undefined,
+          }),
         });
 
         if (!orderResponse.ok) {
@@ -137,13 +222,24 @@ export function RechargePlans({
           );
         }
 
-        const {
-          key,
-          orderId,
-          amount,
-          currency,
-          plan: orderPlan,
-        } = (await orderResponse.json()) as RazorpayOrderResponse;
+        const responseBody = (await orderResponse.json()) as RazorpayOrderResponse;
+        const { key, orderId, amount, currency, plan: orderPlan } = responseBody;
+
+        if (responseBody.appliedCoupon && responseBody.discountAmount > 0) {
+          const savings = `₹${(responseBody.discountAmount / 100).toLocaleString("en-IN", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          })}`;
+          setStatus({
+            type: "info",
+            message: translate(
+              "recharge.status.coupon_applied",
+              "Coupon {code} applied. You save {amount} on this recharge."
+            )
+              .replace("{code}", responseBody.appliedCoupon.code)
+              .replace("{amount}", savings),
+          });
+        }
 
         const Razorpay = window.Razorpay;
         if (!Razorpay) {
@@ -167,23 +263,18 @@ export function RechargePlans({
             order_id: orderId,
             handler: async (response: RazorpaySuccessResponse) => {
               try {
-                const verifyResponse = await fetch(
-                  "/api/billing/razorpay/verify",
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      orderId: response.razorpay_order_id,
-                      paymentId: response.razorpay_payment_id,
-                      signature: response.razorpay_signature,
-                    }),
-                  }
-                );
+                const verifyResponse = await fetch("/api/billing/razorpay/verify", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    orderId: response.razorpay_order_id,
+                    paymentId: response.razorpay_payment_id,
+                    signature: response.razorpay_signature,
+                  }),
+                });
 
                 if (!verifyResponse.ok) {
-                  const errorBody = await verifyResponse
-                    .json()
-                    .catch(() => null);
+                  const errorBody = await verifyResponse.json().catch(() => null);
                   throw new Error(
                     errorBody?.message ??
                       translate(
@@ -240,6 +331,7 @@ export function RechargePlans({
 
           checkout.open();
         });
+        success = true;
       } catch (error) {
         const message =
           error instanceof Error
@@ -249,12 +341,125 @@ export function RechargePlans({
                 "Something went wrong while processing the payment."
               );
         setStatus({ type: "error", message });
+        success = false;
       } finally {
-        setLoadingPlanId(null);
+        setIsProcessingPayment(false);
       }
+      return success;
     },
-    [router, user.name, user.email, user.contact]
+    [router, translate, user.contact, user.email, user.name]
   );
+
+  const handleCouponInputChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value
+        .toUpperCase()
+        .replace(/[^A-Z0-9_-]/g, "");
+      setCouponInput(value);
+      if (couponValidation && couponValidation.code !== value) {
+        setCouponValidation(null);
+      }
+      setCouponFeedback(null);
+    },
+    [couponValidation]
+  );
+
+  const handleValidateCoupon = useCallback(async () => {
+    if (!selectedPlan) {
+      return;
+    }
+    if (!normalizedCouponInput) {
+      setCouponFeedback({
+        type: "error",
+        message: translate(
+          "recharge.dialog.coupon_required",
+          "Enter a coupon code to validate."
+        ),
+      });
+      setCouponValidation(null);
+      return;
+    }
+
+    setIsValidatingCoupon(true);
+    setCouponFeedback(null);
+    try {
+      const response = await fetch("/api/billing/coupon/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId: selectedPlan.id,
+          couponCode: normalizedCouponInput,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(
+          errorBody?.message ??
+            translate("recharge.dialog.coupon_invalid", "Coupon is invalid.")
+        );
+      }
+
+      const data = (await response.json()) as {
+        discountAmount: number;
+        finalAmount: number;
+        coupon: { code: string; discountPercentage: number };
+      };
+
+      setCouponValidation({
+        code: data.coupon.code,
+        discountAmount: data.discountAmount,
+        discountPercentage: data.coupon.discountPercentage,
+        finalAmount: data.finalAmount,
+      });
+      setCouponFeedback({
+        type: "success",
+        message: translate(
+          "recharge.dialog.coupon_applied",
+          "Coupon applied successfully."
+        ),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : translate("recharge.dialog.coupon_invalid", "Coupon is invalid.");
+      setCouponValidation(null);
+      setCouponFeedback({ type: "error", message });
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  }, [
+    normalizedCouponInput,
+    selectedPlan,
+    translate,
+  ]);
+
+  const handleProceedToPayment = useCallback(async () => {
+    if (!selectedPlan) {
+      return;
+    }
+    const couponToApply =
+      couponValidation && couponValidation.code === normalizedCouponInput
+        ? couponValidation.code
+        : undefined;
+
+    const success = await processCheckout(selectedPlan, couponToApply);
+    if (success) {
+      closePlanDialog();
+    }
+  }, [
+    closePlanDialog,
+    normalizedCouponInput,
+    couponValidation,
+    processCheckout,
+    selectedPlan,
+  ]);
+
+  const canProceedToPayment =
+    Boolean(selectedPlan) &&
+    !isProcessingPayment &&
+    (!normalizedCouponInput || !isCouponDirty);
 
   return (
     <div className="space-y-4">
@@ -312,8 +517,6 @@ export function RechargePlans({
               : translate("recharge.plan.button.get", "Get {plan}").replace("{plan}", plan.name);
 
           const buttonVariant = isFreePlan ? "outline" : "default";
-
-          const isLoading = loadingPlanId === plan.id;
 
           return (
             <div
@@ -413,26 +616,12 @@ export function RechargePlans({
                   ) : (
                     <Button
                       className="w-full rounded-full"
-                      disabled={isLoading}
-                      onClick={() => handleCheckout(plan)}
+                      disabled={isProcessingPayment}
+                      onClick={() => openPlanDialog(plan)}
                       type="button"
                       variant={buttonVariant}
                     >
-                      {isLoading ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="h-4 w-4 animate-spin">
-                            <LoaderIcon size={16} />
-                          </span>
-                          <span>
-                            {translate(
-                              "recharge.plan.button.processing",
-                              "Processing..."
-                            )}
-                          </span>
-                        </span>
-                      ) : (
-                        buttonLabel
-                      )}
+                      {buttonLabel}
                     </Button>
                   )}
                 </div>
@@ -441,6 +630,144 @@ export function RechargePlans({
           );
         })}
       </section>
+
+      <AlertDialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {translate("recharge.dialog.title", "Review your recharge")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {translate(
+                "recharge.dialog.description",
+                "Confirm the plan details and apply a coupon before continuing to payment."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-5">
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">
+                  {selectedPlan?.name ?? translate("recharge.dialog.plan_placeholder", "Selected plan")}
+                </span>
+                <span>{formatPaise(selectedPlanPrice)}</span>
+              </div>
+              {selectedPlan?.billingCycleDays ? (
+                <p className="text-muted-foreground text-xs">
+                  {translate("recharge.plan.validity", "Validity: {days} days").replace(
+                    "{days}",
+                    String(selectedPlan.billingCycleDays)
+                  )}
+                </p>
+              ) : null}
+              {appliedDiscount > 0 ? (
+                <div className="mt-3 flex items-center justify-between text-emerald-600 text-sm">
+                  <span>
+                    {translate("recharge.dialog.summary.discount", "Coupon discount")}
+                    {couponValidation?.discountPercentage
+                      ? ` (${couponValidation.discountPercentage}%)`
+                      : ""}
+                  </span>
+                  <span>-{formatPaise(appliedDiscount)}</span>
+                </div>
+              ) : null}
+              <div className="mt-4 flex items-center justify-between text-base font-semibold">
+                <span>{translate("recharge.dialog.summary.total", "Total due")}</span>
+                <span>{formatPaise(finalAmountInPaise)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {translate("recharge.dialog.coupon_label", "Coupon code")}
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  aria-label={translate("recharge.dialog.coupon_label", "Coupon code")}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 font-mono text-sm uppercase tracking-wide"
+                  maxLength={32}
+                  onChange={handleCouponInputChange}
+                  placeholder={translate("recharge.coupon.placeholder", "CREATOR10")}
+                  spellCheck={false}
+                  value={couponInput}
+                />
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={
+                    !selectedPlan ||
+                    !normalizedCouponInput ||
+                    isValidatingCoupon
+                  }
+                  onClick={handleValidateCoupon}
+                  type="button"
+                  variant="outline"
+                >
+                  {isValidatingCoupon ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin">
+                        <LoaderIcon size={14} />
+                      </span>
+                      <span>
+                        {translate("recharge.dialog.validating", "Validating...")}
+                      </span>
+                    </span>
+                  ) : (
+                    translate("recharge.dialog.validate", "Validate coupon")
+                  )}
+                </Button>
+              </div>
+              {couponFeedback ? (
+                <p
+                  className={cn(
+                    "text-sm",
+                    couponFeedback.type === "error"
+                      ? "text-destructive"
+                      : "text-emerald-600"
+                  )}
+                >
+                  {couponFeedback.message}
+                </p>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  {translate(
+                    "recharge.dialog.coupon_helper",
+                    "Coupons are optional. Leave blank if you don't have one."
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <Button
+              disabled={isProcessingPayment}
+              onClick={closePlanDialog}
+              type="button"
+              variant="ghost"
+            >
+              {translate("common.cancel", "Cancel")}
+            </Button>
+            <Button
+              className="min-w-[150px]"
+              disabled={!canProceedToPayment}
+              onClick={handleProceedToPayment}
+              type="button"
+            >
+              {isProcessingPayment ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin">
+                    <LoaderIcon size={16} />
+                  </span>
+                  <span>
+                    {translate("recharge.plan.button.processing", "Processing...")}
+                  </span>
+                </span>
+              ) : (
+                translate("recharge.dialog.proceed", "Proceed to payment")
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

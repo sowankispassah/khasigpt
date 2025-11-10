@@ -20,6 +20,7 @@ import { cn, fetcher } from "@/lib/utils";
 type UserDropdownMenuProps = {
   trigger: React.ReactNode;
   isAdmin: boolean;
+  isCreator?: boolean;
   isAuthenticated: boolean;
   resolvedTheme: string | undefined;
   onToggleTheme: () => void;
@@ -149,6 +150,7 @@ UserMenuTrigger.displayName = "UserMenuTrigger";
 export function UserDropdownMenu({
   trigger,
   isAdmin,
+  isCreator = false,
   isAuthenticated,
   resolvedTheme,
   onToggleTheme,
@@ -620,6 +622,25 @@ export function UserDropdownMenu({
                     "user_menu.open_admin_console",
                     "Open admin console"
                   )}
+                </span>
+              </DropdownMenuItem>
+            ) : null}
+            {isCreator ? (
+              <DropdownMenuItem
+                className="cursor-pointer"
+                data-testid="user-nav-item-creator"
+                onSelect={(event) =>
+                  handleSelect(
+                    event,
+                    "navigate",
+                    "navigate:creator",
+                    () => onNavigate("/creator"),
+                    { skipProgress: shouldSkipPathProgress("/creator") }
+                  )
+                }
+              >
+                <span className="flex w-full items-center justify-between gap-2">
+                  {translate("user_menu.creator_dashboard", "Creator dashboard")}
                 </span>
               </DropdownMenuItem>
             ) : null}

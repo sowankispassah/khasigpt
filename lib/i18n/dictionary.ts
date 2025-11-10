@@ -271,8 +271,6 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
   });
 }
 
-scheduleBundleRefresh("__default", null);
-
 export async function getTranslationBundle(
   preferredCode?: string | null
 ): Promise<TranslationBundle> {

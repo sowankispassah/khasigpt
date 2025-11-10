@@ -65,6 +65,9 @@ export function PageUserMenu({
     if (user.role === "admin") {
       void router.prefetch("/admin");
     }
+    if (user.role === "creator") {
+      void router.prefetch("/creator");
+    }
   }, [router, user]);
 
   const beginAction = () => {
@@ -129,6 +132,7 @@ export function PageUserMenu({
         <UserDropdownMenu
           align="end"
           isAdmin={user.role === "admin"}
+          isCreator={user.role === "creator"}
           isAuthenticated
           isBusy={isBusy}
           forumEnabled={forumEnabled}
@@ -158,6 +162,7 @@ export function PageUserMenu({
         <UserDropdownMenu
           align="end"
           isAdmin={false}
+          isCreator={false}
           isAuthenticated={false}
           isBusy={isBusy}
           forumEnabled={forumEnabled}

@@ -19,7 +19,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AppUsage } from "../usage";
 
-export const userRoleEnum = pgEnum("user_role", ["regular", "admin"]);
+export const userRoleEnum = pgEnum("user_role", ["regular", "creator", "admin"]);
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
 export const authProviderEnum = pgEnum("auth_provider", [
@@ -156,6 +156,36 @@ export const pricingPlan = pgTable("PricingPlan", {
 
 export type PricingPlan = InferSelectModel<typeof pricingPlan>;
 
+export const coupon = pgTable(
+  "Coupon",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    code: varchar("code", { length: 64 }).notNull(),
+    discountPercentage: integer("discountPercentage").notNull(),
+    creatorRewardPercentage: integer("creatorRewardPercentage")
+      .notNull()
+      .default(0),
+    creatorRewardStatus: varchar("creatorRewardStatus", { length: 16 })
+      .notNull()
+      .default("pending"),
+    creatorId: uuid("creatorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    validFrom: timestamp("validFrom").notNull().defaultNow(),
+    validTo: timestamp("validTo"),
+    isActive: boolean("isActive").notNull().default(true),
+    description: text("description"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex("Coupon_code_idx").on(table.code),
+    creatorIdx: index("Coupon_creator_idx").on(table.creatorId),
+  })
+);
+
+export type Coupon = InferSelectModel<typeof coupon>;
+
 export const paymentTransactionStatusEnum = pgEnum(
   "payment_transaction_status",
   ["pending", "processing", "paid", "failed"]
@@ -171,11 +201,18 @@ export const paymentTransaction = pgTable(
     planId: uuid("planId")
       .notNull()
       .references(() => pricingPlan.id, { onDelete: "restrict" }),
+    couponId: uuid("couponId").references(() => coupon.id, {
+      onDelete: "set null",
+    }),
+    creatorId: uuid("creatorId").references(() => user.id, {
+      onDelete: "set null",
+    }),
     status: paymentTransactionStatusEnum("status")
       .notNull()
       .default("pending"),
     amount: integer("amount").notNull(),
     currency: varchar("currency", { length: 16 }).notNull(),
+    discountAmount: integer("discountAmount").notNull().default(0),
     notes: jsonb("notes"),
     paymentId: varchar("paymentId", { length: 128 }),
     signature: varchar("signature", { length: 256 }),
@@ -186,10 +223,46 @@ export const paymentTransaction = pgTable(
     userIdx: index("PaymentTransaction_user_idx").on(table.userId),
     planIdx: index("PaymentTransaction_plan_idx").on(table.planId),
     statusIdx: index("PaymentTransaction_status_idx").on(table.status),
+    couponIdx: index("PaymentTransaction_coupon_idx").on(table.couponId),
   })
 );
 
 export type PaymentTransaction = InferSelectModel<typeof paymentTransaction>;
+
+export const couponRedemption = pgTable(
+  "CouponRedemption",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    couponId: uuid("couponId")
+      .notNull()
+      .references(() => coupon.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    creatorId: uuid("creatorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    planId: uuid("planId")
+      .notNull()
+      .references(() => pricingPlan.id, { onDelete: "restrict" }),
+    orderId: varchar("orderId", { length: 64 })
+      .notNull()
+      .references(() => paymentTransaction.orderId, {
+        onDelete: "cascade",
+      }),
+    paymentAmount: integer("paymentAmount").notNull(),
+    discountAmount: integer("discountAmount").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    couponIdx: index("CouponRedemption_coupon_idx").on(table.couponId),
+    creatorIdx: index("CouponRedemption_creator_idx").on(table.creatorId),
+    userIdx: index("CouponRedemption_user_idx").on(table.userId),
+    orderIdx: uniqueIndex("CouponRedemption_order_idx").on(table.orderId),
+  })
+);
+
+export type CouponRedemption = InferSelectModel<typeof couponRedemption>;
 
 export const userSubscription = pgTable("UserSubscription", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),

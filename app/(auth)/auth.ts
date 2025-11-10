@@ -12,7 +12,7 @@ import {
 } from "@/lib/security/rate-limit";
 import { authConfig } from "./auth.config";
 
-export type UserRole = "regular" | "admin";
+export type UserRole = "regular" | "creator" | "admin";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -210,6 +210,19 @@ export const {
         }
       }
 
+      let cachedDbUser: Awaited<ReturnType<typeof getUserById>> | null | undefined;
+      const ensureDbUser = async () => {
+        if (!token.id) {
+          cachedDbUser = null;
+          return null;
+        }
+        if (typeof cachedDbUser !== "undefined") {
+          return cachedDbUser;
+        }
+        cachedDbUser = await getUserById(token.id as string);
+        return cachedDbUser;
+      };
+
       if (trigger === "update" && session) {
         if ("imageVersion" in session) {
           token.imageVersion = (session.imageVersion as string | null) ?? null;
@@ -235,7 +248,7 @@ export const {
           typeof token.lastName === "undefined" ||
           token.lastName === null)
       ) {
-        const record = await getUserById(token.id as string);
+        const record = await ensureDbUser();
         if (record) {
           if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
             token.dateOfBirth = record.dateOfBirth ?? null;
@@ -262,6 +275,17 @@ export const {
       }
       if (typeof token.lastName === "undefined") {
         token.lastName = null;
+      }
+
+      if (token.id) {
+        const record = await ensureDbUser();
+        if (record?.role) {
+          token.role = record.role as UserRole;
+        }
+      }
+
+      if (!token.role) {
+        token.role = "regular";
       }
 
       return token;
