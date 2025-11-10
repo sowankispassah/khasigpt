@@ -2741,8 +2741,10 @@ export async function getCreatorCouponSummary(
       .orderBy(desc(coupon.createdAt));
 
     const coupons = couponRows.map((row) => {
-      const grossRevenue =
-        (row.totalRevenueInPaise ?? 0) + (row.totalDiscountInPaise ?? 0);
+      const usageCount = toInteger(row.usageCount);
+      const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+      const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+      const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
       const rewardInPaise = calculateRewardAmount(
         grossRevenue,
         row.creatorRewardPercentage ?? 0
@@ -2756,9 +2758,9 @@ export async function getCreatorCouponSummary(
         validFrom: row.validFrom,
         validTo: row.validTo,
         isActive: row.isActive,
-        usageCount: row.usageCount ?? 0,
-        totalRevenueInPaise: row.totalRevenueInPaise ?? 0,
-        totalDiscountInPaise: row.totalDiscountInPaise ?? 0,
+        usageCount,
+        totalRevenueInPaise,
+        totalDiscountInPaise,
         lastRedemptionAt: row.lastRedemptionAt ?? null,
         estimatedRewardInPaise: rewardInPaise,
       };
