@@ -8,7 +8,10 @@ import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 export const dynamic = "force-dynamic";
 
-const dateFormatter = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" });
+const dateFormatter = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeZone: "Asia/Kolkata",
+});
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
