@@ -68,13 +68,7 @@ export async function POST(request: Request) {
         (appliedCoupon.validFrom && appliedCoupon.validFrom.getTime() > now) ||
         (appliedCoupon.validTo && appliedCoupon.validTo.getTime() < now)
       ) {
-        return NextResponse.json(
-          {
-            code: "coupon:invalid_or_expired",
-            message: "Coupon is invalid or expired.",
-          },
-          { status: 400 }
-        );
+        throw new ChatSDKError("bad_request:coupon", "Coupon is invalid or expired.");
       }
       discountAmount = calculateDiscountAmount(
         plan.priceInPaise,

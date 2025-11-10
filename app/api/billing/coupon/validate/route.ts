@@ -56,13 +56,7 @@ export async function POST(request: Request) {
       (coupon.validFrom && coupon.validFrom.getTime() > now) ||
       (coupon.validTo && coupon.validTo.getTime() < now)
     ) {
-      return NextResponse.json(
-        {
-          code: "coupon:invalid_or_expired",
-          message: "Coupon is invalid or expired.",
-        },
-        { status: 400 }
-      );
+      throw new ChatSDKError("bad_request:coupon", "Coupon is invalid or expired.");
     }
 
     const discountAmount = calculateDiscountAmount(
@@ -71,13 +65,7 @@ export async function POST(request: Request) {
     );
 
     if (discountAmount <= 0) {
-      return NextResponse.json(
-        {
-          code: "coupon:not_applicable",
-          message: "Coupon cannot be applied to this plan.",
-        },
-        { status: 400 }
-      );
+      throw new ChatSDKError("bad_request:coupon", "Coupon cannot be applied to this plan.");
     }
 
     const finalAmount = Math.max(plan.priceInPaise - discountAmount, 1);

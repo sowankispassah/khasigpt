@@ -11,6 +11,7 @@ export type Surface =
   | "chat"
   | "auth"
   | "api"
+  | "coupon"
   | "stream"
   | "database"
   | "history"
@@ -34,6 +35,7 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   auth: "response",
   stream: "response",
   api: "response",
+  coupon: "response",
   history: "response",
   vote: "response",
   document: "response",
@@ -107,6 +109,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
   switch (errorCode) {
     case "bad_request:api":
       return "The request couldn't be processed. Please check your input and try again.";
+    case "bad_request:coupon":
+      return "Coupon is invalid or expired.";
     case "bad_request:api:coupon_invalid":
       return "Coupon is invalid or expired.";
 
