@@ -537,7 +537,7 @@ export async function listAdminRagEntries(limit = 120): Promise<AdminRagEntry[]>
   return rows.map((row) => ({
     entry: toSanitizedEntry(row.entry),
     creator: {
-      id: row.creatorId,
+      id: row.creatorId ?? "",
       name: row.creatorName,
       email: row.creatorEmail,
     },
