@@ -162,6 +162,20 @@ export const ragEmbeddingStatusEnum = pgEnum("rag_embedding_status", [
 export type RagEmbeddingStatus =
   (typeof ragEmbeddingStatusEnum.enumValues)[number];
 
+export const ragCategory = pgTable(
+  "RagCategory",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    name: text("name").notNull().unique(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    nameIdx: uniqueIndex("RagCategory_name_idx").on(table.name),
+  })
+);
+
+export type RagCategory = InferSelectModel<typeof ragCategory>;
+
 export const ragEntry = pgTable(
   "RagEntry",
   {
@@ -174,6 +188,9 @@ export const ragEntry = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     sourceUrl: text("sourceUrl"),
+    categoryId: uuid("categoryId").references(() => ragCategory.id, {
+      onDelete: "set null",
+    }),
     status: ragEntryStatusEnum("status").notNull().default("inactive"),
     models: text("models")
       .array()
@@ -200,6 +217,7 @@ export const ragEntry = pgTable(
     statusIdx: index("RagEntry_status_idx").on(table.status),
     addedByIdx: index("RagEntry_addedBy_idx").on(table.addedBy),
     createdAtIdx: index("RagEntry_createdAt_idx").on(table.createdAt),
+    categoryIdx: index("RagEntry_category_idx").on(table.categoryId),
   })
 );
 
@@ -226,6 +244,7 @@ export const ragEntryVersion = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     sourceUrl: text("sourceUrl"),
+    categoryId: uuid("categoryId"),
     diff: jsonb("diff").notNull().default(sql`'{}'::jsonb`),
     changeSummary: text("changeSummary"),
     editorId: uuid("editorId")

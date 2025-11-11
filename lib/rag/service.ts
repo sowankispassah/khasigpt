@@ -3,6 +3,7 @@ import "server-only";
 import { diff_match_patch } from "diff-match-patch";
 import {
   and,
+  asc,
   desc,
   eq,
   gte,
@@ -16,6 +17,7 @@ import {
   ragEntry,
   ragEntryVersion,
   ragRetrievalLog,
+  ragCategory,
   user,
   type RagEntry as RagEntryModel,
   type RagEntryStatus,
@@ -56,13 +58,72 @@ import { ragEntrySchema } from "./validation";
 
 const diffEngine = new diff_match_patch();
 
-function toSanitizedEntry(entry: RagEntryModel): SanitizedRagEntry {
+function toSanitizedEntry(
+  entry: RagEntryModel,
+  extras?: { categoryName?: string | null }
+): SanitizedRagEntry {
   return {
     ...entry,
     tags: Array.isArray(entry.tags) ? entry.tags : [],
     models: Array.isArray(entry.models) ? entry.models : [],
     metadata: (entry.metadata ?? {}) as Record<string, unknown>,
+    categoryName: extras?.categoryName ?? null,
   };
+}
+
+async function getCategoryNameById(categoryId: string | null | undefined) {
+  if (!categoryId) {
+    return null;
+  }
+  const [record] = await db
+    .select({ name: ragCategory.name })
+    .from(ragCategory)
+    .where(eq(ragCategory.id, categoryId))
+    .limit(1);
+  return record?.name ?? null;
+}
+
+export async function listRagCategories() {
+  return db
+    .select({
+      id: ragCategory.id,
+      name: ragCategory.name,
+    })
+    .from(ragCategory)
+    .orderBy(asc(ragCategory.name));
+}
+
+export async function createRagCategory({ name }: { name: string }) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      "Category name is required"
+    );
+  }
+
+  const [record] = await db
+    .insert(ragCategory)
+    .values({ name: trimmed })
+    .onConflictDoNothing()
+    .returning();
+
+  if (!record) {
+    const [existing] = await db
+      .select()
+      .from(ragCategory)
+      .where(eq(ragCategory.name, trimmed))
+      .limit(1);
+    if (existing) {
+      return existing;
+    }
+    throw new ChatSDKError(
+      "bad_request:api",
+      "Unable to create category"
+    );
+  }
+
+  return record;
 }
 
 function buildEmbeddableText(entry: RagEntryModel) {
@@ -147,6 +208,7 @@ function buildVersionDiff(previous: RagEntryModel, next: RagEntryModel) {
   compare("tags");
   compare("models");
   compare("sourceUrl");
+  compare("categoryId");
 
   let textDelta: string | undefined;
   if (previous.content !== next.content) {
@@ -187,6 +249,7 @@ export async function createRagEntry({
       tags,
       models,
       sourceUrl,
+      categoryId: parsed.categoryId ?? null,
       metadata,
       addedBy: actorId,
       createdAt: now,
@@ -205,6 +268,7 @@ export async function createRagEntry({
     tags: created.tags,
     models: created.models,
     sourceUrl: created.sourceUrl,
+    categoryId: created.categoryId,
     diff: { fields: {}, textDelta: undefined },
     changeSummary: "Initial version",
     editorId: actorId,
@@ -224,7 +288,8 @@ export async function createRagEntry({
   }
 
   const refreshed = await getEntryById(created.id);
-  return toSanitizedEntry(refreshed ?? created);
+  const categoryName = await getCategoryNameById(created.categoryId);
+  return toSanitizedEntry(refreshed ?? created, { categoryName });
 }
 
 export async function updateRagEntry({
@@ -260,6 +325,7 @@ export async function updateRagEntry({
       tags,
       models,
       sourceUrl,
+      categoryId: parsed.categoryId ?? null,
       metadata,
       version: existing.version + 1,
       updatedAt: new Date(),
@@ -280,6 +346,7 @@ export async function updateRagEntry({
     tags: updated.tags,
     models: updated.models,
     sourceUrl: updated.sourceUrl,
+    categoryId: updated.categoryId,
     diff,
     changeSummary: "Entry updated",
     editorId: actorId,
@@ -303,7 +370,8 @@ export async function updateRagEntry({
   }
 
   const refreshed = await getEntryById(updated.id);
-  return toSanitizedEntry(refreshed ?? updated);
+  const categoryName = await getCategoryNameById(updated.categoryId);
+  return toSanitizedEntry(refreshed ?? updated, { categoryName });
 }
 
 export async function bulkUpdateRagStatus({
@@ -342,6 +410,7 @@ export async function bulkUpdateRagStatus({
       tags: entry.tags,
       models: entry.models,
       sourceUrl: entry.sourceUrl,
+      categoryId: entry.categoryId,
       diff: { fields: { status: { before: null, after: status } } },
       changeSummary: `Status changed to ${status}`,
       editorId: actorId,
@@ -350,7 +419,13 @@ export async function bulkUpdateRagStatus({
     await syncEmbedding(entry, { reembed: false });
   }
 
-  return updated.map(toSanitizedEntry);
+  const categoryNames = await Promise.all(
+    updated.map((entry) => getCategoryNameById(entry.categoryId))
+  );
+
+  return updated.map((entry, index) =>
+    toSanitizedEntry(entry, { categoryName: categoryNames[index] ?? null })
+  );
 }
 
 export async function deleteRagEntries({
@@ -385,13 +460,14 @@ export async function deleteRagEntries({
       content: entry.content,
       type: entry.type,
       status: entry.status,
-      tags: entry.tags,
-      models: entry.models,
-      sourceUrl: entry.sourceUrl,
-      diff: { fields: { status: { before: null, after: "archived" } } },
-      changeSummary: "Entry archived",
-      editorId: actorId,
-    });
+    tags: entry.tags,
+    models: entry.models,
+    sourceUrl: entry.sourceUrl,
+    categoryId: entry.categoryId,
+    diff: { fields: { status: { before: null, after: "archived" } } },
+    changeSummary: "Entry archived",
+    editorId: actorId,
+  });
 
     await syncEmbedding(entry, { reembed: false });
   }
@@ -430,6 +506,7 @@ export async function restoreRagEntry({
     tags: updated.tags,
     models: updated.models,
     sourceUrl: updated.sourceUrl,
+    categoryId: updated.categoryId,
     diff: { fields: { deletedAt: { before: true, after: false } } },
     changeSummary: "Entry restored",
     editorId: actorId,
@@ -507,6 +584,7 @@ export async function restoreRagVersion({
     tags: updated.tags,
     models: updated.models,
     sourceUrl: updated.sourceUrl,
+    categoryId: updated.categoryId,
     diff: buildVersionDiff(existing, updated),
     changeSummary: `Restored version ${snapshot.version}`,
     editorId: actorId,
@@ -525,17 +603,27 @@ export async function listAdminRagEntries(limit = 120): Promise<AdminRagEntry[]>
       retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)` ,
       lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
       avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
+      categoryName: ragCategory.name,
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
+    .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
     .leftJoin(ragRetrievalLog, eq(ragRetrievalLog.ragEntryId, ragEntry.id))
     .where(isNull(ragEntry.deletedAt))
-    .groupBy(ragEntry.id, user.id, user.firstName, user.lastName, user.email)
+    .groupBy(
+      ragEntry.id,
+      user.id,
+      user.firstName,
+      user.lastName,
+      user.email,
+      ragCategory.id,
+      ragCategory.name
+    )
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
 
   return rows.map((row) => ({
-    entry: toSanitizedEntry(row.entry),
+    entry: toSanitizedEntry(row.entry, { categoryName: row.categoryName ?? null }),
     creator: {
       id: row.creatorId ?? "",
       name: row.creatorName,

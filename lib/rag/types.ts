@@ -4,6 +4,7 @@ export type SanitizedRagEntry = RagEntry & {
   tags: string[];
   models: string[];
   metadata: Record<string, unknown>;
+  categoryName?: string | null;
 };
 
 export type RagVersionDiff = {
@@ -76,4 +77,5 @@ export type UpsertRagEntryInput = {
   models: string[];
   sourceUrl?: string | null;
   metadata?: Record<string, unknown>;
+  categoryId?: string | null;
 };

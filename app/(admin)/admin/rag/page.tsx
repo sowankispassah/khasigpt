@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { listAdminRagEntries, getRagAnalyticsSummary } from "@/lib/rag/service";
+import {
+  listAdminRagEntries,
+  getRagAnalyticsSummary,
+  listRagCategories,
+} from "@/lib/rag/service";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { AdminRagManager, type SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 
@@ -17,10 +21,11 @@ export default async function AdminRagPage() {
     redirect("/");
   }
 
-  const [entries, analytics, registry] = await Promise.all([
+  const [entries, analytics, registry, categories] = await Promise.all([
     listAdminRagEntries(),
     getRagAnalyticsSummary(),
     getModelRegistry(),
+    listRagCategories(),
   ]);
 
   const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
@@ -63,6 +68,7 @@ export default async function AdminRagPage() {
       entries={serializedEntries}
       modelOptions={modelOptions}
       tagOptions={tagOptions}
+      categories={categories}
     />
   );
 }

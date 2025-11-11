@@ -56,7 +56,9 @@ export function normalizeSourceUrl(value?: string | null): string | null {
   }
 }
 
-export function buildSupabaseMetadata(entry: RagEntry) {
+export function buildSupabaseMetadata(
+  entry: RagEntry & { categoryName?: string | null }
+) {
   return {
     title: entry.title,
     tags: entry.tags,
@@ -65,6 +67,8 @@ export function buildSupabaseMetadata(entry: RagEntry) {
     models: entry.models,
     version: entry.version,
     addedBy: entry.addedBy,
+    categoryId: entry.categoryId,
+    categoryName: entry.categoryName ?? null,
   };
 }
 

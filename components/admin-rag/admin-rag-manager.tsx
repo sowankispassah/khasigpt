@@ -11,6 +11,7 @@ import {
   restoreRagEntryAction,
   restoreRagVersionAction,
   updateRagEntryAction,
+  createRagCategoryAction,
 } from "@/app/(admin)/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { LoaderIcon, PlusIcon, SparklesIcon, TrashIcon } from "@/components/icons";
 
@@ -48,6 +59,7 @@ type AdminRagManagerProps = {
   entries: SerializedAdminRagEntry[];
   modelOptions: Array<{ id: string; label: string; provider: string }>;
   tagOptions: string[];
+  categories: Array<{ id: string; name: string }>;
 };
 
 type RagVersion = {
@@ -71,7 +83,11 @@ const DEFAULT_FORM = {
   tags: [] as string[],
   models: [] as string[],
   sourceUrl: "",
+  categoryId: "",
 };
+
+const sortCategories = (list: Array<{ id: string; name: string }>) =>
+  [...list].sort((a, b) => a.name.localeCompare(b.name));
 
 export function AdminRagManager({
   analytics,
@@ -79,9 +95,11 @@ export function AdminRagManager({
   entries,
   modelOptions,
   tagOptions,
+  categories,
 }: AdminRagManagerProps) {
   const [entriesState, setEntriesState] = useState(entries);
   const [availableTags, setAvailableTags] = useState(tagOptions);
+  const [categoryOptions, setCategoryOptions] = useState(sortCategories(categories));
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<RagEntryStatus | "all">("all");
@@ -94,6 +112,10 @@ export function AdminRagManager({
   const [versions, setVersions] = useState<RagVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [isCreatingCategory, startCreateCategory] = useTransition();
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryError, setCategoryError] = useState("");
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -105,6 +127,10 @@ export function AdminRagManager({
   useEffect(() => {
     setAvailableTags(tagOptions);
   }, [tagOptions]);
+
+  useEffect(() => {
+    setCategoryOptions(sortCategories(categories));
+  }, [categories]);
 
   const clearProgressTimers = useCallback(() => {
     progressTimers.current.forEach((timer) => clearTimeout(timer));
@@ -182,6 +208,7 @@ export function AdminRagManager({
       return {
         entry: {
           ...entry,
+          categoryName: entry.categoryName ?? null,
           createdAt: new Date(entry.createdAt).toISOString(),
           updatedAt: new Date(entry.updatedAt).toISOString(),
         },
@@ -205,6 +232,34 @@ export function AdminRagManager({
     setSheetOpen(true);
   };
 
+  const handleCreateCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      setCategoryError("Name is required");
+      return;
+    }
+    setCategoryError("");
+    startCreateCategory(() => {
+      createRagCategoryAction(trimmed)
+        .then((category) => {
+          setCategoryOptions((prev) => sortCategories([...prev, category]));
+          setFormState((prev) => ({
+            ...prev,
+            categoryId: category.id,
+          }));
+          toast.success(`Category "${category.name}" created.`);
+          setNewCategoryName("");
+          setCategoryError("");
+          setCategoryDialogOpen(false);
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : "Unable to create category";
+          toast.error(message);
+        });
+    });
+  };
+
   const openEditor = (entry: SerializedAdminRagEntry) => {
     setEditingEntry(entry);
     setFormState({
@@ -215,6 +270,7 @@ export function AdminRagManager({
       tags: entry.entry.tags,
       models: entry.entry.models,
       sourceUrl: entry.entry.sourceUrl ?? "",
+      categoryId: entry.entry.categoryId ?? "",
     });
     setSheetOpen(true);
   };
@@ -229,6 +285,7 @@ export function AdminRagManager({
       tags: formState.tags,
       models: formState.models,
       sourceUrl: formState.sourceUrl.trim() || null,
+      categoryId: formState.categoryId ? formState.categoryId : null,
     };
 
     if (!payload.title || !payload.content) {
@@ -511,6 +568,7 @@ export function AdminRagManager({
                   />
                 </th>
                 <th className="px-2 py-2">Title</th>
+                <th className="px-2 py-2">Category</th>
                 <th className="px-2 py-2">Status</th>
                 <th className="px-2 py-2">Models</th>
                 <th className="px-2 py-2">Tags</th>
@@ -522,7 +580,7 @@ export function AdminRagManager({
             <tbody className="divide-y">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td className="px-2 py-6 text-center text-muted-foreground" colSpan={8}>
+                  <td className="px-2 py-6 text-center text-muted-foreground" colSpan={9}>
                     No entries match your filters.
                   </td>
                 </tr>
@@ -539,6 +597,13 @@ export function AdminRagManager({
                     <td className="px-2 py-3">
                       <div className="font-semibold">{item.entry.title}</div>
                       <p className="text-muted-foreground text-xs line-clamp-2">{item.entry.content}</p>
+                    </td>
+                    <td className="px-2 py-3">
+                      {item.entry.categoryName ? (
+                        <Badge variant="secondary">{item.entry.categoryName}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Uncategorized</span>
+                      )}
                     </td>
                     <td className="px-2 py-3">
                       <StatusBadge status={item.entry.status} />
@@ -625,6 +690,40 @@ export function AdminRagManager({
             </SheetDescription>
           </SheetHeader>
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <Label htmlFor="rag-category">Category</Label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select
+                  className="flex-1 rounded-md border px-3 py-2 text-sm"
+                  id="rag-category"
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      categoryId: event.target.value,
+                    }))
+                  }
+                  value={formState.categoryId}
+                >
+                  <option value="">Uncategorized</option>
+                  {categoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  disabled={isCreatingCategory}
+                  onClick={() => {
+                    setCategoryDialogOpen(true);
+                    setCategoryError("");
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  Add category
+                </Button>
+              </div>
+            </div>
             <div>
               <Label htmlFor="rag-title">Title</Label>
               <Input
@@ -748,6 +847,54 @@ export function AdminRagManager({
           </form>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog onOpenChange={(open) => {
+        setCategoryDialogOpen(open);
+        if (!open) {
+          setNewCategoryName("");
+          setCategoryError("");
+        }
+      }} open={categoryDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create category</AlertDialogTitle>
+            <AlertDialogDescription>
+              Give this category a descriptive name. You can reuse it for future entries.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="new-category-name">Category name</Label>
+            <Input
+              autoFocus
+              disabled={isCreatingCategory}
+              id="new-category-name"
+              onChange={(event) => {
+                setNewCategoryName(event.target.value);
+                setCategoryError("");
+              }}
+              placeholder="e.g. News, Study, FAQ"
+              value={newCategoryName}
+            />
+            {categoryError ? (
+              <p className="text-destructive text-xs">{categoryError}</p>
+            ) : null}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCreatingCategory}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isCreatingCategory}
+              onClick={(event) => {
+                event.preventDefault();
+                handleCreateCategory();
+              }}
+            >
+              {isCreatingCategory ? "Creating..." : "Create"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

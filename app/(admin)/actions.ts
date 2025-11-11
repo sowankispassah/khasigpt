@@ -58,6 +58,7 @@ import {
   restoreRagEntry,
   restoreRagVersion,
   getRagVersions,
+  createRagCategory,
 } from "@/lib/rag/service";
 import type { UpsertRagEntryInput } from "@/lib/rag/types";
 
@@ -1681,6 +1682,21 @@ export async function restoreRagVersionAction({
     target: { ragEntryId: entryId, versionId },
   });
   revalidatePath("/admin/rag");
+}
+
+export async function createRagCategoryAction(name: string) {
+  const actor = await requireAdmin();
+  const category = await createRagCategory({ name });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.category.create",
+    target: { ragCategoryId: category.id },
+    metadata: { name: category.name },
+  });
+
+  revalidatePath("/admin/rag");
+  return category;
 }
 
 

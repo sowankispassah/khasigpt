@@ -38,6 +38,7 @@ It supports **multi-modal content**, **multi-model control**, and **real-time se
 | embedding | VECTOR | Semantic vector stored in Supabase Vector |
 | status | ENUM('active','inactive','archived') | Availability |
 | models | TEXT[] | List of models this RAG applies to (e.g. `["gpt-5","gemini-pro"]`) |
+| category_id | UUID | Optional category (News, Study, FAQ, etc.) |
 | added_by | UUID | Admin ID who created or modified it |
 | created_at | TIMESTAMP | Creation timestamp |
 | updated_at | TIMESTAMP | Last update timestamp |
@@ -114,6 +115,7 @@ It supports **multi-modal content**, **multi-model control**, and **real-time se
 - `/admin/rag` now exposes a dedicated dashboard with live filtering, analytics cards, and bulk actions.
 - Version history (with rollback) surfaces inside the edit sheet alongside model/tag management.
 - Multi-select model picker, tag chips, and structured text inputs ensure clean metadata.
+- Category selector appears before the title field, with an inline “Add category” shortcut so admins can create News/Study/etc. buckets on the fly.
 - Every action (create/update/status/bulk) records an audit entry via `rag.entry.*` events.
 
 ### **Analytics**

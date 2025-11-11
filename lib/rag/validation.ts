@@ -13,6 +13,7 @@ export const ragEntrySchema = z.object({
   type: z.enum(ragEntryTypeEnum.enumValues),
   status: z.enum(ragEntryStatusEnum.enumValues),
   sourceUrl: z.string().url().optional().nullable(),
+  categoryId: z.string().uuid().optional().nullable(),
   tags: z
     .array(z.string().min(1).max(48))
     .max(24)
