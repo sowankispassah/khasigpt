@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { listAdminRagEntries, getRagAnalyticsSummary } from "@/lib/rag/service";
 import { getModelRegistry } from "@/lib/ai/model-registry";
-import { AdminRagManager } from "@/components/admin-rag/admin-rag-manager";
+import { AdminRagManager, type SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 
 function serializeDate(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -23,7 +23,17 @@ export default async function AdminRagPage() {
     getModelRegistry(),
   ]);
 
-  const serializedEntries = entries;
+  const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
+    creator: entry.creator,
+    retrievalCount: entry.retrievalCount,
+    avgScore: entry.avgScore,
+    lastRetrievedAt: entry.lastRetrievedAt,
+    entry: {
+      ...entry.entry,
+      createdAt: serializeDate(entry.entry.createdAt),
+      updatedAt: serializeDate(entry.entry.updatedAt),
+    },
+  }));
 
   const modelOptions = registry.configs
     .filter((config) => config.isEnabled)
