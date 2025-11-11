@@ -23,14 +23,7 @@ export default async function AdminRagPage() {
     getModelRegistry(),
   ]);
 
-  const serializedEntries = entries.map((entry) => ({
-    ...entry,
-    entry: {
-      ...entry.entry,
-      createdAt: serializeDate(entry.entry.createdAt),
-      updatedAt: serializeDate(entry.entry.updatedAt),
-    },
-  }));
+  const serializedEntries = entries;
 
   const modelOptions = registry.configs
     .filter((config) => config.isEnabled)

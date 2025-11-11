@@ -41,7 +41,7 @@ type AdminRagManagerProps = {
     name: string | null;
     email: string | null;
   };
-  entries: SerializedAdminRagEntry[];
+  entries: AdminRagEntry[];
   modelOptions: Array<{ id: string; label: string; provider: string }>;
   tagOptions: string[];
 };
@@ -76,7 +76,21 @@ export function AdminRagManager({
   modelOptions,
   tagOptions,
 }: AdminRagManagerProps) {
-  const [entriesState, setEntriesState] = useState(entries);
+  const serializedFromServer = useMemo<SerializedAdminRagEntry[]>(
+    () =>
+      entries.map((entry) => ({
+        ...entry,
+        entry: {
+          ...entry.entry,
+          createdAt: new Date(entry.entry.createdAt).toISOString(),
+          updatedAt: new Date(entry.entry.updatedAt).toISOString(),
+        },
+        lastRetrievedAt: entry.lastRetrievedAt,
+      })),
+    [entries]
+  );
+
+  const [entriesState, setEntriesState] = useState<SerializedAdminRagEntry[]>(serializedFromServer);
   const [availableTags, setAvailableTags] = useState(tagOptions);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -95,8 +109,8 @@ export function AdminRagManager({
   const progressTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   useEffect(() => {
-    setEntriesState(entries);
-  }, [entries]);
+    setEntriesState(serializedFromServer);
+  }, [serializedFromServer]);
 
   useEffect(() => {
     setAvailableTags(tagOptions);
