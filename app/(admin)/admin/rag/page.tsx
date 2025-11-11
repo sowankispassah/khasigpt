@@ -49,8 +49,8 @@ export default async function AdminRagPage() {
     name:
       session.user.firstName && session.user.lastName
         ? `${session.user.firstName} ${session.user.lastName}`
-        : session.user.email,
-    email: session.user.email,
+        : session.user.email ?? null,
+    email: session.user.email ?? null,
   };
 
   return (
