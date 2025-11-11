@@ -50,7 +50,7 @@ export async function generateRagEmbedding(text: string) {
 
   return {
     vector: result.embedding,
-    model: result.modelId ?? modelId,
+    model: modelId,
     dimensions: result.embedding.length,
   };
 }
