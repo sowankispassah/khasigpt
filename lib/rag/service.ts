@@ -611,7 +611,10 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
       ? { modelKey: modelUsage[0].modelKey, retrievals: modelUsage[0].retrievals }
       : undefined,
     modelUsage,
-    creatorStats,
+    creatorStats: creatorStats.map((creator) => ({
+      ...creator,
+      id: creator.id ?? "",
+    })),
   };
 }
 
