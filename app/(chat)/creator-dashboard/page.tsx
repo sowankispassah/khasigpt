@@ -115,11 +115,15 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
       totalDiscountInPaise: 0,
       totalRewardInPaise: 0,
       pendingRewardInPaise: 0,
+      totalPaidInPaise: 0,
+      remainingRewardInPaise: 0,
     },
   };
 
   const totalDiscount = couponSummary.totals.totalDiscountInPaise / 100;
   const totalReward = couponSummary.totals.totalRewardInPaise / 100;
+  const totalPaid = couponSummary.totals.totalPaidInPaise / 100;
+  const totalPending = couponSummary.totals.remainingRewardInPaise / 100;
   const hasRedemptions = redemptionResult.redemptions.length > 0;
   const totalPages =
     redemptionResult.pageSize > 0
@@ -195,6 +199,16 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
           value={currencyFormatter.format(totalReward)}
         />
       </section>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          label={t("creator_dashboard.metrics.paid", "Payouts completed")}
+          value={currencyFormatter.format(totalPaid)}
+        />
+        <MetricCard
+          label={t("creator_dashboard.metrics.pending_payout", "Pending payout")}
+          value={currencyFormatter.format(totalPending)}
+        />
+      </section>
 
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
@@ -239,7 +253,7 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                     {t("creator_dashboard.table.reward", "Reward")}
                   </th>
                   <th className="px-4 py-3 text-left font-medium">
-                    {t("creator_dashboard.table.reward", "Reward")}
+                    {t("creator_dashboard.table.payouts", "Payouts")}
                   </th>
                 </tr>
               </thead>
@@ -324,9 +338,14 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-0.5">
-                          <span>{coupon.creatorRewardPercentage}%</span>
+                          <span className="font-semibold text-emerald-700">
+                            {currencyFormatter.format(coupon.paidRewardInPaise / 100)}
+                          </span>
                           <span className="text-muted-foreground text-xs">
-                            {currencyFormatter.format(coupon.estimatedRewardInPaise / 100)}
+                            {t("creator_dashboard.payouts.pending", "Pending {amount}").replace(
+                              "{amount}",
+                              currencyFormatter.format(coupon.remainingRewardInPaise / 100)
+                            )}
                           </span>
                         </div>
                       </td>

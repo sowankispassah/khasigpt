@@ -12,6 +12,7 @@ const ADMIN_LINKS = [
   { href: "/admin/coupons", label: "Coupons" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/chats", label: "Chats" },
+  { href: "/admin/rag", label: "RAG" },
   { href: "/admin/contacts", label: "Contacts" },
   { href: "/admin/logs", label: "Audit Log" },
   { href: "/admin/settings", label: "Settings" },

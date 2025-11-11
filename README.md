@@ -57,6 +57,11 @@ All keys are documented in `.env.example`. Common values include:
 | `DATABASE_URL` | Neon or PostgreSQL connection string |
 | `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` | Transactional email for verification and reset flows |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage access |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Credentials for the Supabase vector store backing RAG |
+| `RAG_SUPABASE_TABLE` | Supabase table that stores embeddings (`rag_embeddings` by default) |
+| `RAG_SUPABASE_MATCH_FUNCTION` | RPC name used for similarity search (`match_rag_embeddings`) |
+| `RAG_MATCH_LIMIT` / `RAG_MATCH_THRESHOLD` | Tune how many snippets and what cosine cutoff are applied |
+| `RAG_EMBEDDING_MODEL` | Embedding model ID (defaults to `text-embedding-3-large`) |
 
 Run `pnpm lint` or `pnpm test` to check for missing configuration before deployment.
 

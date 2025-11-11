@@ -1704,6 +1704,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Metric label summarising creator reward payouts.",
   },
   {
+    key: "creator_dashboard.metrics.paid",
+    defaultText: "Payouts completed",
+    description: "Metric label for the total rewards already paid out.",
+  },
+  {
+    key: "creator_dashboard.metrics.pending_payout",
+    defaultText: "Pending payout",
+    description: "Metric label for rewards awaiting payment.",
+  },
+  {
     key: "coupon.reward_status.pending",
     defaultText: "Payment pending",
     description: "Badge label when creator rewards are pending payment.",
@@ -1768,6 +1778,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "creator_dashboard.table.reward",
     defaultText: "Reward",
     description: "Table column label for creator reward percentage and payout.",
+  },
+  {
+    key: "creator_dashboard.table.payouts",
+    defaultText: "Payouts",
+    description: "Table column label for paid vs pending rewards.",
+  },
+  {
+    key: "creator_dashboard.payouts.pending",
+    defaultText: "Pending {amount}",
+    description: "Helper text indicating the remaining unpaid reward amount.",
   },
   {
     key: "creator_dashboard.table.no_end",

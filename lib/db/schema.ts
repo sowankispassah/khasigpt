@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import {
   boolean,
@@ -134,6 +135,111 @@ export const modelConfig = pgTable("ModelConfig", {
 
 export type ModelConfig = InferSelectModel<typeof modelConfig>;
 
+export const ragEntryTypeEnum = pgEnum("rag_entry_type", [
+  "text",
+  "document",
+  "image",
+  "audio",
+  "video",
+  "link",
+  "data",
+]);
+export type RagEntryType = (typeof ragEntryTypeEnum.enumValues)[number];
+
+export const ragEntryStatusEnum = pgEnum("rag_entry_status", [
+  "active",
+  "inactive",
+  "archived",
+]);
+export type RagEntryStatus = (typeof ragEntryStatusEnum.enumValues)[number];
+
+export const ragEmbeddingStatusEnum = pgEnum("rag_embedding_status", [
+  "pending",
+  "ready",
+  "failed",
+  "queued",
+]);
+export type RagEmbeddingStatus =
+  (typeof ragEmbeddingStatusEnum.enumValues)[number];
+
+export const ragEntry = pgTable(
+  "RagEntry",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    type: ragEntryTypeEnum("type").notNull().default("text"),
+    tags: text("tags")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    sourceUrl: text("sourceUrl"),
+    status: ragEntryStatusEnum("status").notNull().default("inactive"),
+    models: text("models")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    addedBy: uuid("addedBy")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    version: integer("version").notNull().default(1),
+    deletedAt: timestamp("deletedAt"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    embeddingStatus: ragEmbeddingStatusEnum("embeddingStatus")
+      .notNull()
+      .default("pending"),
+    embeddingModel: text("embeddingModel"),
+    embeddingDimensions: integer("embeddingDimensions"),
+    embeddingUpdatedAt: timestamp("embeddingUpdatedAt"),
+    embeddingError: text("embeddingError"),
+    supabaseVectorId: uuid("supabaseVectorId"),
+  },
+  (table) => ({
+    statusIdx: index("RagEntry_status_idx").on(table.status),
+    addedByIdx: index("RagEntry_addedBy_idx").on(table.addedBy),
+    createdAtIdx: index("RagEntry_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type RagEntry = InferSelectModel<typeof ragEntry>;
+
+export const ragEntryVersion = pgTable(
+  "RagEntryVersion",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    ragEntryId: uuid("ragEntryId")
+      .notNull()
+      .references(() => ragEntry.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    type: ragEntryTypeEnum("type").notNull(),
+    status: ragEntryStatusEnum("status").notNull(),
+    tags: text("tags")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    models: text("models")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    sourceUrl: text("sourceUrl"),
+    diff: jsonb("diff").notNull().default(sql`'{}'::jsonb`),
+    changeSummary: text("changeSummary"),
+    editorId: uuid("editorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    ragEntryVersionIdx: index("RagEntryVersion_entry_idx").on(table.ragEntryId),
+  })
+);
+
+export type RagEntryVersion = InferSelectModel<typeof ragEntryVersion>;
+
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "active",
   "expired",
@@ -263,6 +369,27 @@ export const couponRedemption = pgTable(
 );
 
 export type CouponRedemption = InferSelectModel<typeof couponRedemption>;
+
+export const couponRewardPayout = pgTable(
+  "CouponRewardPayout",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    couponId: uuid("couponId")
+      .notNull()
+      .references(() => coupon.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    note: text("note"),
+    recordedBy: uuid("recordedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    couponIdx: index("CouponRewardPayout_coupon_idx").on(table.couponId),
+  })
+);
+
+export type CouponRewardPayout = InferSelectModel<typeof couponRewardPayout>;
 
 export const userSubscription = pgTable("UserSubscription", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
@@ -399,6 +526,37 @@ export const message = pgTable("Message_v2", {
 });
 
 export type DBMessage = InferSelectModel<typeof message>;
+
+export const ragRetrievalLog = pgTable(
+  "RagRetrievalLog",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    ragEntryId: uuid("ragEntryId")
+      .notNull()
+      .references(() => ragEntry.id, { onDelete: "cascade" }),
+    chatId: uuid("chatId")
+      .references(() => chat.id, { onDelete: "cascade" }),
+    modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
+      onDelete: "set null",
+    }),
+    modelKey: text("modelKey").notNull(),
+    userId: uuid("userId")
+      .references(() => user.id, { onDelete: "set null" }),
+    score: doublePrecision("score").notNull().default(0),
+    queryText: text("queryText").notNull(),
+    queryLanguage: varchar("queryLanguage", { length: 16 }),
+    applied: boolean("applied").notNull().default(true),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    ragEntryLogIdx: index("RagRetrievalLog_entry_idx").on(table.ragEntryId),
+    modelKeyIdx: index("RagRetrievalLog_model_idx").on(table.modelKey),
+    createdIdx: index("RagRetrievalLog_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type RagRetrievalLog = InferSelectModel<typeof ragRetrievalLog>;
 
 // DEPRECATED: The following schema is deprecated and will be removed in the future.
 // Read the migration guide at https://chat-sdk.dev/docs/migration-guides/message-parts

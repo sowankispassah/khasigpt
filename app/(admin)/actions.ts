@@ -34,8 +34,9 @@ import {
   upsertCoupon,
   setCouponStatus,
   setCouponRewardStatus,
+  recordCouponRewardPayout,
 } from "@/lib/db/queries";
-import type { UserRole } from "@/lib/db/schema";
+import type { RagEntryStatus, UserRole } from "@/lib/db/schema";
 import {
   DEFAULT_FREE_MESSAGES_PER_DAY,
   FREE_MESSAGE_SETTINGS_KEY,
@@ -49,6 +50,16 @@ import {
   invalidateTranslationBundleCache,
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
+import {
+  createRagEntry,
+  updateRagEntry,
+  bulkUpdateRagStatus,
+  deleteRagEntries,
+  restoreRagEntry,
+  restoreRagVersion,
+  getRagVersions,
+} from "@/lib/rag/service";
+import type { UpsertRagEntryInput } from "@/lib/rag/types";
 
 async function requireAdmin() {
   const session = await auth();
@@ -340,6 +351,41 @@ export async function setCouponRewardStatusAction(formData: FormData) {
 
   revalidatePath("/admin/coupons");
   revalidatePath("/recharge");
+}
+
+export async function recordCouponPayoutAction(formData: FormData) {
+  const actor = await requireAdmin();
+
+  const couponId = formData.get("couponId")?.toString().trim() ?? "";
+  const amount = parseNumber(formData.get("amount"));
+  const note = formData.get("note")?.toString().trim() ?? null;
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  if (!(Number.isFinite(amount) && amount > 0)) {
+    throw new Error("Payout amount must be greater than zero");
+  }
+
+  const amountInPaise = Math.round(amount * 100);
+
+  await recordCouponRewardPayout({
+    couponId,
+    amountInPaise,
+    note,
+    recordedBy: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "coupon.reward.payout",
+    target: { couponId },
+    metadata: { amountInPaise, note },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/creator-dashboard");
 }
 
 function isRedirectErrorLike(error: unknown): boolean {
@@ -1527,6 +1573,114 @@ export async function grantUserCreditsAction(formData: FormData) {
   revalidatePath("/admin/users");
   revalidatePath("/subscriptions");
   revalidatePath("/recharge");
+}
+
+export async function createRagEntryAction(input: UpsertRagEntryInput) {
+  const actor = await requireAdmin();
+  const entry = await createRagEntry({
+    input,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.create",
+    target: { ragEntryId: entry.id },
+    metadata: { status: entry.status },
+  });
+
+  revalidatePath("/admin/rag");
+  return entry;
+}
+
+export async function updateRagEntryAction({
+  id,
+  input,
+}: {
+  id: string;
+  input: UpsertRagEntryInput;
+}) {
+  const actor = await requireAdmin();
+  const entry = await updateRagEntry({
+    id,
+    input,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.update",
+    target: { ragEntryId: entry.id },
+    metadata: { status: entry.status },
+  });
+
+  revalidatePath("/admin/rag");
+  return entry;
+}
+
+export async function bulkUpdateRagEntryStatusAction({
+  ids,
+  status,
+}: {
+  ids: string[];
+  status: RagEntryStatus;
+}) {
+  const actor = await requireAdmin();
+  const updated = await bulkUpdateRagStatus({
+    ids,
+    status,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.bulk_status",
+    target: { ragEntryIds: ids },
+    metadata: { status, count: updated.length },
+  });
+
+  revalidatePath("/admin/rag");
+  return updated;
+}
+
+export async function deleteRagEntriesAction({ ids }: { ids: string[] }) {
+  const actor = await requireAdmin();
+  await deleteRagEntries({ ids, actorId: actor.id });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.archive",
+    target: { ragEntryIds: ids },
+    metadata: { count: ids.length },
+  });
+  revalidatePath("/admin/rag");
+}
+
+export async function restoreRagEntryAction({ id }: { id: string }) {
+  const actor = await requireAdmin();
+  await restoreRagEntry({ id, actorId: actor.id });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.restore",
+    target: { ragEntryId: id },
+  });
+  revalidatePath("/admin/rag");
+}
+
+export async function restoreRagVersionAction({
+  entryId,
+  versionId,
+}: {
+  entryId: string;
+  versionId: string;
+}) {
+  const actor = await requireAdmin();
+  await restoreRagVersion({ entryId, versionId, actorId: actor.id });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.version.restore",
+    target: { ragEntryId: entryId, versionId },
+  });
+  revalidatePath("/admin/rag");
 }
 
 

@@ -55,6 +55,7 @@ import {
   vote,
   coupon,
   couponRedemption,
+  couponRewardPayout,
   type AppSetting,
   type AuditLog,
   type Language,
@@ -75,6 +76,7 @@ import {
   type UserSubscription,
   type Coupon,
   type CouponRedemption,
+  type CouponRewardPayout,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -149,6 +151,17 @@ function toInteger(value: number | string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function maskUserIdentifier(identifier: string | null | undefined): string {
   const raw = identifier?.trim() ?? "";
   const base = raw.includes("@")
@@ -196,6 +209,20 @@ function createCouponStatsSubquery() {
     .from(couponRedemption)
     .groupBy(couponRedemption.couponId)
     .as("coupon_stats");
+}
+
+function createCouponPayoutStatsSubquery() {
+  return db
+    .select({
+      couponId: couponRewardPayout.couponId,
+      totalPaid: sql<number>`COALESCE(SUM(${couponRewardPayout.amount}), 0)`.as(
+        "totalPaid"
+      ),
+      payoutCount: sql<number>`COUNT(${couponRewardPayout.id})`.as("payoutCount"),
+    })
+    .from(couponRewardPayout)
+    .groupBy(couponRewardPayout.couponId)
+    .as("coupon_payout_stats");
 }
 
 // Optionally, if not using email/pass login, you can
@@ -2361,38 +2388,53 @@ export type CouponWithStats = {
   totalDiscountInPaise: number;
   lastRedemptionAt: Date | null;
   estimatedRewardInPaise: number;
+  totalPaidInPaise: number;
 };
+
+async function fetchCouponStats(includePayouts: boolean): Promise<any[]> {
+  const stats = createCouponStatsSubquery();
+  const payoutStats = includePayouts ? createCouponPayoutStatsSubquery() : null;
+
+  let query = db
+    .select({
+      id: coupon.id,
+      code: coupon.code,
+      discountPercentage: coupon.discountPercentage,
+      creatorRewardPercentage: coupon.creatorRewardPercentage,
+      creatorRewardStatus: coupon.creatorRewardStatus,
+      creatorId: coupon.creatorId,
+      validFrom: coupon.validFrom,
+      validTo: coupon.validTo,
+      isActive: coupon.isActive,
+      description: coupon.description,
+      createdAt: coupon.createdAt,
+      updatedAt: coupon.updatedAt,
+      creatorFirstName: user.firstName,
+      creatorLastName: user.lastName,
+      creatorEmail: user.email,
+      usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+      totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+      totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+      lastRedemptionAt: stats.lastRedemptionAt,
+      totalPaidInPaise: includePayouts
+        ? sql<number>`COALESCE(${payoutStats!.totalPaid}, 0)`
+        : sql<number>`0`,
+    })
+    .from(coupon)
+    .leftJoin(user, eq(coupon.creatorId, user.id))
+    .leftJoin(stats, eq(stats.couponId, coupon.id))
+    .orderBy(desc(coupon.createdAt));
+
+  if (includePayouts && payoutStats) {
+    query = query.leftJoin(payoutStats, eq(payoutStats.couponId, coupon.id));
+  }
+
+  return query;
+}
 
 export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
   try {
-    const stats = createCouponStatsSubquery();
-
-    const rows = await db
-      .select({
-        id: coupon.id,
-        code: coupon.code,
-        discountPercentage: coupon.discountPercentage,
-        creatorRewardPercentage: coupon.creatorRewardPercentage,
-        creatorRewardStatus: coupon.creatorRewardStatus,
-        creatorId: coupon.creatorId,
-        validFrom: coupon.validFrom,
-        validTo: coupon.validTo,
-        isActive: coupon.isActive,
-        description: coupon.description,
-        createdAt: coupon.createdAt,
-        updatedAt: coupon.updatedAt,
-        creatorFirstName: user.firstName,
-        creatorLastName: user.lastName,
-        creatorEmail: user.email,
-        usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
-        totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
-        totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
-        lastRedemptionAt: stats.lastRedemptionAt,
-      })
-      .from(coupon)
-      .leftJoin(user, eq(coupon.creatorId, user.id))
-      .leftJoin(stats, eq(stats.couponId, coupon.id))
-      .orderBy(desc(coupon.createdAt));
+    const rows = await fetchCouponStats(true);
 
     return rows.map((row) => {
       const computedName = [row.creatorFirstName, row.creatorLastName]
@@ -2406,6 +2448,8 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
         grossRevenue,
         row.creatorRewardPercentage ?? 0
       );
+      const lastRedemptionAt = toDate(row.lastRedemptionAt);
+      const totalPaidInPaise = toInteger(row.totalPaidInPaise);
 
       return {
         id: row.id,
@@ -2425,14 +2469,53 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
         usageCount: row.usageCount ?? 0,
         totalRevenueInPaise,
         totalDiscountInPaise,
-        lastRedemptionAt: row.lastRedemptionAt ?? null,
+        lastRedemptionAt,
         estimatedRewardInPaise,
+        totalPaidInPaise,
       };
     });
   } catch (error) {
     if (isTableMissingError(error)) {
-      return [];
+      const rows = await fetchCouponStats(false);
+      return rows.map((row) => {
+        const computedName = [row.creatorFirstName, row.creatorLastName]
+          .filter((value): value is string => Boolean(value && value.trim()))
+          .join(" ");
+
+        const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+        const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+        const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+        const estimatedRewardInPaise = calculateRewardAmount(
+          grossRevenue,
+          row.creatorRewardPercentage ?? 0
+        );
+        const lastRedemptionAt = toDate(row.lastRedemptionAt);
+
+        return {
+          id: row.id,
+          code: row.code,
+          discountPercentage: row.discountPercentage,
+          creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+          creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+          creatorId: row.creatorId,
+          validFrom: row.validFrom,
+          validTo: row.validTo,
+          isActive: row.isActive,
+          description: row.description,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          creatorName: computedName || row.creatorEmail || null,
+          creatorEmail: row.creatorEmail,
+          usageCount: row.usageCount ?? 0,
+          totalRevenueInPaise,
+          totalDiscountInPaise,
+          lastRedemptionAt,
+          estimatedRewardInPaise,
+          totalPaidInPaise: 0,
+        };
+      });
     }
+    console.error("listCouponsWithStats failed", error);
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load coupon analytics"
@@ -2685,6 +2768,81 @@ export async function recordCouponRedemptionFromTransaction(
   }
 }
 
+export async function recordCouponRewardPayout({
+  couponId,
+  amountInPaise,
+  note,
+  recordedBy,
+}: {
+  couponId: string;
+  amountInPaise: number;
+  note?: string | null;
+  recordedBy: string;
+}): Promise<CouponRewardPayout> {
+  if (!couponId) {
+    throw new ChatSDKError("bad_request:coupon", "Coupon id is required");
+  }
+  if (!(Number.isFinite(amountInPaise) && amountInPaise > 0)) {
+    throw new ChatSDKError("bad_request:coupon", "Payout amount must be greater than zero");
+  }
+
+  try {
+    const [existingCoupon] = await db
+      .select({ id: coupon.id })
+      .from(coupon)
+      .where(eq(coupon.id, couponId))
+      .limit(1);
+
+    if (!existingCoupon) {
+      throw new ChatSDKError("not_found:coupon", "Coupon not found");
+    }
+
+    const [payout] = await db
+      .insert(couponRewardPayout)
+      .values({
+        couponId,
+        amount: Math.round(amountInPaise),
+        note: note ?? null,
+        recordedBy,
+      })
+      .returning();
+
+    if (!payout) {
+      throw new ChatSDKError("bad_request:database", "Failed to record payout");
+    }
+
+    return payout;
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to record payout");
+  }
+}
+
+export async function listCouponRewardPayouts(
+  couponId: string,
+  limit = 20
+): Promise<CouponRewardPayout[]> {
+  if (!couponId) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select()
+      .from(couponRewardPayout)
+      .where(eq(couponRewardPayout.couponId, couponId))
+      .orderBy(desc(couponRewardPayout.createdAt))
+      .limit(Math.max(1, Math.min(limit, 100)));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to load payout history");
+  }
+}
+
 export type CreatorCouponSummary = {
   creator: {
     id: string;
@@ -2705,6 +2863,8 @@ export type CreatorCouponSummary = {
     totalDiscountInPaise: number;
     lastRedemptionAt: Date | null;
     estimatedRewardInPaise: number;
+    paidRewardInPaise: number;
+    remainingRewardInPaise: number;
   }>;
   totals: {
     usageCount: number;
@@ -2712,7 +2872,20 @@ export type CreatorCouponSummary = {
     totalDiscountInPaise: number;
     totalRewardInPaise: number;
     pendingRewardInPaise: number;
+    totalPaidInPaise: number;
+    remainingRewardInPaise: number;
   };
+};
+
+export type CouponRedemptionDetail = {
+  id: string;
+  couponId: string;
+  couponCode: string;
+  userLabel: string;
+  paymentAmountInPaise: number;
+  discountAmountInPaise: number;
+  rewardInPaise: number;
+  createdAt: Date;
 };
 
 export type CreatorCouponRedemption = {
@@ -2758,6 +2931,7 @@ export async function getCreatorCouponSummary(
     }
 
     const stats = createCouponStatsSubquery();
+    const payoutStats = createCouponPayoutStatsSubquery();
     const couponRows = await db
       .select({
         id: coupon.id,
@@ -2772,9 +2946,11 @@ export async function getCreatorCouponSummary(
         totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
         totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
         lastRedemptionAt: stats.lastRedemptionAt,
+        totalPaidInPaise: sql<number>`COALESCE(${payoutStats.totalPaid}, 0)`,
       })
       .from(coupon)
       .leftJoin(stats, eq(stats.couponId, coupon.id))
+      .leftJoin(payoutStats, eq(payoutStats.couponId, coupon.id))
       .where(eq(coupon.creatorId, creatorId))
       .orderBy(desc(coupon.createdAt));
 
@@ -2787,6 +2963,9 @@ export async function getCreatorCouponSummary(
         grossRevenue,
         row.creatorRewardPercentage ?? 0
       );
+      const lastRedemptionAt = toDate(row.lastRedemptionAt);
+      const paidRewardInPaise = toInteger(row.totalPaidInPaise);
+      const remainingRewardInPaise = Math.max(rewardInPaise - paidRewardInPaise, 0);
       return {
         id: row.id,
         code: row.code,
@@ -2799,8 +2978,10 @@ export async function getCreatorCouponSummary(
         usageCount,
         totalRevenueInPaise,
         totalDiscountInPaise,
-        lastRedemptionAt: row.lastRedemptionAt ?? null,
+        lastRedemptionAt,
         estimatedRewardInPaise: rewardInPaise,
+        paidRewardInPaise,
+        remainingRewardInPaise,
       };
     });
     const totals = coupons.reduce(
@@ -2809,10 +2990,12 @@ export async function getCreatorCouponSummary(
         acc.totalRevenueInPaise += couponRow.totalRevenueInPaise;
         acc.totalDiscountInPaise += couponRow.totalDiscountInPaise;
         acc.totalRewardInPaise += couponRow.estimatedRewardInPaise;
+        acc.totalPaidInPaise += couponRow.paidRewardInPaise;
+        acc.remainingRewardInPaise += couponRow.remainingRewardInPaise;
         if (couponRow.creatorRewardStatus === "paid") {
           acc.pendingRewardInPaise += 0;
         } else {
-          acc.pendingRewardInPaise += couponRow.estimatedRewardInPaise;
+          acc.pendingRewardInPaise += couponRow.remainingRewardInPaise;
         }
         return acc;
       },
@@ -2822,6 +3005,8 @@ export async function getCreatorCouponSummary(
         totalDiscountInPaise: 0,
         totalRewardInPaise: 0,
         pendingRewardInPaise: 0,
+        totalPaidInPaise: 0,
+        remainingRewardInPaise: 0,
       }
     );
 
@@ -2848,6 +3033,50 @@ export async function getCreatorCouponSummary(
         ? error.message
         : "Failed to load creator summary";
     throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
+export async function getCouponPayoutsForAdmin({
+  couponIds,
+  limitPerCoupon = 10,
+}: {
+  couponIds: string[];
+  limitPerCoupon?: number;
+}): Promise<Record<string, CouponRewardPayout[]>> {
+  if (couponIds.length === 0) {
+    return {};
+  }
+  const limit = Math.max(1, Math.min(limitPerCoupon, 50));
+  const totalLimit = limit * couponIds.length;
+
+  try {
+    const rows = await db
+      .select()
+      .from(couponRewardPayout)
+      .where(inArray(couponRewardPayout.couponId, couponIds))
+      .orderBy(desc(couponRewardPayout.createdAt))
+      .limit(totalLimit);
+
+    const grouped = new Map<string, CouponRewardPayout[]>();
+    rows.forEach((row) => {
+      const existing = grouped.get(row.couponId) ?? [];
+      if (existing.length < limit) {
+        existing.push(row);
+        grouped.set(row.couponId, existing);
+      }
+    });
+    return Object.fromEntries(grouped.entries());
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {};
+    }
+    console.error("getCouponPayoutsForAdmin failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load coupon payouts"
+    );
   }
 }
 
@@ -2969,6 +3198,92 @@ export async function getCreatorCouponRedemptions({
       error instanceof Error && error.message
         ? error.message
         : "Failed to load creator redemptions"
+    );
+  }
+}
+
+export async function getCouponRedemptionsForAdmin({
+  couponIds,
+  limitPerCoupon = 5,
+}: {
+  couponIds: string[];
+  limitPerCoupon?: number;
+}): Promise<Record<string, CouponRedemptionDetail[]>> {
+  if (!couponIds.length) {
+    return {};
+  }
+  const limit = Math.max(1, Math.min(limitPerCoupon, 25));
+  const sliceSize = limit * couponIds.length;
+
+  try {
+    const rows = await db
+      .select({
+        id: couponRedemption.id,
+        couponId: couponRedemption.couponId,
+        couponCode: coupon.code,
+        paymentAmount: couponRedemption.paymentAmount,
+        discountAmount: couponRedemption.discountAmount,
+        createdAt: couponRedemption.createdAt,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        userFirstName: user.firstName,
+        userLastName: user.lastName,
+        userEmail: user.email,
+      })
+      .from(couponRedemption)
+      .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+      .innerJoin(user, eq(user.id, couponRedemption.userId))
+      .where(inArray(couponRedemption.couponId, couponIds))
+      .orderBy(desc(couponRedemption.createdAt))
+      .limit(sliceSize);
+
+    const grouped = new Map<string, CouponRedemptionDetail[]>();
+
+    rows.forEach((row) => {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter(
+            (value): value is string =>
+              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      const detail: CouponRedemptionDetail = {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+
+      const existing = grouped.get(row.couponId) ?? [];
+      if (existing.length < limit) {
+        existing.push(detail);
+        grouped.set(row.couponId, existing);
+      }
+    });
+
+    return Object.fromEntries(grouped.entries());
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {};
+    }
+    console.error("getCouponRedemptionsForAdmin failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load coupon redemptions"
     );
   }
 }

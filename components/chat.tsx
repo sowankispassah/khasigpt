@@ -63,6 +63,7 @@ export function Chat({
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
   const currentModelIdRef = useRef(currentModelId);
+  const customKnowledgeEnabled = true;
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
@@ -91,6 +92,7 @@ export function Chat({
             message: request.messages.at(-1),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibilityType,
+            useCustomKnowledge: customKnowledgeEnabled,
             ...request.body,
           },
         };

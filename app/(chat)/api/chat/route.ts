@@ -38,7 +38,8 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
 import type { AppUsage } from "@/lib/usage";
-import { convertToUIMessages, generateUUID } from "@/lib/utils";
+import { convertToUIMessages, generateUUID, getTextFromMessage } from "@/lib/utils";
+import { buildRagAugmentation } from "@/lib/rag/service";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -111,11 +112,13 @@ export async function POST(request: Request) {
       message,
       selectedChatModel,
       selectedVisibilityType,
+      useCustomKnowledge,
     }: {
       id: string;
       message: ChatMessage;
       selectedChatModel: string;
       selectedVisibilityType: VisibilityType;
+      useCustomKnowledge: boolean;
     } = requestBody;
 
     const session = await auth();
@@ -202,6 +205,16 @@ export async function POST(request: Request) {
 
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const ragAugmentation = await buildRagAugmentation({
+      chatId: id,
+      userId: session.user.id,
+      modelConfig,
+      queryText: getTextFromMessage(message),
+      useCustomKnowledge,
+    }).catch((error) => {
+      console.warn("Failed to build RAG augmentation", error);
+      return null;
+    });
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -213,11 +226,16 @@ export async function POST(request: Request) {
     };
 
     const languageModel = resolveLanguageModel(modelConfig);
-    const systemInstruction = systemPrompt({
+    const baseInstruction = systemPrompt({
       selectedChatModel,
       requestHints,
       modelSystemPrompt: modelConfig.systemPrompt ?? null,
     });
+    const ragInstruction = ragAugmentation?.systemSupplement ?? null;
+    const systemInstruction =
+      [baseInstruction, ragInstruction]
+        .filter((value) => typeof value === "string" && value.trim().length > 0)
+        .join("\n\n") || null;
 
     const persistUserMessagePromise = saveMessages({
       messages: [
@@ -238,9 +256,16 @@ export async function POST(request: Request) {
     await createStreamId({ streamId, chatId: id });
 
     let finalMergedUsage: AppUsage | undefined;
+    const ragClientEvent = ragAugmentation?.clientEvent ?? null;
 
     const stream = createUIMessageStream({
       execute: ({ writer: dataStream }) => {
+        if (ragClientEvent) {
+          dataStream.write({
+            type: "data-ragUsage",
+            data: ragClientEvent,
+          });
+        }
         const result = streamText({
           model: languageModel,
           ...(systemInstruction ? { system: systemInstruction } : {}),
