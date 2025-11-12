@@ -165,40 +165,18 @@ const LIGHT_THEME_COLOR = "hsl(0 0% 100%)";
 const DARK_THEME_COLOR = "hsl(240deg 10% 3.92%)";
 const THEME_COLOR_SCRIPT = `(function() {
   var html = document.documentElement;
-  var themeMeta = document.querySelector('meta[name="theme-color"]');
-  var appleMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-  var media = window.matchMedia('(prefers-color-scheme: dark)');
-
-  function resolveIsDark() {
-    if (html.classList.contains('dark') || html.dataset.theme === 'dark') {
-      return true;
-    }
-    if (html.classList.contains('light') || html.dataset.theme === 'light') {
-      return false;
-    }
-    return media.matches;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    document.head.appendChild(meta);
   }
-
   function updateThemeColor() {
-    if (!themeMeta) {
-      themeMeta = document.createElement('meta');
-      themeMeta.setAttribute('name', 'theme-color');
-      document.head.appendChild(themeMeta);
-    }
-    if (!appleMeta) {
-      appleMeta = document.createElement('meta');
-      appleMeta.setAttribute('name', 'apple-mobile-web-app-status-bar-style');
-      document.head.appendChild(appleMeta);
-    }
-
-    var isDark = resolveIsDark();
-    themeMeta.setAttribute('content', isDark ? '${DARK_THEME_COLOR}' : '${LIGHT_THEME_COLOR}');
-    appleMeta.setAttribute('content', isDark ? 'black' : 'default');
+    var isDark = html.classList.contains('dark');
+    meta.setAttribute('content', isDark ? '${DARK_THEME_COLOR}' : '${LIGHT_THEME_COLOR}');
   }
-
-  media.addEventListener('change', updateThemeColor);
   var observer = new MutationObserver(updateThemeColor);
-  observer.observe(html, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+  observer.observe(html, { attributes: true, attributeFilter: ['class'] });
   updateThemeColor();
 })();`;
 
@@ -225,10 +203,6 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <meta name="color-scheme" content="light dark" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta content={LIGHT_THEME_COLOR} name="theme-color" />
         <script
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
