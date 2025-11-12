@@ -86,6 +86,18 @@ const securityHeaders = [
     key: "X-Frame-Options",
     value: "DENY",
   },
+  {
+    key: "Accept-CH",
+    value: "Sec-CH-Prefers-Color-Scheme",
+  },
+  {
+    key: "Critical-CH",
+    value: "Sec-CH-Prefers-Color-Scheme",
+  },
+  {
+    key: "Vary",
+    value: "Sec-CH-Prefers-Color-Scheme",
+  },
 ];
 
 const nextConfig: NextConfig = {

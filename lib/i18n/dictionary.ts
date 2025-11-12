@@ -21,6 +21,27 @@ export type TranslationDefinition = {
   description?: string;
 };
 
+const LANGUAGE_FALLBACK_DICTIONARIES: Record<string, Record<string, string>> = {
+  kha: {
+    "recharge.dialog.title": "Peit bniah ïa ka jingrecharge",
+    "recharge.dialog.description":
+      "Pynshisha ïa ki bynta jong ka plan bad pyndap ïa ka coupon shwa ban bteng sha ka jingsiew.",
+    "recharge.dialog.plan_placeholder": "Ka plan kaba phi la jied",
+    "recharge.plan.validity": "Ka jingtreikam: {days} sngi",
+    "recharge.dialog.summary.discount": "Ka jingduna na ka coupon",
+    "recharge.dialog.summary.total": "Ka bai baroh",
+    "recharge.dialog.coupon_label": "Code jong ka coupon",
+    "recharge.dialog.coupon_helper":
+      "Ka coupon kam dei kaba hap ban pyndonkam. Iehtylli lada phim don.",
+    "recharge.dialog.coupon_required": "Tiep ïa u code coupon ban pynshisha.",
+    "recharge.dialog.coupon_invalid": "Ka coupon ka bakla ne la kut por.",
+    "recharge.dialog.coupon_applied": "La pyndonkam ïa ka coupon katba dei.",
+    "recharge.dialog.validate": "Pynshisha ïa ka coupon",
+    "recharge.dialog.validating": "Dang pynshisha...",
+    "recharge.dialog.proceed": "Bteng sha ka jingsiew",
+  },
+};
+
 const FALLBACK_LANGUAGE: LanguageOption = {
   id: "fallback-en",
   code: "en",
@@ -167,10 +188,16 @@ async function loadTranslationBundle(preferredCode?: string | null) {
     dictionary[row.key] = row.value ?? row.defaultText;
   }
 
+  const languageFallback =
+    LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
+
   return {
     languages,
     activeLanguage,
-    dictionary: mergeWithStaticDictionary(dictionary),
+    dictionary: mergeWithStaticDictionary({
+      ...languageFallback,
+      ...dictionary,
+    }),
   };
 }
 
