@@ -55,9 +55,13 @@ export function PwaInstallBanner() {
   }, []);
 
   useEffect(() => {
-    const listener = (event: BeforeInstallPromptEvent) => {
+    const listener = (event: Event) => {
+      const promptEvent = event as BeforeInstallPromptEvent;
+      if (typeof promptEvent.prompt !== "function") {
+        return;
+      }
       event.preventDefault();
-      setDeferredPrompt(event);
+      setDeferredPrompt(promptEvent);
     };
 
     window.addEventListener("beforeinstallprompt", listener);
