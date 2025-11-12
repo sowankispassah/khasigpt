@@ -7,9 +7,10 @@ const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const LIGHT_THEME_COLOR = "#fdfdfd";
 const DARK_THEME_COLOR = "#050505";
 
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const headerList = await headers();
   const preferredScheme =
-    headers().get("sec-ch-prefers-color-scheme")?.toLowerCase() ?? "";
+    headerList.get("sec-ch-prefers-color-scheme")?.toLowerCase() ?? "";
   const isDarkPreferred = preferredScheme.includes("dark");
   const activeThemeColor = isDarkPreferred ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
 
