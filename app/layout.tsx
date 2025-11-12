@@ -70,6 +70,8 @@ const structuredData = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  applicationName: siteName,
+  category: "technology",
   title: {
     default: siteTitle,
     template: `%s – ${siteName}`,
@@ -85,6 +87,20 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/",
+  },
+  manifest: "/manifest.webmanifest",
+  authors: [
+    {
+      name: siteName,
+      url: siteUrl,
+    },
+  ],
+  creator: siteName,
+  publisher: siteName,
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
   },
   openGraph: {
     type: "website",
@@ -110,6 +126,11 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  appleWebApp: {
+    capable: true,
+    title: siteTitle,
+    statusBarStyle: "black-translucent",
   },
   icons: {
     icon: [

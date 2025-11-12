@@ -6,11 +6,47 @@ import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { ContactForm } from "./contact-form";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { JsonLd } from "@/components/json-ld";
+
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
+const aboutUrl = `${siteUrl}/about`;
 
 export const metadata: Metadata = {
-  title: "About KhasiGPT",
+  title: "About KhasiGPT | Khasi Language AI Mission & Team",
   description:
-    "Learn about the KhasiGPT team, mission, and how to reach out to us.",
+    "Discover the KhasiGPT mission, meet the team building Khasi-first AI assistance, and learn the best ways to contact us for partnerships or support.",
+  alternates: {
+    canonical: "/about",
+  },
+  keywords: [
+    "KhasiGPT team",
+    "Khasi AI mission",
+    "Khasi technology",
+    "Khasi language assistant",
+    "Khasi contact",
+  ],
+  openGraph: {
+    type: "website",
+    url: aboutUrl,
+    title: "Meet KhasiGPT – The Khasi Language AI Team",
+    description:
+      "KhasiGPT blends culture and AI to help Khasi speakers write, translate, and explore ideas confidently.",
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "KhasiGPT About Page",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "About KhasiGPT",
+    description:
+      "Learn about the KhasiGPT mission, the people behind it, and how to reach us.",
+    images: ["/opengraph-image.png"],
+  },
 };
 
 export default async function AboutPage() {
@@ -56,6 +92,58 @@ export default async function AboutPage() {
 
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Home",
+              item: siteUrl,
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "About",
+              item: aboutUrl,
+            },
+          ],
+        }}
+      />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: [
+            {
+              "@type": "Question",
+              name: "What is KhasiGPT?",
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: "KhasiGPT is an AI assistant that understands Khasi language and culture, helping people write, translate, and brainstorm ideas with reliable context.",
+              },
+            },
+            {
+              "@type": "Question",
+              name: "Who can use KhasiGPT?",
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: "KhasiGPT is built for Khasi speakers everywhere—including students, professionals, and creators—so anyone looking for Khasi-first AI help can use it.",
+              },
+            },
+            {
+              "@type": "Question",
+              name: "How can I contact the KhasiGPT team?",
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: "The fastest way is the contact form on this page. Share your feedback, partnership ideas, or support needs and the team will reply within one business day.",
+              },
+            },
+          ],
+        }}
+      />
       <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-10 px-6 py-12 md:py-16">
         <div>
           <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
