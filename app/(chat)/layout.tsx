@@ -51,7 +51,8 @@ export default async function Layout({
           : null,
       }
     : null;
-  const isCollapsed = cookieStore.get("sidebar_state")?.value !== "true";
+  const sidebarState = cookieStore.get("sidebar_state")?.value;
+  const defaultSidebarOpen = sidebarState !== "false";
 
   return (
     <>
@@ -61,7 +62,7 @@ export default async function Layout({
           models={models}
         >
           <DataStreamProvider>
-            <SidebarProvider defaultOpen={!isCollapsed}>
+            <SidebarProvider defaultOpen={defaultSidebarOpen}>
               <AppSidebar user={session?.user} />
               <SidebarInset>{children}</SidebarInset>
             </SidebarProvider>

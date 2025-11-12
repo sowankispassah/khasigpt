@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type MouseEvent,
+} from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { PlusIcon } from "@/components/icons";
@@ -115,6 +122,31 @@ export function AppSidebar({ user }: { user: User | undefined }) {
     });
   };
 
+  const handleLogoClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (isPending) {
+        return;
+      }
+      startProgress();
+      startTransition(() => {
+        setOpenMobile(false);
+        router.push("/");
+      });
+    },
+    [isPending, router, setOpenMobile, startProgress, startTransition]
+  );
+
   return (
     <>
       {showProgress ? (
@@ -135,9 +167,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
             <Link
               className="flex cursor-pointer flex-row items-center"
               href="/"
-              onClick={() => {
-                setOpenMobile(false);
-              }}
+              onClick={handleLogoClick}
             >
               <Image
                 alt="KhasiGPT logo"

@@ -1,8 +1,9 @@
 import "server-only";
 
-import { cache } from "react";
+import { unstable_cache } from "next/cache";
 
 import {
+  MODEL_REGISTRY_CACHE_TAG,
   getModelRegistry,
   mapToModelSummary,
   type ModelSummary,
@@ -10,43 +11,49 @@ import {
 
 export type ChatModel = ModelSummary;
 
-export const loadChatModels = cache(async () => {
+const CHAT_MODELS_CACHE_KEY = "chat-models";
+
+export const loadChatModels = unstable_cache(
+  async () => {
   try {
     const { configs, defaultConfig } = await getModelRegistry();
 
     const models = configs.map(mapToModelSummary);
     const defaultModel = defaultConfig ? mapToModelSummary(defaultConfig) : null;
 
-    return {
-      models,
-      defaultModel,
-    };
-  } catch (error) {
-    console.error("Failed to load chat models, using fallback model.", error);
+      return {
+        models,
+        defaultModel,
+      };
+    } catch (error) {
+      console.error("Failed to load chat models, using fallback model.", error);
 
-    const fallbackModel: ModelSummary = {
-      id: "fallback-openai-gpt-4o-mini",
-      key: "openai-gpt-4o-mini",
-      provider: "openai",
-      providerModelId: "gpt-4o-mini",
-      name: "GPT-4o mini",
-      description:
-        "Fallback configuration when database access is unavailable.",
-      supportsReasoning: false,
-      reasoningTag: null,
-      systemPrompt:
-        "You are a helpful AI assistant. Offer concise, accurate, and friendly responses.",
-      codeTemplate: null,
-      inputCostPerMillion: 0,
-      outputCostPerMillion: 0,
-      inputProviderCostPerMillion: 0,
-      outputProviderCostPerMillion: 0,
-      freeMessagesPerDay: 3,
-    };
+      const fallbackModel: ModelSummary = {
+        id: "fallback-openai-gpt-4o-mini",
+        key: "openai-gpt-4o-mini",
+        provider: "openai",
+        providerModelId: "gpt-4o-mini",
+        name: "GPT-4o mini",
+        description:
+          "Fallback configuration when database access is unavailable.",
+        supportsReasoning: false,
+        reasoningTag: null,
+        systemPrompt:
+          "You are a helpful AI assistant. Offer concise, accurate, and friendly responses.",
+        codeTemplate: null,
+        inputCostPerMillion: 0,
+        outputCostPerMillion: 0,
+        inputProviderCostPerMillion: 0,
+        outputProviderCostPerMillion: 0,
+        freeMessagesPerDay: 3,
+      };
 
-    return {
-      models: [fallbackModel],
-      defaultModel: fallbackModel,
-    };
-  }
-});
+      return {
+        models: [fallbackModel],
+        defaultModel: fallbackModel,
+      };
+    }
+  },
+  [CHAT_MODELS_CACHE_KEY],
+  { tags: [MODEL_REGISTRY_CACHE_TAG] }
+);

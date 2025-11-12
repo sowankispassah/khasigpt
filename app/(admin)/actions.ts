@@ -44,6 +44,7 @@ import {
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 import {
@@ -484,6 +485,7 @@ export async function createModelConfigAction(formData: FormData) {
     metadata: { key, provider, providerModelId },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -612,6 +614,7 @@ export async function updateModelConfigAction(formData: FormData) {
     metadata: patch,
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -637,7 +640,11 @@ export async function deleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-deleted");
 }
@@ -659,7 +666,11 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-hard-deleted");
 }
@@ -681,7 +692,11 @@ export async function setDefaultModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-defaulted");
 }

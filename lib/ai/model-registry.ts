@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cache } from "react";
+import { unstable_cache } from "next/cache";
 
 import {
   createModelConfig,
@@ -11,6 +11,8 @@ import {
 import type { ModelConfig } from "@/lib/db/schema";
 
 const SEED_MODEL_KEY = "openai-gpt-4o-mini";
+export const MODEL_REGISTRY_CACHE_TAG = "model-registry";
+const MODEL_REGISTRY_CACHE_KEY = "model-registry";
 
 async function ensureModelConfigs(): Promise<ModelConfig[]> {
   const existing = await listModelConfigs();
@@ -46,16 +48,20 @@ async function ensureModelConfigs(): Promise<ModelConfig[]> {
   return await listModelConfigs();
 }
 
-export const getModelRegistry = cache(async () => {
-  const configs = await ensureModelConfigs();
-  const defaultConfig =
-    configs.find((config) => config.isDefault) ?? configs[0] ?? null;
+export const getModelRegistry = unstable_cache(
+  async () => {
+    const configs = await ensureModelConfigs();
+    const defaultConfig =
+      configs.find((config) => config.isDefault) ?? configs[0] ?? null;
 
-  return {
-    configs,
-    defaultConfig,
-  };
-});
+    return {
+      configs,
+      defaultConfig,
+    };
+  },
+  [MODEL_REGISTRY_CACHE_KEY],
+  { tags: [MODEL_REGISTRY_CACHE_TAG] }
+);
 
 export async function getModelConfigOrThrow(id: string): Promise<ModelConfig> {
   const config = await getModelConfigById({ id });
