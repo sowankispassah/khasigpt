@@ -165,43 +165,40 @@ const LIGHT_THEME_COLOR = "hsl(0 0% 100%)";
 const DARK_THEME_COLOR = "hsl(240deg 10% 3.92%)";
 const THEME_COLOR_SCRIPT = `(function() {
   var html = document.documentElement;
-  function ensureMeta(selector, attrs) {
-    var el = document.querySelector(selector);
-    if (!el) {
-      el = document.createElement('meta');
-      for (var key in attrs) {
-        if (Object.prototype.hasOwnProperty.call(attrs, key)) {
-          el.setAttribute(key, attrs[key]);
-        }
-      }
-      document.head.appendChild(el);
+  var themeMeta = document.querySelector('meta[name="theme-color"]');
+  var appleMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  var media = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function resolveIsDark() {
+    if (html.classList.contains('dark') || html.dataset.theme === 'dark') {
+      return true;
     }
-    return el;
+    if (html.classList.contains('light') || html.dataset.theme === 'light') {
+      return false;
+    }
+    return media.matches;
   }
-  var lightMeta = ensureMeta('meta[name="theme-color"][media="(prefers-color-scheme: light)"]', {
-    name: 'theme-color',
-    media: '(prefers-color-scheme: light)'
-  });
-  var darkMeta = ensureMeta('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]', {
-    name: 'theme-color',
-    media: '(prefers-color-scheme: dark)'
-  });
-  var activeMeta = ensureMeta('meta[name="theme-color"][data-dynamic="active"]', {
-    name: 'theme-color',
-    'data-dynamic': 'active'
-  });
-  var appleMeta = ensureMeta('meta[name="apple-mobile-web-app-status-bar-style"]', {
-    name: 'apple-mobile-web-app-status-bar-style'
-  });
+
   function updateThemeColor() {
-    var isDark = html.classList.contains('dark');
-    lightMeta.setAttribute('content', '${LIGHT_THEME_COLOR}');
-    darkMeta.setAttribute('content', '${DARK_THEME_COLOR}');
-    activeMeta.setAttribute('content', isDark ? '${DARK_THEME_COLOR}' : '${LIGHT_THEME_COLOR}');
-    appleMeta.setAttribute('content', isDark ? 'black-translucent' : 'default');
+    if (!themeMeta) {
+      themeMeta = document.createElement('meta');
+      themeMeta.setAttribute('name', 'theme-color');
+      document.head.appendChild(themeMeta);
+    }
+    if (!appleMeta) {
+      appleMeta = document.createElement('meta');
+      appleMeta.setAttribute('name', 'apple-mobile-web-app-status-bar-style');
+      document.head.appendChild(appleMeta);
+    }
+
+    var isDark = resolveIsDark();
+    themeMeta.setAttribute('content', isDark ? '${DARK_THEME_COLOR}' : '${LIGHT_THEME_COLOR}');
+    appleMeta.setAttribute('content', isDark ? 'black' : 'default');
   }
+
+  media.addEventListener('change', updateThemeColor);
   var observer = new MutationObserver(updateThemeColor);
-  observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+  observer.observe(html, { attributes: true, attributeFilter: ['class', 'data-theme'] });
   updateThemeColor();
 })();`;
 
@@ -230,21 +227,8 @@ export default async function RootLayout({
       <head>
         <meta name="color-scheme" content="light dark" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          content={LIGHT_THEME_COLOR}
-          data-dynamic="active"
-          name="theme-color"
-        />
-        <meta
-          content={LIGHT_THEME_COLOR}
-          media="(prefers-color-scheme: light)"
-          name="theme-color"
-        />
-        <meta
-          content={DARK_THEME_COLOR}
-          media="(prefers-color-scheme: dark)"
-          name="theme-color"
-        />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta content={LIGHT_THEME_COLOR} name="theme-color" />
         <script
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
