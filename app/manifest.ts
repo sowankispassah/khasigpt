@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "KhasiGPT",
     description:
       "Chat with KhasiGPT to write, translate, and explore ideas in Khasi with cultural context and precise language support.",
-    start_url: siteUrl,
-    scope: `${siteUrl}/`,
+    start_url: "/",
+    scope: "/",
     display: "standalone",
     orientation: "portrait",
     background_color: "#ffffff",

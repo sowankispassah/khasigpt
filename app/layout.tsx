@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
 import { isForumEnabled } from "@/lib/forum/config";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -232,6 +233,7 @@ export default async function RootLayout({
             </SessionProvider>
             <Toaster position="top-center" />
             <SpeedInsights />
+            <PwaInstallBanner />
           </LanguageProvider>
         </ThemeProvider>
       </body>

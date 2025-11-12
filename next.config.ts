@@ -56,6 +56,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.vercel-storage.com https://avatar.vercel.sh",
       "font-src 'self'",
+      "worker-src 'self' blob:",
       connectSrc,
       frameSrc,
       "frame-ancestors 'none'",
