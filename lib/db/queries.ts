@@ -263,6 +263,8 @@ function normalizeEmailValue(email: string): string {
 }
 
 const DEFAULT_COST_PER_MILLION = 1;
+const IST_OFFSET_MINUTES = 330;
+const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60 * 1000;
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
 
 const PAYMENT_STATUS_PENDING: PaymentTransaction["status"] = "pending";
@@ -3820,12 +3822,14 @@ export async function recordTokenUsage({
   modelConfigId,
   inputTokens,
   outputTokens,
+  deductCredits = true,
 }: {
   userId: string;
   chatId: string;
   modelConfigId: string | null;
   inputTokens: number;
   outputTokens: number;
+  deductCredits?: boolean;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
 
@@ -3841,70 +3845,46 @@ export async function recordTokenUsage({
 
   try {
     const usage = await db.transaction(async (tx) => {
-      let inputRate = DEFAULT_COST_PER_MILLION;
-      let outputRate = DEFAULT_COST_PER_MILLION;
+      let subscription: UserSubscription | null = null;
+      let tokensToDeduct = 0;
 
-      if (modelConfigId) {
-        const [config] = await tx
-          .select({
-            inputCostPerMillion: modelConfig.inputCostPerMillion,
-            outputCostPerMillion: modelConfig.outputCostPerMillion,
-          })
-          .from(modelConfig)
-          .where(eq(modelConfig.id, modelConfigId))
-          .limit(1);
+      if (deductCredits) {
+        subscription = await getActiveSubscriptionInternal(tx, userId, now);
 
-        if (config) {
-          const normalizedInput = normalizeCostRate(config.inputCostPerMillion);
-          const normalizedOutput = normalizeCostRate(
-            config.outputCostPerMillion
+        if (!subscription) {
+          throw new ChatSDKError(
+            "payment_required:credits",
+            "No active subscription found for user"
           );
-          if (normalizedInput !== null) {
-            inputRate = normalizedInput;
-          }
-          if (normalizedOutput !== null) {
-            outputRate = normalizedOutput;
-          }
         }
-      }
 
-      const subscription = await getActiveSubscriptionInternal(tx, userId, now);
+        tokensToDeduct = calculateTokenDeduction({
+          inputTokens,
+          outputTokens,
+        });
 
-      if (!subscription) {
-        throw new ChatSDKError(
-          "payment_required:credits",
-          "No active subscription found for user"
-        );
-      }
+        if (
+          tokensToDeduct > 0 &&
+          subscription.tokenBalance < tokensToDeduct
+        ) {
+          const consumedTokens = Math.max(0, subscription.tokenBalance);
 
-      const tokensToDeduct = calculateTokenDeduction({
-        inputTokens,
-        outputTokens,
-        inputRate,
-        outputRate,
-      });
+          await tx
+            .update(userSubscription)
+            .set({
+              tokenBalance: 0,
+              tokensUsed: Math.min(
+                subscription.tokenAllowance,
+                subscription.tokensUsed + consumedTokens
+              ),
+              status: "exhausted",
+              updatedAt: now,
+            })
+            .where(eq(userSubscription.id, subscription.id));
 
-      if (
-        tokensToDeduct > 0 &&
-        subscription.tokenBalance < tokensToDeduct
-      ) {
-        const consumedTokens = Math.max(0, subscription.tokenBalance);
-
-        await tx
-          .update(userSubscription)
-          .set({
-            tokenBalance: 0,
-            tokensUsed: Math.min(
-              subscription.tokenAllowance,
-              subscription.tokensUsed + consumedTokens
-            ),
-            status: "exhausted",
-            updatedAt: now,
-          })
-          .where(eq(userSubscription.id, subscription.id));
-
-        exhausted = true;
-        return null;
+          exhausted = true;
+          return null;
+        }
       }
 
       const [usage] = await tx
@@ -3913,7 +3893,7 @@ export async function recordTokenUsage({
           userId,
           chatId,
           modelConfigId: modelConfigId ?? null,
-          subscriptionId: subscription.id,
+          subscriptionId: subscription?.id ?? null,
           inputTokens,
           outputTokens,
           totalTokens,
@@ -3921,17 +3901,19 @@ export async function recordTokenUsage({
         })
         .returning();
 
-      const remaining = subscription.tokenBalance - tokensToDeduct;
+      if (subscription) {
+        const remaining = subscription.tokenBalance - tokensToDeduct;
 
-      await tx
-        .update(userSubscription)
-        .set({
-          tokenBalance: remaining,
-          tokensUsed: subscription.tokensUsed + tokensToDeduct,
-          status: remaining > 0 ? "active" : "exhausted",
-          updatedAt: now,
-        })
-        .where(eq(userSubscription.id, subscription.id));
+        await tx
+          .update(userSubscription)
+          .set({
+            tokenBalance: remaining,
+            tokensUsed: subscription.tokensUsed + tokensToDeduct,
+            status: remaining > 0 ? "active" : "exhausted",
+            updatedAt: now,
+          })
+          .where(eq(userSubscription.id, subscription.id));
+      }
 
       return usage ?? null;
     });
@@ -3996,6 +3978,29 @@ export async function getTokenUsageTotalsForUser(userId: string): Promise<{
   }
 }
 
+function dateToIstKey(date: Date): string {
+  const istMillis = date.getTime() + IST_OFFSET_MS;
+  const istDate = new Date(istMillis);
+  const year = istDate.getUTCFullYear();
+  const month = String(istDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(istDate.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function istKeyToDate(key: string): Date {
+  const [yearStr = "", monthStr = "", dayStr = ""] = key.split("-");
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  const day = Number.parseInt(dayStr, 10);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return new Date(key);
+  }
+
+  const midnightIstMillis = Date.UTC(year, month - 1, day);
+  return new Date(midnightIstMillis - IST_OFFSET_MS);
+}
+
 export async function getDailyTokenUsageForUser(
   userId: string,
   days: number
@@ -4026,13 +4031,13 @@ export async function getDailyTokenUsageForUser(
         row.createdAt instanceof Date
           ? row.createdAt
           : new Date(row.createdAt as unknown as string);
-      const key = created.toISOString().slice(0, 10);
+      const key = dateToIstKey(created);
       buckets.set(key, (buckets.get(key) ?? 0) + (row.totalTokens ?? 0));
     }
 
     return Array.from(buckets.entries())
-      .map(([day, totalTokens]) => ({
-        day: new Date(`${day}T00:00:00.000Z`),
+      .map(([dayKey, totalTokens]) => ({
+        day: istKeyToDate(dayKey),
         totalTokens,
       }))
       .sort((a, b) => a.day.getTime() - b.day.getTime());
@@ -4307,52 +4312,22 @@ async function getActiveSubscriptionInternal(
   return subscription;
 }
 
-function normalizeCostRate(rate: number | null | undefined): number | null {
-  if (typeof rate !== "number" || Number.isNaN(rate)) {
-    return null;
-  }
-
-  if (rate <= 0) {
-    return null;
-  }
-
-  return rate;
-}
-
 function calculateTokenDeduction({
   inputTokens,
   outputTokens,
-  inputRate,
-  outputRate,
 }: {
   inputTokens: number;
   outputTokens: number;
-  inputRate: number;
-  outputRate: number;
 }): number {
-  const normalizedInputRate =
-    typeof inputRate === "number"
-      ? inputRate
-      : DEFAULT_COST_PER_MILLION;
-  const normalizedOutputRate =
-    typeof outputRate === "number"
-      ? outputRate
-      : DEFAULT_COST_PER_MILLION;
+  const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
 
-  const weightedInput =
-    (inputTokens * normalizedInputRate) / DEFAULT_COST_PER_MILLION;
-  const weightedOutput =
-    (outputTokens * normalizedOutputRate) / DEFAULT_COST_PER_MILLION;
-
-  const total = weightedInput + weightedOutput;
-
-  if (!Number.isFinite(total) || total <= 0) {
+  if (totalTokens <= 0) {
     return TOKENS_PER_CREDIT;
   }
 
   const creditsToDeduct = Math.max(
     1,
-    Math.ceil(total / TOKENS_PER_CREDIT)
+    Math.ceil(totalTokens / TOKENS_PER_CREDIT)
   );
 
   return creditsToDeduct * TOKENS_PER_CREDIT;

@@ -350,13 +350,14 @@ export async function POST(request: Request) {
                 ? finalMergedUsage.outputTokens
                 : getUsageNumber(usageFallback.completionTokens);
 
-            if (hasActiveCredits && (inputTokens > 0 || outputTokens > 0)) {
+            if (inputTokens > 0 || outputTokens > 0) {
               await recordTokenUsage({
                 userId: session.user.id,
                 chatId: id,
                 modelConfigId: modelConfig.id,
                 inputTokens,
                 outputTokens,
+                deductCredits: hasActiveCredits,
               });
             }
           } catch (err) {

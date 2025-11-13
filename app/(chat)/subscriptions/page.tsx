@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { format } from "date-fns";
 import type { ReactNode } from "react";
 
 import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
@@ -42,6 +41,28 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
 });
+const IST_TIME_ZONE = "Asia/Kolkata";
+const istMonthDayFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: IST_TIME_ZONE,
+  month: "short",
+  day: "numeric",
+});
+const istDateFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: IST_TIME_ZONE,
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+const istDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: IST_TIME_ZONE,
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const IST_OFFSET_MS = 330 * 60 * 1000;
 
 export default async function SubscriptionsPage({
   searchParams,
@@ -106,7 +127,7 @@ export default async function SubscriptionsPage({
     date: Date | null,
     key: string,
     fallback: string
-  ) => (date ? format(date, "dd MMM yyyy, HH:mm") : t(key, fallback));
+  ) => (date ? istDateTimeFormatter.format(date) : t(key, fallback));
 
   const formatCredits = (tokens: number) =>
     (tokens / TOKENS_PER_CREDIT).toLocaleString("en-IN", {
@@ -148,7 +169,7 @@ export default async function SubscriptionsPage({
       : null;
   const expiryDateLabel =
     expiresAt !== null
-      ? format(expiresAt, "dd MMM yyyy")
+      ? istDateFormatter.format(expiresAt)
       : t("subscriptions.plan_overview.no_active_plan", "No active plan");
   const expiryDaysLabel =
     expiresAt !== null && daysRemaining !== null
@@ -426,7 +447,7 @@ export default async function SubscriptionsPage({
                       x={point.x}
                       y={baselineY + 16}
                     >
-                      {format(point.entry.day, "MMM d")}
+                      {istMonthDayFormatter.format(point.entry.day)}
                     </text>
                   </g>
                 ))}
@@ -434,8 +455,8 @@ export default async function SubscriptionsPage({
             </div>
 
             <div className="mt-3 flex justify-between text-xs text-muted-foreground">
-              <span>{format(rangeStart, "MMM d")}</span>
-              <span>{format(rangeEnd, "MMM d")}</span>
+              <span>{istMonthDayFormatter.format(rangeStart)}</span>
+              <span>{istMonthDayFormatter.format(rangeEnd)}</span>
             </div>
             {peakEntry ? (
               <p className="mt-2 text-xs text-muted-foreground">
@@ -443,7 +464,7 @@ export default async function SubscriptionsPage({
                   "subscriptions.daily_usage.peak_day",
                   "Peak day: {date} • {credits} credits"
                 )
-                  .replace("{date}", format(peakEntry.day, "MMM d"))
+                  .replace("{date}", istMonthDayFormatter.format(peakEntry.day))
                   .replace("{credits}", formatCredits(peakEntry.totalTokens))}
               </p>
             ) : null}
@@ -576,9 +597,34 @@ function buildDailySeries(
   raw: Array<{ day: Date; totalTokens: number }>,
   range: number
 ) {
+  const toIstKey = (date: Date) => {
+    const istMillis = date.getTime() + IST_OFFSET_MS;
+    const istDate = new Date(istMillis);
+    const year = istDate.getUTCFullYear();
+    const month = String(istDate.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(istDate.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const istMidnightFromKey = (key: string) => {
+    const [yearStr = "", monthStr = "", dayStr = ""] = key.split("-");
+    const year = Number.parseInt(yearStr, 10);
+    const month = Number.parseInt(monthStr, 10);
+    const day = Number.parseInt(dayStr, 10);
+
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      return new Date(key);
+    }
+
+    const midnightIstMillis = Date.UTC(year, month - 1, day);
+    return new Date(midnightIstMillis - IST_OFFSET_MS);
+  };
+
+  const normalizeToIstMidnight = (date: Date) =>
+    istMidnightFromKey(toIstKey(date));
+
   if (raw.length === 0) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = normalizeToIstMidnight(new Date());
     return Array.from({ length: range }, (_, idx) => {
       const day = new Date(today.getTime() - (range - 1 - idx) * 86400000);
       return { day, totalTokens: 0 };
@@ -586,16 +632,20 @@ function buildDailySeries(
   }
 
   const usageMap = new Map(
-    raw.map((entry) => [entry.day.toISOString().slice(0, 10), entry.totalTokens])
+    raw.map((entry) => [toIstKey(entry.day), entry.totalTokens])
   );
 
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
+  const latestDataDay = raw.reduce((latest, entry) => {
+    return entry.day.getTime() > latest.getTime() ? entry.day : latest;
+  }, raw[0].day);
+  const end = normalizeToIstMidnight(
+    new Date(Math.max(Date.now(), latestDataDay.getTime()))
+  );
   const start = new Date(end.getTime() - (range - 1) * 86400000);
 
   return Array.from({ length: range }, (_, idx) => {
     const day = new Date(start.getTime() + idx * 86400000);
-    const key = day.toISOString().slice(0, 10);
+    const key = toIstKey(day);
     return {
       day,
       totalTokens: usageMap.get(key) ?? 0,
