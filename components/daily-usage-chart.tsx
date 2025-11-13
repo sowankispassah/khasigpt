@@ -94,58 +94,62 @@ export function DailyUsageChart({
   const ChartComponent = variant === "bar" ? BarChart : AreaChart;
 
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <ChartComponent
-          data={preparedData}
-          margin={{ top: 10, bottom: 0, left: 8, right: 24 }}
-        >
-          <defs>
-            <linearGradient id={`usage-gradient-${gradientId}`} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="5%" stopColor={DARK_GREEN_LIGHT} stopOpacity={0.55} />
-              <stop offset="95%" stopColor={DARK_GREEN} stopOpacity={0.12} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" vertical={false} opacity={0.35} />
-          <XAxis
-            dataKey="formattedDate"
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-            axisLine={false}
-            tickLine={false}
-            interval="preserveStartEnd"
-            padding={{ left: 8, right: 16 }}
-          />
-          <YAxis
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-            axisLine={false}
-            tickLine={false}
-            width={40}
-            domain={yDomain}
-            allowDecimals={false}
-          />
-          <Tooltip<number, string>
-            cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
-            content={(props) => <DailyUsageTooltip {...props} />}
-          />
-          {variant === "bar" ? (
-            <Bar
-              dataKey="credits"
-              fill={DARK_GREEN}
-              radius={[6, 6, 0, 0]}
-            />
-          ) : (
-            <Area
-              type="monotone"
-              dataKey="credits"
-              stroke={DARK_GREEN}
-              fillOpacity={1}
-              fill={`url(#usage-gradient-${gradientId})`}
-              strokeWidth={2.5}
-              activeDot={{ r: 5 }}
-            />
-          )}
-        </ChartComponent>
-      </ResponsiveContainer>
+    <div className="w-full" style={{ minHeight: 240 }}>
+      <div className="h-64 w-full overflow-x-auto">
+        <div className="h-full min-w-[560px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <ChartComponent
+              data={preparedData}
+              margin={{ top: 10, bottom: 0, left: 8, right: 24 }}
+            >
+              <defs>
+                <linearGradient id={`usage-gradient-${gradientId}`} x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="5%" stopColor={DARK_GREEN_LIGHT} stopOpacity={0.55} />
+                  <stop offset="95%" stopColor={DARK_GREEN} stopOpacity={0.12} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" vertical={false} opacity={0.35} />
+              <XAxis
+                dataKey="formattedDate"
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
+                interval="preserveStartEnd"
+                padding={{ left: 8, right: 16 }}
+              />
+              <YAxis
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
+                width={40}
+                domain={yDomain}
+                allowDecimals={false}
+              />
+              <Tooltip<number, string>
+                cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
+                content={(props) => <DailyUsageTooltip {...props} />}
+              />
+              {variant === "bar" ? (
+                <Bar
+                  dataKey="credits"
+                  fill={DARK_GREEN}
+                  radius={[6, 6, 0, 0]}
+                />
+              ) : (
+                <Area
+                  type="monotone"
+                  dataKey="credits"
+                  stroke={DARK_GREEN}
+                  fillOpacity={1}
+                  fill={`url(#usage-gradient-${gradientId})`}
+                  strokeWidth={2.5}
+                  activeDot={{ r: 5 }}
+                />
+              )}
+            </ChartComponent>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 }
