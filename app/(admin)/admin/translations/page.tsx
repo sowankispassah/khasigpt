@@ -81,14 +81,15 @@ export const dynamic = "force-dynamic";
 export default async function AdminTranslationsPage({
   searchParams,
 }: {
-  searchParams?: { [key: string]: string | string[] | undefined };
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const [languages, entries] = await Promise.all([
     getAllLanguages(),
     listTranslationEntries(),
   ]);
 
-  const queryParam = searchParams?.q;
+  const queryParam = resolvedSearchParams?.q;
   const rawQuery = Array.isArray(queryParam)
     ? queryParam[0] ?? ""
     : typeof queryParam === "string"
