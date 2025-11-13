@@ -6,6 +6,8 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  Line,
+  LineChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -22,7 +24,7 @@ type DailyUsageDatum = {
 type DailyUsageChartProps = {
   data: DailyUsageDatum[];
   timezone?: string;
-  variant?: "area" | "bar";
+  variant?: "area" | "bar" | "line";
 };
 
 type ChartTooltipPayload = {
@@ -91,7 +93,8 @@ export function DailyUsageChart({
     maxCredits === 0 ? 1 : Math.ceil(maxCredits * 1.1),
   ];
 
-  const ChartComponent = variant === "bar" ? BarChart : AreaChart;
+  const ChartComponent =
+    variant === "bar" ? BarChart : variant === "line" ? LineChart : AreaChart;
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -143,6 +146,15 @@ export function DailyUsageChart({
                   dataKey="credits"
                   fill={DARK_GREEN}
                   radius={[6, 6, 0, 0]}
+                />
+              ) : variant === "line" ? (
+                <Line
+                  type="monotone"
+                  dataKey="credits"
+                  stroke={DARK_GREEN}
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: DARK_GREEN }}
+                  activeDot={{ r: 6 }}
                 />
               ) : (
                 <Area
