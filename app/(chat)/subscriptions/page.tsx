@@ -9,13 +9,18 @@ import { auth } from "@/app/(auth)/auth";
 import {
   getDailyTokenUsageForUser,
   getSessionTokenUsageForUser,
-  getTokenUsageTotalsForUser,
   getUserBalanceSummary,
 } from "@/lib/db/queries";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { cookies } from "next/headers";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
+import {
+  SESSION_SORT_DEFAULT,
+  isSessionSortOption,
+  type SessionSortOption,
+} from "@/lib/subscriptions/session-sort";
 
 export const dynamic = "force-dynamic";
 
@@ -59,13 +64,19 @@ export default async function SubscriptionsPage({
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [{ dictionary }, balance, totals, rawDailyUsage, sessionUsage] =
+  const sessionSortParam = toSingleValue(resolvedSearchParams?.sessionSort);
+  const sessionSort: SessionSortOption = isSessionSortOption(sessionSortParam)
+    ? sessionSortParam
+    : SESSION_SORT_DEFAULT;
+
+  const [{ dictionary }, balance, rawDailyUsage, sessionUsage] =
     await Promise.all([
       getTranslationBundle(preferredLanguage),
       getUserBalanceSummary(session.user.id),
-      getTokenUsageTotalsForUser(session.user.id),
       getDailyTokenUsageForUser(session.user.id, range),
-      getSessionTokenUsageForUser(session.user.id),
+      getSessionTokenUsageForUser(session.user.id, {
+        sortBy: sessionSort,
+      }),
     ]);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
@@ -91,11 +102,22 @@ export default async function SubscriptionsPage({
     sessionsPage * SESSIONS_PAGE_SIZE
   );
 
+  const formatDateTime = (
+    date: Date | null,
+    key: string,
+    fallback: string
+  ) => (date ? format(date, "dd MMM yyyy, HH:mm") : t(key, fallback));
+
   const formatCredits = (tokens: number) =>
     (tokens / TOKENS_PER_CREDIT).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+
+  const billedTokensUsed = Math.max(
+    0,
+    balance.tokensTotal - balance.tokensRemaining
+  );
 
   const plan = balance.plan;
   const isManualPlan = plan?.id === MANUAL_TOP_UP_PLAN_ID;
@@ -203,7 +225,7 @@ export default async function SubscriptionsPage({
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label={t("subscriptions.metric.total_used", "Total credits used")}
-          value={formatCredits(totals.totalTokens)}
+          value={formatCredits(billedTokensUsed)}
         />
         <MetricCard
           label={t("subscriptions.metric.remaining", "Credits remaining")}
@@ -444,7 +466,19 @@ export default async function SubscriptionsPage({
             <thead className="text-muted-foreground text-xs uppercase">
               <tr>
                 <th className="py-2 text-left">
-                  {t("subscriptions.session_usage.headers.chat_id", "Chat ID")}
+                  {t("subscriptions.session_usage.headers.chat", "Chat")}
+                </th>
+                <th className="py-2 text-left">
+                  {t(
+                    "subscriptions.session_usage.headers.created",
+                    "Started on"
+                  )}
+                </th>
+                <th className="py-2 text-left">
+                  {t(
+                    "subscriptions.session_usage.headers.last_used",
+                    "Last activity"
+                  )}
                 </th>
                 <th className="py-2 text-right">
                   {t(
@@ -457,14 +491,44 @@ export default async function SubscriptionsPage({
             <tbody>
               {displayedSessions.length === 0 ? (
                 <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={2}>
+                  <td className="py-4 text-muted-foreground" colSpan={4}>
                     {t("subscriptions.session_usage.empty", "No usage recorded yet.")}
                   </td>
                 </tr>
               ) : (
                 displayedSessions.map((entry) => (
                   <tr key={entry.chatId} className="border-t">
-                    <td className="py-2 font-mono text-xs">{entry.chatId}</td>
+                    <td className="py-3">
+                      <SessionUsageChatLink
+                        className="flex cursor-pointer flex-col text-left"
+                        href={`/chat/${entry.chatId}`}
+                      >
+                        <span className="font-medium">
+                          {entry.chatTitle ??
+                            t(
+                              "subscriptions.session_usage.untitled_chat",
+                              "Untitled chat"
+                            )}
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {entry.chatId}
+                        </span>
+                      </SessionUsageChatLink>
+                    </td>
+                    <td className="py-2 text-sm text-muted-foreground">
+                      {formatDateTime(
+                        entry.chatCreatedAt,
+                        "subscriptions.session_usage.created.unknown",
+                        "Not available"
+                      )}
+                    </td>
+                    <td className="py-2 text-sm text-muted-foreground">
+                      {formatDateTime(
+                        entry.lastUsedAt,
+                        "subscriptions.session_usage.last_used.unknown",
+                        "Not available"
+                      )}
+                    </td>
                     <td className="py-2 text-right">
                       {formatCredits(entry.totalTokens)}
                     </td>
@@ -478,6 +542,7 @@ export default async function SubscriptionsPage({
           range={range}
           sessionsPage={sessionsPage}
           totalPages={totalSessionPages}
+          sessionSort={sessionSort}
         />
       </section>
     </div>

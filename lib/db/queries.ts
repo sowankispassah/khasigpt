@@ -4048,32 +4048,109 @@ export async function getDailyTokenUsageForUser(
 }
 
 export async function getSessionTokenUsageForUser(
-  userId: string
-): Promise<Array<{ chatId: string; totalTokens: number }>> {
+  userId: string,
+  options: { sortBy?: "latest" | "usage" } = {}
+): Promise<
+  Array<{
+    chatId: string;
+    chatTitle: string | null;
+    chatCreatedAt: Date | null;
+    totalTokens: number;
+    lastUsedAt: Date | null;
+  }>
+> {
   try {
     const rows = await db
       .select({
         chatId: tokenUsage.chatId,
         totalTokens: tokenUsage.totalTokens,
+        createdAt: tokenUsage.createdAt,
+        chatTitle: chat.title,
+        chatCreatedAt: chat.createdAt,
       })
       .from(tokenUsage)
+      .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .where(eq(tokenUsage.userId, userId));
 
-    const aggregates = new Map<string, number>();
+    const aggregates = new Map<
+      string,
+      {
+        totalTokens: number;
+        lastUsedAt: Date | null;
+        chatTitle: string | null;
+        chatCreatedAt: Date | null;
+      }
+    >();
 
     for (const row of rows) {
       if (!row.chatId) {
         continue;
       }
-      aggregates.set(
-        row.chatId,
-        (aggregates.get(row.chatId) ?? 0) + (row.totalTokens ?? 0)
-      );
+
+      const createdAtValue =
+        row.createdAt instanceof Date
+          ? row.createdAt
+          : row.createdAt
+            ? new Date(row.createdAt as unknown as string)
+            : null;
+
+      const existing =
+        aggregates.get(row.chatId) ?? {
+          totalTokens: 0,
+          lastUsedAt: null,
+          chatTitle: null,
+          chatCreatedAt: null,
+        };
+
+      existing.totalTokens += row.totalTokens ?? 0;
+
+      if (
+        createdAtValue &&
+        (!existing.lastUsedAt ||
+          createdAtValue.getTime() > existing.lastUsedAt.getTime())
+      ) {
+        existing.lastUsedAt = createdAtValue;
+      }
+
+      if (!existing.chatTitle && row.chatTitle) {
+        existing.chatTitle = row.chatTitle;
+      }
+
+      if (!existing.chatCreatedAt && row.chatCreatedAt) {
+        existing.chatCreatedAt =
+          row.chatCreatedAt instanceof Date
+            ? row.chatCreatedAt
+            : new Date(row.chatCreatedAt as unknown as string);
+      }
+
+      aggregates.set(row.chatId, existing);
     }
 
+    const sortBy = options.sortBy === "usage" ? "usage" : "latest";
+
     return Array.from(aggregates.entries())
-      .map(([chatId, totalTokens]) => ({ chatId, totalTokens }))
-      .sort((a, b) => b.totalTokens - a.totalTokens);
+      .map(([chatId, data]) => ({
+        chatId,
+        chatTitle: data.chatTitle,
+        chatCreatedAt: data.chatCreatedAt,
+        totalTokens: data.totalTokens,
+        lastUsedAt: data.lastUsedAt,
+      }))
+      .sort((a, b) => {
+        if (sortBy === "usage") {
+          if (b.totalTokens === a.totalTokens) {
+            return (
+              (b.lastUsedAt?.getTime() ?? 0) -
+              (a.lastUsedAt?.getTime() ?? 0)
+            );
+          }
+          return b.totalTokens - a.totalTokens;
+        }
+        return (
+          (b.lastUsedAt?.getTime() ?? 0) -
+          (a.lastUsedAt?.getTime() ?? 0)
+        );
+      });
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];

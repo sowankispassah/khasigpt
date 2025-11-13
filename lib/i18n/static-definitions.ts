@@ -855,14 +855,59 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Column header for the chat ID.",
   },
   {
+    key: "subscriptions.session_usage.headers.chat",
+    defaultText: "Chat",
+    description: "Column header for the session chat details.",
+  },
+  {
+    key: "subscriptions.session_usage.headers.created",
+    defaultText: "Started on",
+    description: "Column header for the chat creation date.",
+  },
+  {
+    key: "subscriptions.session_usage.headers.last_used",
+    defaultText: "Last activity",
+    description: "Column header for the last usage timestamp.",
+  },
+  {
     key: "subscriptions.session_usage.headers.credits_used",
     defaultText: "Credits used",
     description: "Column header for credits used.",
   },
   {
+    key: "subscriptions.session_usage.sort.label",
+    defaultText: "Sort sessions",
+    description: "Label for the session usage sort select.",
+  },
+  {
+    key: "subscriptions.session_usage.sort.latest",
+    defaultText: "Latest activity",
+    description: "Sort option label for ordering by most recent sessions.",
+  },
+  {
+    key: "subscriptions.session_usage.sort.usage",
+    defaultText: "Highest credits used",
+    description: "Sort option label for ordering by usage totals.",
+  },
+  {
     key: "subscriptions.session_usage.empty",
     defaultText: "No usage recorded yet.",
     description: "Empty state text for the session usage table.",
+  },
+  {
+    key: "subscriptions.session_usage.untitled_chat",
+    defaultText: "Untitled chat",
+    description: "Fallback title when a chat is missing a name.",
+  },
+  {
+    key: "subscriptions.session_usage.created.unknown",
+    defaultText: "Not available",
+    description: "Fallback text when the chat start date is missing.",
+  },
+  {
+    key: "subscriptions.session_usage.last_used.unknown",
+    defaultText: "Not available",
+    description: "Fallback text when no last usage timestamp is present.",
   },
   {
     key: "subscriptions.pagination.updating",
