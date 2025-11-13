@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import {
   Area,
   AreaChart,
@@ -92,10 +92,19 @@ export function DailyUsageChart({
   ];
 
   const ChartComponent = variant === "bar" ? BarChart : AreaChart;
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollLeft = container.scrollWidth;
+  }, [preparedData]);
 
   return (
     <div className="w-full" style={{ minHeight: 240 }}>
-      <div className="h-64 w-full overflow-x-auto">
+      <div className="h-64 w-full overflow-x-auto" ref={scrollContainerRef}>
         <div className="h-full min-w-[560px]">
           <ResponsiveContainer width="100%" height="100%">
             <ChartComponent
