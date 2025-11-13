@@ -56,6 +56,11 @@ export default async function RechargePage() {
   const dictionary = bundle.dictionary;
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
+  const formatCreditValue = (credits: number) =>
+    credits.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   const activePlanId = balance.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
@@ -164,9 +169,9 @@ export default async function RechargePage() {
               {t("recharge.current_balance.remaining", "Credits remaining")}
             </dt>
             <dd className="mt-2 text-2xl font-semibold">
-              {balance.creditsRemaining.toLocaleString()}{" "}
+              {formatCreditValue(balance.creditsRemaining)}{" "}
               <span className="text-muted-foreground text-sm font-normal">
-                / {balance.creditsTotal.toLocaleString()}
+                / {formatCreditValue(balance.creditsTotal)}
               </span>
             </dd>
           </div>

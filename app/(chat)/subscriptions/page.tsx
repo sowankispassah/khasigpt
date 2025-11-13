@@ -136,6 +136,11 @@ export default async function SubscriptionsPage({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  const formatCreditValue = (credits: number) =>
+    credits.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   const billedTokensUsed = Math.max(
     0,
@@ -232,11 +237,11 @@ export default async function SubscriptionsPage({
         />
         <MetricCard
           label={t("subscriptions.metric.remaining", "Credits remaining")}
-          value={balance.creditsRemaining.toLocaleString()}
+          value={formatCreditValue(balance.creditsRemaining)}
         />
         <MetricCard
           label={t("subscriptions.metric.allocated", "Credits allocated")}
-          value={balance.creditsTotal.toLocaleString()}
+          value={formatCreditValue(balance.creditsTotal)}
         />
         <MetricCard
           label={t("subscriptions.metric.plan_expires", "Plan expires")}
@@ -271,7 +276,7 @@ export default async function SubscriptionsPage({
                   {t("subscriptions.plan_overview.free_credits", "Free credits")}
                 </dt>
                 <dd>
-                  {freeCreditsRemaining.toLocaleString()} {t("subscriptions.unit.credits", "credits")}
+                  {formatCreditValue(freeCreditsRemaining)} {t("subscriptions.unit.credits", "credits")}
                 </dd>
               </div>
             ) : null}
@@ -279,13 +284,13 @@ export default async function SubscriptionsPage({
               <dt className="text-muted-foreground">
                 {t("subscriptions.plan_overview.credits_remaining", "Credits remaining")}
               </dt>
-              <dd>{balance.creditsRemaining.toLocaleString()}</dd>
+              <dd>{formatCreditValue(balance.creditsRemaining)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
                 {t("subscriptions.plan_overview.credits_allocated", "Credits allocated")}
               </dt>
-              <dd>{balance.creditsTotal.toLocaleString()}</dd>
+              <dd>{formatCreditValue(balance.creditsTotal)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">

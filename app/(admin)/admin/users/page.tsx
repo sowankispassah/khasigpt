@@ -173,7 +173,10 @@ function AddCreditsForm({
   getUserEmail: (userId: string | null | undefined) => string | null;
 }) {
   const creditsRemaining = balance.creditsRemaining;
-  const creditsLabel = `${creditsRemaining.toLocaleString()} credits available`;
+  const creditsLabel = `${creditsRemaining.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} credits available`;
 
   return (
     <form

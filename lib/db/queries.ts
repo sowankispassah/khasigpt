@@ -3749,8 +3749,8 @@ export async function getUserBalanceSummary(
 
     const tokensRemaining = Math.max(0, latestSubscription.tokenBalance);
     const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
-    const creditsRemaining = Math.floor(tokensRemaining / TOKENS_PER_CREDIT);
-    const creditsTotal = Math.floor(tokensTotal / TOKENS_PER_CREDIT);
+    const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
+    const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
 
     return {
       subscription: latestSubscription,
@@ -4319,18 +4319,8 @@ function calculateTokenDeduction({
   inputTokens: number;
   outputTokens: number;
 }): number {
-  const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
-
-  if (totalTokens <= 0) {
-    return TOKENS_PER_CREDIT;
-  }
-
-  const creditsToDeduct = Math.max(
-    1,
-    Math.ceil(totalTokens / TOKENS_PER_CREDIT)
-  );
-
-  return creditsToDeduct * TOKENS_PER_CREDIT;
+  const totalTokens = Math.max(1, Math.round(inputTokens + outputTokens));
+  return totalTokens;
 }
 
 export type TranslationTableEntry = {
