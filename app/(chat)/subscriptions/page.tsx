@@ -31,6 +31,7 @@ type RangeOption = (typeof RANGE_OPTIONS)[number];
 
 type SubscriptionsPageProps = {
   searchParams?: Promise<{
+    sessionSort?: string | string[];
     range?: string | string[];
     sessionsPage?: string | string[];
   }>;
