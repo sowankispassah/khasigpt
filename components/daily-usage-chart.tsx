@@ -122,7 +122,7 @@ export function DailyUsageChart({
             domain={yDomain}
             allowDecimals={false}
           />
-          <Tooltip
+          <Tooltip<number, string>
             cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
             content={(props) => <DailyUsageTooltip {...props} />}
           />
