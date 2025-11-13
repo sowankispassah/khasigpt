@@ -5,7 +5,6 @@ import { memo, useEffect, useRef } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
-import { useDataStream } from "./data-stream-provider";
 import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
 import { LoaderIcon } from "./icons";
@@ -67,8 +66,6 @@ function PureMessages({
           })
           .join("|") ?? ""
       : null;
-
-  useDataStream();
 
   useEffect(() => {
     if (status !== "ready" && status !== "streaming" && status !== "error") {

@@ -28,7 +28,7 @@ import postgres from "postgres";
 import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
-import { TOKENS_PER_CREDIT } from "../constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
@@ -53,6 +53,9 @@ import {
   user,
   userSubscription,
   vote,
+  coupon,
+  couponRedemption,
+  couponRewardPayout,
   type AppSetting,
   type AuditLog,
   type Language,
@@ -71,6 +74,9 @@ import {
   type TokenUsage,
   type User,
   type UserSubscription,
+  type Coupon,
+  type CouponRedemption,
+  type CouponRewardPayout,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -130,6 +136,95 @@ function convertSubunitAmount(amount: number, currency: string): number {
   return numericAmount / divisor;
 }
 
+function normalizeCouponCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+function toInteger(value: number | string | null | undefined): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function maskUserIdentifier(identifier: string | null | undefined): string {
+  const raw = identifier?.trim() ?? "";
+  const base = raw.includes("@")
+    ? raw.split("@")[0] ?? ""
+    : raw.replace(/\s+/g, "");
+  const source = base.replace(/\s+/g, "");
+  if (!source) {
+    return "User ****";
+  }
+  const visible = source.slice(0, 3) || source;
+  const maskLength = Math.max(source.length - visible.length, 4);
+  return `${visible}${"*".repeat(maskLength)}`;
+}
+
+function calculateRewardAmount(totalRevenueInPaise: number, rewardPercentage: number) {
+  if (!(Number.isFinite(totalRevenueInPaise) && totalRevenueInPaise > 0)) {
+    return 0;
+  }
+  if (!(Number.isFinite(rewardPercentage) && rewardPercentage > 0)) {
+    return 0;
+  }
+  const rawReward = (totalRevenueInPaise * rewardPercentage) / 100;
+  let reward = Math.round(rawReward);
+  if (reward <= 0 && rawReward > 0) {
+    reward = 1;
+  }
+  return reward;
+}
+
+function createCouponStatsSubquery() {
+  return db
+    .select({
+      couponId: couponRedemption.couponId,
+      usageCount: sql<number>`COUNT(${couponRedemption.id})`.as("usageCount"),
+      totalDiscount: sql<number>`COALESCE(SUM(${couponRedemption.discountAmount}), 0)`.as(
+        "totalDiscount"
+      ),
+      totalRevenue: sql<number>`COALESCE(SUM(${couponRedemption.paymentAmount}), 0)`.as(
+        "totalRevenue"
+      ),
+      lastRedemptionAt: sql<Date | null>`MAX(${couponRedemption.createdAt})`.as(
+        "lastRedemptionAt"
+      ),
+    })
+    .from(couponRedemption)
+    .groupBy(couponRedemption.couponId)
+    .as("coupon_stats");
+}
+
+function createCouponPayoutStatsSubquery() {
+  return db
+    .select({
+      couponId: couponRewardPayout.couponId,
+      totalPaid: sql<number>`COALESCE(SUM(${couponRewardPayout.amount}), 0)`.as(
+        "totalPaid"
+      ),
+      payoutCount: sql<number>`COUNT(${couponRewardPayout.id})`.as("payoutCount"),
+    })
+    .from(couponRewardPayout)
+    .groupBy(couponRewardPayout.couponId)
+    .as("coupon_payout_stats");
+}
+
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
@@ -168,6 +263,8 @@ function normalizeEmailValue(email: string): string {
 }
 
 const DEFAULT_COST_PER_MILLION = 1;
+const IST_OFFSET_MINUTES = 330;
+const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60 * 1000;
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
 
 const PAYMENT_STATUS_PENDING: PaymentTransaction["status"] = "pending";
@@ -303,8 +400,14 @@ export async function ensureOAuthUser(
 
     let userRecord = existing;
 
+    const hasCustomAvatar =
+      typeof userRecord.image === "string" &&
+      (userRecord.image.startsWith("data:") ||
+        userRecord.image.startsWith("blob:"));
+
     if (
       profile?.image &&
+      !hasCustomAvatar &&
       (!userRecord.image || userRecord.image !== profile.image)
     ) {
       const updatedImage = await updateUserImage({
@@ -1020,16 +1123,12 @@ export async function updateChatLastContextById({
 
 export async function getMessageCountByUserId({
   id,
-  differenceInHours,
+  since,
 }: {
   id: string;
-  differenceInHours: number;
+  since: Date;
 }) {
   try {
-    const twentyFourHoursAgo = new Date(
-      Date.now() - differenceInHours * 60 * 60 * 1000
-    );
-
     const [stats] = await db
       .select({ count: count(message.id) })
       .from(message)
@@ -1037,7 +1136,7 @@ export async function getMessageCountByUserId({
       .where(
         and(
           eq(chat.userId, id),
-          gte(message.createdAt, twentyFourHoursAgo),
+          gte(message.createdAt, since),
           eq(message.role, "user")
         )
       )
@@ -1313,6 +1412,21 @@ export async function listUsers({
       return [];
     }
     throw new ChatSDKError("bad_request:database", "Failed to list users");
+  }
+}
+
+export async function listCreators(): Promise<User[]> {
+  try {
+    return await db
+      .select()
+      .from(user)
+      .where(eq(user.role, "creator"))
+      .orderBy(asc(user.firstName), asc(user.lastName));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to list creators");
   }
 }
 
@@ -1749,6 +1863,7 @@ export async function createModelConfig({
   config = null,
   isEnabled = true,
   isDefault = false,
+  freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
   inputCostPerMillion = DEFAULT_COST_PER_MILLION,
   outputCostPerMillion = DEFAULT_COST_PER_MILLION,
   inputProviderCostPerMillion = 0,
@@ -1766,6 +1881,7 @@ export async function createModelConfig({
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   isDefault?: boolean;
+  freeMessagesPerDay?: number;
   inputCostPerMillion?: number;
   outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
@@ -1789,6 +1905,7 @@ export async function createModelConfig({
         config,
         isEnabled,
         isDefault,
+        freeMessagesPerDay,
         inputCostPerMillion,
         outputCostPerMillion,
         inputProviderCostPerMillion,
@@ -1946,6 +2063,7 @@ export async function updateModelConfig({
   outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
+  freeMessagesPerDay?: number;
 }): Promise<ModelConfig | null> {
   try {
     const updateData: Partial<typeof modelConfig.$inferInsert> = {};
@@ -1993,6 +2111,9 @@ export async function updateModelConfig({
     if (patch.outputProviderCostPerMillion !== undefined) {
       updateData.outputProviderCostPerMillion =
         patch.outputProviderCostPerMillion;
+    }
+    if (patch.freeMessagesPerDay !== undefined) {
+      updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
     }
 
     const [updated] = await db
@@ -2249,6 +2370,926 @@ export async function hardDeletePricingPlan(id: string) {
   }
 }
 
+export type CouponWithStats = {
+  id: string;
+  code: string;
+  discountPercentage: number;
+  creatorRewardPercentage: number;
+  creatorRewardStatus: string;
+  creatorId: string;
+  creatorName: string | null;
+  creatorEmail: string | null;
+  validFrom: Date;
+  validTo: Date | null;
+  isActive: boolean;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  usageCount: number;
+  totalRevenueInPaise: number;
+  totalDiscountInPaise: number;
+  lastRedemptionAt: Date | null;
+  estimatedRewardInPaise: number;
+  totalPaidInPaise: number;
+};
+
+async function fetchCouponStats(includePayouts: boolean): Promise<any[]> {
+  const stats = createCouponStatsSubquery();
+  const payoutStats = includePayouts ? createCouponPayoutStatsSubquery() : null;
+
+  let query = db
+    .select({
+      id: coupon.id,
+      code: coupon.code,
+      discountPercentage: coupon.discountPercentage,
+      creatorRewardPercentage: coupon.creatorRewardPercentage,
+      creatorRewardStatus: coupon.creatorRewardStatus,
+      creatorId: coupon.creatorId,
+      validFrom: coupon.validFrom,
+      validTo: coupon.validTo,
+      isActive: coupon.isActive,
+      description: coupon.description,
+      createdAt: coupon.createdAt,
+      updatedAt: coupon.updatedAt,
+      creatorFirstName: user.firstName,
+      creatorLastName: user.lastName,
+      creatorEmail: user.email,
+      usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+      totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+      totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+      lastRedemptionAt: stats.lastRedemptionAt,
+      totalPaidInPaise: includePayouts
+        ? sql<number>`COALESCE(${payoutStats!.totalPaid}, 0)`
+        : sql<number>`0`,
+    })
+    .from(coupon)
+    .leftJoin(user, eq(coupon.creatorId, user.id))
+    .leftJoin(stats, eq(stats.couponId, coupon.id))
+    .orderBy(desc(coupon.createdAt));
+
+  if (includePayouts && payoutStats) {
+    query = query.leftJoin(payoutStats, eq(payoutStats.couponId, coupon.id));
+  }
+
+  return query;
+}
+
+export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
+  try {
+    const rows = await fetchCouponStats(true);
+
+    return rows.map((row) => {
+      const computedName = [row.creatorFirstName, row.creatorLastName]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .join(" ");
+
+      const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+      const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+      const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+      const estimatedRewardInPaise = calculateRewardAmount(
+        grossRevenue,
+        row.creatorRewardPercentage ?? 0
+      );
+      const lastRedemptionAt = toDate(row.lastRedemptionAt);
+      const totalPaidInPaise = toInteger(row.totalPaidInPaise);
+
+      return {
+        id: row.id,
+        code: row.code,
+        discountPercentage: row.discountPercentage,
+        creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+        creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+        creatorId: row.creatorId,
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        isActive: row.isActive,
+        description: row.description,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        creatorName: computedName || row.creatorEmail || null,
+        creatorEmail: row.creatorEmail,
+        usageCount: row.usageCount ?? 0,
+        totalRevenueInPaise,
+        totalDiscountInPaise,
+        lastRedemptionAt,
+        estimatedRewardInPaise,
+        totalPaidInPaise,
+      };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      const rows = await fetchCouponStats(false);
+      return rows.map((row) => {
+        const computedName = [row.creatorFirstName, row.creatorLastName]
+          .filter((value): value is string => Boolean(value && value.trim()))
+          .join(" ");
+
+        const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+        const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+        const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+        const estimatedRewardInPaise = calculateRewardAmount(
+          grossRevenue,
+          row.creatorRewardPercentage ?? 0
+        );
+        const lastRedemptionAt = toDate(row.lastRedemptionAt);
+
+        return {
+          id: row.id,
+          code: row.code,
+          discountPercentage: row.discountPercentage,
+          creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+          creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+          creatorId: row.creatorId,
+          validFrom: row.validFrom,
+          validTo: row.validTo,
+          isActive: row.isActive,
+          description: row.description,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          creatorName: computedName || row.creatorEmail || null,
+          creatorEmail: row.creatorEmail,
+          usageCount: row.usageCount ?? 0,
+          totalRevenueInPaise,
+          totalDiscountInPaise,
+          lastRedemptionAt,
+          estimatedRewardInPaise,
+          totalPaidInPaise: 0,
+        };
+      });
+    }
+    console.error("listCouponsWithStats failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load coupon analytics"
+    );
+  }
+}
+
+export async function getCouponById(id: string): Promise<Coupon | null> {
+  try {
+    const [record] = await db
+      .select()
+      .from(coupon)
+      .where(eq(coupon.id, id))
+      .limit(1);
+
+    return record ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to load coupon");
+  }
+}
+
+export async function getCouponByCode(code: string): Promise<Coupon | null> {
+  const normalized = normalizeCouponCode(code);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const [record] = await db
+      .select()
+      .from(coupon)
+      .where(eq(coupon.code, normalized))
+      .limit(1);
+    return record ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to lookup coupon"
+    );
+  }
+}
+
+export async function upsertCoupon({
+  id,
+  code,
+  discountPercentage,
+  creatorRewardPercentage,
+  creatorId,
+  validFrom,
+  validTo,
+  description,
+  isActive = true,
+}: {
+  id?: string | null;
+  code: string;
+  discountPercentage: number;
+  creatorRewardPercentage?: number;
+  creatorId: string;
+  validFrom: Date;
+  validTo: Date | null;
+  description?: string | null;
+  isActive?: boolean;
+}): Promise<Coupon> {
+  const normalizedCode = normalizeCouponCode(code);
+  if (!normalizedCode) {
+    throw new ChatSDKError(
+      "bad_request:coupon",
+      "Coupon code is required"
+    );
+  }
+  const percentage = Math.min(Math.max(Math.round(discountPercentage), 1), 95);
+  const rewardPercentage = Math.min(
+    Math.max(Math.round(creatorRewardPercentage ?? 0), 0),
+    95
+  );
+  const now = new Date();
+
+  try {
+    if (id) {
+      const [updated] = await db
+        .update(coupon)
+        .set({
+          code: normalizedCode,
+          discountPercentage: percentage,
+          creatorRewardPercentage: rewardPercentage,
+          creatorId,
+          validFrom,
+          validTo: validTo ?? null,
+          description: description ?? null,
+          isActive,
+          updatedAt: now,
+        })
+        .where(eq(coupon.id, id))
+        .returning();
+
+      if (!updated) {
+        throw new ChatSDKError(
+          "not_found:coupon",
+          "Coupon not found"
+        );
+      }
+
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(coupon)
+      .values({
+        code: normalizedCode,
+        discountPercentage: percentage,
+        creatorRewardPercentage: rewardPercentage,
+        creatorId,
+        validFrom,
+        validTo: validTo ?? null,
+        description: description ?? null,
+        isActive,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!created) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to create coupon"
+      );
+    }
+
+    return created;
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to save coupon"
+    );
+  }
+}
+
+export async function setCouponStatus({
+  id,
+  isActive,
+}: {
+  id: string;
+  isActive: boolean;
+}): Promise<void> {
+  try {
+    await db
+      .update(coupon)
+      .set({
+        isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(coupon.id, id));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to update coupon");
+  }
+}
+
+const VALID_REWARD_STATUSES = new Set(["pending", "paid"]);
+const MAX_CREATOR_REDEMPTIONS_PAGE_SIZE = 50;
+
+export async function setCouponRewardStatus({
+  id,
+  rewardStatus,
+}: {
+  id: string;
+  rewardStatus: "pending" | "paid";
+}): Promise<void> {
+  if (!VALID_REWARD_STATUSES.has(rewardStatus)) {
+    throw new ChatSDKError("bad_request:coupon", "Invalid reward status");
+  }
+
+  try {
+    await db
+      .update(coupon)
+      .set({
+        creatorRewardStatus: rewardStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(coupon.id, id));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update reward status"
+    );
+  }
+}
+
+export async function recordCouponRedemptionFromTransaction(
+  transaction: PaymentTransaction
+): Promise<void> {
+  if (!transaction.couponId) {
+    return;
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: couponRedemption.id })
+        .from(couponRedemption)
+        .where(eq(couponRedemption.orderId, transaction.orderId))
+        .limit(1);
+
+      if (existing) {
+        return;
+      }
+
+      const [couponRecord] = await tx
+        .select({
+          id: coupon.id,
+          creatorId: coupon.creatorId,
+        })
+        .from(coupon)
+        .where(eq(coupon.id, transaction.couponId as string))
+        .limit(1);
+
+      if (!couponRecord) {
+        return;
+      }
+
+      await tx.insert(couponRedemption).values({
+        couponId: couponRecord.id,
+        userId: transaction.userId,
+        creatorId: couponRecord.creatorId,
+        planId: transaction.planId,
+        orderId: transaction.orderId,
+        paymentAmount: transaction.amount,
+        discountAmount: Math.max(0, transaction.discountAmount ?? 0),
+      });
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    console.error("Failed to record coupon redemption", error);
+  }
+}
+
+export async function recordCouponRewardPayout({
+  couponId,
+  amountInPaise,
+  note,
+  recordedBy,
+}: {
+  couponId: string;
+  amountInPaise: number;
+  note?: string | null;
+  recordedBy: string;
+}): Promise<CouponRewardPayout> {
+  if (!couponId) {
+    throw new ChatSDKError("bad_request:coupon", "Coupon id is required");
+  }
+  if (!(Number.isFinite(amountInPaise) && amountInPaise > 0)) {
+    throw new ChatSDKError("bad_request:coupon", "Payout amount must be greater than zero");
+  }
+
+  try {
+    const [existingCoupon] = await db
+      .select({ id: coupon.id })
+      .from(coupon)
+      .where(eq(coupon.id, couponId))
+      .limit(1);
+
+    if (!existingCoupon) {
+      throw new ChatSDKError("not_found:coupon", "Coupon not found");
+    }
+
+    const [payout] = await db
+      .insert(couponRewardPayout)
+      .values({
+        couponId,
+        amount: Math.round(amountInPaise),
+        note: note ?? null,
+        recordedBy,
+      })
+      .returning();
+
+    if (!payout) {
+      throw new ChatSDKError("bad_request:database", "Failed to record payout");
+    }
+
+    return payout;
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to record payout");
+  }
+}
+
+export async function listCouponRewardPayouts(
+  couponId: string,
+  limit = 20
+): Promise<CouponRewardPayout[]> {
+  if (!couponId) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select()
+      .from(couponRewardPayout)
+      .where(eq(couponRewardPayout.couponId, couponId))
+      .orderBy(desc(couponRewardPayout.createdAt))
+      .limit(Math.max(1, Math.min(limit, 100)));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to load payout history");
+  }
+}
+
+export type CreatorCouponSummary = {
+  creator: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
+  coupons: Array<{
+    id: string;
+    code: string;
+    discountPercentage: number;
+    creatorRewardPercentage: number;
+    creatorRewardStatus: string;
+    validFrom: Date;
+    validTo: Date | null;
+    isActive: boolean;
+    usageCount: number;
+    totalRevenueInPaise: number;
+    totalDiscountInPaise: number;
+    lastRedemptionAt: Date | null;
+    estimatedRewardInPaise: number;
+    paidRewardInPaise: number;
+    remainingRewardInPaise: number;
+  }>;
+  totals: {
+    usageCount: number;
+    totalRevenueInPaise: number;
+    totalDiscountInPaise: number;
+    totalRewardInPaise: number;
+    pendingRewardInPaise: number;
+    totalPaidInPaise: number;
+    remainingRewardInPaise: number;
+  };
+};
+
+export type CouponRedemptionDetail = {
+  id: string;
+  couponId: string;
+  couponCode: string;
+  userLabel: string;
+  paymentAmountInPaise: number;
+  discountAmountInPaise: number;
+  rewardInPaise: number;
+  createdAt: Date;
+};
+
+export type CreatorCouponRedemption = {
+  id: string;
+  couponId: string;
+  couponCode: string;
+  orderId: string;
+  userLabel: string;
+  paymentAmountInPaise: number;
+  discountAmountInPaise: number;
+  rewardInPaise: number;
+  createdAt: Date;
+};
+
+export type CreatorRedemptionSortField = "date" | "payment";
+
+export type CreatorCouponRedemptionsResult = {
+  redemptions: CreatorCouponRedemption[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  sortBy: CreatorRedemptionSortField;
+  sortDirection: "asc" | "desc";
+};
+
+export async function getCreatorCouponSummary(
+  creatorId: string
+): Promise<CreatorCouponSummary | null> {
+  try {
+    const [creatorRecord] = await db
+      .select({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      })
+      .from(user)
+      .where(eq(user.id, creatorId))
+      .limit(1);
+
+    if (!creatorRecord) {
+      return null;
+    }
+
+    const stats = createCouponStatsSubquery();
+    const payoutStats = createCouponPayoutStatsSubquery();
+    const couponRows = await db
+      .select({
+        id: coupon.id,
+        code: coupon.code,
+        discountPercentage: coupon.discountPercentage,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        creatorRewardStatus: coupon.creatorRewardStatus,
+        validFrom: coupon.validFrom,
+        validTo: coupon.validTo,
+        isActive: coupon.isActive,
+        usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+        totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+        totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+        lastRedemptionAt: stats.lastRedemptionAt,
+        totalPaidInPaise: sql<number>`COALESCE(${payoutStats.totalPaid}, 0)`,
+      })
+      .from(coupon)
+      .leftJoin(stats, eq(stats.couponId, coupon.id))
+      .leftJoin(payoutStats, eq(payoutStats.couponId, coupon.id))
+      .where(eq(coupon.creatorId, creatorId))
+      .orderBy(desc(coupon.createdAt));
+
+    const coupons = couponRows.map((row) => {
+      const usageCount = toInteger(row.usageCount);
+      const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+      const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+      const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+      const rewardInPaise = calculateRewardAmount(
+        grossRevenue,
+        row.creatorRewardPercentage ?? 0
+      );
+      const lastRedemptionAt = toDate(row.lastRedemptionAt);
+      const paidRewardInPaise = toInteger(row.totalPaidInPaise);
+      const remainingRewardInPaise = Math.max(rewardInPaise - paidRewardInPaise, 0);
+      return {
+        id: row.id,
+        code: row.code,
+        discountPercentage: row.discountPercentage,
+        creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+        creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        isActive: row.isActive,
+        usageCount,
+        totalRevenueInPaise,
+        totalDiscountInPaise,
+        lastRedemptionAt,
+        estimatedRewardInPaise: rewardInPaise,
+        paidRewardInPaise,
+        remainingRewardInPaise,
+      };
+    });
+    const totals = coupons.reduce(
+      (acc, couponRow) => {
+        acc.usageCount += couponRow.usageCount;
+        acc.totalRevenueInPaise += couponRow.totalRevenueInPaise;
+        acc.totalDiscountInPaise += couponRow.totalDiscountInPaise;
+        acc.totalRewardInPaise += couponRow.estimatedRewardInPaise;
+        acc.totalPaidInPaise += couponRow.paidRewardInPaise;
+        acc.remainingRewardInPaise += couponRow.remainingRewardInPaise;
+        if (couponRow.creatorRewardStatus === "paid") {
+          acc.pendingRewardInPaise += 0;
+        } else {
+          acc.pendingRewardInPaise += couponRow.remainingRewardInPaise;
+        }
+        return acc;
+      },
+      {
+        usageCount: 0,
+        totalRevenueInPaise: 0,
+        totalDiscountInPaise: 0,
+        totalRewardInPaise: 0,
+        pendingRewardInPaise: 0,
+        totalPaidInPaise: 0,
+        remainingRewardInPaise: 0,
+      }
+    );
+
+    return {
+      creator: {
+        id: creatorRecord.id,
+        email: creatorRecord.email,
+        name:
+          [creatorRecord.firstName, creatorRecord.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || creatorRecord.email,
+      },
+      coupons,
+      totals,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    console.error("getCreatorCouponSummary failed", error);
+    const cause =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load creator summary";
+    throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
+export async function getCouponPayoutsForAdmin({
+  couponIds,
+  limitPerCoupon = 10,
+}: {
+  couponIds: string[];
+  limitPerCoupon?: number;
+}): Promise<Record<string, CouponRewardPayout[]>> {
+  if (couponIds.length === 0) {
+    return {};
+  }
+  const limit = Math.max(1, Math.min(limitPerCoupon, 50));
+  const totalLimit = limit * couponIds.length;
+
+  try {
+    const rows = await db
+      .select()
+      .from(couponRewardPayout)
+      .where(inArray(couponRewardPayout.couponId, couponIds))
+      .orderBy(desc(couponRewardPayout.createdAt))
+      .limit(totalLimit);
+
+    const grouped = new Map<string, CouponRewardPayout[]>();
+    rows.forEach((row) => {
+      const existing = grouped.get(row.couponId) ?? [];
+      if (existing.length < limit) {
+        existing.push(row);
+        grouped.set(row.couponId, existing);
+      }
+    });
+    return Object.fromEntries(grouped.entries());
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {};
+    }
+    console.error("getCouponPayoutsForAdmin failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load coupon payouts"
+    );
+  }
+}
+
+export async function getCreatorCouponRedemptions({
+  creatorId,
+  page = 1,
+  pageSize = 10,
+  sortBy = "date",
+  sortDirection = "desc",
+}: {
+  creatorId: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: CreatorRedemptionSortField;
+  sortDirection?: "asc" | "desc";
+}): Promise<CreatorCouponRedemptionsResult> {
+  const normalizedPage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
+  const normalizedPageSize =
+    Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.floor(pageSize) : 10;
+  const limit = Math.min(normalizedPageSize, MAX_CREATOR_REDEMPTIONS_PAGE_SIZE);
+  const offset = (normalizedPage - 1) * limit;
+  const normalizedSortBy: CreatorRedemptionSortField =
+    sortBy === "payment" ? "payment" : "date";
+  const normalizedSortDirection = sortDirection === "asc" ? "asc" : "desc";
+
+  const sortColumn =
+    normalizedSortBy === "payment"
+      ? couponRedemption.paymentAmount
+      : couponRedemption.createdAt;
+  const orderClause =
+    normalizedSortDirection === "asc" ? asc(sortColumn) : desc(sortColumn);
+
+  try {
+    const [rows, totalResult] = await Promise.all([
+      db
+        .select({
+          id: couponRedemption.id,
+          couponId: couponRedemption.couponId,
+          orderId: couponRedemption.orderId,
+          paymentAmount: couponRedemption.paymentAmount,
+          discountAmount: couponRedemption.discountAmount,
+          createdAt: couponRedemption.createdAt,
+          couponCode: coupon.code,
+          creatorRewardPercentage: coupon.creatorRewardPercentage,
+          userFirstName: user.firstName,
+          userLastName: user.lastName,
+          userEmail: user.email,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+        .innerJoin(user, eq(user.id, couponRedemption.userId))
+        .where(eq(coupon.creatorId, creatorId))
+        .orderBy(orderClause)
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+        .where(eq(coupon.creatorId, creatorId)),
+    ]);
+
+    const totalCount = toInteger(totalResult?.[0]?.count);
+
+    const redemptions: CreatorCouponRedemption[] = rows.map((row) => {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter(
+            (value): value is string =>
+              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      return {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        orderId: row.orderId,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+    });
+
+    return {
+      redemptions,
+      totalCount,
+      page: normalizedPage,
+      pageSize: limit,
+      sortBy: normalizedSortBy,
+      sortDirection: normalizedSortDirection,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        redemptions: [],
+        totalCount: 0,
+        page: normalizedPage,
+        pageSize: limit,
+        sortBy: normalizedSortBy,
+        sortDirection: normalizedSortDirection,
+      };
+    }
+    console.error("getCreatorCouponRedemptions failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load creator redemptions"
+    );
+  }
+}
+
+export async function getCouponRedemptionsForAdmin({
+  couponIds,
+  limitPerCoupon = 5,
+}: {
+  couponIds: string[];
+  limitPerCoupon?: number;
+}): Promise<Record<string, CouponRedemptionDetail[]>> {
+  if (!couponIds.length) {
+    return {};
+  }
+  const limit = Math.max(1, Math.min(limitPerCoupon, 25));
+  const sliceSize = limit * couponIds.length;
+
+  try {
+    const rows = await db
+      .select({
+        id: couponRedemption.id,
+        couponId: couponRedemption.couponId,
+        couponCode: coupon.code,
+        paymentAmount: couponRedemption.paymentAmount,
+        discountAmount: couponRedemption.discountAmount,
+        createdAt: couponRedemption.createdAt,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        userFirstName: user.firstName,
+        userLastName: user.lastName,
+        userEmail: user.email,
+      })
+      .from(couponRedemption)
+      .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+      .innerJoin(user, eq(user.id, couponRedemption.userId))
+      .where(inArray(couponRedemption.couponId, couponIds))
+      .orderBy(desc(couponRedemption.createdAt))
+      .limit(sliceSize);
+
+    const grouped = new Map<string, CouponRedemptionDetail[]>();
+
+    rows.forEach((row) => {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter(
+            (value): value is string =>
+              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      const detail: CouponRedemptionDetail = {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+
+      const existing = grouped.get(row.couponId) ?? [];
+      if (existing.length < limit) {
+        existing.push(detail);
+        grouped.set(row.couponId, existing);
+      }
+    });
+
+    return Object.fromEntries(grouped.entries());
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {};
+    }
+    console.error("getCouponRedemptionsForAdmin failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load coupon redemptions"
+    );
+  }
+}
+
 export async function createPaymentTransaction({
   userId,
   planId,
@@ -2256,6 +3297,9 @@ export async function createPaymentTransaction({
   amount,
   currency,
   notes = null,
+  couponId = null,
+  creatorId = null,
+  discountAmount = 0,
 }: {
   userId: string;
   planId: string;
@@ -2263,6 +3307,9 @@ export async function createPaymentTransaction({
   amount: number;
   currency: string;
   notes?: Record<string, unknown> | null;
+  couponId?: string | null;
+  creatorId?: string | null;
+  discountAmount?: number;
 }): Promise<PaymentTransaction> {
   try {
     return await db.transaction(async (tx) => {
@@ -2284,6 +3331,9 @@ export async function createPaymentTransaction({
           planId,
           amount,
           currency,
+          couponId,
+          creatorId,
+          discountAmount: Math.max(0, discountAmount ?? 0),
           notes: notes ?? null,
         })
         .returning();
@@ -2699,8 +3749,8 @@ export async function getUserBalanceSummary(
 
     const tokensRemaining = Math.max(0, latestSubscription.tokenBalance);
     const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
-    const creditsRemaining = Math.floor(tokensRemaining / TOKENS_PER_CREDIT);
-    const creditsTotal = Math.floor(tokensTotal / TOKENS_PER_CREDIT);
+    const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
+    const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
 
     return {
       subscription: latestSubscription,
@@ -2772,12 +3822,14 @@ export async function recordTokenUsage({
   modelConfigId,
   inputTokens,
   outputTokens,
+  deductCredits = true,
 }: {
   userId: string;
   chatId: string;
   modelConfigId: string | null;
   inputTokens: number;
   outputTokens: number;
+  deductCredits?: boolean;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
 
@@ -2793,70 +3845,46 @@ export async function recordTokenUsage({
 
   try {
     const usage = await db.transaction(async (tx) => {
-      let inputRate = DEFAULT_COST_PER_MILLION;
-      let outputRate = DEFAULT_COST_PER_MILLION;
+      let subscription: UserSubscription | null = null;
+      let tokensToDeduct = 0;
 
-      if (modelConfigId) {
-        const [config] = await tx
-          .select({
-            inputCostPerMillion: modelConfig.inputCostPerMillion,
-            outputCostPerMillion: modelConfig.outputCostPerMillion,
-          })
-          .from(modelConfig)
-          .where(eq(modelConfig.id, modelConfigId))
-          .limit(1);
+      if (deductCredits) {
+        subscription = await getActiveSubscriptionInternal(tx, userId, now);
 
-        if (config) {
-          const normalizedInput = normalizeCostRate(config.inputCostPerMillion);
-          const normalizedOutput = normalizeCostRate(
-            config.outputCostPerMillion
+        if (!subscription) {
+          throw new ChatSDKError(
+            "payment_required:credits",
+            "No active subscription found for user"
           );
-          if (normalizedInput !== null) {
-            inputRate = normalizedInput;
-          }
-          if (normalizedOutput !== null) {
-            outputRate = normalizedOutput;
-          }
         }
-      }
 
-      const subscription = await getActiveSubscriptionInternal(tx, userId, now);
+        tokensToDeduct = calculateTokenDeduction({
+          inputTokens,
+          outputTokens,
+        });
 
-      if (!subscription) {
-        throw new ChatSDKError(
-          "payment_required:credits",
-          "No active subscription found for user"
-        );
-      }
+        if (
+          tokensToDeduct > 0 &&
+          subscription.tokenBalance < tokensToDeduct
+        ) {
+          const consumedTokens = Math.max(0, subscription.tokenBalance);
 
-      const tokensToDeduct = calculateTokenDeduction({
-        inputTokens,
-        outputTokens,
-        inputRate,
-        outputRate,
-      });
+          await tx
+            .update(userSubscription)
+            .set({
+              tokenBalance: 0,
+              tokensUsed: Math.min(
+                subscription.tokenAllowance,
+                subscription.tokensUsed + consumedTokens
+              ),
+              status: "exhausted",
+              updatedAt: now,
+            })
+            .where(eq(userSubscription.id, subscription.id));
 
-      if (
-        tokensToDeduct > 0 &&
-        subscription.tokenBalance < tokensToDeduct
-      ) {
-        const consumedTokens = Math.max(0, subscription.tokenBalance);
-
-        await tx
-          .update(userSubscription)
-          .set({
-            tokenBalance: 0,
-            tokensUsed: Math.min(
-              subscription.tokenAllowance,
-              subscription.tokensUsed + consumedTokens
-            ),
-            status: "exhausted",
-            updatedAt: now,
-          })
-          .where(eq(userSubscription.id, subscription.id));
-
-        exhausted = true;
-        return null;
+          exhausted = true;
+          return null;
+        }
       }
 
       const [usage] = await tx
@@ -2865,7 +3893,7 @@ export async function recordTokenUsage({
           userId,
           chatId,
           modelConfigId: modelConfigId ?? null,
-          subscriptionId: subscription.id,
+          subscriptionId: subscription?.id ?? null,
           inputTokens,
           outputTokens,
           totalTokens,
@@ -2873,17 +3901,19 @@ export async function recordTokenUsage({
         })
         .returning();
 
-      const remaining = subscription.tokenBalance - tokensToDeduct;
+      if (subscription) {
+        const remaining = subscription.tokenBalance - tokensToDeduct;
 
-      await tx
-        .update(userSubscription)
-        .set({
-          tokenBalance: remaining,
-          tokensUsed: subscription.tokensUsed + tokensToDeduct,
-          status: remaining > 0 ? "active" : "exhausted",
-          updatedAt: now,
-        })
-        .where(eq(userSubscription.id, subscription.id));
+        await tx
+          .update(userSubscription)
+          .set({
+            tokenBalance: remaining,
+            tokensUsed: subscription.tokensUsed + tokensToDeduct,
+            status: remaining > 0 ? "active" : "exhausted",
+            updatedAt: now,
+          })
+          .where(eq(userSubscription.id, subscription.id));
+      }
 
       return usage ?? null;
     });
@@ -2948,6 +3978,29 @@ export async function getTokenUsageTotalsForUser(userId: string): Promise<{
   }
 }
 
+function dateToIstKey(date: Date): string {
+  const istMillis = date.getTime() + IST_OFFSET_MS;
+  const istDate = new Date(istMillis);
+  const year = istDate.getUTCFullYear();
+  const month = String(istDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(istDate.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function istKeyToDate(key: string): Date {
+  const [yearStr = "", monthStr = "", dayStr = ""] = key.split("-");
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  const day = Number.parseInt(dayStr, 10);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return new Date(key);
+  }
+
+  const midnightIstMillis = Date.UTC(year, month - 1, day);
+  return new Date(midnightIstMillis - IST_OFFSET_MS);
+}
+
 export async function getDailyTokenUsageForUser(
   userId: string,
   days: number
@@ -2978,13 +4031,13 @@ export async function getDailyTokenUsageForUser(
         row.createdAt instanceof Date
           ? row.createdAt
           : new Date(row.createdAt as unknown as string);
-      const key = created.toISOString().slice(0, 10);
+      const key = dateToIstKey(created);
       buckets.set(key, (buckets.get(key) ?? 0) + (row.totalTokens ?? 0));
     }
 
     return Array.from(buckets.entries())
-      .map(([day, totalTokens]) => ({
-        day: new Date(`${day}T00:00:00.000Z`),
+      .map(([dayKey, totalTokens]) => ({
+        day: istKeyToDate(dayKey),
         totalTokens,
       }))
       .sort((a, b) => a.day.getTime() - b.day.getTime());
@@ -3000,32 +4053,109 @@ export async function getDailyTokenUsageForUser(
 }
 
 export async function getSessionTokenUsageForUser(
-  userId: string
-): Promise<Array<{ chatId: string; totalTokens: number }>> {
+  userId: string,
+  options: { sortBy?: "latest" | "usage" } = {}
+): Promise<
+  Array<{
+    chatId: string;
+    chatTitle: string | null;
+    chatCreatedAt: Date | null;
+    totalTokens: number;
+    lastUsedAt: Date | null;
+  }>
+> {
   try {
     const rows = await db
       .select({
         chatId: tokenUsage.chatId,
         totalTokens: tokenUsage.totalTokens,
+        createdAt: tokenUsage.createdAt,
+        chatTitle: chat.title,
+        chatCreatedAt: chat.createdAt,
       })
       .from(tokenUsage)
+      .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .where(eq(tokenUsage.userId, userId));
 
-    const aggregates = new Map<string, number>();
+    const aggregates = new Map<
+      string,
+      {
+        totalTokens: number;
+        lastUsedAt: Date | null;
+        chatTitle: string | null;
+        chatCreatedAt: Date | null;
+      }
+    >();
 
     for (const row of rows) {
       if (!row.chatId) {
         continue;
       }
-      aggregates.set(
-        row.chatId,
-        (aggregates.get(row.chatId) ?? 0) + (row.totalTokens ?? 0)
-      );
+
+      const createdAtValue =
+        row.createdAt instanceof Date
+          ? row.createdAt
+          : row.createdAt
+            ? new Date(row.createdAt as unknown as string)
+            : null;
+
+      const existing =
+        aggregates.get(row.chatId) ?? {
+          totalTokens: 0,
+          lastUsedAt: null,
+          chatTitle: null,
+          chatCreatedAt: null,
+        };
+
+      existing.totalTokens += row.totalTokens ?? 0;
+
+      if (
+        createdAtValue &&
+        (!existing.lastUsedAt ||
+          createdAtValue.getTime() > existing.lastUsedAt.getTime())
+      ) {
+        existing.lastUsedAt = createdAtValue;
+      }
+
+      if (!existing.chatTitle && row.chatTitle) {
+        existing.chatTitle = row.chatTitle;
+      }
+
+      if (!existing.chatCreatedAt && row.chatCreatedAt) {
+        existing.chatCreatedAt =
+          row.chatCreatedAt instanceof Date
+            ? row.chatCreatedAt
+            : new Date(row.chatCreatedAt as unknown as string);
+      }
+
+      aggregates.set(row.chatId, existing);
     }
 
+    const sortBy = options.sortBy === "usage" ? "usage" : "latest";
+
     return Array.from(aggregates.entries())
-      .map(([chatId, totalTokens]) => ({ chatId, totalTokens }))
-      .sort((a, b) => b.totalTokens - a.totalTokens);
+      .map(([chatId, data]) => ({
+        chatId,
+        chatTitle: data.chatTitle,
+        chatCreatedAt: data.chatCreatedAt,
+        totalTokens: data.totalTokens,
+        lastUsedAt: data.lastUsedAt,
+      }))
+      .sort((a, b) => {
+        if (sortBy === "usage") {
+          if (b.totalTokens === a.totalTokens) {
+            return (
+              (b.lastUsedAt?.getTime() ?? 0) -
+              (a.lastUsedAt?.getTime() ?? 0)
+            );
+          }
+          return b.totalTokens - a.totalTokens;
+        }
+        return (
+          (b.lastUsedAt?.getTime() ?? 0) -
+          (a.lastUsedAt?.getTime() ?? 0)
+        );
+      });
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -3182,55 +4312,15 @@ async function getActiveSubscriptionInternal(
   return subscription;
 }
 
-function normalizeCostRate(rate: number | null | undefined): number | null {
-  if (typeof rate !== "number" || Number.isNaN(rate)) {
-    return null;
-  }
-
-  if (rate <= 0) {
-    return null;
-  }
-
-  return rate;
-}
-
 function calculateTokenDeduction({
   inputTokens,
   outputTokens,
-  inputRate,
-  outputRate,
 }: {
   inputTokens: number;
   outputTokens: number;
-  inputRate: number;
-  outputRate: number;
 }): number {
-  const normalizedInputRate =
-    typeof inputRate === "number"
-      ? inputRate
-      : DEFAULT_COST_PER_MILLION;
-  const normalizedOutputRate =
-    typeof outputRate === "number"
-      ? outputRate
-      : DEFAULT_COST_PER_MILLION;
-
-  const weightedInput =
-    (inputTokens * normalizedInputRate) / DEFAULT_COST_PER_MILLION;
-  const weightedOutput =
-    (outputTokens * normalizedOutputRate) / DEFAULT_COST_PER_MILLION;
-
-  const total = weightedInput + weightedOutput;
-
-  if (!Number.isFinite(total) || total <= 0) {
-    return TOKENS_PER_CREDIT;
-  }
-
-  const creditsToDeduct = Math.max(
-    1,
-    Math.ceil(total / TOKENS_PER_CREDIT)
-  );
-
-  return creditsToDeduct * TOKENS_PER_CREDIT;
+  const totalTokens = Math.max(1, Math.round(inputTokens + outputTokens));
+  return totalTokens;
 }
 
 export type TranslationTableEntry = {

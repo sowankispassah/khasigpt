@@ -87,6 +87,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "SR-only label for the unauthenticated menu button.",
   },
   {
+    key: "user_menu.creator_dashboard",
+    defaultText: "Creator dashboard",
+    description: "Menu item linking to the creator performance dashboard.",
+  },
+  {
     key: "common.cancel",
     defaultText: "Cancel",
     description: "Generic cancel action label.",
@@ -850,14 +855,59 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Column header for the chat ID.",
   },
   {
+    key: "subscriptions.session_usage.headers.chat",
+    defaultText: "Chat",
+    description: "Column header for the session chat details.",
+  },
+  {
+    key: "subscriptions.session_usage.headers.created",
+    defaultText: "Started on",
+    description: "Column header for the chat creation date.",
+  },
+  {
+    key: "subscriptions.session_usage.headers.last_used",
+    defaultText: "Last activity",
+    description: "Column header for the last usage timestamp.",
+  },
+  {
     key: "subscriptions.session_usage.headers.credits_used",
     defaultText: "Credits used",
     description: "Column header for credits used.",
   },
   {
+    key: "subscriptions.session_usage.sort.label",
+    defaultText: "Sort sessions",
+    description: "Label for the session usage sort select.",
+  },
+  {
+    key: "subscriptions.session_usage.sort.latest",
+    defaultText: "Latest activity",
+    description: "Sort option label for ordering by most recent sessions.",
+  },
+  {
+    key: "subscriptions.session_usage.sort.usage",
+    defaultText: "Highest credits used",
+    description: "Sort option label for ordering by usage totals.",
+  },
+  {
     key: "subscriptions.session_usage.empty",
     defaultText: "No usage recorded yet.",
     description: "Empty state text for the session usage table.",
+  },
+  {
+    key: "subscriptions.session_usage.untitled_chat",
+    defaultText: "Untitled chat",
+    description: "Fallback title when a chat is missing a name.",
+  },
+  {
+    key: "subscriptions.session_usage.created.unknown",
+    defaultText: "Not available",
+    description: "Fallback text when the chat start date is missing.",
+  },
+  {
+    key: "subscriptions.session_usage.last_used.unknown",
+    defaultText: "Not available",
+    description: "Fallback text when no last usage timestamp is present.",
   },
   {
     key: "subscriptions.pagination.updating",
@@ -934,6 +984,111 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "recharge.status.error_generic",
     defaultText: "Something went wrong while processing the payment.",
     description: "Fallback status message when an unexpected error occurs.",
+  },
+  {
+    key: "recharge.dialog.title",
+    defaultText: "Review your recharge",
+    description: "Title for the order confirmation dialog on the recharge page.",
+  },
+  {
+    key: "recharge.dialog.description",
+    defaultText: "Confirm the plan details and apply a coupon before continuing to payment.",
+    description: "Helper text shown in the order confirmation dialog.",
+  },
+  {
+    key: "recharge.dialog.plan_placeholder",
+    defaultText: "Selected plan",
+    description: "Fallback label when the plan name is loading inside the dialog.",
+  },
+  {
+    key: "recharge.dialog.summary.discount",
+    defaultText: "Coupon discount",
+    description: "Label for the discount row in the order summary.",
+  },
+  {
+    key: "recharge.dialog.summary.total",
+    defaultText: "Total due",
+    description: "Label for the final amount row in the order summary.",
+  },
+  {
+    key: "recharge.dialog.coupon_label",
+    defaultText: "Coupon code",
+    description: "Label for the coupon input inside the order dialog.",
+  },
+  {
+    key: "recharge.dialog.coupon_helper",
+    defaultText: "Coupons are optional. Leave blank if you don't have one.",
+    description: "Helper text below the coupon input.",
+  },
+  {
+    key: "recharge.dialog.coupon_required",
+    defaultText: "Enter a coupon code to validate.",
+    description: "Inline error shown when the user tries to validate with an empty code.",
+  },
+  {
+    key: "recharge.dialog.coupon_invalid",
+    defaultText: "Coupon is invalid or expired.",
+    description: "Fallback error when coupon validation fails.",
+  },
+  {
+    key: "recharge.dialog.coupon_applied",
+    defaultText: "Coupon applied successfully.",
+    description: "Status message after a coupon validates in the dialog.",
+  },
+  {
+    key: "recharge.dialog.validate",
+    defaultText: "Validate coupon",
+    description: "Button label for validating a coupon in the dialog.",
+  },
+  {
+    key: "recharge.dialog.validating",
+    defaultText: "Validating...",
+    description: "Button label while the coupon validation request is pending.",
+  },
+  {
+    key: "recharge.dialog.proceed",
+    defaultText: "Proceed to payment",
+    description: "Primary CTA label in the order confirmation dialog.",
+  },
+  {
+    key: "recharge.status.coupon_applied",
+    defaultText: "Coupon {code} applied. You save {amount} on this recharge.",
+    description: "Toast message shown when a coupon is successfully applied.",
+  },
+  {
+    key: "recharge.coupon.label",
+    defaultText: "Have a coupon code?",
+    description: "Heading for the recharge coupon input section.",
+  },
+  {
+    key: "recharge.coupon.help",
+    defaultText: "Enter a creator coupon to unlock discounts during checkout.",
+    description: "Helper text beneath the coupon input label.",
+  },
+  {
+    key: "recharge.coupon.input_label",
+    defaultText: "Coupon code",
+    description: "Accessible label for the coupon code input.",
+  },
+  {
+    key: "recharge.coupon.placeholder",
+    defaultText: "CREATOR10",
+    description: "Placeholder text for the coupon input field.",
+  },
+  {
+    key: "recharge.coupon.clear",
+    defaultText: "Clear",
+    description: "Button label to clear the current coupon input.",
+  },
+  {
+    key: "recharge.coupon.applied_summary",
+    defaultText: "Coupon {code} will save you ₹{amount} on the next recharge.",
+    description: "Helper text displayed when a coupon is queued for checkout.",
+  },
+  {
+    key: "recharge.coupon.pending",
+    defaultText: "Coupons are validated when you start the payment.",
+    description: "Helper text shown when no coupon is active yet.",
   },
   {
     key: "recharge.plan.badge.recommended",
@@ -1127,5 +1282,666 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "complete_profile.submit",
     defaultText: "Save and continue",
     description: "Submit button label on the profile completion form.",
+  },
+  {
+    key: "forum.hero.tagline",
+    defaultText: "Community Forum",
+    description: "Eyebrow label above the forum hero heading.",
+  },
+  {
+    key: "forum.hero.title",
+    defaultText: "Discuss product ideas with KhasiGPT builders",
+    description: "Headline shown at the top of the forum page.",
+  },
+  {
+    key: "forum.hero.subtitle",
+    defaultText:
+      "Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance.",
+    description: "Supporting paragraph beneath the forum hero heading.",
+  },
+  {
+    key: "forum.hero.stats.total_label",
+    defaultText: "Total topics",
+    description: "Label beneath the total thread count in the hero stats.",
+  },
+  {
+    key: "forum.hero.stats.visible_label",
+    defaultText: "Visible now",
+    description: "Label beneath the currently visible thread count.",
+  },
+  {
+    key: "forum.hero.image_alt",
+    defaultText: "KhasiGPT community badge",
+    description: "Alt text for the badge image displayed on the forum hero.",
+  },
+  {
+    key: "forum.search.placeholder",
+    defaultText: "Search discussions, tags, or keywords",
+    description: "Placeholder text for the forum search input.",
+  },
+  {
+    key: "forum.search.submit",
+    defaultText: "Search",
+    description: "Search button label on the forum page.",
+  },
+  {
+    key: "forum.search.pending",
+    defaultText: "Searching…",
+    description: "Button label while the forum search is running.",
+  },
+  {
+    key: "forum.filters.label",
+    defaultText: "Active filters:",
+    description: "Label preceding the list of applied forum filters.",
+  },
+  {
+    key: "forum.filters.category",
+    defaultText: "Category: {value}",
+    description: "Badge label describing the active category filter.",
+  },
+  {
+    key: "forum.filters.tag",
+    defaultText: "Tag: #{value}",
+    description: "Badge label describing the active tag filter.",
+  },
+  {
+    key: "forum.filters.search",
+    defaultText: 'Search: "{value}"',
+    description: "Badge label describing the current search query filter.",
+  },
+  {
+    key: "forum.empty.title",
+    defaultText: "No discussions yet",
+    description: "Heading for the empty state when no forum threads exist.",
+  },
+  {
+    key: "forum.empty.subtitle",
+    defaultText: "Be the first to start a topic in this category.",
+    description: "Supporting text for the empty forum state.",
+  },
+  {
+    key: "forum.list.load_more",
+    defaultText: "Load more discussions",
+    description: "Button label to load additional forum threads.",
+  },
+  {
+    key: "forum.list.loading_more",
+    defaultText: "Loading…",
+    description: "Status text shown while more threads are loading.",
+  },
+  {
+    key: "forum.toast.load_more_error",
+    defaultText: "Unable to load more discussions right now.",
+    description: "Toast message shown when the load-more request fails.",
+  },
+  {
+    key: "forum.sidebar.categories.title",
+    defaultText: "Categories",
+    description: "Heading for the forum categories sidebar card.",
+  },
+  {
+    key: "forum.sidebar.categories.reset",
+    defaultText: "Reset",
+    description: "Link that clears all forum filters.",
+  },
+  {
+    key: "forum.sidebar.categories.all",
+    defaultText: "All discussions",
+    description: "Link that shows all forum threads regardless of category.",
+  },
+  {
+    key: "forum.sidebar.tags.title",
+    defaultText: "Trending Tags",
+    description: "Heading for the trending tags sidebar card.",
+  },
+  {
+    key: "forum.sidebar.tags.empty",
+    defaultText: "No tags available yet.",
+    description: "Message shown when no forum tags are available.",
+  },
+  {
+    key: "forum.composer.button",
+    defaultText: "Start a discussion",
+    description: "CTA button that opens the forum thread composer.",
+  },
+  {
+    key: "forum.composer.button_tooltip",
+    defaultText: "Sign in to start a discussion.",
+    description: "Tooltip shown when unauthenticated users hover the CTA.",
+  },
+  {
+    key: "forum.composer.sheet_title",
+    defaultText: "Start a discussion",
+    description: "Default heading inside the forum composer sheet.",
+  },
+  {
+    key: "forum.composer.sheet_title_with_name",
+    defaultText: "Hi {name}, share an update",
+    description: "Personalized heading when the user has a first name.",
+  },
+  {
+    key: "forum.composer.error.max_tags",
+    defaultText: "You can only select up to 5 tags.",
+    description: "Error shown when the tag selection limit is exceeded.",
+  },
+  {
+    key: "forum.composer.error.title_short",
+    defaultText: "Title must be at least 8 characters long.",
+    description: "Validation error for short thread titles.",
+  },
+  {
+    key: "forum.composer.error.category_required",
+    defaultText: "Please select a category.",
+    description: "Validation error when no category is selected.",
+  },
+  {
+    key: "forum.composer.error.content_short",
+    defaultText: "Describe your discussion in more detail.",
+    description: "Validation error for short thread bodies.",
+  },
+  {
+    key: "forum.composer.title.label",
+    defaultText: "Title",
+    description: "Label for the thread title input.",
+  },
+  {
+    key: "forum.composer.title.placeholder",
+    defaultText: "What would you like to discuss?",
+    description: "Placeholder for the thread title input.",
+  },
+  {
+    key: "forum.composer.category.label",
+    defaultText: "Category",
+    description: "Label for the category select input.",
+  },
+  {
+    key: "forum.composer.category.placeholder",
+    defaultText: "Select a category",
+    description: "Placeholder text for the category select input.",
+  },
+  {
+    key: "forum.composer.category.locked",
+    defaultText: "(locked)",
+    description: "Suffix shown next to locked categories.",
+  },
+  {
+    key: "forum.composer.details.label",
+    defaultText: "Details",
+    description: "Label for the discussion details textarea.",
+  },
+  {
+    key: "forum.composer.details.note",
+    defaultText: "(Markdown formatting supported soon)",
+    description: "Helper note beneath the composer details label.",
+  },
+  {
+    key: "forum.composer.details.placeholder",
+    defaultText:
+      "Share the full context, code snippets, or anything that helps the community respond faster.",
+    description: "Placeholder text for the thread body textarea.",
+  },
+  {
+    key: "forum.composer.tags.label",
+    defaultText: "Tags",
+    description: "Label for the tag chips selector.",
+  },
+  {
+    key: "forum.composer.tags.count",
+    defaultText: "{count}/5 selected",
+    description: "Helper text showing how many tags are selected.",
+  },
+  {
+    key: "forum.composer.tags.empty",
+    defaultText: "No tags available yet.",
+    description: "Message shown when there are no tags to choose from.",
+  },
+  {
+    key: "forum.composer.submit",
+    defaultText: "Publish discussion",
+    description: "Primary action button inside the composer sheet.",
+  },
+  {
+    key: "forum.composer.submit_pending",
+    defaultText: "Publishing…",
+    description: "Loading label shown while a thread is being published.",
+  },
+  {
+    key: "forum.composer.login_required.title",
+    defaultText: "Sign in to continue",
+    description: "Alert title shown when unauthenticated users open composer.",
+  },
+  {
+    key: "forum.composer.login_required.body",
+    defaultText:
+      "You need to be logged in to start a discussion. Please sign in and then return to the forum.",
+    description: "Description in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.cancel",
+    defaultText: "Not now",
+    description: "Cancel button text in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.confirm",
+    defaultText: "Go to login",
+    description: "Confirm button text in the login-required dialog.",
+  },
+  {
+    key: "forum.thread.pinned",
+    defaultText: "Pinned",
+    description: "Badge shown on pinned forum threads.",
+  },
+  {
+    key: "forum.thread.resolved",
+    defaultText: "Resolved",
+    description: "Badge shown on threads marked as resolved.",
+  },
+  {
+    key: "forum.thread.locked",
+    defaultText: "Locked",
+    description: "Badge shown on locked discussion threads.",
+  },
+  {
+    key: "forum.thread.subscribed",
+    defaultText: "Subscribed",
+    description: "Badge shown when the viewer follows a thread.",
+  },
+  {
+    key: "forum.thread.no_excerpt",
+    defaultText: "This discussion does not include a preview yet.",
+    description: "Fallback text when a thread lacks an excerpt.",
+  },
+  {
+    key: "forum.thread.meta.replies",
+    defaultText: "{count} replies",
+    description: "Label displaying the number of replies on a thread.",
+  },
+  {
+    key: "forum.thread.meta.views",
+    defaultText: "{count} views",
+    description: "Label displaying the number of views on a thread.",
+  },
+  {
+    key: "forum.badge.official",
+    defaultText: "Official",
+    description: "Label shown on forum content posted by an administrator.",
+  },
+  {
+    key: "forum.thread.relative.just_now",
+    defaultText: "just now",
+    description: "Fallback text for very recent timestamps.",
+  },
+  {
+    key: "forum.thread.toast.reply_posted",
+    defaultText: "Reply posted!",
+    description: "Toast shown after a reply is successfully created.",
+  },
+  {
+    key: "forum.thread.toast.resolve_success",
+    defaultText: "Thread marked as solved.",
+    description: "Toast shown after resolving a thread.",
+  },
+  {
+    key: "forum.thread.toast.reopen_success",
+    defaultText: "Thread reopened.",
+    description: "Toast shown after reopening a thread.",
+  },
+  {
+    key: "forum.thread.toast.delete_success",
+    defaultText: "Thread deleted.",
+    description: "Toast shown after deleting a thread.",
+  },
+  {
+    key: "forum.thread.toast.action_error",
+    defaultText: "Unable to update the thread. Please try again.",
+    description: "Generic error shown when a thread action fails.",
+  },
+  {
+    key: "forum.thread.toast.reaction_error",
+    defaultText: "Unable to update reaction.",
+    description: "Toast shown when toggling a reaction fails.",
+  },
+  {
+    key: "forum.thread.meta.started",
+    defaultText: "Started {date}",
+    description: "Label describing when the thread was created.",
+  },
+  {
+    key: "forum.thread.meta.updated",
+    defaultText: "Updated {timestamp}",
+    description: "Label describing the last reply timestamp.",
+  },
+  {
+    key: "forum.thread.action.follow",
+    defaultText: "Follow",
+    description: "Button text to subscribe to a thread.",
+  },
+  {
+    key: "forum.thread.action.unfollow",
+    defaultText: "Unfollow",
+    description: "Button text to unsubscribe from a thread.",
+  },
+  {
+    key: "forum.thread.action.updating",
+    defaultText: "Updating…",
+    description: "Label shown while the follow/unfollow action is pending.",
+  },
+  {
+    key: "forum.thread.back_to_forum",
+    defaultText: "Back to forum",
+    description: "Button label that returns the viewer to the forum listing page.",
+  },
+  {
+    key: "forum.thread.post.no_content",
+    defaultText: "This post does not include any content.",
+    description: "Fallback text when a reply has no body.",
+  },
+  {
+    key: "forum.thread.replies.empty",
+    defaultText: "No replies yet. Be the first to respond.",
+    description:
+      "Empty state message on the thread detail page when there are no replies.",
+  },
+  {
+    key: "forum.thread.reaction.like",
+    defaultText: "Helpful",
+    description: "Label for the helpful reaction button.",
+  },
+  {
+    key: "forum.thread.reaction.insightful",
+    defaultText: "Insightful",
+    description: "Label for the insightful reaction button.",
+  },
+  {
+    key: "forum.thread.reaction.support",
+    defaultText: "Support",
+    description: "Label for the support reaction button.",
+  },
+  {
+    key: "forum.thread.section.add_reply",
+    defaultText: "Add a reply",
+    description: "Heading above the reply composer on the thread detail view.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_in",
+    defaultText: "Share your insights, {name}…",
+    description: "Placeholder shown in the reply composer for signed-in users.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_out",
+    defaultText: "Sign in to join the conversation.",
+    description: "Placeholder shown when the viewer is logged out.",
+  },
+  {
+    key: "forum.thread.reply.submit",
+    defaultText: "Post reply",
+    description: "Submit button text for the reply composer.",
+  },
+  {
+    key: "forum.thread.reply.submit_pending",
+    defaultText: "Posting…",
+    description: "Button label while the reply submit request is pending.",
+  },
+  {
+    key: "forum.thread.reply.error_too_short",
+    defaultText: "Replies should be at least 8 characters.",
+    description: "Validation error when a reply is too short.",
+  },
+  {
+    key: "forum.thread.actions.menu",
+    defaultText: "Thread actions",
+    description: "Label for the thread actions dropdown menu.",
+  },
+  {
+    key: "forum.thread.actions.resolve",
+    defaultText: "Mark as solved",
+    description: "Menu item to mark a thread as resolved.",
+  },
+  {
+    key: "forum.thread.actions.reopen",
+    defaultText: "Reopen discussion",
+    description: "Menu item to reopen a resolved thread.",
+  },
+  {
+    key: "forum.thread.actions.delete",
+    defaultText: "Delete thread",
+    description: "Menu item to delete a thread.",
+  },
+  {
+    key: "forum.thread.actions.delete_confirm",
+    defaultText: "Are you sure you want to delete this thread? This action cannot be undone.",
+    description: "Confirmation message before deleting a thread.",
+  },
+  {
+    key: "creator_dashboard.tagline",
+    defaultText: "Creator dashboard",
+    description: "Tagline shown at the top of the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.title",
+    defaultText: "Share coupons and track performance",
+    description: "Main heading for the creator dashboard page.",
+  },
+  {
+    key: "creator_dashboard.subtitle",
+    defaultText:
+      "Monitor how your community redeems coupons, how much revenue you helped generate, and when each code expires.",
+    description: "Subtitle describing the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.metrics.redemptions",
+    defaultText: "Total redemptions",
+    description: "Metric label indicating the total number of coupon redemptions.",
+  },
+  {
+    key: "creator_dashboard.metrics.revenue",
+    defaultText: "Recharge volume",
+    description: "Metric label for total recharge revenue generated by coupons.",
+  },
+  {
+    key: "creator_dashboard.metrics.savings",
+    defaultText: "User savings",
+    description: "Metric label showing the total discount unlocked for users.",
+  },
+  {
+    key: "creator_dashboard.metrics.rewards",
+    defaultText: "Your rewards",
+    description: "Metric label summarising creator reward payouts.",
+  },
+  {
+    key: "creator_dashboard.metrics.paid",
+    defaultText: "Payouts completed",
+    description: "Metric label for the total rewards already paid out.",
+  },
+  {
+    key: "creator_dashboard.metrics.pending_payout",
+    defaultText: "Pending payout",
+    description: "Metric label for rewards awaiting payment.",
+  },
+  {
+    key: "coupon.reward_status.pending",
+    defaultText: "Payment pending",
+    description: "Badge label when creator rewards are pending payment.",
+  },
+  {
+    key: "coupon.reward_status.paid",
+    defaultText: "Paid",
+    description: "Badge label when creator rewards are paid.",
+  },
+  {
+    key: "coupon.reward_status.none",
+    defaultText: "No redemptions yet",
+    description: "Helper text when rewards are unavailable due to zero redemptions.",
+  },
+  {
+    key: "creator_dashboard.coupons.title",
+    defaultText: "Your coupon codes",
+    description: "Section title for the coupon table on the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.coupons.subtitle",
+    defaultText: "Review status, validity, and performance for every code assigned to you.",
+    description: "Helper text beneath the coupon section heading.",
+  },
+  {
+    key: "creator_dashboard.coupons.empty",
+    defaultText:
+      "No coupons are assigned to you yet. Once an admin shares a code, it will appear here.",
+    description: "Empty-state text when a creator has no coupons.",
+  },
+  {
+    key: "creator_dashboard.table.code",
+    defaultText: "Code",
+    description: "Table column label for the coupon code.",
+  },
+  {
+    key: "creator_dashboard.table.discount",
+    defaultText: "Discount",
+    description: "Table column label for the coupon discount percentage.",
+  },
+  {
+    key: "creator_dashboard.table.validity",
+    defaultText: "Validity",
+    description: "Table column label for coupon validity dates.",
+  },
+  {
+    key: "creator_dashboard.table.status",
+    defaultText: "Status",
+    description: "Table column label for coupon status.",
+  },
+  {
+    key: "creator_dashboard.table.usage",
+    defaultText: "Usage",
+    description: "Table column label for coupon redemption counts.",
+  },
+  {
+    key: "creator_dashboard.table.revenue",
+    defaultText: "Revenue",
+    description: "Table column label for revenue generated per coupon.",
+  },
+  {
+    key: "creator_dashboard.table.reward",
+    defaultText: "Reward",
+    description: "Table column label for creator reward percentage and payout.",
+  },
+  {
+    key: "creator_dashboard.table.payouts",
+    defaultText: "Payouts",
+    description: "Table column label for paid vs pending rewards.",
+  },
+  {
+    key: "creator_dashboard.payouts.pending",
+    defaultText: "Pending {amount}",
+    description: "Helper text indicating the remaining unpaid reward amount.",
+  },
+  {
+    key: "creator_dashboard.table.no_end",
+    defaultText: "No end date",
+    description: "Helper text when a coupon has no expiration.",
+  },
+  {
+    key: "creator_dashboard.status.expired",
+    defaultText: "Expired",
+    description: "Badge label for expired coupons.",
+  },
+  {
+    key: "creator_dashboard.status.active",
+    defaultText: "Active",
+    description: "Badge label for active coupons.",
+  },
+  {
+    key: "creator_dashboard.status.inactive",
+    defaultText: "Inactive",
+    description: "Badge label for inactive coupons.",
+  },
+  {
+    key: "creator_dashboard.redemptions.title",
+    defaultText: "Recent redemptions",
+    description: "Section heading for the creator redemption history table.",
+  },
+  {
+    key: "creator_dashboard.redemptions.subtitle",
+    defaultText: "Track every subscription that used your coupon code.",
+    description: "Helper text explaining the redemption history section.",
+  },
+  {
+    key: "creator_dashboard.redemptions.empty",
+    defaultText: "No redemptions are recorded yet. Share your code to see activity here.",
+    description: "Empty-state message when no coupon redemptions exist.",
+  },
+  {
+    key: "creator_dashboard.redemptions.user",
+    defaultText: "User",
+    description: "Table column label for the masked user identifier.",
+  },
+  {
+    key: "creator_dashboard.redemptions.coupon",
+    defaultText: "Coupon",
+    description: "Table column label for the coupon code used in a redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.payment",
+    defaultText: "Payment",
+    description: "Table column label for the payment amount collected from the user.",
+  },
+  {
+    key: "creator_dashboard.redemptions.discount",
+    defaultText: "Discount",
+    description: "Table column label for the discount applied to the redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.reward",
+    defaultText: "Your reward",
+    description: "Table column label for the creator reward amount per redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.date",
+    defaultText: "Redeemed at",
+    description: "Table column label for the redemption date.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.label",
+    defaultText: "Sort by",
+    description: "Label preceding the redemption sorting controls.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.newest",
+    defaultText: "Newest",
+    description: "Button label to sort redemptions by newest first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.oldest",
+    defaultText: "Oldest",
+    description: "Button label to sort redemptions by oldest first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.highest",
+    defaultText: "Highest payment",
+    description: "Button label to sort redemptions by highest payment first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.lowest",
+    defaultText: "Lowest payment",
+    description: "Button label to sort redemptions by lowest payment first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.pagination",
+    defaultText: "Page {current} of {total}",
+    description: "Helper text describing the current pagination state.",
+  },
+  {
+    key: "common.previous",
+    defaultText: "Previous",
+    description: "Label for pagination controls that go to the previous page.",
+  },
+  {
+    key: "common.next",
+    defaultText: "Next",
+    description: "Label for pagination controls that go to the next page.",
+  },
+  {
+    key: "creator_dashboard.table.last_used",
+    defaultText: "Last: {date}",
+    description: "Helper text showing the last redemption date for a coupon.",
   },
 ];

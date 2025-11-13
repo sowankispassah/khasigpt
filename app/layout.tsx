@@ -8,6 +8,8 @@ import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
+import { isForumEnabled } from "@/lib/forum/config";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -69,6 +71,8 @@ const structuredData = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  applicationName: siteName,
+  category: "technology",
   title: {
     default: siteTitle,
     template: `%s – ${siteName}`,
@@ -84,6 +88,20 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/",
+  },
+  manifest: "/manifest.webmanifest",
+  authors: [
+    {
+      name: siteName,
+      url: siteUrl,
+    },
+  ],
+  creator: siteName,
+  publisher: siteName,
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
   },
   openGraph: {
     type: "website",
@@ -109,6 +127,11 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  appleWebApp: {
+    capable: true,
+    title: siteTitle,
+    statusBarStyle: "default",
   },
   icons: {
     icon: [
@@ -171,6 +194,7 @@ export default async function RootLayout({
     cookieStore.get("__Secure-authjs.session-token") ??
     cookieStore.get("authjs.session-token");
   const session = sessionToken ? await auth() : null;
+  const forumEnabled = await isForumEnabled();
 
   return (
     <html
@@ -204,11 +228,12 @@ export default async function RootLayout({
             languages={languages}
           >
             <SessionProvider session={session ?? undefined}>
-              <PageUserMenu />
+              <PageUserMenu forumEnabled={forumEnabled} />
               {children}
             </SessionProvider>
             <Toaster position="top-center" />
             <SpeedInsights />
+            <PwaInstallBanner />
           </LanguageProvider>
         </ThemeProvider>
       </body>

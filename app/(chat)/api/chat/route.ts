@@ -21,7 +21,8 @@ import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import { getModelRegistry } from "@/lib/ai/model-registry";
-import { isProductionEnvironment } from "@/lib/constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY, isProductionEnvironment } from "@/lib/constants";
+import { loadFreeMessageSettings } from "@/lib/free-messages";
 import {
   createStreamId,
   deleteChatById,
@@ -30,7 +31,6 @@ import {
   getMessagesByChatId,
   recordTokenUsage,
   getActiveSubscriptionForUser,
-  hasAnySubscriptionForUser,
   saveChat,
   saveMessages,
   updateChatLastContextById,
@@ -38,7 +38,8 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
 import type { AppUsage } from "@/lib/usage";
-import { convertToUIMessages, generateUUID } from "@/lib/utils";
+import { convertToUIMessages, generateUUID, getTextFromMessage } from "@/lib/utils";
+import { buildRagAugmentation } from "@/lib/rag/service";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -85,7 +86,15 @@ export function getStreamContext() {
   return globalStreamContext;
 }
 
-const FREE_MESSAGES_PER_DAY = 3;
+const IST_OFFSET_MINUTES = 5.5 * 60;
+
+function getStartOfTodayInIST() {
+  const now = new Date();
+  const istMillis = now.getTime() + IST_OFFSET_MINUTES * 60 * 1000;
+  const istStart = new Date(istMillis);
+  istStart.setUTCHours(0, 0, 0, 0);
+  return new Date(istStart.getTime() - IST_OFFSET_MINUTES * 60 * 1000);
+}
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -103,11 +112,13 @@ export async function POST(request: Request) {
       message,
       selectedChatModel,
       selectedVisibilityType,
+      useCustomKnowledge,
     }: {
       id: string;
       message: ChatMessage;
       selectedChatModel: string;
       selectedVisibilityType: VisibilityType;
+      useCustomKnowledge: boolean;
     } = requestBody;
 
     const session = await auth();
@@ -121,37 +132,17 @@ export async function POST(request: Request) {
 
     const messageCount = await getMessageCountByUserId({
       id: session.user.id,
-      differenceInHours: 24,
+      since: getStartOfTodayInIST(),
     });
 
     if (maxMessagesPerDay !== null && messageCount > maxMessagesPerDay) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
 
-
-    const activeSubscription = await getActiveSubscriptionForUser(
-      session.user.id
-    );
-
-    let hasSubscriptionHistory = false;
-
-    if (!activeSubscription) {
-      hasSubscriptionHistory = await hasAnySubscriptionForUser(session.user.id);
-    }
-
-    const hasFreeDailyAllowance =
-      !activeSubscription &&
-      !hasSubscriptionHistory &&
-      messageCount < FREE_MESSAGES_PER_DAY;
-
-    if (!activeSubscription && !hasFreeDailyAllowance) {
-      return new ChatSDKError(
-        "payment_required:credits",
-        "You have no active credits remaining. Please recharge to continue."
-      ).toResponse();
-    }
-
-    const registry = await getModelRegistry();
+    const [freeMessageSettings, registry] = await Promise.all([
+      loadFreeMessageSettings(),
+      getModelRegistry(),
+    ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
     );
@@ -164,6 +155,32 @@ export async function POST(request: Request) {
       return new ChatSDKError(
         "bad_request:api",
         "No chat models are enabled. Please contact an administrator."
+      ).toResponse();
+    }
+
+    const activeSubscription = await getActiveSubscriptionForUser(
+      session.user.id
+    );
+
+    const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
+    const hasActiveCredits = activeTokenBalance > 0;
+    const perModelAllowance = Math.max(
+      0,
+      modelConfig.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY
+    );
+    const globalAllowance = Math.max(0, freeMessageSettings.globalLimit);
+    const freeMessagesForModel =
+      freeMessageSettings.mode === "global"
+        ? globalAllowance
+        : perModelAllowance;
+
+    const hasFreeDailyAllowance =
+      !hasActiveCredits && messageCount < freeMessagesForModel;
+
+    if (!hasActiveCredits && !hasFreeDailyAllowance) {
+      return new ChatSDKError(
+        "payment_required:credits",
+        "You have no active credits remaining. Please recharge to continue."
       ).toResponse();
     }
 
@@ -188,6 +205,16 @@ export async function POST(request: Request) {
 
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const ragAugmentation = await buildRagAugmentation({
+      chatId: id,
+      userId: session.user.id,
+      modelConfig,
+      queryText: getTextFromMessage(message),
+      useCustomKnowledge,
+    }).catch((error) => {
+      console.warn("Failed to build RAG augmentation", error);
+      return null;
+    });
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -199,11 +226,16 @@ export async function POST(request: Request) {
     };
 
     const languageModel = resolveLanguageModel(modelConfig);
-    const systemInstruction = systemPrompt({
+    const baseInstruction = systemPrompt({
       selectedChatModel,
       requestHints,
       modelSystemPrompt: modelConfig.systemPrompt ?? null,
     });
+    const ragInstruction = ragAugmentation?.systemSupplement ?? null;
+    const systemInstruction =
+      [baseInstruction, ragInstruction]
+        .filter((value) => typeof value === "string" && value.trim().length > 0)
+        .join("\n\n") || null;
 
     const persistUserMessagePromise = saveMessages({
       messages: [
@@ -224,9 +256,16 @@ export async function POST(request: Request) {
     await createStreamId({ streamId, chatId: id });
 
     let finalMergedUsage: AppUsage | undefined;
+    const ragClientEvent = ragAugmentation?.clientEvent ?? null;
 
     const stream = createUIMessageStream({
       execute: ({ writer: dataStream }) => {
+        if (ragClientEvent) {
+          dataStream.write({
+            type: "data-ragUsage",
+            data: ragClientEvent,
+          });
+        }
         const result = streamText({
           model: languageModel,
           ...(systemInstruction ? { system: systemInstruction } : {}),
@@ -318,6 +357,7 @@ export async function POST(request: Request) {
                 modelConfigId: modelConfig.id,
                 inputTokens,
                 outputTokens,
+                deductCredits: hasActiveCredits,
               });
             }
           } catch (err) {

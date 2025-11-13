@@ -12,7 +12,13 @@ import { UserDropdownMenu, UserMenuTrigger } from "@/components/user-dropdown-me
 import { useTranslation } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
-export function PageUserMenu({ className }: { className?: string }) {
+export function PageUserMenu({
+  className,
+  forumEnabled = true,
+}: {
+  className?: string;
+  forumEnabled?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status } = useSession();
@@ -36,6 +42,13 @@ export function PageUserMenu({ className }: { className?: string }) {
 
   useEffect(() => {
     setIsActionPending(false);
+    if (typeof window !== "undefined") {
+      const pendingPath = window.localStorage.getItem("user-menu:pending-path");
+      if (pendingPath && pendingPath === pathname) {
+        window.localStorage.removeItem("user-menu:pending-path");
+        window.dispatchEvent(new CustomEvent("user-menu-close-request"));
+      }
+    }
   }, [pathname]);
 
   useEffect(() => {
@@ -59,19 +72,27 @@ export function PageUserMenu({ className }: { className?: string }) {
     if (user.role === "admin") {
       void router.prefetch("/admin");
     }
+    if (user.role === "creator") {
+      void router.prefetch("/creator-dashboard");
+    }
   }, [router, user]);
 
   const beginAction = () => {
     setIsActionPending(true);
   };
-
   const handleNavigate = (path: string) => {
-    if (path === pathname) {
+    const isSameRoute = path === pathname;
+    if (isSameRoute) {
       setIsActionPending(false);
       return;
     }
     beginAction();
     router.push(path);
+    try {
+      window.localStorage.setItem("user-menu:pending-path", path);
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const handleToggleTheme = () => {
@@ -123,8 +144,11 @@ export function PageUserMenu({ className }: { className?: string }) {
         <UserDropdownMenu
           align="end"
           isAdmin={user.role === "admin"}
+          isCreator={user.role === "creator"}
           isAuthenticated
           isBusy={isBusy}
+          forumEnabled={forumEnabled}
+          currentPathname={pathname}
           onOpenChange={handleOpenChange}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -150,8 +174,11 @@ export function PageUserMenu({ className }: { className?: string }) {
         <UserDropdownMenu
           align="end"
           isAdmin={false}
+          isCreator={false}
           isAuthenticated={false}
           isBusy={isBusy}
+          forumEnabled={forumEnabled}
+          currentPathname={pathname}
           onOpenChange={handleOpenChange}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -166,15 +193,11 @@ export function PageUserMenu({ className }: { className?: string }) {
                 "relative flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 isBusy && "pointer-events-none opacity-70"
               )}
+              aria-busy={isBusy}
+              aria-disabled={isBusy}
               type="button"
             >
-              {isBusy ? (
-                <span className="animate-spin">
-                  <LoaderIcon size={16} />
-                </span>
-              ) : (
-                <EllipsisVertical size={16} />
-              )}
+              <EllipsisVertical size={16} />
               <span className="sr-only">
                 {translate("user_menu.open_menu", "Open menu")}
               </span>
