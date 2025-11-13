@@ -14,6 +14,7 @@ import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { cookies } from "next/headers";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { DailyUsageChart } from "@/components/daily-usage-chart";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import {
   SESSION_SORT_DEFAULT,
@@ -183,6 +184,10 @@ export default async function SubscriptionsPage({
       : null;
 
   const dailySeries = buildDailySeries(rawDailyUsage, range);
+  const dailyChartData = dailySeries.map((entry) => ({
+    date: entry.day.toISOString(),
+    credits: entry.totalTokens / TOKENS_PER_CREDIT,
+  }));
   const maxTokens = dailySeries.reduce(
     (max, entry) => Math.max(max, entry.totalTokens),
     0
@@ -195,30 +200,6 @@ export default async function SubscriptionsPage({
       : null;
   const rangeStart = dailySeries[0]?.day ?? new Date();
   const rangeEnd = dailySeries[dailySeries.length - 1]?.day ?? new Date();
-
-  const chartWidth = Math.max(dailySeries.length * 56, 560);
-  const chartHeight = 200;
-  const chartPaddingX = 32;
-  const chartPaddingY = 24;
-  const yDomain = maxTokens === 0 ? 1 : maxTokens;
-  const baselineY = chartHeight - chartPaddingY;
-  const xSpacing =
-    dailySeries.length > 1
-      ? (chartWidth - chartPaddingX * 2) / (dailySeries.length - 1)
-      : 0;
-
-  const plottedPoints = dailySeries.map((entry, index) => {
-    const scaled = entry.totalTokens / yDomain;
-    const y =
-      baselineY -
-      scaled * Math.max(chartHeight - chartPaddingY * 2, chartPaddingY);
-    const x = chartPaddingX + index * xSpacing;
-    return { entry, x, y };
-  });
-  const polylinePoints =
-    maxTokens === 0
-      ? ""
-      : plottedPoints.map((point) => `${point.x},${point.y}`).join(" ");
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:gap-8">
@@ -366,95 +347,9 @@ export default async function SubscriptionsPage({
           </div>
         ) : (
           <>
-            <div className="mt-6 overflow-x-auto">
-              <svg
-                aria-hidden="true"
-                height={chartHeight}
-                style={{ minWidth: chartWidth }}
-                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                width={chartWidth}
-              >
-                <defs>
-                  <linearGradient id="usage-gradient" x1="0" x2="0" y1="0" y2="1">
-                    <stop
-                      offset="0%"
-                      stopColor="hsl(var(--chart-1, var(--primary)))"
-                      stopOpacity="0.35"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="hsl(var(--chart-1, var(--primary)))"
-                      stopOpacity="0.05"
-                    />
-                  </linearGradient>
-                </defs>
-
-                {[0.25, 0.5, 0.75, 1].map((fraction) => {
-                  const y =
-                    chartPaddingY + fraction * (baselineY - chartPaddingY);
-                  return (
-                    <line
-                      key={`grid-${fraction}`}
-                      stroke="hsl(var(--border))"
-                      strokeDasharray="4 6"
-                      strokeOpacity={0.35}
-                      strokeWidth={1}
-                      x1={chartPaddingX}
-                      x2={chartWidth - chartPaddingX}
-                      y1={y}
-                      y2={y}
-                    />
-                  );
-                })}
-
-                <path
-                  d={[
-                    `M ${chartPaddingX} ${baselineY}`,
-                    `L ${polylinePoints}`,
-                    `L ${plottedPoints.at(-1)?.x ?? chartPaddingX} ${baselineY}`,
-                    "Z",
-                  ].join(" ")}
-                  fill="url(#usage-gradient)"
-                />
-
-                <polyline
-                  fill="none"
-                  points={polylinePoints}
-                  stroke="hsl(var(--chart-1, var(--primary)))"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                />
-
-                {plottedPoints.map((point) => (
-                  <g key={point.entry.day.toISOString()}>
-                    <circle
-                      cx={point.x}
-                      cy={point.y}
-                      fill="hsl(var(--chart-1, var(--primary)))"
-                      r={4}
-                    />
-                    <text
-                      className="fill-foreground text-[10px] font-semibold"
-                      textAnchor="middle"
-                      x={point.x}
-                      y={Math.min(point.y - 10, chartPaddingY)}
-                    >
-                      {formatCredits(point.entry.totalTokens)}
-                    </text>
-                    <text
-                      className="fill-muted-foreground text-[10px]"
-                      textAnchor="middle"
-                      x={point.x}
-                      y={baselineY + 16}
-                    >
-                      {istMonthDayFormatter.format(point.entry.day)}
-                    </text>
-                  </g>
-                ))}
-              </svg>
+            <div className="mt-6">
+              <DailyUsageChart data={dailyChartData} />
             </div>
-
             <div className="mt-3 flex justify-between text-xs text-muted-foreground">
               <span>{istMonthDayFormatter.format(rangeStart)}</span>
               <span>{istMonthDayFormatter.format(rangeEnd)}</span>
