@@ -25,11 +25,12 @@ type DailyUsageChartProps = {
   variant?: "area" | "bar";
 };
 
-type TooltipPayload = {
+type ChartTooltipPayload = {
   value: number;
   payload: {
     formattedDate: string;
     formattedCredits: string;
+    tooltipDate: string;
   };
 };
 
@@ -152,12 +153,14 @@ export function DailyUsageChart({
 function DailyUsageTooltip({
   active,
   payload,
-}: TooltipProps<number, string> & { payload?: ReadonlyArray<TooltipPayload> }) {
+}: TooltipProps<number, string> & {
+  payload?: ReadonlyArray<ChartTooltipPayload>;
+}) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
 
-  const datum = payload[0] as TooltipPayload;
+  const datum = payload[0] as ChartTooltipPayload;
 
   return (
     <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-lg">
