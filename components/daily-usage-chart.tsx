@@ -4,6 +4,8 @@ import { useId, useMemo } from "react";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -20,6 +22,7 @@ type DailyUsageDatum = {
 type DailyUsageChartProps = {
   data: DailyUsageDatum[];
   timezone?: string;
+  variant?: "area" | "bar";
 };
 
 type TooltipPayload = {
@@ -31,6 +34,8 @@ type TooltipPayload = {
 };
 
 const DEFAULT_TIMEZONE = "Asia/Kolkata";
+const DARK_GREEN = "hsl(155 36% 30%)";
+const DARK_GREEN_LIGHT = "hsl(155 36% 45%)";
 const creditsFormatter = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -54,6 +59,7 @@ function buildFormatters(timezone: string) {
 export function DailyUsageChart({
   data,
   timezone = DEFAULT_TIMEZONE,
+  variant = "area",
 }: DailyUsageChartProps) {
   const gradientId = useId().replace(/:/g, "-");
   const { dateFormatter, fullFormatter } = useMemo(
@@ -84,17 +90,19 @@ export function DailyUsageChart({
     maxCredits === 0 ? 1 : Math.ceil(maxCredits * 1.1),
   ];
 
+  const ChartComponent = variant === "bar" ? BarChart : AreaChart;
+
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
+        <ChartComponent
           data={preparedData}
           margin={{ top: 10, bottom: 0, left: 8, right: 24 }}
         >
           <defs>
             <linearGradient id={`usage-gradient-${gradientId}`} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="5%" stopColor="hsl(var(--chart-1, var(--primary)))" stopOpacity={0.4} />
-              <stop offset="95%" stopColor="hsl(var(--chart-1, var(--primary)))" stopOpacity={0.05} />
+              <stop offset="5%" stopColor={DARK_GREEN_LIGHT} stopOpacity={0.55} />
+              <stop offset="95%" stopColor={DARK_GREEN} stopOpacity={0.12} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" vertical={false} opacity={0.35} />
@@ -115,19 +123,27 @@ export function DailyUsageChart({
             allowDecimals={false}
           />
           <Tooltip
-            cursor={{ stroke: "hsl(var(--chart-1, var(--primary)))", strokeOpacity: 0.35 }}
+            cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
             content={(props) => <DailyUsageTooltip {...props} />}
           />
-          <Area
-            type="monotone"
-            dataKey="credits"
-            stroke="hsl(var(--chart-1, var(--primary)))"
-            fillOpacity={1}
-            fill={`url(#usage-gradient-${gradientId})`}
-            strokeWidth={2.5}
-            activeDot={{ r: 5 }}
-          />
-        </AreaChart>
+          {variant === "bar" ? (
+            <Bar
+              dataKey="credits"
+              fill={DARK_GREEN}
+              radius={[6, 6, 0, 0]}
+            />
+          ) : (
+            <Area
+              type="monotone"
+              dataKey="credits"
+              stroke={DARK_GREEN}
+              fillOpacity={1}
+              fill={`url(#usage-gradient-${gradientId})`}
+              strokeWidth={2.5}
+              activeDot={{ r: 5 }}
+            />
+          )}
+        </ChartComponent>
       </ResponsiveContainer>
     </div>
   );

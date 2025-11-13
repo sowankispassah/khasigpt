@@ -14,7 +14,7 @@ import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { cookies } from "next/headers";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
-import { DailyUsageChart } from "@/components/daily-usage-chart";
+import { DailyUsageChartSwitcher } from "@/components/daily-usage-chart-switcher";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import {
   SESSION_SORT_DEFAULT,
@@ -348,7 +348,7 @@ export default async function SubscriptionsPage({
         ) : (
           <>
             <div className="mt-6">
-              <DailyUsageChart data={dailyChartData} />
+              <DailyUsageChartSwitcher data={dailyChartData} />
             </div>
             <div className="mt-3 flex justify-between text-xs text-muted-foreground">
               <span>{istMonthDayFormatter.format(rangeStart)}</span>
