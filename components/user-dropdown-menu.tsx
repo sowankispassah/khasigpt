@@ -175,6 +175,7 @@ export function UserDropdownMenu({
   const [pendingLanguageCode, setPendingLanguageCode] = React.useState<string | null>(null);
   const [isMenuProgressVisible, setIsMenuProgressVisible] = React.useState(false);
   const [menuProgress, setMenuProgress] = React.useState(0);
+  const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const ignoreNextLanguageOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
@@ -508,7 +509,13 @@ export function UserDropdownMenu({
         </div>
       ) : null}
       <DropdownMenu onOpenChange={handleMenuOpenChange}>
-        <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          asChild
+          ref={dropdownTriggerRef}
+          data-user-menu-trigger="1"
+        >
+          {trigger}
+        </DropdownMenuTrigger>
         <DropdownMenuContent
           align={align}
           className="min-w-[16rem]"

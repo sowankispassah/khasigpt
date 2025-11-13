@@ -42,6 +42,16 @@ export function PageUserMenu({
 
   useEffect(() => {
     setIsActionPending(false);
+    if (typeof window !== "undefined") {
+      const pendingPath = window.localStorage.getItem("user-menu:pending-path");
+      if (pendingPath && pendingPath === pathname) {
+        window.localStorage.removeItem("user-menu:pending-path");
+        const trigger = document.querySelector<HTMLButtonElement>(
+          "[data-user-menu-trigger=\"1\"]"
+        );
+        trigger?.click();
+      }
+    }
   }, [pathname]);
 
   useEffect(() => {
@@ -81,6 +91,11 @@ export function PageUserMenu({
     }
     beginAction();
     router.push(path);
+    try {
+      window.localStorage.setItem("user-menu:pending-path", path);
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const handleToggleTheme = () => {
