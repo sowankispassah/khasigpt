@@ -152,7 +152,7 @@ export function DailyUsageChart({
 function DailyUsageTooltip({
   active,
   payload,
-}: TooltipProps<number, string>) {
+}: TooltipProps<number, string> & { payload?: TooltipPayload[] }) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
