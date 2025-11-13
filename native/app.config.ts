@@ -1,13 +1,9 @@
 import { config as loadEnv } from "dotenv";
 import type { ExpoConfig } from "@expo/config";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const configFilename = fileURLToPath(import.meta.url);
-const configDirname = path.dirname(configFilename);
 
 loadEnv();
-loadEnv({ path: path.resolve(configDirname, "../.env"), override: false });
+loadEnv({ path: path.resolve(__dirname, "../.env"), override: false });
 
 const name = "KhasiGPT Native";
 const slug = "khasigpt-native";

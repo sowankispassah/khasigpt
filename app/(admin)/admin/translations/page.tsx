@@ -6,9 +6,11 @@ import {
   getAllLanguages,
   type LanguageOption,
 } from "@/lib/i18n/languages";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { TranslationSearchForm } from "./translation-search-form";
 
 import {
   publishTranslationsAction,
@@ -37,9 +39,15 @@ const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
   },
   {
     id: "profile",
-    label: "Profile & Billing",
-    description: "User menu, subscriptions, recharge, and profile settings.",
-    prefixes: ["profile.", "user_menu.", "subscriptions.", "recharge.", "settings."],
+    label: "Profile & User Menu",
+    description: "Profile forms, account settings, and user dropdown copy.",
+    prefixes: ["profile.", "user_menu.", "settings."],
+  },
+  {
+    id: "billing",
+    label: "Billing & Subscriptions",
+    description: "Subscriptions dashboard, recharge flows, and billing UI.",
+    prefixes: ["subscriptions.", "recharge.", "billing."],
   },
   {
     id: "about",
@@ -70,18 +78,32 @@ const FALLBACK_SECTION: SectionDefinition = {
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminTranslationsPage() {
+export default async function AdminTranslationsPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string };
+}) {
   const [languages, entries] = await Promise.all([
     getAllLanguages(),
     listTranslationEntries(),
   ]);
 
+  const rawQuery =
+    typeof searchParams?.q === "string" ? searchParams.q : "";
+  const searchQuery = rawQuery.trim().toLowerCase();
+
   const activeLanguages = languages.filter((language) => language.isActive);
   const nonDefaultLanguages = activeLanguages.filter(
     (language) => !language.isDefault
   );
+  const filteredEntries =
+    searchQuery.length > 0
+      ? entries.filter((entry) => matchesQuery(entry, searchQuery))
+      : entries;
   const sectionGroups =
-    entries.length > 0 ? organizeEntriesBySection(entries) : [];
+    filteredEntries.length > 0
+      ? organizeEntriesBySection(filteredEntries)
+      : [];
 
   return (
     <div className="space-y-6">
@@ -95,15 +117,29 @@ export default async function AdminTranslationsPage() {
         </p>
       </header>
 
+      <TranslationSearchForm defaultValue={rawQuery} />
+
       <TranslationSummary
         languages={activeLanguages}
+        visibleEntries={filteredEntries.length}
         totalEntries={entries.length}
+        searchQuery={searchQuery}
       />
 
       {entries.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/40 p-8 text-center text-muted-foreground">
           No translation keys have been registered yet. Introduce translations
           in your components using the translation helper to populate this list.
+        </div>
+      ) : filteredEntries.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-muted/40 p-8 text-center text-muted-foreground">
+          No translations matched{" "}
+          <span className="font-semibold">“{rawQuery.trim()}”</span>. Try a
+          different search term or{" "}
+          <Link className="underline" href="/admin/translations">
+            clear the search
+          </Link>
+          .
         </div>
       ) : (
         <>
@@ -122,17 +158,28 @@ export default async function AdminTranslationsPage() {
 
 function TranslationSummary({
   languages,
+  visibleEntries,
   totalEntries,
+  searchQuery,
 }: {
   languages: LanguageOption[];
+  visibleEntries: number;
   totalEntries: number;
+  searchQuery: string;
 }) {
+  const showingLabel =
+    searchQuery.trim().length > 0 && totalEntries > 0
+      ? `Showing ${visibleEntries} of ${totalEntries} string${
+          totalEntries === 1 ? "" : "s"
+        }`
+      : `${totalEntries} registered ${
+          totalEntries === 1 ? "string" : "strings"
+        }`;
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
       <div className="flex flex-col">
-        <span className="font-semibold text-base">
-          {totalEntries} registered {totalEntries === 1 ? "string" : "strings"}
-        </span>
+        <span className="font-semibold text-base">{showingLabel}</span>
         <span className="text-muted-foreground">
           {languages.length} active {languages.length === 1 ? "language" : "languages"}
         </span>
@@ -415,5 +462,23 @@ function TranslationSections({
         );
       })}
     </div>
+  );
+}
+
+function matchesQuery(entry: TranslationTableEntry, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  const haystacks = [
+    entry.key,
+    entry.defaultText ?? "",
+    entry.description ?? "",
+    ...Object.values(entry.translations).map(
+      (translation) => translation.value ?? ""
+    ),
+  ];
+
+  return haystacks.some((text) =>
+    (text ?? "").toLowerCase().includes(query)
   );
 }

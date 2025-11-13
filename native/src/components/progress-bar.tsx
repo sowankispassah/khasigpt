@@ -53,7 +53,7 @@ export function ProgressBar() {
     [colors.primary, opacity, progress, screenWidth]
   );
 
-  return <Animated.View pointerEvents="none" style={animatedStyle} />;
+  return <Animated.View style={animatedStyle} />;
 }
 
 const styles = StyleSheet.create({
@@ -63,5 +63,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
+    pointerEvents: "none",
   } as const,
 });

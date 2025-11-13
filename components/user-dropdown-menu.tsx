@@ -171,6 +171,7 @@ export function UserDropdownMenu({
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
+  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
   const [pendingLanguageCode, setPendingLanguageCode] = React.useState<string | null>(null);
   const [isMenuProgressVisible, setIsMenuProgressVisible] = React.useState(false);
@@ -347,6 +348,7 @@ export function UserDropdownMenu({
 
   const handleMenuOpenChange = React.useCallback(
     (open: boolean) => {
+      setIsMenuOpen(open);
       if (open) {
         onOpenChange?.(true);
         if (isAuthenticated && !planLoadTriggeredRef.current) {
@@ -373,6 +375,14 @@ export function UserDropdownMenu({
       onOpenChange,
     ]
   );
+
+  React.useEffect(() => {
+    const handler = () => {
+      handleMenuOpenChange(false);
+    };
+    window.addEventListener("user-menu-close-request", handler);
+    return () => window.removeEventListener("user-menu-close-request", handler);
+  }, [handleMenuOpenChange]);
 
   const toggleResources = React.useCallback(() => {
     setIsResourcesOpen((prev) => {
@@ -508,7 +518,7 @@ export function UserDropdownMenu({
           />
         </div>
       ) : null}
-      <DropdownMenu onOpenChange={handleMenuOpenChange}>
+      <DropdownMenu onOpenChange={handleMenuOpenChange} open={isMenuOpen}>
         <DropdownMenuTrigger
           asChild
           ref={dropdownTriggerRef}

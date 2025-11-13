@@ -46,10 +46,7 @@ export function PageUserMenu({
       const pendingPath = window.localStorage.getItem("user-menu:pending-path");
       if (pendingPath && pendingPath === pathname) {
         window.localStorage.removeItem("user-menu:pending-path");
-        const trigger = document.querySelector<HTMLButtonElement>(
-          "[data-user-menu-trigger=\"1\"]"
-        );
-        trigger?.click();
+        window.dispatchEvent(new CustomEvent("user-menu-close-request"));
       }
     }
   }, [pathname]);
