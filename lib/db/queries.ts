@@ -32,6 +32,7 @@ import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
+import { getUsdToInrRate } from "../services/exchange-rate";
 import {
   appSetting,
   auditLog,
@@ -262,7 +263,6 @@ function normalizeEmailValue(email: string): string {
   return email.trim().toLowerCase();
 }
 
-const DEFAULT_COST_PER_MILLION = 1;
 const IST_OFFSET_MINUTES = 330;
 const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60 * 1000;
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
@@ -845,9 +845,18 @@ export async function getChatById({
 
 export async function saveMessages({ messages }: { messages: DBMessage[] }) {
   try {
-    return await db.insert(message).values(messages);
+    if (!messages.length) {
+      return [];
+    }
+
+    // Ignore duplicates when the same message id is persisted twice (e.g. when
+    // resuming a stream or retrying after a transient error).
+    return await db.insert(message).values(messages).onConflictDoNothing();
   } catch (_error) {
-    throw new ChatSDKError("bad_request:database", "Failed to save messages");
+    console.error("Failed to save messages", _error);
+    const cause =
+      _error instanceof Error ? _error.message : "Failed to save messages";
+    throw new ChatSDKError("bad_request:database", cause);
   }
 }
 
@@ -1098,6 +1107,26 @@ export async function updateChatVisiblityById({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update chat visibility by id"
+    );
+  }
+}
+
+export async function updateChatTitleById({
+  chatId,
+  title,
+}: {
+  chatId: string;
+  title: string;
+}) {
+  try {
+    return await db
+      .update(chat)
+      .set({ title })
+      .where(eq(chat.id, chatId));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update chat title by id"
     );
   }
 }
@@ -1863,9 +1892,8 @@ export async function createModelConfig({
   config = null,
   isEnabled = true,
   isDefault = false,
+  isMarginBaseline = false,
   freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
-  inputCostPerMillion = DEFAULT_COST_PER_MILLION,
-  outputCostPerMillion = DEFAULT_COST_PER_MILLION,
   inputProviderCostPerMillion = 0,
   outputProviderCostPerMillion = 0,
 }: {
@@ -1881,9 +1909,8 @@ export async function createModelConfig({
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   isDefault?: boolean;
+  isMarginBaseline?: boolean;
   freeMessagesPerDay?: number;
-  inputCostPerMillion?: number;
-  outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
 }): Promise<ModelConfig> {
@@ -1905,9 +1932,8 @@ export async function createModelConfig({
         config,
         isEnabled,
         isDefault,
+        isMarginBaseline,
         freeMessagesPerDay,
-        inputCostPerMillion,
-        outputCostPerMillion,
         inputProviderCostPerMillion,
         outputProviderCostPerMillion,
         createdAt: now,
@@ -1923,12 +1949,19 @@ export async function createModelConfig({
       );
     }
 
+    let result = created;
+
     if (isDefault) {
       await setDefaultModelConfig(created.id);
-      return { ...created, isDefault: true };
+      result = { ...result, isDefault: true };
     }
 
-    return created;
+    if (isMarginBaseline) {
+      await setMarginBaselineModel(created.id);
+      result = { ...result, isMarginBaseline: true };
+    }
+
+    return result;
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -2059,11 +2092,10 @@ export async function updateModelConfig({
   supportsReasoning?: boolean;
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
-  inputCostPerMillion?: number;
-  outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
   freeMessagesPerDay?: number;
+  isMarginBaseline?: boolean;
 }): Promise<ModelConfig | null> {
   try {
     const updateData: Partial<typeof modelConfig.$inferInsert> = {};
@@ -2098,12 +2130,6 @@ export async function updateModelConfig({
     if (patch.isEnabled !== undefined) {
       updateData.isEnabled = patch.isEnabled;
     }
-    if (patch.inputCostPerMillion !== undefined) {
-      updateData.inputCostPerMillion = patch.inputCostPerMillion;
-    }
-    if (patch.outputCostPerMillion !== undefined) {
-      updateData.outputCostPerMillion = patch.outputCostPerMillion;
-    }
     if (patch.inputProviderCostPerMillion !== undefined) {
       updateData.inputProviderCostPerMillion =
         patch.inputProviderCostPerMillion;
@@ -2115,6 +2141,9 @@ export async function updateModelConfig({
     if (patch.freeMessagesPerDay !== undefined) {
       updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
     }
+    if (patch.isMarginBaseline !== undefined) {
+      updateData.isMarginBaseline = patch.isMarginBaseline;
+    }
 
     const [updated] = await db
       .update(modelConfig)
@@ -2125,7 +2154,16 @@ export async function updateModelConfig({
       .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
       .returning();
 
-    return updated ?? null;
+    if (!updated) {
+      return null;
+    }
+
+    if (patch.isMarginBaseline) {
+      await setMarginBaselineModel(id);
+      return { ...updated, isMarginBaseline: true };
+    }
+
+    return updated;
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -2138,7 +2176,12 @@ export async function deleteModelConfig(id: string) {
   try {
     await db
       .update(modelConfig)
-      .set({ deletedAt: new Date(), isDefault: false, isEnabled: false })
+      .set({
+        deletedAt: new Date(),
+        isDefault: false,
+        isMarginBaseline: false,
+        isEnabled: false,
+      })
       .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
   } catch (_error) {
     throw new ChatSDKError(
@@ -2178,6 +2221,29 @@ export async function setDefaultModelConfig(id: string) {
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to set default model configuration"
+    );
+  }
+}
+
+export async function setMarginBaselineModel(id: string) {
+  const now = new Date();
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(modelConfig)
+        .set({ isMarginBaseline: false, updatedAt: now })
+        .where(and(eq(modelConfig.isMarginBaseline, true), isNull(modelConfig.deletedAt)));
+
+      await tx
+        .update(modelConfig)
+        .set({ isMarginBaseline: true, updatedAt: now })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to set margin baseline model"
     );
   }
 }
@@ -3575,16 +3641,25 @@ export async function createUserSubscription({
       }
 
       const allowance = Math.max(0, plan.tokenAllowance);
+      const isPaidPlan = plan.priceInPaise > 0;
       const expiresAt = addDays(now, Math.max(1, plan.billingCycleDays));
       const active = await getActiveSubscriptionInternal(tx, userId, now);
 
       if (active) {
+        const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
+        const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
+        const updatedManual = isPaidPlan ? currentManual : currentManual + allowance;
+        const updatedPaid = isPaidPlan ? currentPaid + allowance : currentPaid;
+        const updatedBalance = updatedManual + updatedPaid;
+
         const [updated] = await tx
           .update(userSubscription)
           .set({
             planId: plan.id,
             tokenAllowance: active.tokenAllowance + allowance,
-            tokenBalance: active.tokenBalance + allowance,
+            tokenBalance: updatedBalance,
+            manualTokenBalance: updatedManual,
+            paidTokenBalance: updatedPaid,
             expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
             status: "active",
             updatedAt: now,
@@ -3603,6 +3678,8 @@ export async function createUserSubscription({
           status: "active",
           tokenAllowance: allowance,
           tokenBalance: allowance,
+          manualTokenBalance: isPaidPlan ? 0 : allowance,
+          paidTokenBalance: isPaidPlan ? allowance : 0,
           tokensUsed: 0,
           startedAt: now,
           expiresAt,
@@ -3648,11 +3725,18 @@ export async function grantUserCredits({
       const active = await getActiveSubscriptionInternal(tx, userId, now);
 
       if (active) {
+        const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
+        const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
+        const updatedManual = currentManual + tokens;
+        const updatedBalance = updatedManual + currentPaid;
+
         const [updated] = await tx
           .update(userSubscription)
           .set({
-            tokenBalance: active.tokenBalance + tokens,
+            tokenBalance: updatedBalance,
             tokenAllowance: active.tokenAllowance + tokens,
+            manualTokenBalance: updatedManual,
+            paidTokenBalance: currentPaid,
             expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
             updatedAt: now,
           })
@@ -3672,6 +3756,8 @@ export async function grantUserCredits({
           status: "active",
           tokenAllowance: tokens,
           tokenBalance: tokens,
+          manualTokenBalance: tokens,
+          paidTokenBalance: 0,
           tokensUsed: 0,
           startedAt: now,
           expiresAt,
@@ -3700,6 +3786,8 @@ export type UserBalanceSummary = {
   tokensTotal: number;
   creditsRemaining: number;
   creditsTotal: number;
+  allocatedCredits: number;
+  rechargedCredits: number;
   expiresAt: Date | null;
   startedAt: Date | null;
 };
@@ -3711,6 +3799,8 @@ const EMPTY_BALANCE: UserBalanceSummary = {
   tokensTotal: 0,
   creditsRemaining: 0,
   creditsTotal: 0,
+  allocatedCredits: 0,
+  rechargedCredits: 0,
   expiresAt: null,
   startedAt: null,
 };
@@ -3751,6 +3841,8 @@ export async function getUserBalanceSummary(
     const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
     const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
     const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
+    const manualTokens = Math.max(0, latestSubscription.manualTokenBalance ?? 0);
+    const paidTokens = Math.max(0, latestSubscription.paidTokenBalance ?? 0);
 
     return {
       subscription: latestSubscription,
@@ -3759,6 +3851,8 @@ export async function getUserBalanceSummary(
       tokensTotal,
       creditsRemaining,
       creditsTotal,
+      allocatedCredits: manualTokens / TOKENS_PER_CREDIT,
+      rechargedCredits: paidTokens / TOKENS_PER_CREDIT,
       expiresAt: latestSubscription.expiresAt,
       startedAt: latestSubscription.startedAt,
     };
@@ -3842,11 +3936,45 @@ export async function recordTokenUsage({
 
   const now = new Date();
   let exhausted = false;
+  let baselineCostSnapshot: ProviderCostSnapshot | null = null;
+  let modelCostSnapshot: ProviderCostSnapshot | null = null;
+  let usdToInr = 0;
+
+  if (deductCredits) {
+    try {
+      const rateResult = await getUsdToInrRate();
+      if (rateResult && Number.isFinite(rateResult.rate) && rateResult.rate > 0) {
+        usdToInr = rateResult.rate;
+      }
+    } catch (error) {
+      console.warn(
+        "[token-usage] Failed to load USD to INR exchange rate. Falling back to default.",
+        error
+      );
+    }
+
+    if (!usdToInr || !Number.isFinite(usdToInr) || usdToInr <= 0) {
+      usdToInr = 83;
+    }
+
+    if (modelConfigId) {
+      modelCostSnapshot = await getModelProviderCostSnapshot(modelConfigId, usdToInr);
+    }
+
+    baselineCostSnapshot = await getBaselineProviderCostSnapshot(
+      usdToInr,
+      modelCostSnapshot
+    );
+  }
 
   try {
     const usage = await db.transaction(async (tx) => {
       let subscription: UserSubscription | null = null;
       let tokensToDeduct = 0;
+      let manualTokensDeducted = 0;
+      let paidTokensDeducted = 0;
+      let remainingManualBalance = 0;
+      let remainingPaidBalance = 0;
 
       if (deductCredits) {
         subscription = await getActiveSubscriptionInternal(tx, userId, now);
@@ -3858,9 +3986,51 @@ export async function recordTokenUsage({
           );
         }
 
+        const [plan] = await tx
+          .select({
+            id: pricingPlan.id,
+            priceInPaise: pricingPlan.priceInPaise,
+            tokenAllowance: pricingPlan.tokenAllowance,
+          })
+          .from(pricingPlan)
+          .where(eq(pricingPlan.id, subscription.planId))
+          .limit(1);
+
+        const allowance =
+          plan?.tokenAllowance && plan.tokenAllowance > 0
+            ? plan.tokenAllowance
+            : Math.max(subscription.tokenAllowance, 0);
+
+        let planPricePerTokenPaise =
+          plan && allowance && allowance > 0 && plan.priceInPaise > 0
+            ? plan.priceInPaise / allowance
+            : 0;
+
+        if (!planPricePerTokenPaise || planPricePerTokenPaise <= 0) {
+          planPricePerTokenPaise =
+            baselineCostSnapshot?.costPerTokenPaise ??
+            modelCostSnapshot?.costPerTokenPaise ??
+            0;
+        }
+
+        const baselineCostPerTokenPaise =
+          baselineCostSnapshot?.costPerTokenPaise ??
+          modelCostSnapshot?.costPerTokenPaise ??
+          planPricePerTokenPaise;
+
+        const modelCostPerTokenPaise =
+          modelCostSnapshot?.costPerTokenPaise ?? baselineCostPerTokenPaise;
+
+        const costMultiplier = computeCostMultiplier({
+          planPricePerTokenPaise,
+          baselineCostPerTokenPaise,
+          modelCostPerTokenPaise,
+        });
+
         tokensToDeduct = calculateTokenDeduction({
           inputTokens,
           outputTokens,
+          costMultiplier,
         });
 
         if (
@@ -3873,6 +4043,8 @@ export async function recordTokenUsage({
             .update(userSubscription)
             .set({
               tokenBalance: 0,
+              manualTokenBalance: 0,
+              paidTokenBalance: 0,
               tokensUsed: Math.min(
                 subscription.tokenAllowance,
                 subscription.tokensUsed + consumedTokens
@@ -3884,6 +4056,22 @@ export async function recordTokenUsage({
 
           exhausted = true;
           return null;
+        }
+
+        const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
+        const paidBalance = Math.max(0, subscription.paidTokenBalance ?? 0);
+
+        if (tokensToDeduct > 0) {
+          manualTokensDeducted = Math.min(tokensToDeduct, manualBalance);
+          paidTokensDeducted = Math.min(
+            tokensToDeduct - manualTokensDeducted,
+            paidBalance
+          );
+          remainingManualBalance = manualBalance - manualTokensDeducted;
+          remainingPaidBalance = paidBalance - paidTokensDeducted;
+        } else {
+          remainingManualBalance = manualBalance;
+          remainingPaidBalance = paidBalance;
         }
       }
 
@@ -3897,17 +4085,30 @@ export async function recordTokenUsage({
           inputTokens,
           outputTokens,
           totalTokens,
+          manualTokens: manualTokensDeducted,
+          paidTokens: paidTokensDeducted,
           createdAt: now,
         })
         .returning();
 
       if (subscription) {
-        const remaining = subscription.tokenBalance - tokensToDeduct;
+        const remaining =
+          tokensToDeduct > 0
+            ? Math.max(0, remainingManualBalance + remainingPaidBalance)
+            : subscription.tokenBalance;
 
         await tx
           .update(userSubscription)
           .set({
             tokenBalance: remaining,
+            manualTokenBalance:
+              tokensToDeduct > 0
+                ? remainingManualBalance
+                : Math.max(0, subscription.manualTokenBalance ?? 0),
+            paidTokenBalance:
+              tokensToDeduct > 0
+                ? remainingPaidBalance
+                : Math.max(0, subscription.paidTokenBalance ?? 0),
             tokensUsed: subscription.tokensUsed + tokensToDeduct,
             status: remaining > 0 ? "active" : "exhausted",
             updatedAt: now,
@@ -4303,6 +4504,8 @@ async function getActiveSubscriptionInternal(
       .set({
         status: "exhausted",
         tokenBalance: 0,
+        manualTokenBalance: 0,
+        paidTokenBalance: 0,
         updatedAt: now,
       })
       .where(eq(userSubscription.id, subscription.id));
@@ -4315,12 +4518,211 @@ async function getActiveSubscriptionInternal(
 function calculateTokenDeduction({
   inputTokens,
   outputTokens,
+  costMultiplier = 1,
 }: {
   inputTokens: number;
   outputTokens: number;
+  costMultiplier?: number;
 }): number {
   const totalTokens = Math.max(1, Math.round(inputTokens + outputTokens));
-  return totalTokens;
+  const normalizedMultiplier =
+    Number.isFinite(costMultiplier) && costMultiplier && costMultiplier > 1
+      ? costMultiplier
+      : 1;
+  const adjustedTokens = totalTokens * normalizedMultiplier;
+  return Math.max(1, Math.ceil(adjustedTokens));
+}
+
+function computeCostMultiplier({
+  planPricePerTokenPaise,
+  baselineCostPerTokenPaise,
+  modelCostPerTokenPaise,
+}: {
+  planPricePerTokenPaise: number;
+  baselineCostPerTokenPaise: number;
+  modelCostPerTokenPaise: number;
+}): number {
+  if (
+    !Number.isFinite(planPricePerTokenPaise) ||
+    planPricePerTokenPaise <= 0 ||
+    !Number.isFinite(baselineCostPerTokenPaise) ||
+    baselineCostPerTokenPaise <= 0 ||
+    !Number.isFinite(modelCostPerTokenPaise) ||
+    modelCostPerTokenPaise <= 0
+  ) {
+    return 1;
+  }
+
+  const targetRatio = planPricePerTokenPaise / baselineCostPerTokenPaise;
+
+  if (!Number.isFinite(targetRatio) || targetRatio <= 0) {
+    return 1;
+  }
+
+  const requiredPricePerToken = modelCostPerTokenPaise * targetRatio;
+  const multiplier = requiredPricePerToken / planPricePerTokenPaise;
+
+  if (!Number.isFinite(multiplier) || multiplier <= 1) {
+    return 1;
+  }
+
+  return multiplier;
+}
+
+type ProviderCostSnapshot = {
+  modelId: string;
+  isDefault: boolean;
+  isMarginBaseline: boolean;
+  costPerTokenPaise: number;
+};
+
+async function getModelProviderCostSnapshot(
+  modelId: string,
+  usdToInr: number
+): Promise<ProviderCostSnapshot | null> {
+  const [row] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+      deletedAt: modelConfig.deletedAt,
+    })
+    .from(modelConfig)
+    .where(eq(modelConfig.id, modelId))
+    .limit(1);
+
+  if (!row || row.deletedAt) {
+    return null;
+  }
+
+  const totalUsdPerMillion =
+    Number(row.inputCost ?? 0) + Number(row.outputCost ?? 0);
+  return {
+    modelId: row.id,
+    isDefault: row.isDefault ?? false,
+    isMarginBaseline: row.isMarginBaseline ?? false,
+    costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+      totalUsdPerMillion,
+      usdToInr
+    ),
+  };
+}
+
+async function getBaselineProviderCostSnapshot(
+  usdToInr: number,
+  existingSnapshot?: ProviderCostSnapshot | null
+): Promise<ProviderCostSnapshot | null> {
+  if (existingSnapshot?.isMarginBaseline) {
+    return existingSnapshot;
+  }
+
+  const [baselineModel] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+    })
+    .from(modelConfig)
+    .where(
+      and(eq(modelConfig.isMarginBaseline, true), eq(modelConfig.isEnabled, true), isNull(modelConfig.deletedAt))
+    )
+    .limit(1);
+
+  if (baselineModel) {
+    const totalUsdPerMillion =
+      Number(baselineModel.inputCost ?? 0) +
+      Number(baselineModel.outputCost ?? 0);
+    return {
+      modelId: baselineModel.id,
+      isDefault: baselineModel.isDefault ?? false,
+      isMarginBaseline: true,
+      costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+        totalUsdPerMillion,
+        usdToInr
+      ),
+    };
+  }
+
+  const [defaultModel] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+    })
+    .from(modelConfig)
+    .where(
+      and(
+        eq(modelConfig.isDefault, true),
+        eq(modelConfig.isEnabled, true),
+        isNull(modelConfig.deletedAt)
+      )
+    )
+    .limit(1);
+
+  if (defaultModel) {
+    const totalUsdPerMillion =
+      Number(defaultModel.inputCost ?? 0) +
+      Number(defaultModel.outputCost ?? 0);
+    return {
+      modelId: defaultModel.id,
+      isDefault: true,
+      isMarginBaseline: defaultModel.isMarginBaseline ?? false,
+      costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+        totalUsdPerMillion,
+        usdToInr
+      ),
+    };
+  }
+
+  const [fallbackModel] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+    })
+    .from(modelConfig)
+    .where(and(eq(modelConfig.isEnabled, true), isNull(modelConfig.deletedAt)))
+    .orderBy(asc(modelConfig.createdAt))
+    .limit(1);
+
+  if (!fallbackModel) {
+    return null;
+  }
+
+  const fallbackUsdPerMillion =
+    Number(fallbackModel.inputCost ?? 0) + Number(fallbackModel.outputCost ?? 0);
+
+  return {
+    modelId: fallbackModel.id,
+    isDefault: fallbackModel.isDefault ?? false,
+    isMarginBaseline: fallbackModel.isMarginBaseline ?? false,
+    costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+      fallbackUsdPerMillion,
+      usdToInr
+    ),
+  };
+}
+
+function convertUsdPerMillionToPaisePerToken(
+  usdPerMillion: number,
+  usdToInr: number
+): number {
+  if (!Number.isFinite(usdPerMillion) || usdPerMillion <= 0) {
+    return 0;
+  }
+  const safeRate =
+    Number.isFinite(usdToInr) && usdToInr > 0 ? usdToInr : 83;
+  const perTokenUsd = usdPerMillion / 1_000_000;
+  const perTokenInr = perTokenUsd * safeRate;
+  return perTokenInr * 100;
 }
 
 export type TranslationTableEntry = {
@@ -4882,7 +5284,7 @@ export type ChatFinancialSummary = {
   usageStartedAt: Date | null;
   totalInputTokens: number;
   totalOutputTokens: number;
-  userChargeUsd: number;
+  userChargeInr: number;
   providerCostUsd: number;
 };
 
@@ -4891,7 +5293,7 @@ export type ChatFinancialSummariesResult = {
   totals: {
     totalInputTokens: number;
     totalOutputTokens: number;
-    userChargeUsd: number;
+    userChargeInr: number;
     providerCostUsd: number;
   };
   records: ChatFinancialSummary[];
@@ -4918,12 +5320,16 @@ export async function listChatFinancialSummaries({
         usageStartedAt: sql<Date>`MIN(${tokenUsage.createdAt})`,
         totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
         totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-        userChargeUsd: sql<number>`
+        userChargeInr: sql<number>`
           COALESCE(SUM(
-            (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputCostPerMillion}, 0)
-            ) / 1000000.0
+            CASE
+              WHEN ${tokenUsage.subscriptionId} IS NULL
+                OR ${pricingPlan.tokenAllowance} IS NULL
+                OR ${pricingPlan.tokenAllowance} <= 0
+              THEN 0
+              ELSE ${tokenUsage.paidTokens} *
+                ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
+            END
           ), 0)
         `,
         providerCostUsd: sql<number>`
@@ -4939,6 +5345,8 @@ export async function listChatFinancialSummaries({
       .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
       .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .leftJoin(user, eq(tokenUsage.userId, user.id))
+      .leftJoin(userSubscription, eq(tokenUsage.subscriptionId, userSubscription.id))
+      .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id))
       .groupBy(
         tokenUsage.chatId,
         tokenUsage.userId,
@@ -4957,14 +5365,14 @@ export async function listChatFinancialSummaries({
       (acc, row) => {
         acc.totalInputTokens += row.totalInputTokens ?? 0;
         acc.totalOutputTokens += row.totalOutputTokens ?? 0;
-        acc.userChargeUsd += row.userChargeUsd ?? 0;
+        acc.userChargeInr += row.userChargeInr ?? 0;
         acc.providerCostUsd += row.providerCostUsd ?? 0;
         return acc;
       },
       {
         totalInputTokens: 0,
         totalOutputTokens: 0,
-        userChargeUsd: 0,
+        userChargeInr: 0,
         providerCostUsd: 0,
       }
     );
@@ -4983,7 +5391,7 @@ export async function listChatFinancialSummaries({
         totals: {
           totalInputTokens: 0,
           totalOutputTokens: 0,
-          userChargeUsd: 0,
+          userChargeInr: 0,
           providerCostUsd: 0,
         },
         records: [],
@@ -5098,6 +5506,64 @@ export async function listRechargeRecords({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load recharge records"
+    );
+  }
+}
+
+export type UserRechargeHistoryEntry = {
+  orderId: string;
+  planId: string;
+  planName: string | null;
+  currency: string;
+  amount: number;
+  status: PaymentTransaction["status"];
+  createdAt: Date;
+};
+
+export async function listUserRechargeHistory({
+  userId,
+  limit = 10,
+}: {
+  userId: string;
+  limit?: number;
+}): Promise<UserRechargeHistoryEntry[]> {
+  if (!userId) {
+    return [];
+  }
+
+  try {
+    const rows = await db
+      .select({
+        orderId: paymentTransaction.orderId,
+        planId: paymentTransaction.planId,
+        planName: pricingPlan.name,
+        currency: paymentTransaction.currency,
+        amount: paymentTransaction.amount,
+        status: paymentTransaction.status,
+        createdAt: paymentTransaction.createdAt,
+      })
+      .from(paymentTransaction)
+      .leftJoin(pricingPlan, eq(paymentTransaction.planId, pricingPlan.id))
+      .where(eq(paymentTransaction.userId, userId))
+      .orderBy(desc(paymentTransaction.createdAt))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      orderId: row.orderId,
+      planId: row.planId,
+      planName: row.planName ?? null,
+      currency: (row.currency ?? "INR").toUpperCase(),
+      amount: convertSubunitAmount(row.amount ?? 0, row.currency ?? "INR"),
+      status: row.status,
+      createdAt: row.createdAt,
+    }));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load recharge history"
     );
   }
 }

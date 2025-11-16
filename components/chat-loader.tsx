@@ -27,6 +27,7 @@ type ChatLoaderProps = {
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  customKnowledgeEnabled: boolean;
 };
 
 let chatModulePromise: Promise<typeof import("./chat")> | null = null;

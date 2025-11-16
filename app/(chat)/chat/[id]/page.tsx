@@ -6,9 +6,10 @@ import { ChatLoader } from "@/components/chat-loader";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
-import { getChatById, getMessagesByChatId } from "@/lib/db/queries";
+import { getAppSetting, getChatById, getMessagesByChatId } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { convertToUIMessages } from "@/lib/utils";
+import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -21,14 +22,26 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [session, modelsResult, suggestedPrompts, translationBundle] =
-    await Promise.all([
-      auth(),
-      loadChatModels(),
-      loadSuggestedPrompts(preferredLanguage),
-      getTranslationBundle(preferredLanguage),
-    ]);
+  const [
+    session,
+    modelsResult,
+    suggestedPrompts,
+    translationBundle,
+    customKnowledgeSetting,
+  ] = await Promise.all([
+    auth(),
+    loadChatModels(),
+    loadSuggestedPrompts(preferredLanguage),
+    getTranslationBundle(preferredLanguage),
+    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+  ]);
   const { dictionary } = translationBundle;
+  const customKnowledgeEnabled =
+    typeof customKnowledgeSetting === "boolean"
+      ? customKnowledgeSetting
+      : typeof customKnowledgeSetting === "string"
+        ? customKnowledgeSetting.toLowerCase() === "true"
+        : false;
 
   if (!session) {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
@@ -80,6 +93,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
           suggestedPrompts={suggestedPrompts}
+          customKnowledgeEnabled={customKnowledgeEnabled}
         />
         <DataStreamHandler />
       </>
@@ -97,6 +111,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         initialVisibilityType={chat.visibility}
         isReadonly={session?.user?.id !== chat.userId}
         suggestedPrompts={suggestedPrompts}
+        customKnowledgeEnabled={customKnowledgeEnabled}
       />
       <DataStreamHandler />
     </>

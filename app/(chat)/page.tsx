@@ -5,6 +5,8 @@ import { ChatLoader } from "@/components/chat-loader";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { generateUUID } from "@/lib/utils";
+import { getAppSetting } from "@/lib/db/queries";
+import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import { auth } from "../(auth)/auth";
 
 export default async function Page() {
@@ -16,9 +18,10 @@ export default async function Page() {
     redirect("/login");
   }
 
-  const [modelsResult, suggestedPrompts] = await Promise.all([
+  const [modelsResult, suggestedPrompts, customKnowledgeSetting] = await Promise.all([
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
+    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
   ]);
 
   const { defaultModel, models } = modelsResult;
@@ -32,6 +35,13 @@ export default async function Page() {
     models[0]?.id ??
     "";
 
+  const customKnowledgeEnabled =
+    typeof customKnowledgeSetting === "boolean"
+      ? customKnowledgeSetting
+      : typeof customKnowledgeSetting === "string"
+        ? customKnowledgeSetting.toLowerCase() === "true"
+        : false;
+
   if (!modelIdFromCookie) {
     return (
       <>
@@ -43,6 +53,7 @@ export default async function Page() {
           initialVisibilityType="private"
           isReadonly={false}
           suggestedPrompts={suggestedPrompts}
+          customKnowledgeEnabled={customKnowledgeEnabled}
           key={id}
         />
         <DataStreamHandler />
@@ -60,6 +71,7 @@ export default async function Page() {
         initialVisibilityType="private"
         isReadonly={false}
         suggestedPrompts={suggestedPrompts}
+        customKnowledgeEnabled={customKnowledgeEnabled}
         key={id}
       />
       <DataStreamHandler />

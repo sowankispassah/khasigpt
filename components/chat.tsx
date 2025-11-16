@@ -40,6 +40,7 @@ export function Chat({
   isReadonly,
   autoResume,
   suggestedPrompts,
+  customKnowledgeEnabled,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -48,6 +49,7 @@ export function Chat({
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  customKnowledgeEnabled: boolean;
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -63,7 +65,6 @@ export function Chat({
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
   const currentModelIdRef = useRef(currentModelId);
-  const customKnowledgeEnabled = true;
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
@@ -92,7 +93,6 @@ export function Chat({
             message: request.messages.at(-1),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibilityType,
-            useCustomKnowledge: customKnowledgeEnabled,
             ...request.body,
           },
         };
@@ -234,13 +234,13 @@ export function Chat({
                 onModelChange={setCurrentModelId}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
-              sendMessage={sendMessage}
-              setAttachments={setAttachments}
-              setInput={setInput}
-              setMessages={setMessages}
-              status={status}
-              stop={stop}
-            />
+                sendMessage={sendMessage}
+                setAttachments={setAttachments}
+                setInput={setInput}
+                setMessages={setMessages}
+                status={status}
+                stop={stop}
+              />
               <p className="px-2 text-center text-muted-foreground text-xs">
                 {translate(
                   "chat.disclaimer.text",

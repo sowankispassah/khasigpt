@@ -15,6 +15,7 @@ import {
   deleteModelConfig,
   hardDeleteModelConfig,
   setDefaultModelConfig,
+  setMarginBaselineModel,
   getAppSetting,
   setAppSetting,
   updateUserActiveState,
@@ -38,12 +39,17 @@ import {
 } from "@/lib/db/queries";
 import type { RagEntryStatus, UserRole } from "@/lib/db/schema";
 import {
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
+  DEFAULT_RAG_TIMEOUT_MS,
   FREE_MESSAGE_SETTINGS_KEY,
   FORUM_FEATURE_FLAG_KEY,
+  RAG_MATCH_THRESHOLD_SETTING_KEY,
+  RAG_TIMEOUT_MS_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
+import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
@@ -172,6 +178,53 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   revalidatePath("/", "layout");
   revalidatePath("/forum");
   revalidatePath("/forum/[slug]");
+}
+
+export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("customKnowledgeEnabled"));
+  const timeoutRaw = formData.get("ragTimeoutSeconds")?.toString();
+  let timeoutSeconds = Number(timeoutRaw);
+
+  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+    timeoutSeconds = DEFAULT_RAG_TIMEOUT_MS / 1000;
+  }
+
+  timeoutSeconds = Math.min(Math.max(1, timeoutSeconds), 60);
+  const timeoutMs = Math.round(timeoutSeconds * 1000);
+  const thresholdRaw = formData.get("ragMatchThreshold")?.toString();
+  let ragMatchThreshold = Number(thresholdRaw);
+
+  if (!Number.isFinite(ragMatchThreshold) || ragMatchThreshold <= 0) {
+    ragMatchThreshold = DEFAULT_RAG_MATCH_THRESHOLD;
+  }
+
+  ragMatchThreshold = Math.min(Math.max(0.01, ragMatchThreshold), 1);
+
+  await Promise.all([
+    setAppSetting({
+      key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+      value: enabled,
+    }),
+    setAppSetting({
+      key: RAG_TIMEOUT_MS_SETTING_KEY,
+      value: timeoutMs,
+    }),
+    setAppSetting({
+      key: RAG_MATCH_THRESHOLD_SETTING_KEY,
+      value: ragMatchThreshold,
+    }),
+  ]);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "settings.rag.update",
+    target: { setting: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY },
+    metadata: { enabled, timeoutMs, ragMatchThreshold },
+  });
+
+  revalidatePath("/admin/settings");
 }
 
 function parseBoolean(value: FormDataEntryValue | null | undefined) {
@@ -419,13 +472,8 @@ export async function createModelConfigAction(formData: FormData) {
   const supportsReasoning = parseBoolean(formData.get("supportsReasoning"));
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isDefault = parseBoolean(formData.get("isDefault"));
+  const isMarginBaseline = parseBoolean(formData.get("isMarginBaseline"));
   const config = parseJson(formData.get("configJson"));
-  const inputCostPerMillion = parseNumber(
-    formData.get("inputCostPerMillion")
-  );
-  const outputCostPerMillion = parseNumber(
-    formData.get("outputCostPerMillion")
-  );
   const inputProviderCostPerMillion = parseNumber(
     formData.get("inputProviderCostPerMillion")
   );
@@ -467,8 +515,7 @@ export async function createModelConfigAction(formData: FormData) {
       config,
       isEnabled,
       isDefault,
-      inputCostPerMillion,
-      outputCostPerMillion,
+      isMarginBaseline,
       inputProviderCostPerMillion,
       outputProviderCostPerMillion,
       freeMessagesPerDay,
@@ -515,8 +562,6 @@ export async function updateModelConfigAction(formData: FormData) {
     config?: Record<string, unknown> | null;
     isEnabled?: boolean;
     isDefault?: boolean;
-    inputCostPerMillion?: number;
-    outputCostPerMillion?: number;
     inputProviderCostPerMillion?: number;
     outputProviderCostPerMillion?: number;
     freeMessagesPerDay?: number;
@@ -569,18 +614,6 @@ export async function updateModelConfigAction(formData: FormData) {
 
   if (formData.has("isDefault")) {
     patch.isDefault = parseBoolean(formData.get("isDefault"));
-  }
-
-  if (formData.has("inputCostPerMillion")) {
-    patch.inputCostPerMillion = parseNumber(
-      formData.get("inputCostPerMillion")
-    );
-  }
-
-  if (formData.has("outputCostPerMillion")) {
-    patch.outputCostPerMillion = parseNumber(
-      formData.get("outputCostPerMillion")
-    );
   }
 
   if (formData.has("inputProviderCostPerMillion")) {
@@ -699,6 +732,32 @@ export async function setDefaultModelConfigAction(formData: FormData) {
   revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-defaulted");
+}
+
+export async function setMarginBaselineModelAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing model configuration id");
+  }
+
+  await setMarginBaselineModel(id);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "model.setMarginBaseline",
+    target: { modelId: id },
+  });
+
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=model-margin-baseline");
 }
 
 export async function setArtifactsEnabledAction(formData: FormData) {

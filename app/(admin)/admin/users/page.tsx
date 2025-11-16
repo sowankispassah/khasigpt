@@ -2,6 +2,7 @@ import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } f
 import { auth } from "@/app/(auth)/auth";
 import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { ActionSubmitButton } from "@/components/action-submit-button";
 import { RoleSubmitButton } from "@/components/role-submit-button";
 import {
   getUserBalanceSummary,
@@ -203,9 +204,14 @@ function AddCreditsForm({
         step="0.5"
         type="number"
       />
-      <Button size="sm" type="submit" variant="secondary">
+      <ActionSubmitButton
+        pendingLabel="Adding..."
+        size="sm"
+        successMessage="Credits granted"
+        variant="secondary"
+      >
         Add credits
-      </Button>
+      </ActionSubmitButton>
     </form>
   );
 }

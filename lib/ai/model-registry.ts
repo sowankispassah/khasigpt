@@ -39,8 +39,6 @@ async function ensureModelConfigs(): Promise<ModelConfig[]> {
     isEnabled: true,
     isDefault: true,
     freeMessagesPerDay: 3,
-    inputCostPerMillion: 0,
-    outputCostPerMillion: 0,
   });
 
   await setDefaultModelConfig(created.id);
@@ -84,8 +82,6 @@ export type ModelSummary = {
   reasoningTag: string | null;
   systemPrompt: string | null;
   codeTemplate: string | null;
-  inputCostPerMillion: number;
-  outputCostPerMillion: number;
   inputProviderCostPerMillion: number;
   outputProviderCostPerMillion: number;
   freeMessagesPerDay: number;
@@ -103,8 +99,6 @@ export function mapToModelSummary(config: ModelConfig): ModelSummary {
     reasoningTag: config.reasoningTag ?? null,
     systemPrompt: config.systemPrompt ?? null,
     codeTemplate: config.codeTemplate ?? null,
-    inputCostPerMillion: Number(config.inputCostPerMillion ?? 0),
-    outputCostPerMillion: Number(config.outputCostPerMillion ?? 0),
     inputProviderCostPerMillion: Number(
       config.inputProviderCostPerMillion ?? 0
     ),

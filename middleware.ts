@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const ONE_MINUTE = 60 * 1000;
 const API_RATE_LIMIT = {
@@ -35,19 +36,6 @@ const CANONICAL_HOST =
   process.env.CANONICAL_HOST?.toLowerCase() ?? "khasigpt.com";
 const SHOULD_ENFORCE_CANONICAL =
   process.env.NODE_ENV === "production" && typeof CANONICAL_HOST === "string";
-
-function getClientKey(request: NextRequest) {
-  const forwardedFor =
-    request.headers.get("x-forwarded-for") ??
-    request.headers.get("forwarded") ??
-    "";
-  const ip =
-    forwardedFor.split(",")[0]?.trim() ??
-    request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-real-ip") ??
-    "unknown";
-  return ip;
-}
 
 function getCorsHeaders(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -124,7 +112,7 @@ export function middleware(request: NextRequest) {
       });
     }
 
-    const key = `api:${getClientKey(request)}`;
+    const key = `api:${getClientKeyFromHeaders(request.headers)}`;
     const { allowed, resetAt } = incrementRateLimit(key, API_RATE_LIMIT);
 
     if (!allowed) {
@@ -156,5 +144,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/:path*"],
+  matcher: ["/((?!api/chat).*)"],
 };

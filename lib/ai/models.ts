@@ -41,8 +41,6 @@ export const loadChatModels = unstable_cache(
         systemPrompt:
           "You are a helpful AI assistant. Offer concise, accurate, and friendly responses.",
         codeTemplate: null,
-        inputCostPerMillion: 0,
-        outputCostPerMillion: 0,
         inputProviderCostPerMillion: 0,
         outputProviderCostPerMillion: 0,
         freeMessagesPerDay: 3,

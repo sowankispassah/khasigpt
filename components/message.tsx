@@ -1,6 +1,5 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import equal from "fast-deep-equal";
 import { motion } from "framer-motion";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
@@ -356,28 +355,7 @@ const PurePreviewMessage = ({
   );
 };
 
-export const PreviewMessage = memo(
-  PurePreviewMessage,
-  (prevProps, nextProps) => {
-    if (prevProps.isLoading !== nextProps.isLoading) {
-      return false;
-    }
-    if (prevProps.message.id !== nextProps.message.id) {
-      return false;
-    }
-    if (prevProps.requiresScrollPadding !== nextProps.requiresScrollPadding) {
-      return false;
-    }
-    if (!equal(prevProps.message.parts, nextProps.message.parts)) {
-      return false;
-    }
-    if (!equal(prevProps.vote, nextProps.vote)) {
-      return false;
-    }
-
-    return false;
-  }
-);
+export const PreviewMessage = memo(PurePreviewMessage);
 
 export const ThinkingMessage = () => {
   return (
@@ -398,6 +376,4 @@ export const ThinkingMessage = () => {
     </motion.div>
   );
 };
-
-
 

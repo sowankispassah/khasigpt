@@ -17,6 +17,8 @@ export async function GET() {
     tokensTotal: summary.tokensTotal,
     creditsRemaining: summary.creditsRemaining,
     creditsTotal: summary.creditsTotal,
+    allocatedCredits: summary.allocatedCredits,
+    rechargedCredits: summary.rechargedCredits,
     expiresAt: summary.expiresAt?.toISOString() ?? null,
     startedAt: summary.startedAt?.toISOString() ?? null,
     plan: summary.plan

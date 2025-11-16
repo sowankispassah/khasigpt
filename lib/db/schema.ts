@@ -115,13 +115,8 @@ export const modelConfig = pgTable("ModelConfig", {
   config: jsonb("config"),
   isEnabled: boolean("isEnabled").notNull().default(true),
   isDefault: boolean("isDefault").notNull().default(false),
+  isMarginBaseline: boolean("isMarginBaseline").notNull().default(false),
   freeMessagesPerDay: integer("freeMessagesPerDay").notNull().default(3),
-  inputCostPerMillion: doublePrecision("inputCostPerMillion")
-    .notNull()
-    .default(0),
-  outputCostPerMillion: doublePrecision("outputCostPerMillion")
-    .notNull()
-    .default(0),
   inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
     .notNull()
     .default(0),
@@ -421,6 +416,8 @@ export const userSubscription = pgTable("UserSubscription", {
   status: subscriptionStatusEnum("status").notNull().default("active"),
   tokenAllowance: integer("tokenAllowance").notNull(),
   tokenBalance: integer("tokenBalance").notNull(),
+  manualTokenBalance: integer("manualTokenBalance").notNull().default(0),
+  paidTokenBalance: integer("paidTokenBalance").notNull().default(0),
   tokensUsed: integer("tokensUsed").notNull().default(0),
   startedAt: timestamp("startedAt").notNull().defaultNow(),
   expiresAt: timestamp("expiresAt").notNull(),
@@ -753,6 +750,8 @@ export const tokenUsage = pgTable(
     inputTokens: integer("inputTokens").notNull().default(0),
     outputTokens: integer("outputTokens").notNull().default(0),
     totalTokens: integer("totalTokens").notNull().default(0),
+    manualTokens: integer("manualTokens").notNull().default(0),
+    paidTokens: integer("paidTokens").notNull().default(0),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({

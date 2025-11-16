@@ -5,11 +5,13 @@ import {
   listPricingPlans,
   getTranslationValuesForKeys,
 } from "@/lib/db/queries";
+import type { PricingPlan } from "@/lib/db/schema";
 import {
   createModelConfigAction,
   deleteModelConfigAction,
   hardDeleteModelConfigAction,
   setDefaultModelConfigAction,
+  setMarginBaselineModelAction,
   updateModelConfigAction,
   createPricingPlanAction,
   updatePricingPlanAction,
@@ -45,6 +47,8 @@ import { getAllLanguages } from "@/lib/i18n/languages";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { LanguageContentForm } from "./language-content-form";
 import { parseForumEnabledSetting } from "@/lib/forum/config";
+import { getUsdToInrRate } from "@/lib/services/exchange-rate";
+import { PlanPricingFields } from "./plan-pricing-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +58,15 @@ const PROVIDER_OPTIONS = [
   { value: "google", label: "Google Gemini" },
   { value: "custom", label: "Custom (configure in code)" },
 ];
+
+function formatCurrency(value: number, currency: "USD" | "INR") {
+  return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 function ProviderBadge({ value }: { value: string }) {
   const option = PROVIDER_OPTIONS.find((item) => item.value === value);
@@ -90,6 +103,7 @@ export default async function AdminSettingsPage({
   const notice = resolvedSearchParams?.notice;
 
   const [
+    exchangeRate,
     modelsRaw,
     plansRaw,
     activeSubscriptions,
@@ -106,6 +120,7 @@ export default async function AdminSettingsPage({
     freeMessageSettings,
     forumEnabledSetting,
   ] = await Promise.all([
+    getUsdToInrRate(),
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
     listActiveSubscriptionSummaries({ limit: 10 }),
@@ -123,6 +138,7 @@ export default async function AdminSettingsPage({
     getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
   ]);
 
+  const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
   const deletedModels = modelsRaw.filter((model) => model.deletedAt);
 
@@ -187,6 +203,28 @@ export default async function AdminSettingsPage({
     }
   }
   const activeLanguagesList = languages.filter((language) => language.isActive);
+
+  const providerLabelLookup = new Map(
+    PROVIDER_OPTIONS.map((option) => [option.value, option.label])
+  );
+  const providerCostSummaries = activeModels
+    .filter((model) => model.isEnabled)
+    .map((model) => {
+      const providerCostPerMillionUsd =
+        Number(model.inputProviderCostPerMillion ?? 0) +
+        Number(model.outputProviderCostPerMillion ?? 0);
+
+      return {
+        id: model.id,
+        name: model.displayName,
+        providerLabel:
+          providerLabelLookup.get(model.provider) ?? model.provider,
+        isMarginBaseline: Boolean(model.isMarginBaseline),
+        providerCostPerMillionUsd,
+        providerCostPerMillionInr: providerCostPerMillionUsd * usdToInr,
+      };
+    });
+
   const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
     ? suggestedPromptsSetting.filter(
         (item) => typeof item === "string" && item.trim().length > 0
@@ -711,21 +749,6 @@ export default async function AdminSettingsPage({
                 required
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-price">
-                Price (INR)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-price"
-                min="0"
-                name="priceInRupees"
-                placeholder="299"
-                required
-                step="0.01"
-                type="number"
-              />
-            </div>
             <div className="md:col-span-2 flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="plan-description">
                 Description
@@ -737,18 +760,10 @@ export default async function AdminSettingsPage({
                 placeholder="Great for individual builders."
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-tokens">
-                Token allowance
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-tokens"
-                min={0}
-                name="tokenAllowance"
-                placeholder="100000"
-                required
-                type="number"
+            <div className="md:col-span-2 space-y-3">
+              <PlanPricingFields
+                modelCosts={providerCostSummaries}
+                usdToInr={usdToInr}
               />
               <p className="text-muted-foreground text-xs">
                 Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).
@@ -800,7 +815,6 @@ export default async function AdminSettingsPage({
                 const nonDefaultLanguages = activeLanguagesList.filter(
                   (language) => !language.isDefault,
                 );
-
                 return (
                   <details
                     key={plan.id}
@@ -846,44 +860,28 @@ export default async function AdminSettingsPage({
                             name="description"
                           />
                         </div>
-                        <div className="flex flex-col gap-2">
+                        <div className="space-y-3">
+                          <PlanPricingFields
+                            initialPriceInRupees={priceInRupees}
+                            initialTokenAllowance={plan.tokenAllowance}
+                            modelCosts={providerCostSummaries}
+                            usdToInr={usdToInr}
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:w-48">
                           <label className="text-sm font-medium">
-                            Price (INR)
+                            Cycle (days)
                           </label>
                           <input
                             className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={priceInRupees}
-                            min="0"
-                            name="priceInRupees"
-                            step="0.01"
+                            defaultValue={plan.billingCycleDays}
+                            min={0}
+                            name="billingCycleDays"
                             type="number"
                           />
-                        </div>
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-                          <div className="flex flex-col gap-2 sm:flex-1">
-                            <label className="text-sm font-medium">
-                              Token allowance
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.tokenAllowance}
-                              min={0}
-                              name="tokenAllowance"
-                              type="number"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2 sm:w-48">
-                            <label className="text-sm font-medium">
-                              Cycle (days)
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.billingCycleDays}
-                              min={0}
-                              name="billingCycleDays"
-                              type="number"
-                            />
-                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -1232,36 +1230,6 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="inputCostPerMillion">
-                Input cost (USD / 1M tokens)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={0}
-                id="inputCostPerMillion"
-                min={0}
-                name="inputCostPerMillion"
-                step="0.000001"
-                type="number"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="outputCostPerMillion">
-                Output cost (USD / 1M tokens)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={0}
-                id="outputCostPerMillion"
-                min={0}
-                name="outputCostPerMillion"
-                step="0.000001"
-                type="number"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="inputProviderCostPerMillion">
                 Provider input cost (USD / 1M tokens)
               </label>
@@ -1412,6 +1380,17 @@ export default async function AdminSettingsPage({
                 Set as default model
               </label>
             </div>
+            <div className="flex items-center gap-3">
+              <input
+                className="h-4 w-4"
+                id="isMarginBaseline"
+                name="isMarginBaseline"
+                type="checkbox"
+              />
+              <label className="text-sm font-medium" htmlFor="isMarginBaseline">
+                Use as margin baseline
+              </label>
+            </div>
 
             <div className="md:col-span-2 flex justify-end">
               <ActionSubmitButton pendingLabel="Creating...">
@@ -1430,24 +1409,14 @@ export default async function AdminSettingsPage({
               </p>
             ) : (
               activeModels.map((model) => {
-                const chargeInputRate = Number(model.inputCostPerMillion ?? 0);
-                const chargeOutputRate = Number(model.outputCostPerMillion ?? 0);
                 const providerInputRate = Number(
                   model.inputProviderCostPerMillion ?? 0
                 );
                 const providerOutputRate = Number(
                   model.outputProviderCostPerMillion ?? 0
                 );
-                const totalChargeRate = chargeInputRate + chargeOutputRate;
                 const totalProviderRate =
                   providerInputRate + providerOutputRate;
-                const marginPerMillion = totalChargeRate - totalProviderRate;
-                const marginPerCredit =
-                  (marginPerMillion / 1_000_000) * TOKENS_PER_CREDIT;
-                const marginPercentage =
-                  totalChargeRate > 0
-                    ? (marginPerMillion / totalChargeRate) * 100
-                    : 0;
                 const formatUsd = (value: number) =>
                   value.toLocaleString("en-US", {
                     style: "currency",
@@ -1466,6 +1435,11 @@ export default async function AdminSettingsPage({
                       {model.isDefault && (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                           Default
+                        </span>
+                      )}
+                      {model.isMarginBaseline && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          Margin baseline
                         </span>
                       )}
                     </div>
@@ -1512,34 +1486,6 @@ export default async function AdminSettingsPage({
                           className="rounded-md border bg-background px-3 py-2 text-sm"
                           defaultValue={model.providerModelId}
                           name="providerModelId"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Input cost (USD / 1M tokens)
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.inputCostPerMillion ?? 0}
-                          min={0}
-                          name="inputCostPerMillion"
-                          step="0.000001"
-                          type="number"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Output cost (USD / 1M tokens)
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.outputCostPerMillion ?? 0}
-                          min={0}
-                          name="outputCostPerMillion"
-                          step="0.000001"
-                          type="number"
                         />
                       </div>
 
@@ -1595,60 +1541,30 @@ export default async function AdminSettingsPage({
 
                       <div className="md:col-span-2 rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
                         <h4 className="text-sm font-semibold text-foreground">
-                          Margin snapshot (per {TOKENS_PER_CREDIT.toLocaleString()} tokens)
+                          Provider cost reference (per 1M tokens)
                         </h4>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
                           <div className="space-y-1">
                             <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              User pricing (1M tokens)
+                              Input cost
                             </p>
-                            <p>
-                              Input: {formatUsd(chargeInputRate)}
-                            </p>
-                            <p>
-                              Output: {formatUsd(chargeOutputRate)}
-                            </p>
+                            <p>{formatUsd(providerInputRate)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Provider cost (1M tokens)
+                              Output cost
                             </p>
-                            <p>
-                              Input: {formatUsd(providerInputRate)}
-                            </p>
-                            <p>
-                              Output: {formatUsd(providerOutputRate)}
-                            </p>
+                            <p>{formatUsd(providerOutputRate)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Gross margin / 1M tokens
+                              Total
                             </p>
-                            <p className={marginPerMillion < 0 ? "text-destructive" : undefined}>
-                              {formatUsd(marginPerMillion)}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Gross margin / credit
-                            </p>
-                            <p className={marginPerCredit < 0 ? "text-destructive" : undefined}>
-                              {formatUsd(marginPerCredit)}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Margin percentage
-                            </p>
-                            <p className={marginPercentage < 0 ? "text-destructive" : undefined}>
-                              {Number.isFinite(marginPercentage)
-                                ? `${marginPercentage.toFixed(2)}%`
-                                : "—"}
-                            </p>
+                            <p>{formatUsd(totalProviderRate)}</p>
                           </div>
                         </div>
                         <p className="text-muted-foreground mt-3 text-xs">
-                          These values update when you save changes. They help estimate how much each credit earns after provider costs.
+                          Revenue now comes from your pricing plans. Keep these costs updated to track real spend vs. credit sales.
                         </p>
                       </div>
 
@@ -1775,6 +1691,18 @@ export default async function AdminSettingsPage({
                             variant="outline"
                           >
                             Set as default
+                          </ActionSubmitButton>
+                        </form>
+                      )}
+                      {!model.isMarginBaseline && (
+                        <form action={setMarginBaselineModelAction}>
+                          <input name="id" type="hidden" value={model.id} />
+                          <ActionSubmitButton
+                            pendingLabel="Updating..."
+                            size="sm"
+                            variant="outline"
+                          >
+                            Set as margin baseline
                           </ActionSubmitButton>
                         </form>
                       )}

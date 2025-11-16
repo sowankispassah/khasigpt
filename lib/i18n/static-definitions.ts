@@ -755,13 +755,98 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "subscriptions.plan_overview.credits_allocated",
-    defaultText: "Credits allocated",
-    description: "Row label for credits allocated.",
+    defaultText: "Admin credits remaining",
+    description: "Row label for remaining credits that were manually granted by an admin.",
+  },
+  {
+    key: "subscriptions.plan_overview.credits_recharged",
+    defaultText: "Paid credits remaining",
+    description: "Row label for remaining credits purchased via recharges.",
   },
   {
     key: "subscriptions.plan_overview.plan_expires",
     defaultText: "Plan expires",
     description: "Row label for plan expiry.",
+  },
+  {
+    key: "subscriptions.recharge_history.title",
+    defaultText: "Recharge history",
+    description: "Heading for the recharge history section.",
+  },
+  {
+    key: "subscriptions.recharge_history.subtitle",
+    defaultText: "Recent top-ups you've completed.",
+    description: "Subtitle explaining the recharge history section.",
+  },
+  {
+    key: "subscriptions.recharge_history.empty",
+    defaultText: "You haven't recharged your account yet.",
+    description: "Fallback text when there are no recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.plan",
+    defaultText: "Plan",
+    description: "Column label for plan name in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.amount",
+    defaultText: "Amount",
+    description: "Column label for amount in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.status",
+    defaultText: "Status",
+    description: "Column label for status in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.date",
+    defaultText: "Date",
+    description: "Column label for date in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.unknown_plan",
+    defaultText: "Plan unavailable",
+    description: "Fallback text when a plan name is missing in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.trigger_label",
+    defaultText: "View recharge history",
+    description: "Aria-label for the icon button that opens recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.close_button",
+    defaultText: "Close",
+    description: "Label for the close button inside the recharge history dialog.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.pending",
+    defaultText: "Pending",
+    description: "Status label for pending recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.processing",
+    defaultText: "Processing",
+    description: "Status label for processing recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.paid",
+    defaultText: "Paid",
+    description: "Status label for successful recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.failed",
+    defaultText: "Failed",
+    description: "Status label for failed recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.unknown",
+    defaultText: "Unknown",
+    description: "Fallback status label when recharge status is missing.",
+  },
+  {
+    key: "subscriptions.recharge_history.try_again",
+    defaultText: "Try again",
+    description: "Tooltip text for the retry icon in recharge history.",
   },
   {
     key: "subscriptions.plan_overview.days_remaining",

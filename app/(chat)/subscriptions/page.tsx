@@ -9,6 +9,7 @@ import {
   getDailyTokenUsageForUser,
   getSessionTokenUsageForUser,
   getUserBalanceSummary,
+  listUserRechargeHistory,
 } from "@/lib/db/queries";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
@@ -21,6 +22,7 @@ import {
   isSessionSortOption,
   type SessionSortOption,
 } from "@/lib/subscriptions/session-sort";
+import { RechargeHistoryDialog } from "@/components/recharge-history-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +94,7 @@ export default async function SubscriptionsPage({
     ? sessionSortParam
     : SESSION_SORT_DEFAULT;
 
-  const [{ dictionary }, balance, rawDailyUsage, sessionUsage] =
+  const [{ dictionary }, balance, rawDailyUsage, sessionUsage, rechargeHistory] =
     await Promise.all([
       getTranslationBundle(preferredLanguage),
       getUserBalanceSummary(session.user.id),
@@ -100,6 +102,7 @@ export default async function SubscriptionsPage({
       getSessionTokenUsageForUser(session.user.id, {
         sortBy: sessionSort,
       }),
+      listUserRechargeHistory({ userId: session.user.id, limit: 10 }),
     ]);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
@@ -141,6 +144,29 @@ export default async function SubscriptionsPage({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  const formatRechargeAmount = (amount: number, currency: string) =>
+    new Intl.NumberFormat(
+      currency === "USD" ? "en-US" : "en-IN",
+      {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      }
+    ).format(amount);
+  const formatRechargeStatus = (status: string) => {
+    const normalized = status?.toLowerCase() ?? "";
+    if (normalized === "paid") {
+      return t("subscriptions.recharge_history.status.paid", "Paid");
+    }
+    if (normalized === "processing") {
+      return t("subscriptions.recharge_history.status.processing", "Processing");
+    }
+    return t(
+      "subscriptions.recharge_history.status.failed",
+      "Failed"
+    );
+  };
 
   const billedTokensUsed = Math.max(
     0,
@@ -150,6 +176,63 @@ export default async function SubscriptionsPage({
   const plan = balance.plan;
   const isManualPlan = plan?.id === MANUAL_TOP_UP_PLAN_ID;
   const hasPaidPlan = Boolean(plan && !isManualPlan);
+  const allocatedCredits = balance.allocatedCredits;
+  const rechargedCredits = balance.rechargedCredits;
+  const rechargeHistoryRows = rechargeHistory.map((entry) => {
+    const planLabel =
+      entry.planName ??
+      t("subscriptions.recharge_history.unknown_plan", "Plan unavailable");
+    const amountLabel = formatRechargeAmount(entry.amount, entry.currency);
+    const statusLabel = formatRechargeStatus(entry.status);
+    const normalizedStatus = entry.status?.toLowerCase() ?? "";
+    const statusIcon =
+      normalizedStatus === "paid"
+        ? "✔"
+        : normalizedStatus === "processing"
+          ? "⏳"
+          : "✖";
+    const statusColor =
+      normalizedStatus === "paid"
+        ? "bg-emerald-100 text-emerald-900"
+        : normalizedStatus === "processing"
+          ? "bg-amber-100 text-amber-900"
+          : "bg-destructive/10 text-destructive";
+    const createdAt =
+      entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
+    const dateLabel = istDateTimeFormatter.format(createdAt);
+
+    return {
+      orderId: entry.orderId,
+      planLabel,
+      amountLabel,
+      statusLabel,
+      statusIcon,
+      statusColor,
+      canRetry: normalizedStatus !== "paid",
+      dateLabel,
+    };
+  });
+  const rechargeHistoryLabels = {
+    title: t("subscriptions.recharge_history.title", "Recharge history"),
+    subtitle: t(
+      "subscriptions.recharge_history.subtitle",
+      "Recent top-ups you've completed."
+    ),
+    empty: t(
+      "subscriptions.recharge_history.empty",
+      "You haven't recharged your account yet."
+    ),
+    plan: t("subscriptions.recharge_history.column.plan", "Plan"),
+    amount: t("subscriptions.recharge_history.column.amount", "Amount"),
+    status: t("subscriptions.recharge_history.column.status", "Status"),
+    date: t("subscriptions.recharge_history.column.date", "Date"),
+    trigger: t(
+      "subscriptions.recharge_history.trigger_label",
+      "View recharge history"
+    ),
+    close: t("subscriptions.recharge_history.close_button", "Close"),
+    retry: t("subscriptions.recharge_history.try_again", "Try again"),
+  };
   const planPriceLabel = plan?.priceInPaise
     ? currencyFormatter.format(plan.priceInPaise / 100)
     : null;
@@ -264,9 +347,13 @@ export default async function SubscriptionsPage({
             {t("subscriptions.plan_overview.title", "Plan overview")}
           </h2>
           <dl className="mt-4 space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="flex items-center gap-2 text-muted-foreground">
                 {t("subscriptions.plan_overview.current_plan", "Current plan")}
+                <RechargeHistoryDialog
+                  labels={rechargeHistoryLabels}
+                  rows={rechargeHistoryRows}
+                />
               </dt>
               <dd>{currentPlanLabel}</dd>
             </div>
@@ -288,9 +375,18 @@ export default async function SubscriptionsPage({
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t("subscriptions.plan_overview.credits_allocated", "Credits allocated")}
+                {t(
+                  "subscriptions.plan_overview.credits_allocated",
+                  "Admin credits remaining"
+                )}
               </dt>
-              <dd>{formatCreditValue(balance.creditsTotal)}</dd>
+              <dd>{formatCreditValue(allocatedCredits)}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">
+                {t("subscriptions.plan_overview.credits_recharged", "Paid credits remaining")}
+              </dt>
+              <dd>{formatCreditValue(rechargedCredits)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">

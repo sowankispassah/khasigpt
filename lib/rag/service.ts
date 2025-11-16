@@ -713,28 +713,20 @@ function passesModelFilter(entry: RagEntryModel, modelId: string) {
   return entry.models.includes(modelId);
 }
 
-function filterByThreshold(match: SupabaseRagMatch | null) {
-  if (!match) {
-    return false;
-  }
-  if (typeof match.score !== "number") {
-    return false;
-  }
-  return match.score >= DEFAULT_RAG_MATCH_THRESHOLD;
-}
-
 export async function buildRagAugmentation({
   chatId,
   userId,
   modelConfig,
   queryText,
   useCustomKnowledge,
+  threshold = DEFAULT_RAG_MATCH_THRESHOLD,
 }: {
   chatId: string;
   userId: string;
   modelConfig: ModelConfig;
   queryText: string;
   useCustomKnowledge: boolean;
+  threshold?: number;
 }): Promise<
   | {
       systemSupplement: string;
@@ -750,6 +742,11 @@ export async function buildRagAugmentation({
     return null;
   }
 
+  const effectiveThreshold = Math.min(
+    Math.max(typeof threshold === "number" ? threshold : DEFAULT_RAG_MATCH_THRESHOLD, 0),
+    1
+  );
+
   const trimmedQuery = queryText.trim();
   if (!trimmedQuery) {
     return null;
@@ -759,12 +756,17 @@ export async function buildRagAugmentation({
   const matches = await searchSupabaseEmbeddings({
     embedding: vector,
     limit: DEFAULT_RAG_MATCH_LIMIT,
-    threshold: DEFAULT_RAG_MATCH_THRESHOLD,
+    threshold: effectiveThreshold,
     modelIds: [modelConfig.id],
     status: "active",
   });
 
-  const filteredMatches = matches.filter(filterByThreshold);
+  const filteredMatches = matches.filter((match) => {
+    if (!match || typeof match.score !== "number") {
+      return false;
+    }
+    return match.score >= effectiveThreshold;
+  });
   if (!filteredMatches.length) {
     return null;
   }
