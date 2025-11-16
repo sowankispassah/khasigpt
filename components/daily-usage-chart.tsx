@@ -106,8 +106,8 @@ export function DailyUsageChart({
   }, [preparedData]);
 
   return (
-    <div className="w-full" style={{ minHeight: 240 }}>
-      <div className="h-64 w-full overflow-x-auto" ref={scrollContainerRef}>
+    <div className="w-full focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0" style={{ minHeight: 240 }}>
+      <div className="h-64 w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0" ref={scrollContainerRef}>
         <div className="h-full min-w-[560px]">
           <ResponsiveContainer width="100%" height="100%">
             <ChartComponent
