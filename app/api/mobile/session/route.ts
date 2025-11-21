@@ -106,6 +106,7 @@ export async function POST(request: Request) {
     token: tokenPayload,
     secret,
     maxAge: THIRTY_DAYS_SECONDS,
+    salt: "authjs.session-token",
   });
 
   const secure = process.env.NODE_ENV === "production";
