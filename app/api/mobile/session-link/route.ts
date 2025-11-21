@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { encode } from "next-auth/jwt";
 
@@ -9,28 +11,28 @@ const THIRTY_DAYS_SECONDS = 60 * 60 * 24 * 30;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get("access_token");
-  const redirectTo =
-    searchParams.get("redirect") ?? "/";
+  const redirectTo = searchParams.get("redirect") ?? "/";
+  const redirectUrl = new URL(redirectTo, request.url);
 
   if (!accessToken) {
-    return NextResponse.redirect(redirectTo);
+    return NextResponse.redirect(redirectUrl);
   }
 
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) {
-    return NextResponse.redirect(redirectTo);
+    return NextResponse.redirect(redirectUrl);
   }
 
   const supabase = getSupabaseAdminClient();
   const { data, error } = await supabase.auth.getUser(accessToken);
 
   if (error || !data.user || !data.user.email) {
-    return NextResponse.redirect(redirectTo);
+    return NextResponse.redirect(redirectUrl);
   }
 
   const provider = data.user.app_metadata?.provider as string | undefined;
   if (provider && provider !== "google") {
-    return NextResponse.redirect(redirectTo);
+    return NextResponse.redirect(redirectUrl);
   }
 
   const firstName =
@@ -83,7 +85,7 @@ export async function GET(request: Request) {
     maxAge: THIRTY_DAYS_SECONDS,
   };
 
-  const response = NextResponse.redirect(redirectTo);
+  const response = NextResponse.redirect(redirectUrl);
   response.cookies.set(
     secure ? "__Secure-authjs.session-token" : "authjs.session-token",
     sessionToken,
