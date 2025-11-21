@@ -9,7 +9,6 @@ import {
   ShareIcon,
   TrashIcon,
 } from "./icons";
-import { LoaderIcon } from "./icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,13 +61,6 @@ const PureChatItem = ({
           <span className="flex-1 truncate">
             {chat.title}
           </span>
-          {isNavigating ? (
-            <span className="text-sidebar-foreground/70">
-              <span className="flex h-3.5 w-3.5 items-center justify-center animate-spin">
-                <LoaderIcon size={14} />
-              </span>
-            </span>
-          ) : null}
         </button>
       </SidebarMenuButton>
 

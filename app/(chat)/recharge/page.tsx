@@ -1,7 +1,5 @@
 "use server";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
@@ -17,6 +15,7 @@ import {
   getTranslationBundle,
   getTranslationsForKeys,
 } from "@/lib/i18n/dictionary";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 
 export default async function RechargePage() {
   const session = await auth();
@@ -57,6 +56,11 @@ export default async function RechargePage() {
   const dictionary = bundle.dictionary;
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
+  const formatCreditValue = (credits: number) =>
+    credits.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   const activePlanId = balance.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
@@ -118,13 +122,7 @@ export default async function RechargePage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
       <header className="flex flex-col gap-6">
         <div>
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-            href="/"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            {t("navigation.back_to_home", "Back to home")}
-          </Link>
+          <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
         </div>
         <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
           <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -171,9 +169,9 @@ export default async function RechargePage() {
               {t("recharge.current_balance.remaining", "Credits remaining")}
             </dt>
             <dd className="mt-2 text-2xl font-semibold">
-              {balance.creditsRemaining.toLocaleString()}{" "}
+              {formatCreditValue(balance.creditsRemaining)}{" "}
               <span className="text-muted-foreground text-sm font-normal">
-                / {balance.creditsTotal.toLocaleString()}
+                / {formatCreditValue(balance.creditsTotal)}
               </span>
             </dd>
           </div>

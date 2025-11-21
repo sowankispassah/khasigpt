@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 
 import { auth } from "@/app/(auth)/auth";
 import { PasswordForm } from "./password-form";
@@ -10,6 +9,7 @@ import { DeactivateAccountForm } from "./deactivate-account-form";
 import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { cookies } from "next/headers";
+import { BackToHomeButton } from "./back-to-home-button";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +32,7 @@ export default async function ProfilePage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:gap-8">
       <div>
-        <Link
-          className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-          href="/"
-        >
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-          {t("navigation.back_to_home", "Back to home")}
-        </Link>
+        <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
       </div>
 
       <header className="flex flex-col gap-1">
