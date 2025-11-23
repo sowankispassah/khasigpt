@@ -15,6 +15,13 @@ export async function GET(request: Request) {
   const debug = searchParams.get("debug") === "1";
   const redirectUrl = new URL(redirectTo, request.url);
 
+  console.log("[session-link]", {
+    hasToken: Boolean(accessToken),
+    tokenLen: accessToken?.length ?? 0,
+    referer: request.headers.get("referer") ?? null,
+    ua: request.headers.get("user-agent") ?? null,
+  });
+
   if (!accessToken) {
     if (debug) {
       return NextResponse.json(
