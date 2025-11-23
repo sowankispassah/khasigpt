@@ -12,14 +12,27 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get("access_token");
   const redirectTo = searchParams.get("redirect") ?? "/";
+  const debug = searchParams.get("debug") === "1";
   const redirectUrl = new URL(redirectTo, request.url);
 
   if (!accessToken) {
+    if (debug) {
+      return NextResponse.json(
+        { ok: false, reason: "missing_access_token" },
+        { status: 400 }
+      );
+    }
     return NextResponse.redirect(redirectUrl);
   }
 
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) {
+    if (debug) {
+      return NextResponse.json(
+        { ok: false, reason: "missing_auth_secret" },
+        { status: 500 }
+      );
+    }
     return NextResponse.redirect(redirectUrl);
   }
 
@@ -27,11 +40,23 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.auth.getUser(accessToken);
 
   if (error || !data.user || !data.user.email) {
+    if (debug) {
+      return NextResponse.json(
+        { ok: false, reason: "invalid_supabase_token", error: error?.message },
+        { status: 401 }
+      );
+    }
     return NextResponse.redirect(redirectUrl);
   }
 
   const provider = data.user.app_metadata?.provider as string | undefined;
   if (provider && provider !== "google") {
+    if (debug) {
+      return NextResponse.json(
+        { ok: false, reason: "unsupported_provider", provider },
+        { status: 403 }
+      );
+    }
     return NextResponse.redirect(redirectUrl);
   }
 
@@ -85,7 +110,9 @@ export async function GET(request: Request) {
     maxAge: THIRTY_DAYS_SECONDS,
   };
 
-  const response = NextResponse.redirect(redirectUrl);
+  const response = debug
+    ? NextResponse.json({ ok: true, user: { id: dbUser.id, email: dbUser.email } })
+    : NextResponse.redirect(redirectUrl);
   response.cookies.set(
     secure ? "__Secure-authjs.session-token" : "authjs.session-token",
     sessionToken,
