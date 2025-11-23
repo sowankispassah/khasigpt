@@ -2,6 +2,8 @@ import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } f
 import { auth } from "@/app/(auth)/auth";
 import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { ActionSubmitButton } from "@/components/action-submit-button";
+import { RoleSubmitButton } from "@/components/role-submit-button";
 import {
   getUserBalanceSummary,
   listPricingPlans,
@@ -124,22 +126,36 @@ function RoleToggleForm({
   currentRole: UserRole;
   isSelf: boolean;
 }) {
-  const nextRole: UserRole = currentRole === "admin" ? "regular" : "admin";
-  const label = currentRole === "admin" ? "Revoke admin" : "Promote to admin";
+  const roles: UserRole[] = ["regular", "creator", "admin"];
 
   return (
     <form
-      action={async () => {
+      action={async (formData) => {
         "use server";
         if (isSelf) {
           return;
         }
-        await setUserRoleAction({ userId, role: nextRole });
+        const role = formData.get("role")?.toString() as UserRole | undefined;
+        if (!role || role === currentRole) {
+          return;
+        }
+        await setUserRoleAction({ userId, role });
       }}
+      className="flex items-center gap-2"
     >
-      <Button disabled={isSelf} size="sm" type="submit" variant="outline">
-        {label}
-      </Button>
+      <select
+        className="h-9 rounded-md border border-input bg-background px-2 text-sm capitalize"
+        defaultValue={currentRole}
+        disabled={isSelf}
+        name="role"
+      >
+        {roles.map((role) => (
+          <option className="capitalize" key={role} value={role}>
+            {role}
+          </option>
+        ))}
+      </select>
+      <RoleSubmitButton disabled={isSelf} />
     </form>
   );
 }
@@ -158,7 +174,10 @@ function AddCreditsForm({
   getUserEmail: (userId: string | null | undefined) => string | null;
 }) {
   const creditsRemaining = balance.creditsRemaining;
-  const creditsLabel = `${creditsRemaining.toLocaleString()} credits available`;
+  const creditsLabel = `${creditsRemaining.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} credits available`;
 
   return (
     <form
@@ -185,9 +204,14 @@ function AddCreditsForm({
         step="0.5"
         type="number"
       />
-      <Button size="sm" type="submit" variant="secondary">
+      <ActionSubmitButton
+        pendingLabel="Adding..."
+        size="sm"
+        successMessage="Credits granted"
+        variant="secondary"
+      >
         Add credits
-      </Button>
+      </ActionSubmitButton>
     </form>
   );
 }

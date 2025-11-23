@@ -1,13 +1,13 @@
+import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import {
   deleteChatAction,
   hardDeleteChatAction,
   restoreChatAction,
 } from "@/app/(admin)/actions";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { listChats } from "@/lib/db/queries";
-import { formatDistanceToNow } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export default async function AdminChatsPage() {
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-6">
         <header>
-          <h2 className="text-xl font-semibold">Chat sessions</h2>
+          <h2 className="font-semibold text-xl">Chat sessions</h2>
           <p className="text-muted-foreground text-sm">
             Review and remove chat threads across the application.
           </p>
@@ -40,16 +40,16 @@ export default async function AdminChatsPage() {
             </thead>
             <tbody>
               {activeChats.map((chat) => (
-                <tr key={chat.id} className="border-t text-sm">
+                <tr className="border-t text-sm" key={chat.id}>
                   <td className="py-3">
                     <div className="flex flex-col gap-1">
                       <Link
-                        className="text-sm font-medium text-primary hover:underline"
+                        className="font-medium text-primary text-sm hover:underline"
                         href={`/chat/${chat.id}?admin=1`}
                       >
                         {chat.title || "Untitled chat"}
                       </Link>
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className="font-mono text-muted-foreground text-xs">
                         {chat.id}
                       </span>
                     </div>
@@ -94,7 +94,7 @@ export default async function AdminChatsPage() {
 
       <section className="flex flex-col gap-6">
         <header>
-          <h3 className="text-lg font-semibold">Deleted chats</h3>
+          <h3 className="font-semibold text-lg">Deleted chats</h3>
           <p className="text-muted-foreground text-sm">
             Soft-deleted chats remain hidden from users. Permanently delete them
             here if they are no longer needed.
@@ -114,12 +114,12 @@ export default async function AdminChatsPage() {
             </thead>
             <tbody>
               {deletedChats.map((chat) => (
-                <tr key={chat.id} className="border-t text-sm">
+                <tr className="border-t text-sm" key={chat.id}>
                   <td className="py-3">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <Link
-                          className="text-sm font-medium text-primary hover:underline"
+                          className="font-medium text-primary text-sm hover:underline"
                           href={`/chat/${chat.id}?admin=1`}
                         >
                           {chat.title || "Untitled chat"}
@@ -128,7 +128,7 @@ export default async function AdminChatsPage() {
                           Deleted
                         </Badge>
                       </div>
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className="font-mono text-muted-foreground text-xs">
                         {chat.id}
                       </span>
                     </div>

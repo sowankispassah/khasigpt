@@ -15,6 +15,7 @@ import {
   deleteModelConfig,
   hardDeleteModelConfig,
   setDefaultModelConfig,
+  setMarginBaselineModel,
   getAppSetting,
   setAppSetting,
   updateUserActiveState,
@@ -31,14 +32,42 @@ import {
   createLanguageEntry,
   getLanguageByIdRaw,
   updateLanguageActiveState,
+  upsertCoupon,
+  setCouponStatus,
+  setCouponRewardStatus,
+  recordCouponRewardPayout,
 } from "@/lib/db/queries";
-import type { UserRole } from "@/lib/db/schema";
-import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
+import type { RagEntryStatus, UserRole } from "@/lib/db/schema";
+import {
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DEFAULT_FREE_MESSAGES_PER_DAY,
+  DEFAULT_RAG_TIMEOUT_MS,
+  FREE_MESSAGE_SETTINGS_KEY,
+  FORUM_FEATURE_FLAG_KEY,
+  RAG_MATCH_THRESHOLD_SETTING_KEY,
+  RAG_TIMEOUT_MS_SETTING_KEY,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  TOKENS_PER_CREDIT,
+} from "@/lib/constants";
+import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 import {
   invalidateTranslationBundleCache,
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
+import {
+  createRagEntry,
+  updateRagEntry,
+  bulkUpdateRagStatus,
+  deleteRagEntries,
+  restoreRagEntry,
+  restoreRagVersion,
+  getRagVersions,
+  createRagCategory,
+} from "@/lib/rag/service";
+import type { UpsertRagEntryInput } from "@/lib/rag/types";
 
 async function requireAdmin() {
   const session = await auth();
@@ -129,6 +158,75 @@ export async function restoreChatAction({ chatId }: { chatId: string }) {
   revalidatePath("/admin/chats");
 }
 
+export async function updateForumAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("forumEnabled"));
+
+  await setAppSetting({
+    key: FORUM_FEATURE_FLAG_KEY,
+    value: enabled,
+  });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "forum.toggle",
+    target: { setting: FORUM_FEATURE_FLAG_KEY },
+    metadata: { enabled },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/forum");
+  revalidatePath("/forum/[slug]");
+}
+
+export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("customKnowledgeEnabled"));
+  const timeoutRaw = formData.get("ragTimeoutSeconds")?.toString();
+  let timeoutSeconds = Number(timeoutRaw);
+
+  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+    timeoutSeconds = DEFAULT_RAG_TIMEOUT_MS / 1000;
+  }
+
+  timeoutSeconds = Math.min(Math.max(1, timeoutSeconds), 60);
+  const timeoutMs = Math.round(timeoutSeconds * 1000);
+  const thresholdRaw = formData.get("ragMatchThreshold")?.toString();
+  let ragMatchThreshold = Number(thresholdRaw);
+
+  if (!Number.isFinite(ragMatchThreshold) || ragMatchThreshold <= 0) {
+    ragMatchThreshold = DEFAULT_RAG_MATCH_THRESHOLD;
+  }
+
+  ragMatchThreshold = Math.min(Math.max(0.01, ragMatchThreshold), 1);
+
+  await Promise.all([
+    setAppSetting({
+      key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+      value: enabled,
+    }),
+    setAppSetting({
+      key: RAG_TIMEOUT_MS_SETTING_KEY,
+      value: timeoutMs,
+    }),
+    setAppSetting({
+      key: RAG_MATCH_THRESHOLD_SETTING_KEY,
+      value: ragMatchThreshold,
+    }),
+  ]);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "settings.rag.update",
+    target: { setting: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY },
+    metadata: { enabled, timeoutMs, ragMatchThreshold },
+  });
+
+  revalidatePath("/admin/settings");
+}
+
 function parseBoolean(value: FormDataEntryValue | null | undefined) {
   if (!value) {
     return false;
@@ -168,6 +266,183 @@ function parseNumber(value: FormDataEntryValue | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseDateInput(value: FormDataEntryValue | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const normalized = value.toString().trim();
+  if (!normalized) {
+    return null;
+  }
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const IST_OFFSET_MINUTES = 330;
+
+function convertIstDateToUtc(date: Date, hours: number, minutes: number, seconds: number, ms: number) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  const istTimestamp = Date.UTC(year, month, day, hours, minutes, seconds, ms);
+  return new Date(istTimestamp - IST_OFFSET_MINUTES * 60 * 1000);
+}
+
+function normalizeStartOfDayIst(date: Date) {
+  return convertIstDateToUtc(date, 0, 0, 0, 0);
+}
+
+function normalizeEndOfDayIst(date: Date) {
+  return convertIstDateToUtc(date, 23, 59, 59, 999);
+}
+
+export async function upsertCouponAction(formData: FormData) {
+  const actor = await requireAdmin();
+
+  const couponIdRaw = formData.get("couponId");
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const discountPercentage = parseNumber(formData.get("discountPercentage"));
+  const creatorRewardPercentage = parseNumber(
+    formData.get("creatorRewardPercentage")
+  );
+  const creatorId = formData.get("creatorId")?.toString().trim() ?? "";
+  const validFromRaw = parseDateInput(formData.get("validFrom"));
+  const validToRaw = parseDateInput(formData.get("validTo"));
+  const description = formData.get("description")?.toString().trim() ?? null;
+  const isActive = parseBoolean(formData.get("isActive"));
+
+  if (!code || !creatorId || !validFromRaw) {
+    throw new Error("Coupon code, creator, and start date are required");
+  }
+
+  if (validToRaw && validToRaw < validFromRaw) {
+    throw new Error("Valid until date must be after the start date");
+  }
+
+  const validFrom = normalizeStartOfDayIst(validFromRaw);
+  const validTo = validToRaw ? normalizeEndOfDayIst(validToRaw) : null;
+
+  const couponRecord = await upsertCoupon({
+    id: couponIdRaw?.toString().trim() || undefined,
+    code,
+    discountPercentage,
+    creatorRewardPercentage,
+    creatorId,
+    validFrom,
+    validTo,
+    description,
+    isActive,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: couponIdRaw ? "coupon.update" : "coupon.create",
+    target: { couponId: couponRecord.id },
+    metadata: {
+      code: couponRecord.code,
+      creatorId,
+      discountPercentage,
+      creatorRewardPercentage: couponRecord.creatorRewardPercentage,
+    },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/recharge");
+}
+
+export async function setCouponStatusAction(formData: FormData) {
+  const actor = await requireAdmin();
+  const couponId = formData.get("couponId")?.toString().trim();
+  const isActive = parseBoolean(formData.get("isActive"));
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  await setCouponStatus({
+    id: couponId,
+    isActive,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "coupon.status.update",
+    target: { couponId },
+    metadata: { isActive },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/recharge");
+}
+
+export async function setCouponRewardStatusAction(formData: FormData) {
+  const actor = await requireAdmin();
+  const couponId = formData.get("couponId")?.toString().trim();
+  const rewardStatusRaw = formData.get("rewardStatus")?.toString().trim() ?? "";
+  const usageCount = parseNumber(formData.get("usageCount"));
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  if (usageCount <= 0) {
+    throw new Error("Cannot update reward status before any redemptions");
+  }
+
+  const normalizedStatus =
+    rewardStatusRaw === "paid" ? "paid" : "pending";
+
+  await setCouponRewardStatus({
+    id: couponId,
+    rewardStatus: normalizedStatus,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "coupon.reward_status.update",
+    target: { couponId },
+    metadata: { rewardStatus: normalizedStatus },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/recharge");
+}
+
+export async function recordCouponPayoutAction(formData: FormData) {
+  const actor = await requireAdmin();
+
+  const couponId = formData.get("couponId")?.toString().trim() ?? "";
+  const amount = parseNumber(formData.get("amount"));
+  const note = formData.get("note")?.toString().trim() ?? null;
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  if (!(Number.isFinite(amount) && amount > 0)) {
+    throw new Error("Payout amount must be greater than zero");
+  }
+
+  const amountInPaise = Math.round(amount * 100);
+
+  await recordCouponRewardPayout({
+    couponId,
+    amountInPaise,
+    note,
+    recordedBy: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "coupon.reward.payout",
+    target: { couponId },
+    metadata: { amountInPaise, note },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/creator-dashboard");
+}
+
 function isRedirectErrorLike(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -197,19 +472,20 @@ export async function createModelConfigAction(formData: FormData) {
   const supportsReasoning = parseBoolean(formData.get("supportsReasoning"));
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isDefault = parseBoolean(formData.get("isDefault"));
+  const isMarginBaseline = parseBoolean(formData.get("isMarginBaseline"));
   const config = parseJson(formData.get("configJson"));
-  const inputCostPerMillion = parseNumber(
-    formData.get("inputCostPerMillion")
-  );
-  const outputCostPerMillion = parseNumber(
-    formData.get("outputCostPerMillion")
-  );
   const inputProviderCostPerMillion = parseNumber(
     formData.get("inputProviderCostPerMillion")
   );
   const outputProviderCostPerMillion = parseNumber(
     formData.get("outputProviderCostPerMillion")
   );
+  const freeMessagesRaw = formData.get("freeMessagesPerDay");
+  const resolvedFreeMessages =
+    freeMessagesRaw === null
+      ? DEFAULT_FREE_MESSAGES_PER_DAY
+      : parseNumber(freeMessagesRaw);
+  const freeMessagesPerDay = Math.max(0, Math.round(resolvedFreeMessages));
 
   const existingConfig = await getModelConfigByKey({
     key,
@@ -239,10 +515,10 @@ export async function createModelConfigAction(formData: FormData) {
       config,
       isEnabled,
       isDefault,
-      inputCostPerMillion,
-      outputCostPerMillion,
+      isMarginBaseline,
       inputProviderCostPerMillion,
       outputProviderCostPerMillion,
+      freeMessagesPerDay,
     });
   } catch (error) {
     console.error("Failed to create model configuration", error);
@@ -256,6 +532,7 @@ export async function createModelConfigAction(formData: FormData) {
     metadata: { key, provider, providerModelId },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -285,10 +562,9 @@ export async function updateModelConfigAction(formData: FormData) {
     config?: Record<string, unknown> | null;
     isEnabled?: boolean;
     isDefault?: boolean;
-    inputCostPerMillion?: number;
-    outputCostPerMillion?: number;
     inputProviderCostPerMillion?: number;
     outputProviderCostPerMillion?: number;
+    freeMessagesPerDay?: number;
   } = {};
 
   const provider = formData.get("provider");
@@ -340,18 +616,6 @@ export async function updateModelConfigAction(formData: FormData) {
     patch.isDefault = parseBoolean(formData.get("isDefault"));
   }
 
-  if (formData.has("inputCostPerMillion")) {
-    patch.inputCostPerMillion = parseNumber(
-      formData.get("inputCostPerMillion")
-    );
-  }
-
-  if (formData.has("outputCostPerMillion")) {
-    patch.outputCostPerMillion = parseNumber(
-      formData.get("outputCostPerMillion")
-    );
-  }
-
   if (formData.has("inputProviderCostPerMillion")) {
     patch.inputProviderCostPerMillion = parseNumber(
       formData.get("inputProviderCostPerMillion")
@@ -361,6 +625,13 @@ export async function updateModelConfigAction(formData: FormData) {
   if (formData.has("outputProviderCostPerMillion")) {
     patch.outputProviderCostPerMillion = parseNumber(
       formData.get("outputProviderCostPerMillion")
+    );
+  }
+
+  if (formData.has("freeMessagesPerDay")) {
+    patch.freeMessagesPerDay = Math.max(
+      0,
+      Math.round(parseNumber(formData.get("freeMessagesPerDay")))
     );
   }
 
@@ -376,6 +647,7 @@ export async function updateModelConfigAction(formData: FormData) {
     metadata: patch,
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -401,7 +673,11 @@ export async function deleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-deleted");
 }
@@ -423,7 +699,11 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-hard-deleted");
 }
@@ -445,9 +725,39 @@ export async function setDefaultModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-defaulted");
+}
+
+export async function setMarginBaselineModelAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing model configuration id");
+  }
+
+  await setMarginBaselineModel(id);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "model.setMarginBaseline",
+    target: { modelId: id },
+  });
+
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=model-margin-baseline");
 }
 
 export async function setArtifactsEnabledAction(formData: FormData) {
@@ -970,6 +1280,42 @@ export async function updatePlanTranslationAction(formData: FormData) {
   }
 }
 
+export async function updateFreeMessageSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const modeInput = formData.get("mode");
+  const requestedMode = modeInput === "global" ? "global" : "per-model";
+  const globalLimitRaw = formData.get("globalLimit");
+  const resolvedGlobalLimit =
+    globalLimitRaw === null
+      ? DEFAULT_FREE_MESSAGES_PER_DAY
+      : parseNumber(globalLimitRaw);
+  const normalized = normalizeFreeMessageSettings({
+    mode: requestedMode,
+    globalLimit: resolvedGlobalLimit,
+  });
+
+  await setAppSetting({
+    key: FREE_MESSAGE_SETTINGS_KEY,
+    value: normalized,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "settings.update.free_messages",
+    target: { key: FREE_MESSAGE_SETTINGS_KEY },
+    metadata: normalized,
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/chat", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=free-messages-updated");
+}
+
 function parseInteger(value: FormDataEntryValue | null | undefined) {
   return Math.round(parseNumber(value));
 }
@@ -1302,6 +1648,129 @@ export async function grantUserCreditsAction(formData: FormData) {
   revalidatePath("/admin/users");
   revalidatePath("/subscriptions");
   revalidatePath("/recharge");
+}
+
+export async function createRagEntryAction(input: UpsertRagEntryInput) {
+  const actor = await requireAdmin();
+  const entry = await createRagEntry({
+    input,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.create",
+    target: { ragEntryId: entry.id },
+    metadata: { status: entry.status },
+  });
+
+  revalidatePath("/admin/rag");
+  return entry;
+}
+
+export async function updateRagEntryAction({
+  id,
+  input,
+}: {
+  id: string;
+  input: UpsertRagEntryInput;
+}) {
+  const actor = await requireAdmin();
+  const entry = await updateRagEntry({
+    id,
+    input,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.update",
+    target: { ragEntryId: entry.id },
+    metadata: { status: entry.status },
+  });
+
+  revalidatePath("/admin/rag");
+  return entry;
+}
+
+export async function bulkUpdateRagEntryStatusAction({
+  ids,
+  status,
+}: {
+  ids: string[];
+  status: RagEntryStatus;
+}) {
+  const actor = await requireAdmin();
+  const updated = await bulkUpdateRagStatus({
+    ids,
+    status,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.bulk_status",
+    target: { ragEntryIds: ids },
+    metadata: { status, count: updated.length },
+  });
+
+  revalidatePath("/admin/rag");
+  return updated;
+}
+
+export async function deleteRagEntriesAction({ ids }: { ids: string[] }) {
+  const actor = await requireAdmin();
+  await deleteRagEntries({ ids, actorId: actor.id });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.archive",
+    target: { ragEntryIds: ids },
+    metadata: { count: ids.length },
+  });
+  revalidatePath("/admin/rag");
+}
+
+export async function restoreRagEntryAction({ id }: { id: string }) {
+  const actor = await requireAdmin();
+  await restoreRagEntry({ id, actorId: actor.id });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.restore",
+    target: { ragEntryId: id },
+  });
+  revalidatePath("/admin/rag");
+}
+
+export async function restoreRagVersionAction({
+  entryId,
+  versionId,
+}: {
+  entryId: string;
+  versionId: string;
+}) {
+  const actor = await requireAdmin();
+  await restoreRagVersion({ entryId, versionId, actorId: actor.id });
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.entry.version.restore",
+    target: { ragEntryId: entryId, versionId },
+  });
+  revalidatePath("/admin/rag");
+}
+
+export async function createRagCategoryAction(name: string) {
+  const actor = await requireAdmin();
+  const category = await createRagCategory({ name });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "rag.category.create",
+    target: { ragCategoryId: category.id },
+    metadata: { name: category.name },
+  });
+
+  revalidatePath("/admin/rag");
+  return category;
 }
 
 

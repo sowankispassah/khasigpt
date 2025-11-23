@@ -35,7 +35,6 @@ import {
 import {
   ArrowUpIcon,
   ChevronDownIcon,
-  CpuIcon,
   PaperclipIcon,
   StopIcon,
 } from "./icons";

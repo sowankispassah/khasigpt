@@ -8,6 +8,7 @@ import {
   markPaymentTransactionFailed,
   markPaymentTransactionPaid,
   markPaymentTransactionProcessing,
+  recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import {
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
       paymentId,
       signature,
     });
+    await recordCouponRedemptionFromTransaction(transaction);
 
     const balance = await getUserBalanceSummary(session.user.id);
 
