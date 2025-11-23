@@ -11,6 +11,12 @@ const THIRTY_DAYS_SECONDS = 60 * 60 * 24 * 30;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const accessToken = searchParams.get("access_token");
+  const redirectTo = searchParams.get("redirect");
+  const debug = searchParams.get("debug") === "1";
+  const redirectUrl =
+    redirectTo && redirectTo.length > 0
+      ? new URL(redirectTo, request.url)
+      : null;
 
   if (!accessToken) {
     return NextResponse.json(
@@ -95,11 +101,19 @@ export async function GET(request: Request) {
     maxAge: THIRTY_DAYS_SECONDS,
   };
 
-  const response = NextResponse.json({
-    ok: true,
-    token: sessionToken,
-    user: { id: dbUser.id, email: dbUser.email },
-  });
+  const response = debug
+    ? NextResponse.json({
+        ok: true,
+        token: sessionToken,
+        user: { id: dbUser.id, email: dbUser.email },
+      })
+    : redirectUrl
+      ? NextResponse.redirect(redirectUrl)
+      : NextResponse.json({
+          ok: true,
+          token: sessionToken,
+          user: { id: dbUser.id, email: dbUser.email },
+        });
 
   response.cookies.set(
     secure ? "__Secure-authjs.session-token" : "authjs.session-token",
