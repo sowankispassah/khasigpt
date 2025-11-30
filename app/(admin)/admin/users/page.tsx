@@ -6,6 +6,7 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import { RoleSubmitButton } from "@/components/role-submit-button";
 import {
   getUserBalanceSummary,
+  listActiveSubscriptionSummaries,
   listPricingPlans,
   listUserCreditHistory,
   listUsers,
@@ -26,9 +27,10 @@ export default async function AdminUsersPage() {
   const session = await auth();
   const currentUserId = session?.user?.id;
 
-  const [users, plans] = await Promise.all([
+  const [users, plans, activeSubscriptions] = await Promise.all([
     listUsers({ limit: 100 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    listActiveSubscriptionSummaries({ limit: 20 }),
   ]);
 
   const planNameById = new Map(plans.map((plan) => [plan.id, plan.name]));
@@ -112,6 +114,63 @@ export default async function AdminUsersPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base font-semibold">Active subscriptions</h3>
+            <p className="text-muted-foreground text-sm">
+              Recent users with active plans and their remaining balances.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="py-2 text-left">User</th>
+                <th className="py-2 text-left">Plan</th>
+                <th className="py-2 text-right">Tokens left</th>
+                <th className="py-2 text-right">Expires</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeSubscriptions.length === 0 ? (
+                <tr>
+                  <td className="py-4 text-muted-foreground" colSpan={4}>
+                    No active subscriptions yet.
+                  </td>
+                </tr>
+              ) : (
+                activeSubscriptions.map((subscription) => (
+                  <tr key={subscription.subscriptionId} className="border-t">
+                    <td className="py-2 font-mono text-xs">
+                      {subscription.userEmail}
+                    </td>
+                    <td className="py-2">
+                      {subscription.planName ?? "Plan removed"}
+                    </td>
+                    <td className="py-2 text-right">
+                      {subscription.tokenBalance.toLocaleString()} /{" "}
+                      {subscription.tokenAllowance.toLocaleString()}
+                    </td>
+                    <td className="py-2 text-right">
+                      {new Date(subscription.expiresAt).toLocaleDateString(
+                        "en-IN",
+                        {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        }
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

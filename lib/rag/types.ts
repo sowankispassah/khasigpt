@@ -58,6 +58,8 @@ export type RagUsageEventEntry = {
   tags: string[];
   score: number;
   sourceUrl: string | null;
+  chunkIndex?: number | null;
+  chunkId?: string | null;
 };
 
 export type RagUsageEvent = {

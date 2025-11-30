@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { TOKENS_PER_CREDIT } from "@/lib/constants";
 
 const currencyFormatter = (
   value: number,
@@ -142,6 +143,11 @@ export function PlanPricingFields({
             value={tokenAllowance}
             onChange={handleAllowanceChange}
           />
+          <p className="text-muted-foreground text-xs">
+            {Number.isFinite(Number(tokenAllowance)) && Number(tokenAllowance) > 0
+              ? `~ ${(Number(tokenAllowance) / TOKENS_PER_CREDIT).toLocaleString("en-IN")} credits (${TOKENS_PER_CREDIT} tokens = 1 credit)`
+              : `Credits auto-calculate at ${TOKENS_PER_CREDIT} tokens per credit.`}
+          </p>
         </div>
       </div>
       <div className="rounded-md border border-dashed border-muted-foreground/50 bg-muted/20 p-4 text-xs leading-relaxed sm:text-sm">

@@ -66,6 +66,7 @@ import {
   restoreRagVersion,
   getRagVersions,
   createRagCategory,
+  rebuildAllRagEmbeddings,
 } from "@/lib/rag/service";
 import type { UpsertRagEntryInput } from "@/lib/rag/types";
 
@@ -225,6 +226,14 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
   });
 
   revalidatePath("/admin/settings");
+  revalidatePath("/admin/rag");
+}
+
+export async function rebuildRagEmbeddingsAction() {
+  "use server";
+  await requireAdmin();
+  await rebuildAllRagEmbeddings();
+  revalidatePath("/admin/rag");
 }
 
 function parseBoolean(value: FormDataEntryValue | null | undefined) {
@@ -1527,7 +1536,7 @@ export async function updatePricingPlanAction(formData: FormData) {
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
 
-  redirect("/admin/settings?notice=plan-updated");
+  return { success: true, planId: id };
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {

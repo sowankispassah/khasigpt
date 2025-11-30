@@ -57,7 +57,7 @@ export function normalizeSourceUrl(value?: string | null): string | null {
 }
 
 export function buildSupabaseMetadata(
-  entry: RagEntry & { categoryName?: string | null }
+  entry: RagEntry & { categoryName?: string | null; chunkIndex?: number; chunkId?: string }
 ) {
   return {
     title: entry.title,
@@ -69,6 +69,8 @@ export function buildSupabaseMetadata(
     addedBy: entry.addedBy,
     categoryId: entry.categoryId,
     categoryName: entry.categoryName ?? null,
+    chunkIndex: entry.chunkIndex ?? null,
+    chunkId: entry.chunkId ?? null,
   };
 }
 

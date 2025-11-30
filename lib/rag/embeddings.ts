@@ -5,7 +5,7 @@ import { embed } from "ai";
 
 import { ChatSDKError } from "@/lib/errors";
 import { isProductionEnvironment } from "@/lib/constants";
-import { DEFAULT_RAG_EMBEDDING_MODEL } from "./constants";
+import { DEFAULT_RAG_EMBEDDING_MODEL, MAX_RAG_EMBEDDABLE_CHARS } from "./constants";
 
 const openaiEmbeddingClient =
   process.env.OPENAI_API_KEY !== undefined
@@ -32,9 +32,14 @@ export async function generateRagEmbedding(text: string) {
   const modelId =
     process.env.RAG_EMBEDDING_MODEL ?? DEFAULT_RAG_EMBEDDING_MODEL;
 
+  const normalized =
+    value.length > MAX_RAG_EMBEDDABLE_CHARS
+      ? value.slice(0, MAX_RAG_EMBEDDABLE_CHARS)
+      : value;
+
   const result = await embed({
     model: openaiEmbeddingClient.embedding(modelId),
-    value,
+    value: normalized,
     experimental_telemetry: {
       isEnabled: isProductionEnvironment,
       functionId: "rag-embedding",

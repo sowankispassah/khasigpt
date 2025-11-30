@@ -32,7 +32,7 @@ import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
-import { getUsdToInrRate } from "../services/exchange-rate";
+import { getFallbackUsdToInrRate, getUsdToInrRate } from "../services/exchange-rate";
 import {
   appSetting,
   auditLog,
@@ -161,6 +161,12 @@ function toDate(value: Date | string | null | undefined): Date | null {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(value: string): boolean {
+  return UUID_REGEX.test(value);
 }
 
 function maskUserIdentifier(identifier: string | null | undefined): string {
@@ -827,6 +833,10 @@ export async function getChatById({
   id: string;
   includeDeleted?: boolean;
 }) {
+  if (!isValidUUID(id)) {
+    return null;
+  }
+
   try {
     const condition = includeDeleted
       ? eq(chat.id, id)
@@ -839,7 +849,9 @@ export async function getChatById({
 
     return selectedChat;
   } catch (_error) {
-    throw new ChatSDKError("bad_request:database", "Failed to get chat by id");
+    const cause =
+      _error instanceof Error ? _error.message : "Failed to get chat by id";
+    throw new ChatSDKError("bad_request:database", cause);
   }
 }
 
@@ -3954,7 +3966,7 @@ export async function recordTokenUsage({
     }
 
     if (!usdToInr || !Number.isFinite(usdToInr) || usdToInr <= 0) {
-      usdToInr = 83;
+      usdToInr = getFallbackUsdToInrRate();
     }
 
     if (modelConfigId) {
@@ -4719,7 +4731,7 @@ function convertUsdPerMillionToPaisePerToken(
     return 0;
   }
   const safeRate =
-    Number.isFinite(usdToInr) && usdToInr > 0 ? usdToInr : 83;
+    Number.isFinite(usdToInr) && usdToInr > 0 ? usdToInr : getFallbackUsdToInrRate();
   const perTokenUsd = usdPerMillion / 1_000_000;
   const perTokenInr = perTokenUsd * safeRate;
   return perTokenInr * 100;

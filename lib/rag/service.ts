@@ -7,14 +7,18 @@ import {
   desc,
   eq,
   gte,
+  innerJoin,
+  ilike,
   inArray,
   isNull,
+  or,
   sql,
 } from "drizzle-orm";
 
 import { db } from "@/lib/db/queries";
 import {
   ragEntry,
+  ragChunk,
   ragEntryVersion,
   ragRetrievalLog,
   ragCategory,
@@ -32,12 +36,18 @@ import {
   searchSupabaseEmbeddings,
   upsertSupabaseEmbedding,
   type SupabaseRagMatch,
+  deleteSupabaseEmbedding,
 } from "./supabase";
 import {
   CUSTOM_KNOWLEDGE_STORAGE_KEY,
+  DEFAULT_RAG_TIMEOUT_MS,
   DEFAULT_RAG_MATCH_LIMIT,
   DEFAULT_RAG_MATCH_THRESHOLD,
   DEFAULT_RAG_VERSION_HISTORY_LIMIT,
+  MAX_RAG_CONTENT_CHARS,
+  MAX_RAG_CONTEXT_CHARS,
+  MAX_RAG_CHUNK_CHARS,
+  RAG_CHUNK_OVERLAP_CHARS,
 } from "./constants";
 import {
   normalizeModels,
@@ -57,6 +67,9 @@ import type {
 import { ragEntrySchema } from "./validation";
 
 const diffEngine = new diff_match_patch();
+const NO_MATCH_SUPPLEMENT =
+  "No saved knowledge matched this request. Do not fabricate or cite sources that were not retrieved. " +
+  "If the user asks about uploaded or custom knowledge, explain that no matching reference was found and ask for more detail.";
 
 function toSanitizedEntry(
   entry: RagEntryModel,
@@ -152,33 +165,225 @@ async function getEntryById(id: string): Promise<RagEntryModel | null> {
   return record ?? null;
 }
 
-async function syncEmbedding(entry: RagEntryModel, { reembed } = { reembed: true }) {
-  if (!hasSupabaseConfig()) {
-    return;
-  }
-
-  if (!reembed) {
-    await patchSupabaseEmbedding(entry);
-    return;
-  }
-
-  const payloadText = buildEmbeddableText(entry);
-  const { vector, model, dimensions } = await generateRagEmbedding(payloadText);
-  await upsertSupabaseEmbedding({
-    entry: { ...entry, content: payloadText },
-    embedding: vector,
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("RAG operation timed out")), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
   });
+}
 
-  await db
-    .update(ragEntry)
-    .set({
-      embeddingStatus: "ready",
-      embeddingModel: model,
-      embeddingDimensions: dimensions,
-      embeddingUpdatedAt: new Date(),
-      embeddingError: null,
+function trimContent(content: string) {
+  if (!content) {
+    return "";
+  }
+  return content.length > MAX_RAG_CONTENT_CHARS
+    ? `${content.slice(0, MAX_RAG_CONTENT_CHARS)}\n\n[...]`
+    : content;
+}
+
+function chunkForPrompt(content: string) {
+  const max = Math.max(200, MAX_RAG_CHUNK_CHARS);
+  const overlap = Math.max(0, Math.min(RAG_CHUNK_OVERLAP_CHARS, Math.floor(max / 2)));
+  const normalized = content.trim();
+  if (normalized.length <= max) {
+    return [normalized];
+  }
+  const chunks: string[] = [];
+  let cursor = 0;
+  while (cursor < normalized.length && chunks.length < 20) {
+    const end = Math.min(normalized.length, cursor + max);
+    const slice = normalized.slice(cursor, end);
+    chunks.push(slice.trim());
+    cursor = end - overlap;
+  }
+  return chunks;
+}
+
+function isValidUuid(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function composeRagResult({
+  resolved,
+  chatId,
+  modelConfig,
+  trimmedQuery,
+  userId,
+}: {
+  resolved: Array<{
+    entry: RagEntryModel;
+    score: number;
+    chunkContent: string;
+    chunkIndex: number | null;
+    chunkId: string | null;
+  }>;
+  chatId: string;
+  modelConfig: ModelConfig;
+  trimmedQuery: string;
+  userId: string;
+}) {
+  const systemSupplement = resolved
+    .flatMap(({ entry, chunkContent }) => {
+      const header = entry.sourceUrl
+        ? `Reference: ${entry.title} (${entry.sourceUrl})`
+        : `Reference: ${entry.title}`;
+      return [header, trimContent(chunkContent ?? "")].filter(Boolean).join("\n");
     })
-    .where(eq(ragEntry.id, entry.id));
+    .reduce<string[]>((acc, section) => {
+      const total = acc.join("\n\n").length;
+      if (total + section.length <= MAX_RAG_CONTEXT_CHARS) {
+        acc.push(section);
+      }
+      return acc;
+    }, [])
+    .join("\n\n");
+
+  const safetyPrefix =
+    "Use only the references below. If they do not answer the question, say you don't know and ask for clarification. Do not invent sources.";
+  const finalSupplement = [safetyPrefix, systemSupplement].filter(Boolean).join("\n\n");
+
+  const clientEvent: RagUsageEvent = {
+    chatId,
+    modelId: modelConfig.id,
+    modelName: modelConfig.displayName,
+    entries: resolved.map(({ entry, score, chunkIndex, chunkId }) => ({
+      id: entry.id,
+      title: entry.title,
+      status: entry.status,
+      tags: entry.tags,
+      sourceUrl: entry.sourceUrl ?? null,
+      score,
+      chunkIndex,
+      chunkId,
+    })),
+  };
+
+  void db
+    .insert(ragRetrievalLog)
+    .values(
+      resolved.map(({ entry, score }) => ({
+        ragEntryId: entry.id,
+        chatId,
+        modelConfigId: modelConfig.id,
+        modelKey: modelConfig.key,
+        userId,
+        score,
+        queryText: trimmedQuery,
+        queryLanguage: detectQueryLanguage(trimmedQuery),
+        metadata: buildSupabaseMetadata(entry),
+      }))
+    )
+    .catch((error) => {
+      console.warn("[rag] failed to record retrieval log", { error, chatId });
+    });
+
+  return {
+    systemSupplement: finalSupplement,
+    clientEvent,
+  };
+}
+
+async function syncEmbedding(entry: RagEntryModel, { reembed } = { reembed: true }) {
+  const chunks = chunkForPrompt(entry.content);
+  const now = new Date();
+  let chunkRows =
+    reembed === false
+      ? await db
+          .select()
+          .from(ragChunk)
+          .where(eq(ragChunk.entryId, entry.id))
+          .orderBy(asc(ragChunk.chunkIndex))
+      : [];
+
+  if (reembed || !chunkRows.length) {
+    await db.delete(ragChunk).where(eq(ragChunk.entryId, entry.id));
+    chunkRows = chunks.length
+      ? await db
+          .insert(ragChunk)
+          .values(
+            chunks.map((content, index) => ({
+              entryId: entry.id,
+              chunkIndex: index,
+              content,
+              createdAt: now,
+              updatedAt: now,
+            }))
+          )
+          .returning()
+      : [];
+  }
+
+  if (!hasSupabaseConfig()) {
+    await db
+      .update(ragEntry)
+      .set({
+        embeddingStatus: "ready",
+        embeddingUpdatedAt: new Date(),
+        embeddingError: null,
+      })
+      .where(eq(ragEntry.id, entry.id));
+    return;
+  }
+
+  if (reembed) {
+    await deleteSupabaseEmbedding(entry.id);
+  }
+
+  for (const chunk of chunkRows) {
+    try {
+      if (reembed) {
+        const { vector, model, dimensions } = await generateRagEmbedding(chunk.content);
+        await upsertSupabaseEmbedding({
+          entry: { ...entry, content: chunk.content },
+          chunkId: chunk.id,
+          chunkIndex: chunk.chunkIndex,
+          embedding: vector,
+        });
+        await db
+          .update(ragEntry)
+          .set({
+            embeddingStatus: "ready",
+            embeddingModel: model,
+            embeddingDimensions: dimensions,
+            embeddingUpdatedAt: new Date(),
+            embeddingError: null,
+          })
+          .where(eq(ragEntry.id, entry.id));
+      } else {
+        await patchSupabaseEmbedding(
+          { ...entry, content: chunk.content },
+          { chunkId: chunk.id, chunkIndex: chunk.chunkIndex, content: chunk.content }
+        );
+      }
+    } catch (error) {
+      await db
+        .update(ragEntry)
+        .set({
+          embeddingStatus: "failed",
+          embeddingError: error instanceof Error ? error.message : "Embedding failed",
+        })
+        .where(eq(ragEntry.id, entry.id));
+      console.warn("[rag] chunk embedding/upsert failed", {
+        entryId: entry.id,
+        chunkId: chunk.id,
+        chunkIndex: chunk.chunkIndex,
+        error,
+      });
+    }
+  }
 }
 
 async function normalizeModelAssignments(modelIds: string[]) {
@@ -706,11 +911,11 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
   };
 }
 
-function passesModelFilter(entry: RagEntryModel, modelId: string) {
+function passesModelFilter(entry: RagEntryModel, model: ModelConfig) {
   if (!entry.models?.length) {
     return true;
   }
-  return entry.models.includes(modelId);
+  return entry.models.includes(model.id) || entry.models.includes(model.key);
 }
 
 export async function buildRagAugmentation({
@@ -742,9 +947,18 @@ export async function buildRagAugmentation({
     return null;
   }
 
-  const effectiveThreshold = Math.min(
-    Math.max(typeof threshold === "number" ? threshold : DEFAULT_RAG_MATCH_THRESHOLD, 0),
-    1
+  const rawThreshold = Math.max(typeof threshold === "number" ? threshold : DEFAULT_RAG_MATCH_THRESHOLD, 0);
+  const effectiveThreshold =
+    queryText.trim().length < 40
+      ? Math.min(Math.max(rawThreshold, 0.2), 0.4)
+      : Math.min(rawThreshold, 1);
+  const modelFilters = Array.from(
+    new Set(
+      [modelConfig.id, modelConfig.key].filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0 && isValidUuid(value)
+      )
+    )
   );
 
   const trimmedQuery = queryText.trim();
@@ -753,22 +967,67 @@ export async function buildRagAugmentation({
   }
 
   const { vector } = await generateRagEmbedding(trimmedQuery);
-  const matches = await searchSupabaseEmbeddings({
-    embedding: vector,
-    limit: DEFAULT_RAG_MATCH_LIMIT,
-    threshold: effectiveThreshold,
-    modelIds: [modelConfig.id],
-    status: "active",
+  let matches = await withTimeout(
+    searchSupabaseEmbeddings({
+      embedding: vector,
+      limit: DEFAULT_RAG_MATCH_LIMIT,
+      threshold: effectiveThreshold,
+      modelIds: modelFilters.length ? modelFilters : null,
+      status: "active",
+    }),
+    DEFAULT_RAG_TIMEOUT_MS
+  ).catch((error) => {
+    console.warn("[rag] retrieval failed or timed out", error);
+    return [] as SupabaseRagMatch[];
   });
 
-  const filteredMatches = matches.filter((match) => {
+  let filteredMatches = matches.filter((match) => {
     if (!match || typeof match.score !== "number") {
       return false;
     }
     return match.score >= effectiveThreshold;
   });
   if (!filteredMatches.length) {
-    return null;
+    console.warn("[rag] no matches above threshold", {
+      chatId,
+      threshold: effectiveThreshold,
+      matches: matches.length,
+    });
+    const fallbackThreshold = Math.max(0.15, Math.min(effectiveThreshold * 0.75, effectiveThreshold));
+    matches = await withTimeout(
+      searchSupabaseEmbeddings({
+        embedding: vector,
+        limit: DEFAULT_RAG_MATCH_LIMIT,
+        threshold: fallbackThreshold,
+        modelIds: [modelConfig.id],
+        status: "active",
+      }),
+      DEFAULT_RAG_TIMEOUT_MS
+    ).catch((error) => {
+      console.warn("[rag] fallback retrieval failed or timed out", error);
+      return [] as SupabaseRagMatch[];
+    });
+    filteredMatches = matches.filter((match) => {
+      if (!match || typeof match.score !== "number") {
+        return false;
+      }
+      return match.score >= fallbackThreshold;
+    });
+    if (!filteredMatches.length) {
+      console.warn("[rag] fallback search also returned no matches", {
+        chatId,
+        threshold: fallbackThreshold,
+      });
+      return {
+        systemSupplement: NO_MATCH_SUPPLEMENT,
+        clientEvent: {
+          chatId,
+          modelId: modelConfig.id,
+          modelName: modelConfig.displayName,
+          entries: [],
+        },
+      };
+    }
   }
 
   const ids = filteredMatches.map((match) => match.rag_entry_id);
@@ -788,54 +1047,131 @@ export async function buildRagAugmentation({
       if (entry.status !== "active") {
         return null;
       }
-      if (!passesModelFilter(entry, modelConfig.id)) {
+      if (!passesModelFilter(entry, modelConfig)) {
         return null;
       }
-      return { entry, score: match.score };
+      const chunkIndex =
+        typeof match.metadata?.chunkIndex === "number"
+          ? match.metadata.chunkIndex
+          : null;
+      return {
+        entry,
+        score: match.score,
+        chunkContent: match.content,
+        chunkIndex,
+        chunkId: match.chunk_id ?? null,
+      };
     })
-    .filter(Boolean) as Array<{ entry: RagEntryModel; score: number }>;
+    .filter(Boolean) as Array<{
+    entry: RagEntryModel;
+    score: number;
+    chunkContent: string;
+    chunkIndex: number | null;
+    chunkId: string | null;
+  }>;
 
   if (!resolved.length) {
-    return null;
+    console.warn("[rag] matches filtered out after validation", {
+      chatId,
+      rawMatches: matches.length,
+    });
+    // Fallback to a simple word-based content/title search in DB
+    const terms = trimmedQuery
+      .toLowerCase()
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter((word) => word.length >= 3)
+      .slice(0, 5);
+
+    const wordConditions =
+      terms.length > 0
+        ? terms.map((term) =>
+            or(
+              ilike(ragEntry.content, `%${term}%`),
+              ilike(ragEntry.title, `%${term}%`)
+            )
+          )
+        : [ilike(ragEntry.content, `%${trimmedQuery}%`)];
+
+    const fallbackRows = await db
+      .select({
+        entry: ragEntry,
+        chunkContent: ragChunk.content,
+        chunkIndex: ragChunk.chunkIndex,
+        chunkId: ragChunk.id,
+      })
+      .from(ragChunk)
+      .innerJoin(ragEntry, eq(ragChunk.entryId, ragEntry.id))
+      .where(
+        and(
+          isNull(ragEntry.deletedAt),
+          eq(ragEntry.status, "active"),
+          wordConditions.length > 1 ? or(...wordConditions) : wordConditions[0]
+        )
+      )
+      .limit(DEFAULT_RAG_MATCH_LIMIT * 4);
+
+    const fallbackResolved = fallbackRows
+      .filter(({ entry }) => passesModelFilter(entry, modelConfig))
+      .map(({ entry, chunkContent, chunkIndex, chunkId }) => ({
+        entry,
+        score: 0.01,
+        chunkContent: trimContent(chunkContent ?? entry.content),
+        chunkIndex: chunkIndex ?? null,
+        chunkId: chunkId ?? null,
+      }))
+      .slice(0, DEFAULT_RAG_MATCH_LIMIT);
+
+    if (!fallbackResolved.length) {
+      return {
+        systemSupplement: NO_MATCH_SUPPLEMENT,
+        clientEvent: {
+          chatId,
+          modelId: modelConfig.id,
+          modelName: modelConfig.displayName,
+          entries: [],
+        },
+      };
+    }
+
+    return composeRagResult({
+      resolved: fallbackResolved,
+      chatId,
+      modelConfig,
+      trimmedQuery,
+      userId,
+    });
   }
 
-  const systemSupplement = resolved
-    .map(({ entry }) => entry.content.trim())
-    .filter(Boolean)
-    .join("\n\n");
-
-  const clientEvent: RagUsageEvent = {
+  return composeRagResult({
+    resolved,
     chatId,
-    modelId: modelConfig.id,
-    modelName: modelConfig.displayName,
-    entries: resolved.map(({ entry, score }) => ({
-      id: entry.id,
-      title: entry.title,
-      status: entry.status,
-      tags: entry.tags,
-      sourceUrl: entry.sourceUrl ?? null,
-      score,
-    })),
-  };
-
-  await db.insert(ragRetrievalLog).values(
-    resolved.map(({ entry, score }) => ({
-      ragEntryId: entry.id,
-      chatId,
-      modelConfigId: modelConfig.id,
-      modelKey: modelConfig.key,
-      userId,
-      score,
-      queryText: trimmedQuery,
-      queryLanguage: detectQueryLanguage(trimmedQuery),
-      metadata: buildSupabaseMetadata(entry),
-    }))
-  );
-
-  return {
-    systemSupplement,
-    clientEvent,
-  };
+    modelConfig,
+    trimmedQuery,
+    userId,
+  });
 }
 
 export { CUSTOM_KNOWLEDGE_STORAGE_KEY };
+
+export async function rebuildAllRagEmbeddings() {
+  const entries = await db
+    .select()
+    .from(ragEntry)
+    .where(isNull(ragEntry.deletedAt));
+
+  for (const entry of entries) {
+    try {
+      await syncEmbedding(entry, { reembed: true });
+    } catch (error) {
+      await db
+        .update(ragEntry)
+        .set({
+          embeddingStatus: "failed",
+          embeddingError: error instanceof Error ? error.message : "Embedding failed",
+        })
+        .where(eq(ragEntry.id, entry.id));
+      console.warn("[rag] rebuild embedding failed", { entryId: entry.id, error });
+    }
+  }
+}

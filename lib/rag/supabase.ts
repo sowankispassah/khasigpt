@@ -5,6 +5,7 @@ import type { RagEntry } from "@/lib/db/schema";
 import {
   RAG_SUPABASE_TABLE,
   RAG_SUPABASE_MATCH_FUNCTION,
+  DEFAULT_RAG_TIMEOUT_MS,
 } from "./constants";
 import { buildSupabaseMetadata } from "./utils";
 
@@ -46,10 +47,16 @@ async function supabaseRequest(
   headers.set("Authorization", `Bearer ${key}`);
   headers.set("Content-Type", "application/json");
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_RAG_TIMEOUT_MS);
+
   const response = await fetch(`${url}${path}`, {
     ...init,
     headers,
+    signal: controller.signal,
   });
+
+  clearTimeout(timeout);
 
   if (!response.ok) {
     const message = await response.text();
@@ -81,23 +88,32 @@ async function supabaseRequest(
 
 export async function upsertSupabaseEmbedding({
   entry,
+  chunkId,
+  chunkIndex,
   embedding,
 }: {
   entry: RagEntry;
+  chunkId: string;
+  chunkIndex: number;
   embedding: number[];
 }) {
   await supabaseRequest(
-    `/rest/v1/${RAG_SUPABASE_TABLE}?on_conflict=rag_entry_id`,
+    `/rest/v1/${RAG_SUPABASE_TABLE}`,
     {
       method: "POST",
       headers: {
-        Prefer: "resolution=merge-duplicates,return=representation",
+        Prefer: "return=representation",
       },
       body: JSON.stringify([
         {
           rag_entry_id: entry.id,
+          chunk_id: chunkId,
           content: entry.content,
-          metadata: buildSupabaseMetadata(entry),
+          metadata: buildSupabaseMetadata({
+            ...entry,
+            chunkIndex,
+            chunkId,
+          }),
           status: entry.status,
           models: entry.models,
           embedding,
@@ -107,14 +123,21 @@ export async function upsertSupabaseEmbedding({
   );
 }
 
-export async function patchSupabaseEmbedding(entry: RagEntry) {
+export async function patchSupabaseEmbedding(entry: RagEntry, opts?: { chunkId?: string; chunkIndex?: number; content?: string }) {
+  const queryParam = opts?.chunkId
+    ? `chunk_id=eq.${opts.chunkId}`
+    : `rag_entry_id=eq.${entry.id}`;
   await supabaseRequest(
-    `/rest/v1/${RAG_SUPABASE_TABLE}?rag_entry_id=eq.${entry.id}`,
+    `/rest/v1/${RAG_SUPABASE_TABLE}?${queryParam}`,
     {
       method: "PATCH",
       body: JSON.stringify({
-        content: entry.content,
-        metadata: buildSupabaseMetadata(entry),
+        content: opts?.content ?? entry.content,
+        metadata: buildSupabaseMetadata({
+          ...entry,
+          chunkIndex: opts?.chunkIndex,
+          chunkId: opts?.chunkId,
+        }),
         status: entry.status,
         models: entry.models,
       }),
@@ -133,6 +156,7 @@ export async function deleteSupabaseEmbedding(ragEntryId: string) {
 
 export type SupabaseRagMatch = {
   rag_entry_id: string;
+  chunk_id?: string;
   score: number;
   content: string;
   metadata: Record<string, unknown> | null;

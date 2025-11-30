@@ -1,10 +1,10 @@
+import type { ReactNode } from "react";
 import {
   getAppSetting,
-  listActiveSubscriptionSummaries,
-  listModelConfigs,
-  listPricingPlans,
-  getTranslationValuesForKeys,
-} from "@/lib/db/queries";
+    listModelConfigs,
+    listPricingPlans,
+    getTranslationValuesForKeys,
+  } from "@/lib/db/queries";
 import type { PricingPlan } from "@/lib/db/schema";
 import {
   createModelConfigAction,
@@ -94,6 +94,40 @@ function EnabledBadge({ enabled }: { enabled: boolean }) {
 
 type AdminSettingsSearchParams = { notice?: string };
 
+function CollapsibleSection({
+  title,
+  description,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      className="group overflow-hidden rounded-lg border bg-card shadow-sm"
+      {...(defaultOpen ? { open: true } : {})}
+    >
+      <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          {description ? (
+            <p className="text-muted-foreground text-sm">{description}</p>
+          ) : null}
+        </div>
+        <span className="text-muted-foreground text-xs font-semibold transition-transform duration-150 group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      <div className="border-t px-6 py-5">
+        <div className="space-y-4">{children}</div>
+      </div>
+    </details>
+  );
+}
+
 export default async function AdminSettingsPage({
   searchParams,
 }: {
@@ -106,7 +140,6 @@ export default async function AdminSettingsPage({
     exchangeRate,
     modelsRaw,
     plansRaw,
-    activeSubscriptions,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -123,7 +156,6 @@ export default async function AdminSettingsPage({
     getUsdToInrRate(),
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
-    listActiveSubscriptionSummaries({ limit: 10 }),
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
     getAppSetting<string>("aboutUsContent"),
@@ -365,14 +397,14 @@ export default async function AdminSettingsPage({
     <>
       <AdminSettingsNotice notice={notice} />
 
-      <div className="flex flex-col gap-10">
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
+      <div className="flex flex-col gap-6">
+        <CollapsibleSection
+          defaultOpen
+          description="Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404."
+          title="Community forum"
+        >
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Community forum</h2>
-              <p className="text-muted-foreground text-sm">
-                Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404.
-              </p>
               <EnabledBadge enabled={forumEnabled} />
             </div>
             <form
@@ -396,26 +428,21 @@ export default async function AdminSettingsPage({
               </p>
             </form>
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Free message policy</h2>
-              <p className="text-muted-foreground mt-1 text-sm">
-                Choose whether complimentary daily messages come from each model or a single global allowance.
-              </p>
-            </div>
-          </div>
+        <CollapsibleSection
+          description="Choose whether complimentary daily messages come from each model or a single global allowance."
+          title="Free message policy"
+        >
           <form
             action={updateFreeMessageSettingsAction}
-            className="mt-6 grid gap-6 md:grid-cols-2"
+            className="grid gap-6 md:grid-cols-2"
           >
             <fieldset className="space-y-3">
               <legend className="text-sm font-medium">Allowance mode</legend>
               <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
                 <input
-                  className="mt-1 h-4 w-4"
+                  className="mt-1 h-4 w-4 cursor-pointer"
                   defaultChecked={freeMessageSettings.mode === "per-model"}
                   name="mode"
                   type="radio"
@@ -431,7 +458,7 @@ export default async function AdminSettingsPage({
               </label>
               <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
                 <input
-                  className="mt-1 h-4 w-4"
+                  className="mt-1 h-4 w-4 cursor-pointer"
                   defaultChecked={freeMessageSettings.mode === "global"}
                   name="mode"
                   type="radio"
@@ -470,19 +497,18 @@ export default async function AdminSettingsPage({
             </div>
           </form>
           {isGlobalFreeMessageMode ? (
-            <div className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
+            <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
               Per-model inputs are locked because a global allowance of{" "}
               {freeMessageSettings.globalLimit.toLocaleString()} messages per day is active.
             </div>
           ) : null}
-        </section>
+        </CollapsibleSection>
 
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Languages</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Add new languages or toggle their availability. Default language must stay active.
-          </p>
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
+        <CollapsibleSection
+          description="Add new languages or toggle their availability. Default language must stay active."
+          title="Languages"
+        >
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
             <form
               action={createLanguageAction}
               className="flex flex-col gap-4 rounded-lg border bg-background p-4"
@@ -515,7 +541,7 @@ export default async function AdminSettingsPage({
               </div>
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input
-                  className="h-4 w-4"
+                  className="h-4 w-4 cursor-pointer"
                   defaultChecked
                   name="isActive"
                   type="checkbox"
@@ -602,18 +628,18 @@ export default async function AdminSettingsPage({
               </table>
             </div>
           </div>
-        </section>
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Suggested prompts</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language. If a language has no custom prompts, the default language prompts are used.
-          </p>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language."
+          title="Suggested prompts"
+        >
           {languagePromptConfigs.length === 0 ? (
-            <div className="mt-6 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
               No active languages are configured. Add a language before managing prompts.
             </div>
           ) : (
-            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
               {languagePromptConfigs.map(({ language, prompts }) => (
                 <LanguagePromptsForm
                   key={language.id}
@@ -624,19 +650,18 @@ export default async function AdminSettingsPage({
               ))}
             </div>
           )}
-        </section>
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Public page content</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Update the copy shown on the public About, Privacy Policy, and Terms of Service pages.
-            Basic Markdown (## headings and bullet lists) is supported.
-          </p>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Update the copy shown on the public About, Privacy Policy, and Terms of Service pages."
+          title="Public page content"
+        >
           {activeLanguagesList.length === 0 ? (
-            <div className="mt-6 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
               No active languages are configured. Add a language before managing public page content.
             </div>
           ) : (
-            <div className="mt-6 space-y-10">
+            <div className="space-y-10">
               <div className="space-y-4">
                 <h3 className="text-base font-semibold">About page content</h3>
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -720,14 +745,12 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
-        </section>
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Pricing plans</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Define recharge tiers that control how many tokens and credits users receive.
-            Plans become available immediately.
-          </p>
-          <div className="mt-3 rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
+        </CollapsibleSection>
+        <CollapsibleSection
+          description="Define recharge tiers that control how many tokens and credits users receive. Plans become available immediately."
+          title="Pricing plans"
+        >
+          <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
             <div>Current recommended plan: {recommendedPlanName ?? "None selected"}</div>
             {recommendedPlanSetting && !recommendedPlanId ? (
               <div className="text-amber-600">
@@ -736,7 +759,7 @@ export default async function AdminSettingsPage({
             ) : null}
           </div>
 
-          <form action={createPricingPlanAction} className="mt-6 grid gap-4 md:grid-cols-2">
+          <form action={createPricingPlanAction} className="grid gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="plan-name">
                 Plan name
@@ -899,7 +922,10 @@ export default async function AdminSettingsPage({
                           </label>
                         </div>
                         <div className="flex justify-end gap-2">
-                          <ActionSubmitButton pendingLabel="Saving...">
+                          <ActionSubmitButton
+                            pendingLabel="Saving..."
+                            successMessage="Plan updated"
+                          >
                             Save changes
                           </ActionSubmitButton>
                         </div>
@@ -1105,69 +1131,13 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
-        </section>
+        </CollapsibleSection>
 
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Active subscriptions</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Recent users with active plans and their remaining balances.
-          </p>
-
-          <div className="mt-6 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-muted-foreground text-xs uppercase">
-                <tr>
-                  <th className="py-2 text-left">User</th>
-                  <th className="py-2 text-left">Plan</th>
-                  <th className="py-2 text-right">Tokens left</th>
-                  <th className="py-2 text-right">Expires</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeSubscriptions.length === 0 ? (
-                  <tr>
-                    <td className="py-4 text-muted-foreground" colSpan={4}>
-                      No active subscriptions yet.
-                    </td>
-                  </tr>
-                ) : (
-                  activeSubscriptions.map((subscription) => (
-                    <tr key={subscription.subscriptionId} className="border-t">
-                      <td className="py-2 font-mono text-xs">
-                        {subscription.userEmail}
-                      </td>
-                      <td className="py-2">
-                        {subscription.planName ?? "Plan removed"}
-                      </td>
-                      <td className="py-2 text-right">
-                        {subscription.tokenBalance.toLocaleString()} /{" "}
-                        {subscription.tokenAllowance.toLocaleString()}
-                      </td>
-                      <td className="py-2 text-right">
-                        {new Date(subscription.expiresAt).toLocaleDateString(
-                          "en-IN",
-                          {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          }
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Add new model</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Configure additional providers. Ensure the relevant API key is available in the environment.
-          </p>
-
-          <form action={createModelConfigAction} className="mt-6 grid gap-4 md:grid-cols-2">
+        <CollapsibleSection
+          description="Configure additional providers. Ensure the relevant API key is available in the environment."
+          title="Add new model"
+        >
+          <form action={createModelConfigAction} className="grid gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="key">
                 Model key
@@ -1398,11 +1368,10 @@ export default async function AdminSettingsPage({
               </ActionSubmitButton>
             </div>
           </form>
-        </section>
+        </CollapsibleSection>
 
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Configured models</h2>
-          <div className="mt-4 space-y-6">
+        <CollapsibleSection title="Configured models">
+          <div className="space-y-6">
             {activeModels.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 No models configured yet.
@@ -1763,7 +1732,7 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
-        </section>
+        </CollapsibleSection>
       </div>
     </>
   );
