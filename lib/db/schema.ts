@@ -40,6 +40,9 @@ export const user = pgTable(
       .notNull()
       .default("credentials"),
     isActive: boolean("isActive").notNull().default(true),
+    allowPersonalKnowledge: boolean("allowPersonalKnowledge")
+      .notNull()
+      .default(false),
     image: text("image"),
     firstName: varchar("firstName", { length: 64 }),
     lastName: varchar("lastName", { length: 64 }),
@@ -148,6 +151,13 @@ export const ragEntryStatusEnum = pgEnum("rag_entry_status", [
 ]);
 export type RagEntryStatus = (typeof ragEntryStatusEnum.enumValues)[number];
 
+export const ragEntryApprovalStatusEnum = pgEnum(
+  "rag_entry_approval_status",
+  ["pending", "approved", "rejected"]
+);
+export type RagEntryApprovalStatus =
+  (typeof ragEntryApprovalStatusEnum.enumValues)[number];
+
 export const ragEmbeddingStatusEnum = pgEnum("rag_embedding_status", [
   "pending",
   "ready",
@@ -194,6 +204,15 @@ export const ragEntry = pgTable(
     addedBy: uuid("addedBy")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    personalForUserId: uuid("personalForUserId").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    approvalStatus: ragEntryApprovalStatusEnum("approvalStatus")
+      .notNull()
+      .default("approved"),
+    approvedBy: uuid("approvedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
     version: integer("version").notNull().default(1),
@@ -211,6 +230,12 @@ export const ragEntry = pgTable(
   (table) => ({
     statusIdx: index("RagEntry_status_idx").on(table.status),
     addedByIdx: index("RagEntry_addedBy_idx").on(table.addedBy),
+    personalForUserIdx: index("RagEntry_personalForUser_idx").on(
+      table.personalForUserId
+    ),
+    approvalStatusIdx: index("RagEntry_approvalStatus_idx").on(
+      table.approvalStatus
+    ),
     createdAtIdx: index("RagEntry_createdAt_idx").on(table.createdAt),
     categoryIdx: index("RagEntry_category_idx").on(table.categoryId),
   })
@@ -253,6 +278,13 @@ export const ragEntryVersion = pgTable(
     content: text("content").notNull(),
     type: ragEntryTypeEnum("type").notNull(),
     status: ragEntryStatusEnum("status").notNull(),
+    approvalStatus: ragEntryApprovalStatusEnum("approvalStatus").notNull(),
+    personalForUserId: uuid("personalForUserId").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    approvedBy: uuid("approvedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
     tags: text("tags")
       .array()
       .notNull()

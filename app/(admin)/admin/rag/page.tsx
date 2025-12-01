@@ -5,9 +5,11 @@ import {
   listAdminRagEntries,
   getRagAnalyticsSummary,
   listRagCategories,
+  listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { AdminRagManager, type SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
+import { AdminUserKnowledgeTable, type SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_RAG_TIMEOUT_MS,
@@ -39,6 +41,7 @@ export default async function AdminRagPage() {
     customKnowledgeEnabledSetting,
     ragTimeoutSetting,
     ragMatchThresholdSetting,
+    userAddedKnowledge,
   ] = await Promise.all([
     listAdminRagEntries(),
     getRagAnalyticsSummary(),
@@ -47,6 +50,7 @@ export default async function AdminRagPage() {
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<number | string>(RAG_TIMEOUT_MS_SETTING_KEY),
     getAppSetting<number | string>(RAG_MATCH_THRESHOLD_SETTING_KEY),
+    listUserAddedKnowledgeEntries({ limit: 240 }),
   ]);
 
   const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
@@ -60,6 +64,26 @@ export default async function AdminRagPage() {
       updatedAt: serializeDate(entry.entry.updatedAt),
     },
   }));
+
+  const serializedUserKnowledge: SerializedUserKnowledgeEntry[] = userAddedKnowledge.map(
+    (row) => ({
+      entry: {
+        ...row.entry,
+        createdAt:
+          row.entry.createdAt instanceof Date
+            ? row.entry.createdAt.toISOString()
+            : (row.entry.createdAt as unknown as string),
+        updatedAt:
+          row.entry.updatedAt instanceof Date
+            ? row.entry.updatedAt.toISOString()
+            : (row.entry.updatedAt as unknown as string),
+      },
+      creator: row.creator,
+      retrievalCount: row.retrievalCount,
+      lastRetrievedAt: row.lastRetrievedAt,
+      avgScore: row.avgScore,
+    })
+  );
 
   const modelOptions = registry.configs
     .filter((config) => config.isEnabled)
@@ -198,6 +222,16 @@ export default async function AdminRagPage() {
         tagOptions={tagOptions}
         categories={categories}
       />
+
+      <section className="rounded-lg border bg-card p-6 shadow-sm">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold">User Added Knowledge</h2>
+          <p className="text-muted-foreground text-sm">
+            Approve or reject knowledge submitted by users. Approved items become retrievable.
+          </p>
+        </div>
+        <AdminUserKnowledgeTable entries={serializedUserKnowledge} />
+      </section>
     </div>
   );
 }

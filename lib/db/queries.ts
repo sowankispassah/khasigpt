@@ -1388,6 +1388,32 @@ export async function updateUserRole({
   }
 }
 
+export async function updateUserPersonalKnowledgePermission({
+  id,
+  allowPersonalKnowledge,
+}: {
+  id: string;
+  allowPersonalKnowledge: boolean;
+}) {
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        allowPersonalKnowledge,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update personal knowledge setting"
+    );
+  }
+}
+
 export async function updateUserActiveState({
   id,
   isActive,

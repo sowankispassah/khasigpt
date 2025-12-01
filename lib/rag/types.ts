@@ -1,4 +1,9 @@
-import type { RagEntry, RagEntryStatus, RagEntryType } from "@/lib/db/schema";
+import type {
+  RagEntry,
+  RagEntryApprovalStatus,
+  RagEntryStatus,
+  RagEntryType,
+} from "@/lib/db/schema";
 
 export type SanitizedRagEntry = RagEntry & {
   tags: string[];
@@ -55,6 +60,7 @@ export type RagUsageEventEntry = {
   id: string;
   title: string;
   status: RagEntryStatus;
+  approvalStatus: RagEntryApprovalStatus;
   tags: string[];
   score: number;
   sourceUrl: string | null;
@@ -75,9 +81,12 @@ export type UpsertRagEntryInput = {
   content: string;
   type: RagEntryType;
   status: RagEntryStatus;
+  approvalStatus?: RagEntryApprovalStatus;
   tags: string[];
   models: string[];
   sourceUrl?: string | null;
   metadata?: Record<string, unknown>;
   categoryId?: string | null;
+  personalForUserId?: string | null;
+  approvedBy?: string | null;
 };

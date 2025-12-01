@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import {
+  ragEntryApprovalStatusEnum,
   ragEntryStatusEnum,
   ragEntryTypeEnum,
 } from "@/lib/db/schema";
@@ -12,8 +13,11 @@ export const ragEntrySchema = z.object({
   content: z.string().min(16),
   type: z.enum(ragEntryTypeEnum.enumValues),
   status: z.enum(ragEntryStatusEnum.enumValues),
+  approvalStatus: z.enum(ragEntryApprovalStatusEnum.enumValues).default("approved"),
   sourceUrl: z.string().url().optional().nullable(),
   categoryId: z.string().uuid().optional().nullable(),
+  personalForUserId: z.string().uuid().optional().nullable(),
+  approvedBy: z.string().uuid().optional().nullable(),
   tags: z
     .array(z.string().min(1).max(48))
     .max(24)

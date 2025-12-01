@@ -1,4 +1,4 @@
-import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } from "@/app/(admin)/actions";
+import { grantUserCreditsAction, setUserActiveStateAction, setUserPersonalKnowledgePermissionAction, setUserRoleAction } from "@/app/(admin)/actions";
 import { auth } from "@/app/(auth)/auth";
 import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -64,7 +64,7 @@ export default async function AdminUsersPage() {
       </header>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm whitespace-nowrap">
           <thead className="text-muted-foreground text-xs uppercase">
             <tr>
               <th className="py-3 text-left">Email</th>
@@ -90,7 +90,7 @@ export default async function AdminUsersPage() {
                   )}
                 </td>
                 <td className="py-3">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
                     <RoleToggleForm
                       currentRole={user.role as UserRole}
                       isSelf={user.id === currentUserId}
@@ -98,6 +98,11 @@ export default async function AdminUsersPage() {
                     />
                     <StatusToggleForm
                       isActive={user.isActive}
+                      isSelf={user.id === currentUserId}
+                      userId={user.id}
+                    />
+                    <PersonalKnowledgeToggleForm
+                      allowPersonalKnowledge={Boolean(user.allowPersonalKnowledge)}
                       isSelf={user.id === currentUserId}
                       userId={user.id}
                     />
@@ -241,7 +246,7 @@ function AddCreditsForm({
   return (
     <form
       action={grantUserCreditsAction}
-      className="flex flex-wrap items-center gap-2"
+      className="flex flex-nowrap items-center gap-2 whitespace-nowrap"
     >
       <input name="userId" type="hidden" value={userId} />
       <input name="billingCycleDays" type="hidden" value="90" />
@@ -395,6 +400,40 @@ function StatusToggleForm({
       >
         {isActive ? "Suspend" : "Restore"}
       </Button>
+    </form>
+  );
+}
+
+function PersonalKnowledgeToggleForm({
+  userId,
+  allowPersonalKnowledge,
+  isSelf,
+}: {
+  userId: string;
+  allowPersonalKnowledge: boolean;
+  isSelf: boolean;
+}) {
+  return (
+    <form
+      action={async () => {
+        "use server";
+        if (isSelf) {
+          return;
+        }
+        await setUserPersonalKnowledgePermissionAction({
+          userId,
+          allowed: !allowPersonalKnowledge,
+        });
+      }}
+      className="flex items-center gap-2"
+    >
+      <ActionSubmitButton
+        pendingLabel="Updating..."
+        size="sm"
+        variant={allowPersonalKnowledge ? "secondary" : "outline"}
+      >
+        {allowPersonalKnowledge ? "Disable RAG" : "Allow RAG"}
+      </ActionSubmitButton>
     </form>
   );
 }

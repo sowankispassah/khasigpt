@@ -11,6 +11,7 @@ import {
   ilike,
   inArray,
   isNull,
+  isNotNull,
   or,
   sql,
 } from "drizzle-orm";
@@ -24,6 +25,7 @@ import {
   ragCategory,
   user,
   type RagEntry as RagEntryModel,
+  type RagEntryApprovalStatus,
   type RagEntryStatus,
 } from "@/lib/db/schema";
 import type { ModelConfig } from "@/lib/db/schema";
@@ -207,15 +209,6 @@ function chunkForPrompt(content: string) {
   return chunks;
 }
 
-function isValidUuid(value: string | null | undefined) {
-  if (!value) {
-    return false;
-  }
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value
-  );
-}
-
 function composeRagResult({
   resolved,
   chatId,
@@ -263,6 +256,7 @@ function composeRagResult({
       id: entry.id,
       title: entry.title,
       status: entry.status,
+      approvalStatus: entry.approvalStatus,
       tags: entry.tags,
       sourceUrl: entry.sourceUrl ?? null,
       score,
@@ -410,10 +404,13 @@ function buildVersionDiff(previous: RagEntryModel, next: RagEntryModel) {
   compare("content");
   compare("type");
   compare("status");
+  compare("approvalStatus");
   compare("tags");
   compare("models");
   compare("sourceUrl");
   compare("categoryId");
+  compare("personalForUserId");
+  compare("approvedBy");
 
   let textDelta: string | undefined;
   if (previous.content !== next.content) {
@@ -435,7 +432,14 @@ export async function createRagEntry({
   input: UpsertRagEntryInput;
   actorId: string;
 }): Promise<SanitizedRagEntry> {
-  const parsed = ragEntrySchema.parse(input);
+  const parsed = ragEntrySchema.parse({
+    ...input,
+    approvalStatus: input.approvalStatus ?? "approved",
+    personalForUserId: input.personalForUserId ?? null,
+    approvedBy:
+      input.approvedBy ??
+      ((input.approvalStatus ?? "approved") === "approved" ? actorId : null),
+  });
   const tags = normalizeTags(parsed.tags);
   const models = await normalizeModelAssignments(normalizeModels(parsed.models));
   const title = parsed.title.trim();
@@ -457,6 +461,9 @@ export async function createRagEntry({
       categoryId: parsed.categoryId ?? null,
       metadata,
       addedBy: actorId,
+      approvalStatus: parsed.approvalStatus,
+      personalForUserId: parsed.personalForUserId ?? null,
+      approvedBy: parsed.approvedBy ?? (parsed.approvalStatus === "approved" ? actorId : null),
       createdAt: now,
       updatedAt: now,
       embeddingStatus: "pending",
@@ -470,6 +477,9 @@ export async function createRagEntry({
     content: created.content,
     type: created.type,
     status: created.status,
+    approvalStatus: created.approvalStatus,
+    personalForUserId: created.personalForUserId,
+    approvedBy: created.approvedBy,
     tags: created.tags,
     models: created.models,
     sourceUrl: created.sourceUrl,
@@ -511,7 +521,23 @@ export async function updateRagEntry({
     throw new ChatSDKError("not_found:chat", "RAG entry not found");
   }
 
-  const parsed = ragEntrySchema.parse({ ...input, id });
+  const approvalStatus =
+    input.approvalStatus ?? existing.approvalStatus ?? "approved";
+  const personalForUserId =
+    input.personalForUserId ?? existing.personalForUserId ?? null;
+  const approvedBy =
+    input.approvedBy ??
+    (approvalStatus === "approved"
+      ? actorId
+      : null);
+
+  const parsed = ragEntrySchema.parse({
+    ...input,
+    id,
+    approvalStatus,
+    personalForUserId,
+    approvedBy,
+  });
   const tags = normalizeTags(parsed.tags);
   const models = await normalizeModelAssignments(normalizeModels(parsed.models));
   const title = parsed.title.trim();
@@ -527,6 +553,12 @@ export async function updateRagEntry({
       content,
       type: parsed.type,
       status: parsed.status,
+      approvalStatus: parsed.approvalStatus,
+      personalForUserId: parsed.personalForUserId ?? null,
+      approvedBy:
+        parsed.approvalStatus === "approved"
+          ? parsed.approvedBy ?? existing.approvedBy ?? actorId
+          : null,
       tags,
       models,
       sourceUrl,
@@ -548,6 +580,9 @@ export async function updateRagEntry({
     content: updated.content,
     type: updated.type,
     status: updated.status,
+    approvalStatus: updated.approvalStatus,
+    personalForUserId: updated.personalForUserId,
+    approvedBy: updated.approvedBy,
     tags: updated.tags,
     models: updated.models,
     sourceUrl: updated.sourceUrl,
@@ -612,6 +647,9 @@ export async function bulkUpdateRagStatus({
       content: entry.content,
       type: entry.type,
       status: entry.status,
+      approvalStatus: entry.approvalStatus,
+      personalForUserId: entry.personalForUserId,
+      approvedBy: entry.approvedBy,
       tags: entry.tags,
       models: entry.models,
       sourceUrl: entry.sourceUrl,
@@ -665,14 +703,17 @@ export async function deleteRagEntries({
       content: entry.content,
       type: entry.type,
       status: entry.status,
-    tags: entry.tags,
-    models: entry.models,
-    sourceUrl: entry.sourceUrl,
-    categoryId: entry.categoryId,
-    diff: { fields: { status: { before: null, after: "archived" } } },
-    changeSummary: "Entry archived",
-    editorId: actorId,
-  });
+      approvalStatus: entry.approvalStatus,
+      personalForUserId: entry.personalForUserId,
+      approvedBy: entry.approvedBy,
+      tags: entry.tags,
+      models: entry.models,
+      sourceUrl: entry.sourceUrl,
+      categoryId: entry.categoryId,
+      diff: { fields: { status: { before: null, after: "archived" } } },
+      changeSummary: "Entry archived",
+      editorId: actorId,
+    });
 
     await syncEmbedding(entry, { reembed: false });
   }
@@ -708,6 +749,9 @@ export async function restoreRagEntry({
     content: updated.content,
     type: updated.type,
     status: updated.status,
+    approvalStatus: updated.approvalStatus,
+    personalForUserId: updated.personalForUserId,
+    approvedBy: updated.approvedBy,
     tags: updated.tags,
     models: updated.models,
     sourceUrl: updated.sourceUrl,
@@ -770,6 +814,9 @@ export async function restoreRagVersion({
       content: snapshot.content,
       type: snapshot.type,
       status: snapshot.status,
+      approvalStatus: snapshot.approvalStatus,
+      personalForUserId: snapshot.personalForUserId,
+      approvedBy: snapshot.approvedBy,
       tags: snapshot.tags,
       models: snapshot.models,
       sourceUrl: snapshot.sourceUrl,
@@ -786,6 +833,9 @@ export async function restoreRagVersion({
     content: updated.content,
     type: updated.type,
     status: updated.status,
+    approvalStatus: updated.approvalStatus,
+    personalForUserId: updated.personalForUserId,
+    approvedBy: updated.approvedBy,
     tags: updated.tags,
     models: updated.models,
     sourceUrl: updated.sourceUrl,
@@ -796,6 +846,247 @@ export async function restoreRagVersion({
   });
 
   await syncEmbedding(updated, { reembed: true });
+}
+
+export async function listPersonalKnowledgeForUser(userId: string) {
+  const rows = await db
+    .select({
+      entry: ragEntry,
+      categoryName: ragCategory.name,
+    })
+    .from(ragEntry)
+    .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
+    .where(
+      and(
+        eq(ragEntry.personalForUserId, userId),
+        isNull(ragEntry.deletedAt)
+      )
+    )
+    .orderBy(desc(ragEntry.updatedAt));
+
+  return rows.map((row) =>
+    toSanitizedEntry(row.entry, { categoryName: row.categoryName ?? null })
+  );
+}
+
+export async function createPersonalKnowledgeEntry({
+  userId,
+  title,
+  content,
+}: {
+  userId: string;
+  title: string;
+  content: string;
+}) {
+  return createRagEntry({
+    actorId: userId,
+    input: {
+      title,
+      content,
+      type: "text",
+      status: "inactive",
+      approvalStatus: "pending",
+      tags: [],
+      models: [],
+      sourceUrl: null,
+      metadata: { personalKnowledge: true },
+      personalForUserId: userId,
+      approvedBy: null,
+    },
+  });
+}
+
+export async function updatePersonalKnowledgeEntry({
+  userId,
+  entryId,
+  title,
+  content,
+}: {
+  userId: string;
+  entryId: string;
+  title: string;
+  content: string;
+}) {
+  const existing = await getEntryById(entryId);
+  if (!existing || existing.personalForUserId !== userId || existing.deletedAt) {
+    throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
+  }
+
+  const metadata =
+    (existing.metadata as Record<string, unknown> | null | undefined) ?? {};
+  const mergedMetadata = { ...metadata, personalKnowledge: true };
+
+  return updateRagEntry({
+    id: entryId,
+    actorId: userId,
+    input: {
+      title,
+      content,
+      type: existing.type ?? "text",
+      status: "inactive",
+      approvalStatus: "pending",
+      tags: Array.isArray(existing.tags) ? existing.tags : [],
+      models: Array.isArray(existing.models) ? existing.models : [],
+      sourceUrl: existing.sourceUrl,
+      metadata: mergedMetadata,
+      categoryId: existing.categoryId,
+      personalForUserId: userId,
+      approvedBy: null,
+    },
+  });
+}
+
+export async function deletePersonalKnowledgeEntry({
+  entryId,
+  actorId,
+  allowOverride = false,
+}: {
+  entryId: string;
+  actorId: string;
+  allowOverride?: boolean;
+}) {
+  const existing = await getEntryById(entryId);
+  if (!existing || !existing.personalForUserId) {
+    throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
+  }
+  if (!allowOverride && existing.personalForUserId !== actorId) {
+    throw new ChatSDKError("forbidden:chat", "You cannot delete this entry");
+  }
+
+  await deleteRagEntries({ ids: [entryId], actorId });
+}
+
+export async function listUserAddedKnowledgeEntries({
+  limit = 200,
+  approvalStatus,
+}: {
+  limit?: number;
+  approvalStatus?: RagEntryApprovalStatus | "all";
+} = {}): Promise<AdminRagEntry[]> {
+  const conditions = [
+    isNull(ragEntry.deletedAt),
+    isNotNull(ragEntry.personalForUserId),
+  ];
+
+  if (approvalStatus && approvalStatus !== "all") {
+    conditions.push(eq(ragEntry.approvalStatus, approvalStatus));
+  }
+
+  const rows = await db
+    .select({
+      entry: ragEntry,
+      ownerId: user.id,
+      ownerName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
+      ownerEmail: user.email,
+      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)` ,
+      lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
+      avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
+      categoryName: ragCategory.name,
+    })
+    .from(ragEntry)
+    .leftJoin(user, eq(user.id, ragEntry.personalForUserId))
+    .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
+    .leftJoin(ragRetrievalLog, eq(ragRetrievalLog.ragEntryId, ragEntry.id))
+    .where(and(...conditions))
+    .groupBy(
+      ragEntry.id,
+      user.id,
+      user.firstName,
+      user.lastName,
+      user.email,
+      ragCategory.id,
+      ragCategory.name
+    )
+    .orderBy(desc(ragEntry.updatedAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    entry: toSanitizedEntry(row.entry, { categoryName: row.categoryName ?? null }),
+    creator: {
+      id: row.ownerId ?? "",
+      name: row.ownerName,
+      email: row.ownerEmail,
+    },
+    retrievalCount: row.retrievalCount,
+    lastRetrievedAt: (() => {
+      if (!row.lastRetrievedAt) {
+        return null;
+      }
+      if (row.lastRetrievedAt instanceof Date) {
+        return row.lastRetrievedAt.toISOString();
+      }
+      const parsed = new Date(row.lastRetrievedAt as unknown as string);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+    })(),
+    avgScore: row.avgScore,
+  }));
+}
+
+export async function updateUserAddedKnowledgeApproval({
+  entryId,
+  approvalStatus,
+  actorId,
+}: {
+  entryId: string;
+  approvalStatus: RagEntryApprovalStatus;
+  actorId: string;
+}): Promise<SanitizedRagEntry> {
+  const existing = await getEntryById(entryId);
+  if (!existing || !existing.personalForUserId) {
+    throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
+  }
+  if (existing.deletedAt) {
+    throw new ChatSDKError("bad_request:chat", "This entry has been deleted");
+  }
+
+  const now = new Date();
+  const status: RagEntryStatus =
+    approvalStatus === "approved" ? "active" : "inactive";
+  const approvedBy =
+    approvalStatus === "approved" || approvalStatus === "rejected" ? actorId : null;
+
+  const [updated] = await db
+    .update(ragEntry)
+    .set({
+      approvalStatus,
+      status,
+      approvedBy,
+      updatedAt: now,
+      version: existing.version + 1,
+    })
+    .where(eq(ragEntry.id, entryId))
+    .returning();
+
+  const diffFields: Record<string, { before: unknown; after: unknown }> = {
+    approvalStatus: { before: existing.approvalStatus, after: approvalStatus },
+  };
+  if (existing.status !== status) {
+    diffFields.status = { before: existing.status, after: status };
+  }
+
+  await db.insert(ragEntryVersion).values({
+    ragEntryId: updated.id,
+    version: updated.version,
+    title: updated.title,
+    content: updated.content,
+    type: updated.type,
+    status: updated.status,
+    approvalStatus: updated.approvalStatus,
+    personalForUserId: updated.personalForUserId,
+    approvedBy: updated.approvedBy,
+    tags: updated.tags,
+    models: updated.models,
+    sourceUrl: updated.sourceUrl,
+    categoryId: updated.categoryId,
+    diff: { fields: diffFields },
+    changeSummary: `Approval set to ${approvalStatus}`,
+    editorId: actorId,
+  });
+
+  await syncEmbedding(updated, { reembed: false });
+
+  const categoryName = await getCategoryNameById(updated.categoryId);
+  return toSanitizedEntry(updated, { categoryName });
 }
 
 export async function listAdminRagEntries(limit = 120): Promise<AdminRagEntry[]> {
@@ -814,7 +1105,7 @@ export async function listAdminRagEntries(limit = 120): Promise<AdminRagEntry[]>
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
     .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
     .leftJoin(ragRetrievalLog, eq(ragRetrievalLog.ragEntryId, ragEntry.id))
-    .where(isNull(ragEntry.deletedAt))
+    .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)))
     .groupBy(
       ragEntry.id,
       user.id,
@@ -859,7 +1150,7 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
       pendingEmbeddings: sql<number>`SUM(CASE WHEN ${ragEntry.embeddingStatus} <> 'ready' THEN 1 ELSE 0 END)` ,
     })
     .from(ragEntry)
-    .where(isNull(ragEntry.deletedAt));
+    .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)));
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
@@ -883,7 +1174,7 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
-    .where(isNull(ragEntry.deletedAt))
+    .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)))
     .groupBy(user.id, user.firstName, user.lastName, user.email)
     .orderBy(desc(sql<number>`COUNT(${ragEntry.id})`))
     .limit(6);
@@ -955,8 +1246,7 @@ export async function buildRagAugmentation({
   const modelFilters = Array.from(
     new Set(
       [modelConfig.id, modelConfig.key].filter(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0 && isValidUuid(value)
+        (value): value is string => typeof value === "string" && value.length > 0
       )
     )
   );
@@ -1034,7 +1324,13 @@ export async function buildRagAugmentation({
   const rows = await db
     .select()
     .from(ragEntry)
-    .where(and(inArray(ragEntry.id, ids), isNull(ragEntry.deletedAt)));
+    .where(
+      and(
+        inArray(ragEntry.id, ids),
+        isNull(ragEntry.deletedAt),
+        eq(ragEntry.approvalStatus, "approved")
+      )
+    );
 
   const entryMap = new Map(rows.map((row) => [row.id, row]));
 
@@ -1044,7 +1340,7 @@ export async function buildRagAugmentation({
       if (!entry) {
         return null;
       }
-      if (entry.status !== "active") {
+      if (entry.status !== "active" || entry.approvalStatus !== "approved") {
         return null;
       }
       if (!passesModelFilter(entry, modelConfig)) {
@@ -1106,6 +1402,7 @@ export async function buildRagAugmentation({
         and(
           isNull(ragEntry.deletedAt),
           eq(ragEntry.status, "active"),
+          eq(ragEntry.approvalStatus, "approved"),
           wordConditions.length > 1 ? or(...wordConditions) : wordConditions[0]
         )
       )

@@ -67,6 +67,8 @@ export function buildSupabaseMetadata(
     models: entry.models,
     version: entry.version,
     addedBy: entry.addedBy,
+    approvalStatus: entry.approvalStatus,
+    personalForUserId: entry.personalForUserId ?? null,
     categoryId: entry.categoryId,
     categoryName: entry.categoryName ?? null,
     chunkIndex: entry.chunkIndex ?? null,

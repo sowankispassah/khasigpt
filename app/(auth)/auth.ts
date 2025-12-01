@@ -23,6 +23,7 @@ declare module "next-auth" {
       imageVersion: string | null;
       firstName: string | null;
       lastName: string | null;
+      allowPersonalKnowledge: boolean;
     } & DefaultSession["user"];
   }
 
@@ -36,6 +37,7 @@ declare module "next-auth" {
     imageVersion?: string | null;
     firstName?: string | null;
     lastName?: string | null;
+    allowPersonalKnowledge?: boolean;
   }
 }
 
@@ -102,6 +104,7 @@ const providers: any[] = [
         ...rest,
         role: user.role,
         imageVersion,
+        allowPersonalKnowledge: user.allowPersonalKnowledge ?? false,
       } as typeof rest & { role: UserRole; imageVersion: string | null };
     },
   }),
@@ -171,6 +174,7 @@ export const {
               .join(" ")
               .trim();
           }
+          user.allowPersonalKnowledge = dbUser.allowPersonalKnowledge ?? false;
         } catch (error) {
           if (error instanceof ChatSDKError) {
             if (error.cause === "account_inactive") {
@@ -204,6 +208,7 @@ export const {
         token.imageVersion = user.imageVersion ?? null;
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
+        token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
       } else {
         if (!token.role) {
           token.role = "regular";
@@ -236,6 +241,9 @@ export const {
         if ("lastName" in session) {
           token.lastName = (session.lastName as string | null) ?? null;
         }
+        if ("allowPersonalKnowledge" in session) {
+          token.allowPersonalKnowledge = Boolean(session.allowPersonalKnowledge);
+        }
       }
 
       if (
@@ -265,6 +273,9 @@ export const {
           if (typeof token.lastName === "undefined" || token.lastName === null) {
             token.lastName = record.lastName ?? null;
           }
+          if (typeof token.allowPersonalKnowledge === "undefined") {
+            token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+          }
         }
       } else if (typeof token.imageVersion === "undefined") {
         token.imageVersion = null;
@@ -276,11 +287,18 @@ export const {
       if (typeof token.lastName === "undefined") {
         token.lastName = null;
       }
+      if (typeof token.allowPersonalKnowledge === "undefined") {
+        const record = await ensureDbUser();
+        token.allowPersonalKnowledge = record?.allowPersonalKnowledge ?? false;
+      }
 
       if (token.id) {
         const record = await ensureDbUser();
         if (record?.role) {
           token.role = record.role as UserRole;
+        }
+        if (record && typeof record.allowPersonalKnowledge !== "undefined") {
+          token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
         }
       }
 
@@ -298,6 +316,9 @@ export const {
         session.user.imageVersion = (token.imageVersion ?? null) as string | null;
         session.user.firstName = (token.firstName ?? null) as string | null;
         session.user.lastName = (token.lastName ?? null) as string | null;
+        session.user.allowPersonalKnowledge = Boolean(
+          token.allowPersonalKnowledge ?? false
+        );
         const computedName = [session.user.firstName, session.user.lastName]
           .filter(Boolean)
           .join(" ")

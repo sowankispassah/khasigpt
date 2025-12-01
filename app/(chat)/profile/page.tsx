@@ -10,6 +10,11 @@ import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { cookies } from "next/headers";
 import { BackToHomeButton } from "./back-to-home-button";
+import {
+  PersonalKnowledgeSection,
+  type SerializedPersonalKnowledgeEntry,
+} from "./personal-knowledge-section";
+import { listPersonalKnowledgeForUser } from "@/lib/rag/service";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +32,22 @@ export default async function ProfilePage() {
     getUserById(session.user.id),
   ]);
 
+  const allowPersonalKnowledge =
+    Boolean(currentUser?.allowPersonalKnowledge ?? session.user.allowPersonalKnowledge);
+  const personalKnowledgeEntries: SerializedPersonalKnowledgeEntry[] = allowPersonalKnowledge
+    ? (await listPersonalKnowledgeForUser(session.user.id)).map((entry) => ({
+        ...entry,
+        createdAt:
+          entry.createdAt instanceof Date
+            ? entry.createdAt.toISOString()
+            : (entry.createdAt as unknown as string),
+        updatedAt:
+          entry.updatedAt instanceof Date
+            ? entry.updatedAt.toISOString()
+            : (entry.updatedAt as unknown as string),
+      }))
+    : [];
+
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
   return (
@@ -38,12 +59,16 @@ export default async function ProfilePage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">{t("profile.title", "Profile")}</h1>
         <p className="text-muted-foreground text-sm">
-          {t(
-            "profile.subtitle",
-            "Update your account information and security preferences."
-          )}
-        </p>
+        {t(
+          "profile.subtitle",
+          "Update your account information and security preferences."
+        )}
+      </p>
       </header>
+
+      {allowPersonalKnowledge ? (
+        <PersonalKnowledgeSection entries={personalKnowledgeEntries} />
+      ) : null}
 
       <section className="rounded-lg border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-semibold">

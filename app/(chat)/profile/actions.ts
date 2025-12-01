@@ -8,6 +8,12 @@ import {
   updateUserName,
   updateUserPassword,
 } from "@/lib/db/queries";
+import {
+  createPersonalKnowledgeEntry,
+  deletePersonalKnowledgeEntry,
+  updatePersonalKnowledgeEntry,
+} from "@/lib/rag/service";
+import type { SanitizedRagEntry } from "@/lib/rag/types";
 import { z } from "zod";
 
 async function requireUser() {
@@ -161,4 +167,105 @@ export async function deactivateAccountAction(
     status: "success",
     message: "Account deactivated.",
   };
+}
+
+export type PersonalKnowledgeActionResult =
+  | { success: true; entry: SanitizedRagEntry }
+  | { success: false; error: string };
+
+export async function savePersonalKnowledgeAction(input: {
+  id?: string | null;
+  title: string;
+  content: string;
+}): Promise<PersonalKnowledgeActionResult> {
+  const user = await requireUser();
+
+  if (!user.allowPersonalKnowledge) {
+    return {
+      success: false,
+      error: "Personal knowledge is not enabled for your account.",
+    };
+  }
+
+  const title = input.title?.trim() ?? "";
+  const content = input.content?.trim() ?? "";
+
+  if (title.length < 3) {
+    return { success: false, error: "Title must be at least 3 characters long." };
+  }
+  if (content.length < 16) {
+    return {
+      success: false,
+      error: "Content must be at least 16 characters long.",
+    };
+  }
+
+  try {
+    const entry = input.id
+      ? await updatePersonalKnowledgeEntry({
+          userId: user.id,
+          entryId: input.id,
+          title,
+          content,
+        })
+      : await createPersonalKnowledgeEntry({
+          userId: user.id,
+          title,
+          content,
+        });
+
+    await createAuditLogEntry({
+      actorId: user.id,
+      action: input.id
+        ? "user.personal_knowledge.update"
+        : "user.personal_knowledge.create",
+      target: { entryId: entry.id },
+    });
+
+    revalidatePath("/profile");
+
+    return { success: true, entry };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to save entry.";
+    return { success: false, error: message };
+  }
+}
+
+export type DeletePersonalKnowledgeResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function deletePersonalKnowledgeAction({
+  entryId,
+}: {
+  entryId: string;
+}): Promise<DeletePersonalKnowledgeResult> {
+  const user = await requireUser();
+
+  if (!user.allowPersonalKnowledge) {
+    return {
+      success: false,
+      error: "Personal knowledge is not enabled for your account.",
+    };
+  }
+
+  try {
+    await deletePersonalKnowledgeEntry({
+      entryId,
+      actorId: user.id,
+    });
+
+    await createAuditLogEntry({
+      actorId: user.id,
+      action: "user.personal_knowledge.delete",
+      target: { entryId },
+    });
+
+    revalidatePath("/profile");
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete entry.";
+    return { success: false, error: message };
+  }
 }

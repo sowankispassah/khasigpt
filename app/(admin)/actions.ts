@@ -20,6 +20,7 @@ import {
   setAppSetting,
   updateUserActiveState,
   updateUserRole,
+  updateUserPersonalKnowledgePermission,
   createPricingPlan,
   grantUserCredits,
   updatePricingPlan,
@@ -37,7 +38,11 @@ import {
   setCouponRewardStatus,
   recordCouponRewardPayout,
 } from "@/lib/db/queries";
-import type { RagEntryStatus, UserRole } from "@/lib/db/schema";
+import type {
+  RagEntryApprovalStatus,
+  RagEntryStatus,
+  UserRole,
+} from "@/lib/db/schema";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
@@ -67,6 +72,8 @@ import {
   getRagVersions,
   createRagCategory,
   rebuildAllRagEmbeddings,
+  updateUserAddedKnowledgeApproval,
+  deletePersonalKnowledgeEntry,
 } from "@/lib/rag/service";
 import type { UpsertRagEntryInput } from "@/lib/rag/types";
 
@@ -118,6 +125,32 @@ export async function setUserActiveStateAction({
   });
 
   revalidatePath("/admin/users");
+}
+
+export async function setUserPersonalKnowledgePermissionAction({
+  userId,
+  allowed,
+}: {
+  userId: string;
+  allowed: boolean;
+}) {
+  const actor = await requireAdmin();
+
+  await updateUserPersonalKnowledgePermission({
+    id: userId,
+    allowPersonalKnowledge: allowed,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "user.personal_knowledge.toggle",
+    target: { userId },
+    metadata: { allowed },
+  });
+
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/rag");
+  revalidatePath("/profile");
 }
 
 export async function deleteChatAction({ chatId }: { chatId: string }) {
@@ -1657,6 +1690,55 @@ export async function grantUserCreditsAction(formData: FormData) {
   revalidatePath("/admin/users");
   revalidatePath("/subscriptions");
   revalidatePath("/recharge");
+}
+
+export async function updateUserKnowledgeApprovalAction({
+  entryId,
+  approvalStatus,
+}: {
+  entryId: string;
+  approvalStatus: RagEntryApprovalStatus;
+}) {
+  const actor = await requireAdmin();
+  const entry = await updateUserAddedKnowledgeApproval({
+    entryId,
+    approvalStatus,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "user.personal_knowledge.review",
+    target: { entryId, userId: entry.personalForUserId },
+    metadata: { approvalStatus },
+  });
+
+  revalidatePath("/admin/rag");
+  revalidatePath("/profile");
+  return entry;
+}
+
+export async function deleteUserKnowledgeEntryAction({
+  entryId,
+}: {
+  entryId: string;
+}) {
+  const actor = await requireAdmin();
+
+  await deletePersonalKnowledgeEntry({
+    entryId,
+    actorId: actor.id,
+    allowOverride: true,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "user.personal_knowledge.delete",
+    target: { entryId },
+  });
+
+  revalidatePath("/admin/rag");
+  revalidatePath("/profile");
 }
 
 export async function createRagEntryAction(input: UpsertRagEntryInput) {
