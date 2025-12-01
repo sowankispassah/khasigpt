@@ -295,7 +295,8 @@ export const {
       if (token.id) {
         const record = await ensureDbUser();
         if (!record) {
-          token.deleted = true;
+          // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
+          token = {} as typeof token;
         } else {
           if (record.role) {
             token.role = record.role as UserRole;
@@ -311,7 +312,7 @@ export const {
       return token;
     },
     session({ session, token }: { session: any; token: any }) {
-      if (token.deleted) {
+      if (!token.id) {
         return null;
       }
       if (session.user) {
