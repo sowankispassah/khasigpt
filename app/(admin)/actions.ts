@@ -1568,8 +1568,7 @@ export async function updatePricingPlanAction(formData: FormData) {
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
-
-  return { success: true, planId: id };
+  redirect("/admin/settings?notice=plan-updated");
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {
