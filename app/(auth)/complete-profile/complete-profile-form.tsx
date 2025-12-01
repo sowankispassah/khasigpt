@@ -34,6 +34,7 @@ export function CompleteProfileForm({
   useEffect(() => {
     if (state.status === "success") {
       router.replace("/");
+      router.refresh();
     }
   }, [state.status, router]);
 
