@@ -7,7 +7,7 @@ import { DataStreamProvider } from "@/components/data-stream-provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { loadChatModels } from "@/lib/ai/models";
 import { loadFeatureFlags } from "@/lib/feature-flags";
-import { getUserBalanceSummary } from "@/lib/db/queries";
+import { getUserBalanceSummary, getUserById } from "@/lib/db/queries";
 import { auth } from "../(auth)/auth";
 
 export const experimental_ppr = true;
@@ -20,17 +20,15 @@ export default async function Layout({
   const [featureFlags, { models, defaultModel }, session, cookieStore] =
     await Promise.all([loadFeatureFlags(), loadChatModels(), auth(), cookies()]);
 
-  if (
-    session?.user &&
-    (!session.user.dateOfBirth ||
-      !session.user.firstName ||
-      !session.user.lastName)
-  ) {
+  const dbUser = session?.user ? await getUserById(session.user.id) : null;
+  const profileUser = dbUser ?? session?.user ?? null;
+
+  if (profileUser && (!profileUser.dateOfBirth || !profileUser.firstName || !profileUser.lastName)) {
     redirect("/complete-profile");
   }
 
-  const balance = session?.user
-    ? await getUserBalanceSummary(session.user.id)
+  const balance = profileUser
+    ? await getUserBalanceSummary(profileUser.id)
     : null;
 
   const sidebarBalance = balance

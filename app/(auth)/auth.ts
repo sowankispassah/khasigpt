@@ -294,10 +294,12 @@ export const {
 
       if (token.id) {
         const record = await ensureDbUser();
-        if (record?.role) {
-          token.role = record.role as UserRole;
-        }
-        if (record && typeof record.allowPersonalKnowledge !== "undefined") {
+        if (!record) {
+          token.deleted = true;
+        } else {
+          if (record.role) {
+            token.role = record.role as UserRole;
+          }
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
         }
       }
@@ -309,6 +311,9 @@ export const {
       return token;
     },
     session({ session, token }: { session: any; token: any }) {
+      if (token.deleted) {
+        return null;
+      }
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";

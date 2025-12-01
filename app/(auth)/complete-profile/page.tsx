@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { auth } from "../auth";
+import { getUserById } from "@/lib/db/queries";
 import { CompleteProfileForm } from "./complete-profile-form";
 
 export default async function CompleteProfilePage() {
@@ -12,15 +13,18 @@ export default async function CompleteProfilePage() {
     redirect("/login");
   }
 
+  const dbUser = await getUserById(session.user.id);
+  const profileUser = dbUser ?? session.user;
+
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const { dictionary } = await getTranslationBundle(preferredLanguage);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
   const hasCompletedProfile =
-    Boolean(session.user.dateOfBirth) &&
-    Boolean(session.user.firstName) &&
-    Boolean(session.user.lastName);
+    Boolean(profileUser.dateOfBirth) &&
+    Boolean(profileUser.firstName) &&
+    Boolean(profileUser.lastName);
 
   if (hasCompletedProfile) {
     redirect("/");
@@ -41,9 +45,9 @@ export default async function CompleteProfilePage() {
           </p>
         </div>
         <CompleteProfileForm
-          defaultDateOfBirth={session.user.dateOfBirth ?? null}
-          defaultFirstName={session.user.firstName ?? null}
-          defaultLastName={session.user.lastName ?? null}
+          defaultDateOfBirth={profileUser.dateOfBirth ?? null}
+          defaultFirstName={profileUser.firstName ?? null}
+          defaultLastName={profileUser.lastName ?? null}
         />
       </div>
     </div>
