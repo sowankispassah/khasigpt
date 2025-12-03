@@ -84,7 +84,7 @@ export default async function PrivacyPolicyPage() {
           </p>
         </header>
 
-        <section className="space-y-4 text-sm leading-7 text-muted-foreground md:text-base md:leading-8">
+        <section className="space-y-3 text-sm leading-6 text-muted-foreground md:text-base md:leading-7">
           {renderLegalContent(content)}
         </section>
       </div>
@@ -130,7 +130,9 @@ function renderLegalContent(content: string) {
       }
 
       return (
-        <p key={`paragraph-${index}`}>{block.replace(/\n+/g, " ")}</p>
+        <p className="whitespace-pre-line" key={`paragraph-${index}`}>
+          {block}
+        </p>
       );
     });
 }

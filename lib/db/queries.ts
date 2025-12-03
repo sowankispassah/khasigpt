@@ -297,6 +297,10 @@ export async function getUser(email: string): Promise<User[]> {
 }
 
 export async function getUserById(id: string): Promise<User | null> {
+  if (typeof id !== "string" || !isValidUUID(id)) {
+    return null;
+  }
+
   try {
     const [record] = await db
       .select()
@@ -3596,6 +3600,10 @@ export async function markPaymentTransactionFailed({
 export async function getActiveSubscriptionForUser(
   userId: string
 ): Promise<UserSubscription | null> {
+  if (typeof userId !== "string" || !isValidUUID(userId)) {
+    return null;
+  }
+
   const now = new Date();
 
   try {
@@ -3614,6 +3622,10 @@ export async function getActiveSubscriptionForUser(
 export async function hasAnySubscriptionForUser(
   userId: string
 ): Promise<boolean> {
+  if (typeof userId !== "string" || !isValidUUID(userId)) {
+    return false;
+  }
+
   try {
     const [existing] = await db
       .select({ id: userSubscription.id })
@@ -3855,6 +3867,10 @@ export type ActiveSubscriptionSummary = {
 export async function getUserBalanceSummary(
   userId: string
 ): Promise<UserBalanceSummary> {
+  if (typeof userId !== "string" || !isValidUUID(userId)) {
+    return EMPTY_BALANCE;
+  }
+
   try {
     const subscription = await getActiveSubscriptionForUser(userId);
     const latestSubscription =
