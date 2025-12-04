@@ -13,10 +13,18 @@ function truncate(value: string | null, max = 140) {
 
 export default async function AdminUserLogsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ offset?: string }>;
 }) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const offsetParam = resolvedSearchParams?.offset ?? "0";
+  const offset = Number.parseInt(offsetParam, 10);
+  const safeOffset = Number.isFinite(offset) && offset > 0 ? offset : 0;
+  const pageSize = 10;
+
   const user = await getUserById(id);
   if (!user) {
     notFound();
@@ -24,8 +32,13 @@ export default async function AdminUserLogsPage({
 
   const auditEntries = await listAuditLog({
     userId: id,
-    limit: 200,
+    limit: pageSize,
+    offset: safeOffset,
   });
+  const hasMore = auditEntries.length === pageSize;
+  const hasPrev = safeOffset > 0;
+  const nextOffset = safeOffset + pageSize;
+  const prevOffset = Math.max(0, safeOffset - pageSize);
 
   const firstSeen = auditEntries.at(-1)?.createdAt ?? user.createdAt;
   const lastSeen = auditEntries.at(0)?.createdAt ?? user.createdAt;
@@ -80,7 +93,7 @@ export default async function AdminUserLogsPage({
             </div>
             <SessionUsageChatLink
               className="cursor-pointer text-sm font-semibold text-primary underline-offset-4 hover:underline"
-              href={`/admin/users/${user.id}/logs`}
+              href={`/admin/users/${user.id}/logs?offset=${safeOffset}`}
             >
               Refresh
             </SessionUsageChatLink>
@@ -118,11 +131,11 @@ export default async function AdminUserLogsPage({
                     No audit entries yet.
                   </td>
                 </tr>
-              ) : (
-                auditEntries.map((entry) => {
-                  const createdAt = new Date(entry.createdAt);
-                  return (
-                    <tr
+            ) : (
+              auditEntries.map((entry) => {
+                const createdAt = new Date(entry.createdAt);
+                return (
+                  <tr
                       key={entry.id}
                       className="border-b last:border-0 hover:bg-muted/30"
                     >
@@ -156,6 +169,20 @@ export default async function AdminUserLogsPage({
               )}
             </tbody>
           </table>
+          <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+            <SessionUsageChatLink
+              className="font-semibold text-primary underline-offset-4 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              href={`/admin/users/${user.id}/logs?offset=${prevOffset}`}
+            >
+              {hasPrev ? "Previous 10" : ""}
+            </SessionUsageChatLink>
+            <SessionUsageChatLink
+              className="font-semibold text-primary underline-offset-4 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              href={`/admin/users/${user.id}/logs?offset=${nextOffset}`}
+            >
+              {hasMore ? "Next 10" : ""}
+            </SessionUsageChatLink>
+          </div>
         </div>
 
         {/* Mobile stacked cards */}
@@ -209,6 +236,20 @@ export default async function AdminUserLogsPage({
               );
             })
           )}
+          <div className="flex items-center justify-between pt-1 text-sm">
+            <SessionUsageChatLink
+              className="font-semibold text-primary underline-offset-4 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              href={`/admin/users/${user.id}/logs?offset=${prevOffset}`}
+            >
+              {hasPrev ? "Previous 10" : ""}
+            </SessionUsageChatLink>
+            <SessionUsageChatLink
+              className="font-semibold text-primary underline-offset-4 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              href={`/admin/users/${user.id}/logs?offset=${nextOffset}`}
+            >
+              {hasMore ? "Next 10" : ""}
+            </SessionUsageChatLink>
+          </div>
         </div>
       </div>
     </div>
