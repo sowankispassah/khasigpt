@@ -46,19 +46,25 @@ function detectDeviceFromUserAgent(userAgent: string | null): string | null {
 export function getClientInfoFromHeaders(): ClientInfo {
   try {
     const headerStore = headers();
+    const getHeader = (key: string) => {
+      if (headerStore && typeof (headerStore as any).get === "function") {
+        return (headerStore as any).get(key);
+      }
+      return null;
+    };
     const forwardedFor =
-      headerStore.get("x-forwarded-for") ?? headerStore.get("forwarded") ?? "";
+      getHeader("x-forwarded-for") ?? getHeader("forwarded") ?? "";
     const forwardedValue = forwardedFor.split(",")[0]?.trim() ?? "";
     const normalizedForwarded = forwardedValue.startsWith("for=")
       ? forwardedValue.replace(/^for=/i, "").replace(/^['"]|['"]$/g, "")
       : forwardedValue;
     const ipAddress =
       sanitizeHeaderValue(normalizedForwarded, null, 128) ??
-      sanitizeHeaderValue(headerStore.get("cf-connecting-ip"), null, 128) ??
-      sanitizeHeaderValue(headerStore.get("x-real-ip"), null, 128) ??
+      sanitizeHeaderValue(getHeader("cf-connecting-ip"), null, 128) ??
+      sanitizeHeaderValue(getHeader("x-real-ip"), null, 128) ??
       null;
 
-    const userAgent = sanitizeHeaderValue(headerStore.get("user-agent"));
+    const userAgent = sanitizeHeaderValue(getHeader("user-agent"));
     const device = detectDeviceFromUserAgent(userAgent);
 
     return {
