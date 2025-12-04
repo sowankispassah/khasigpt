@@ -144,12 +144,13 @@ export const {
       }
 
       const clientInfo = getClientInfoFromHeaders();
+      const userWithFlag = user as { isNewUser?: boolean } | null | undefined;
       const inferredIsNewUser =
         typeof isNewUser === "boolean"
           ? isNewUser
-          : Boolean(
-              (user as Record<string, unknown> | null | undefined)?.["isNewUser"]
-            );
+          : typeof userWithFlag?.isNewUser === "boolean"
+            ? userWithFlag.isNewUser
+            : false;
 
       try {
         await createAuditLogEntry({
