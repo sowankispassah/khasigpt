@@ -1806,7 +1806,10 @@ export async function listAuditLog({
     const conditions: SQL<boolean>[] = [];
     if (userId && isValidUUID(userId)) {
       conditions.push(
-        or(eq(auditLog.actorId, userId), eq(auditLog.subjectUserId, userId))
+        or(
+          eq(auditLog.actorId, userId),
+          eq(auditLog.subjectUserId, userId)
+        ) as SQL<boolean>
       );
     }
 
