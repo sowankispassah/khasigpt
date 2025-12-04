@@ -92,7 +92,6 @@ export function AdminUserActionsMenu({
           <SessionUsageChatLink
             className="flex w-full items-center rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted hover:text-foreground"
             href={`/admin/users/${userId}/logs`}
-            onClick={() => setOpen(false)}
           >
             Logs
           </SessionUsageChatLink>
