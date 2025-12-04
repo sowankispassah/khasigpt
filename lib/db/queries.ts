@@ -1316,7 +1316,7 @@ export async function updateUserLocation({
   const acc = Number(accuracy);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    throw new ChatSDKError("bad_request:validation", "Invalid coordinates");
+    throw new ChatSDKError("bad_request:api", "Invalid coordinates");
   }
 
   try {
