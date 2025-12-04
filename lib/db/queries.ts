@@ -1806,25 +1806,19 @@ export async function listAuditLog({
     const conditions: SQL<boolean>[] = [];
     if (userId && isValidUUID(userId)) {
       conditions.push(
-        or(
-          eq(auditLog.actorId, userId),
-          eq(auditLog.subjectUserId, userId)
-        ) as SQL<boolean>
+        or(eq(auditLog.actorId, userId), eq(auditLog.subjectUserId, userId)) as SQL<boolean>
       );
     }
 
-    let query = db
-      .select()
-      .from(auditLog)
-      .orderBy(desc(auditLog.createdAt))
-      .limit(limit)
-      .offset(offset);
-
+    let query = db.select().from(auditLog);
     if (conditions.length > 0) {
       query = query.where(and(...conditions));
     }
 
-    return await query;
+    return await query
+      .orderBy(desc(auditLog.createdAt))
+      .limit(limit)
+      .offset(offset);
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
