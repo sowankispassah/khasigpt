@@ -1810,12 +1810,19 @@ export async function listAuditLog({
       );
     }
 
-    let query = db.select().from(auditLog);
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db
+        .select()
+        .from(auditLog)
+        .where(and(...conditions))
+        .orderBy(desc(auditLog.createdAt))
+        .limit(limit)
+        .offset(offset);
     }
 
-    return await query
+    return await db
+      .select()
+      .from(auditLog)
       .orderBy(desc(auditLog.createdAt))
       .limit(limit)
       .offset(offset);
