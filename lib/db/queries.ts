@@ -183,6 +183,20 @@ function maskUserIdentifier(identifier: string | null | undefined): string {
   return `${visible}${"*".repeat(maskLength)}`;
 }
 
+function sanitizeAuditString(
+  value: string | null | undefined,
+  maxLength = 512
+): string | null {
+  if (!value) {
+    return null;
+  }
+  const cleaned = value.replace(/[\r\n]/g, " ").trim();
+  if (!cleaned) {
+    return null;
+  }
+  return cleaned.slice(0, maxLength);
+}
+
 function calculateRewardAmount(totalRevenueInPaise: number, rewardPercentage: number) {
   if (!(Number.isFinite(totalRevenueInPaise) && totalRevenueInPaise > 0)) {
     return 0;
@@ -395,7 +409,7 @@ export async function createGuestUser() {
 export async function ensureOAuthUser(
   email: string,
   profile?: { image?: string | null; firstName?: string | null; lastName?: string | null }
-): Promise<User> {
+): Promise<{ user: User; isNewUser: boolean }> {
   const normalizedEmail = normalizeEmailValue(email);
   const [existing] = await getUser(normalizedEmail);
 
@@ -456,15 +470,17 @@ export async function ensureOAuthUser(
       userRecord = updated ?? userRecord;
     }
 
-    return userRecord;
+    return { user: userRecord, isNewUser: false };
   }
 
-  return await createOAuthUser(
+  const newUser = await createOAuthUser(
     normalizedEmail,
     profile?.image ?? null,
     profile?.firstName ?? null,
     profile?.lastName ?? null
   );
+
+  return { user: newUser, isNewUser: true };
 }
 
 export async function deleteEmailVerificationTokensForUser({
@@ -1282,6 +1298,50 @@ export async function updateUserPassword({
   }
 }
 
+export async function updateUserLocation({
+  id,
+  latitude,
+  longitude,
+  accuracy,
+  consent = true,
+}: {
+  id: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  consent?: boolean;
+}) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  const acc = Number(accuracy);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new ChatSDKError("bad_request:validation", "Invalid coordinates");
+  }
+
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        locationLatitude: lat,
+        locationLongitude: lng,
+        locationAccuracy: Number.isFinite(acc) ? acc : null,
+        locationConsent: Boolean(consent),
+        locationUpdatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update user location"
+    );
+  }
+}
+
 export async function updateUserProfile({
   id,
   dateOfBirth,
@@ -1448,6 +1508,16 @@ export async function updateUserAuthProvider({
   id: string;
   authProvider: User["authProvider"];
 }) {
+  const existing = await getUserById(id);
+  if (!existing) {
+    throw new ChatSDKError("bad_request:database", "User not found");
+  }
+
+  // Preserve the original signup provider; do not downgrade/override once set.
+  if (existing.authProvider && existing.authProvider !== authProvider) {
+    return existing;
+  }
+
   try {
     const [updated] = await db
       .update(user)
@@ -1676,12 +1746,26 @@ export async function createAuditLogEntry({
   action,
   target,
   metadata,
+  subjectUserId,
+  ipAddress,
+  userAgent,
+  device,
 }: {
   actorId: string;
   action: string;
   target: Record<string, unknown>;
   metadata?: Record<string, unknown> | null;
+  subjectUserId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  device?: string | null;
 }): Promise<AuditLog | null> {
+  const targetUserId =
+    typeof target?.["userId"] === "string" ? (target["userId"] as string) : null;
+  const derivedSubjectUserId =
+    (subjectUserId && isValidUUID(subjectUserId) ? subjectUserId : null) ??
+    (targetUserId && isValidUUID(targetUserId) ? targetUserId : null);
+
   try {
     const [entry] = await db
       .insert(auditLog)
@@ -1690,6 +1774,10 @@ export async function createAuditLogEntry({
         action,
         target,
         metadata: metadata ?? null,
+        subjectUserId: derivedSubjectUserId,
+        ipAddress: sanitizeAuditString(ipAddress, 128),
+        userAgent: sanitizeAuditString(userAgent),
+        device: sanitizeAuditString(device, 64),
       })
       .returning();
 
@@ -1708,17 +1796,32 @@ export async function createAuditLogEntry({
 export async function listAuditLog({
   limit = 50,
   offset = 0,
+  userId,
 }: {
   limit?: number;
   offset?: number;
+  userId?: string | null;
 } = {}): Promise<AuditLog[]> {
   try {
-    return await db
+    const conditions: SQL<boolean>[] = [];
+    if (userId && isValidUUID(userId)) {
+      conditions.push(
+        or(eq(auditLog.actorId, userId), eq(auditLog.subjectUserId, userId))
+      );
+    }
+
+    let query = db
       .select()
       .from(auditLog)
       .orderBy(desc(auditLog.createdAt))
       .limit(limit)
       .offset(offset);
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    return await query;
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];

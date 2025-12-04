@@ -13,6 +13,7 @@ import {
   getMessageById,
   updateChatVisiblityById,
 } from "@/lib/db/queries";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
@@ -92,6 +93,7 @@ export async function rechargeSubscriptionAction(formData: FormData) {
     throw new Error("missing plan id");
   }
 
+  const clientInfo = getClientInfoFromHeaders();
   const subscription = await createUserSubscription({
     userId: session.user.id,
     planId,
@@ -101,6 +103,8 @@ export async function rechargeSubscriptionAction(formData: FormData) {
     actorId: session.user.id,
     action: "billing.recharge",
     target: { subscriptionId: subscription.id, planId },
+    subjectUserId: session.user.id,
+    ...clientInfo,
   });
 
   revalidatePath("/", "layout");

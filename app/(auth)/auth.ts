@@ -4,13 +4,19 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
-import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
+import {
+  createAuditLogEntry,
+  ensureOAuthUser,
+  getUser,
+  getUserById,
+} from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import {
   incrementRateLimit,
   resetRateLimit,
 } from "@/lib/security/rate-limit";
 import { authConfig } from "./auth.config";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 export type UserRole = "regular" | "creator" | "admin";
 
@@ -130,6 +136,42 @@ export const {
 } = NextAuth({
   ...authConfig,
   providers,
+  events: {
+    async signIn({ user, account, isNewUser }) {
+      const actorId = typeof user?.id === "string" ? user.id : null;
+      if (!actorId) {
+        return;
+      }
+
+      const clientInfo = getClientInfoFromHeaders();
+      const inferredIsNewUser =
+        typeof isNewUser === "boolean"
+          ? isNewUser
+          : Boolean(
+              (user as Record<string, unknown> | null | undefined)?.["isNewUser"]
+            );
+
+      try {
+        await createAuditLogEntry({
+          actorId,
+          action: inferredIsNewUser ? "user.signup" : "user.login",
+          target: {
+            userId: actorId,
+            email: typeof user?.email === "string" ? user.email : undefined,
+          },
+          metadata: {
+            provider: account?.provider,
+            type: account?.type,
+            isNewUser: inferredIsNewUser,
+          },
+          subjectUserId: actorId,
+          ...clientInfo,
+        });
+      } catch (error) {
+        console.error("Failed to record auth audit log", error);
+      }
+    },
+  },
   callbacks: {
     async signIn({ user, account }: { user: any; account?: any }) {
       if (account?.provider === "google") {
@@ -151,11 +193,12 @@ export const {
               ? ((user as Record<string, string>).family_name ?? "").trim()
               : fullName.split(" ").slice(1).join(" ");
 
-          const dbUser = await ensureOAuthUser(user.email, {
+          const { user: dbUser, isNewUser: isNewOAuthUser } = await ensureOAuthUser(user.email, {
             image: profileImage,
             firstName: googleFirstName || null,
             lastName: googleLastName || null,
           });
+          (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
           user.role = dbUser.role as UserRole;
           user.image = null;

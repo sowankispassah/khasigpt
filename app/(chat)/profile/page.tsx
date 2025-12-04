@@ -15,6 +15,7 @@ import {
   type SerializedPersonalKnowledgeEntry,
 } from "./personal-knowledge-section";
 import { listPersonalKnowledgeForUser } from "@/lib/rag/service";
+import { LocationSection } from "./location-section";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,17 @@ export default async function ProfilePage() {
 
         <PasswordForm />
       </section>
+
+      <LocationSection
+        initialLatitude={currentUser?.locationLatitude ?? null}
+        initialLongitude={currentUser?.locationLongitude ?? null}
+        initialAccuracy={currentUser?.locationAccuracy ?? null}
+        updatedAt={
+          currentUser?.locationUpdatedAt
+            ? new Date(currentUser.locationUpdatedAt).toISOString()
+            : null
+        }
+      />
 
       <DeactivateAccountForm />
     </div>

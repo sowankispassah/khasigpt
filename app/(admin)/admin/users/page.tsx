@@ -3,7 +3,6 @@ import { auth } from "@/app/(auth)/auth";
 import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ActionSubmitButton } from "@/components/action-submit-button";
-import { RoleSubmitButton } from "@/components/role-submit-button";
 import {
   getUserBalanceSummary,
   listActiveSubscriptionSummaries,
@@ -20,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatDistanceToNow } from "date-fns";
+import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
+import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 
 export const dynamic = "force-dynamic";
 
@@ -91,20 +92,33 @@ export default async function AdminUsersPage() {
                 </td>
                 <td className="py-3">
                   <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
-                    <RoleToggleForm
-                      currentRole={user.role as UserRole}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
-                    />
-                    <StatusToggleForm
+                    <AdminUserActionsMenu
+                      allowPersonalKnowledge={Boolean(user.allowPersonalKnowledge)}
                       isActive={user.isActive}
                       isSelf={user.id === currentUserId}
+                      currentRole={user.role as UserRole}
                       userId={user.id}
-                    />
-                    <PersonalKnowledgeToggleForm
-                      allowPersonalKnowledge={Boolean(user.allowPersonalKnowledge)}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
+                      onSuspend={async () => {
+                        "use server";
+                        await setUserActiveStateAction({
+                          userId: user.id,
+                          isActive: !user.isActive,
+                        });
+                      }}
+                      onToggleRag={async () => {
+                        "use server";
+                        await setUserPersonalKnowledgePermissionAction({
+                          userId: user.id,
+                          allowed: !user.allowPersonalKnowledge,
+                        });
+                      }}
+                      onSetRole={async (role) => {
+                        "use server";
+                        await setUserRoleAction({
+                          userId: user.id,
+                          role,
+                        });
+                      }}
                     />
                     <AddCreditsForm
                       balance={balance}
@@ -178,49 +192,6 @@ export default async function AdminUsersPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function RoleToggleForm({
-  userId,
-  currentRole,
-  isSelf,
-}: {
-  userId: string;
-  currentRole: UserRole;
-  isSelf: boolean;
-}) {
-  const roles: UserRole[] = ["regular", "creator", "admin"];
-
-  return (
-    <form
-      action={async (formData) => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        const role = formData.get("role")?.toString() as UserRole | undefined;
-        if (!role || role === currentRole) {
-          return;
-        }
-        await setUserRoleAction({ userId, role });
-      }}
-      className="flex items-center gap-2"
-    >
-      <select
-        className="h-9 rounded-md border border-input bg-background px-2 text-sm capitalize"
-        defaultValue={currentRole}
-        disabled={isSelf}
-        name="role"
-      >
-        {roles.map((role) => (
-          <option className="capitalize" key={role} value={role}>
-            {role}
-          </option>
-        ))}
-      </select>
-      <RoleSubmitButton disabled={isSelf} />
-    </form>
   );
 }
 
@@ -372,71 +343,3 @@ function CreditHistoryItem({
     </div>
   );
 }
-
-function StatusToggleForm({
-  userId,
-  isActive,
-  isSelf,
-}: {
-  userId: string;
-  isActive: boolean;
-  isSelf: boolean;
-}) {
-  return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserActiveStateAction({ userId, isActive: !isActive });
-      }}
-    >
-      <Button
-        disabled={isSelf}
-        size="sm"
-        type="submit"
-        variant={isActive ? "destructive" : "secondary"}
-      >
-        {isActive ? "Suspend" : "Restore"}
-      </Button>
-    </form>
-  );
-}
-
-function PersonalKnowledgeToggleForm({
-  userId,
-  allowPersonalKnowledge,
-  isSelf,
-}: {
-  userId: string;
-  allowPersonalKnowledge: boolean;
-  isSelf: boolean;
-}) {
-  return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserPersonalKnowledgePermissionAction({
-          userId,
-          allowed: !allowPersonalKnowledge,
-        });
-      }}
-      className="flex items-center gap-2"
-    >
-      <ActionSubmitButton
-        pendingLabel="Updating..."
-        size="sm"
-        variant={allowPersonalKnowledge ? "secondary" : "outline"}
-      >
-        {allowPersonalKnowledge ? "Disable RAG" : "Allow RAG"}
-      </ActionSubmitButton>
-    </form>
-  );
-}
-
-
-

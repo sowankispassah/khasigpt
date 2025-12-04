@@ -47,6 +47,11 @@ export const user = pgTable(
     firstName: varchar("firstName", { length: 64 }),
     lastName: varchar("lastName", { length: 64 }),
     dateOfBirth: date("dateOfBirth"),
+    locationLatitude: doublePrecision("locationLatitude"),
+    locationLongitude: doublePrecision("locationLongitude"),
+    locationAccuracy: doublePrecision("locationAccuracy"),
+    locationUpdatedAt: timestamp("locationUpdatedAt"),
+    locationConsent: boolean("locationConsent").notNull().default(false),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
@@ -746,9 +751,17 @@ export const auditLog = pgTable(
     action: varchar("action", { length: 128 }).notNull(),
     target: jsonb("target").notNull(),
     metadata: jsonb("metadata"),
+    subjectUserId: uuid("subjectUserId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ipAddress: varchar("ipAddress", { length: 128 }),
+    userAgent: text("userAgent"),
+    device: varchar("device", { length: 64 }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({
+    actorIdx: index("AuditLog_actor_idx").on(table.actorId),
+    subjectUserIdx: index("AuditLog_subjectUser_idx").on(table.subjectUserId),
     createdAtIdx: index("AuditLog_createdAt_idx").on(table.createdAt),
   })
 );
