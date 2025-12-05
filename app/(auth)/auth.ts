@@ -4,15 +4,21 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
-import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
+import {
+  createAuditLogEntry,
+  ensureOAuthUser,
+  getUser,
+  getUserById,
+} from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import {
   incrementRateLimit,
   resetRateLimit,
 } from "@/lib/security/rate-limit";
 import { authConfig } from "./auth.config";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
-export type UserRole = "regular" | "admin";
+export type UserRole = "regular" | "creator" | "admin";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -23,6 +29,7 @@ declare module "next-auth" {
       imageVersion: string | null;
       firstName: string | null;
       lastName: string | null;
+      allowPersonalKnowledge: boolean;
     } & DefaultSession["user"];
   }
 
@@ -36,6 +43,7 @@ declare module "next-auth" {
     imageVersion?: string | null;
     firstName?: string | null;
     lastName?: string | null;
+    allowPersonalKnowledge?: boolean;
   }
 }
 
@@ -102,6 +110,7 @@ const providers: any[] = [
         ...rest,
         role: user.role,
         imageVersion,
+        allowPersonalKnowledge: user.allowPersonalKnowledge ?? false,
       } as typeof rest & { role: UserRole; imageVersion: string | null };
     },
   }),
@@ -127,6 +136,43 @@ export const {
 } = NextAuth({
   ...authConfig,
   providers,
+  events: {
+    async signIn({ user, account, isNewUser }) {
+      const actorId = typeof user?.id === "string" ? user.id : null;
+      if (!actorId) {
+        return;
+      }
+
+      const clientInfo = getClientInfoFromHeaders();
+      const userWithFlag = user as { isNewUser?: boolean } | null | undefined;
+      const inferredIsNewUser =
+        typeof isNewUser === "boolean"
+          ? isNewUser
+          : typeof userWithFlag?.isNewUser === "boolean"
+            ? userWithFlag.isNewUser
+            : false;
+
+      try {
+        await createAuditLogEntry({
+          actorId,
+          action: inferredIsNewUser ? "user.signup" : "user.login",
+          target: {
+            userId: actorId,
+            email: typeof user?.email === "string" ? user.email : undefined,
+          },
+          metadata: {
+            provider: account?.provider,
+            type: account?.type,
+            isNewUser: inferredIsNewUser,
+          },
+          subjectUserId: actorId,
+          ...clientInfo,
+        });
+      } catch (error) {
+        console.error("Failed to record auth audit log", error);
+      }
+    },
+  },
   callbacks: {
     async signIn({ user, account }: { user: any; account?: any }) {
       if (account?.provider === "google") {
@@ -148,11 +194,12 @@ export const {
               ? ((user as Record<string, string>).family_name ?? "").trim()
               : fullName.split(" ").slice(1).join(" ");
 
-          const dbUser = await ensureOAuthUser(user.email, {
+          const { user: dbUser, isNewUser: isNewOAuthUser } = await ensureOAuthUser(user.email, {
             image: profileImage,
             firstName: googleFirstName || null,
             lastName: googleLastName || null,
           });
+          (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
           user.role = dbUser.role as UserRole;
           user.image = null;
@@ -171,6 +218,7 @@ export const {
               .join(" ")
               .trim();
           }
+          user.allowPersonalKnowledge = dbUser.allowPersonalKnowledge ?? false;
         } catch (error) {
           if (error instanceof ChatSDKError) {
             if (error.cause === "account_inactive") {
@@ -204,11 +252,25 @@ export const {
         token.imageVersion = user.imageVersion ?? null;
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
+        token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
       } else {
         if (!token.role) {
           token.role = "regular";
         }
       }
+
+      let cachedDbUser: Awaited<ReturnType<typeof getUserById>> | null | undefined;
+      const ensureDbUser = async () => {
+        if (!token.id) {
+          cachedDbUser = null;
+          return null;
+        }
+        if (typeof cachedDbUser !== "undefined") {
+          return cachedDbUser;
+        }
+        cachedDbUser = await getUserById(token.id as string);
+        return cachedDbUser;
+      };
 
       if (trigger === "update" && session) {
         if ("imageVersion" in session) {
@@ -223,6 +285,9 @@ export const {
         if ("lastName" in session) {
           token.lastName = (session.lastName as string | null) ?? null;
         }
+        if ("allowPersonalKnowledge" in session) {
+          token.allowPersonalKnowledge = Boolean(session.allowPersonalKnowledge);
+        }
       }
 
       if (
@@ -235,7 +300,7 @@ export const {
           typeof token.lastName === "undefined" ||
           token.lastName === null)
       ) {
-        const record = await getUserById(token.id as string);
+        const record = await ensureDbUser();
         if (record) {
           if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
             token.dateOfBirth = record.dateOfBirth ?? null;
@@ -252,6 +317,9 @@ export const {
           if (typeof token.lastName === "undefined" || token.lastName === null) {
             token.lastName = record.lastName ?? null;
           }
+          if (typeof token.allowPersonalKnowledge === "undefined") {
+            token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+          }
         }
       } else if (typeof token.imageVersion === "undefined") {
         token.imageVersion = null;
@@ -263,10 +331,34 @@ export const {
       if (typeof token.lastName === "undefined") {
         token.lastName = null;
       }
+      if (typeof token.allowPersonalKnowledge === "undefined") {
+        const record = await ensureDbUser();
+        token.allowPersonalKnowledge = record?.allowPersonalKnowledge ?? false;
+      }
+
+      if (token.id) {
+        const record = await ensureDbUser();
+        if (!record) {
+          // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
+          token = {} as typeof token;
+        } else {
+          if (record.role) {
+            token.role = record.role as UserRole;
+          }
+          token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+        }
+      }
+
+      if (!token.role) {
+        token.role = "regular";
+      }
 
       return token;
     },
     session({ session, token }: { session: any; token: any }) {
+      if (!token.id) {
+        return null;
+      }
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
@@ -274,6 +366,9 @@ export const {
         session.user.imageVersion = (token.imageVersion ?? null) as string | null;
         session.user.firstName = (token.firstName ?? null) as string | null;
         session.user.lastName = (token.lastName ?? null) as string | null;
+        session.user.allowPersonalKnowledge = Boolean(
+          token.allowPersonalKnowledge ?? false
+        );
         const computedName = [session.user.firstName, session.user.lastName]
           .filter(Boolean)
           .join(" ")

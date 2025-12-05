@@ -1,11 +1,10 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
 import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle, getTranslationsForKeys } from "@/lib/i18n/dictionary";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -71,13 +70,9 @@ export default async function TermsOfServicePage() {
     <>
       <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
         <div>
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-            href="/"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            {translations["navigation.back_to_home"] ?? "Back to home"}
-          </Link>
+          <BackToHomeButton
+            label={translations["navigation.back_to_home"] ?? "Back to home"}
+          />
         </div>
 
         <header className="space-y-2">
@@ -91,7 +86,7 @@ export default async function TermsOfServicePage() {
           </p>
         </header>
 
-        <section className="space-y-4 text-sm leading-7 text-muted-foreground md:text-base md:leading-8">
+        <section className="space-y-3 text-sm leading-6 text-muted-foreground md:text-base md:leading-7">
           {renderLegalContent(resolvedContent)}
         </section>
       </div>
@@ -137,7 +132,9 @@ function renderLegalContent(content: string) {
       }
 
       return (
-        <p key={`paragraph-${index}`}>{block.replace(/\n+/g, " ")}</p>
+        <p className="whitespace-pre-line" key={`paragraph-${index}`}>
+          {block}
+        </p>
       );
     });
 }

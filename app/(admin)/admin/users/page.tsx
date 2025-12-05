@@ -1,9 +1,11 @@
-import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } from "@/app/(admin)/actions";
+import { grantUserCreditsAction, setUserActiveStateAction, setUserPersonalKnowledgePermissionAction, setUserRoleAction } from "@/app/(admin)/actions";
 import { auth } from "@/app/(auth)/auth";
 import { InfoIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { ActionSubmitButton } from "@/components/action-submit-button";
 import {
   getUserBalanceSummary,
+  listActiveSubscriptionSummaries,
   listPricingPlans,
   listUserCreditHistory,
   listUsers,
@@ -17,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatDistanceToNow } from "date-fns";
+import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
+import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +28,10 @@ export default async function AdminUsersPage() {
   const session = await auth();
   const currentUserId = session?.user?.id;
 
-  const [users, plans] = await Promise.all([
+  const [users, plans, activeSubscriptions] = await Promise.all([
     listUsers({ limit: 100 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    listActiveSubscriptionSummaries({ limit: 20 }),
   ]);
 
   const planNameById = new Map(plans.map((plan) => [plan.id, plan.name]));
@@ -60,7 +65,7 @@ export default async function AdminUsersPage() {
       </header>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm whitespace-nowrap">
           <thead className="text-muted-foreground text-xs uppercase">
             <tr>
               <th className="py-3 text-left">Email</th>
@@ -86,16 +91,34 @@ export default async function AdminUsersPage() {
                   )}
                 </td>
                 <td className="py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <RoleToggleForm
-                      currentRole={user.role as UserRole}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
-                    />
-                    <StatusToggleForm
+                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
+                    <AdminUserActionsMenu
+                      allowPersonalKnowledge={Boolean(user.allowPersonalKnowledge)}
                       isActive={user.isActive}
                       isSelf={user.id === currentUserId}
+                      currentRole={user.role as UserRole}
                       userId={user.id}
+                      onSuspend={async () => {
+                        "use server";
+                        await setUserActiveStateAction({
+                          userId: user.id,
+                          isActive: !user.isActive,
+                        });
+                      }}
+                      onToggleRag={async () => {
+                        "use server";
+                        await setUserPersonalKnowledgePermissionAction({
+                          userId: user.id,
+                          allowed: !user.allowPersonalKnowledge,
+                        });
+                      }}
+                      onSetRole={async (role) => {
+                        "use server";
+                        await setUserRoleAction({
+                          userId: user.id,
+                          role,
+                        });
+                      }}
                     />
                     <AddCreditsForm
                       balance={balance}
@@ -111,36 +134,64 @@ export default async function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base font-semibold">Active subscriptions</h3>
+            <p className="text-muted-foreground text-sm">
+              Recent users with active plans and their remaining balances.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="py-2 text-left">User</th>
+                <th className="py-2 text-left">Plan</th>
+                <th className="py-2 text-right">Tokens left</th>
+                <th className="py-2 text-right">Expires</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeSubscriptions.length === 0 ? (
+                <tr>
+                  <td className="py-4 text-muted-foreground" colSpan={4}>
+                    No active subscriptions yet.
+                  </td>
+                </tr>
+              ) : (
+                activeSubscriptions.map((subscription) => (
+                  <tr key={subscription.subscriptionId} className="border-t">
+                    <td className="py-2 font-mono text-xs">
+                      {subscription.userEmail}
+                    </td>
+                    <td className="py-2">
+                      {subscription.planName ?? "Plan removed"}
+                    </td>
+                    <td className="py-2 text-right">
+                      {subscription.tokenBalance.toLocaleString()} /{" "}
+                      {subscription.tokenAllowance.toLocaleString()}
+                    </td>
+                    <td className="py-2 text-right">
+                      {new Date(subscription.expiresAt).toLocaleDateString(
+                        "en-IN",
+                        {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        }
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
-  );
-}
-
-function RoleToggleForm({
-  userId,
-  currentRole,
-  isSelf,
-}: {
-  userId: string;
-  currentRole: UserRole;
-  isSelf: boolean;
-}) {
-  const nextRole: UserRole = currentRole === "admin" ? "regular" : "admin";
-  const label = currentRole === "admin" ? "Revoke admin" : "Promote to admin";
-
-  return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserRoleAction({ userId, role: nextRole });
-      }}
-    >
-      <Button disabled={isSelf} size="sm" type="submit" variant="outline">
-        {label}
-      </Button>
-    </form>
   );
 }
 
@@ -158,12 +209,15 @@ function AddCreditsForm({
   getUserEmail: (userId: string | null | undefined) => string | null;
 }) {
   const creditsRemaining = balance.creditsRemaining;
-  const creditsLabel = `${creditsRemaining.toLocaleString()} credits available`;
+  const creditsLabel = `${creditsRemaining.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} credits available`;
 
   return (
     <form
       action={grantUserCreditsAction}
-      className="flex flex-wrap items-center gap-2"
+      className="flex flex-nowrap items-center gap-2 whitespace-nowrap"
     >
       <input name="userId" type="hidden" value={userId} />
       <input name="billingCycleDays" type="hidden" value="90" />
@@ -185,9 +239,14 @@ function AddCreditsForm({
         step="0.5"
         type="number"
       />
-      <Button size="sm" type="submit" variant="secondary">
+      <ActionSubmitButton
+        pendingLabel="Adding..."
+        size="sm"
+        successMessage="Credits granted"
+        variant="secondary"
+      >
         Add credits
-      </Button>
+      </ActionSubmitButton>
     </form>
   );
 }
@@ -284,37 +343,3 @@ function CreditHistoryItem({
     </div>
   );
 }
-
-function StatusToggleForm({
-  userId,
-  isActive,
-  isSelf,
-}: {
-  userId: string;
-  isActive: boolean;
-  isSelf: boolean;
-}) {
-  return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserActiveStateAction({ userId, isActive: !isActive });
-      }}
-    >
-      <Button
-        disabled={isSelf}
-        size="sm"
-        type="submit"
-        variant={isActive ? "destructive" : "secondary"}
-      >
-        {isActive ? "Suspend" : "Restore"}
-      </Button>
-    </form>
-  );
-}
-
-
-

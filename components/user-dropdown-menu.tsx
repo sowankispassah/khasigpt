@@ -15,12 +15,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTranslation } from "@/components/language-provider";
-import { LoaderIcon } from "@/components/icons";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
   trigger: React.ReactNode;
   isAdmin: boolean;
+  isCreator?: boolean;
   isAuthenticated: boolean;
   resolvedTheme: string | undefined;
   onToggleTheme: () => void;
@@ -34,6 +34,8 @@ type UserDropdownMenuProps = {
   align?: "start" | "center" | "end";
   userDisplayName?: string;
   userEmail?: string;
+  currentPathname?: string | null;
+  forumEnabled?: boolean;
 };
 
 export function getInitials(name?: string | null, email?: string | null) {
@@ -148,6 +150,7 @@ UserMenuTrigger.displayName = "UserMenuTrigger";
 export function UserDropdownMenu({
   trigger,
   isAdmin,
+  isCreator = false,
   isAuthenticated,
   resolvedTheme,
   onToggleTheme,
@@ -161,17 +164,24 @@ export function UserDropdownMenu({
   align = "end",
   userDisplayName,
   userEmail,
+  currentPathname,
+  forumEnabled = true,
 }: UserDropdownMenuProps) {
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
+  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
   const [pendingLanguageCode, setPendingLanguageCode] = React.useState<string | null>(null);
+  const [isMenuProgressVisible, setIsMenuProgressVisible] = React.useState(false);
+  const [menuProgress, setMenuProgress] = React.useState(0);
+  const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const ignoreNextLanguageOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
+  const progressTimersRef = React.useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const {
     languages: translationLanguages,
     activeLanguage,
@@ -263,22 +273,72 @@ export function UserDropdownMenu({
     };
   }, []);
 
+  const clearProgressTimers = React.useCallback(() => {
+    progressTimersRef.current.forEach((timerId) => {
+      clearTimeout(timerId);
+    });
+    progressTimersRef.current = [];
+  }, []);
+
+  const hideMenuProgress = React.useCallback(() => {
+    clearProgressTimers();
+    setIsMenuProgressVisible(false);
+    setMenuProgress(0);
+  }, [clearProgressTimers]);
+
+  const startMenuProgress = React.useCallback(() => {
+    clearProgressTimers();
+    setIsMenuProgressVisible(true);
+    setMenuProgress(12);
+    const timers = [
+      setTimeout(() => setMenuProgress(45), 120),
+      setTimeout(() => setMenuProgress(70), 260),
+      setTimeout(() => setMenuProgress(90), 520),
+    ];
+    progressTimersRef.current = timers;
+  }, [clearProgressTimers]);
+
   React.useEffect(() => {
     if (!isBusy) {
       setPendingAction(null);
     }
   }, [isBusy]);
 
+  React.useEffect(() => {
+    if (
+      !isBusy &&
+      !isLanguageUpdating &&
+      !pendingAction &&
+      !pendingLanguageCode
+    ) {
+      hideMenuProgress();
+    }
+  }, [hideMenuProgress, isBusy, isLanguageUpdating, pendingAction, pendingLanguageCode]);
+
+  React.useEffect(() => {
+    return () => {
+      clearProgressTimers();
+    };
+  }, [clearProgressTimers]);
+
   const handleSelect = (
     event: Event,
     actionType: "navigate" | "theme" | "signOut" | "language",
     actionId: string | null,
-    callback: () => void
+    callback: () => void,
+    options?: { skipProgress?: boolean }
   ) => {
     event.preventDefault();
     if (isBusy && actionType !== "language") {
       return;
     }
+    const skipProgress = options?.skipProgress ?? false;
+    if (skipProgress) {
+      setPendingAction(null);
+      callback();
+      return;
+    }
+    startMenuProgress();
     onActionStart?.();
     if (actionType !== "language") {
       setPendingAction(actionId ?? actionType);
@@ -288,6 +348,7 @@ export function UserDropdownMenu({
 
   const handleMenuOpenChange = React.useCallback(
     (open: boolean) => {
+      setIsMenuOpen(open);
       if (open) {
         onOpenChange?.(true);
         if (isAuthenticated && !planLoadTriggeredRef.current) {
@@ -305,6 +366,7 @@ export function UserDropdownMenu({
       setIsLanguageOpen(false);
       setPendingAction(null);
       setPendingLanguageCode(null);
+      hideMenuProgress();
     },
     [
       fetchPlan,
@@ -313,6 +375,14 @@ export function UserDropdownMenu({
       onOpenChange,
     ]
   );
+
+  React.useEffect(() => {
+    const handler = () => {
+      handleMenuOpenChange(false);
+    };
+    window.addEventListener("user-menu-close-request", handler);
+    return () => window.removeEventListener("user-menu-close-request", handler);
+  }, [handleMenuOpenChange]);
 
   const toggleResources = React.useCallback(() => {
     setIsResourcesOpen((prev) => {
@@ -403,15 +473,6 @@ export function UserDropdownMenu({
     },
   ];
 
-  const renderPendingIndicator = (visible: boolean) =>
-    visible ? (
-      <span className="text-muted-foreground">
-        <span className="inline-flex animate-spin">
-          <LoaderIcon size={14} />
-        </span>
-      </span>
-    ) : null;
-
   const renderInfoLinks = (className?: string) =>
     infoLinks.map((item) => (
       <DropdownMenuItem
@@ -423,12 +484,11 @@ export function UserDropdownMenu({
             ignoreNextResourcesOpenRef.current = false;
             setIsResourcesOpen(false);
             onNavigate(item.path);
-          })
+          }, { skipProgress: currentPathname === item.path })
         }
       >
         <span className="flex w-full items-center justify-between gap-2">
           {translate(item.labelKey, item.defaultLabel)}
-          {renderPendingIndicator(pendingAction === item.path)}
         </span>
       </DropdownMenuItem>
     ));
@@ -439,16 +499,39 @@ export function UserDropdownMenu({
     (userDisplayName && userDisplayName.trim().length > 0
       ? userDisplayName.trim()
       : null) ?? userEmail ?? null;
+  const shouldSkipPathProgress = React.useCallback(
+    (path: string | null | undefined) =>
+      path && currentPathname ? currentPathname === path : false,
+    [currentPathname]
+  );
 
   return (
-    <DropdownMenu onOpenChange={handleMenuOpenChange}>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent
-        align={align}
-        className="min-w-[16rem]"
-        data-testid="user-nav-menu"
-        side={side}
-      >
+    <>
+      {isMenuProgressVisible ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${menuProgress}%` }}
+          />
+        </div>
+      ) : null}
+      <DropdownMenu onOpenChange={handleMenuOpenChange} open={isMenuOpen}>
+        <DropdownMenuTrigger
+          asChild
+          ref={dropdownTriggerRef}
+          data-user-menu-trigger="1"
+        >
+          {trigger}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align={align}
+          className="min-w-[16rem]"
+          data-testid="user-nav-menu"
+          side={side}
+        >
         {primaryLabel && isAuthenticated ? (
           <DropdownMenuItem
             className="cursor-pointer font-medium text-foreground"
@@ -458,13 +541,13 @@ export function UserDropdownMenu({
                 event,
                 "navigate",
                 "navigate:profile-email",
-                () => onNavigate("/profile")
+                () => onNavigate("/profile"),
+                { skipProgress: shouldSkipPathProgress("/profile") }
               )
             }
           >
             <span className="flex w-full items-center justify-between gap-2">
               {primaryLabel}
-              {renderPendingIndicator(pendingAction === "navigate:profile-email")}
             </span>
           </DropdownMenuItem>
         ) : null}
@@ -479,13 +562,13 @@ export function UserDropdownMenu({
                   event,
                   "navigate",
                   "navigate:profile",
-                  () => onNavigate("/profile")
+                  () => onNavigate("/profile"),
+                  { skipProgress: shouldSkipPathProgress("/profile") }
                 )
               }
             >
               <span className="flex w-full items-center justify-between gap-2">
                 {translate("user_menu.profile", "Profile")}
-                {renderPendingIndicator(pendingAction === "navigate:profile")}
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -496,7 +579,8 @@ export function UserDropdownMenu({
                   event,
                   "navigate",
                   "navigate:subscriptions",
-                  () => onNavigate("/subscriptions")
+                  () => onNavigate("/subscriptions"),
+                  { skipProgress: shouldSkipPathProgress("/subscriptions") }
                 )
               }
             >
@@ -505,7 +589,6 @@ export function UserDropdownMenu({
                   "user_menu.manage_subscriptions",
                   "Manage Subscriptions"
                 )}
-                {renderPendingIndicator(pendingAction === "navigate:subscriptions")}
               </span>
               <span className="text-muted-foreground text-xs opacity-80">
                 {isPlanLoading
@@ -528,13 +611,13 @@ export function UserDropdownMenu({
                   event,
                   "navigate",
                   "navigate:recharge",
-                  () => onNavigate("/recharge")
+                  () => onNavigate("/recharge"),
+                  { skipProgress: shouldSkipPathProgress("/recharge") }
                 )
               }
             >
               <span className="flex w-full items-center justify-between gap-2">
                 {translate("user_menu.upgrade_plan", "Upgrade plan")}
-                {renderPendingIndicator(pendingAction === "navigate:recharge")}
               </span>
             </DropdownMenuItem>
             {isAdmin ? (
@@ -546,7 +629,8 @@ export function UserDropdownMenu({
                     event,
                     "navigate",
                     "navigate:admin",
-                    () => onNavigate("/admin")
+                    () => onNavigate("/admin"),
+                    { skipProgress: shouldSkipPathProgress("/admin") }
                   )
                 }
               >
@@ -555,7 +639,25 @@ export function UserDropdownMenu({
                     "user_menu.open_admin_console",
                     "Open admin console"
                   )}
-                  {renderPendingIndicator(pendingAction === "navigate:admin")}
+                </span>
+              </DropdownMenuItem>
+            ) : null}
+            {isCreator ? (
+              <DropdownMenuItem
+                className="cursor-pointer"
+                data-testid="user-nav-item-creator"
+                onSelect={(event) =>
+                  handleSelect(
+                    event,
+                    "navigate",
+                    "navigate:creator",
+                    () => onNavigate("/creator-dashboard"),
+                    { skipProgress: shouldSkipPathProgress("/creator-dashboard") }
+                  )
+                }
+              >
+                <span className="flex w-full items-center justify-between gap-2">
+                  {translate("user_menu.creator_dashboard", "Creator dashboard")}
                 </span>
               </DropdownMenuItem>
             ) : null}
@@ -563,6 +665,26 @@ export function UserDropdownMenu({
           </>
         )}
 
+        {forumEnabled ? (
+          <DropdownMenuItem
+            className="cursor-pointer"
+            data-testid="user-nav-item-forum"
+            onSelect={(event) =>
+              handleSelect(
+                event,
+                "navigate",
+                "navigate:forum",
+                () => onNavigate("/forum"),
+                { skipProgress: shouldSkipPathProgress("/forum") }
+              )
+            }
+          >
+            <span className="flex w-full items-center justify-between gap-2">
+              {translate("user_menu.community_forum", "Community Forum")}
+            </span>
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
         <DropdownMenuSub onOpenChange={handleResourcesOpenChange} open={isResourcesOpen}>
           <DropdownMenuSubTrigger
             className={cn(
@@ -656,10 +778,6 @@ export function UserDropdownMenu({
                         ? updatingLanguageLabel
                         : activeLanguageLabel
                       : null}
-                  {renderPendingIndicator(
-                    pendingLanguageCode === language.code ||
-                      (language.code === activeLanguage.code && isLanguageUpdating)
-                  )}
                 </span>
               </DropdownMenuItem>
             ))}
@@ -675,7 +793,6 @@ export function UserDropdownMenu({
             {resolvedTheme === "light"
               ? translate("user_menu.theme.dark", "Dark mode")
               : translate("user_menu.theme.light", "Light mode")}
-            {renderPendingIndicator(pendingAction === "theme")}
           </span>
         </DropdownMenuItem>
         {showSignOut ? (
@@ -691,12 +808,12 @@ export function UserDropdownMenu({
             >
               <span className="flex w-full items-center justify-between gap-2">
                 {translate("user_menu.sign_out", "Sign out")}
-                {renderPendingIndicator(pendingAction === "signOut")}
               </span>
             </DropdownMenuItem>
           </>
         ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }

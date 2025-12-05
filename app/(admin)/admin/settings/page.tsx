@@ -1,15 +1,17 @@
+import type { ReactNode } from "react";
 import {
   getAppSetting,
-  listActiveSubscriptionSummaries,
-  listModelConfigs,
-  listPricingPlans,
-  getTranslationValuesForKeys,
-} from "@/lib/db/queries";
+    listModelConfigs,
+    listPricingPlans,
+    getTranslationValuesForKeys,
+  } from "@/lib/db/queries";
+import type { PricingPlan } from "@/lib/db/schema";
 import {
   createModelConfigAction,
   deleteModelConfigAction,
   hardDeleteModelConfigAction,
   setDefaultModelConfigAction,
+  setMarginBaselineModelAction,
   updateModelConfigAction,
   createPricingPlanAction,
   updatePricingPlanAction,
@@ -23,8 +25,11 @@ import {
   createLanguageAction,
   updateLanguageStatusAction,
   updatePlanTranslationAction,
+  updateFreeMessageSettingsAction,
+  updateForumAvailabilityAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { cn } from "@/lib/utils";
 import { AdminSettingsNotice } from "./notice";
 import {
   DEFAULT_SUGGESTED_PROMPTS,
@@ -33,11 +38,17 @@ import {
   DEFAULT_ABOUT_US,
   TOKENS_PER_CREDIT,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  DEFAULT_FREE_MESSAGES_PER_DAY,
+  FORUM_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
+import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { formatDistanceToNow } from "date-fns";
 import { getAllLanguages } from "@/lib/i18n/languages";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { LanguageContentForm } from "./language-content-form";
+import { parseForumEnabledSetting } from "@/lib/forum/config";
+import { getUsdToInrRate } from "@/lib/services/exchange-rate";
+import { PlanPricingFields } from "./plan-pricing-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +58,15 @@ const PROVIDER_OPTIONS = [
   { value: "google", label: "Google Gemini" },
   { value: "custom", label: "Custom (configure in code)" },
 ];
+
+function formatCurrency(value: number, currency: "USD" | "INR") {
+  return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 function ProviderBadge({ value }: { value: string }) {
   const option = PROVIDER_OPTIONS.find((item) => item.value === value);
@@ -74,6 +94,40 @@ function EnabledBadge({ enabled }: { enabled: boolean }) {
 
 type AdminSettingsSearchParams = { notice?: string };
 
+function CollapsibleSection({
+  title,
+  description,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      className="group overflow-hidden rounded-lg border bg-card shadow-sm"
+      {...(defaultOpen ? { open: true } : {})}
+    >
+      <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          {description ? (
+            <p className="text-muted-foreground text-sm">{description}</p>
+          ) : null}
+        </div>
+        <span className="text-muted-foreground text-xs font-semibold transition-transform duration-150 group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      <div className="border-t px-6 py-5">
+        <div className="space-y-4">{children}</div>
+      </div>
+    </details>
+  );
+}
+
 export default async function AdminSettingsPage({
   searchParams,
 }: {
@@ -83,9 +137,9 @@ export default async function AdminSettingsPage({
   const notice = resolvedSearchParams?.notice;
 
   const [
+    exchangeRate,
     modelsRaw,
     plansRaw,
-    activeSubscriptions,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -96,10 +150,12 @@ export default async function AdminSettingsPage({
     suggestedPromptsByLanguageSetting,
     recommendedPlanSetting,
     languages,
+    freeMessageSettings,
+    forumEnabledSetting,
   ] = await Promise.all([
+    getUsdToInrRate(),
     listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
-    listActiveSubscriptionSummaries({ limit: 10 }),
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
     getAppSetting<string>("aboutUsContent"),
@@ -110,8 +166,11 @@ export default async function AdminSettingsPage({
     getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
     getAllLanguages(),
+    loadFreeMessageSettings(),
+    getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
   ]);
 
+  const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
   const deletedModels = modelsRaw.filter((model) => model.deletedAt);
 
@@ -176,6 +235,28 @@ export default async function AdminSettingsPage({
     }
   }
   const activeLanguagesList = languages.filter((language) => language.isActive);
+
+  const providerLabelLookup = new Map(
+    PROVIDER_OPTIONS.map((option) => [option.value, option.label])
+  );
+  const providerCostSummaries = activeModels
+    .filter((model) => model.isEnabled)
+    .map((model) => {
+      const providerCostPerMillionUsd =
+        Number(model.inputProviderCostPerMillion ?? 0) +
+        Number(model.outputProviderCostPerMillion ?? 0);
+
+      return {
+        id: model.id,
+        name: model.displayName,
+        providerLabel:
+          providerLabelLookup.get(model.provider) ?? model.provider,
+        isMarginBaseline: Boolean(model.isMarginBaseline),
+        providerCostPerMillionUsd,
+        providerCostPerMillionInr: providerCostPerMillionUsd * usdToInr,
+      };
+    });
+
   const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
     ? suggestedPromptsSetting.filter(
         (item) => typeof item === "string" && item.trim().length > 0
@@ -207,6 +288,7 @@ export default async function AdminSettingsPage({
       }
     }
   }
+  const forumEnabled = parseForumEnabledSetting(forumEnabledSetting);
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -246,6 +328,16 @@ export default async function AdminSettingsPage({
       content: contentForLanguage,
     };
   });
+
+  const isGlobalFreeMessageMode = freeMessageSettings.mode === "global";
+  const perModelInputClassName = cn(
+    "rounded-md border bg-background px-3 py-2 text-sm",
+    isGlobalFreeMessageMode &&
+      "cursor-not-allowed bg-muted text-muted-foreground opacity-60"
+  );
+  const perModelFieldDescription = isGlobalFreeMessageMode
+    ? "Managed by the global allowance above."
+    : "Complimentary messages per day for this model when a user has no active credits.";
   const languageTermsConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedTermsOfServiceByLanguage[language.code];
     const contentForLanguage =
@@ -305,13 +397,118 @@ export default async function AdminSettingsPage({
     <>
       <AdminSettingsNotice notice={notice} />
 
-      <div className="flex flex-col gap-10">
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Languages</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Add new languages or toggle their availability. Default language must stay active.
-          </p>
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
+      <div className="flex flex-col gap-6">
+        <CollapsibleSection
+          defaultOpen
+          description="Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404."
+          title="Community forum"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <EnabledBadge enabled={forumEnabled} />
+            </div>
+            <form
+              action={updateForumAvailabilityAction}
+              className="flex flex-col gap-3 text-sm"
+            >
+              <input
+                name="forumEnabled"
+                type="hidden"
+                value={(!forumEnabled).toString()}
+              />
+              <ActionSubmitButton
+                pendingLabel={forumEnabled ? "Disabling…" : "Enabling…"}
+                successMessage="Forum availability updated."
+                variant={forumEnabled ? "destructive" : "default"}
+              >
+                {forumEnabled ? "Disable forum" : "Enable forum"}
+              </ActionSubmitButton>
+              <p className="text-muted-foreground text-xs">
+                Changes take effect immediately for all users.
+              </p>
+            </form>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Choose whether complimentary daily messages come from each model or a single global allowance."
+          title="Free message policy"
+        >
+          <form
+            action={updateFreeMessageSettingsAction}
+            className="grid gap-6 md:grid-cols-2"
+          >
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Allowance mode</legend>
+              <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
+                <input
+                  className="mt-1 h-4 w-4 cursor-pointer"
+                  defaultChecked={freeMessageSettings.mode === "per-model"}
+                  name="mode"
+                  type="radio"
+                  value="per-model"
+                />
+                <span>
+                  <span className="font-medium">Per model allowances</span>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Each model can define its own complimentary daily messages.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
+                <input
+                  className="mt-1 h-4 w-4 cursor-pointer"
+                  defaultChecked={freeMessageSettings.mode === "global"}
+                  name="mode"
+                  type="radio"
+                  value="global"
+                />
+                <span>
+                  <span className="font-medium">One limit for all models</span>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Override per-model allowances and use the global value below.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="globalLimit">
+                Global daily free messages
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={freeMessageSettings.globalLimit}
+                id="globalLimit"
+                min={0}
+                name="globalLimit"
+                step={1}
+                type="number"
+              />
+              <p className="text-muted-foreground text-xs">
+                Used only when &ldquo;One limit for all models&rdquo; is selected.
+              </p>
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <ActionSubmitButton pendingLabel="Saving...">
+                Save policy
+              </ActionSubmitButton>
+            </div>
+          </form>
+          {isGlobalFreeMessageMode ? (
+            <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
+              Per-model inputs are locked because a global allowance of{" "}
+              {freeMessageSettings.globalLimit.toLocaleString()} messages per day is active.
+            </div>
+          ) : null}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Add new languages or toggle their availability. Default language must stay active."
+          title="Languages"
+        >
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
             <form
               action={createLanguageAction}
               className="flex flex-col gap-4 rounded-lg border bg-background p-4"
@@ -344,7 +541,7 @@ export default async function AdminSettingsPage({
               </div>
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input
-                  className="h-4 w-4"
+                  className="h-4 w-4 cursor-pointer"
                   defaultChecked
                   name="isActive"
                   type="checkbox"
@@ -431,18 +628,18 @@ export default async function AdminSettingsPage({
               </table>
             </div>
           </div>
-        </section>
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Suggested prompts</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language. If a language has no custom prompts, the default language prompts are used.
-          </p>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language."
+          title="Suggested prompts"
+        >
           {languagePromptConfigs.length === 0 ? (
-            <div className="mt-6 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
               No active languages are configured. Add a language before managing prompts.
             </div>
           ) : (
-            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
               {languagePromptConfigs.map(({ language, prompts }) => (
                 <LanguagePromptsForm
                   key={language.id}
@@ -453,19 +650,18 @@ export default async function AdminSettingsPage({
               ))}
             </div>
           )}
-        </section>
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Public page content</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Update the copy shown on the public About, Privacy Policy, and Terms of Service pages.
-            Basic Markdown (## headings and bullet lists) is supported.
-          </p>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Update the copy shown on the public About, Privacy Policy, and Terms of Service pages."
+          title="Public page content"
+        >
           {activeLanguagesList.length === 0 ? (
-            <div className="mt-6 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
               No active languages are configured. Add a language before managing public page content.
             </div>
           ) : (
-            <div className="mt-6 space-y-10">
+            <div className="space-y-10">
               <div className="space-y-4">
                 <h3 className="text-base font-semibold">About page content</h3>
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -549,14 +745,12 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
-        </section>
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Pricing plans</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Define recharge tiers that control how many tokens and credits users receive.
-            Plans become available immediately.
-          </p>
-          <div className="mt-3 rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
+        </CollapsibleSection>
+        <CollapsibleSection
+          description="Define recharge tiers that control how many tokens and credits users receive. Plans become available immediately."
+          title="Pricing plans"
+        >
+          <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
             <div>Current recommended plan: {recommendedPlanName ?? "None selected"}</div>
             {recommendedPlanSetting && !recommendedPlanId ? (
               <div className="text-amber-600">
@@ -565,7 +759,7 @@ export default async function AdminSettingsPage({
             ) : null}
           </div>
 
-          <form action={createPricingPlanAction} className="mt-6 grid gap-4 md:grid-cols-2">
+          <form action={createPricingPlanAction} className="grid gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="plan-name">
                 Plan name
@@ -576,21 +770,6 @@ export default async function AdminSettingsPage({
                 name="name"
                 placeholder="Starter"
                 required
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-price">
-                Price (INR)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-price"
-                min="0"
-                name="priceInRupees"
-                placeholder="299"
-                required
-                step="0.01"
-                type="number"
               />
             </div>
             <div className="md:col-span-2 flex flex-col gap-2">
@@ -604,18 +783,10 @@ export default async function AdminSettingsPage({
                 placeholder="Great for individual builders."
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-tokens">
-                Token allowance
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-tokens"
-                min={0}
-                name="tokenAllowance"
-                placeholder="100000"
-                required
-                type="number"
+            <div className="md:col-span-2 space-y-3">
+              <PlanPricingFields
+                modelCosts={providerCostSummaries}
+                usdToInr={usdToInr}
               />
               <p className="text-muted-foreground text-xs">
                 Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).
@@ -667,7 +838,6 @@ export default async function AdminSettingsPage({
                 const nonDefaultLanguages = activeLanguagesList.filter(
                   (language) => !language.isDefault,
                 );
-
                 return (
                   <details
                     key={plan.id}
@@ -713,44 +883,28 @@ export default async function AdminSettingsPage({
                             name="description"
                           />
                         </div>
-                        <div className="flex flex-col gap-2">
+                        <div className="space-y-3">
+                          <PlanPricingFields
+                            initialPriceInRupees={priceInRupees}
+                            initialTokenAllowance={plan.tokenAllowance}
+                            modelCosts={providerCostSummaries}
+                            usdToInr={usdToInr}
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:w-48">
                           <label className="text-sm font-medium">
-                            Price (INR)
+                            Cycle (days)
                           </label>
                           <input
                             className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={priceInRupees}
-                            min="0"
-                            name="priceInRupees"
-                            step="0.01"
+                            defaultValue={plan.billingCycleDays}
+                            min={0}
+                            name="billingCycleDays"
                             type="number"
                           />
-                        </div>
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-                          <div className="flex flex-col gap-2 sm:flex-1">
-                            <label className="text-sm font-medium">
-                              Token allowance
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.tokenAllowance}
-                              min={0}
-                              name="tokenAllowance"
-                              type="number"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2 sm:w-48">
-                            <label className="text-sm font-medium">
-                              Cycle (days)
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.billingCycleDays}
-                              min={0}
-                              name="billingCycleDays"
-                              type="number"
-                            />
-                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -768,7 +922,10 @@ export default async function AdminSettingsPage({
                           </label>
                         </div>
                         <div className="flex justify-end gap-2">
-                          <ActionSubmitButton pendingLabel="Saving...">
+                          <ActionSubmitButton
+                            pendingLabel="Saving..."
+                            successMessage="Plan updated"
+                          >
                             Save changes
                           </ActionSubmitButton>
                         </div>
@@ -974,69 +1131,13 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
-        </section>
+        </CollapsibleSection>
 
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Active subscriptions</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Recent users with active plans and their remaining balances.
-          </p>
-
-          <div className="mt-6 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-muted-foreground text-xs uppercase">
-                <tr>
-                  <th className="py-2 text-left">User</th>
-                  <th className="py-2 text-left">Plan</th>
-                  <th className="py-2 text-right">Tokens left</th>
-                  <th className="py-2 text-right">Expires</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeSubscriptions.length === 0 ? (
-                  <tr>
-                    <td className="py-4 text-muted-foreground" colSpan={4}>
-                      No active subscriptions yet.
-                    </td>
-                  </tr>
-                ) : (
-                  activeSubscriptions.map((subscription) => (
-                    <tr key={subscription.subscriptionId} className="border-t">
-                      <td className="py-2 font-mono text-xs">
-                        {subscription.userEmail}
-                      </td>
-                      <td className="py-2">
-                        {subscription.planName ?? "Plan removed"}
-                      </td>
-                      <td className="py-2 text-right">
-                        {subscription.tokenBalance.toLocaleString()} /{" "}
-                        {subscription.tokenAllowance.toLocaleString()}
-                      </td>
-                      <td className="py-2 text-right">
-                        {new Date(subscription.expiresAt).toLocaleDateString(
-                          "en-IN",
-                          {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          }
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Add new model</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Configure additional providers. Ensure the relevant API key is available in the environment.
-          </p>
-
-          <form action={createModelConfigAction} className="mt-6 grid gap-4 md:grid-cols-2">
+        <CollapsibleSection
+          description="Configure additional providers. Ensure the relevant API key is available in the environment."
+          title="Add new model"
+        >
+          <form action={createModelConfigAction} className="grid gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="key">
                 Model key
@@ -1099,36 +1200,6 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="inputCostPerMillion">
-                Input cost (USD / 1M tokens)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={0}
-                id="inputCostPerMillion"
-                min={0}
-                name="inputCostPerMillion"
-                step="0.000001"
-                type="number"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="outputCostPerMillion">
-                Output cost (USD / 1M tokens)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={0}
-                id="outputCostPerMillion"
-                min={0}
-                name="outputCostPerMillion"
-                step="0.000001"
-                type="number"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor="inputProviderCostPerMillion">
                 Provider input cost (USD / 1M tokens)
               </label>
@@ -1159,6 +1230,24 @@ export default async function AdminSettingsPage({
                 step="0.000001"
                 type="number"
               />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium" htmlFor="freeMessagesPerDay">
+                Daily free messages
+              </label>
+              <input
+                aria-disabled={isGlobalFreeMessageMode || undefined}
+                className={perModelInputClassName}
+                defaultValue={DEFAULT_FREE_MESSAGES_PER_DAY}
+                id="freeMessagesPerDay"
+                min={0}
+                name="freeMessagesPerDay"
+                readOnly={isGlobalFreeMessageMode}
+                step={1}
+                type="number"
+              />
+              <p className="text-muted-foreground text-xs">{perModelFieldDescription}</p>
             </div>
 
             <div className="md:col-span-2 flex flex-col gap-2">
@@ -1261,6 +1350,17 @@ export default async function AdminSettingsPage({
                 Set as default model
               </label>
             </div>
+            <div className="flex items-center gap-3">
+              <input
+                className="h-4 w-4"
+                id="isMarginBaseline"
+                name="isMarginBaseline"
+                type="checkbox"
+              />
+              <label className="text-sm font-medium" htmlFor="isMarginBaseline">
+                Use as margin baseline
+              </label>
+            </div>
 
             <div className="md:col-span-2 flex justify-end">
               <ActionSubmitButton pendingLabel="Creating...">
@@ -1268,35 +1368,24 @@ export default async function AdminSettingsPage({
               </ActionSubmitButton>
             </div>
           </form>
-        </section>
+        </CollapsibleSection>
 
-        <section className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Configured models</h2>
-          <div className="mt-4 space-y-6">
+        <CollapsibleSection title="Configured models">
+          <div className="space-y-6">
             {activeModels.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 No models configured yet.
               </p>
             ) : (
               activeModels.map((model) => {
-                const chargeInputRate = Number(model.inputCostPerMillion ?? 0);
-                const chargeOutputRate = Number(model.outputCostPerMillion ?? 0);
                 const providerInputRate = Number(
                   model.inputProviderCostPerMillion ?? 0
                 );
                 const providerOutputRate = Number(
                   model.outputProviderCostPerMillion ?? 0
                 );
-                const totalChargeRate = chargeInputRate + chargeOutputRate;
                 const totalProviderRate =
                   providerInputRate + providerOutputRate;
-                const marginPerMillion = totalChargeRate - totalProviderRate;
-                const marginPerCredit =
-                  (marginPerMillion / 1_000_000) * TOKENS_PER_CREDIT;
-                const marginPercentage =
-                  totalChargeRate > 0
-                    ? (marginPerMillion / totalChargeRate) * 100
-                    : 0;
                 const formatUsd = (value: number) =>
                   value.toLocaleString("en-US", {
                     style: "currency",
@@ -1315,6 +1404,11 @@ export default async function AdminSettingsPage({
                       {model.isDefault && (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                           Default
+                        </span>
+                      )}
+                      {model.isMarginBaseline && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          Margin baseline
                         </span>
                       )}
                     </div>
@@ -1366,34 +1460,6 @@ export default async function AdminSettingsPage({
 
                       <div className="flex flex-col gap-2">
                         <label className="text-sm font-medium">
-                          Input cost (USD / 1M tokens)
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.inputCostPerMillion ?? 0}
-                          min={0}
-                          name="inputCostPerMillion"
-                          step="0.000001"
-                          type="number"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Output cost (USD / 1M tokens)
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.outputCostPerMillion ?? 0}
-                          min={0}
-                          name="outputCostPerMillion"
-                          step="0.000001"
-                          type="number"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
                           Provider input cost (USD / 1M tokens)
                         </label>
                         <input
@@ -1423,62 +1489,51 @@ export default async function AdminSettingsPage({
                         </p>
                       </div>
 
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium">
+                          Daily free messages
+                        </label>
+                        <input
+                          aria-disabled={isGlobalFreeMessageMode || undefined}
+                          className={perModelInputClassName}
+                          defaultValue={model.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY}
+                          min={0}
+                          name="freeMessagesPerDay"
+                          readOnly={isGlobalFreeMessageMode}
+                          step={1}
+                          type="number"
+                        />
+                        <p className="text-muted-foreground text-xs">
+                          {perModelFieldDescription}
+                        </p>
+                      </div>
+
                       <div className="md:col-span-2 rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
                         <h4 className="text-sm font-semibold text-foreground">
-                          Margin snapshot (per {TOKENS_PER_CREDIT.toLocaleString()} tokens)
+                          Provider cost reference (per 1M tokens)
                         </h4>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
                           <div className="space-y-1">
                             <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              User pricing (1M tokens)
+                              Input cost
                             </p>
-                            <p>
-                              Input: {formatUsd(chargeInputRate)}
-                            </p>
-                            <p>
-                              Output: {formatUsd(chargeOutputRate)}
-                            </p>
+                            <p>{formatUsd(providerInputRate)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Provider cost (1M tokens)
+                              Output cost
                             </p>
-                            <p>
-                              Input: {formatUsd(providerInputRate)}
-                            </p>
-                            <p>
-                              Output: {formatUsd(providerOutputRate)}
-                            </p>
+                            <p>{formatUsd(providerOutputRate)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Gross margin / 1M tokens
+                              Total
                             </p>
-                            <p className={marginPerMillion < 0 ? "text-destructive" : undefined}>
-                              {formatUsd(marginPerMillion)}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Gross margin / credit
-                            </p>
-                            <p className={marginPerCredit < 0 ? "text-destructive" : undefined}>
-                              {formatUsd(marginPerCredit)}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Margin percentage
-                            </p>
-                            <p className={marginPercentage < 0 ? "text-destructive" : undefined}>
-                              {Number.isFinite(marginPercentage)
-                                ? `${marginPercentage.toFixed(2)}%`
-                                : "—"}
-                            </p>
+                            <p>{formatUsd(totalProviderRate)}</p>
                           </div>
                         </div>
                         <p className="text-muted-foreground mt-3 text-xs">
-                          These values update when you save changes. They help estimate how much each credit earns after provider costs.
+                          Revenue now comes from your pricing plans. Keep these costs updated to track real spend vs. credit sales.
                         </p>
                       </div>
 
@@ -1608,6 +1663,18 @@ export default async function AdminSettingsPage({
                           </ActionSubmitButton>
                         </form>
                       )}
+                      {!model.isMarginBaseline && (
+                        <form action={setMarginBaselineModelAction}>
+                          <input name="id" type="hidden" value={model.id} />
+                          <ActionSubmitButton
+                            pendingLabel="Updating..."
+                            size="sm"
+                            variant="outline"
+                          >
+                            Set as margin baseline
+                          </ActionSubmitButton>
+                        </form>
+                      )}
 
                       <form action={deleteModelConfigAction}>
                         <input name="id" type="hidden" value={model.id} />
@@ -1665,7 +1732,7 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
-        </section>
+        </CollapsibleSection>
       </div>
     </>
   );

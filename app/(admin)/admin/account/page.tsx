@@ -45,6 +45,7 @@ type ChatProfitRow = {
   credits: number;
   chargeUsd: number;
   chargeInr: number;
+  isFreeUsage: boolean;
   providerCostUsd: number;
   providerCostInr: number;
   profitInr: number;
@@ -153,11 +154,12 @@ function mapChatRows(
     const createdAt = record.chatCreatedAt ?? record.usageStartedAt ?? null;
     const totalTokens = record.totalInputTokens + record.totalOutputTokens;
     const credits = totalTokens / TOKENS_PER_CREDIT;
-    const chargeUsd = record.userChargeUsd;
-    const chargeInr = chargeUsd * usdToInr;
+    const chargeInr = record.userChargeInr;
+    const chargeUsd = usdToInr > 0 ? chargeInr / usdToInr : 0;
     const providerCostUsd = record.providerCostUsd;
     const providerCostInr = providerCostUsd * usdToInr;
     const profitInr = chargeInr - providerCostInr;
+    const isFreeUsage = !chargeInr || chargeInr <= 0;
 
     return {
       chatId: record.chatId ?? "(unknown)",
@@ -168,6 +170,7 @@ function mapChatRows(
       credits,
       chargeUsd,
       chargeInr,
+      isFreeUsage,
       providerCostUsd,
       providerCostInr,
       profitInr,
@@ -224,8 +227,8 @@ function mapRechargeRows(records: RechargeRecord[], usdToInr: number): RechargeT
 
 function mapModelPricingRows(configs: ModelConfig[], usdToInr: number): ModelPricingRow[] {
   return configs.map((config) => {
-    const userInputUsd = Number(config.inputCostPerMillion ?? 0);
-    const userOutputUsd = Number(config.outputCostPerMillion ?? 0);
+    const userInputUsd = 0;
+    const userOutputUsd = 0;
     const providerInputUsd = Number(config.inputProviderCostPerMillion ?? 0);
     const providerOutputUsd = Number(config.outputProviderCostPerMillion ?? 0);
     const totalUserUsd = userInputUsd + userOutputUsd;
@@ -459,12 +462,18 @@ export default async function AdminAccountPage({
                       <td className="py-2 text-right">{formatNumber(row.outputTokens)}</td>
                       <td className="py-2 text-right">{formatNumber(row.credits, 2)}</td>
                       <td className="py-2 text-right">
-                        <div className="flex flex-col items-end">
-                          <span>{formatCurrency(row.chargeInr, "INR")}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatCurrency(row.chargeUsd, "USD")}
+                        {row.isFreeUsage ? (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Free credits
                           </span>
-                        </div>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <span>{formatCurrency(row.chargeInr, "INR")}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatCurrency(row.chargeUsd, "USD")}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 text-right">
                         <div className="flex flex-col items-end">

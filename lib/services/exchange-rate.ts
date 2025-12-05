@@ -7,6 +7,7 @@ export type ExchangeRateResult = {
 
 const DEFAULT_RATE = 83.0;
 const EXCHANGE_RATE_TAG = "exchange-rate-usd-inr";
+let lastSuccessfulRate: ExchangeRateResult | null = null;
 
 type ExchangeProvider = {
   name: string;
@@ -97,9 +98,13 @@ async function fetchUsdToInr(): Promise<ExchangeRateResult> {
       const { rate: rawRate, timestamp } = provider.parse(json);
 
       if (typeof rawRate === "number" && Number.isFinite(rawRate) && rawRate > 0) {
-        return {
+        const result: ExchangeRateResult = {
           rate: rawRate,
           fetchedAt: timestamp ? new Date(timestamp) : new Date(),
+        };
+        lastSuccessfulRate = result;
+        return {
+          ...result,
         };
       }
 
@@ -111,6 +116,16 @@ async function fetchUsdToInr(): Promise<ExchangeRateResult> {
       );
       continue;
     }
+  }
+
+  if (lastSuccessfulRate) {
+    console.warn(
+      "[exchange-rate] All providers failed. Reusing last successful USD→INR rate."
+    );
+    return {
+      rate: lastSuccessfulRate.rate,
+      fetchedAt: new Date(),
+    };
   }
 
   console.error(
@@ -126,4 +141,8 @@ export const getUsdToInrRate = cache(fetchUsdToInr);
 
 export function getExchangeRateCacheTag() {
   return EXCHANGE_RATE_TAG;
+}
+
+export function getFallbackUsdToInrRate() {
+  return lastSuccessfulRate?.rate ?? DEFAULT_RATE;
 }

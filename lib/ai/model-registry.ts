@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cache } from "react";
+import { unstable_cache } from "next/cache";
 
 import {
   createModelConfig,
@@ -11,6 +11,8 @@ import {
 import type { ModelConfig } from "@/lib/db/schema";
 
 const SEED_MODEL_KEY = "openai-gpt-4o-mini";
+export const MODEL_REGISTRY_CACHE_TAG = "model-registry";
+const MODEL_REGISTRY_CACHE_KEY = "model-registry";
 
 async function ensureModelConfigs(): Promise<ModelConfig[]> {
   const existing = await listModelConfigs();
@@ -36,8 +38,7 @@ async function ensureModelConfigs(): Promise<ModelConfig[]> {
     config: null,
     isEnabled: true,
     isDefault: true,
-    inputCostPerMillion: 0,
-    outputCostPerMillion: 0,
+    freeMessagesPerDay: 3,
   });
 
   await setDefaultModelConfig(created.id);
@@ -45,16 +46,20 @@ async function ensureModelConfigs(): Promise<ModelConfig[]> {
   return await listModelConfigs();
 }
 
-export const getModelRegistry = cache(async () => {
-  const configs = await ensureModelConfigs();
-  const defaultConfig =
-    configs.find((config) => config.isDefault) ?? configs[0] ?? null;
+export const getModelRegistry = unstable_cache(
+  async () => {
+    const configs = await ensureModelConfigs();
+    const defaultConfig =
+      configs.find((config) => config.isDefault) ?? configs[0] ?? null;
 
-  return {
-    configs,
-    defaultConfig,
-  };
-});
+    return {
+      configs,
+      defaultConfig,
+    };
+  },
+  [MODEL_REGISTRY_CACHE_KEY],
+  { tags: [MODEL_REGISTRY_CACHE_TAG] }
+);
 
 export async function getModelConfigOrThrow(id: string): Promise<ModelConfig> {
   const config = await getModelConfigById({ id });
@@ -77,10 +82,9 @@ export type ModelSummary = {
   reasoningTag: string | null;
   systemPrompt: string | null;
   codeTemplate: string | null;
-  inputCostPerMillion: number;
-  outputCostPerMillion: number;
   inputProviderCostPerMillion: number;
   outputProviderCostPerMillion: number;
+  freeMessagesPerDay: number;
 };
 
 export function mapToModelSummary(config: ModelConfig): ModelSummary {
@@ -95,13 +99,12 @@ export function mapToModelSummary(config: ModelConfig): ModelSummary {
     reasoningTag: config.reasoningTag ?? null,
     systemPrompt: config.systemPrompt ?? null,
     codeTemplate: config.codeTemplate ?? null,
-    inputCostPerMillion: Number(config.inputCostPerMillion ?? 0),
-    outputCostPerMillion: Number(config.outputCostPerMillion ?? 0),
     inputProviderCostPerMillion: Number(
       config.inputProviderCostPerMillion ?? 0
     ),
     outputProviderCostPerMillion: Number(
       config.outputProviderCostPerMillion ?? 0
     ),
+    freeMessagesPerDay: Number(config.freeMessagesPerDay ?? 3),
   };
 }

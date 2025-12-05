@@ -1,6 +1,5 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import equal from "fast-deep-equal";
 import { motion } from "framer-motion";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
@@ -129,19 +128,14 @@ const PurePreviewMessage = ({
                     key={key}
                   >
                     <MessageContent
-                      className={cn({
-                        "w-fit break-words rounded-2xl px-3 py-2 text-right text-white":
-                          message.role === "user",
-                        "flex-1 bg-transparent py-0 text-left pl-3 pr-2 md:pl-4 md:pr-3":
-                          isAssistantMessage,
-                      })}
-                      data-testid="message-content"
-                      style={
-                        message.role === "user"
-                          ? { backgroundColor: "#006cff" }
-                          : undefined
-                      }
-                    >
+                    className={cn({
+                      "w-fit break-words rounded-2xl px-3 py-2 text-right bg-[#e9e9e980] text-foreground dark:bg-[#323232d9] dark:text-white":
+                        message.role === "user",
+                      "flex-1 bg-transparent py-0 text-left pl-3 pr-2 md:pl-4 md:pr-3":
+                        isAssistantMessage,
+                    })}
+                    data-testid="message-content"
+                  >
                       <div
                         className={cn({
                           "flex w-full items-end gap-2":
@@ -356,28 +350,7 @@ const PurePreviewMessage = ({
   );
 };
 
-export const PreviewMessage = memo(
-  PurePreviewMessage,
-  (prevProps, nextProps) => {
-    if (prevProps.isLoading !== nextProps.isLoading) {
-      return false;
-    }
-    if (prevProps.message.id !== nextProps.message.id) {
-      return false;
-    }
-    if (prevProps.requiresScrollPadding !== nextProps.requiresScrollPadding) {
-      return false;
-    }
-    if (!equal(prevProps.message.parts, nextProps.message.parts)) {
-      return false;
-    }
-    if (!equal(prevProps.vote, nextProps.vote)) {
-      return false;
-    }
-
-    return false;
-  }
-);
+export const PreviewMessage = memo(PurePreviewMessage);
 
 export const ThinkingMessage = () => {
   return (
@@ -398,6 +371,3 @@ export const ThinkingMessage = () => {
     </motion.div>
   );
 };
-
-
-

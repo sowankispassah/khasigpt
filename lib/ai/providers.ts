@@ -76,7 +76,24 @@ export function resolveLanguageModel(config: ModelConfig): LanguageModel {
   return baseModel;
 }
 
-export function getTitleLanguageModel(): LanguageModel {
+export function getTitleLanguageModel(
+  preferredModel?: ModelConfig | null
+): LanguageModel {
+  if (preferredModel) {
+    try {
+      return resolveLanguageModel(preferredModel);
+    } catch (error) {
+      console.warn(
+        "Preferred title model unavailable, falling back to default",
+        {
+          provider: preferredModel.provider,
+          modelId: preferredModel.providerModelId,
+        },
+        error
+      );
+    }
+  }
+
   const client = ensureClient(openaiClient, "OpenAI");
   return client.languageModel(DEFAULT_TITLE_MODEL);
 }

@@ -8,10 +8,12 @@ import {
   createEmailVerificationTokenRecord,
   createUser,
   deleteEmailVerificationTokensForUser,
+  createAuditLogEntry,
   getUser,
   updateUserPassword,
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { signIn } from "./auth";
 
 const authFormSchema = z.object({
@@ -117,6 +119,19 @@ export const register = async (
         password: validatedData.password,
       });
     }
+
+    const clientInfo = getClientInfoFromHeaders();
+    await createAuditLogEntry({
+      actorId: userRecord.id,
+      action: "user.signup",
+      target: { userId: userRecord.id, email: validatedData.email },
+      metadata: {
+        provider: "credentials",
+        reactivated: Boolean(existingUser),
+      },
+      subjectUserId: userRecord.id,
+      ...clientInfo,
+    });
 
     await deleteEmailVerificationTokensForUser({ userId: userRecord.id });
 
