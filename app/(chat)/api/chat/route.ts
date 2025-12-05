@@ -370,6 +370,7 @@ export async function POST(request: Request) {
         try {
           const generatedTitle = await generateTitleFromUserMessage({
             message,
+            modelConfig,
           });
           const normalizedTitle = generatedTitle.trim();
 

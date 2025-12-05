@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { getTitleLanguageModel } from "@/lib/ai/providers";
+import type { ModelConfig } from "@/lib/db/schema";
 import {
   createAuditLogEntry,
   createUserSubscription,
@@ -22,8 +23,10 @@ export async function saveChatModelAsCookie(model: string) {
 
 export async function generateTitleFromUserMessage({
   message,
+  modelConfig,
 }: {
   message: UIMessage;
+  modelConfig?: ModelConfig | null;
 }) {
   const cookieStore = await cookies();
   const preferredLanguageCode = cookieStore.get("lang")?.value ?? null;
@@ -36,7 +39,7 @@ export async function generateTitleFromUserMessage({
       .join("") ?? "";
 
   const { text: title } = await generateText({
-    model: getTitleLanguageModel(),
+    model: getTitleLanguageModel(modelConfig),
     system: `\n
     - you will generate a short title based on the first message a user begins a conversation with
     - ensure it is not more than 80 characters long
