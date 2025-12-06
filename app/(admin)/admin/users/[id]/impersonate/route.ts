@@ -1,19 +1,21 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { createAuditLogEntry, createImpersonationToken, getUserById } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: Request,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   const session = await auth();
   if (!session?.user || session.user.role !== "admin") {
     return NextResponse.redirect(new URL("/login", _request.url));
   }
 
-  const targetUserId = params.id;
+  const targetUserId = id;
   const targetUser = await getUserById(targetUserId);
   if (!targetUser) {
     return NextResponse.redirect(new URL("/admin/users", _request.url));
