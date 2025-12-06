@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import equal from "fast-deep-equal";
 import {
   type MouseEvent,
+  type RefObject,
   memo,
   useCallback,
   useEffect,
@@ -198,7 +199,7 @@ const PureHitboxLayer = ({
   result,
   setArtifact,
 }: {
-  hitboxRef: React.RefObject<HTMLDivElement>;
+  hitboxRef: RefObject<HTMLDivElement | null>;
   result: any;
   setArtifact: (
     updaterFn: UIArtifact | ((currentArtifact: UIArtifact) => UIArtifact)
