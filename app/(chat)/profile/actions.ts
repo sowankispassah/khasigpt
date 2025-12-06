@@ -79,7 +79,7 @@ export async function updatePasswordAction(
     };
   }
 
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
   await updateUserPassword({
     id: user.id,
     password,
@@ -119,7 +119,7 @@ export async function updateNameAction(
     };
   }
 
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
   await updateUserName({
     id: user.id,
     firstName: parsed.data.firstName,
@@ -161,7 +161,7 @@ export async function deactivateAccountAction(
     };
   }
 
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
   await createAuditLogEntry({
     actorId: user.id,
     action: "user.account.deactivate",
@@ -198,7 +198,7 @@ export async function savePersonalKnowledgeAction(input: {
     };
   }
 
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
   const title = input.title?.trim() ?? "";
   const content = input.content?.trim() ?? "";
 
@@ -255,7 +255,7 @@ export async function updateUserLocationAction(input: {
   accuracy?: number | null;
 }): Promise<{ success: boolean; error?: string }> {
   const user = await requireUser();
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
 
   const lat = Number(input.latitude);
   const lng = Number(input.longitude);
@@ -309,7 +309,7 @@ export async function deletePersonalKnowledgeAction({
     };
   }
 
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
   try {
     await deletePersonalKnowledgeEntry({
       entryId,

@@ -42,6 +42,7 @@ import {
   document,
   emailVerificationToken,
   modelConfig,
+  impersonationToken,
   message,
   passwordResetToken,
   paymentTransaction,
@@ -62,6 +63,7 @@ import {
   type Language,
   type ContactMessage,
   type ContactMessageStatus,
+  type ImpersonationToken,
   type Chat,
   type DBMessage,
   type EmailVerificationToken,
@@ -80,6 +82,7 @@ import {
   type CouponRewardPayout,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
+import { randomBytes } from "node:crypto";
 
 try {
   setDefaultResultOrder("ipv4first");
@@ -1370,6 +1373,62 @@ export async function updateUserProfile({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update profile"
+    );
+  }
+}
+
+const IMPERSONATION_TOKEN_BYTES = 32;
+const IMPERSONATION_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+export async function createImpersonationToken({
+  targetUserId,
+  createdByAdminId,
+}: {
+  targetUserId: string;
+  createdByAdminId: string;
+}): Promise<ImpersonationToken> {
+  const token = randomBytes(IMPERSONATION_TOKEN_BYTES).toString("hex");
+  const expiresAt = new Date(Date.now() + IMPERSONATION_TOKEN_TTL_MS);
+
+  try {
+    const [record] = await db
+      .insert(impersonationToken)
+      .values({
+        token,
+        targetUserId,
+        createdByAdminId,
+        expiresAt,
+      })
+      .returning();
+
+    return record;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to create impersonation token"
+    );
+  }
+}
+
+export async function consumeImpersonationToken(token: string): Promise<ImpersonationToken | null> {
+  try {
+    const [record] = await db
+      .update(impersonationToken)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(impersonationToken.token, token),
+          isNull(impersonationToken.usedAt),
+          gt(impersonationToken.expiresAt, new Date())
+        )
+      )
+      .returning();
+
+    return record ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to consume impersonation token"
     );
   }
 }

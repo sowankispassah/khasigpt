@@ -43,15 +43,11 @@ function detectDeviceFromUserAgent(userAgent: string | null): string | null {
   return "unknown";
 }
 
-export function getClientInfoFromHeaders(): ClientInfo {
+export async function getClientInfoFromHeaders(): Promise<ClientInfo> {
   try {
-    const headerStore = headers();
-    const getHeader = (key: string) => {
-      if (headerStore && typeof (headerStore as any).get === "function") {
-        return (headerStore as any).get(key);
-      }
-      return null;
-    };
+    const headerStore = await headers();
+    const getHeader = (key: string) => headerStore.get(key);
+
     const forwardedFor =
       getHeader("x-forwarded-for") ?? getHeader("forwarded") ?? "";
     const forwardedValue = forwardedFor.split(",")[0]?.trim() ?? "";

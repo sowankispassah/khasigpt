@@ -629,8 +629,11 @@ export function UserDropdownMenu({
                     event,
                     "navigate",
                     "navigate:admin",
-                    () => onNavigate("/admin"),
-                    { skipProgress: shouldSkipPathProgress("/admin") }
+                    () => {
+                      window.open("/admin", "_blank", "noopener,noreferrer");
+                      setIsMenuOpen(false);
+                    },
+                    { skipProgress: true }
                   )
                 }
               >

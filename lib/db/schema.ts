@@ -743,6 +743,30 @@ export const stream = pgTable(
 
 export type Stream = InferSelectModel<typeof stream>;
 
+export const impersonationToken = pgTable(
+  "ImpersonationToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    targetUserId: uuid("targetUserId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdByAdminId: uuid("createdByAdminId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedAt: timestamp("usedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("ImpersonationToken_token_idx").on(table.token),
+    targetIdx: index("ImpersonationToken_target_idx").on(table.targetUserId),
+    creatorIdx: index("ImpersonationToken_creator_idx").on(table.createdByAdminId),
+  })
+);
+
+export type ImpersonationToken = InferSelectModel<typeof impersonationToken>;
+
 export const auditLog = pgTable(
   "AuditLog",
   {

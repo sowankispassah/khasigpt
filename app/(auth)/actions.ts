@@ -120,7 +120,7 @@ export const register = async (
       });
     }
 
-    const clientInfo = getClientInfoFromHeaders();
+    const clientInfo = await getClientInfoFromHeaders();
     await createAuditLogEntry({
       actorId: userRecord.id,
       action: "user.signup",

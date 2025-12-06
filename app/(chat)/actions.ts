@@ -96,7 +96,7 @@ export async function rechargeSubscriptionAction(formData: FormData) {
     throw new Error("missing plan id");
   }
 
-  const clientInfo = getClientInfoFromHeaders();
+  const clientInfo = await getClientInfoFromHeaders();
   const subscription = await createUserSubscription({
     userId: session.user.id,
     planId,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { MoreVertical } from "lucide-react";
 
 import { ActionSubmitButton } from "@/components/action-submit-button";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { useFormStatus } from "react-dom";
+import { toast } from "./toast";
 
 type AdminUserActionsMenuProps = {
   userId: string;
@@ -53,10 +54,59 @@ export function AdminUserActionsMenu({
   currentRole,
 }: AdminUserActionsMenuProps) {
   const [open, setOpen] = useState(false);
+  const [impersonationLink, setImpersonationLink] = useState<string | null>(null);
+  const [impersonateError, setImpersonateError] = useState<string | null>(null);
+  const [impersonateLoading, setImpersonateLoading] = useState(false);
+  const [impersonatePending, startImpersonate] = useTransition();
 
   const handleDone = useCallback(() => {
     setOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setImpersonationLink(null);
+      setImpersonateError(null);
+      setImpersonateLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setImpersonateLoading(true);
+    setImpersonateError(null);
+    fetch("/api/admin/impersonate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Unable to prepare impersonation link");
+        }
+        const data = (await response.json()) as { url?: string };
+        if (!data?.url) {
+          throw new Error("No impersonation link returned");
+        }
+        if (!cancelled) {
+          setImpersonationLink(data.url);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setImpersonateError(
+            error instanceof Error ? error.message : "Failed to prepare link"
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setImpersonateLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, userId]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -113,6 +163,29 @@ export function AdminUserActionsMenu({
               {allowPersonalKnowledge ? "Disable RAG" : "Allow RAG"}
             </ActionSubmitButton>
           </form>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem className="p-0">
+          {impersonationLink ? (
+            <a
+              className="flex w-full items-center rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted hover:text-foreground"
+              href={impersonationLink}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Login as user
+            </a>
+          ) : (
+            <button
+              className="flex w-full items-center rounded-sm px-3 py-2 text-sm font-normal text-muted-foreground"
+              disabled
+              type="button"
+            >
+              {impersonateLoading
+                ? "Preparing link..."
+                : impersonateError ?? "Preparing link..."}
+            </button>
+          )}
         </DropdownMenuItem>
 
         <DropdownMenuSub>

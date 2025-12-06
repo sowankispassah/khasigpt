@@ -9,6 +9,7 @@ import {
   ensureOAuthUser,
   getUser,
   getUserById,
+  consumeImpersonationToken,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import {
@@ -116,6 +117,45 @@ const providers: any[] = [
   }),
 ];
 
+providers.push(
+  Credentials({
+    id: "impersonate",
+    name: "Impersonate",
+    credentials: {},
+    async authorize({ token }: any) {
+      const tokenValue = typeof token === "string" ? token : "";
+      if (!tokenValue) {
+        return null;
+      }
+
+      const record = await consumeImpersonationToken(tokenValue);
+      if (!record) {
+        return null;
+      }
+
+      const targetUser = await getUserById(record.targetUserId);
+      if (!targetUser) {
+        return null;
+      }
+
+      const { image, ...rest } = targetUser;
+      const imageVersion =
+        image && targetUser.updatedAt instanceof Date
+          ? targetUser.updatedAt.toISOString()
+          : image
+            ? new Date().toISOString()
+            : null;
+
+      return {
+        ...rest,
+        role: targetUser.role as UserRole,
+        imageVersion,
+        allowPersonalKnowledge: targetUser.allowPersonalKnowledge ?? false,
+      } as typeof rest & { role: UserRole; imageVersion: string | null };
+    },
+  })
+);
+
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
     Google({
@@ -143,7 +183,7 @@ export const {
         return;
       }
 
-      const clientInfo = getClientInfoFromHeaders();
+      const clientInfo = await getClientInfoFromHeaders();
       const userWithFlag = user as { isNewUser?: boolean } | null | undefined;
       const inferredIsNewUser =
         typeof isNewUser === "boolean"
