@@ -10,6 +10,7 @@ import { PageUserMenu } from "@/components/page-user-menu";
 import { auth } from "@/app/(auth)/auth";
 import { isForumEnabled } from "@/lib/forum/config";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
+import { GlobalProgressBar } from "@/components/global-progress-bar";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -228,6 +229,7 @@ export default async function RootLayout({
             languages={languages}
           >
             <SessionProvider session={session ?? undefined}>
+              <GlobalProgressBar />
               <PageUserMenu forumEnabled={forumEnabled} />
               {children}
             </SessionProvider>

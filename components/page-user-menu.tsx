@@ -187,14 +187,14 @@ export function PageUserMenu({
           resolvedTheme={resolvedTheme}
           side="bottom"
           userDisplayName={undefined}
-          trigger={
-            <button
-              className={cn(
-                "relative flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                isBusy && "pointer-events-none opacity-70"
-              )}
-              aria-busy={isBusy}
-              aria-disabled={isBusy}
+              trigger={
+                <button
+                  className={cn(
+                    "relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    isBusy && "pointer-events-none opacity-70"
+                  )}
+                  aria-busy={isBusy}
+                  aria-disabled={isBusy}
               type="button"
             >
               <EllipsisVertical size={16} />

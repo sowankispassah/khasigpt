@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useActionState, useEffect, useMemo, useState } from "react";
@@ -145,10 +146,13 @@ function LoginContent() {
                 "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
               )}
             </h3>
-            <img
+            <Image
               alt="KhasiGPT logo"
               className="mt-4 h-7 w-auto dark:invert dark:brightness-150"
+              height={32}
+              priority
               src="/images/khasigptlogo.png"
+              width={160}
             />
             <h3 className="font-semibold text-xl dark:text-zinc-50">
               {translate("login.title", "Sign In To KhasiGPT")}

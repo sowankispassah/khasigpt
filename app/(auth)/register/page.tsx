@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useActionState, useEffect, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
@@ -103,10 +104,13 @@ function RegisterContent() {
                 "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
               )}
             </p>
-            <img
+            <Image
               alt="KhasiGPT logo"
               className="mt-4 h-7 w-auto dark:invert dark:brightness-150"
+              height={32}
+              priority
               src="/images/khasigptlogo.png"
+              width={160}
             />
             <h3 className="font-semibold text-xl dark:text-zinc-50">
               {translate("register.title", "Sign Up To KhasiGPT")}
