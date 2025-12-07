@@ -10,6 +10,7 @@ import {
 import { nanoid } from "nanoid";
 import {
   type Dispatch,
+  type RefObject,
   memo,
   type ReactNode,
   type SetStateAction,
@@ -324,7 +325,7 @@ const PureToolbar = ({
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  useOnClickOutside(toolbarRef, () => {
+  useOnClickOutside(toolbarRef as RefObject<HTMLElement>, () => {
     setIsToolbarVisible(false);
     setSelectedTool(null);
   });
