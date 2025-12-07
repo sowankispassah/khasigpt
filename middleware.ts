@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const ONE_MINUTE = 60 * 1000;
@@ -8,6 +7,30 @@ const API_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
+
+type Bucket = { count: number; resetAt: number };
+const edgeBuckets = new Map<string, Bucket>();
+
+function incrementEdgeRateLimit(
+  key: string,
+  { limit, windowMs }: { limit: number; windowMs: number }
+) {
+  const now = Date.now();
+  const bucket = edgeBuckets.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    const resetAt = now + windowMs;
+    edgeBuckets.set(key, { count: 1, resetAt });
+    return { allowed: true, remaining: limit - 1, resetAt };
+  }
+
+  if (bucket.count >= limit) {
+    return { allowed: false, remaining: 0, resetAt: bucket.resetAt };
+  }
+
+  bucket.count += 1;
+  return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
+}
 
 const DEFAULT_ALLOWED_ORIGINS = [
   process.env.APP_BASE_URL,
@@ -72,7 +95,7 @@ function applyCorsHeaders(
   return response;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
     SHOULD_ENFORCE_CANONICAL &&
@@ -113,7 +136,7 @@ export function middleware(request: NextRequest) {
     }
 
     const key = `api:${getClientKeyFromHeaders(request.headers)}`;
-    const { allowed, resetAt } = incrementRateLimit(key, API_RATE_LIMIT);
+    const { allowed, resetAt } = incrementEdgeRateLimit(key, API_RATE_LIMIT);
 
     if (!allowed) {
       const retryAfter = Math.max(

@@ -58,6 +58,7 @@ import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+export const runtime = "nodejs";
 
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
@@ -192,9 +193,9 @@ async function buildRagAugmentationWithTimeout(
   }
 }
 
-function enforceChatRateLimit(request: Request): Response | null {
+async function enforceChatRateLimit(request: Request): Promise<Response | null> {
   const clientKey = getClientKeyFromHeaders(request.headers);
-  const { allowed, resetAt } = incrementRateLimit(
+  const { allowed, resetAt } = await incrementRateLimit(
     `api:chat:${clientKey}`,
     CHAT_RATE_LIMIT
   );
@@ -224,7 +225,7 @@ function enforceChatRateLimit(request: Request): Response | null {
 }
 
 export async function POST(request: Request) {
-  const rateLimited = enforceChatRateLimit(request);
+  const rateLimited = await enforceChatRateLimit(request);
 
   if (rateLimited) {
     return rateLimited;

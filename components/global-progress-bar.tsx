@@ -17,6 +17,8 @@ export function GlobalProgressBar() {
   const timeoutsRef = useRef<number[]>([]);
   const fallbackRef = useRef<number | null>(null);
   const prevPathRef = useRef<string | null>(pathname);
+  const pendingFetchesRef = useRef(0);
+  const originalFetchRef = useRef<typeof fetch | null>(null);
 
   const clearTimers = useCallback(() => {
     timeoutsRef.current.forEach((id) => window.clearTimeout(id));
@@ -37,6 +39,13 @@ export function GlobalProgressBar() {
     timeoutsRef.current.push(hideId);
   }, [clearTimers]);
 
+  const finishIfIdle = useCallback(() => {
+    if (pendingFetchesRef.current > 0) {
+      return;
+    }
+    finish();
+  }, [finish]);
+
   const start = useCallback(() => {
     clearTimers();
     setIsVisible(true);
@@ -44,8 +53,8 @@ export function GlobalProgressBar() {
       const id = window.setTimeout(() => setProgress(value), delay);
       timeoutsRef.current.push(id);
     });
-    fallbackRef.current = window.setTimeout(finish, 5000);
-  }, [clearTimers, finish]);
+    fallbackRef.current = window.setTimeout(finishIfIdle, 5000);
+  }, [clearTimers, finishIfIdle]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -72,10 +81,41 @@ export function GlobalProgressBar() {
 
   useEffect(() => {
     if (prevPathRef.current !== null && prevPathRef.current !== pathname) {
-      finish();
+      finishIfIdle();
     }
     prevPathRef.current = pathname;
-  }, [finish, pathname]);
+  }, [finishIfIdle, pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const originalFetch = window.fetch;
+    originalFetchRef.current = originalFetch;
+
+    window.fetch = async (...args) => {
+      pendingFetchesRef.current += 1;
+      start();
+      try {
+        const response = await originalFetch(...args);
+        return response;
+      } finally {
+        pendingFetchesRef.current = Math.max(
+          0,
+          pendingFetchesRef.current - 1
+        );
+        finishIfIdle();
+      }
+    };
+
+    return () => {
+      pendingFetchesRef.current = 0;
+      if (originalFetchRef.current) {
+        window.fetch = originalFetchRef.current;
+      }
+    };
+  }, [finishIfIdle, start]);
 
   if (!isVisible) {
     return null;

@@ -21,15 +21,16 @@ const STREAM_HEADERS: HeadersInit = {
 };
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 const ONE_MINUTE = 60 * 1000;
 const CHAT_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
 
-function enforceStreamRateLimit(request: Request): Response | null {
+async function enforceStreamRateLimit(request: Request): Promise<Response | null> {
   const clientKey = getClientKeyFromHeaders(request.headers);
-  const { allowed, resetAt } = incrementRateLimit(
+  const { allowed, resetAt } = await incrementRateLimit(
     `api:chat:${clientKey}`,
     CHAT_RATE_LIMIT
   );
@@ -63,7 +64,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: chatId } = await params;
-  const rateLimited = enforceStreamRateLimit(request);
+  const rateLimited = await enforceStreamRateLimit(request);
 
   if (rateLimited) {
     return rateLimited;

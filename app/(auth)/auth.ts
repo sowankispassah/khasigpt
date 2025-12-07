@@ -10,6 +10,7 @@ import {
   getUser,
   getUserById,
   consumeImpersonationToken,
+  createGuestUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import {
@@ -59,7 +60,7 @@ const providers: any[] = [
       const rateLimitKey = `login:${normalizedEmail || "unknown"}`;
       const passwordInput = typeof password === "string" ? password : "";
 
-      const { allowed } = incrementRateLimit(rateLimitKey, {
+      const { allowed } = await incrementRateLimit(rateLimitKey, {
         limit: 5,
         windowMs: 10 * 60 * 1000,
       });
@@ -116,6 +117,33 @@ const providers: any[] = [
     },
   }),
 ];
+
+providers.push(
+  Credentials({
+    id: "guest",
+    name: "Guest",
+    credentials: {},
+    async authorize() {
+      const [record] = await createGuestUser();
+
+      return {
+        ...record,
+        role: (record as any).role ?? "regular",
+        name: "Guest",
+        imageVersion: null,
+        allowPersonalKnowledge: false,
+        firstName: null,
+        lastName: null,
+      } as typeof record & {
+        role: UserRole;
+        imageVersion: string | null;
+        allowPersonalKnowledge: boolean;
+        firstName: string | null;
+        lastName: string | null;
+      };
+    },
+  })
+);
 
 providers.push(
   Credentials({

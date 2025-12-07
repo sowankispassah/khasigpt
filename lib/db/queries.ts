@@ -400,6 +400,7 @@ export async function createGuestUser() {
       .returning({
         id: user.id,
         email: user.email,
+        role: user.role,
       });
   } catch (_error) {
     throw new ChatSDKError(

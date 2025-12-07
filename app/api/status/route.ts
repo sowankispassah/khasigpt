@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { db } from "@/lib/db/queries";
 import {
@@ -8,6 +8,9 @@ import {
   user,
 } from "@/lib/db/schema";
 import { count, desc } from "drizzle-orm";
+import { auth } from "@/app/(auth)/auth";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 type CheckResult = {
   label: string;
@@ -35,7 +38,51 @@ async function runCheck(
   }
 }
 
-export async function GET() {
+const STATUS_RATE_LIMIT = {
+  limit: 30,
+  windowMs: 60 * 1000,
+};
+
+export const runtime = "nodejs";
+
+export async function GET(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "admin") {
+    return NextResponse.json(
+      {
+        code: "forbidden:status",
+        message: "Only administrators can view service status.",
+      },
+      { status: 403 }
+    );
+  }
+
+  const clientKey = getClientKeyFromHeaders(request.headers);
+  const { allowed, resetAt } = await incrementRateLimit(
+    `status:${clientKey}`,
+    STATUS_RATE_LIMIT
+  );
+
+  if (!allowed) {
+    const retryAfterSeconds = Math.max(
+      Math.ceil((resetAt - Date.now()) / 1000),
+      1
+    ).toString();
+
+    return NextResponse.json(
+      {
+        code: "rate_limit:status",
+        message: "Too many requests. Please try again later.",
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": retryAfterSeconds,
+        },
+      }
+    );
+  }
+
   const checks = await Promise.all([
     runCheck("user-count", async () => {
       const [row] = await db
@@ -75,5 +122,9 @@ export async function GET() {
     ok,
     timestamp: new Date().toISOString(),
     checks,
+  }, {
+    headers: {
+      "Cache-Control": "no-store",
+    },
   });
 }
