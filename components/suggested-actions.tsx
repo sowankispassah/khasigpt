@@ -1,7 +1,6 @@
 "use client";
 
 import type { UseChatHelpers } from "@ai-sdk/react";
-import { motion } from "framer-motion";
 import { memo } from "react";
 import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
 import type { ChatMessage } from "@/lib/types";
@@ -27,36 +26,33 @@ function PureSuggestedActions({
   const suggestedActions =
     normalizedPrompts.length > 0
       ? normalizedPrompts
-      : DEFAULT_SUGGESTED_PROMPTS;
+      : [...DEFAULT_SUGGESTED_PROMPTS];
 
   return (
-    <div
-      className="grid w-full gap-2 sm:grid-cols-2"
-      data-testid="suggested-actions"
-    >
-      {suggestedActions.map((suggestedAction, index) => (
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
-          initial={{ opacity: 0, y: 20 }}
-          key={suggestedAction}
-          transition={{ delay: 0.05 * index }}
-        >
-          <Suggestion
-            className="h-auto w-full whitespace-normal p-3 text-left"
-            onClick={(suggestion) => {
-              window.history.replaceState({}, "", `/chat/${chatId}`);
-              sendMessage({
-                role: "user",
-                parts: [{ type: "text", text: suggestion }],
-              });
-            }}
-            suggestion={suggestedAction}
+    <div className="flex flex-col gap-3" data-testid="suggested-actions">
+      <div className="grid w-full gap-2 sm:grid-cols-2">
+        {suggestedActions.map((suggestedAction, index) => (
+          <div
+            className="w-full"
+            key={suggestedAction}
+            style={{ animationDelay: `${0.05 * index}s` }}
           >
-            {suggestedAction}
-          </Suggestion>
-        </motion.div>
-      ))}
+            <Suggestion
+              className="h-auto w-full whitespace-normal p-3 text-left"
+              onClick={(suggestion) => {
+                window.history.replaceState({}, "", `/chat/${chatId}`);
+                sendMessage({
+                  role: "user",
+                  parts: [{ type: "text", text: suggestion }],
+                });
+              }}
+              suggestion={suggestedAction}
+            >
+              {suggestedAction}
+            </Suggestion>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

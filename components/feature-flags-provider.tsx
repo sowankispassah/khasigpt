@@ -4,9 +4,7 @@ import { createContext, type PropsWithChildren, useContext } from "react";
 
 import type { FeatureFlags } from "@/lib/feature-flags";
 
-const FeatureFlagsContext = createContext<FeatureFlags>({
-  artifactsEnabled: true,
-});
+const FeatureFlagsContext = createContext<FeatureFlags>({});
 
 export function FeatureFlagsProvider({
   value,

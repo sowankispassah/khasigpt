@@ -1,5 +1,6 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
@@ -7,7 +8,8 @@ import { LanguageProvider } from "@/components/language-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { ThemeProvider } from "@/components/theme-provider";
-import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { auth } from "./(auth)/auth";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -177,30 +179,21 @@ const THEME_COLOR_SCRIPT = `(function() {
   updateThemeColor();
 })();`;
 
-const fallbackDictionary = STATIC_TRANSLATION_DEFINITIONS.reduce<
-  Record<string, string>
->((accumulator, definition) => {
-  accumulator[definition.key] = definition.defaultText;
-  return accumulator;
-}, {});
-
-const fallbackLanguage = {
-  id: "fallback-en",
-  code: "en",
-  name: "English",
-  isDefault: true,
-  isActive: true,
-};
-
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const { languages, activeLanguage, dictionary } =
+    await getTranslationBundle(preferredLanguage);
+  const session = await auth();
+
   return (
     <html
       className={`${geist.variable} ${geistMono.variable}`}
-      lang={fallbackLanguage.code}
+      lang={activeLanguage.code}
       suppressHydrationWarning
     >
       <head>
@@ -226,11 +219,11 @@ export default async function RootLayout({
           enableSystem
         >
           <LanguageProvider
-            activeLanguage={fallbackLanguage}
-            dictionary={fallbackDictionary}
-            languages={[fallbackLanguage]}
+            activeLanguage={activeLanguage}
+            dictionary={dictionary}
+            languages={languages}
           >
-            <SessionProvider>
+            <SessionProvider session={session ?? undefined}>
               <GlobalProgressBar />
               <PageUserMenu forumEnabled />
               {children}

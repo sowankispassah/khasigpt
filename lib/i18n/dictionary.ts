@@ -51,6 +51,17 @@ const FALLBACK_LANGUAGE: LanguageOption = {
   isActive: true,
 };
 
+const FALLBACK_LANGUAGES: LanguageOption[] = [
+  FALLBACK_LANGUAGE,
+  {
+    id: "fallback-kha",
+    code: "kha",
+    name: "Khasi",
+    isDefault: false,
+    isActive: true,
+  },
+];
+
 const STATIC_DICTIONARY_BASE = Object.freeze(
   STATIC_TRANSLATION_DEFINITIONS.reduce<Record<string, string>>(
     (accumulator, definition) => {
@@ -217,11 +228,23 @@ type PersistedBundle = TranslationBundle & {
 
 const BUNDLE_CACHE = new Map<string, CachedBundle>();
 
-const FALLBACK_BUNDLE: TranslationBundle = {
-  languages: [FALLBACK_LANGUAGE],
-  activeLanguage: FALLBACK_LANGUAGE,
-  dictionary: mergeWithStaticDictionary({}),
+const buildFallbackBundle = (
+  preferredCode?: string | null
+): TranslationBundle => {
+  const activeLanguage =
+    FALLBACK_LANGUAGES.find((entry) => entry.code === preferredCode) ??
+    FALLBACK_LANGUAGE;
+  const languageFallback =
+    LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
+
+  return {
+    languages: [...FALLBACK_LANGUAGES],
+    activeLanguage,
+    dictionary: mergeWithStaticDictionary(languageFallback),
+  };
 };
+
+const FALLBACK_BUNDLE: TranslationBundle = buildFallbackBundle();
 
 const skipTranslationCache =
   typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
@@ -291,7 +314,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     });
 
   BUNDLE_CACHE.set(key, {
-    data: existing?.data ?? FALLBACK_BUNDLE,
+    data: existing?.data ?? buildFallbackBundle(preferredCode),
     inflight: inflight.then(() => {
       return;
     }),
@@ -345,9 +368,10 @@ export async function getTranslationBundle(
     return bundle;
   } catch (error) {
     console.error("[i18n] Falling back to static translations.", error);
-    BUNDLE_CACHE.set(key, { data: FALLBACK_BUNDLE });
+    const fallbackBundle = buildFallbackBundle(preferredCode);
+    BUNDLE_CACHE.set(key, { data: fallbackBundle });
     scheduleBundleRefresh(key, preferredCode);
-    return FALLBACK_BUNDLE;
+    return fallbackBundle;
   }
 }
 

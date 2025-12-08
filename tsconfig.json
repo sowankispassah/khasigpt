@@ -30,15 +30,20 @@
     "strictNullChecks": true
   },
   "include": [
-    "next-env.d.ts",
+    "**/*.cjs",
+    "**/*.cts",
+    "**/*.mjs",
+    "**/*.mts",
     "**/*.ts",
     "**/*.tsx",
-    "**/*.mts",
-    "**/*.cts",
+    ".next-tmp/types/**/*.ts",
+    ".next/types/**/*.ts",
+    "/tmp/ai-next/types/**/*.ts",
+    "build_output/.next/types/**/*.ts",
+    "next-env.d.ts",
     "next.config.js",
     "next.config.ts",
-    "**/*.mjs",
-    "**/*.cjs"
+    ".next-build-clean/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

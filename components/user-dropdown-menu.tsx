@@ -104,12 +104,10 @@ export const UserMenuTrigger = React.forwardRef<
 >(({ user, className, isBusy = false, ...props }, ref) => {
   const initials = getInitials(user.name, user.email);
   const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
-  const avatarKey =
-    user.imageVersion === undefined
-      ? null
-      : `/api/profile/avatar?v=${encodeURIComponent(
-          user.imageVersion ?? "none"
-        )}`;
+  // Always fetch the latest avatar; append version to bust caches if present.
+  const avatarKey = `/api/profile/avatar?v=${encodeURIComponent(
+    user.imageVersion ?? "none"
+  )}`;
   const { data } = useSWR<{ image: string | null }>(avatarKey, fetcher, {
     revalidateOnFocus: false,
   });

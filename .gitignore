@@ -12,6 +12,7 @@ coverage
 .next/
 .next-build/
 .next-output/
+.next-build-clean/
 build_output/
 dist-next/
 out/

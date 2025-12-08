@@ -1,22 +1,11 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import { motion } from "framer-motion";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
-import { useDataStream } from "./data-stream-provider";
-import { DocumentToolResult } from "./document";
-import { DocumentPreview } from "./document-preview";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "./elements/tool";
 import { LoaderIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
@@ -50,15 +39,11 @@ const PurePreviewMessage = ({
 
   const isAssistantMessage = message.role === "assistant";
 
-  useDataStream();
-
   return (
-    <motion.div
-      animate={{ opacity: 1 }}
+    <div
       className="group/message w-full"
       data-role={message.role}
       data-testid={`message-${message.role}`}
-      initial={{ opacity: 0 }}
     >
       <div
         className={cn("flex w-full items-start gap-2 md:gap-3", {
@@ -182,140 +167,18 @@ const PurePreviewMessage = ({
               }
             }
 
-            if (type === "tool-createDocument") {
-              const { toolCallId } = part;
-              const output = (part as { output?: unknown }).output;
-
-              if (output && typeof output === "object" && "error" in output) {
-                return (
-                  <div
-                    className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-500 dark:bg-red-950/50"
-                    key={toolCallId}
-                  >
-                    Error creating document:{" "}
-                    {String((output as { error: unknown }).error)}
-                  </div>
-                );
-              }
-
+            if (
+              type === "tool-createDocument" ||
+              type === "tool-updateDocument" ||
+              type === "tool-requestSuggestions"
+            ) {
               return (
-                <DocumentPreview
-                  isReadonly={isReadonly}
-                  key={toolCallId}
-                  result={output}
-                />
-              );
-            }
-
-            if (type === "tool-updateDocument") {
-              const { toolCallId } = part;
-              const output = (part as { output?: unknown }).output;
-              const documentArgs =
-                output && typeof output === "object"
-                  ? (output as Record<string, unknown>)
-                  : undefined;
-
-              if (output && typeof output === "object" && "error" in output) {
-                return (
-                  <div
-                    className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-500 dark:bg-red-950/50"
-                    key={toolCallId}
-                  >
-                    Error updating document:{" "}
-                    {String((output as { error: unknown }).error)}
-                  </div>
-                );
-              }
-
-              return (
-                <div className="relative" key={toolCallId}>
-                  <DocumentPreview
-                    args={{ ...(documentArgs ?? {}), isUpdate: true }}
-                    isReadonly={isReadonly}
-                    result={output}
-                  />
+                <div
+                  className="rounded-lg border bg-muted/40 px-3 py-2 text-muted-foreground text-sm"
+                  key={`tool-${message.id}-${index}`}
+                >
+                  Document tools are disabled in this deployment.
                 </div>
-              );
-            }
-
-            if (type === "tool-requestSuggestions") {
-              const { toolCallId, state } = part;
-
-              return (
-                <Tool defaultOpen={true} key={toolCallId}>
-                  <ToolHeader state={state} type="tool-requestSuggestions" />
-                  <ToolContent>
-                    {state === "input-available" && (
-                      <ToolInput input={part.input} />
-                    )}
-                    {state === "output-available" && (
-                      <ToolOutput
-                        errorText={undefined}
-                        output={(() => {
-                          const output = (part as { output?: unknown }).output;
-                          const rawDocumentResult =
-                            output && typeof output === "object"
-                              ? (output as Record<string, unknown>)
-                              : undefined;
-
-                          if (
-                            output &&
-                            typeof output === "object" &&
-                            "error" in output
-                          ) {
-                            return (
-                              <div className="rounded border p-2 text-red-500">
-                                Error:{" "}
-                                {String((output as { error: unknown }).error)}
-                              </div>
-                            );
-                          }
-
-                          const documentResult = (() => {
-                            if (!rawDocumentResult) {
-                              return;
-                            }
-
-                            const { id, title, kind } = rawDocumentResult;
-
-                            if (
-                              typeof id === "string" &&
-                              typeof title === "string" &&
-                              (kind === "text" ||
-                                kind === "code" ||
-                                kind === "image" ||
-                                kind === "sheet")
-                            ) {
-                              return {
-                                id,
-                                title,
-                                kind,
-                              } as const;
-                            }
-
-                            return;
-                          })();
-
-                          if (!documentResult) {
-                            return (
-                              <div className="rounded border p-2 text-amber-600">
-                                Unable to display document suggestions.
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <DocumentToolResult
-                              isReadonly={isReadonly}
-                              result={documentResult}
-                              type="request-suggestions"
-                            />
-                          );
-                        })()}
-                      />
-                    )}
-                  </ToolContent>
-                </Tool>
               );
             }
 
@@ -353,7 +216,7 @@ const PurePreviewMessage = ({
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
@@ -361,12 +224,10 @@ export const PreviewMessage = memo(PurePreviewMessage);
 
 export const ThinkingMessage = () => {
   return (
-    <motion.div
-      animate={{ opacity: 1 }}
+    <div
       className="group/message w-full py-1"
       data-role="assistant"
       data-testid="message-assistant-loading"
-      initial={{ opacity: 0 }}
     >
       <div className="flex items-center justify-start">
         <span className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -375,6 +236,6 @@ export const ThinkingMessage = () => {
           </span>
         </span>
       </div>
-    </motion.div>
+    </div>
   );
 };

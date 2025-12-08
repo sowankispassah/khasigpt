@@ -825,26 +825,6 @@ export async function setMarginBaselineModelAction(formData: FormData) {
   redirect("/admin/settings?notice=model-margin-baseline");
 }
 
-export async function setArtifactsEnabledAction(formData: FormData) {
-  "use server";
-  const actor = await requireAdmin();
-
-  const enabled = parseBoolean(formData.get("artifactsEnabled"));
-
-  await setAppSetting({ key: "artifactsEnabled", value: enabled });
-
-  await createAuditLogEntry({
-    actorId: actor.id,
-    action: "feature.artifacts.toggle",
-    target: { feature: "artifacts" },
-    metadata: { enabled },
-  });
-
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/admin/settings");
-}
-
 export async function updatePrivacyPolicyAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
