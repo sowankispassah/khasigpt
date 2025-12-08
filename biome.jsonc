@@ -37,6 +37,9 @@
         "useSimplifiedLogicExpression": "off",
         "noImportantStyles": "off"
       },
+      "correctness": {
+        "useUniqueElementIds": "off"
+      },
       "a11y": {
         "noSvgWithoutTitle": "off"
       }
@@ -44,10 +47,5 @@
   },
   "formatter": {
     "enabled": false
-  },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
   }
 }

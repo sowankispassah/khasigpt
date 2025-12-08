@@ -61,6 +61,9 @@ export const user = pgTable(
   },
   (table) => ({
     createdAtIdx: index("User_createdAt_idx").on(table.createdAt),
+    emailLowerIdx: uniqueIndex("User_email_lower_idx").on(
+      sql`lower(${table.email})`
+    ),
   })
 );
 

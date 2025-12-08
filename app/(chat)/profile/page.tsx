@@ -1,3 +1,4 @@
+import { getDownloadUrl } from "@vercel/blob";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -54,6 +55,17 @@ export default async function ProfilePage() {
       : [];
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
+  const initialAvatar = (() => {
+    const raw = currentUser?.image ?? null;
+    if (!raw) {
+      return null;
+    }
+    try {
+      return getDownloadUrl(raw);
+    } catch {
+      return raw.startsWith("data:") ? raw : null;
+    }
+  })();
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:gap-8">
@@ -91,7 +103,7 @@ export default async function ProfilePage() {
         </p>
         <div className="mt-4">
           <AvatarForm
-            initialImage={currentUser?.image ?? null}
+            initialImage={initialAvatar}
             userEmail={session.user.email ?? null}
             userName={session.user.name ?? null}
           />

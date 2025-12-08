@@ -1,13 +1,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { SessionProvider } from "next-auth/react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DataStreamProvider } from "@/components/data-stream-provider";
 import { FeatureFlagsProvider } from "@/components/feature-flags-provider";
+import { LanguageProvider } from "@/components/language-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { loadChatModels } from "@/lib/ai/models";
 import { getUserBalanceSummary, getUserById } from "@/lib/db/queries";
 import { loadFeatureFlags } from "@/lib/feature-flags";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { auth } from "../(auth)/auth";
 
 export default async function Layout({
@@ -22,6 +25,9 @@ export default async function Layout({
       auth(),
       cookies(),
     ]);
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const { languages, activeLanguage, dictionary } =
+    await getTranslationBundle(preferredLanguage);
 
   const dbUser = session?.user ? await getUserById(session.user.id) : null;
   const profileUser = dbUser ?? session?.user ?? null;
@@ -61,18 +67,26 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
 
   return (
-    <FeatureFlagsProvider value={featureFlags}>
-      <ModelConfigProvider
-        defaultModelId={defaultModel?.id ?? null}
-        models={models}
+    <SessionProvider session={session ?? undefined}>
+      <LanguageProvider
+        activeLanguage={activeLanguage}
+        dictionary={dictionary}
+        languages={languages}
       >
-        <DataStreamProvider>
-          <SidebarProvider defaultOpen={defaultSidebarOpen}>
-            <AppSidebar user={session?.user} />
-            <SidebarInset>{children}</SidebarInset>
-          </SidebarProvider>
-        </DataStreamProvider>
-      </ModelConfigProvider>
-    </FeatureFlagsProvider>
+        <FeatureFlagsProvider value={featureFlags}>
+          <ModelConfigProvider
+            defaultModelId={defaultModel?.id ?? null}
+            models={models}
+          >
+            <DataStreamProvider>
+              <SidebarProvider defaultOpen={defaultSidebarOpen}>
+                <AppSidebar user={session?.user} />
+                <SidebarInset>{children}</SidebarInset>
+              </SidebarProvider>
+            </DataStreamProvider>
+          </ModelConfigProvider>
+        </FeatureFlagsProvider>
+      </LanguageProvider>
+    </SessionProvider>
   );
 }

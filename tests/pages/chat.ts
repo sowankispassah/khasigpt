@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 const CHAT_ID_REGEX =
   /^http:\/\/localhost:3000\/chat\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -128,14 +128,21 @@ export class ChatPage {
     expect(await this.getSelectedVisibility()).toBe(chatVisibility);
   }
 
-  async getRecentAssistantMessage() {
+  async getRecentAssistantMessage(): Promise<{
+    element: Locator;
+    content: string | null;
+    reasoning: string | null;
+    toggleReasoningVisibility: () => Promise<void>;
+    upvote: () => Promise<void>;
+    downvote: () => Promise<void>;
+  }> {
     const messageElements = await this.page
       .getByTestId("message-assistant")
       .all();
     const lastMessageElement = messageElements.at(-1);
 
     if (!lastMessageElement) {
-      return null;
+      throw new Error("No assistant message found");
     }
 
     const content = await lastMessageElement

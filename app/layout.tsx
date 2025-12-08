@@ -1,19 +1,16 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { cookies } from "next/headers";
 import { Toaster } from "sonner";
-import { auth } from "@/app/(auth)/auth";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
 import { LanguageProvider } from "@/components/language-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { ThemeProvider } from "@/components/theme-provider";
-import { isForumEnabled } from "@/lib/forum/config";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const siteName = "KhasiGPT";
@@ -180,26 +177,30 @@ const THEME_COLOR_SCRIPT = `(function() {
   updateThemeColor();
 })();`;
 
+const fallbackDictionary = STATIC_TRANSLATION_DEFINITIONS.reduce<
+  Record<string, string>
+>((accumulator, definition) => {
+  accumulator[definition.key] = definition.defaultText;
+  return accumulator;
+}, {});
+
+const fallbackLanguage = {
+  id: "fallback-en",
+  code: "en",
+  name: "English",
+  isDefault: true,
+  isActive: true,
+};
+
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value;
-  const { languages, activeLanguage, dictionary } =
-    await getTranslationBundle(preferredLanguage);
-
-  const sessionToken =
-    cookieStore.get("__Secure-authjs.session-token") ??
-    cookieStore.get("authjs.session-token");
-  const session = sessionToken ? await auth() : null;
-  const forumEnabled = await isForumEnabled();
-
   return (
     <html
       className={`${geist.variable} ${geistMono.variable}`}
-      lang={activeLanguage.code}
+      lang={fallbackLanguage.code}
       suppressHydrationWarning
     >
       <head>
@@ -225,13 +226,13 @@ export default async function RootLayout({
           enableSystem
         >
           <LanguageProvider
-            activeLanguage={activeLanguage}
-            dictionary={dictionary}
-            languages={languages}
+            activeLanguage={fallbackLanguage}
+            dictionary={fallbackDictionary}
+            languages={[fallbackLanguage]}
           >
-            <SessionProvider session={session ?? undefined}>
+            <SessionProvider>
               <GlobalProgressBar />
-              <PageUserMenu forumEnabled={forumEnabled} />
+              <PageUserMenu forumEnabled />
               {children}
             </SessionProvider>
             <Toaster position="top-center" />

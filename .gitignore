@@ -10,6 +10,10 @@ coverage
 
 # next.js
 .next/
+.next-build/
+.next-output/
+build_output/
+dist-next/
 out/
 build
 

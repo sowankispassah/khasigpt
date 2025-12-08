@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "next build",
+    "build": "set NEXT_DISABLE_OUTPUT_TRACE=1&& next build",
     "start": "next start",
-    "lint": "npx ultracite@latest check",
-    "format": "npx ultracite@latest fix",
+    "lint": "pnpm exec ultracite check",
+    "format": "pnpm exec ultracite fix",
+    "typecheck": "pnpm exec tsc --noEmit",
     "translations:publish": "tsx scripts/publish-translations.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx lib/db/migrate.ts",
@@ -16,7 +17,8 @@
     "db:pull": "drizzle-kit pull",
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
-    "test": "npx playwright install chromium && npx cross-env PLAYWRIGHT=True PORT=3000 npx playwright test"
+    "test": "pnpm exec playwright install chromium && pnpm dlx cross-env PLAYWRIGHT=true PORT=3000 pnpm exec playwright test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.23",

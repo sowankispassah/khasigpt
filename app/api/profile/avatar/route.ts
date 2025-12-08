@@ -1,3 +1,4 @@
+import { del, getDownloadUrl, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
@@ -11,6 +12,13 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpg",
   "image/webp",
 ]);
+
+function shouldDeleteBlob(url: string | null): url is string {
+  if (!url) {
+    return false;
+  }
+  return url.startsWith("https://") && url.includes("vercel-storage.com");
+}
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -45,18 +53,37 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const base64 = buffer.toString("base64");
-  const dataUrl = `data:${mimeType};base64,${base64}`;
+  const extension =
+    mimeType === "image/png"
+      ? "png"
+      : mimeType === "image/webp"
+        ? "webp"
+        : "jpg";
+  const objectKey = `avatars/${session.user.id}/${crypto.randomUUID()}.${extension}`;
+
+  const currentUser = await getUserById(session.user.id);
+  const previousImage = currentUser?.image ?? null;
+
+  const blob = await put(objectKey, file, {
+    access: "public",
+    contentType: mimeType,
+    addRandomSuffix: false,
+  });
 
   const updated = await updateUserImage({
     id: session.user.id,
-    image: dataUrl,
+    image: blob.url,
   });
+
+  if (shouldDeleteBlob(previousImage)) {
+    del(previousImage).catch((error) => {
+      console.error("Failed to delete previous avatar blob", error);
+    });
+  }
 
   return NextResponse.json({
     ok: true,
-    image: dataUrl,
+    image: blob.downloadUrl,
     updatedAt:
       updated?.updatedAt instanceof Date
         ? updated.updatedAt.toISOString()
@@ -71,10 +98,18 @@ export async function DELETE() {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
+  const record = await getUserById(session.user.id);
   const updated = await updateUserImage({
     id: session.user.id,
     image: null,
   });
+
+  const imageToDelete = record?.image ?? null;
+  if (shouldDeleteBlob(imageToDelete)) {
+    del(imageToDelete).catch((error) => {
+      console.error("Failed to delete avatar blob", error);
+    });
+  }
 
   return NextResponse.json({
     ok: true,
@@ -94,9 +129,18 @@ export async function GET() {
   }
 
   const record = await getUserById(session.user.id);
+  const imageUrl = record?.image ?? null;
+  let signedImage: string | null = null;
+  if (imageUrl) {
+    try {
+      signedImage = getDownloadUrl(imageUrl);
+    } catch (_error) {
+      signedImage = imageUrl.startsWith("data:") ? imageUrl : null;
+    }
+  }
 
   return NextResponse.json({
-    image: record?.image ?? null,
+    image: signedImage,
     updatedAt:
       record?.updatedAt instanceof Date
         ? record.updatedAt.toISOString()

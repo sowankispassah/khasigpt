@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export class ArtifactPage {
   private readonly page: Page;
@@ -37,14 +37,19 @@ export class ArtifactPage {
     await this.artifact.getByTestId("send-button").click();
   }
 
-  async getRecentAssistantMessage() {
+  async getRecentAssistantMessage(): Promise<{
+    element: Locator;
+    content: string | null;
+    reasoning: string | null;
+    toggleReasoningVisibility: () => Promise<void>;
+  }> {
     const messageElements = await this.artifact
       .getByTestId("message-assistant")
       .all();
     const lastMessageElement = messageElements.at(-1);
 
     if (!lastMessageElement) {
-      return null;
+      throw new Error("No assistant message found");
     }
 
     const content = await lastMessageElement
