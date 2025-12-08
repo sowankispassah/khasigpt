@@ -95,8 +95,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Use a custom build directory to avoid Windows lock issues on the default path.
-  distDir: ".next-build-clean",
   images: {
     remotePatterns: [
       {
