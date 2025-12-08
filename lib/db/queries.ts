@@ -81,6 +81,7 @@ import {
   type User,
   type UserSubscription,
   user,
+  userProfileImage,
   userSubscription,
   vote,
 } from "./schema";
@@ -454,21 +455,19 @@ export async function ensureOAuthUser(
 
     let userRecord = existing;
 
-    const hasCustomAvatar =
-      typeof userRecord.image === "string" &&
-      (userRecord.image.startsWith("data:") ||
-        userRecord.image.startsWith("blob:"));
+    const activeProfileImage = await getActiveUserProfileImage({
+      userId: userRecord.id,
+    });
 
-    if (
-      profile?.image &&
-      !hasCustomAvatar &&
-      (!userRecord.image || userRecord.image !== profile.image)
-    ) {
-      const updatedImage = await updateUserImage({
-        id: userRecord.id,
-        image: profile.image,
+    if (!activeProfileImage?.imageUrl && profile?.image) {
+      const updated = await setActiveUserProfileImage({
+        userId: userRecord.id,
+        imageUrl: profile.image,
+        source: "google",
       });
-      userRecord = updatedImage ?? userRecord;
+      if (updated?.user) {
+        userRecord = updated.user;
+      }
     }
 
     const nameUpdates: Partial<typeof user.$inferInsert> = {};
@@ -1486,23 +1485,17 @@ export async function updateUserImage({
   id: string;
   image: string | null;
 }) {
-  try {
-    const [updated] = await db
-      .update(user)
-      .set({
-        image,
-        updatedAt: new Date(),
-      })
-      .where(eq(user.id, id))
-      .returning();
-
-    return updated ?? null;
-  } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to update user profile image"
-    );
+  if (!image) {
+    await clearActiveUserProfileImage({ userId: id });
+    return getUserById(id);
   }
+
+  const result = await setActiveUserProfileImage({
+    userId: id,
+    imageUrl: image,
+    source: "upload",
+  });
+  return result?.user ?? null;
 }
 
 export async function updateUserRole({
@@ -1524,6 +1517,103 @@ export async function updateUserRole({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update user role"
+    );
+  }
+}
+
+export async function getActiveUserProfileImage({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    const [record] = await db
+      .select()
+      .from(userProfileImage)
+      .where(
+        and(
+          eq(userProfileImage.userId, userId),
+          eq(userProfileImage.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return record ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load user profile image"
+    );
+  }
+}
+
+export async function setActiveUserProfileImage({
+  userId,
+  imageUrl,
+  source,
+}: {
+  userId: string;
+  imageUrl: string;
+  source: string;
+}) {
+  const now = new Date();
+  try {
+    return await db.transaction(async (tx) => {
+      await tx
+        .update(userProfileImage)
+        .set({ isActive: false })
+        .where(eq(userProfileImage.userId, userId));
+
+      const [record] = await tx
+        .insert(userProfileImage)
+        .values({
+          userId,
+          imageUrl,
+          source,
+          isActive: true,
+        })
+        .returning();
+
+      const [updatedUser] = await tx
+        .update(user)
+        .set({
+          image: imageUrl,
+          updatedAt: now,
+        })
+        .where(eq(user.id, userId))
+        .returning();
+
+      return { record, user: updatedUser ?? null };
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to store profile image"
+    );
+  }
+}
+
+export async function clearActiveUserProfileImage({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(userProfileImage)
+        .set({ isActive: false })
+        .where(eq(userProfileImage.userId, userId));
+
+      await tx
+        .update(user)
+        .set({ image: null, updatedAt: new Date() })
+        .where(eq(user.id, userId));
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to clear profile image"
     );
   }
 }

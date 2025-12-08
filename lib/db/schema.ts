@@ -69,6 +69,29 @@ export const user = pgTable(
 
 export type User = InferSelectModel<typeof user>;
 
+export const userProfileImage = pgTable(
+  "UserProfileImage",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    imageUrl: text("imageUrl").notNull(),
+    source: text("source").notNull().default("upload"),
+    isActive: boolean("isActive").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    activeIdx: uniqueIndex("UserProfileImage_active_idx")
+      .on(table.userId)
+      .where(sql`${table.isActive} = true`),
+    userIdx: index("UserProfileImage_user_idx").on(table.userId),
+    createdAtIdx: index("UserProfileImage_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type UserProfileImage = InferSelectModel<typeof userProfileImage>;
+
 export const emailVerificationToken = pgTable(
   "EmailVerificationToken",
   {
