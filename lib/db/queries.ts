@@ -6,6 +6,8 @@
   require("server-only");
 }
 
+import { randomBytes } from "node:crypto";
+import { setDefaultResultOrder } from "node:dns";
 import {
   and,
   asc,
@@ -15,74 +17,74 @@ import {
   gt,
   gte,
   inArray,
-  lt,
-  lte,
   isNotNull,
   isNull,
+  lt,
+  lte,
   or,
-  sql,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
+import {
+  getFallbackUsdToInrRate,
+  getUsdToInrRate,
+} from "../services/exchange-rate";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
-import { getFallbackUsdToInrRate, getUsdToInrRate } from "../services/exchange-rate";
 import {
+  type AppSetting,
+  type AuditLog,
   appSetting,
   auditLog,
-  language,
-  contactMessage,
+  type Chat,
+  type ContactMessage,
+  type ContactMessageStatus,
+  type Coupon,
+  type CouponRewardPayout,
   chat,
-  document,
-  emailVerificationToken,
-  modelConfig,
-  impersonationToken,
-  message,
-  passwordResetToken,
-  paymentTransaction,
-  pricingPlan,
-  translationKey,
-  translationValue,
-  stream,
-  suggestion,
-  tokenUsage,
-  user,
-  userSubscription,
-  vote,
+  contactMessage,
   coupon,
   couponRedemption,
   couponRewardPayout,
-  type AppSetting,
-  type AuditLog,
-  type Language,
-  type ContactMessage,
-  type ContactMessageStatus,
-  type ImpersonationToken,
-  type Chat,
   type DBMessage,
+  document,
   type EmailVerificationToken,
+  emailVerificationToken,
+  type ImpersonationToken,
+  impersonationToken,
+  type Language,
+  language,
   type ModelConfig,
+  message,
+  modelConfig,
   type PasswordResetToken,
   type PaymentTransaction,
   type PricingPlan,
+  passwordResetToken,
+  paymentTransaction,
+  pricingPlan,
+  type Suggestion,
+  stream,
+  suggestion,
+  type TokenUsage,
   type TranslationKey,
   type TranslationValue,
-  type Suggestion,
-  type TokenUsage,
+  tokenUsage,
+  translationKey,
+  translationValue,
   type User,
   type UserSubscription,
-  type Coupon,
-  type CouponRedemption,
-  type CouponRewardPayout,
+  user,
+  userSubscription,
+  vote,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
-import { randomBytes } from "node:crypto";
 
 try {
   setDefaultResultOrder("ipv4first");
@@ -101,7 +103,10 @@ function normalizeEndOfDay(date: Date) {
   return end;
 }
 
-function buildDateRangeConditions<T>(column: T, range?: DateRange): SQL<boolean>[] {
+function buildDateRangeConditions<T>(
+  column: T,
+  range?: DateRange
+): SQL<boolean>[] {
   if (!range) {
     return [];
   }
@@ -113,7 +118,9 @@ function buildDateRangeConditions<T>(column: T, range?: DateRange): SQL<boolean>
   }
 
   if (range.end) {
-    conditions.push(lte(column as any, normalizeEndOfDay(range.end)) as SQL<boolean>);
+    conditions.push(
+      lte(column as any, normalizeEndOfDay(range.end)) as SQL<boolean>
+    );
   }
 
   return conditions;
@@ -166,7 +173,8 @@ function toDate(value: Date | string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isValidUUID(value: string): boolean {
   return UUID_REGEX.test(value);
@@ -175,7 +183,7 @@ function isValidUUID(value: string): boolean {
 function maskUserIdentifier(identifier: string | null | undefined): string {
   const raw = identifier?.trim() ?? "";
   const base = raw.includes("@")
-    ? raw.split("@")[0] ?? ""
+    ? (raw.split("@")[0] ?? "")
     : raw.replace(/\s+/g, "");
   const source = base.replace(/\s+/g, "");
   if (!source) {
@@ -200,7 +208,10 @@ function sanitizeAuditString(
   return cleaned.slice(0, maxLength);
 }
 
-function calculateRewardAmount(totalRevenueInPaise: number, rewardPercentage: number) {
+function calculateRewardAmount(
+  totalRevenueInPaise: number,
+  rewardPercentage: number
+) {
   if (!(Number.isFinite(totalRevenueInPaise) && totalRevenueInPaise > 0)) {
     return 0;
   }
@@ -220,12 +231,14 @@ function createCouponStatsSubquery() {
     .select({
       couponId: couponRedemption.couponId,
       usageCount: sql<number>`COUNT(${couponRedemption.id})`.as("usageCount"),
-      totalDiscount: sql<number>`COALESCE(SUM(${couponRedemption.discountAmount}), 0)`.as(
-        "totalDiscount"
-      ),
-      totalRevenue: sql<number>`COALESCE(SUM(${couponRedemption.paymentAmount}), 0)`.as(
-        "totalRevenue"
-      ),
+      totalDiscount:
+        sql<number>`COALESCE(SUM(${couponRedemption.discountAmount}), 0)`.as(
+          "totalDiscount"
+        ),
+      totalRevenue:
+        sql<number>`COALESCE(SUM(${couponRedemption.paymentAmount}), 0)`.as(
+          "totalRevenue"
+        ),
       lastRedemptionAt: sql<Date | null>`MAX(${couponRedemption.createdAt})`.as(
         "lastRedemptionAt"
       ),
@@ -242,7 +255,9 @@ function createCouponPayoutStatsSubquery() {
       totalPaid: sql<number>`COALESCE(SUM(${couponRewardPayout.amount}), 0)`.as(
         "totalPaid"
       ),
-      payoutCount: sql<number>`COUNT(${couponRewardPayout.id})`.as("payoutCount"),
+      payoutCount: sql<number>`COUNT(${couponRewardPayout.id})`.as(
+        "payoutCount"
+      ),
     })
     .from(couponRewardPayout)
     .groupBy(couponRewardPayout.couponId)
@@ -271,14 +286,20 @@ const poolConfig = {
   max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
 };
 
-// biome-ignore lint: Forbidden non-null assertion.
+const postgresUrl = process.env.POSTGRES_URL;
+if (!postgresUrl) {
+  throw new ChatSDKError(
+    "bad_request:configuration",
+    "POSTGRES_URL is not configured"
+  );
+}
+
 const client =
-  globalDbState.postgresClient ?? postgres(process.env.POSTGRES_URL!, poolConfig);
+  globalDbState.postgresClient ?? postgres(postgresUrl, poolConfig);
 
 globalDbState.postgresClient ??= client;
 
-export const db =
-  globalDbState.drizzleDb ?? drizzle(client);
+export const db = globalDbState.drizzleDb ?? drizzle(client);
 
 globalDbState.drizzleDb ??= db;
 
@@ -289,6 +310,7 @@ function normalizeEmailValue(email: string): string {
 const IST_OFFSET_MINUTES = 330;
 const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60 * 1000;
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
+const LANGUAGE_CODE_REGEX = /^[a-z0-9-]{2,16}$/;
 
 const PAYMENT_STATUS_PENDING: PaymentTransaction["status"] = "pending";
 const PAYMENT_STATUS_PROCESSING: PaymentTransaction["status"] = "processing";
@@ -327,14 +349,14 @@ export async function getUserById(id: string): Promise<User | null> {
 
     return record ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to get user by id"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to get user by id");
   }
 }
 
-export async function createUser(email: string, password: string): Promise<User> {
+export async function createUser(
+  email: string,
+  password: string
+): Promise<User> {
   const hashedPassword = generateHashedPassword(password);
   const normalizedEmail = normalizeEmailValue(email);
 
@@ -412,7 +434,11 @@ export async function createGuestUser() {
 
 export async function ensureOAuthUser(
   email: string,
-  profile?: { image?: string | null; firstName?: string | null; lastName?: string | null }
+  profile?: {
+    image?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  }
 ): Promise<{ user: User; isNewUser: boolean }> {
   const normalizedEmail = normalizeEmailValue(email);
   const [existing] = await getUser(normalizedEmail);
@@ -521,11 +547,7 @@ export async function deletePasswordResetTokensForUser({
   }
 }
 
-export async function deletePasswordResetTokenById({
-  id,
-}: {
-  id: string;
-}) {
+export async function deletePasswordResetTokenById({ id }: { id: string }) {
   try {
     await db.delete(passwordResetToken).where(eq(passwordResetToken.id, id));
   } catch (_error) {
@@ -645,7 +667,9 @@ export async function verifyUserEmailByToken(
       .limit(1);
 
     if (!matchingUser) {
-      await deleteEmailVerificationTokensForUser({ userId: tokenRecord.userId });
+      await deleteEmailVerificationTokensForUser({
+        userId: tokenRecord.userId,
+      });
       return { status: "not_found" };
     }
 
@@ -736,10 +760,7 @@ export async function restoreChatById({ id }: { id: string }) {
 
     return restored ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to restore chat"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to restore chat");
   }
 }
 
@@ -796,7 +817,9 @@ export async function getChatsByUserId({
       db
         .select()
         .from(chat)
-        .where(whereCondition ? and(whereCondition, baseCondition) : baseCondition)
+        .where(
+          whereCondition ? and(whereCondition, baseCondition) : baseCondition
+        )
         .orderBy(desc(chat.createdAt))
         .limit(extendedLimit);
 
@@ -1155,10 +1178,7 @@ export async function updateChatTitleById({
   title: string;
 }) {
   try {
-    return await db
-      .update(chat)
-      .set({ title })
-      .where(eq(chat.id, chatId));
+    return await db.update(chat).set({ title }).where(eq(chat.id, chatId));
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -1371,10 +1391,7 @@ export async function updateUserProfile({
 
     return updated ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to update profile"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to update profile");
   }
 }
 
@@ -1411,7 +1428,9 @@ export async function createImpersonationToken({
   }
 }
 
-export async function consumeImpersonationToken(token: string): Promise<ImpersonationToken | null> {
+export async function consumeImpersonationToken(
+  token: string
+): Promise<ImpersonationToken | null> {
   try {
     const [record] = await db
       .update(impersonationToken)
@@ -1456,10 +1475,7 @@ export async function updateUserName({
 
     return updated ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to update name"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to update name");
   }
 }
 
@@ -1682,7 +1698,9 @@ export async function listChats({
           : (and(...conditions) as SQL<boolean>);
 
     const query =
-      whereCondition !== undefined ? baseQuery.where(whereCondition) : baseQuery;
+      whereCondition !== undefined
+        ? baseQuery.where(whereCondition)
+        : baseQuery;
 
     return await query
       .orderBy(desc(chat.createdAt))
@@ -1708,9 +1726,9 @@ export async function getChatCount({
 
     const filterCondition = onlyDeleted
       ? (isNotNull(chat.deletedAt) as SQL<boolean>)
-      : !includeDeleted
-        ? (isNull(chat.deletedAt) as SQL<boolean>)
-        : undefined;
+      : includeDeleted
+        ? undefined
+        : (isNull(chat.deletedAt) as SQL<boolean>);
 
     const builder =
       filterCondition !== undefined
@@ -1821,7 +1839,7 @@ export async function createAuditLogEntry({
   device?: string | null;
 }): Promise<AuditLog | null> {
   const targetUserId =
-    typeof target?.["userId"] === "string" ? (target["userId"] as string) : null;
+    typeof target?.userId === "string" ? (target.userId as string) : null;
   const derivedSubjectUserId =
     (subjectUserId && isValidUUID(subjectUserId) ? subjectUserId : null) ??
     (targetUserId && isValidUUID(targetUserId) ? targetUserId : null);
@@ -1866,7 +1884,10 @@ export async function listAuditLog({
     const conditions: SQL<boolean>[] = [];
     if (userId && isValidUUID(userId)) {
       conditions.push(
-        or(eq(auditLog.actorId, userId), eq(auditLog.subjectUserId, userId)) as SQL<boolean>
+        or(
+          eq(auditLog.actorId, userId),
+          eq(auditLog.subjectUserId, userId)
+        ) as SQL<boolean>
       );
     }
 
@@ -2069,8 +2090,14 @@ export async function listUserCreditHistory({
       .from(auditLog)
       .where(
         or(
-          and(eq(auditLog.action, "billing.manual_credit.grant"), targetUserCondition),
-          and(eq(auditLog.action, "billing.recharge"), eq(auditLog.actorId, userId))
+          and(
+            eq(auditLog.action, "billing.manual_credit.grant"),
+            targetUserCondition
+          ),
+          and(
+            eq(auditLog.action, "billing.recharge"),
+            eq(auditLog.actorId, userId)
+          )
         )
       )
       .orderBy(desc(auditLog.createdAt))
@@ -2255,9 +2282,9 @@ export async function listModelConfigs({
 
     const deletedCondition = onlyDeleted
       ? (isNotNull(modelConfig.deletedAt) as SQL<boolean>)
-      : !includeDeleted
-        ? (isNull(modelConfig.deletedAt) as SQL<boolean>)
-        : undefined;
+      : includeDeleted
+        ? undefined
+        : (isNull(modelConfig.deletedAt) as SQL<boolean>);
 
     const enabledCondition = includeDisabled
       ? undefined
@@ -2266,7 +2293,7 @@ export async function listModelConfigs({
     const whereCondition =
       deletedCondition && enabledCondition
         ? (and(deletedCondition, enabledCondition) as SQL<boolean>)
-        : deletedCondition ?? enabledCondition;
+        : (deletedCondition ?? enabledCondition);
 
     const builder =
       whereCondition !== undefined
@@ -2419,7 +2446,9 @@ export async function setDefaultModelConfig(id: string) {
       await tx
         .update(modelConfig)
         .set({ isDefault: false, updatedAt: now })
-        .where(and(eq(modelConfig.isDefault, true), isNull(modelConfig.deletedAt)));
+        .where(
+          and(eq(modelConfig.isDefault, true), isNull(modelConfig.deletedAt))
+        );
 
       await tx
         .update(modelConfig)
@@ -2442,7 +2471,12 @@ export async function setMarginBaselineModel(id: string) {
       await tx
         .update(modelConfig)
         .set({ isMarginBaseline: false, updatedAt: now })
-        .where(and(eq(modelConfig.isMarginBaseline, true), isNull(modelConfig.deletedAt)));
+        .where(
+          and(
+            eq(modelConfig.isMarginBaseline, true),
+            isNull(modelConfig.deletedAt)
+          )
+        );
 
       await tx
         .update(modelConfig)
@@ -2668,7 +2702,7 @@ export type CouponWithStats = {
   totalPaidInPaise: number;
 };
 
-async function fetchCouponStats(includePayouts: boolean): Promise<any[]> {
+function fetchCouponStats(includePayouts: boolean): Promise<any[]> {
   const stats = createCouponStatsSubquery();
   const payoutStats = includePayouts ? createCouponPayoutStatsSubquery() : null;
 
@@ -2694,7 +2728,7 @@ async function fetchCouponStats(includePayouts: boolean): Promise<any[]> {
       totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
       lastRedemptionAt: stats.lastRedemptionAt,
       totalPaidInPaise: includePayouts
-        ? sql<number>`COALESCE(${payoutStats!.totalPaid}, 0)`
+        ? sql<number>`COALESCE(${payoutStats?.totalPaid}, 0)`
         : sql<number>`0`,
     })
     .from(coupon)
@@ -2715,7 +2749,7 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
 
     return rows.map((row) => {
       const computedName = [row.creatorFirstName, row.creatorLastName]
-        .filter((value): value is string => Boolean(value && value.trim()))
+        .filter((value): value is string => Boolean(value?.trim()))
         .join(" ");
 
       const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
@@ -2756,7 +2790,7 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
       const rows = await fetchCouponStats(false);
       return rows.map((row) => {
         const computedName = [row.creatorFirstName, row.creatorLastName]
-          .filter((value): value is string => Boolean(value && value.trim()))
+          .filter((value): value is string => Boolean(value?.trim()))
           .join(" ");
 
         const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
@@ -2834,10 +2868,7 @@ export async function getCouponByCode(code: string): Promise<Coupon | null> {
     if (isTableMissingError(error)) {
       return null;
     }
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to lookup coupon"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to lookup coupon");
   }
 }
 
@@ -2864,10 +2895,7 @@ export async function upsertCoupon({
 }): Promise<Coupon> {
   const normalizedCode = normalizeCouponCode(code);
   if (!normalizedCode) {
-    throw new ChatSDKError(
-      "bad_request:coupon",
-      "Coupon code is required"
-    );
+    throw new ChatSDKError("bad_request:coupon", "Coupon code is required");
   }
   const percentage = Math.min(Math.max(Math.round(discountPercentage), 1), 95);
   const rewardPercentage = Math.min(
@@ -2895,10 +2923,7 @@ export async function upsertCoupon({
         .returning();
 
       if (!updated) {
-        throw new ChatSDKError(
-          "not_found:coupon",
-          "Coupon not found"
-        );
+        throw new ChatSDKError("not_found:coupon", "Coupon not found");
       }
 
       return updated;
@@ -2921,10 +2946,7 @@ export async function upsertCoupon({
       .returning();
 
     if (!created) {
-      throw new ChatSDKError(
-        "bad_request:database",
-        "Failed to create coupon"
-      );
+      throw new ChatSDKError("bad_request:database", "Failed to create coupon");
     }
 
     return created;
@@ -2932,10 +2954,7 @@ export async function upsertCoupon({
     if (error instanceof ChatSDKError) {
       throw error;
     }
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to save coupon"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to save coupon");
   }
 }
 
@@ -3060,7 +3079,10 @@ export async function recordCouponRewardPayout({
     throw new ChatSDKError("bad_request:coupon", "Coupon id is required");
   }
   if (!(Number.isFinite(amountInPaise) && amountInPaise > 0)) {
-    throw new ChatSDKError("bad_request:coupon", "Payout amount must be greater than zero");
+    throw new ChatSDKError(
+      "bad_request:coupon",
+      "Payout amount must be greater than zero"
+    );
   }
 
   try {
@@ -3116,7 +3138,10 @@ export async function listCouponRewardPayouts(
     if (isTableMissingError(error)) {
       return [];
     }
-    throw new ChatSDKError("bad_request:database", "Failed to load payout history");
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load payout history"
+    );
   }
 }
 
@@ -3242,7 +3267,10 @@ export async function getCreatorCouponSummary(
       );
       const lastRedemptionAt = toDate(row.lastRedemptionAt);
       const paidRewardInPaise = toInteger(row.totalPaidInPaise);
-      const remainingRewardInPaise = Math.max(rewardInPaise - paidRewardInPaise, 0);
+      const remainingRewardInPaise = Math.max(
+        rewardInPaise - paidRewardInPaise,
+        0
+      );
       return {
         id: row.id,
         code: row.code,
@@ -3335,13 +3363,13 @@ export async function getCouponPayoutsForAdmin({
       .limit(totalLimit);
 
     const grouped = new Map<string, CouponRewardPayout[]>();
-    rows.forEach((row) => {
+    for (const row of rows) {
       const existing = grouped.get(row.couponId) ?? [];
       if (existing.length < limit) {
         existing.push(row);
         grouped.set(row.couponId, existing);
       }
-    });
+    }
     return Object.fromEntries(grouped.entries());
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -3370,9 +3398,12 @@ export async function getCreatorCouponRedemptions({
   sortBy?: CreatorRedemptionSortField;
   sortDirection?: "asc" | "desc";
 }): Promise<CreatorCouponRedemptionsResult> {
-  const normalizedPage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
+  const normalizedPage =
+    Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
   const normalizedPageSize =
-    Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.floor(pageSize) : 10;
+    Number.isFinite(pageSize) && pageSize && pageSize > 0
+      ? Math.floor(pageSize)
+      : 10;
   const limit = Math.min(normalizedPageSize, MAX_CREATOR_REDEMPTIONS_PAGE_SIZE);
   const offset = (normalizedPage - 1) * limit;
   const normalizedSortBy: CreatorRedemptionSortField =
@@ -3423,9 +3454,10 @@ export async function getCreatorCouponRedemptions({
     const redemptions: CreatorCouponRedemption[] = rows.map((row) => {
       const identifier =
         [row.userFirstName, row.userLastName]
-          .filter(
-            (value): value is string =>
-              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          .filter((value): value is string =>
+            Boolean(
+              value && typeof value === "string" && value.trim().length > 0
+            )
           )
           .join("") ||
         row.userEmail?.trim() ||
@@ -3515,12 +3547,13 @@ export async function getCouponRedemptionsForAdmin({
 
     const grouped = new Map<string, CouponRedemptionDetail[]>();
 
-    rows.forEach((row) => {
+    for (const row of rows) {
       const identifier =
         [row.userFirstName, row.userLastName]
-          .filter(
-            (value): value is string =>
-              Boolean(value && typeof value === "string" && value.trim().length > 0)
+          .filter((value): value is string =>
+            Boolean(
+              value && typeof value === "string" && value.trim().length > 0
+            )
           )
           .join("") ||
         row.userEmail?.trim() ||
@@ -3548,7 +3581,7 @@ export async function getCouponRedemptionsForAdmin({
         existing.push(detail);
         grouped.set(row.couponId, existing);
       }
-    });
+    }
 
     return Object.fromEntries(grouped.entries());
   } catch (error) {
@@ -3865,7 +3898,9 @@ export async function createUserSubscription({
       if (active) {
         const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
         const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
-        const updatedManual = isPaidPlan ? currentManual : currentManual + allowance;
+        const updatedManual = isPaidPlan
+          ? currentManual
+          : currentManual + allowance;
         const updatedPaid = isPaidPlan ? currentPaid + allowance : currentPaid;
         const updatedBalance = updatedManual + updatedPaid;
 
@@ -3877,7 +3912,8 @@ export async function createUserSubscription({
             tokenBalance: updatedBalance,
             manualTokenBalance: updatedManual,
             paidTokenBalance: updatedPaid,
-            expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
+            expiresAt:
+              active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
             status: "active",
             updatedAt: now,
           })
@@ -3954,7 +3990,8 @@ export async function grantUserCredits({
             tokenAllowance: active.tokenAllowance + tokens,
             manualTokenBalance: updatedManual,
             paidTokenBalance: currentPaid,
-            expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
+            expiresAt:
+              active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
             updatedAt: now,
           })
           .where(eq(userSubscription.id, active.id))
@@ -4062,7 +4099,10 @@ export async function getUserBalanceSummary(
     const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
     const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
     const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
-    const manualTokens = Math.max(0, latestSubscription.manualTokenBalance ?? 0);
+    const manualTokens = Math.max(
+      0,
+      latestSubscription.manualTokenBalance ?? 0
+    );
     const paidTokens = Math.max(0, latestSubscription.paidTokenBalance ?? 0);
 
     return {
@@ -4109,7 +4149,10 @@ export async function listActiveSubscriptionSummaries({
       .innerJoin(user, eq(userSubscription.userId, user.id))
       .leftJoin(
         pricingPlan,
-        and(eq(userSubscription.planId, pricingPlan.id), isNull(pricingPlan.deletedAt))
+        and(
+          eq(userSubscription.planId, pricingPlan.id),
+          isNull(pricingPlan.deletedAt)
+        )
       )
       .where(
         and(
@@ -4164,7 +4207,11 @@ export async function recordTokenUsage({
   if (deductCredits) {
     try {
       const rateResult = await getUsdToInrRate();
-      if (rateResult && Number.isFinite(rateResult.rate) && rateResult.rate > 0) {
+      if (
+        rateResult &&
+        Number.isFinite(rateResult.rate) &&
+        rateResult.rate > 0
+      ) {
         usdToInr = rateResult.rate;
       }
     } catch (error) {
@@ -4179,7 +4226,10 @@ export async function recordTokenUsage({
     }
 
     if (modelConfigId) {
-      modelCostSnapshot = await getModelProviderCostSnapshot(modelConfigId, usdToInr);
+      modelCostSnapshot = await getModelProviderCostSnapshot(
+        modelConfigId,
+        usdToInr
+      );
     }
 
     baselineCostSnapshot = await getBaselineProviderCostSnapshot(
@@ -4189,7 +4239,7 @@ export async function recordTokenUsage({
   }
 
   try {
-    const usage = await db.transaction(async (tx) => {
+    const usageRecord = await db.transaction(async (tx) => {
       let subscription: UserSubscription | null = null;
       let tokensToDeduct = 0;
       let manualTokensDeducted = 0;
@@ -4254,10 +4304,7 @@ export async function recordTokenUsage({
           costMultiplier,
         });
 
-        if (
-          tokensToDeduct > 0 &&
-          subscription.tokenBalance < tokensToDeduct
-        ) {
+        if (tokensToDeduct > 0 && subscription.tokenBalance < tokensToDeduct) {
           const consumedTokens = Math.max(0, subscription.tokenBalance);
 
           await tx
@@ -4296,7 +4343,7 @@ export async function recordTokenUsage({
         }
       }
 
-      const [usage] = await tx
+      const [insertedUsage] = await tx
         .insert(tokenUsage)
         .values({
           userId,
@@ -4337,7 +4384,7 @@ export async function recordTokenUsage({
           .where(eq(userSubscription.id, subscription.id));
       }
 
-      return usage ?? null;
+      return insertedUsage ?? null;
     });
 
     if (exhausted) {
@@ -4347,14 +4394,14 @@ export async function recordTokenUsage({
       );
     }
 
-    if (!usage) {
+    if (!usageRecord) {
       throw new ChatSDKError(
         "bad_request:database",
         "Failed to record token usage"
       );
     }
 
-    return usage;
+    return usageRecord;
   } catch (error) {
     if (error instanceof ChatSDKError) {
       throw error;
@@ -4415,7 +4462,11 @@ function istKeyToDate(key: string): Date {
   const month = Number.parseInt(monthStr, 10);
   const day = Number.parseInt(dayStr, 10);
 
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
     return new Date(key);
   }
 
@@ -4521,13 +4572,12 @@ export async function getSessionTokenUsageForUser(
             ? new Date(row.createdAt as unknown as string)
             : null;
 
-      const existing =
-        aggregates.get(row.chatId) ?? {
-          totalTokens: 0,
-          lastUsedAt: null,
-          chatTitle: null,
-          chatCreatedAt: null,
-        };
+      const existing = aggregates.get(row.chatId) ?? {
+        totalTokens: 0,
+        lastUsedAt: null,
+        chatTitle: null,
+        chatCreatedAt: null,
+      };
 
       existing.totalTokens += row.totalTokens ?? 0;
 
@@ -4567,16 +4617,12 @@ export async function getSessionTokenUsageForUser(
         if (sortBy === "usage") {
           if (b.totalTokens === a.totalTokens) {
             return (
-              (b.lastUsedAt?.getTime() ?? 0) -
-              (a.lastUsedAt?.getTime() ?? 0)
+              (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0)
             );
           }
           return b.totalTokens - a.totalTokens;
         }
-        return (
-          (b.lastUsedAt?.getTime() ?? 0) -
-          (a.lastUsedAt?.getTime() ?? 0)
-        );
+        return (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0);
       });
   } catch (_error) {
     if (isTableMissingError(_error)) {
@@ -4598,7 +4644,7 @@ function isTableMissingError(error: unknown): boolean {
     return false;
   }
 
-  const message =
+  const errorMessage =
     "message" in error && error.message
       ? String((error as { message?: unknown }).message)
       : "";
@@ -4609,19 +4655,19 @@ function isTableMissingError(error: unknown): boolean {
       : "";
 
   return (
-    message.includes("does not exist") ||
-    message.includes("undefined_table") ||
+    errorMessage.includes("does not exist") ||
+    errorMessage.includes("undefined_table") ||
     stack.includes("does not exist") ||
     stack.includes("undefined_table")
   );
 }
 
-function isColumnMissingError(error: unknown, columnName: string): boolean {
+function _isColumnMissingError(error: unknown, columnName: string): boolean {
   if (!error || typeof error !== "object") {
     return false;
   }
 
-  const message =
+  const errorMessage =
     "message" in error && error.message
       ? String((error as { message?: unknown }).message)
       : "";
@@ -4632,8 +4678,8 @@ function isColumnMissingError(error: unknown, columnName: string): boolean {
       : "";
 
   return (
-    message.includes(`column "${columnName}"`) ||
-    message.includes("undefined_column") ||
+    errorMessage.includes(`column "${columnName}"`) ||
+    errorMessage.includes("undefined_column") ||
     stack.includes(`column "${columnName}"`) ||
     stack.includes("undefined_column")
   );
@@ -4849,7 +4895,11 @@ async function getBaselineProviderCostSnapshot(
     })
     .from(modelConfig)
     .where(
-      and(eq(modelConfig.isMarginBaseline, true), eq(modelConfig.isEnabled, true), isNull(modelConfig.deletedAt))
+      and(
+        eq(modelConfig.isMarginBaseline, true),
+        eq(modelConfig.isEnabled, true),
+        isNull(modelConfig.deletedAt)
+      )
     )
     .limit(1);
 
@@ -4919,7 +4969,8 @@ async function getBaselineProviderCostSnapshot(
   }
 
   const fallbackUsdPerMillion =
-    Number(fallbackModel.inputCost ?? 0) + Number(fallbackModel.outputCost ?? 0);
+    Number(fallbackModel.inputCost ?? 0) +
+    Number(fallbackModel.outputCost ?? 0);
 
   return {
     modelId: fallbackModel.id,
@@ -4940,7 +4991,9 @@ function convertUsdPerMillionToPaisePerToken(
     return 0;
   }
   const safeRate =
-    Number.isFinite(usdToInr) && usdToInr > 0 ? usdToInr : getFallbackUsdToInrRate();
+    Number.isFinite(usdToInr) && usdToInr > 0
+      ? usdToInr
+      : getFallbackUsdToInrRate();
   const perTokenUsd = usdPerMillion / 1_000_000;
   const perTokenInr = perTokenUsd * safeRate;
   return perTokenInr * 100;
@@ -5102,8 +5155,10 @@ export async function createLanguageEntry({
     throw new Error("Language code is required");
   }
 
-  if (!/^[a-z0-9-]{2,16}$/.test(normalizedCode)) {
-    throw new Error("Language code must be 2-16 characters and use lowercase letters, numbers, or hyphens.");
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    throw new Error(
+      "Language code must be 2-16 characters and use lowercase letters, numbers, or hyphens."
+    );
   }
 
   if (!normalizedName) {
@@ -5150,7 +5205,10 @@ export async function listPaidRechargeTotals(
   range?: DateRange
 ): Promise<CurrencyTotal[]> {
   try {
-    const dateConditions = buildDateRangeConditions(paymentTransaction.updatedAt, range);
+    const dateConditions = buildDateRangeConditions(
+      paymentTransaction.updatedAt,
+      range
+    );
 
     const rows = await db
       .select({
@@ -5160,7 +5218,10 @@ export async function listPaidRechargeTotals(
       .from(paymentTransaction)
       .where(
         dateConditions.length > 0
-          ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+          ? and(
+              eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+              ...dateConditions
+            )
           : eq(paymentTransaction.status, PAYMENT_STATUS_PAID)
       )
       .groupBy(paymentTransaction.currency);
@@ -5271,7 +5332,10 @@ export async function getDailyFinancialMetrics(
       .orderBy(rechargeDate);
 
     const usageDate = sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`;
-    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const usageConditions = buildDateRangeConditions(
+      tokenUsage.createdAt,
+      range
+    );
 
     const usageQueryBase = db
       .select({
@@ -5297,24 +5361,29 @@ export async function getDailyFinancialMetrics(
       ? usageQueryBase.where(usageWhere)
       : usageQueryBase;
 
-    const usageRows = await usageQuery
-      .groupBy(usageDate)
-      .orderBy(usageDate);
+    const usageRows = await usageQuery.groupBy(usageDate).orderBy(usageDate);
 
     const metricsMap = new Map<string, DailyFinancialMetric>();
 
+    const ensureDailyMetric = (date: string) => {
+      const existing = metricsMap.get(date);
+      if (existing) {
+        return existing;
+      }
+      const initialMetric: DailyFinancialMetric = {
+        date,
+        recharge: {},
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        providerCostUsd: 0,
+      };
+      metricsMap.set(date, initialMetric);
+      return initialMetric;
+    };
+
     for (const row of rechargeRows) {
       const date = row.date;
-      if (!metricsMap.has(date)) {
-        metricsMap.set(date, {
-          date,
-          recharge: {},
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const metric = metricsMap.get(date)!;
+      const metric = ensureDailyMetric(date);
       const currency = row.currency ?? "INR";
       metric.recharge[currency] =
         (metric.recharge[currency] ?? 0) +
@@ -5323,16 +5392,7 @@ export async function getDailyFinancialMetrics(
 
     for (const row of usageRows) {
       const date = row.date;
-      if (!metricsMap.has(date)) {
-        metricsMap.set(date, {
-          date,
-          recharge: {},
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const metric = metricsMap.get(date)!;
+      const metric = ensureDailyMetric(date);
       metric.totalInputTokens += row.totalInputTokens ?? 0;
       metric.totalOutputTokens += row.totalOutputTokens ?? 0;
       metric.providerCostUsd += row.providerCostUsd ?? 0;
@@ -5386,7 +5446,10 @@ export async function getUserFinancialRecords({
 
     const rechargeWhere =
       rechargeConditions.length > 0
-        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...rechargeConditions)
+        ? and(
+            eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+            ...rechargeConditions
+          )
         : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
 
     const rechargeRows = await db
@@ -5400,10 +5463,18 @@ export async function getUserFinancialRecords({
       .from(paymentTransaction)
       .innerJoin(user, eq(paymentTransaction.userId, user.id))
       .where(rechargeWhere)
-      .groupBy(rechargeDate, paymentTransaction.userId, user.email, paymentTransaction.currency);
+      .groupBy(
+        rechargeDate,
+        paymentTransaction.userId,
+        user.email,
+        paymentTransaction.currency
+      );
 
     const usageDate = sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`;
-    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const usageConditions = buildDateRangeConditions(
+      tokenUsage.createdAt,
+      range
+    );
 
     const usageQueryBase = db
       .select({
@@ -5423,7 +5494,8 @@ export async function getUserFinancialRecords({
       .from(tokenUsage)
       .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
 
-    const usageWhere = usageConditions.length > 0 ? and(...usageConditions) : undefined;
+    const usageWhere =
+      usageConditions.length > 0 ? and(...usageConditions) : undefined;
 
     const usageQuery = usageWhere
       ? usageQueryBase.where(usageWhere)
@@ -5433,21 +5505,44 @@ export async function getUserFinancialRecords({
 
     const map = new Map<string, UserFinancialRecord>();
 
+    const ensureRecord = (
+      key: string,
+      defaults: Omit<
+        UserFinancialRecord,
+        | "rechargeAmount"
+        | "totalInputTokens"
+        | "totalOutputTokens"
+        | "providerCostUsd"
+      > & {
+        rechargeAmount?: number;
+        totalInputTokens?: number;
+        totalOutputTokens?: number;
+        providerCostUsd?: number;
+      }
+    ) => {
+      const existing = map.get(key);
+      if (existing) {
+        return existing;
+      }
+      const record: UserFinancialRecord = {
+        rechargeAmount: defaults.rechargeAmount ?? 0,
+        totalInputTokens: defaults.totalInputTokens ?? 0,
+        totalOutputTokens: defaults.totalOutputTokens ?? 0,
+        providerCostUsd: defaults.providerCostUsd ?? 0,
+        ...defaults,
+      };
+      map.set(key, record);
+      return record;
+    };
+
     for (const row of rechargeRows) {
       const key = `${row.userId ?? "unknown"}::${row.date}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          date: row.date,
-          userId: row.userId ?? "unknown",
-          email: row.email ?? null,
-          currency: row.currency ?? "INR",
-          rechargeAmount: 0,
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const record = map.get(key)!;
+      const record = ensureRecord(key, {
+        date: row.date,
+        userId: row.userId ?? "unknown",
+        email: row.email ?? null,
+        currency: row.currency ?? "INR",
+      });
       record.currency = row.currency ?? record.currency ?? "INR";
       record.rechargeAmount += convertSubunitAmount(
         row.amount ?? 0,
@@ -5457,19 +5552,12 @@ export async function getUserFinancialRecords({
 
     for (const row of usageRows) {
       const key = `${row.userId ?? "unknown"}::${row.date}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          date: row.date,
-          userId: row.userId ?? "unknown",
-          email: null,
-          currency: "INR",
-          rechargeAmount: 0,
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const record = map.get(key)!;
+      const record = ensureRecord(key, {
+        date: row.date,
+        userId: row.userId ?? "unknown",
+        email: null,
+        currency: "INR",
+      });
       record.totalInputTokens += row.totalInputTokens ?? 0;
       record.totalOutputTokens += row.totalOutputTokens ?? 0;
       record.providerCostUsd += row.providerCostUsd ?? 0;
@@ -5530,7 +5618,10 @@ export async function listChatFinancialSummaries({
   offset?: number;
 }): Promise<ChatFinancialSummariesResult> {
   try {
-    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const usageConditions = buildDateRangeConditions(
+      tokenUsage.createdAt,
+      range
+    );
 
     const query = db
       .select({
@@ -5566,7 +5657,10 @@ export async function listChatFinancialSummaries({
       .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
       .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .leftJoin(user, eq(tokenUsage.userId, user.id))
-      .leftJoin(userSubscription, eq(tokenUsage.subscriptionId, userSubscription.id))
+      .leftJoin(
+        userSubscription,
+        eq(tokenUsage.subscriptionId, userSubscription.id)
+      )
       .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id))
       .groupBy(
         tokenUsage.chatId,
@@ -5655,11 +5749,17 @@ export async function listRechargeRecords({
   offset?: number;
 } = {}): Promise<RechargeRecordsResult> {
   try {
-    const dateConditions = buildDateRangeConditions(paymentTransaction.createdAt, range);
+    const dateConditions = buildDateRangeConditions(
+      paymentTransaction.createdAt,
+      range
+    );
 
     const whereClause =
       dateConditions.length > 0
-        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+        ? and(
+            eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+            ...dateConditions
+          )
         : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
 
     const rows = await db
@@ -5713,7 +5813,8 @@ export async function listRechargeRecords({
         planId: row.planId,
         planName: row.planName ?? null,
         currency: row.currency,
-        amount: typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0),
+        amount:
+          typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0),
         status: row.status,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,

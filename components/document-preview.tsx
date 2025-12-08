@@ -1,11 +1,11 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import equal from "fast-deep-equal";
+import dynamic from "next/dynamic";
 import {
   type MouseEvent,
-  type RefObject,
   memo,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,

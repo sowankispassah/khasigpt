@@ -172,4 +172,3 @@ function getStatusCodeByType(type: ErrorType) {
       return 500;
   }
 }
-

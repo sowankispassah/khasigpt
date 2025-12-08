@@ -1,4 +1,4 @@
-import { listChats, type ChatListItem } from "@/lib/db/queries";
+import { type ChatListItem, listChats } from "@/lib/db/queries";
 import { AdminChatTables } from "./tables";
 
 export const dynamic = "force-dynamic";

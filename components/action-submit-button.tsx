@@ -48,7 +48,9 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
     >
       {pending ? (
         <span className="flex items-center gap-2">
-          <span className="h-4 w-4 animate-spin"><LoaderIcon size={16} /></span>
+          <span className="h-4 w-4 animate-spin">
+            <LoaderIcon size={16} />
+          </span>
           <span>{pendingLabel}</span>
         </span>
       ) : (

@@ -1,15 +1,17 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
-import { UserDropdownMenu, UserMenuTrigger } from "@/components/user-dropdown-menu";
 import { useTranslation } from "@/components/language-provider";
+import { Button } from "@/components/ui/button";
+import {
+  UserDropdownMenu,
+  UserMenuTrigger,
+} from "@/components/user-dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export function PageUserMenu({
@@ -59,21 +61,33 @@ export function PageUserMenu({
 
   useEffect(() => {
     hasPrefetchedRoutesRef.current = false;
-  }, [user?.id]);
+  }, []);
 
   const prefetchUserRoutes = useCallback(() => {
     if (!user || hasPrefetchedRoutesRef.current) {
       return;
     }
     hasPrefetchedRoutesRef.current = true;
-    void router.prefetch("/profile");
-    void router.prefetch("/subscriptions");
-    void router.prefetch("/recharge");
+    try {
+      router.prefetch("/profile");
+      router.prefetch("/subscriptions");
+      router.prefetch("/recharge");
+    } catch (error) {
+      console.warn("Prefetch failed", error);
+    }
     if (user.role === "admin") {
-      void router.prefetch("/admin");
+      try {
+        router.prefetch("/admin");
+      } catch (error) {
+        console.warn("Prefetch failed", error);
+      }
     }
     if (user.role === "creator") {
-      void router.prefetch("/creator-dashboard");
+      try {
+        router.prefetch("/creator-dashboard");
+      } catch (error) {
+        console.warn("Prefetch failed", error);
+      }
     }
   }, [router, user]);
 
@@ -103,12 +117,12 @@ export function PageUserMenu({
 
   const handleSignOut = () => {
     beginAction();
-    void signOut({ redirectTo: "/login" });
+    signOut({ redirectTo: "/login" });
   };
 
-  const handleMenuClosed = () => {
+  const handleMenuClosed = useCallback(() => {
     setIsActionPending(false);
-  };
+  }, []);
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -119,17 +133,14 @@ export function PageUserMenu({
         handleMenuClosed();
       }
     },
-    [prefetchUserRoutes]
+    [prefetchUserRoutes, handleMenuClosed]
   );
 
   const isBusy = status === "loading" || isActionPending;
 
   return (
     <div
-      className={cn(
-        "fixed right-2 top-1.5 z-40 flex items-center",
-        className
-      )}
+      className={cn("fixed top-1.5 right-2 z-40 flex items-center", className)}
     >
       {status === "loading" ? (
         <Button className="h-8 w-8" disabled variant="outline">
@@ -143,22 +154,20 @@ export function PageUserMenu({
       ) : user ? (
         <UserDropdownMenu
           align="end"
+          currentPathname={pathname}
+          forumEnabled={forumEnabled}
           isAdmin={user.role === "admin"}
-          isCreator={user.role === "creator"}
           isAuthenticated
           isBusy={isBusy}
-          forumEnabled={forumEnabled}
-          currentPathname={pathname}
-          onOpenChange={handleOpenChange}
+          isCreator={user.role === "creator"}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
+          onOpenChange={handleOpenChange}
           onSignOut={handleSignOut}
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
-          userDisplayName={displayName ?? undefined}
-          userEmail={user.email ?? undefined}
           trigger={
             <UserMenuTrigger
               isBusy={isBusy}
@@ -169,32 +178,33 @@ export function PageUserMenu({
               }}
             />
           }
+          userDisplayName={displayName ?? undefined}
+          userEmail={user.email ?? undefined}
         />
       ) : (
         <UserDropdownMenu
           align="end"
+          currentPathname={pathname}
+          forumEnabled={forumEnabled}
           isAdmin={false}
-          isCreator={false}
           isAuthenticated={false}
           isBusy={isBusy}
-          forumEnabled={forumEnabled}
-          currentPathname={pathname}
-          onOpenChange={handleOpenChange}
+          isCreator={false}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
+          onOpenChange={handleOpenChange}
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
-          userDisplayName={undefined}
-              trigger={
-                <button
-                  className={cn(
-                    "relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    isBusy && "pointer-events-none opacity-70"
-                  )}
-                  aria-busy={isBusy}
-                  aria-disabled={isBusy}
+          trigger={
+            <button
+              aria-busy={isBusy}
+              aria-disabled={isBusy}
+              className={cn(
+                "relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                isBusy && "pointer-events-none opacity-70"
+              )}
               type="button"
             >
               <EllipsisVertical size={16} />
@@ -203,6 +213,7 @@ export function PageUserMenu({
               </span>
             </button>
           }
+          userDisplayName={undefined}
         />
       )}
     </div>

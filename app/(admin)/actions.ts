@@ -4,76 +4,75 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import {
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DEFAULT_FREE_MESSAGES_PER_DAY,
+  DEFAULT_RAG_TIMEOUT_MS,
+  FORUM_FEATURE_FLAG_KEY,
+  FREE_MESSAGE_SETTINGS_KEY,
+  RAG_MATCH_THRESHOLD_SETTING_KEY,
+  RAG_TIMEOUT_MS_SETTING_KEY,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  TOKENS_PER_CREDIT,
+} from "@/lib/constants";
 import {
   createAuditLogEntry,
-  deleteChatById,
-  hardDeleteChatById,
-  restoreChatById,
+  createLanguageEntry,
   createModelConfig,
-  getModelConfigByKey,
-  updateModelConfig,
+  createPricingPlan,
+  deleteChatById,
   deleteModelConfig,
+  deletePricingPlan,
+  deleteTranslationValueEntry,
+  getAppSetting,
+  getLanguageByIdRaw,
+  getModelConfigByKey,
+  getPricingPlanById,
+  getTranslationKeyByKey,
+  grantUserCredits,
+  hardDeleteChatById,
   hardDeleteModelConfig,
+  hardDeletePricingPlan,
+  recordCouponRewardPayout,
+  restoreChatById,
+  setAppSetting,
+  setCouponRewardStatus,
+  setCouponStatus,
   setDefaultModelConfig,
   setMarginBaselineModel,
-  getAppSetting,
-  setAppSetting,
-  updateUserActiveState,
-  updateUserRole,
-  updateUserPersonalKnowledgePermission,
-  createPricingPlan,
-  grantUserCredits,
-  updatePricingPlan,
-  deletePricingPlan,
-  hardDeletePricingPlan,
-  getPricingPlanById,
-  upsertTranslationValueEntry,
-  deleteTranslationValueEntry,
-  getTranslationKeyByKey,
-  createLanguageEntry,
-  getLanguageByIdRaw,
   updateLanguageActiveState,
+  updateModelConfig,
+  updatePricingPlan,
+  updateUserActiveState,
+  updateUserPersonalKnowledgePermission,
+  updateUserRole,
   upsertCoupon,
-  setCouponStatus,
-  setCouponRewardStatus,
-  recordCouponRewardPayout,
+  upsertTranslationValueEntry,
 } from "@/lib/db/queries";
 import type {
   RagEntryApprovalStatus,
   RagEntryStatus,
   UserRole,
 } from "@/lib/db/schema";
-import {
-  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
-  DEFAULT_FREE_MESSAGES_PER_DAY,
-  DEFAULT_RAG_TIMEOUT_MS,
-  FREE_MESSAGE_SETTINGS_KEY,
-  FORUM_FEATURE_FLAG_KEY,
-  RAG_MATCH_THRESHOLD_SETTING_KEY,
-  RAG_TIMEOUT_MS_SETTING_KEY,
-  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
-  TOKENS_PER_CREDIT,
-} from "@/lib/constants";
-import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
-import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
-import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 import {
   invalidateTranslationBundleCache,
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
+import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
+import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
 import {
-  createRagEntry,
-  updateRagEntry,
   bulkUpdateRagStatus,
+  createRagCategory,
+  createRagEntry,
+  deletePersonalKnowledgeEntry,
   deleteRagEntries,
+  rebuildAllRagEmbeddings,
   restoreRagEntry,
   restoreRagVersion,
-  getRagVersions,
-  createRagCategory,
-  rebuildAllRagEmbeddings,
+  updateRagEntry,
   updateUserAddedKnowledgeApproval,
-  deletePersonalKnowledgeEntry,
 } from "@/lib/rag/service";
 import type { UpsertRagEntryInput } from "@/lib/rag/types";
 
@@ -321,21 +320,48 @@ function parseDateInput(value: FormDataEntryValue | null | undefined) {
 }
 
 const IST_OFFSET_MINUTES = 330;
+const LANGUAGE_CODE_REGEX = /^[a-z0-9-]{2,16}$/i;
+const PROMPTS_SPLIT_REGEX = /\r?\n/;
 
-function convertIstDateToUtc(date: Date, hours: number, minutes: number, seconds: number, ms: number) {
+type TimeParts = {
+  hours: number;
+  minutes: number;
+  seconds: number;
+  ms: number;
+};
+
+function convertIstDateToUtc(date: Date, time: TimeParts) {
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth();
   const day = date.getUTCDate();
-  const istTimestamp = Date.UTC(year, month, day, hours, minutes, seconds, ms);
+  const istTimestamp = Date.UTC(
+    year,
+    month,
+    day,
+    time.hours,
+    time.minutes,
+    time.seconds,
+    time.ms
+  );
   return new Date(istTimestamp - IST_OFFSET_MINUTES * 60 * 1000);
 }
 
 function normalizeStartOfDayIst(date: Date) {
-  return convertIstDateToUtc(date, 0, 0, 0, 0);
+  return convertIstDateToUtc(date, {
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    ms: 0,
+  });
 }
 
 function normalizeEndOfDayIst(date: Date) {
-  return convertIstDateToUtc(date, 23, 59, 59, 999);
+  return convertIstDateToUtc(date, {
+    hours: 23,
+    minutes: 59,
+    seconds: 59,
+    ms: 999,
+  });
 }
 
 export async function upsertCouponAction(formData: FormData) {
@@ -431,8 +457,7 @@ export async function setCouponRewardStatusAction(formData: FormData) {
     throw new Error("Cannot update reward status before any redemptions");
   }
 
-  const normalizedStatus =
-    rewardStatusRaw === "paid" ? "paid" : "pending";
+  const normalizedStatus = rewardStatusRaw === "paid" ? "paid" : "pending";
 
   await setCouponRewardStatus({
     id: couponId,
@@ -637,9 +662,7 @@ export async function updateModelConfigAction(formData: FormData) {
   }
 
   if (formData.has("supportsReasoning")) {
-    patch.supportsReasoning = parseBoolean(
-      formData.get("supportsReasoning")
-    );
+    patch.supportsReasoning = parseBoolean(formData.get("supportsReasoning"));
   }
 
   if (formData.has("reasoningTag")) {
@@ -1004,9 +1027,7 @@ export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
   };
 }
 
-export async function updateTermsOfServiceByLanguageAction(
-  formData: FormData
-) {
+export async function updateTermsOfServiceByLanguageAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
 
@@ -1091,7 +1112,7 @@ export async function createLanguageAction(formData: FormData) {
     redirect("/admin/settings?notice=language-create-error");
   }
 
-  if (!/^[a-z0-9-]{2,16}$/.test(normalizedCode)) {
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
     redirect("/admin/settings?notice=language-code-invalid");
   }
 
@@ -1157,7 +1178,10 @@ export async function updateLanguageStatusAction(formData: FormData) {
     redirect("/admin/settings?notice=language-updated");
   }
 
-  await updateLanguageActiveState({ id: targetLanguage.id, isActive: shouldActivate });
+  await updateLanguageActiveState({
+    id: targetLanguage.id,
+    isActive: shouldActivate,
+  });
 
   await invalidateTranslationBundleCache([targetLanguage.code]);
 
@@ -1188,13 +1212,18 @@ export async function updatePlanTranslationAction(formData: FormData) {
   }
 
   try {
-    const plan = await getPricingPlanById({ id: planId!, includeDeleted: true });
+    const planIdValue = planId.trim();
+    const plan = await getPricingPlanById({
+      id: planIdValue,
+      includeDeleted: true,
+    });
     if (!plan) {
       throw new Error("Plan not found");
     }
 
-    const languageCode = languageCodeRaw!.trim().toLowerCase();
-    const language = languageCode.length > 0 ? await getLanguageByCode(languageCode) : null;
+    const languageCode = languageCodeRaw.trim().toLowerCase();
+    const language =
+      languageCode.length > 0 ? await getLanguageByCode(languageCode) : null;
 
     if (!language) {
       throw new Error("Language not found");
@@ -1379,7 +1408,7 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
 
   const promptsValue = formData.get("prompts")?.toString() ?? "";
   const prompts = promptsValue
-    .split(/\r?\n/)
+    .split(PROMPTS_SPLIT_REGEX)
     .map((prompt) => prompt.trim())
     .filter((prompt) => prompt.length > 0);
 
@@ -1450,8 +1479,14 @@ export async function createPricingPlanAction(formData: FormData) {
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim() ?? "";
   const priceInRupees = parseNumber(formData.get("priceInRupees"));
-  const tokenAllowance = Math.max(0, parseInteger(formData.get("tokenAllowance")));
-  const billingCycleDays = Math.max(0, parseInteger(formData.get("billingCycleDays")));
+  const tokenAllowance = Math.max(
+    0,
+    parseInteger(formData.get("tokenAllowance"))
+  );
+  const billingCycleDays = Math.max(
+    0,
+    parseInteger(formData.get("billingCycleDays"))
+  );
   const isActive = parseBoolean(formData.get("isActive"));
 
   if (!name) {
@@ -1664,10 +1699,7 @@ export async function grantUserCreditsAction(formData: FormData) {
     return;
   }
 
-  const tokens = Math.max(
-    1,
-    Math.round(credits * TOKENS_PER_CREDIT)
-  );
+  const tokens = Math.max(1, Math.round(credits * TOKENS_PER_CREDIT));
 
   const subscription = await grantUserCredits({
     userId,
@@ -1862,5 +1894,3 @@ export async function createRagCategoryAction(name: string) {
   revalidatePath("/admin/rag");
   return category;
 }
-
-

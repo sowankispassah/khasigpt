@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
@@ -55,7 +55,9 @@ type DashboardPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function CreatorDashboardPage({ searchParams }: DashboardPageProps) {
+export default async function CreatorDashboardPage({
+  searchParams,
+}: DashboardPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const session = await auth();
 
@@ -73,9 +75,10 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
       : Array.isArray(resolvedSearchParams.sort)
         ? resolvedSearchParams.sort[0]
         : undefined;
-  const sortKey = (rawSortParam as SortKey) && SORT_CONFIG[rawSortParam as SortKey]
-    ? (rawSortParam as SortKey)
-    : DEFAULT_SORT_KEY;
+  const sortKey =
+    (rawSortParam as SortKey) && SORT_CONFIG[rawSortParam as SortKey]
+      ? (rawSortParam as SortKey)
+      : DEFAULT_SORT_KEY;
   const sortConfig = SORT_CONFIG[sortKey];
 
   const rawPageParam =
@@ -84,7 +87,8 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
       : Array.isArray(resolvedSearchParams.page)
         ? Number.parseInt(resolvedSearchParams.page[0] ?? "", 10)
         : Number.NaN;
-  const currentPage = Number.isFinite(rawPageParam) && rawPageParam > 0 ? rawPageParam : 1;
+  const currentPage =
+    Number.isFinite(rawPageParam) && rawPageParam > 0 ? rawPageParam : 1;
 
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
@@ -127,7 +131,10 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
   const hasRedemptions = redemptionResult.redemptions.length > 0;
   const totalPages =
     redemptionResult.pageSize > 0
-      ? Math.max(1, Math.ceil(redemptionResult.totalCount / redemptionResult.pageSize))
+      ? Math.max(
+          1,
+          Math.ceil(redemptionResult.totalCount / redemptionResult.pageSize)
+        )
       : 1;
   const hasPrev = redemptionResult.page > 1;
   const hasNext = redemptionResult.page < totalPages;
@@ -168,13 +175,18 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
       <div className="flex flex-col gap-4">
-        <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
+        <BackToHomeButton
+          label={t("navigation.back_to_home", "Back to home")}
+        />
         <div>
           <p className="text-muted-foreground text-xs uppercase tracking-wide">
             {t("creator_dashboard.tagline", "Creator dashboard")}
           </p>
-          <h1 className="text-3xl font-semibold">
-            {t("creator_dashboard.title", "Share coupons and track performance")}
+          <h1 className="font-semibold text-3xl">
+            {t(
+              "creator_dashboard.title",
+              "Share coupons and track performance"
+            )}
           </h1>
           <p className="text-muted-foreground text-sm">
             {t(
@@ -187,7 +199,10 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
 
       <section className="grid gap-4 sm:grid-cols-3">
         <MetricCard
-          label={t("creator_dashboard.metrics.redemptions", "Total redemptions")}
+          label={t(
+            "creator_dashboard.metrics.redemptions",
+            "Total redemptions"
+          )}
           value={couponSummary.totals.usageCount.toLocaleString("en-IN")}
         />
         <MetricCard
@@ -205,14 +220,17 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
           value={currencyFormatter.format(totalPaid)}
         />
         <MetricCard
-          label={t("creator_dashboard.metrics.pending_payout", "Pending payout")}
+          label={t(
+            "creator_dashboard.metrics.pending_payout",
+            "Pending payout"
+          )}
           value={currencyFormatter.format(totalPending)}
         />
       </section>
 
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
-          <h2 className="text-lg font-semibold">
+          <h2 className="font-semibold text-lg">
             {t("creator_dashboard.coupons.title", "Your coupon codes")}
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -232,7 +250,7 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">
                     {t("creator_dashboard.table.code", "Code")}
@@ -259,7 +277,8 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
               </thead>
               <tbody className="divide-y divide-border/70">
                 {couponSummary.coupons.map((coupon) => {
-                  const validFromLabel = formatDateSafe(coupon.validFrom) ?? "—";
+                  const validFromLabel =
+                    formatDateSafe(coupon.validFrom) ?? "—";
                   const validToLabel =
                     formatDateSafe(coupon.validTo) ??
                     t("creator_dashboard.table.no_end", "No end date");
@@ -281,13 +300,13 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                       <td className="px-4 py-3">
                         {coupon.discountPercentage}%
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
                         <div>{validFromLabel}</div>
                         <div>{validToLabel}</div>
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                          className={`inline-flex items-center rounded-full px-2 py-1 font-semibold text-xs ${
                             isExpired
                               ? "bg-rose-100 text-rose-700"
                               : coupon.isActive
@@ -302,7 +321,10 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                         {coupon.usageCount.toLocaleString("en-IN")}
                         {coupon.lastRedemptionAt ? (
                           <p className="text-muted-foreground text-xs">
-                            {t("creator_dashboard.table.last_used", "Last: {date}").replace(
+                            {t(
+                              "creator_dashboard.table.last_used",
+                              "Last: {date}"
+                            ).replace(
                               "{date}",
                               formatDateSafe(coupon.lastRedemptionAt) ?? "—"
                             )}
@@ -315,11 +337,13 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                             <span>
                               {coupon.creatorRewardPercentage}% •{" "}
                               <span className="font-semibold">
-                                {currencyFormatter.format(coupon.estimatedRewardInPaise / 100)}
+                                {currencyFormatter.format(
+                                  coupon.estimatedRewardInPaise / 100
+                                )}
                               </span>
                             </span>
                             <span
-                              className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                              className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 font-semibold text-[11px] ${
                                 coupon.creatorRewardStatus === "paid"
                                   ? "bg-emerald-100 text-emerald-700"
                                   : "bg-amber-100 text-amber-800"
@@ -327,24 +351,37 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                             >
                               {coupon.creatorRewardStatus === "paid"
                                 ? t("coupon.reward_status.paid", "Paid")
-                                : t("coupon.reward_status.pending", "Payment pending")}
+                                : t(
+                                    "coupon.reward_status.pending",
+                                    "Payment pending"
+                                  )}
                             </span>
                           </div>
                         ) : (
                           <span className="text-muted-foreground text-xs">
-                            {t("coupon.reward_status.none", "No redemptions yet")}
+                            {t(
+                              "coupon.reward_status.none",
+                              "No redemptions yet"
+                            )}
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-0.5">
                           <span className="font-semibold text-emerald-700">
-                            {currencyFormatter.format(coupon.paidRewardInPaise / 100)}
+                            {currencyFormatter.format(
+                              coupon.paidRewardInPaise / 100
+                            )}
                           </span>
                           <span className="text-muted-foreground text-xs">
-                            {t("creator_dashboard.payouts.pending", "Pending {amount}").replace(
+                            {t(
+                              "creator_dashboard.payouts.pending",
+                              "Pending {amount}"
+                            ).replace(
                               "{amount}",
-                              currencyFormatter.format(coupon.remainingRewardInPaise / 100)
+                              currencyFormatter.format(
+                                coupon.remainingRewardInPaise / 100
+                              )
                             )}
                           </span>
                         </div>
@@ -360,7 +397,7 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
 
       <section className="rounded-2xl border bg-card/70 shadow-sm">
         <header className="flex flex-col gap-2 border-b px-4 py-4 sm:px-6">
-          <h2 className="text-lg font-semibold">
+          <h2 className="font-semibold text-lg">
             {t("creator_dashboard.redemptions.title", "Recent redemptions")}
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -382,14 +419,14 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                     const isActive = option.key === sortKey;
                     return (
                       <Link
-                        key={option.key}
-                        href={makeHref({ sortKey: option.key, page: 1 })}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        aria-current={isActive ? "true" : "false"}
+                        className={`rounded-full px-3 py-1 font-semibold text-xs ${
                           isActive
                             ? "bg-primary/10 text-primary"
                             : "bg-muted text-muted-foreground hover:bg-muted/80"
                         }`}
-                        aria-current={isActive ? "true" : "false"}
+                        href={makeHref({ sortKey: option.key, page: 1 })}
+                        key={option.key}
                       >
                         {option.label}
                       </Link>
@@ -399,30 +436,41 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
               </div>
               <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
                 <span>
-                  {t("creator_dashboard.redemptions.pagination", "Page {current} of {total}")
+                  {t(
+                    "creator_dashboard.redemptions.pagination",
+                    "Page {current} of {total}"
+                  )
                     .replace("{current}", redemptionResult.page.toString())
                     .replace("{total}", totalPages.toString())}
                 </span>
                 <div className="flex items-center gap-1">
                   <Link
-                    href={hasPrev ? makeHref({ page: redemptionResult.page - 1 }) : "#"}
                     aria-disabled={!hasPrev}
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    className={`rounded-full border px-3 py-1 font-semibold text-xs ${
                       hasPrev
                         ? "hover:bg-muted"
                         : "cursor-not-allowed opacity-40"
                     }`}
+                    href={
+                      hasPrev
+                        ? makeHref({ page: redemptionResult.page - 1 })
+                        : "#"
+                    }
                   >
                     {t("common.previous", "Previous")}
                   </Link>
                   <Link
-                    href={hasNext ? makeHref({ page: redemptionResult.page + 1 }) : "#"}
                     aria-disabled={!hasNext}
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    className={`rounded-full border px-3 py-1 font-semibold text-xs ${
                       hasNext
                         ? "hover:bg-muted"
                         : "cursor-not-allowed opacity-40"
                     }`}
+                    href={
+                      hasNext
+                        ? makeHref({ page: redemptionResult.page + 1 })
+                        : "#"
+                    }
                   >
                     {t("common.next", "Next")}
                   </Link>
@@ -431,7 +479,7 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">
                       {t("creator_dashboard.redemptions.user", "User")}
@@ -464,15 +512,21 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-semibold">
-                          {currencyFormatter.format(redemption.paymentAmountInPaise / 100)}
+                          {currencyFormatter.format(
+                            redemption.paymentAmountInPaise / 100
+                          )}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {currencyFormatter.format(redemption.discountAmountInPaise / 100)}
+                        {currencyFormatter.format(
+                          redemption.discountAmountInPaise / 100
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-semibold">
-                          {currencyFormatter.format(redemption.rewardInPaise / 100)}
+                          {currencyFormatter.format(
+                            redemption.rewardInPaise / 100
+                          )}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
@@ -497,19 +551,13 @@ export default async function CreatorDashboardPage({ searchParams }: DashboardPa
   );
 }
 
-function MetricCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border bg-card/70 p-4 shadow-sm">
       <p className="text-muted-foreground text-xs uppercase tracking-wide">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className="mt-2 font-semibold text-2xl">{value}</p>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import type { User } from "next-auth";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
+import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,10 +25,9 @@ import {
 } from "@/components/ui/sidebar";
 import type { Chat } from "@/lib/db/schema";
 import { fetcher } from "@/lib/utils";
+import { preloadChat } from "./chat-loader";
 import { LoaderIcon } from "./icons";
 import { ChatItem } from "./sidebar-history-item";
-import { useTranslation } from "@/components/language-provider";
-import { preloadChat } from "./chat-loader";
 
 type GroupedChats = {
   today: Chat[];
@@ -106,7 +106,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     typeof idParam === "string"
       ? idParam
       : Array.isArray(idParam)
-        ? idParam[0] ?? null
+        ? (idParam[0] ?? null)
         : null;
 
   const {
@@ -143,7 +143,11 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
 
     const firstPage = paginatedChatHistories[0]?.chats ?? [];
     for (const chat of firstPage.slice(0, 10)) {
-      void router.prefetch(`/chat/${chat.id}`);
+      try {
+        router.prefetch(`/chat/${chat.id}`);
+      } catch (error) {
+        console.warn("Prefetch chat failed", error);
+      }
     }
 
     preloadChat();
@@ -231,10 +235,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
           "Chat deleted successfully"
         );
       },
-      error: translate(
-        "sidebar.history.toast.error",
-        "Failed to delete chat"
-      ),
+      error: translate("sidebar.history.toast.error", "Failed to delete chat"),
     });
 
     setShowDeleteDialog(false);

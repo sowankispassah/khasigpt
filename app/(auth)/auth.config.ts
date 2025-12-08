@@ -1,8 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 
-const trustHost =
-  process.env.AUTH_TRUST_HOST === "true" ||
-  process.env.NODE_ENV !== "production";
+// Default to trusting the host in production to avoid callback/CSRF issues unless explicitly disabled.
+const trustHost = process.env.AUTH_TRUST_HOST !== "false";
 
 export const authConfig = {
   trustHost,

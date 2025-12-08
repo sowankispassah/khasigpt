@@ -34,7 +34,7 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
-  selectedModelId,
+  selectedModelId: _selectedModelId,
   sendMessage,
   suggestedPrompts,
   selectedVisibilityType,
@@ -53,7 +53,7 @@ function PureMessages({
   const mountedChatRef = useRef<string | null>(null);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
-      ? lastMessage.parts
+      ? (lastMessage.parts
           ?.map((part) => {
             if (part.type === "text") {
               return `text-${part.text?.length ?? 0}`;
@@ -63,7 +63,7 @@ function PureMessages({
             }
             return part.type;
           })
-          .join("|") ?? ""
+          .join("|") ?? "")
       : null;
 
   useEffect(() => {
@@ -158,19 +158,22 @@ function PureMessages({
             status !== "streaming" &&
             status !== "error" &&
             isLastUserMessage && (
-            <div className="flex w-full items-start gap-2 md:gap-3 justify-start">
-              <div className="min-w-[1.5rem]" />
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex size-4 items-center justify-center animate-spin text-muted-foreground">
-                    <LoaderIcon size={14} />
-                  </span>
+              <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+                <div className="min-w-[1.5rem]" />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
+                      <LoaderIcon size={14} />
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="min-h-[24px] min-w-[24px] shrink-0" ref={messagesEndRef} />
+          <div
+            className="min-h-[24px] min-w-[24px] shrink-0"
+            ref={messagesEndRef}
+          />
         </ConversationContent>
       </Conversation>
 

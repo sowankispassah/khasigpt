@@ -1,14 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
-
-import { db } from "@/lib/db/queries";
-import {
-  auditLog,
-  chat,
-  contactMessage,
-  user,
-} from "@/lib/db/schema";
 import { count, desc } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
+import { db } from "@/lib/db/queries";
+import { auditLog, chat, contactMessage, user } from "@/lib/db/schema";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
@@ -26,13 +20,12 @@ async function runCheck(
 ): Promise<CheckResult> {
   const startedAt = Date.now();
   try {
-    const count = await fn();
+    const value = await fn();
     const ms = Date.now() - startedAt;
-    return { label, status: "ok", ms, count };
+    return { label, status: "ok", ms, count: value };
   } catch (error) {
     const ms = Date.now() - startedAt;
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`[status] ${label} check failed`, error);
     return { label, status: "error", ms, error: message };
   }
@@ -85,9 +78,7 @@ export async function GET(request: NextRequest) {
 
   const checks = await Promise.all([
     runCheck("user-count", async () => {
-      const [row] = await db
-        .select({ total: count(user.id) })
-        .from(user);
+      const [row] = await db.select({ total: count(user.id) }).from(user);
       return Number(row?.total ?? 0);
     }),
     runCheck("recent-chats", async () => {
@@ -118,13 +109,16 @@ export async function GET(request: NextRequest) {
 
   const ok = checks.every((check) => check.status === "ok");
 
-  return NextResponse.json({
-    ok,
-    timestamp: new Date().toISOString(),
-    checks,
-  }, {
-    headers: {
-      "Cache-Control": "no-store",
+  return NextResponse.json(
+    {
+      ok,
+      timestamp: new Date().toISOString(),
+      checks,
     },
-  });
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
 }

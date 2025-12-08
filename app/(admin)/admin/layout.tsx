@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { AdminSearch } from "@/components/admin-search";
 import { AdminNav } from "@/components/admin-nav";
+import { AdminSearch } from "@/components/admin-search";
 
 export default async function AdminLayout({
   children,
@@ -20,7 +20,7 @@ export default async function AdminLayout({
       <header className="border-b bg-background px-6 py-4">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4">
           <div className="flex flex-col">
-            <h1 className="text-lg font-semibold">Admin Console</h1>
+            <h1 className="font-semibold text-lg">Admin Console</h1>
             <p className="text-muted-foreground text-sm">
               Manage users, models, and infrastructure activity
             </p>

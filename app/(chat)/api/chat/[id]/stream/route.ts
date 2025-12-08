@@ -8,9 +8,9 @@ import {
 } from "@/lib/db/queries";
 import type { Chat } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import type { ChatMessage } from "@/lib/types";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import type { ChatMessage } from "@/lib/types";
 import { getStreamContext } from "../../route";
 
 const STREAM_HEADERS: HeadersInit = {
@@ -28,7 +28,9 @@ const CHAT_RATE_LIMIT = {
   windowMs: ONE_MINUTE,
 };
 
-async function enforceStreamRateLimit(request: Request): Promise<Response | null> {
+async function enforceStreamRateLimit(
+  request: Request
+): Promise<Response | null> {
   const clientKey = getClientKeyFromHeaders(request.headers);
   const { allowed, resetAt } = await incrementRateLimit(
     `api:chat:${clientKey}`,
@@ -116,7 +118,6 @@ export async function GET(
   }
 
   const emptyDataStream = createUIMessageStream<ChatMessage>({
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: "Needs to exist"
     execute: () => {},
   });
 

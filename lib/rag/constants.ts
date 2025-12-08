@@ -6,10 +6,7 @@ const toNumber = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export const DEFAULT_RAG_MATCH_LIMIT = toNumber(
-  process.env.RAG_MATCH_LIMIT,
-  4
-);
+export const DEFAULT_RAG_MATCH_LIMIT = toNumber(process.env.RAG_MATCH_LIMIT, 4);
 export const DEFAULT_RAG_MATCH_THRESHOLD = toNumber(
   process.env.RAG_MATCH_THRESHOLD,
   0.45
@@ -38,7 +35,7 @@ export const RAG_CONFIDENCE_PERCENT = (score: number) => {
 
 // Safety limits to avoid oversized prompts/embeddings.
 export const MAX_RAG_CONTENT_CHARS = 8000;
-export const MAX_RAG_EMBEDDABLE_CHARS = 16000;
+export const MAX_RAG_EMBEDDABLE_CHARS = 16_000;
 export const DEFAULT_RAG_TIMEOUT_MS = toNumber(
   process.env.RAG_TIMEOUT_MS,
   5000

@@ -3,10 +3,10 @@
 import { Fragment, useCallback, useMemo, useState } from "react";
 
 import {
+  recordCouponPayoutAction,
   setCouponRewardStatusAction,
   setCouponStatusAction,
   upsertCouponAction,
-  recordCouponPayoutAction,
 } from "@/app/(admin)/actions";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,9 @@ export function AdminCouponsManager({
   creators: CreatorOption[];
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [expandedCoupons, setExpandedCoupons] = useState<Record<string, boolean>>({});
+  const [expandedCoupons, setExpandedCoupons] = useState<
+    Record<string, boolean>
+  >({});
 
   const formatCurrency = useCallback((valueInPaise: number) => {
     const hasFraction = valueInPaise % 100 !== 0;
@@ -115,25 +117,30 @@ export function AdminCouponsManager({
   const creatorSummary = useMemo(() => {
     const map = new Map<
       string,
-      { id: string; name: string; usage: number; revenue: number; reward: number }
+      {
+        id: string;
+        name: string;
+        usage: number;
+        revenue: number;
+        reward: number;
+      }
     >();
 
-    coupons.forEach((coupon) => {
-      const current =
-        map.get(coupon.creatorId) ?? {
-          id: coupon.creatorId,
-          name: coupon.creatorName ?? coupon.creatorEmail ?? "Unknown creator",
-          usage: 0,
-          revenue: 0,
-          reward: 0,
-        };
+    for (const coupon of coupons) {
+      const current = map.get(coupon.creatorId) ?? {
+        id: coupon.creatorId,
+        name: coupon.creatorName ?? coupon.creatorEmail ?? "Unknown creator",
+        usage: 0,
+        revenue: 0,
+        reward: 0,
+      };
 
       current.usage += coupon.usageCount;
       current.revenue += coupon.totalRevenueInPaise;
       current.reward += coupon.estimatedRewardInPaise;
 
       map.set(coupon.creatorId, current);
-    });
+    }
 
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
   }, [coupons]);
@@ -168,16 +175,18 @@ export function AdminCouponsManager({
       <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
         <header className="mb-4 flex flex-col gap-1 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Coupon inventory</h2>
+            <h2 className="font-semibold text-lg">Coupon inventory</h2>
             <p className="text-muted-foreground text-sm">
               Track usage, toggle availability, and inspect recent redeemers.
             </p>
           </div>
-          <p className="text-muted-foreground text-xs">Click a code to edit or expand usage.</p>
+          <p className="text-muted-foreground text-xs">
+            Click a code to edit or expand usage.
+          </p>
         </header>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-3 py-3 text-left font-medium">Code</th>
                 <th className="px-3 py-3 text-left font-medium">Creator</th>
@@ -185,7 +194,9 @@ export function AdminCouponsManager({
                 <th className="px-3 py-3 text-left font-medium">Discount</th>
                 <th className="px-3 py-3 text-left font-medium">Reward</th>
                 <th className="px-3 py-3 text-left font-medium">Payouts</th>
-                <th className="px-3 py-3 text-left font-medium">Payout status</th>
+                <th className="px-3 py-3 text-left font-medium">
+                  Payout status
+                </th>
                 <th className="px-3 py-3 text-left font-medium">Usage</th>
                 <th className="px-3 py-3 text-left font-medium">Revenue</th>
                 <th className="px-3 py-3 text-left font-medium">Status</th>
@@ -196,7 +207,10 @@ export function AdminCouponsManager({
             <tbody className="divide-y divide-border/50">
               {coupons.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-muted-foreground" colSpan={11}>
+                  <td
+                    className="px-3 py-6 text-center text-muted-foreground"
+                    colSpan={11}
+                  >
                     No coupons created yet.
                   </td>
                 </tr>
@@ -218,13 +232,17 @@ export function AdminCouponsManager({
                         <td className="px-3 py-3">
                           {coupon.creatorName ?? coupon.creatorEmail ?? "—"}
                         </td>
-                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                        <td className="px-3 py-3 text-muted-foreground text-xs">
                           <div>{formatDateLabel(coupon.validFrom)}</div>
                           <div>
-                            {coupon.validTo ? formatDateLabel(coupon.validTo) : "No end date"}
+                            {coupon.validTo
+                              ? formatDateLabel(coupon.validTo)
+                              : "No end date"}
                           </div>
                         </td>
-                        <td className="px-3 py-3">{coupon.discountPercentage}%</td>
+                        <td className="px-3 py-3">
+                          {coupon.discountPercentage}%
+                        </td>
                         <td className="px-3 py-3">
                           <div className="flex flex-col">
                             <span>{coupon.creatorRewardPercentage}%</span>
@@ -239,7 +257,8 @@ export function AdminCouponsManager({
                               Paid ₹{formatCurrency(coupon.totalPaidInPaise)}
                             </span>
                             <span className="text-muted-foreground">
-                              Pending ₹{formatCurrency(coupon.remainingRewardInPaise)}
+                              Pending ₹
+                              {formatCurrency(coupon.remainingRewardInPaise)}
                             </span>
                           </div>
                         </td>
@@ -249,8 +268,16 @@ export function AdminCouponsManager({
                               action={setCouponRewardStatusAction}
                               className="flex flex-wrap items-center gap-2"
                             >
-                              <input name="couponId" type="hidden" value={coupon.id} />
-                              <input name="usageCount" type="hidden" value={coupon.usageCount} />
+                              <input
+                                name="couponId"
+                                type="hidden"
+                                value={coupon.id}
+                              />
+                              <input
+                                name="usageCount"
+                                type="hidden"
+                                value={coupon.usageCount}
+                              />
                               <select
                                 className="h-8 rounded-md border border-input bg-background px-2 text-xs uppercase tracking-wide"
                                 defaultValue={coupon.creatorRewardStatus}
@@ -259,12 +286,18 @@ export function AdminCouponsManager({
                                 <option value="pending">Payment pending</option>
                                 <option value="paid">Paid</option>
                               </select>
-                              <FormSubmitButton className="h-8 min-w-[84px]" size="sm" variant="outline">
+                              <FormSubmitButton
+                                className="h-8 min-w-[84px]"
+                                size="sm"
+                                variant="outline"
+                              >
                                 Save
                               </FormSubmitButton>
                             </form>
                           ) : (
-                            <span className="text-muted-foreground text-xs">No redemptions</span>
+                            <span className="text-muted-foreground text-xs">
+                              No redemptions
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-3">
@@ -276,7 +309,7 @@ export function AdminCouponsManager({
                         <td className="px-3 py-3">
                           <span
                             className={cn(
-                              "inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold",
+                              "inline-flex items-center rounded-full px-2 py-1 font-semibold text-xs",
                               coupon.isActive
                                 ? "bg-emerald-100 text-emerald-700"
                                 : "bg-amber-100 text-amber-700"
@@ -296,8 +329,15 @@ export function AdminCouponsManager({
                             >
                               Edit
                             </Button>
-                            <form action={setCouponStatusAction} className="inline-flex">
-                              <input name="couponId" type="hidden" value={coupon.id} />
+                            <form
+                              action={setCouponStatusAction}
+                              className="inline-flex"
+                            >
+                              <input
+                                name="couponId"
+                                type="hidden"
+                                value={coupon.id}
+                              />
                               <input
                                 name="isActive"
                                 type="hidden"
@@ -307,7 +347,9 @@ export function AdminCouponsManager({
                                 className="cursor-pointer"
                                 size="sm"
                                 type="submit"
-                                variant={coupon.isActive ? "outline" : "default"}
+                                variant={
+                                  coupon.isActive ? "outline" : "default"
+                                }
                               >
                                 {coupon.isActive ? "Deactivate" : "Activate"}
                               </Button>
@@ -336,33 +378,45 @@ export function AdminCouponsManager({
                                     Recent redemptions
                                   </p>
                                   {coupon.recentRedemptions.length === 0 ? (
-                                    <p className="mt-2 text-sm text-muted-foreground">
+                                    <p className="mt-2 text-muted-foreground text-sm">
                                       No users have redeemed this code yet.
                                     </p>
                                   ) : (
                                     <ul className="mt-3 space-y-3">
-                                      {coupon.recentRedemptions.map((redemption) => (
-                                        <li
-                                          className="flex items-center justify-between rounded-lg border border-border/50 bg-card/60 px-3 py-2 text-sm"
-                                          key={redemption.id}
-                                        >
-                                          <div>
-                                            <p className="font-semibold">{redemption.userLabel}</p>
-                                            <p className="text-muted-foreground text-xs">
-                                              {redemption.couponCode} ·{" "}
-                                              {formatDateLabel(redemption.redeemedAt)}
-                                            </p>
-                                          </div>
-                                          <div className="text-right text-xs sm:text-sm">
-                                            <div className="font-semibold">
-                                              ₹{formatCurrency(redemption.paymentAmountInPaise)}
+                                      {coupon.recentRedemptions.map(
+                                        (redemption) => (
+                                          <li
+                                            className="flex items-center justify-between rounded-lg border border-border/50 bg-card/60 px-3 py-2 text-sm"
+                                            key={redemption.id}
+                                          >
+                                            <div>
+                                              <p className="font-semibold">
+                                                {redemption.userLabel}
+                                              </p>
+                                              <p className="text-muted-foreground text-xs">
+                                                {redemption.couponCode} ·{" "}
+                                                {formatDateLabel(
+                                                  redemption.redeemedAt
+                                                )}
+                                              </p>
                                             </div>
-                                            <div className="text-muted-foreground">
-                                              Reward ₹{formatCurrency(redemption.rewardInPaise)}
+                                            <div className="text-right text-xs sm:text-sm">
+                                              <div className="font-semibold">
+                                                ₹
+                                                {formatCurrency(
+                                                  redemption.paymentAmountInPaise
+                                                )}
+                                              </div>
+                                              <div className="text-muted-foreground">
+                                                Reward ₹
+                                                {formatCurrency(
+                                                  redemption.rewardInPaise
+                                                )}
+                                              </div>
                                             </div>
-                                          </div>
-                                        </li>
-                                      ))}
+                                          </li>
+                                        )
+                                      )}
                                     </ul>
                                   )}
                                 </div>
@@ -371,7 +425,7 @@ export function AdminCouponsManager({
                                     Payout history
                                   </p>
                                   {coupon.recentPayouts.length === 0 ? (
-                                    <p className="mt-2 text-sm text-muted-foreground">
+                                    <p className="mt-2 text-muted-foreground text-sm">
                                       No payouts have been recorded yet.
                                     </p>
                                   ) : (
@@ -383,10 +437,15 @@ export function AdminCouponsManager({
                                         >
                                           <div className="flex items-center justify-between">
                                             <span className="font-semibold">
-                                              ₹{formatCurrency(payout.amountInPaise)}
+                                              ₹
+                                              {formatCurrency(
+                                                payout.amountInPaise
+                                              )}
                                             </span>
                                             <span className="text-muted-foreground text-xs">
-                                              {formatDateLabel(payout.createdAt)}
+                                              {formatDateLabel(
+                                                payout.createdAt
+                                              )}
                                             </span>
                                           </div>
                                           {payout.note ? (
@@ -398,14 +457,23 @@ export function AdminCouponsManager({
                                       ))}
                                     </ul>
                                   )}
-                                  <div className="mt-4 rounded-lg border border-dashed border-border/70 bg-background/80 p-3">
+                                  <div className="mt-4 rounded-lg border border-border/70 border-dashed bg-background/80 p-3">
                                     <p className="text-muted-foreground text-xs uppercase tracking-wide">
                                       Record payment
                                     </p>
-                                    <form action={recordCouponPayoutAction} className="mt-3 space-y-3">
-                                      <input name="couponId" type="hidden" value={coupon.id} />
+                                    <form
+                                      action={recordCouponPayoutAction}
+                                      className="mt-3 space-y-3"
+                                    >
+                                      <input
+                                        name="couponId"
+                                        type="hidden"
+                                        value={coupon.id}
+                                      />
                                       <div>
-                                        <Label className="text-xs font-medium">Amount (₹)</Label>
+                                        <Label className="font-medium text-xs">
+                                          Amount (₹)
+                                        </Label>
                                         <Input
                                           className="mt-1"
                                           min={1}
@@ -416,7 +484,9 @@ export function AdminCouponsManager({
                                         />
                                       </div>
                                       <div>
-                                        <Label className="text-xs font-medium">Note</Label>
+                                        <Label className="font-medium text-xs">
+                                          Note
+                                        </Label>
                                         <Textarea
                                           className="mt-1"
                                           name="note"
@@ -424,7 +494,10 @@ export function AdminCouponsManager({
                                           rows={2}
                                         />
                                       </div>
-                                      <FormSubmitButton size="sm" variant="secondary">
+                                      <FormSubmitButton
+                                        size="sm"
+                                        variant="secondary"
+                                      >
                                         Add payment
                                       </FormSubmitButton>
                                     </form>
@@ -446,7 +519,7 @@ export function AdminCouponsManager({
 
       <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
         <header className="mb-4">
-          <h2 className="text-lg font-semibold">
+          <h2 className="font-semibold text-lg">
             {selectedCoupon ? "Edit coupon" : "Create coupon"}
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -455,44 +528,50 @@ export function AdminCouponsManager({
               : "Issue a new code and assign it to a creator."}
           </p>
         </header>
-        {!hasCreators ? (
-          <div className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        {hasCreators ? null : (
+          <div className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800 text-sm">
             Add at least one creator user before issuing coupons.
           </div>
-        ) : null}
+        )}
         <form action={upsertCouponAction} className="mt-4 space-y-4">
-          <input name="couponId" type="hidden" value={selectedCoupon?.id ?? ""} />
+          <input
+            name="couponId"
+            type="hidden"
+            value={selectedCoupon?.id ?? ""}
+          />
           <div>
-            <Label className="text-sm font-medium">Coupon code</Label>
+            <Label className="font-medium text-sm">Coupon code</Label>
             <Input
               className="mt-1 font-mono uppercase"
+              defaultValue={selectedCoupon?.code ?? ""}
               maxLength={32}
               name="code"
               placeholder="CREATOR10"
               required
-              defaultValue={selectedCoupon?.code ?? ""}
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label className="text-sm font-medium">Discount %</Label>
+              <Label className="font-medium text-sm">Discount %</Label>
               <Input
                 className="mt-1"
-                min={1}
+                defaultValue={selectedCoupon?.discountPercentage ?? 10}
                 max={95}
+                min={1}
                 name="discountPercentage"
                 required
                 type="number"
-                defaultValue={selectedCoupon?.discountPercentage ?? 10}
               />
             </div>
             <div>
-              <Label className="text-sm font-medium">Creator</Label>
+              <Label className="font-medium text-sm">Creator</Label>
               <select
                 className="mt-1 h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
+                defaultValue={
+                  selectedCoupon?.creatorId ?? creators[0]?.id ?? ""
+                }
                 name="creatorId"
                 required
-                defaultValue={selectedCoupon?.creatorId ?? creators[0]?.id ?? ""}
               >
                 {creators.map((creator) => (
                   <option key={creator.id} value={creator.id}>
@@ -504,53 +583,53 @@ export function AdminCouponsManager({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label className="text-sm font-medium">Valid from</Label>
+              <Label className="font-medium text-sm">Valid from</Label>
               <Input
                 className="mt-1"
+                defaultValue={selectedCoupon?.validFrom?.slice(0, 10)}
                 name="validFrom"
                 required
                 type="date"
-                defaultValue={selectedCoupon?.validFrom?.slice(0, 10)}
               />
             </div>
             <div>
-              <Label className="text-sm font-medium">Valid until</Label>
+              <Label className="font-medium text-sm">Valid until</Label>
               <Input
                 className="mt-1"
+                defaultValue={selectedCoupon?.validTo?.slice(0, 10) ?? ""}
                 name="validTo"
                 type="date"
-                defaultValue={selectedCoupon?.validTo?.slice(0, 10) ?? ""}
               />
             </div>
             <div>
-              <Label className="text-sm font-medium">Creator reward %</Label>
+              <Label className="font-medium text-sm">Creator reward %</Label>
               <Input
                 className="mt-1"
-                min={0}
+                defaultValue={selectedCoupon?.creatorRewardPercentage ?? 0}
                 max={95}
+                min={0}
                 name="creatorRewardPercentage"
                 required
                 type="number"
-                defaultValue={selectedCoupon?.creatorRewardPercentage ?? 0}
               />
             </div>
           </div>
           <div>
-            <Label className="text-sm font-medium">Description</Label>
+            <Label className="font-medium text-sm">Description</Label>
             <Textarea
               className="mt-1"
+              defaultValue={selectedCoupon?.description ?? ""}
               name="description"
               placeholder="Optional details shown in dashboards"
               rows={3}
-              defaultValue={selectedCoupon?.description ?? ""}
             />
           </div>
           <div>
-            <Label className="text-sm font-medium">Status</Label>
+            <Label className="font-medium text-sm">Status</Label>
             <select
               className="mt-1 h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
-              name="isActive"
               defaultValue={selectedCoupon?.isActive ? "true" : "false"}
+              name="isActive"
             >
               <option value="true">Active</option>
               <option value="false">Inactive</option>
@@ -577,13 +656,15 @@ export function AdminCouponsManager({
 
       <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
         <header className="mb-3">
-          <h2 className="text-lg font-semibold">Creator performance</h2>
+          <h2 className="font-semibold text-lg">Creator performance</h2>
           <p className="text-muted-foreground text-sm">
             Compare redemptions and revenue driven by each creator.
           </p>
         </header>
         {creatorSummary.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No creator activity recorded yet.</p>
+          <p className="text-muted-foreground text-sm">
+            No creator activity recorded yet.
+          </p>
         ) : (
           <ul className="space-y-3">
             {creatorSummary.map((creator) => (
@@ -598,7 +679,9 @@ export function AdminCouponsManager({
                   </p>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="font-semibold">₹{formatCurrency(creator.revenue)}</div>
+                  <div className="font-semibold">
+                    ₹{formatCurrency(creator.revenue)}
+                  </div>
                   <div className="text-muted-foreground text-xs">
                     Reward ₹{formatCurrency(creator.reward)}
                   </div>
@@ -615,8 +698,10 @@ export function AdminCouponsManager({
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border bg-card/70 p-4 shadow-sm">
-      <p className="text-muted-foreground text-xs uppercase tracking-wide">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className="text-muted-foreground text-xs uppercase tracking-wide">
+        {label}
+      </p>
+      <p className="mt-2 font-semibold text-2xl">{value}</p>
     </div>
   );
 }

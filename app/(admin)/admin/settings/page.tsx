@@ -1,53 +1,52 @@
+import { formatDistanceToNow } from "date-fns";
 import type { ReactNode } from "react";
 import {
-  getAppSetting,
-    listModelConfigs,
-    listPricingPlans,
-    getTranslationValuesForKeys,
-  } from "@/lib/db/queries";
-import type { PricingPlan } from "@/lib/db/schema";
-import {
+  createLanguageAction,
   createModelConfigAction,
+  createPricingPlanAction,
   deleteModelConfigAction,
+  deletePricingPlanAction,
   hardDeleteModelConfigAction,
+  hardDeletePricingPlanAction,
   setDefaultModelConfigAction,
   setMarginBaselineModelAction,
-  updateModelConfigAction,
-  createPricingPlanAction,
-  updatePricingPlanAction,
-  deletePricingPlanAction,
-  hardDeletePricingPlanAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
-  updateSuggestedPromptsAction,
-  updatePrivacyPolicyByLanguageAction,
-  updateTermsOfServiceByLanguageAction,
-  createLanguageAction,
-  updateLanguageStatusAction,
-  updatePlanTranslationAction,
-  updateFreeMessageSettingsAction,
   updateForumAvailabilityAction,
+  updateFreeMessageSettingsAction,
+  updateLanguageStatusAction,
+  updateModelConfigAction,
+  updatePlanTranslationAction,
+  updatePricingPlanAction,
+  updatePrivacyPolicyByLanguageAction,
+  updateSuggestedPromptsAction,
+  updateTermsOfServiceByLanguageAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
-import { cn } from "@/lib/utils";
-import { AdminSettingsNotice } from "./notice";
 import {
-  DEFAULT_SUGGESTED_PROMPTS,
-  DEFAULT_PRIVACY_POLICY,
-  DEFAULT_TERMS_OF_SERVICE,
   DEFAULT_ABOUT_US,
-  TOKENS_PER_CREDIT,
-  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
+  DEFAULT_PRIVACY_POLICY,
+  DEFAULT_SUGGESTED_PROMPTS,
+  DEFAULT_TERMS_OF_SERVICE,
   FORUM_FEATURE_FLAG_KEY,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  TOKENS_PER_CREDIT,
 } from "@/lib/constants";
-import { loadFreeMessageSettings } from "@/lib/free-messages";
-import { formatDistanceToNow } from "date-fns";
-import { getAllLanguages } from "@/lib/i18n/languages";
-import { LanguagePromptsForm } from "./language-prompts-form";
-import { LanguageContentForm } from "./language-content-form";
+import {
+  getAppSetting,
+  getTranslationValuesForKeys,
+  listModelConfigs,
+  listPricingPlans,
+} from "@/lib/db/queries";
 import { parseForumEnabledSetting } from "@/lib/forum/config";
+import { loadFreeMessageSettings } from "@/lib/free-messages";
+import { getAllLanguages } from "@/lib/i18n/languages";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
+import { cn } from "@/lib/utils";
+import { LanguageContentForm } from "./language-content-form";
+import { LanguagePromptsForm } from "./language-prompts-form";
+import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +58,7 @@ const PROVIDER_OPTIONS = [
   { value: "custom", label: "Custom (configure in code)" },
 ];
 
-function formatCurrency(value: number, currency: "USD" | "INR") {
+function _formatCurrency(value: number, currency: "USD" | "INR") {
   return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
     style: "currency",
     currency,
@@ -71,7 +70,7 @@ function formatCurrency(value: number, currency: "USD" | "INR") {
 function ProviderBadge({ value }: { value: string }) {
   const option = PROVIDER_OPTIONS.find((item) => item.value === value);
   return (
-    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">
+    <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-xs capitalize">
       {option?.label ?? value}
     </span>
   );
@@ -80,13 +79,13 @@ function ProviderBadge({ value }: { value: string }) {
 function EnabledBadge({ enabled }: { enabled: boolean }) {
   if (enabled) {
     return (
-      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
         Enabled
       </span>
     );
   }
   return (
-    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
       Disabled
     </span>
   );
@@ -112,12 +111,12 @@ function CollapsibleSection({
     >
       <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-4">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="font-semibold text-lg">{title}</h2>
           {description ? (
             <p className="text-muted-foreground text-sm">{description}</p>
           ) : null}
         </div>
-        <span className="text-muted-foreground text-xs font-semibold transition-transform duration-150 group-open:rotate-180">
+        <span className="font-semibold text-muted-foreground text-xs transition-transform duration-150 group-open:rotate-180">
           ▼
         </span>
       </summary>
@@ -154,7 +153,11 @@ export default async function AdminSettingsPage({
     forumEnabledSetting,
   ] = await Promise.all([
     getUsdToInrRate(),
-    listModelConfigs({ includeDisabled: true, includeDeleted: true, limit: 200 }),
+    listModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
+    }),
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
     getAppSetting<string>("privacyPolicy"),
     getAppSetting<string>("termsOfService"),
@@ -183,7 +186,7 @@ export default async function AdminSettingsPage({
       ? recommendedPlanSetting
       : null;
   const recommendedPlanName = recommendedPlanId
-    ? activePlans.find((plan) => plan.id === recommendedPlanId)?.name ?? null
+    ? (activePlans.find((plan) => plan.id === recommendedPlanId)?.name ?? null)
     : null;
 
   const privacyPolicyContent =
@@ -204,7 +207,9 @@ export default async function AdminSettingsPage({
     typeof aboutUsContentByLanguageSetting === "object" &&
     !Array.isArray(aboutUsContentByLanguageSetting)
   ) {
-    for (const [code, value] of Object.entries(aboutUsContentByLanguageSetting)) {
+    for (const [code, value] of Object.entries(
+      aboutUsContentByLanguageSetting
+    )) {
       if (typeof value === "string" && value.trim().length > 0) {
         normalizedAboutContentByLanguage[code] = value.trim();
       }
@@ -216,7 +221,9 @@ export default async function AdminSettingsPage({
     typeof privacyPolicyByLanguageSetting === "object" &&
     !Array.isArray(privacyPolicyByLanguageSetting)
   ) {
-    for (const [code, value] of Object.entries(privacyPolicyByLanguageSetting)) {
+    for (const [code, value] of Object.entries(
+      privacyPolicyByLanguageSetting
+    )) {
       if (typeof value === "string" && value.trim().length > 0) {
         normalizedPrivacyPolicyByLanguage[code] = value.trim();
       }
@@ -228,7 +235,9 @@ export default async function AdminSettingsPage({
     typeof termsOfServiceByLanguageSetting === "object" &&
     !Array.isArray(termsOfServiceByLanguageSetting)
   ) {
-    for (const [code, value] of Object.entries(termsOfServiceByLanguageSetting)) {
+    for (const [code, value] of Object.entries(
+      termsOfServiceByLanguageSetting
+    )) {
       if (typeof value === "string" && value.trim().length > 0) {
         normalizedTermsOfServiceByLanguage[code] = value.trim();
       }
@@ -364,7 +373,9 @@ export default async function AdminSettingsPage({
     },
   ]);
 
-  const planTranslationKeys = planTranslationDefinitions.map((definition) => definition.key);
+  const planTranslationKeys = planTranslationDefinitions.map(
+    (definition) => definition.key
+  );
   const planTranslationValuesByLanguage =
     planTranslationKeys.length > 0
       ? await getTranslationValuesForKeys(planTranslationKeys)
@@ -383,10 +394,10 @@ export default async function AdminSettingsPage({
       planMap[plan.id] = {
         name: language.isDefault
           ? plan.name
-          : languageValues[`recharge.plan.${plan.id}.name`] ?? "",
+          : (languageValues[`recharge.plan.${plan.id}.name`] ?? ""),
         description: language.isDefault
-          ? plan.description ?? ""
-          : languageValues[`recharge.plan.${plan.id}.description`] ?? "",
+          ? (plan.description ?? "")
+          : (languageValues[`recharge.plan.${plan.id}.description`] ?? ""),
       };
     }
 
@@ -439,7 +450,7 @@ export default async function AdminSettingsPage({
             className="grid gap-6 md:grid-cols-2"
           >
             <fieldset className="space-y-3">
-              <legend className="text-sm font-medium">Allowance mode</legend>
+              <legend className="font-medium text-sm">Allowance mode</legend>
               <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
                 <input
                   className="mt-1 h-4 w-4 cursor-pointer"
@@ -468,13 +479,14 @@ export default async function AdminSettingsPage({
                   <span className="font-medium">One limit for all models</span>
                   <br />
                   <span className="text-muted-foreground">
-                    Override per-model allowances and use the global value below.
+                    Override per-model allowances and use the global value
+                    below.
                   </span>
                 </span>
               </label>
             </fieldset>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="globalLimit">
+              <label className="font-medium text-sm" htmlFor="globalLimit">
                 Global daily free messages
               </label>
               <input
@@ -487,19 +499,21 @@ export default async function AdminSettingsPage({
                 type="number"
               />
               <p className="text-muted-foreground text-xs">
-                Used only when &ldquo;One limit for all models&rdquo; is selected.
+                Used only when &ldquo;One limit for all models&rdquo; is
+                selected.
               </p>
             </div>
-            <div className="md:col-span-2 flex justify-end">
+            <div className="flex justify-end md:col-span-2">
               <ActionSubmitButton pendingLabel="Saving...">
                 Save policy
               </ActionSubmitButton>
             </div>
           </form>
           {isGlobalFreeMessageMode ? (
-            <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-100">
+            <div className="rounded-md bg-amber-50 px-4 py-3 text-amber-800 text-sm dark:bg-amber-500/10 dark:text-amber-100">
               Per-model inputs are locked because a global allowance of{" "}
-              {freeMessageSettings.globalLimit.toLocaleString()} messages per day is active.
+              {freeMessageSettings.globalLimit.toLocaleString()} messages per
+              day is active.
             </div>
           ) : null}
         </CollapsibleSection>
@@ -514,7 +528,7 @@ export default async function AdminSettingsPage({
               className="flex flex-col gap-4 rounded-lg border bg-background p-4"
             >
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="language-code">
+                <label className="font-medium text-sm" htmlFor="language-code">
                   Language code
                 </label>
                 <input
@@ -528,7 +542,7 @@ export default async function AdminSettingsPage({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="language-name">
+                <label className="font-medium text-sm" htmlFor="language-name">
                   Language name
                 </label>
                 <input
@@ -539,7 +553,7 @@ export default async function AdminSettingsPage({
                   required
                 />
               </div>
-              <label className="flex items-center gap-2 text-sm font-medium">
+              <label className="flex items-center gap-2 font-medium text-sm">
                 <input
                   className="h-4 w-4 cursor-pointer"
                   defaultChecked
@@ -554,7 +568,7 @@ export default async function AdminSettingsPage({
             </form>
             <div className="overflow-x-auto rounded-lg border bg-background">
               <table className="w-full min-w-[480px] border-collapse text-sm">
-                <thead className="border-b bg-muted/40 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <thead className="border-b bg-muted/40 font-medium text-muted-foreground text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3 text-left">Language</th>
                     <th className="px-4 py-3 text-left">Code</th>
@@ -565,7 +579,10 @@ export default async function AdminSettingsPage({
                 <tbody className="divide-y">
                   {languages.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-3 text-muted-foreground text-sm" colSpan={4}>
+                      <td
+                        className="px-4 py-3 text-muted-foreground text-sm"
+                        colSpan={4}
+                      >
                         No languages configured yet.
                       </td>
                     </tr>
@@ -576,21 +593,23 @@ export default async function AdminSettingsPage({
                       : "text-muted-foreground bg-muted/60";
 
                     return (
-                      <tr key={language.id} className="align-middle">
+                      <tr className="align-middle" key={language.id}>
                         <td className="px-4 py-3">
                           <div className="flex flex-col gap-1">
                             <span className="font-medium">{language.name}</span>
                             {language.isDefault ? (
-                              <span className="inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
+                              <span className="inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-[11px] text-primary uppercase tracking-wide">
                                 Default
                               </span>
                             ) : null}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{language.code}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {language.code}
+                        </td>
                         <td className="px-4 py-3">
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge}`}
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs ${statusBadge}`}
                           >
                             {language.isActive ? "Active" : "Inactive"}
                           </span>
@@ -605,14 +624,24 @@ export default async function AdminSettingsPage({
                               action={updateLanguageStatusAction}
                               className="inline-flex items-center justify-end"
                             >
-                              <input name="languageId" type="hidden" value={language.id} />
+                              <input
+                                name="languageId"
+                                type="hidden"
+                                value={language.id}
+                              />
                               <input
                                 name="intent"
                                 type="hidden"
-                                value={language.isActive ? "deactivate" : "activate"}
+                                value={
+                                  language.isActive ? "deactivate" : "activate"
+                                }
                               />
                               <ActionSubmitButton
-                                pendingLabel={language.isActive ? "Disabling..." : "Enabling..."}
+                                pendingLabel={
+                                  language.isActive
+                                    ? "Disabling..."
+                                    : "Enabling..."
+                                }
                                 size="sm"
                                 variant="outline"
                               >
@@ -635,15 +664,16 @@ export default async function AdminSettingsPage({
           title="Suggested prompts"
         >
           {languagePromptConfigs.length === 0 ? (
-            <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
-              No active languages are configured. Add a language before managing prompts.
+            <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+              No active languages are configured. Add a language before managing
+              prompts.
             </div>
           ) : (
             <div className="grid gap-6 lg:grid-cols-2">
               {languagePromptConfigs.map(({ language, prompts }) => (
                 <LanguagePromptsForm
-                  key={language.id}
                   initialPrompts={prompts}
+                  key={language.id}
                   language={language}
                   onSubmit={updateSuggestedPromptsAction}
                 />
@@ -657,27 +687,28 @@ export default async function AdminSettingsPage({
           title="Public page content"
         >
           {activeLanguagesList.length === 0 ? (
-            <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-4 text-sm text-muted-foreground">
-              No active languages are configured. Add a language before managing public page content.
+            <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+              No active languages are configured. Add a language before managing
+              public page content.
             </div>
           ) : (
             <div className="space-y-10">
               <div className="space-y-4">
-                <h3 className="text-base font-semibold">About page content</h3>
+                <h3 className="font-semibold text-base">About page content</h3>
                 <div className="grid gap-6 lg:grid-cols-2">
                   {languageAboutConfigs.map(({ language, content }) => (
-                <LanguageContentForm
-                  key={language.id}
-                  contentLabel="about content"
-                  helperText={{
-                    default:
-                      "Shown on the about page when no localized version is available.",
-                    localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
-                  }}
-                  initialContent={content}
-                  language={language}
-                  onSubmit={updateAboutContentAction}
-                  placeholders={{
+                    <LanguageContentForm
+                      contentLabel="about content"
+                      helperText={{
+                        default:
+                          "Shown on the about page when no localized version is available.",
+                        localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
+                      }}
+                      initialContent={content}
+                      key={language.id}
+                      language={language}
+                      onSubmit={updateAboutContentAction}
+                      placeholders={{
                         default: "Enter about content",
                         localized: "Provide localized about content",
                       }}
@@ -688,15 +719,20 @@ export default async function AdminSettingsPage({
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-base font-semibold">Privacy policy content</h3>
+                  <h3 className="font-semibold text-base">
+                    Privacy policy content
+                  </h3>
                   <p className="text-muted-foreground text-xs">
-                    Appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/privacy-policy</code>.
+                    Appears at{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                      /privacy-policy
+                    </code>
+                    .
                   </p>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
                   {languagePrivacyConfigs.map(({ language, content }) => (
                     <LanguageContentForm
-                      key={language.id}
                       contentLabel="privacy policy"
                       helperText={{
                         default:
@@ -704,6 +740,7 @@ export default async function AdminSettingsPage({
                         localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
                       }}
                       initialContent={content}
+                      key={language.id}
                       language={language}
                       onSubmit={updatePrivacyPolicyByLanguageAction}
                       placeholders={{
@@ -717,15 +754,20 @@ export default async function AdminSettingsPage({
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-base font-semibold">Terms of service content</h3>
+                  <h3 className="font-semibold text-base">
+                    Terms of service content
+                  </h3>
                   <p className="text-muted-foreground text-xs">
-                    Appears at <code className="rounded bg-muted px-1 py-0.5 text-xs">/terms-of-service</code>.
+                    Appears at{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                      /terms-of-service
+                    </code>
+                    .
                   </p>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
                   {languageTermsConfigs.map(({ language, content }) => (
                     <LanguageContentForm
-                      key={language.id}
                       contentLabel="terms of service"
                       helperText={{
                         default:
@@ -733,6 +775,7 @@ export default async function AdminSettingsPage({
                         localized: `Displayed when ${language.name} is selected. Falls back to the default language if left blank.`,
                       }}
                       initialContent={content}
+                      key={language.id}
                       language={language}
                       onSubmit={updateTermsOfServiceByLanguageAction}
                       placeholders={{
@@ -750,18 +793,24 @@ export default async function AdminSettingsPage({
           description="Define recharge tiers that control how many tokens and credits users receive. Plans become available immediately."
           title="Pricing plans"
         >
-          <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
-            <div>Current recommended plan: {recommendedPlanName ?? "None selected"}</div>
+          <div className="space-y-1 rounded-md border border-muted-foreground/40 border-dashed bg-muted/20 px-3 py-2 text-muted-foreground text-xs">
+            <div>
+              Current recommended plan: {recommendedPlanName ?? "None selected"}
+            </div>
             {recommendedPlanSetting && !recommendedPlanId ? (
               <div className="text-amber-600">
-                The previously selected plan is no longer active. Choose a new recommended plan below.
+                The previously selected plan is no longer active. Choose a new
+                recommended plan below.
               </div>
             ) : null}
           </div>
 
-          <form action={createPricingPlanAction} className="grid gap-4 md:grid-cols-2">
+          <form
+            action={createPricingPlanAction}
+            className="grid gap-4 md:grid-cols-2"
+          >
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-name">
+              <label className="font-medium text-sm" htmlFor="plan-name">
                 Plan name
               </label>
               <input
@@ -772,8 +821,8 @@ export default async function AdminSettingsPage({
                 required
               />
             </div>
-            <div className="md:col-span-2 flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-description">
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label className="font-medium text-sm" htmlFor="plan-description">
                 Description
               </label>
               <textarea
@@ -783,17 +832,18 @@ export default async function AdminSettingsPage({
                 placeholder="Great for individual builders."
               />
             </div>
-            <div className="md:col-span-2 space-y-3">
+            <div className="space-y-3 md:col-span-2">
               <PlanPricingFields
                 modelCosts={providerCostSummaries}
                 usdToInr={usdToInr}
               />
               <p className="text-muted-foreground text-xs">
-                Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).
+                Display credits are calculated automatically (
+                {TOKENS_PER_CREDIT} tokens per credit).
               </p>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="plan-duration">
+              <label className="font-medium text-sm" htmlFor="plan-duration">
                 Billing cycle (days)
               </label>
               <input
@@ -814,11 +864,11 @@ export default async function AdminSettingsPage({
                 name="isActive"
                 type="checkbox"
               />
-              <label className="text-sm font-medium" htmlFor="plan-active">
+              <label className="font-medium text-sm" htmlFor="plan-active">
                 Plan is active
               </label>
             </div>
-            <div className="md:col-span-2 flex justify-end">
+            <div className="flex justify-end md:col-span-2">
               <ActionSubmitButton pendingLabel="Creating...">
                 Create plan
               </ActionSubmitButton>
@@ -833,21 +883,23 @@ export default async function AdminSettingsPage({
             ) : (
               activePlans.map((plan) => {
                 const priceInRupees = plan.priceInPaise / 100;
-                const credits = Math.floor(plan.tokenAllowance / TOKENS_PER_CREDIT);
+                const credits = Math.floor(
+                  plan.tokenAllowance / TOKENS_PER_CREDIT
+                );
                 const isRecommendedPlan = recommendedPlanId === plan.id;
                 const nonDefaultLanguages = activeLanguagesList.filter(
-                  (language) => !language.isDefault,
+                  (language) => !language.isDefault
                 );
                 return (
                   <details
-                    key={plan.id}
                     className="overflow-hidden rounded-lg border bg-background"
+                    key={plan.id}
                   >
-                    <summary className="flex cursor-pointer items-center justify-between gap-4 bg-muted/50 px-4 py-3 text-sm font-medium">
+                    <summary className="flex cursor-pointer items-center justify-between gap-4 bg-muted/50 px-4 py-3 font-medium text-sm">
                       <span className="flex items-center gap-2">
                         <span>{plan.name}</span>
                         {isRecommendedPlan ? (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary text-xs">
                             Recommended
                           </span>
                         ) : null}
@@ -858,172 +910,216 @@ export default async function AdminSettingsPage({
                     </summary>
                     <div className="grid gap-6 border-t p-4 md:grid-cols-[3fr,2fr]">
                       <div className="space-y-6">
-                        <form action={updatePricingPlanAction} className="flex flex-col gap-4">
-                        <input name="id" type="hidden" value={plan.id} />
-                        <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium" htmlFor={`plan-update-name-${plan.id}`}>
-                            Plan name (English)
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={plan.name}
-                            id={`plan-update-name-${plan.id}`}
-                            name="name"
-                            required
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium" htmlFor={`plan-update-description-${plan.id}`}>
-                            Description (English)
-                          </label>
-                          <textarea
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={plan.description ?? ""}
-                            id={`plan-update-description-${plan.id}`}
-                            name="description"
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <PlanPricingFields
-                            initialPriceInRupees={priceInRupees}
-                            initialTokenAllowance={plan.tokenAllowance}
-                            modelCosts={providerCostSummaries}
-                            usdToInr={usdToInr}
-                          />
-                          <p className="text-muted-foreground text-xs">
-                            Display credits are calculated automatically ({TOKENS_PER_CREDIT} tokens per credit).
-                          </p>
-                        </div>
-                        <div className="flex flex-col gap-2 sm:w-48">
-                          <label className="text-sm font-medium">
-                            Cycle (days)
-                          </label>
-                          <input
-                            className="rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={plan.billingCycleDays}
-                            min={0}
-                            name="billingCycleDays"
-                            type="number"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            className="h-4 w-4"
-                            defaultChecked={plan.isActive}
-                            id={`plan-active-${plan.id}`}
-                            name="isActive"
-                            type="checkbox"
-                          />
-                          <label
-                            className="text-sm font-medium"
-                            htmlFor={`plan-active-${plan.id}`}
-                          >
-                            Plan is active
-                          </label>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <ActionSubmitButton
-                            pendingLabel="Saving..."
-                            successMessage="Plan updated"
-                          >
-                            Save changes
-                          </ActionSubmitButton>
-                        </div>
-                      </form>
+                        <form
+                          action={updatePricingPlanAction}
+                          className="flex flex-col gap-4"
+                        >
+                          <input name="id" type="hidden" value={plan.id} />
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`plan-update-name-${plan.id}`}
+                            >
+                              Plan name (English)
+                            </label>
+                            <input
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={plan.name}
+                              id={`plan-update-name-${plan.id}`}
+                              name="name"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`plan-update-description-${plan.id}`}
+                            >
+                              Description (English)
+                            </label>
+                            <textarea
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={plan.description ?? ""}
+                              id={`plan-update-description-${plan.id}`}
+                              name="description"
+                            />
+                          </div>
+                          <div className="space-y-3">
+                            <PlanPricingFields
+                              initialPriceInRupees={priceInRupees}
+                              initialTokenAllowance={plan.tokenAllowance}
+                              modelCosts={providerCostSummaries}
+                              usdToInr={usdToInr}
+                            />
+                            <p className="text-muted-foreground text-xs">
+                              Display credits are calculated automatically (
+                              {TOKENS_PER_CREDIT} tokens per credit).
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2 sm:w-48">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`plan-cycle-${plan.id}`}
+                            >
+                              Cycle (days)
+                            </label>
+                            <input
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={plan.billingCycleDays}
+                              id={`plan-cycle-${plan.id}`}
+                              min={0}
+                              name="billingCycleDays"
+                              type="number"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              className="h-4 w-4"
+                              defaultChecked={plan.isActive}
+                              id={`plan-active-${plan.id}`}
+                              name="isActive"
+                              type="checkbox"
+                            />
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`plan-active-${plan.id}`}
+                            >
+                              Plan is active
+                            </label>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <ActionSubmitButton
+                              pendingLabel="Saving..."
+                              successMessage="Plan updated"
+                            >
+                              Save changes
+                            </ActionSubmitButton>
+                          </div>
+                        </form>
 
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-muted-foreground">
-                          Localized content
-                        </h4>
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {nonDefaultLanguages.length === 0 ? (
-                            <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
-                              Add another language to provide localized plan details.
-                            </div>
-                          ) : (
-                            nonDefaultLanguages.map((language) => {
-                              const translation =
-                                planTranslationsByLanguage[language.code]?.[plan.id] ?? {
+                        <div className="space-y-4">
+                          <h4 className="font-semibold text-muted-foreground text-sm">
+                            Localized content
+                          </h4>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            {nonDefaultLanguages.length === 0 ? (
+                              <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-muted-foreground text-sm">
+                                Add another language to provide localized plan
+                                details.
+                              </div>
+                            ) : (
+                              nonDefaultLanguages.map((language) => {
+                                const translation = planTranslationsByLanguage[
+                                  language.code
+                                ]?.[plan.id] ?? {
                                   name: "",
                                   description: "",
                                 };
-                              const formId = `plan-translation-${plan.id}-${language.code}`;
+                                const formId = `plan-translation-${plan.id}-${language.code}`;
 
-                              return (
-                                <form
-                                  action={updatePlanTranslationAction}
-                                  className="flex flex-col gap-3 rounded-lg border bg-background p-3"
-                                  key={formId}
-                                >
-                                  <input name="planId" type="hidden" value={plan.id} />
-                                  <input name="languageCode" type="hidden" value={language.code} />
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-sm font-medium">{language.name}</span>
-                                    <span className="text-muted-foreground text-xs">
-                                      {language.code.toUpperCase()}
-                                    </span>
-                                  </div>
-                                  <div className="flex flex-col gap-2">
-                                    <label className="text-xs font-medium" htmlFor={`${formId}-name`}>
-                                      Plan name
-                                    </label>
+                                return (
+                                  <form
+                                    action={updatePlanTranslationAction}
+                                    className="flex flex-col gap-3 rounded-lg border bg-background p-3"
+                                    key={formId}
+                                  >
                                     <input
-                                      className="rounded-md border bg-background px-3 py-2 text-sm"
-                                      defaultValue={translation.name}
-                                      id={`${formId}-name`}
-                                      name="name"
-                                      placeholder="Enter localized name"
+                                      name="planId"
+                                      type="hidden"
+                                      value={plan.id}
                                     />
-                                  </div>
-                                  <div className="flex flex-col gap-2">
-                                    <label className="text-xs font-medium" htmlFor={`${formId}-description`}>
-                                      Description
-                                    </label>
-                                    <textarea
-                                      className="rounded-md border bg-background px-3 py-2 text-sm"
-                                      defaultValue={translation.description}
-                                      id={`${formId}-description`}
-                                      name="description"
-                                      placeholder="Enter localized description"
+                                    <input
+                                      name="languageCode"
+                                      type="hidden"
+                                      value={language.code}
                                     />
-                                    <p className="text-muted-foreground text-[11px]">
-                                      Leave blank to fall back to English.
-                                    </p>
-                                  </div>
-                                  <div className="flex justify-end">
-                                    <ActionSubmitButton
-                                      pendingLabel="Saving..."
-                                      size="sm"
-                                      variant="outline"
-                                    >
-                                      {`Save ${language.name}`}
-                                    </ActionSubmitButton>
-                                  </div>
-                                </form>
-                              );
-                            })
-                          )}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium text-sm">
+                                        {language.name}
+                                      </span>
+                                      <span className="text-muted-foreground text-xs">
+                                        {language.code.toUpperCase()}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                      <label
+                                        className="font-medium text-xs"
+                                        htmlFor={`${formId}-name`}
+                                      >
+                                        Plan name
+                                      </label>
+                                      <input
+                                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                                        defaultValue={translation.name}
+                                        id={`${formId}-name`}
+                                        name="name"
+                                        placeholder="Enter localized name"
+                                      />
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                      <label
+                                        className="font-medium text-xs"
+                                        htmlFor={`${formId}-description`}
+                                      >
+                                        Description
+                                      </label>
+                                      <textarea
+                                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                                        defaultValue={translation.description}
+                                        id={`${formId}-description`}
+                                        name="description"
+                                        placeholder="Enter localized description"
+                                      />
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Leave blank to fall back to English.
+                                      </p>
+                                    </div>
+                                    <div className="flex justify-end">
+                                      <ActionSubmitButton
+                                        pendingLabel="Saving..."
+                                        size="sm"
+                                        variant="outline"
+                                      >
+                                        {`Save ${language.name}`}
+                                      </ActionSubmitButton>
+                                    </div>
+                                  </form>
+                                );
+                              })
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
                       <div className="flex flex-col justify-between gap-4">
                         <div className="flex flex-col gap-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-sm font-medium">
-                              {isRecommendedPlan ? "Recommended plan" : "Not recommended"}
+                            <span className="font-medium text-sm">
+                              {isRecommendedPlan
+                                ? "Recommended plan"
+                                : "Not recommended"}
                             </span>
                             <div className="flex flex-wrap gap-2">
                               {isRecommendedPlan ? (
                                 <form action={setRecommendedPricingPlanAction}>
                                   <input name="planId" type="hidden" value="" />
-                                  <ActionSubmitButton pendingLabel="Updating..." variant="outline">
+                                  <ActionSubmitButton
+                                    pendingLabel="Updating..."
+                                    variant="outline"
+                                  >
                                     Remove recommendation
                                   </ActionSubmitButton>
                                 </form>
                               ) : (
                                 <form action={setRecommendedPricingPlanAction}>
-                                  <input name="planId" type="hidden" value={plan.id} />
-                                  <ActionSubmitButton pendingLabel="Updating..." disabled={!plan.isActive}>
+                                  <input
+                                    name="planId"
+                                    type="hidden"
+                                    value={plan.id}
+                                  />
+                                  <ActionSubmitButton
+                                    disabled={!plan.isActive}
+                                    pendingLabel="Updating..."
+                                  >
                                     Set as recommended
                                   </ActionSubmitButton>
                                 </form>
@@ -1031,8 +1127,9 @@ export default async function AdminSettingsPage({
                             </div>
                           </div>
                           {!plan.isActive && !isRecommendedPlan ? (
-                            <p className="text-xs text-muted-foreground">
-                              Activate this plan before setting it as recommended.
+                            <p className="text-muted-foreground text-xs">
+                              Activate this plan before setting it as
+                              recommended.
                             </p>
                           ) : null}
                         </div>
@@ -1096,14 +1193,14 @@ export default async function AdminSettingsPage({
 
           {deletedPlans.length > 0 && (
             <div className="mt-8 space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground">
+              <h3 className="font-semibold text-muted-foreground text-sm">
                 Deleted plans
               </h3>
               <div className="grid gap-2">
                 {deletedPlans.map((plan) => (
                   <div
-                    key={plan.id}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
+                    key={plan.id}
                   >
                     <div className="flex flex-col">
                       <span className="font-medium">{plan.name}</span>
@@ -1137,9 +1234,12 @@ export default async function AdminSettingsPage({
           description="Configure additional providers. Ensure the relevant API key is available in the environment."
           title="Add new model"
         >
-          <form action={createModelConfigAction} className="grid gap-4 md:grid-cols-2">
+          <form
+            action={createModelConfigAction}
+            className="grid gap-4 md:grid-cols-2"
+          >
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="key">
+              <label className="font-medium text-sm" htmlFor="key">
                 Model key
               </label>
               <input
@@ -1155,7 +1255,7 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="provider">
+              <label className="font-medium text-sm" htmlFor="provider">
                 Provider
               </label>
               <select
@@ -1174,7 +1274,7 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="providerModelId">
+              <label className="font-medium text-sm" htmlFor="providerModelId">
                 Provider model ID
               </label>
               <input
@@ -1187,7 +1287,7 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="displayName">
+              <label className="font-medium text-sm" htmlFor="displayName">
                 Display name
               </label>
               <input
@@ -1200,7 +1300,10 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="inputProviderCostPerMillion">
+              <label
+                className="font-medium text-sm"
+                htmlFor="inputProviderCostPerMillion"
+              >
                 Provider input cost (USD / 1M tokens)
               </label>
               <input
@@ -1213,12 +1316,16 @@ export default async function AdminSettingsPage({
                 type="number"
               />
               <p className="text-muted-foreground text-xs">
-                Private reference so you can compare user pricing versus your provider costs.
+                Private reference so you can compare user pricing versus your
+                provider costs.
               </p>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="outputProviderCostPerMillion">
+              <label
+                className="font-medium text-sm"
+                htmlFor="outputProviderCostPerMillion"
+              >
                 Provider output cost (USD / 1M tokens)
               </label>
               <input
@@ -1233,7 +1340,10 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="freeMessagesPerDay">
+              <label
+                className="font-medium text-sm"
+                htmlFor="freeMessagesPerDay"
+              >
                 Daily free messages
               </label>
               <input
@@ -1247,11 +1357,13 @@ export default async function AdminSettingsPage({
                 step={1}
                 type="number"
               />
-              <p className="text-muted-foreground text-xs">{perModelFieldDescription}</p>
+              <p className="text-muted-foreground text-xs">
+                {perModelFieldDescription}
+              </p>
             </div>
 
-            <div className="md:col-span-2 flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="description">
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label className="font-medium text-sm" htmlFor="description">
                 Description
               </label>
               <textarea
@@ -1262,9 +1374,9 @@ export default async function AdminSettingsPage({
               />
             </div>
 
-            <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="systemPrompt">
+                <label className="font-medium text-sm" htmlFor="systemPrompt">
                   System prompt (optional)
                 </label>
                 <textarea
@@ -1275,20 +1387,20 @@ export default async function AdminSettingsPage({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium" htmlFor="codeTemplate">
+                <label className="font-medium text-sm" htmlFor="codeTemplate">
                   Provider code snippet (optional)
                 </label>
                 <textarea
                   className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
                   id="codeTemplate"
                   name="codeTemplate"
-                  placeholder='Store reference code for this model (not executed).'
+                  placeholder="Store reference code for this model (not executed)."
                 />
               </div>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="reasoningTag">
+              <label className="font-medium text-sm" htmlFor="reasoningTag">
                 Reasoning tag
               </label>
               <input
@@ -1298,12 +1410,13 @@ export default async function AdminSettingsPage({
                 placeholder="think"
               />
               <p className="text-muted-foreground text-xs">
-                Required when enabling reasoning output to wrap &lt;tag&gt; sequences.
+                Required when enabling reasoning output to wrap &lt;tag&gt;
+                sequences.
               </p>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="configJson">
+              <label className="font-medium text-sm" htmlFor="configJson">
                 Provider config (JSON, optional)
               </label>
               <textarea
@@ -1322,7 +1435,7 @@ export default async function AdminSettingsPage({
                 name="isEnabled"
                 type="checkbox"
               />
-              <label className="text-sm font-medium" htmlFor="isEnabled">
+              <label className="font-medium text-sm" htmlFor="isEnabled">
                 Enable immediately
               </label>
             </div>
@@ -1334,7 +1447,10 @@ export default async function AdminSettingsPage({
                 name="supportsReasoning"
                 type="checkbox"
               />
-              <label className="text-sm font-medium" htmlFor="supportsReasoning">
+              <label
+                className="font-medium text-sm"
+                htmlFor="supportsReasoning"
+              >
                 Supports reasoning traces
               </label>
             </div>
@@ -1346,7 +1462,7 @@ export default async function AdminSettingsPage({
                 name="isDefault"
                 type="checkbox"
               />
-              <label className="text-sm font-medium" htmlFor="isDefault">
+              <label className="font-medium text-sm" htmlFor="isDefault">
                 Set as default model
               </label>
             </div>
@@ -1357,12 +1473,12 @@ export default async function AdminSettingsPage({
                 name="isMarginBaseline"
                 type="checkbox"
               />
-              <label className="text-sm font-medium" htmlFor="isMarginBaseline">
+              <label className="font-medium text-sm" htmlFor="isMarginBaseline">
                 Use as margin baseline
               </label>
             </div>
 
-            <div className="md:col-span-2 flex justify-end">
+            <div className="flex justify-end md:col-span-2">
               <ActionSubmitButton pendingLabel="Creating...">
                 Create model
               </ActionSubmitButton>
@@ -1395,316 +1511,380 @@ export default async function AdminSettingsPage({
                   });
 
                 return (
-                  <details key={model.id} className="rounded-md border bg-background p-4">
-                  <summary className="flex flex-col gap-1 cursor-pointer">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{model.displayName}</span>
-                      <ProviderBadge value={model.provider} />
-                      <EnabledBadge enabled={model.isEnabled} />
-                      {model.isDefault && (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                          Default
-                        </span>
-                      )}
-                      {model.isMarginBaseline && (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                          Margin baseline
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-muted-foreground text-xs font-mono">
-                      {model.providerModelId}
-                    </span>
-                  </summary>
-
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <form action={updateModelConfigAction} className="md:col-span-2 grid gap-4 md:grid-cols-2">
-                      <input name="id" type="hidden" value={model.id} />
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Display name
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.displayName}
-                          name="displayName"
-                        />
+                  <details
+                    className="rounded-md border bg-background p-4"
+                    key={model.id}
+                  >
+                    <summary className="flex cursor-pointer flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{model.displayName}</span>
+                        <ProviderBadge value={model.provider} />
+                        <EnabledBadge enabled={model.isEnabled} />
+                        {model.isDefault && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
+                            Default
+                          </span>
+                        )}
+                        {model.isMarginBaseline && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
+                            Margin baseline
+                          </span>
+                        )}
                       </div>
+                      <span className="font-mono text-muted-foreground text-xs">
+                        {model.providerModelId}
+                      </span>
+                    </summary>
 
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">Provider</label>
-                        <select
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.provider}
-                          name="provider"
-                        >
-                          {PROVIDER_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <form
+                        action={updateModelConfigAction}
+                        className="grid gap-4 md:col-span-2 md:grid-cols-2"
+                      >
+                        <input name="id" type="hidden" value={model.id} />
 
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Provider model ID
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.providerModelId}
-                          name="providerModelId"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Provider input cost (USD / 1M tokens)
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.inputProviderCostPerMillion ?? 0}
-                          min={0}
-                          name="inputProviderCostPerMillion"
-                          step="0.000001"
-                          type="number"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Provider output cost (USD / 1M tokens)
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.outputProviderCostPerMillion ?? 0}
-                          min={0}
-                          name="outputProviderCostPerMillion"
-                          step="0.000001"
-                          type="number"
-                        />
-                        <p className="text-muted-foreground text-xs">
-                          Only visible here — use it to track your real spend versus credits charged.
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Daily free messages
-                        </label>
-                        <input
-                          aria-disabled={isGlobalFreeMessageMode || undefined}
-                          className={perModelInputClassName}
-                          defaultValue={model.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY}
-                          min={0}
-                          name="freeMessagesPerDay"
-                          readOnly={isGlobalFreeMessageMode}
-                          step={1}
-                          type="number"
-                        />
-                        <p className="text-muted-foreground text-xs">
-                          {perModelFieldDescription}
-                        </p>
-                      </div>
-
-                      <div className="md:col-span-2 rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
-                        <h4 className="text-sm font-semibold text-foreground">
-                          Provider cost reference (per 1M tokens)
-                        </h4>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Input cost
-                            </p>
-                            <p>{formatUsd(providerInputRate)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Output cost
-                            </p>
-                            <p>{formatUsd(providerOutputRate)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
-                              Total
-                            </p>
-                            <p>{formatUsd(totalProviderRate)}</p>
-                          </div>
-                        </div>
-                        <p className="text-muted-foreground mt-3 text-xs">
-                          Revenue now comes from your pricing plans. Keep these costs updated to track real spend vs. credit sales.
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Reasoning tag
-                        </label>
-                        <input
-                          className="rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.reasoningTag ?? ""}
-                          name="reasoningTag"
-                        />
-                      </div>
-
-                      <div className="md:col-span-2 flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Description
-                        </label>
-                        <textarea
-                          className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
-                          defaultValue={model.description}
-                          name="description"
-                        />
-                      </div>
-
-                      <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium">
-                            System prompt
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-display-name-${model.id}`}
+                          >
+                            Display name
                           </label>
-                          <textarea
-                            className="min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
-                            defaultValue={model.systemPrompt ?? ""}
-                            name="systemPrompt"
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.displayName}
+                            id={`model-display-name-${model.id}`}
+                            name="displayName"
                           />
                         </div>
+
                         <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium">
-                            Provider code snippet
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-provider-${model.id}`}
+                          >
+                            Provider
+                          </label>
+                          <select
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.provider}
+                            id={`model-provider-${model.id}`}
+                            name="provider"
+                          >
+                            {PROVIDER_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-provider-id-${model.id}`}
+                          >
+                            Provider model ID
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.providerModelId}
+                            id={`model-provider-id-${model.id}`}
+                            name="providerModelId"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-input-cost-${model.id}`}
+                          >
+                            Provider input cost (USD / 1M tokens)
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={
+                              model.inputProviderCostPerMillion ?? 0
+                            }
+                            id={`model-input-cost-${model.id}`}
+                            min={0}
+                            name="inputProviderCostPerMillion"
+                            step="0.000001"
+                            type="number"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-output-cost-${model.id}`}
+                          >
+                            Provider output cost (USD / 1M tokens)
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={
+                              model.outputProviderCostPerMillion ?? 0
+                            }
+                            id={`model-output-cost-${model.id}`}
+                            min={0}
+                            name="outputProviderCostPerMillion"
+                            step="0.000001"
+                            type="number"
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            Only visible here — use it to track your real spend
+                            versus credits charged.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-free-messages-${model.id}`}
+                          >
+                            Daily free messages
+                          </label>
+                          <input
+                            aria-disabled={isGlobalFreeMessageMode || undefined}
+                            className={perModelInputClassName}
+                            defaultValue={
+                              model.freeMessagesPerDay ??
+                              DEFAULT_FREE_MESSAGES_PER_DAY
+                            }
+                            id={`model-free-messages-${model.id}`}
+                            min={0}
+                            name="freeMessagesPerDay"
+                            readOnly={isGlobalFreeMessageMode}
+                            step={1}
+                            type="number"
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            {perModelFieldDescription}
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
+                          <h4 className="font-semibold text-foreground text-sm">
+                            Provider cost reference (per 1M tokens)
+                          </h4>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                Input cost
+                              </p>
+                              <p>{formatUsd(providerInputRate)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                Output cost
+                              </p>
+                              <p>{formatUsd(providerOutputRate)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                Total
+                              </p>
+                              <p>{formatUsd(totalProviderRate)}</p>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-muted-foreground text-xs">
+                            Revenue now comes from your pricing plans. Keep
+                            these costs updated to track real spend vs. credit
+                            sales.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-reasoning-tag-${model.id}`}
+                          >
+                            Reasoning tag
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.reasoningTag ?? ""}
+                            id={`model-reasoning-tag-${model.id}`}
+                            name="reasoningTag"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2 md:col-span-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-description-${model.id}`}
+                          >
+                            Description
+                          </label>
+                          <textarea
+                            className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.description}
+                            id={`model-description-${model.id}`}
+                            name="description"
+                          />
+                        </div>
+
+                        <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`model-system-prompt-${model.id}`}
+                            >
+                              System prompt
+                            </label>
+                            <textarea
+                              className="min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={model.systemPrompt ?? ""}
+                              id={`model-system-prompt-${model.id}`}
+                              name="systemPrompt"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`model-code-template-${model.id}`}
+                            >
+                              Provider code snippet
+                            </label>
+                            <textarea
+                              className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
+                              defaultValue={model.codeTemplate ?? ""}
+                              id={`model-code-template-${model.id}`}
+                              name="codeTemplate"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 md:col-span-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-config-json-${model.id}`}
+                          >
+                            Provider config (JSON)
                           </label>
                           <textarea
                             className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                            defaultValue={model.codeTemplate ?? ""}
-                            name="codeTemplate"
+                            defaultValue={
+                              model.config
+                                ? JSON.stringify(model.config, null, 2)
+                                : ""
+                            }
+                            id={`model-config-json-${model.id}`}
+                            name="configJson"
                           />
                         </div>
-                      </div>
 
-                      <div className="md:col-span-2 flex flex-col gap-2">
-                        <label className="text-sm font-medium">
-                          Provider config (JSON)
-                        </label>
-                        <textarea
-                          className="min-h-[100px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
-                          defaultValue={
-                            model.config ? JSON.stringify(model.config, null, 2) : ""
-                          }
-                          name="configJson"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <input
-                          className="h-4 w-4"
-                          defaultChecked={model.supportsReasoning}
-                          id={`supportsReasoning-${model.id}`}
-                          name="supportsReasoning"
-                          type="checkbox"
-                        />
-                        <label
-                          className="text-sm font-medium"
-                          htmlFor={`supportsReasoning-${model.id}`}
-                        >
-                          Supports reasoning traces
-                        </label>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <input
-                          className="h-4 w-4"
-                          defaultChecked={model.isEnabled}
-                          id={`isEnabled-${model.id}`}
-                          name="isEnabled"
-                          type="checkbox"
-                        />
-                        <label
-                          className="text-sm font-medium"
-                          htmlFor={`isEnabled-${model.id}`}
-                        >
-                          Enabled
-                        </label>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <input
-                          className="h-4 w-4"
-                          defaultChecked={model.isDefault}
-                          id={`isDefault-${model.id}`}
-                          name="isDefault"
-                          type="checkbox"
-                        />
-                        <label
-                          className="text-sm font-medium"
-                          htmlFor={`isDefault-${model.id}`}
-                        >
-                          Default model
-                        </label>
-                      </div>
-
-                      <div className="md:col-span-2 flex justify-end">
-                        <ActionSubmitButton pendingLabel="Saving...">
-                          Save changes
-                        </ActionSubmitButton>
-                      </div>
-                    </form>
-
-                    <div className="md:col-span-2 flex flex-wrap gap-3">
-                      {!model.isDefault && (
-                        <form action={setDefaultModelConfigAction}>
-                          <input name="id" type="hidden" value={model.id} />
-                          <ActionSubmitButton
-                            pendingLabel="Updating..."
-                            size="sm"
-                            variant="outline"
+                        <div className="flex items-center gap-3">
+                          <input
+                            className="h-4 w-4"
+                            defaultChecked={model.supportsReasoning}
+                            id={`supportsReasoning-${model.id}`}
+                            name="supportsReasoning"
+                            type="checkbox"
+                          />
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`supportsReasoning-${model.id}`}
                           >
-                            Set as default
-                          </ActionSubmitButton>
-                        </form>
-                      )}
-                      {!model.isMarginBaseline && (
-                        <form action={setMarginBaselineModelAction}>
-                          <input name="id" type="hidden" value={model.id} />
-                          <ActionSubmitButton
-                            pendingLabel="Updating..."
-                            size="sm"
-                            variant="outline"
-                          >
-                            Set as margin baseline
-                          </ActionSubmitButton>
-                        </form>
-                      )}
+                            Supports reasoning traces
+                          </label>
+                        </div>
 
-                      <form action={deleteModelConfigAction}>
-                        <input name="id" type="hidden" value={model.id} />
-                        <ActionSubmitButton
-                          className="border border-destructive text-destructive hover:bg-destructive/10"
-                          pendingLabel="Soft deleting..."
-                          size="sm"
-                          variant="outline"
-                        >
-                          Soft delete
-                        </ActionSubmitButton>
+                        <div className="flex items-center gap-3">
+                          <input
+                            className="h-4 w-4"
+                            defaultChecked={model.isEnabled}
+                            id={`isEnabled-${model.id}`}
+                            name="isEnabled"
+                            type="checkbox"
+                          />
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`isEnabled-${model.id}`}
+                          >
+                            Enabled
+                          </label>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <input
+                            className="h-4 w-4"
+                            defaultChecked={model.isDefault}
+                            id={`isDefault-${model.id}`}
+                            name="isDefault"
+                            type="checkbox"
+                          />
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`isDefault-${model.id}`}
+                          >
+                            Default model
+                          </label>
+                        </div>
+
+                        <div className="flex justify-end md:col-span-2">
+                          <ActionSubmitButton pendingLabel="Saving...">
+                            Save changes
+                          </ActionSubmitButton>
+                        </div>
                       </form>
+
+                      <div className="flex flex-wrap gap-3 md:col-span-2">
+                        {!model.isDefault && (
+                          <form action={setDefaultModelConfigAction}>
+                            <input name="id" type="hidden" value={model.id} />
+                            <ActionSubmitButton
+                              pendingLabel="Updating..."
+                              size="sm"
+                              variant="outline"
+                            >
+                              Set as default
+                            </ActionSubmitButton>
+                          </form>
+                        )}
+                        {!model.isMarginBaseline && (
+                          <form action={setMarginBaselineModelAction}>
+                            <input name="id" type="hidden" value={model.id} />
+                            <ActionSubmitButton
+                              pendingLabel="Updating..."
+                              size="sm"
+                              variant="outline"
+                            >
+                              Set as margin baseline
+                            </ActionSubmitButton>
+                          </form>
+                        )}
+
+                        <form action={deleteModelConfigAction}>
+                          <input name="id" type="hidden" value={model.id} />
+                          <ActionSubmitButton
+                            className="border border-destructive text-destructive hover:bg-destructive/10"
+                            pendingLabel="Soft deleting..."
+                            size="sm"
+                            variant="outline"
+                          >
+                            Soft delete
+                          </ActionSubmitButton>
+                        </form>
+                      </div>
                     </div>
-                  </div>
-                </details>
-              );
-            })
+                  </details>
+                );
+              })
             )}
           </div>
 
           {deletedModels.length > 0 && (
             <div className="mt-8 space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground">
+              <h3 className="font-semibold text-muted-foreground text-sm">
                 Deleted models
               </h3>
               <div className="grid gap-2">
                 {deletedModels.map((model) => (
                   <div
-                    key={model.id}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
+                    key={model.id}
                   >
                     <div className="flex flex-col">
                       <span className="font-medium">{model.displayName}</span>
@@ -1737,8 +1917,3 @@ export default async function AdminSettingsPage({
     </>
   );
 }
-
-
-
-
-

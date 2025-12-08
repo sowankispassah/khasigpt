@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowRight, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,6 +90,8 @@ const ADMIN_SEARCH_ENTRIES: AdminSearchEntry[] = [
   },
 ];
 
+const APPLE_PLATFORM_REGEX = /(Mac|iPhone|iPod|iPad)/i;
+
 export function AdminSearch() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -130,7 +132,7 @@ export function AdminSearch() {
 
   const isMac =
     typeof navigator !== "undefined" &&
-    /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
+    APPLE_PLATFORM_REGEX.test(navigator.platform);
 
   return (
     <>
@@ -142,7 +144,7 @@ export function AdminSearch() {
       >
         <Search className="h-4 w-4" />
         <span>Search</span>
-        <span className="rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="rounded border border-border border-dashed px-1.5 py-0.5 font-semibold text-[10px] text-muted-foreground uppercase tracking-wide">
           {isMac ? "⌘ K" : "Ctrl K"}
         </span>
       </Button>
@@ -158,7 +160,7 @@ export function AdminSearch() {
 
       <Sheet onOpenChange={setIsOpen} open={isOpen}>
         <SheetContent
-          className="mx-auto h-auto w-full max-w-3xl rounded-b-3xl border-x-0 border-b bg-background px-0 pb-6 pt-4 shadow-2xl sm:px-0"
+          className="mx-auto h-auto w-full max-w-3xl rounded-b-3xl border-x-0 border-b bg-background px-0 pt-4 pb-6 shadow-2xl sm:px-0"
           side="top"
         >
           <SheetHeader className="px-6">
@@ -174,7 +176,7 @@ export function AdminSearch() {
           </div>
           <div className="max-h-[60vh] overflow-y-auto px-2 pb-2">
             {filteredEntries.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              <p className="px-4 py-8 text-center text-muted-foreground text-sm">
                 No results for “{query.trim()}”. Try another search term.
               </p>
             ) : (
@@ -198,7 +200,7 @@ export function AdminSearch() {
                         </div>
                         <ArrowRight className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <p className="mt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <p className="mt-2 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
                         {entry.category}
                       </p>
                     </button>

@@ -7,12 +7,12 @@ import {
   getPricingPlanById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import {
-  getRazorpayClient,
-  getRazorpayKeyId,
-} from "@/lib/payments/razorpay";
+import { getRazorpayClient, getRazorpayKeyId } from "@/lib/payments/razorpay";
 
-function calculateDiscountAmount(planPriceInPaise: number, discountPercentage: number) {
+function calculateDiscountAmount(
+  planPriceInPaise: number,
+  discountPercentage: number
+) {
   if (!(Number.isFinite(planPriceInPaise) && planPriceInPaise > 0)) {
     return 0;
   }
@@ -38,7 +38,8 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     const planId = body?.planId as string | undefined;
-    const rawCouponCode = typeof body?.couponCode === "string" ? body.couponCode : null;
+    const rawCouponCode =
+      typeof body?.couponCode === "string" ? body.couponCode : null;
     const normalizedCouponCode = rawCouponCode?.trim().toUpperCase() ?? null;
 
     if (!planId) {
@@ -57,7 +58,8 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
-    let appliedCoupon: Awaited<ReturnType<typeof getCouponByCode>> | null = null;
+    let appliedCoupon: Awaited<ReturnType<typeof getCouponByCode>> | null =
+      null;
     let discountAmount = 0;
     if (normalizedCouponCode) {
       appliedCoupon = await getCouponByCode(normalizedCouponCode);
@@ -68,7 +70,10 @@ export async function POST(request: Request) {
         (appliedCoupon.validFrom && appliedCoupon.validFrom.getTime() > now) ||
         (appliedCoupon.validTo && appliedCoupon.validTo.getTime() < now)
       ) {
-        throw new ChatSDKError("bad_request:coupon", "Coupon is invalid or expired.");
+        throw new ChatSDKError(
+          "bad_request:coupon",
+          "Coupon is invalid or expired."
+        );
       }
       discountAmount = calculateDiscountAmount(
         plan.priceInPaise,

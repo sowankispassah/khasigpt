@@ -1,12 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
-import { updateUserKnowledgeApprovalAction, deleteUserKnowledgeEntryAction } from "@/app/(admin)/actions";
-import type { RagEntryApprovalStatus, RagEntryStatus } from "@/lib/db/schema";
+import {
+  deleteUserKnowledgeEntryAction,
+  updateUserKnowledgeApprovalAction,
+} from "@/app/(admin)/actions";
+import { LoaderIcon, TrashIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LoaderIcon, TrashIcon } from "@/components/icons";
+import type { RagEntryApprovalStatus, RagEntryStatus } from "@/lib/db/schema";
 
 export type SerializedUserKnowledgeEntry = {
   entry: {
@@ -59,18 +69,22 @@ export function AdminUserKnowledgeTable({
   const [isPending, startTransition] = useTransition();
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const sortedRows = useMemo(
     () =>
       [...rows].sort(
-        (a, b) => new Date(b.entry.updatedAt).getTime() - new Date(a.entry.updatedAt).getTime()
+        (a, b) =>
+          new Date(b.entry.updatedAt).getTime() -
+          new Date(a.entry.updatedAt).getTime()
       ),
     [rows]
   );
 
   const beginProgress = useCallback(() => {
-    timers.current.forEach((timer) => clearTimeout(timer));
+    for (const timer of timers.current) {
+      clearTimeout(timer);
+    }
     setProgressVisible(true);
     setProgress(14);
     timers.current = [
@@ -81,7 +95,9 @@ export function AdminUserKnowledgeTable({
   }, []);
 
   const finishProgress = useCallback(() => {
-    timers.current.forEach((timer) => clearTimeout(timer));
+    for (const timer of timers.current) {
+      clearTimeout(timer);
+    }
     timers.current = [];
     setProgress(100);
     setTimeout(() => {
@@ -92,11 +108,16 @@ export function AdminUserKnowledgeTable({
 
   useEffect(() => {
     return () => {
-      timers.current.forEach((timer) => clearTimeout(timer));
+      for (const timer of timers.current) {
+        clearTimeout(timer);
+      }
     };
   }, []);
 
-  const handleApproval = (entryId: string, approvalStatus: RagEntryApprovalStatus) => {
+  const handleApproval = (
+    entryId: string,
+    approvalStatus: RagEntryApprovalStatus
+  ) => {
     beginProgress();
     startTransition(() => {
       updateUserKnowledgeApprovalAction({ entryId, approvalStatus })
@@ -162,14 +183,18 @@ export function AdminUserKnowledgeTable({
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold">User Added Knowledge</h1>
+          <h1 className="font-semibold text-xl">User Added Knowledge</h1>
           <p className="text-muted-foreground text-sm">
-            Review, approve, or reject knowledge submitted by users. Approved items
-            become retrievable by everyone.
+            Review, approve, or reject knowledge submitted by users. Approved
+            items become retrievable by everyone.
           </p>
         </div>
         <Badge variant="secondary">
-          {sortedRows.filter((row) => row.entry.approvalStatus === "pending").length} pending
+          {
+            sortedRows.filter((row) => row.entry.approvalStatus === "pending")
+              .length
+          }{" "}
+          pending
         </Badge>
       </div>
 
@@ -187,7 +212,10 @@ export function AdminUserKnowledgeTable({
           <tbody className="divide-y">
             {sortedRows.length === 0 ? (
               <tr>
-                <td className="px-2 py-6 text-center text-muted-foreground" colSpan={5}>
+                <td
+                  className="px-2 py-6 text-center text-muted-foreground"
+                  colSpan={5}
+                >
                   No user submissions yet.
                 </td>
               </tr>
@@ -195,33 +223,42 @@ export function AdminUserKnowledgeTable({
               sortedRows.map((row) => {
                 const tone = statusTone[row.entry.approvalStatus];
                 return (
-                  <tr key={row.entry.id} className="align-top">
+                  <tr className="align-top" key={row.entry.id}>
                     <td className="px-2 py-3">
-                      <div className="font-semibold">{row.creator.name ?? "User"}</div>
-                      <p className="text-muted-foreground text-xs">{row.creator.email ?? "—"}</p>
+                      <div className="font-semibold">
+                        {row.creator.name ?? "User"}
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {row.creator.email ?? "—"}
+                      </p>
                     </td>
                     <td className="px-2 py-3">
                       <div className="font-semibold">{row.entry.title}</div>
-                      <p className="text-muted-foreground text-xs line-clamp-3">
+                      <p className="line-clamp-3 text-muted-foreground text-xs">
                         {row.entry.content}
                       </p>
                     </td>
                     <td className="px-2 py-3">
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${tone.className}`}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium text-xs ${tone.className}`}
                       >
-                        <span className={`h-1.5 w-1.5 rounded-full ${tone.accent}`} aria-hidden />
+                        <span
+                          aria-hidden
+                          className={`h-1.5 w-1.5 rounded-full ${tone.accent}`}
+                        />
                         {tone.label}
                       </span>
                     </td>
-                    <td className="px-2 py-3 text-xs text-muted-foreground">
+                    <td className="px-2 py-3 text-muted-foreground text-xs">
                       {new Date(row.entry.updatedAt).toLocaleString()}
                     </td>
                     <td className="px-2 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
                           disabled={isPending}
-                          onClick={() => handleApproval(row.entry.id, "approved")}
+                          onClick={() =>
+                            handleApproval(row.entry.id, "approved")
+                          }
                           size="sm"
                           type="button"
                         >
@@ -229,7 +266,9 @@ export function AdminUserKnowledgeTable({
                         </Button>
                         <Button
                           disabled={isPending}
-                          onClick={() => handleApproval(row.entry.id, "rejected")}
+                          onClick={() =>
+                            handleApproval(row.entry.id, "rejected")
+                          }
                           size="sm"
                           type="button"
                           variant="outline"
@@ -238,7 +277,9 @@ export function AdminUserKnowledgeTable({
                         </Button>
                         <Button
                           disabled={isPending}
-                          onClick={() => handleApproval(row.entry.id, "pending")}
+                          onClick={() =>
+                            handleApproval(row.entry.id, "pending")
+                          }
                           size="sm"
                           type="button"
                           variant="secondary"

@@ -1,30 +1,29 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
-import type { RagAnalyticsSummary, AdminRagEntry, SanitizedRagEntry } from "@/lib/rag/types";
-import type { RagEntryStatus } from "@/lib/db/schema";
 import {
   bulkUpdateRagEntryStatusAction,
+  createRagCategoryAction,
   createRagEntryAction,
   deleteRagEntriesAction,
   restoreRagEntryAction,
   restoreRagVersionAction,
   updateRagEntryAction,
-  createRagCategoryAction,
 } from "@/app/(admin)/actions";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  LoaderIcon,
+  PlusIcon,
+  SparklesIcon,
+  TrashIcon,
+} from "@/components/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,8 +34,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import type { RagEntryStatus } from "@/lib/db/schema";
+import type {
+  AdminRagEntry,
+  RagAnalyticsSummary,
+  SanitizedRagEntry,
+} from "@/lib/rag/types";
 import { cn } from "@/lib/utils";
-import { LoaderIcon, PlusIcon, SparklesIcon, TrashIcon } from "@/components/icons";
 
 export type SerializedAdminRagEntry = {
   entry: Omit<AdminRagEntry["entry"], "createdAt" | "updatedAt"> & {
@@ -72,7 +88,15 @@ type RagVersion = {
   changeSummary: string | null;
 };
 
-const RAG_TYPES = ["text", "document", "image", "audio", "video", "link", "data"] as const;
+const RAG_TYPES = [
+  "text",
+  "document",
+  "image",
+  "audio",
+  "video",
+  "link",
+  "data",
+] as const;
 const STATUS_OPTIONS: RagEntryStatus[] = ["active", "inactive", "archived"];
 
 const DEFAULT_FORM = {
@@ -99,15 +123,22 @@ export function AdminRagManager({
 }: AdminRagManagerProps) {
   const [entriesState, setEntriesState] = useState(entries);
   const [availableTags, setAvailableTags] = useState(tagOptions);
-  const [categoryOptions, setCategoryOptions] = useState(sortCategories(categories));
+  const [categoryOptions, setCategoryOptions] = useState(
+    sortCategories(categories)
+  );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RagEntryStatus | "all">("all");
-  const [typeFilter, setTypeFilter] = useState<(typeof RAG_TYPES)[number] | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<RagEntryStatus | "all">(
+    "all"
+  );
+  const [typeFilter, setTypeFilter] = useState<
+    (typeof RAG_TYPES)[number] | "all"
+  >("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<SerializedAdminRagEntry | null>(null);
+  const [editingEntry, setEditingEntry] =
+    useState<SerializedAdminRagEntry | null>(null);
   const [formState, setFormState] = useState(DEFAULT_FORM);
   const [versions, setVersions] = useState<RagVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -118,7 +149,7 @@ export function AdminRagManager({
   const [categoryError, setCategoryError] = useState("");
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
-  const progressTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     setEntriesState(entries);
@@ -133,7 +164,9 @@ export function AdminRagManager({
   }, [categories]);
 
   const clearProgressTimers = useCallback(() => {
-    progressTimers.current.forEach((timer) => clearTimeout(timer));
+    for (const timer of progressTimers.current) {
+      clearTimeout(timer);
+    }
     progressTimers.current = [];
   }, []);
 
@@ -164,21 +197,39 @@ export function AdminRagManager({
     return entriesState.filter((row) => {
       const matchesStatus =
         statusFilter === "all" ? true : row.entry.status === statusFilter;
-      const matchesType = typeFilter === "all" ? true : row.entry.type === typeFilter;
+      const matchesType =
+        typeFilter === "all" ? true : row.entry.type === typeFilter;
       const matchesModel =
         modelFilter === "all"
           ? true
-          : row.entry.models.length === 0 || row.entry.models.includes(modelFilter);
-      const matchesTag = tagFilter === "all" ? true : row.entry.tags.includes(tagFilter);
+          : row.entry.models.length === 0 ||
+            row.entry.models.includes(modelFilter);
+      const matchesTag =
+        tagFilter === "all" ? true : row.entry.tags.includes(tagFilter);
       const matchesQuery = query
-        ? row.entry.title.toLowerCase().includes(query) || row.entry.content.toLowerCase().includes(query)
+        ? row.entry.title.toLowerCase().includes(query) ||
+          row.entry.content.toLowerCase().includes(query)
         : true;
-      return matchesStatus && matchesType && matchesModel && matchesTag && matchesQuery;
+      return (
+        matchesStatus &&
+        matchesType &&
+        matchesModel &&
+        matchesTag &&
+        matchesQuery
+      );
     });
-  }, [entriesState, statusFilter, typeFilter, modelFilter, tagFilter, searchTerm]);
+  }, [
+    entriesState,
+    statusFilter,
+    typeFilter,
+    modelFilter,
+    tagFilter,
+    searchTerm,
+  ]);
 
   const allSelected =
-    filteredEntries.length > 0 && filteredEntries.every((entry) => selectedIds.includes(entry.entry.id));
+    filteredEntries.length > 0 &&
+    filteredEntries.every((entry) => selectedIds.includes(entry.entry.id));
 
   const toggleSelection = (id: string) => {
     setSelectedIds((prev) =>
@@ -188,12 +239,18 @@ export function AdminRagManager({
 
   const toggleSelectAll = () => {
     if (allSelected) {
-      setSelectedIds((prev) => prev.filter((id) => !filteredEntries.some((entry) => entry.entry.id === id)));
+      setSelectedIds((prev) =>
+        prev.filter(
+          (id) => !filteredEntries.some((entry) => entry.entry.id === id)
+        )
+      );
       return;
     }
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      filteredEntries.forEach((entry) => next.add(entry.entry.id));
+      for (const entry of filteredEntries) {
+        next.add(entry.entry.id);
+      }
       return Array.from(next);
     });
   };
@@ -254,7 +311,9 @@ export function AdminRagManager({
         })
         .catch((error) => {
           const message =
-            error instanceof Error ? error.message : "Unable to create category";
+            error instanceof Error
+              ? error.message
+              : "Unable to create category";
           toast.error(message);
         });
     });
@@ -307,21 +366,27 @@ export function AdminRagManager({
           setEntriesState((prev) => {
             if (editingEntry) {
               return prev.map((item) =>
-                item.entry.id === editingEntry.entry.id ? serializeEntry(entry, item) : item
+                item.entry.id === editingEntry.entry.id
+                  ? serializeEntry(entry, item)
+                  : item
               );
             }
             return [serializeEntry(entry, null), ...prev];
           });
           setAvailableTags((prev) => {
             const next = new Set(prev);
-            entry.tags.forEach((tag) => next.add(tag));
+            for (const tag of entry.tags) {
+              next.add(tag);
+            }
             return Array.from(next);
           });
           toast.success(editingEntry ? "Entry updated" : "Entry created");
           setSheetOpen(false);
         })
         .catch((error) => {
-          toast.error(error instanceof Error ? error.message : "Unable to save entry");
+          toast.error(
+            error instanceof Error ? error.message : "Unable to save entry"
+          );
         })
         .finally(() => finishProgress());
     });
@@ -380,7 +445,13 @@ export function AdminRagManager({
           setEntriesState((prev) =>
             prev.map((item) =>
               selectedIds.includes(item.entry.id)
-                ? { ...item, entry: { ...item.entry, status: "archived" as RagEntryStatus } }
+                ? {
+                    ...item,
+                    entry: {
+                      ...item.entry,
+                      status: "archived" as RagEntryStatus,
+                    },
+                  }
                 : item
             )
           );
@@ -400,7 +471,13 @@ export function AdminRagManager({
           setEntriesState((prev) =>
             prev.map((item) =>
               item.entry.id === id
-                ? { ...item, entry: { ...item.entry, status: "inactive" as RagEntryStatus } }
+                ? {
+                    ...item,
+                    entry: {
+                      ...item.entry,
+                      status: "inactive" as RagEntryStatus,
+                    },
+                  }
                 : item
             )
           );
@@ -452,24 +529,30 @@ export function AdminRagManager({
   };
 
   const removeTag = (tag: string) => {
-    setFormState((prev) => ({ ...prev, tags: prev.tags.filter((value) => value !== tag) }));
+    setFormState((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((value) => value !== tag),
+    }));
   };
 
   return (
     <div className="flex flex-col gap-6">
       {progressVisible ? (
         <div className="fixed inset-x-0 top-0 z-30 h-1 bg-border/50">
-          <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${progress}%` }} />
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       ) : null}
 
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">RAG Knowledge Base</h1>
+          <h1 className="font-semibold text-2xl">RAG Knowledge Base</h1>
           <p className="text-muted-foreground text-sm">
             Curate domain knowledge for retrieval-augmented conversations.
           </p>
-      </div>
+        </div>
         <Button onClick={openCreateSheet} type="button">
           <PlusIcon />
           <span>New entry</span>
@@ -488,13 +571,17 @@ export function AdminRagManager({
           />
           <FilterGroup
             label="Status"
-            onChange={(value) => setStatusFilter(value as RagEntryStatus | "all")}
+            onChange={(value) =>
+              setStatusFilter(value as RagEntryStatus | "all")
+            }
             options={["all", ...STATUS_OPTIONS]}
             value={statusFilter}
           />
           <FilterGroup
             label="Type"
-            onChange={(value) => setTypeFilter(value as (typeof RAG_TYPES)[number] | "all")}
+            onChange={(value) =>
+              setTypeFilter(value as (typeof RAG_TYPES)[number] | "all")
+            }
             options={["all", ...RAG_TYPES]}
             value={typeFilter}
           />
@@ -552,13 +639,15 @@ export function AdminRagManager({
           >
             Archive
           </Button>
-          <p className="text-muted-foreground text-sm">{selectedIds.length} selected</p>
+          <p className="text-muted-foreground text-sm">
+            {selectedIds.length} selected
+          </p>
         </div>
 
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
                 <th className="w-10 px-2 py-2">
                   <input
                     aria-label="Select all"
@@ -580,13 +669,16 @@ export function AdminRagManager({
             <tbody className="divide-y">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td className="px-2 py-6 text-center text-muted-foreground" colSpan={9}>
+                  <td
+                    className="px-2 py-6 text-center text-muted-foreground"
+                    colSpan={9}
+                  >
                     No entries match your filters.
                   </td>
                 </tr>
               ) : (
                 filteredEntries.map((item) => (
-                  <tr key={item.entry.id} className="align-top">
+                  <tr className="align-top" key={item.entry.id}>
                     <td className="px-2 py-3">
                       <input
                         checked={selectedIds.includes(item.entry.id)}
@@ -596,13 +688,19 @@ export function AdminRagManager({
                     </td>
                     <td className="px-2 py-3">
                       <div className="font-semibold">{item.entry.title}</div>
-                      <p className="text-muted-foreground text-xs line-clamp-2">{item.entry.content}</p>
+                      <p className="line-clamp-2 text-muted-foreground text-xs">
+                        {item.entry.content}
+                      </p>
                     </td>
                     <td className="px-2 py-3">
                       {item.entry.categoryName ? (
-                        <Badge variant="secondary">{item.entry.categoryName}</Badge>
+                        <Badge variant="secondary">
+                          {item.entry.categoryName}
+                        </Badge>
                       ) : (
-                        <span className="text-muted-foreground text-xs">Uncategorized</span>
+                        <span className="text-muted-foreground text-xs">
+                          Uncategorized
+                        </span>
                       )}
                     </td>
                     <td className="px-2 py-3">
@@ -614,7 +712,9 @@ export function AdminRagManager({
                           <Badge variant="outline">All</Badge>
                         ) : (
                           item.entry.models.map((modelId) => {
-                            const model = modelOptions.find((option) => option.id === modelId);
+                            const model = modelOptions.find(
+                              (option) => option.id === modelId
+                            );
                             return (
                               <Badge key={modelId} variant="outline">
                                 {model?.label ?? "Model"}
@@ -636,13 +736,22 @@ export function AdminRagManager({
                     <td className="px-2 py-3">
                       <div className="font-semibold">{item.retrievalCount}</div>
                       <p className="text-muted-foreground text-xs">
-                        {item.lastRetrievedAt ? `last ${formatDate(item.lastRetrievedAt)}` : "—"}
+                        {item.lastRetrievedAt
+                          ? `last ${formatDate(item.lastRetrievedAt)}`
+                          : "—"}
                       </p>
                     </td>
-                    <td className="px-2 py-3 text-xs text-muted-foreground">{formatDate(item.entry.updatedAt)}</td>
+                    <td className="px-2 py-3 text-muted-foreground text-xs">
+                      {formatDate(item.entry.updatedAt)}
+                    </td>
                     <td className="px-2 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button onClick={() => openEditor(item)} size="sm" type="button" variant="outline">
+                        <Button
+                          onClick={() => openEditor(item)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
                           Edit
                         </Button>
                         {item.entry.status === "archived" ? (
@@ -684,9 +793,12 @@ export function AdminRagManager({
       >
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
-            <SheetTitle>{editingEntry ? "Update entry" : "Create entry"}</SheetTitle>
+            <SheetTitle>
+              {editingEntry ? "Update entry" : "Create entry"}
+            </SheetTitle>
             <SheetDescription>
-              Provide descriptive titles, clean content, and rich tags to improve match quality.
+              Provide descriptive titles, clean content, and rich tags to
+              improve match quality.
             </SheetDescription>
           </SheetHeader>
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
@@ -728,7 +840,12 @@ export function AdminRagManager({
               <Label htmlFor="rag-title">Title</Label>
               <Input
                 id="rag-title"
-                onChange={(event) => setFormState((prev) => ({ ...prev, title: event.target.value }))}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    title: event.target.value,
+                  }))
+                }
                 required
                 value={formState.title}
               />
@@ -777,7 +894,12 @@ export function AdminRagManager({
               <Label htmlFor="rag-source">Source URL (optional)</Label>
               <Input
                 id="rag-source"
-                onChange={(event) => setFormState((prev) => ({ ...prev, sourceUrl: event.target.value }))}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    sourceUrl: event.target.value,
+                  }))
+                }
                 placeholder="https://example.com/policy.pdf"
                 value={formState.sourceUrl}
               />
@@ -785,7 +907,8 @@ export function AdminRagManager({
             <div>
               <Label>Allowed models</Label>
               <p className="text-muted-foreground text-xs">
-                Leave empty to allow every enabled chat model to retrieve this entry.
+                Leave empty to allow every enabled chat model to retrieve this
+                entry.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {modelOptions.map((model) => {
@@ -793,7 +916,7 @@ export function AdminRagManager({
                   return (
                     <button
                       className={cn(
-                        "rounded-full border px-3 py-1 text-xs font-medium transition",
+                        "rounded-full border px-3 py-1 font-medium text-xs transition",
                         checked
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-muted text-muted-foreground hover:border-primary/40"
@@ -813,20 +936,33 @@ export function AdminRagManager({
             </div>
             <div>
               <Label>Tags</Label>
-              <TagInput onAdd={addTag} onRemove={removeTag} tags={formState.tags} />
+              <TagInput
+                onAdd={addTag}
+                onRemove={removeTag}
+                tags={formState.tags}
+              />
             </div>
             <div>
               <Label htmlFor="rag-content">Content</Label>
               <Textarea
                 className="h-48 resize-y"
                 id="rag-content"
-                onChange={(event) => setFormState((prev) => ({ ...prev, content: event.target.value }))}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    content: event.target.value,
+                  }))
+                }
                 required
                 value={formState.content}
               />
             </div>
             {editingEntry ? (
-              <VersionTimeline isLoading={versionsLoading} onRestore={handleRestoreVersion} versions={versions} />
+              <VersionTimeline
+                isLoading={versionsLoading}
+                onRestore={handleRestoreVersion}
+                versions={versions}
+              />
             ) : null}
             <div className="flex items-center gap-2">
               <Button disabled={isPending} type="submit">
@@ -848,18 +984,22 @@ export function AdminRagManager({
         </SheetContent>
       </Sheet>
 
-      <AlertDialog onOpenChange={(open) => {
-        setCategoryDialogOpen(open);
-        if (!open) {
-          setNewCategoryName("");
-          setCategoryError("");
-        }
-      }} open={categoryDialogOpen}>
+      <AlertDialog
+        onOpenChange={(open) => {
+          setCategoryDialogOpen(open);
+          if (!open) {
+            setNewCategoryName("");
+            setCategoryError("");
+          }
+        }}
+        open={categoryDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Create category</AlertDialogTitle>
             <AlertDialogDescription>
-              Give this category a descriptive name. You can reuse it for future entries.
+              Give this category a descriptive name. You can reuse it for future
+              entries.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2 py-2">
@@ -930,9 +1070,14 @@ function AnalyticsSummary({ analytics }: { analytics: RagAnalyticsSummary }) {
   return (
     <section className="grid gap-3 md:grid-cols-4">
       {cards.map((card) => (
-        <div key={card.label} className="rounded-2xl border bg-card/70 p-4 shadow-sm">
-          <p className="text-muted-foreground text-xs uppercase tracking-wide">{card.label}</p>
-          <p className="text-2xl font-semibold">{card.value}</p>
+        <div
+          className="rounded-2xl border bg-card/70 p-4 shadow-sm"
+          key={card.label}
+        >
+          <p className="text-muted-foreground text-xs uppercase tracking-wide">
+            {card.label}
+          </p>
+          <p className="font-semibold text-2xl">{card.value}</p>
           <p className="text-muted-foreground text-xs">{card.description}</p>
         </div>
       ))}
@@ -960,7 +1105,7 @@ function FilterGroup({
           return (
             <button
               className={cn(
-                "px-3 py-1 text-xs font-medium transition",
+                "px-3 py-1 font-medium text-xs transition",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-primary"
@@ -985,7 +1130,11 @@ function StatusBadge({ status }: { status: RagEntryStatus }) {
     archived: "bg-muted text-muted-foreground",
   };
 
-  return <span className={cn("rounded-full px-2 py-0.5 text-xs", variants[status])}>{status}</span>;
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 text-xs", variants[status])}>
+      {status}
+    </span>
+  );
 }
 
 function TagInput({
@@ -1003,7 +1152,7 @@ function TagInput({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {tags.map((tag) => (
-          <Badge key={tag} className="gap-1" variant="secondary">
+          <Badge className="gap-1" key={tag} variant="secondary">
             {tag}
             <button onClick={() => onRemove(tag)} type="button">
               ×
@@ -1041,7 +1190,7 @@ function VersionTimeline({
 
   useEffect(() => {
     setPage(0);
-  }, [versions.length]);
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(versions.length / PAGE_SIZE));
   const startIndex = page * PAGE_SIZE;
@@ -1058,23 +1207,35 @@ function VersionTimeline({
           <LoaderIcon /> Loading versions…
         </p>
       ) : versions.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No versions recorded yet.</p>
+        <p className="text-muted-foreground text-sm">
+          No versions recorded yet.
+        </p>
       ) : (
         <>
           <ul className="space-y-2 pr-1">
             {visibleVersions.map((version) => (
-              <li key={version.id} className="rounded-lg border p-2">
+              <li className="rounded-lg border p-2" key={version.id}>
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold">Version {version.version}</p>
+                    <p className="font-semibold text-sm">
+                      Version {version.version}
+                    </p>
                     <p className="text-muted-foreground text-xs">
-                      {new Date(version.createdAt).toLocaleString()} · {version.editorName ?? "System"}
+                      {new Date(version.createdAt).toLocaleString()} ·{" "}
+                      {version.editorName ?? "System"}
                     </p>
                     {version.changeSummary ? (
-                      <p className="text-muted-foreground text-xs">{version.changeSummary}</p>
+                      <p className="text-muted-foreground text-xs">
+                        {version.changeSummary}
+                      </p>
                     ) : null}
                   </div>
-                  <Button onClick={() => onRestore(version.id)} size="sm" type="button" variant="outline">
+                  <Button
+                    onClick={() => onRestore(version.id)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     Restore
                   </Button>
                 </div>
@@ -1082,7 +1243,7 @@ function VersionTimeline({
             ))}
           </ul>
           {versions.length > PAGE_SIZE ? (
-            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+            <div className="mt-2 flex items-center justify-between text-muted-foreground text-xs">
               <Button
                 disabled={page === 0}
                 onClick={() => setPage((current) => Math.max(0, current - 1))}
@@ -1097,7 +1258,9 @@ function VersionTimeline({
               </span>
               <Button
                 disabled={page >= totalPages - 1}
-                onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages - 1, current + 1))
+                }
                 size="sm"
                 type="button"
                 variant="ghost"

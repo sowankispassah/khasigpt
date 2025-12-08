@@ -16,7 +16,7 @@
     "db:pull": "drizzle-kit pull",
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
-    "test": "export PLAYWRIGHT=True && pnpm exec playwright test"
+    "test": "npx playwright install chromium && npx cross-env PLAYWRIGHT=True PORT=3000 npx playwright test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.23",

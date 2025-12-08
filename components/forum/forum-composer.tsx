@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCallback, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
-
-import { useForumActions } from "@/hooks/use-forum-actions";
-import { Button } from "@/components/ui/button";
+import { LoaderIcon, PlusIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,13 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -31,10 +24,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { LoaderIcon, PlusIcon } from "@/components/icons";
+import { useForumActions } from "@/hooks/use-forum-actions";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "@/components/language-provider";
 
 type ComposerCategory = {
   id: string;
@@ -64,6 +63,9 @@ export function ForumComposer({
 }: ForumComposerProps) {
   const router = useRouter();
   const { translate } = useTranslation();
+  const titleId = useId();
+  const categoryId = useId();
+  const detailsId = useId();
   const [open, setOpen] = useState(false);
   const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -124,9 +126,7 @@ export function ForumComposer({
     setContent("");
     setSelectedTags([]);
     setErrors({});
-    setCategorySlug(
-      categories.find((category) => !category.isLocked)?.slug
-    );
+    setCategorySlug(categories.find((category) => !category.isLocked)?.slug);
   };
 
   const handleLoginRedirect = () => {
@@ -151,11 +151,14 @@ export function ForumComposer({
     if (!validate()) {
       return;
     }
+    if (!categorySlug) {
+      return;
+    }
     const payload = {
       title: title.trim(),
       content: content.trim(),
       summary: content.trim().slice(0, 280),
-      categorySlug: categorySlug!,
+      categorySlug,
       tagSlugs: selectedTags,
     };
     try {
@@ -174,14 +177,14 @@ export function ForumComposer({
       <Sheet onOpenChange={handleOpenChange} open={open}>
         <SheetTrigger asChild>
           <Button
-            className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-2 text-sm font-semibold"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-full px-6 py-2 font-semibold text-sm"
             title={
-              !viewerId
-                ? translate(
+              viewerId
+                ? undefined
+                : translate(
                     "forum.composer.button_tooltip",
                     "Sign in to start a discussion."
                   )
-                : undefined
             }
           >
             <PlusIcon />
@@ -195,19 +198,17 @@ export function ForumComposer({
                 ? translate(
                     "forum.composer.sheet_title_with_name",
                     "Hi {name}, share an update"
-                  ).replace(
-                    "{name}",
-                    (viewerName.split(" ")[0] ?? "").trim()
-                  )
+                  ).replace("{name}", (viewerName.split(" ")[0] ?? "").trim())
                 : translate("forum.composer.sheet_title", "Start a discussion")}
             </SheetTitle>
           </SheetHeader>
           <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label className="font-medium text-sm" htmlFor={titleId}>
                 {translate("forum.composer.title.label", "Title")}
               </label>
               <Input
+                id={titleId}
                 maxLength={200}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder={translate(
@@ -221,14 +222,14 @@ export function ForumComposer({
               ) : null}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label className="font-medium text-sm" htmlFor={categoryId}>
                 {translate("forum.composer.category.label", "Category")}
               </label>
               <Select
                 onValueChange={setCategorySlug}
                 value={categorySlug ?? undefined}
               >
-                <SelectTrigger>
+                <SelectTrigger id={categoryId}>
                   <SelectValue
                     placeholder={translate(
                       "forum.composer.category.placeholder",
@@ -237,32 +238,32 @@ export function ForumComposer({
                   />
                 </SelectTrigger>
                 <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem
-                    disabled={category.isLocked}
-                    key={category.id}
-                    value={category.slug}
-                  >
-                    {translate(
-                      `forum.category.${category.slug}.name`,
-                      category.name
-                    )}
-                    {category.isLocked
-                      ? ` ${translate(
-                          "forum.composer.category.locked",
-                          "(locked)"
+                  {categories.map((category) => (
+                    <SelectItem
+                      disabled={category.isLocked}
+                      key={category.id}
+                      value={category.slug}
+                    >
+                      {translate(
+                        `forum.category.${category.slug}.name`,
+                        category.name
+                      )}
+                      {category.isLocked
+                        ? ` ${translate(
+                            "forum.composer.category.locked",
+                            "(locked)"
                           )}`
                         : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            {errors.category ? (
-              <p className="text-destructive text-xs">{errors.category}</p>
-            ) : null}
-          </div>
-          <div className="space-y-2">
-              <label className="text-sm font-medium">
+              {errors.category ? (
+                <p className="text-destructive text-xs">{errors.category}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <label className="font-medium text-sm" htmlFor={detailsId}>
                 {translate("forum.composer.details.label", "Details")}{" "}
                 <span className="text-muted-foreground text-xs">
                   {translate(
@@ -273,6 +274,7 @@ export function ForumComposer({
               </label>
               <Textarea
                 className="min-h-[160px] resize-none"
+                id={detailsId}
                 maxLength={4000}
                 onChange={(event) => setContent(event.target.value)}
                 placeholder={translate(
@@ -287,9 +289,9 @@ export function ForumComposer({
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">
+                <p className="font-medium text-sm">
                   {translate("forum.composer.tags.label", "Tags")}
-                </label>
+                </p>
                 <span className="text-muted-foreground text-xs">
                   {translate(
                     "forum.composer.tags.count",
@@ -298,59 +300,62 @@ export function ForumComposer({
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
-              {availableTags.map((tag) => {
-                const isSelected = selectedTags.includes(tag.slug);
-                return (
-                  <button
-                    className={cn(
-                      "cursor-pointer rounded-full border px-3 py-1 text-xs transition",
-                      isSelected
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/30 hover:bg-primary/5"
+                {availableTags.map((tag) => {
+                  const isSelected = selectedTags.includes(tag.slug);
+                  return (
+                    <button
+                      className={cn(
+                        "cursor-pointer rounded-full border px-3 py-1 text-xs transition",
+                        isSelected
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/30 hover:bg-primary/5"
+                      )}
+                      key={tag.id}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        handleToggleTag(tag.slug);
+                      }}
+                      type="button"
+                    >
+                      #{tag.label}
+                    </button>
+                  );
+                })}
+                {availableTags.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">
+                    {translate(
+                      "forum.composer.tags.empty",
+                      "No tags available yet."
                     )}
-                    key={tag.id}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      handleToggleTag(tag.slug);
-                    }}
-                    type="button"
-                  >
-                    #{tag.label}
-                  </button>
-                );
-              })}
-              {availableTags.length === 0 ? (
-                <p className="text-muted-foreground text-xs">
-                  {translate(
-                    "forum.composer.tags.empty",
-                    "No tags available yet."
-                  )}
-                </p>
-              ) : null}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
-          <Button
-            className="w-full"
-            disabled={isCreatingThread}
-            type="submit"
-          >
-            {isCreatingThread ? (
-              <span className="inline-flex items-center gap-2">
-                <LoaderIcon className="animate-spin" size={16} />
-                {translate("forum.composer.submit_pending", "Publishing…")}
-              </span>
-            ) : (
-              translate("forum.composer.submit", "Publish discussion")
-            )}
-          </Button>
-        </form>
-      </SheetContent>
+            <Button
+              className="w-full"
+              disabled={isCreatingThread}
+              type="submit"
+            >
+              {isCreatingThread ? (
+                <span className="inline-flex items-center gap-2">
+                  <LoaderIcon className="animate-spin" size={16} />
+                  {translate("forum.composer.submit_pending", "Publishing…")}
+                </span>
+              ) : (
+                translate("forum.composer.submit", "Publish discussion")
+              )}
+            </Button>
+          </form>
+        </SheetContent>
       </Sheet>
       <AlertDialog onOpenChange={setIsLoginPromptOpen} open={isLoginPromptOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate("forum.composer.login_required.title", "Sign in to continue")}
+              {translate(
+                "forum.composer.login_required.title",
+                "Sign in to continue"
+              )}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {translate(

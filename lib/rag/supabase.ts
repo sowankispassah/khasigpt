@@ -1,11 +1,11 @@
 import "server-only";
 
-import { ChatSDKError } from "@/lib/errors";
 import type { RagEntry } from "@/lib/db/schema";
+import { ChatSDKError } from "@/lib/errors";
 import {
-  RAG_SUPABASE_TABLE,
-  RAG_SUPABASE_MATCH_FUNCTION,
   DEFAULT_RAG_TIMEOUT_MS,
+  RAG_SUPABASE_MATCH_FUNCTION,
+  RAG_SUPABASE_TABLE,
 } from "./constants";
 import { buildSupabaseMetadata } from "./utils";
 
@@ -97,52 +97,49 @@ export async function upsertSupabaseEmbedding({
   chunkIndex: number;
   embedding: number[];
 }) {
-  await supabaseRequest(
-    `/rest/v1/${RAG_SUPABASE_TABLE}`,
-    {
-      method: "POST",
-      headers: {
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify([
-        {
-          rag_entry_id: entry.id,
-          chunk_id: chunkId,
-          content: entry.content,
-          metadata: buildSupabaseMetadata({
-            ...entry,
-            chunkIndex,
-            chunkId,
-          }),
-          status: entry.status,
-          models: entry.models,
-          embedding,
-        },
-      ]),
-    }
-  );
-}
-
-export async function patchSupabaseEmbedding(entry: RagEntry, opts?: { chunkId?: string; chunkIndex?: number; content?: string }) {
-  const queryParam = opts?.chunkId
-    ? `chunk_id=eq.${opts.chunkId}`
-    : `rag_entry_id=eq.${entry.id}`;
-  await supabaseRequest(
-    `/rest/v1/${RAG_SUPABASE_TABLE}?${queryParam}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({
-        content: opts?.content ?? entry.content,
+  await supabaseRequest(`/rest/v1/${RAG_SUPABASE_TABLE}`, {
+    method: "POST",
+    headers: {
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify([
+      {
+        rag_entry_id: entry.id,
+        chunk_id: chunkId,
+        content: entry.content,
         metadata: buildSupabaseMetadata({
           ...entry,
-          chunkIndex: opts?.chunkIndex,
-          chunkId: opts?.chunkId,
+          chunkIndex,
+          chunkId,
         }),
         status: entry.status,
         models: entry.models,
+        embedding,
+      },
+    ]),
+  });
+}
+
+export async function patchSupabaseEmbedding(
+  entry: RagEntry,
+  opts?: { chunkId?: string; chunkIndex?: number; content?: string }
+) {
+  const queryParam = opts?.chunkId
+    ? `chunk_id=eq.${opts.chunkId}`
+    : `rag_entry_id=eq.${entry.id}`;
+  await supabaseRequest(`/rest/v1/${RAG_SUPABASE_TABLE}?${queryParam}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      content: opts?.content ?? entry.content,
+      metadata: buildSupabaseMetadata({
+        ...entry,
+        chunkIndex: opts?.chunkIndex,
+        chunkId: opts?.chunkId,
       }),
-    }
-  );
+      status: entry.status,
+      models: entry.models,
+    }),
+  });
 }
 
 export async function deleteSupabaseEmbedding(ragEntryId: string) {

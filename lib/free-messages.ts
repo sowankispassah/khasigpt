@@ -1,6 +1,9 @@
 import "server-only";
 
-import { DEFAULT_FREE_MESSAGES_PER_DAY, FREE_MESSAGE_SETTINGS_KEY } from "@/lib/constants";
+import {
+  DEFAULT_FREE_MESSAGES_PER_DAY,
+  FREE_MESSAGE_SETTINGS_KEY,
+} from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 
 export type FreeMessageMode = "per-model" | "global";
@@ -28,7 +31,9 @@ export function normalizeFreeMessageSettings(
       : DEFAULT_FREE_MESSAGE_SETTINGS.mode;
 
   const globalLimitSource =
-    typeof value.globalLimit === "number" ? value.globalLimit : DEFAULT_FREE_MESSAGES_PER_DAY;
+    typeof value.globalLimit === "number"
+      ? value.globalLimit
+      : DEFAULT_FREE_MESSAGES_PER_DAY;
   const globalLimit = Math.max(0, Math.round(globalLimitSource));
 
   return {
@@ -38,6 +43,8 @@ export function normalizeFreeMessageSettings(
 }
 
 export async function loadFreeMessageSettings(): Promise<FreeMessageSettings> {
-  const stored = await getAppSetting<FreeMessageSettings>(FREE_MESSAGE_SETTINGS_KEY);
+  const stored = await getAppSetting<FreeMessageSettings>(
+    FREE_MESSAGE_SETTINGS_KEY
+  );
   return normalizeFreeMessageSettings(stored);
 }

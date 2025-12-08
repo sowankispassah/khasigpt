@@ -12,7 +12,10 @@ let lastSuccessfulRate: ExchangeRateResult | null = null;
 type ExchangeProvider = {
   name: string;
   getUrl: () => string | null;
-  parse: (json: unknown) => { rate?: number; timestamp?: string | number | Date | null };
+  parse: (json: unknown) => {
+    rate?: number;
+    timestamp?: string | number | Date | null;
+  };
 };
 
 const providers: ExchangeProvider[] = [
@@ -25,7 +28,9 @@ const providers: ExchangeProvider[] = [
     name: "exchange-rate-api",
     getUrl: () => {
       const key = process.env.EXCHANGE_RATE_API_KEY;
-      return key ? `https://v6.exchangerate-api.com/v6/${key}/latest/USD` : null;
+      return key
+        ? `https://v6.exchangerate-api.com/v6/${key}/latest/USD`
+        : null;
     },
     parse: (json) => extractStandardProvider(json),
   },
@@ -74,7 +79,9 @@ function extractStandardProvider(json: unknown) {
     timestamp:
       payload.time_last_update_utc ??
       payload.date ??
-      (typeof payload.timestamp === "number" ? new Date(payload.timestamp * 1000).toISOString() : null),
+      (typeof payload.timestamp === "number"
+        ? new Date(payload.timestamp * 1000).toISOString()
+        : null),
   };
 }
 
@@ -97,7 +104,11 @@ async function fetchUsdToInr(): Promise<ExchangeRateResult> {
       const json = (await response.json()) as unknown;
       const { rate: rawRate, timestamp } = provider.parse(json);
 
-      if (typeof rawRate === "number" && Number.isFinite(rawRate) && rawRate > 0) {
+      if (
+        typeof rawRate === "number" &&
+        Number.isFinite(rawRate) &&
+        rawRate > 0
+      ) {
         const result: ExchangeRateResult = {
           rate: rawRate,
           fetchedAt: timestamp ? new Date(timestamp) : new Date(),
@@ -114,7 +125,6 @@ async function fetchUsdToInr(): Promise<ExchangeRateResult> {
         `[exchange-rate] Provider "${provider.name}" failed, falling back.`,
         error
       );
-      continue;
     }
   }
 

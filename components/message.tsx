@@ -128,14 +128,14 @@ const PurePreviewMessage = ({
                     key={key}
                   >
                     <MessageContent
-                    className={cn({
-                      "w-fit break-words rounded-2xl px-3 py-2 text-right bg-[#e9e9e980] text-foreground dark:bg-[#323232d9] dark:text-white":
-                        message.role === "user",
-                      "flex-1 bg-transparent py-0 text-left pl-3 pr-2 md:pl-4 md:pr-3":
-                        isAssistantMessage,
-                    })}
-                    data-testid="message-content"
-                  >
+                      className={cn({
+                        "w-fit break-words rounded-2xl bg-[#e9e9e980] px-3 py-2 text-right text-foreground dark:bg-[#323232d9] dark:text-white":
+                          message.role === "user",
+                        "flex-1 bg-transparent py-0 pr-2 pl-3 text-left md:pr-3 md:pl-4":
+                          isAssistantMessage,
+                      })}
+                      data-testid="message-content"
+                    >
                       <div
                         className={cn({
                           "flex w-full items-end gap-2":
@@ -151,7 +151,7 @@ const PurePreviewMessage = ({
                           {sanitizeText(part.text)}
                         </Response>
                         {isAssistantMessage && showStreamingSpinner && (
-                          <span className="inline-flex size-4 items-center justify-center animate-spin text-muted-foreground">
+                          <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
                             <LoaderIcon size={14} />
                           </span>
                         )}
@@ -192,7 +192,8 @@ const PurePreviewMessage = ({
                     className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-500 dark:bg-red-950/50"
                     key={toolCallId}
                   >
-                    Error creating document: {String((output as { error: unknown }).error)}
+                    Error creating document:{" "}
+                    {String((output as { error: unknown }).error)}
                   </div>
                 );
               }
@@ -220,7 +221,8 @@ const PurePreviewMessage = ({
                     className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-500 dark:bg-red-950/50"
                     key={toolCallId}
                   >
-                    Error updating document: {String((output as { error: unknown }).error)}
+                    Error updating document:{" "}
+                    {String((output as { error: unknown }).error)}
                   </div>
                 );
               }
@@ -256,17 +258,22 @@ const PurePreviewMessage = ({
                               ? (output as Record<string, unknown>)
                               : undefined;
 
-                          if (output && typeof output === "object" && "error" in output) {
+                          if (
+                            output &&
+                            typeof output === "object" &&
+                            "error" in output
+                          ) {
                             return (
                               <div className="rounded border p-2 text-red-500">
-                                Error: {String((output as { error: unknown }).error)}
+                                Error:{" "}
+                                {String((output as { error: unknown }).error)}
                               </div>
                             );
                           }
 
                           const documentResult = (() => {
                             if (!rawDocumentResult) {
-                              return undefined;
+                              return;
                             }
 
                             const { id, title, kind } = rawDocumentResult;
@@ -286,7 +293,7 @@ const PurePreviewMessage = ({
                               } as const;
                             }
 
-                            return undefined;
+                            return;
                           })();
 
                           if (!documentResult) {
@@ -322,11 +329,11 @@ const PurePreviewMessage = ({
             ) && (
               <div className="flex w-full items-end gap-2">
                 <MessageContent
-                  className="flex-1 bg-transparent py-0 text-left pl-3 pr-2 md:pl-4 md:pr-3"
+                  className="flex-1 bg-transparent py-0 pr-2 pl-3 text-left md:pr-3 md:pl-4"
                   data-testid="message-content"
                 >
                   <div className="flex w-full items-end justify-start">
-                    <span className="inline-flex size-4 items-center justify-center animate-spin text-muted-foreground">
+                    <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
                       <LoaderIcon size={14} />
                     </span>
                   </div>
@@ -363,7 +370,7 @@ export const ThinkingMessage = () => {
     >
       <div className="flex items-center justify-start">
         <span className="flex items-center gap-2 text-muted-foreground text-sm">
-          <span className="flex size-4 items-center justify-center animate-spin text-muted-foreground">
+          <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
             <LoaderIcon size={16} />
           </span>
         </span>

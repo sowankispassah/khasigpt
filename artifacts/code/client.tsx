@@ -198,9 +198,11 @@ export const codeArtifact = new Artifact<"code", Metadata>({
         try {
           await ensurePyodideRuntime();
 
-          const loadPyodide = (globalThis as {
-            loadPyodide?: LoadPyodideFunction;
-          }).loadPyodide;
+          const loadPyodide = (
+            globalThis as {
+              loadPyodide?: LoadPyodideFunction;
+            }
+          ).loadPyodide;
 
           if (!loadPyodide) {
             throw new Error("Pyodide runtime is unavailable.");

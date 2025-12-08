@@ -1,9 +1,8 @@
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-
+import { redirect } from "next/navigation";
+import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { auth } from "../auth";
-import { getUserById } from "@/lib/db/queries";
 import { CompleteProfileForm } from "./complete-profile-form";
 
 export default async function CompleteProfilePage() {
@@ -34,7 +33,7 @@ export default async function CompleteProfilePage() {
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-6 shadow-sm">
         <div className="space-y-2 text-center">
-          <h1 className="text-xl font-semibold">
+          <h1 className="font-semibold text-xl">
             {t("complete_profile.heading", "Almost there!")}
           </h1>
           <p className="text-muted-foreground text-sm">

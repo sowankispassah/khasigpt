@@ -1,17 +1,16 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   createContext,
+  type PropsWithChildren,
   useCallback,
   useContext,
   useMemo,
   useTransition,
-  type PropsWithChildren,
 } from "react";
-import { useRouter } from "next/navigation";
-
-import type { LanguageOption } from "@/lib/i18n/languages";
 import { setPreferredLanguageAction } from "@/app/actions/language";
+import type { LanguageOption } from "@/lib/i18n/languages";
 
 type TranslationContextValue = {
   languages: LanguageOption[];
@@ -33,8 +32,10 @@ const TranslationContext = createContext<TranslationContextValue>({
   },
   dictionary: {},
   translate: (_key, defaultText) => defaultText,
-  // eslint-disable-next-line @typescript-eslint/no-empty-function -- default noop
-  setLanguage: () => {},
+  setLanguage: () => {
+    // default noop
+    return;
+  }, // default noop
   isUpdating: false,
 });
 
@@ -67,7 +68,7 @@ export function LanguageProvider({
       }
 
       startTransition(() => {
-        void (async () => {
+        (async () => {
           await setPreferredLanguageAction(code);
           router.refresh();
         })();

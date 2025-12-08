@@ -5,14 +5,8 @@ import { useState } from "react";
 import type { Attachment } from "@/lib/types";
 import { Loader } from "./elements/loader";
 import { CrossSmallIcon } from "./icons";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./ui/dialog";
 import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogTrigger } from "./ui/dialog";
 
 export const PreviewAttachment = ({
   attachment,
@@ -71,7 +65,7 @@ export const PreviewAttachment = ({
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger asChild>
-        <div
+        <button
           aria-disabled={isUploading}
           aria-label={name ? `View ${name}` : "View image attachment"}
           className="group relative size-16 cursor-pointer overflow-hidden rounded-lg border bg-muted outline-none ring-primary transition focus-visible:ring-2"
@@ -92,8 +86,7 @@ export const PreviewAttachment = ({
               setOpen(true);
             }
           }}
-          role="button"
-          tabIndex={0}
+          type="button"
         >
           <Image
             alt={name ?? "An image attachment"}
@@ -126,14 +119,14 @@ export const PreviewAttachment = ({
           <div className="absolute inset-x-0 bottom-0 truncate bg-linear-to-t from-black/80 to-transparent px-1 py-0.5 text-[10px] text-white">
             {name}
           </div>
-        </div>
+        </button>
       </DialogTrigger>
 
       <DialogContent className="w-auto max-w-[95vw] overflow-hidden border-0 bg-transparent p-0 shadow-none">
         <div className="flex items-center justify-center">
           <Image
             alt={name ?? "An image attachment"}
-            className="h-auto w-auto max-h-[90vh] max-w-[95vw] object-contain"
+            className="h-auto max-h-[90vh] w-auto max-w-[95vw] object-contain"
             height={dimensions?.height ?? 800}
             onLoadingComplete={({ naturalWidth, naturalHeight }) => {
               setDimensions({ width: naturalWidth, height: naturalHeight });

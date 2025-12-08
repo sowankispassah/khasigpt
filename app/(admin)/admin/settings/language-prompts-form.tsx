@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
-import type { LanguageOption } from "@/lib/i18n/languages";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import type { LanguageOption } from "@/lib/i18n/languages";
 
 type LanguagePromptsFormProps = {
   language: LanguageOption;
@@ -18,7 +17,7 @@ type LanguagePromptsFormProps = {
         languageCode: string;
         count: number;
       }
-    | void
+    | undefined
   >;
 };
 
@@ -49,10 +48,10 @@ export function LanguagePromptsForm({
 
     setIsSubmitting(true);
     setStatusMessage(savingMessage);
-    void (async () => {
+    (async () => {
       try {
         const result = await onSubmit(formData);
-        if (result && result.success) {
+        if (result?.success) {
           toast({
             type: "success",
             description: `Saved ${language.name} prompts`,
@@ -82,17 +81,20 @@ export function LanguagePromptsForm({
       onSubmit={handleSubmit}
     >
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-semibold" htmlFor={`prompts-${language.code}`}>
+        <label
+          className="font-semibold text-sm"
+          htmlFor={`prompts-${language.code}`}
+        >
           {language.name} prompts
         </label>
         <Textarea
-          id={`prompts-${language.code}`}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
           className="min-h-[12rem]"
-          placeholder="Write a sample question or task..."
           disabled={isSubmitting}
+          id={`prompts-${language.code}`}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="Write a sample question or task..."
           required
+          value={value}
         />
         <p className="text-muted-foreground text-xs">
           {language.isDefault
@@ -114,9 +116,14 @@ export function LanguagePromptsForm({
           )}
         </Button>
       </div>
-      <div aria-live="polite" className="min-h-[1.25rem] text-xs text-muted-foreground">
+      <div
+        aria-live="polite"
+        className="min-h-[1.25rem] text-muted-foreground text-xs"
+      >
         {statusMessage ? (
-          <span className={isSubmitting ? "flex items-center gap-2" : undefined}>
+          <span
+            className={isSubmitting ? "flex items-center gap-2" : undefined}
+          >
             {isSubmitting ? (
               <span className="h-3 w-3 animate-spin text-muted-foreground">
                 <LoaderIcon size={12} />

@@ -1,60 +1,48 @@
 import "server-only";
 
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  lt,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/lib/db/queries";
 import {
+  type ForumPostReactionType,
+  type ForumThreadStatus,
   forumCategory,
   forumPost,
   forumPostReaction,
   forumTag,
   forumThread,
+  forumThreadStatusEnum,
   forumThreadSubscription,
   forumThreadTag,
-  forumThreadStatusEnum,
-  type ForumPostReactionType,
-  type ForumThreadStatus,
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { registerTranslationKeys } from "@/lib/i18n/dictionary";
+import type {
+  CreateForumCategoryInput,
+  ForumOverviewResult,
+  ForumPostListItem,
+  ForumThreadDetailResult,
+  ForumThreadListItem,
+  ForumUserSummary,
+} from "./types";
 import {
   buildForumExcerpt,
   formatForumUserName,
   getForumSlugBase,
   sanitizeForumContent,
 } from "./utils";
-import { registerTranslationKeys } from "@/lib/i18n/dictionary";
-import type {
-  ForumCategorySummary,
-  ForumOverviewResult,
-  ForumPostListItem,
-  ForumTagSummary,
-  ForumThreadDetailResult,
-  ForumThreadListItem,
-  CreateForumCategoryInput,
-  ForumUserSummary,
-} from "./types";
+
 export type {
   ForumCategorySummary,
-  ForumOverviewResult,
   ForumOverviewPayload,
+  ForumOverviewResult,
   ForumPostListItem,
   ForumPostListItemPayload,
   ForumTagSummary,
-  ForumThreadDetailResult,
   ForumThreadDetailPayload,
+  ForumThreadDetailResult,
   ForumThreadListItem,
   ForumThreadListItemPayload,
   ForumUserSummary,
@@ -185,11 +173,11 @@ export async function getForumOverview(
   params: ForumOverviewFilters = {}
 ): Promise<ForumOverviewResult> {
   try {
-  const [categories, tags] = await Promise.all([
-    db
-      .select({
-        id: forumCategory.id,
-        slug: forumCategory.slug,
+    const [categories, tags] = await Promise.all([
+      db
+        .select({
+          id: forumCategory.id,
+          slug: forumCategory.slug,
           name: forumCategory.name,
           description: forumCategory.description,
           icon: forumCategory.icon,
@@ -199,10 +187,7 @@ export async function getForumOverview(
           lastActivityAt: sql<Date | null>`MAX(${forumThread.updatedAt})`,
         })
         .from(forumCategory)
-        .leftJoin(
-          forumThread,
-          eq(forumThread.categoryId, forumCategory.id)
-        )
+        .leftJoin(forumThread, eq(forumThread.categoryId, forumCategory.id))
         .groupBy(
           forumCategory.id,
           forumCategory.slug,
@@ -222,40 +207,41 @@ export async function getForumOverview(
           usageCount: sql<number>`COUNT(${forumThreadTag.threadId})`,
         })
         .from(forumTag)
-        .leftJoin(
-          forumThreadTag,
-          eq(forumThreadTag.tagId, forumTag.id)
-        )
+        .leftJoin(forumThreadTag, eq(forumThreadTag.tagId, forumTag.id))
         .groupBy(
           forumTag.id,
           forumTag.slug,
           forumTag.label,
           forumTag.description
         )
-        .orderBy(desc(sql`COUNT(${forumThreadTag.threadId})`), asc(forumTag.label)),
-  ]);
+        .orderBy(
+          desc(sql`COUNT(${forumThreadTag.threadId})`),
+          asc(forumTag.label)
+        ),
+    ]);
 
-  if (categories.length > 0) {
-    await registerTranslationKeys(
-      categories.flatMap((category) =>
-        buildCategoryTranslationDefinitions({
-          slug: category.slug,
-          name: category.name,
-          description: category.description ?? null,
-        })
-      )
-    );
-  }
+    if (categories.length > 0) {
+      await registerTranslationKeys(
+        categories.flatMap((category) =>
+          buildCategoryTranslationDefinitions({
+            slug: category.slug,
+            name: category.name,
+            description: category.description ?? null,
+          })
+        )
+      );
+    }
 
-  const activeCategory =
-    typeof params.categorySlug === "string"
-      ? categories.find((category) => category.slug === params.categorySlug) ??
-        null
-      : null;
-  const activeTag =
-    typeof params.tagSlug === "string"
-      ? tags.find((tag) => tag.slug === params.tagSlug) ?? null
-      : null;
+    const activeCategory =
+      typeof params.categorySlug === "string"
+        ? (categories.find(
+            (category) => category.slug === params.categorySlug
+          ) ?? null)
+        : null;
+    const activeTag =
+      typeof params.tagSlug === "string"
+        ? (tags.find((tag) => tag.slug === params.tagSlug) ?? null)
+        : null;
 
     const limit = Math.min(
       Math.max(params.limit ?? DEFAULT_LIMIT, MIN_LIMIT),
@@ -297,17 +283,29 @@ export async function getForumOverview(
       .from(forumThread)
       .innerJoin(user, eq(forumThread.authorId, user.id))
       .innerJoin(forumCategory, eq(forumThread.categoryId, forumCategory.id))
-      .leftJoin(lastReplyUser, eq(forumThread.lastReplyUserId, lastReplyUser.id));
+      .leftJoin(
+        lastReplyUser,
+        eq(forumThread.lastReplyUserId, lastReplyUser.id)
+      );
 
     let filtersClause: SQL<boolean> | undefined;
 
     if (activeCategory) {
-      filtersClause = eq(forumThread.categoryId, activeCategory.id) as SQL<boolean>;
+      filtersClause = eq(
+        forumThread.categoryId,
+        activeCategory.id
+      ) as SQL<boolean>;
     }
     if (activeTag) {
       filtersClause = filtersClause
-        ? (and(filtersClause, eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>) as SQL<boolean>)
-        : ((eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>) as SQL<boolean>);
+        ? (and(
+            filtersClause,
+            eq(filteredThreadTag.tagId, activeTag.id) as SQL<boolean>
+          ) as SQL<boolean>)
+        : (eq(
+            filteredThreadTag.tagId,
+            activeTag.id
+          ) as SQL<boolean> as SQL<boolean>);
     }
     if (params.search && params.search.trim().length > 0) {
       const normalized = `%${params.search.trim().toLowerCase()}%`;
@@ -507,7 +505,10 @@ export async function getForumThreadDetail({
       .from(forumThread)
       .innerJoin(user, eq(forumThread.authorId, user.id))
       .innerJoin(forumCategory, eq(forumThread.categoryId, forumCategory.id))
-      .leftJoin(lastReplyUser, eq(forumThread.lastReplyUserId, lastReplyUser.id))
+      .leftJoin(
+        lastReplyUser,
+        eq(forumThread.lastReplyUserId, lastReplyUser.id)
+      )
       .where(eq(forumThread.slug, slug))
       .limit(1);
 
@@ -529,12 +530,12 @@ export async function getForumThreadDetail({
         .select({
           id: forumPost.id,
           threadId: forumPost.threadId,
-        authorId: forumPost.authorId,
-        authorFirstName: user.firstName,
-        authorLastName: user.lastName,
-        authorEmail: user.email,
-        authorImage: user.image,
-        authorRole: user.role,
+          authorId: forumPost.authorId,
+          authorFirstName: user.firstName,
+          authorLastName: user.lastName,
+          authorEmail: user.email,
+          authorImage: user.image,
+          authorRole: user.role,
           content: forumPost.content,
           isEdited: forumPost.isEdited,
           isDeleted: forumPost.isDeleted,
@@ -584,12 +585,11 @@ export async function getForumThreadDetail({
         .groupBy(forumPostReaction.postId, forumPostReaction.type);
 
       for (const reaction of reactionAggregation) {
-        const bucket =
-          reactionCounts.get(reaction.postId) ?? {
-            like: 0,
-            insightful: 0,
-            support: 0,
-          };
+        const bucket = reactionCounts.get(reaction.postId) ?? {
+          like: 0,
+          insightful: 0,
+          support: 0,
+        };
         bucket[reaction.type] = reaction.total;
         reactionCounts.set(reaction.postId, bucket);
       }
@@ -637,8 +637,11 @@ export async function getForumThreadDetail({
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       parentPostId: row.parentPostId,
-      reactions:
-        reactionCounts.get(row.id) ?? { like: 0, insightful: 0, support: 0 },
+      reactions: reactionCounts.get(row.id) ?? {
+        like: 0,
+        insightful: 0,
+        support: 0,
+      },
     }));
 
     const thread: ForumThreadListItem = {
@@ -1093,10 +1096,7 @@ export async function toggleForumPostReaction({
     if (error instanceof ChatSDKError) {
       throw error;
     }
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Unable to toggle reaction"
-    );
+    throw new ChatSDKError("bad_request:database", "Unable to toggle reaction");
   }
 }
 
@@ -1144,7 +1144,8 @@ export async function updateForumThreadStatus({
     .set({
       status,
       updatedAt: now,
-      lastRepliedAt: status === "resolved" ? now : sql`"ForumThread"."lastRepliedAt"`,
+      lastRepliedAt:
+        status === "resolved" ? now : sql`"ForumThread"."lastRepliedAt"`,
     })
     .where(eq(forumThread.id, thread.id));
 }
@@ -1163,7 +1164,9 @@ export async function deleteForumThread({
 }
 
 export async function createForumCategory(input: CreateForumCategoryInput) {
-  const name = sanitizeForumContent(input.name ?? "").replace(/\s+/g, " ").trim();
+  const name = sanitizeForumContent(input.name ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (name.length < 3) {
     throw new ChatSDKError(
       "bad_request:forum",
@@ -1175,18 +1178,13 @@ export async function createForumCategory(input: CreateForumCategoryInput) {
     typeof input.description === "string"
       ? sanitizeForumContent(input.description)
       : null;
-  const providedSlug =
-    typeof input.slug === "string"
-      ? input.slug.trim()
-      : "";
+  const providedSlug = typeof input.slug === "string" ? input.slug.trim() : "";
   const position =
     typeof input.position === "number" && Number.isFinite(input.position)
       ? Math.max(0, Math.floor(input.position))
       : 0;
   const isLocked = Boolean(input.isLocked);
-  const slug = getForumSlugBase(
-    providedSlug.length > 0 ? providedSlug : name
-  );
+  const slug = getForumSlugBase(providedSlug.length > 0 ? providedSlug : name);
   const now = new Date();
 
   try {

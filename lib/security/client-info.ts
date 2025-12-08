@@ -6,6 +6,9 @@ export type ClientInfo = {
   device: string | null;
 };
 
+const FOR_PREFIX_REGEX = /^for=/i;
+const QUOTE_TRIM_REGEX = /^['"]|['"]$/g;
+
 function sanitizeHeaderValue(
   value: string | null | undefined,
   fallback: string | null = null,
@@ -27,13 +30,21 @@ function detectDeviceFromUserAgent(userAgent: string | null): string | null {
   }
 
   const ua = userAgent.toLowerCase();
-  if (ua.includes("mobile") || ua.includes("android") || ua.includes("iphone")) {
+  if (
+    ua.includes("mobile") ||
+    ua.includes("android") ||
+    ua.includes("iphone")
+  ) {
     return "mobile";
   }
   if (ua.includes("ipad") || ua.includes("tablet")) {
     return "tablet";
   }
-  if (ua.includes("macintosh") || ua.includes("windows") || ua.includes("linux")) {
+  if (
+    ua.includes("macintosh") ||
+    ua.includes("windows") ||
+    ua.includes("linux")
+  ) {
     return "desktop";
   }
   if (ua.includes("bot") || ua.includes("crawl") || ua.includes("spider")) {
@@ -52,7 +63,9 @@ export async function getClientInfoFromHeaders(): Promise<ClientInfo> {
       getHeader("x-forwarded-for") ?? getHeader("forwarded") ?? "";
     const forwardedValue = forwardedFor.split(",")[0]?.trim() ?? "";
     const normalizedForwarded = forwardedValue.startsWith("for=")
-      ? forwardedValue.replace(/^for=/i, "").replace(/^['"]|['"]$/g, "")
+      ? forwardedValue
+          .replace(FOR_PREFIX_REGEX, "")
+          .replace(QUOTE_TRIM_REGEX, "")
       : forwardedValue;
     const ipAddress =
       sanitizeHeaderValue(normalizedForwarded, null, 128) ??

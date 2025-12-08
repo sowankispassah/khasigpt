@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { MoreVertical } from "lucide-react";
-
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useFormStatus } from "react-dom";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,9 +15,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
-import { useFormStatus } from "react-dom";
-import { toast } from "./toast";
 
 type AdminUserActionsMenuProps = {
   userId: string;
@@ -54,10 +52,12 @@ export function AdminUserActionsMenu({
   currentRole,
 }: AdminUserActionsMenuProps) {
   const [open, setOpen] = useState(false);
-  const [impersonationLink, setImpersonationLink] = useState<string | null>(null);
+  const [impersonationLink, setImpersonationLink] = useState<string | null>(
+    null
+  );
   const [impersonateError, setImpersonateError] = useState<string | null>(null);
   const [impersonateLoading, setImpersonateLoading] = useState(false);
-  const [impersonatePending, startImpersonate] = useTransition();
+  const [_impersonatePending, _startImpersonate] = useTransition();
 
   const handleDone = useCallback(() => {
     setOpen(false);
@@ -109,7 +109,7 @@ export function AdminUserActionsMenu({
   }, [open, userId]);
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger asChild>
         <Button size="sm" variant="outline">
           <MoreVertical className="h-4 w-4" />
@@ -124,11 +124,11 @@ export function AdminUserActionsMenu({
           <form action={onSuspend} className="w-full">
             <CloseAfterSubmit onDone={handleDone} />
             <ActionSubmitButton
-              className="w-full justify-start rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted"
+              className="w-full justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted"
+              disabled={isSelf}
               pendingLabel={isActive ? "Suspending..." : "Restoring..."}
               size="sm"
               variant="ghost"
-              disabled={isSelf}
             >
               {isActive ? "Suspend" : "Restore"}
             </ActionSubmitButton>
@@ -140,7 +140,7 @@ export function AdminUserActionsMenu({
           onSelect={(event) => event.preventDefault()}
         >
           <SessionUsageChatLink
-            className="flex w-full items-center rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted hover:text-foreground"
+            className="flex w-full items-center rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted hover:text-foreground"
             href={`/admin/users/${userId}/logs`}
           >
             Logs
@@ -154,11 +154,11 @@ export function AdminUserActionsMenu({
           <form action={onToggleRag} className="w-full">
             <CloseAfterSubmit onDone={handleDone} />
             <ActionSubmitButton
-              className="w-full justify-start rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted"
+              className="w-full justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted"
+              disabled={isSelf}
               pendingLabel="Updating..."
               size="sm"
               variant="ghost"
-              disabled={isSelf}
             >
               {allowPersonalKnowledge ? "Disable RAG" : "Allow RAG"}
             </ActionSubmitButton>
@@ -168,7 +168,7 @@ export function AdminUserActionsMenu({
         <DropdownMenuItem className="p-0">
           {impersonationLink ? (
             <a
-              className="flex w-full items-center rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted hover:text-foreground"
+              className="flex w-full items-center rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted hover:text-foreground"
               href={impersonationLink}
               rel="noreferrer"
               target="_blank"
@@ -177,26 +177,26 @@ export function AdminUserActionsMenu({
             </a>
           ) : (
             <button
-              className="flex w-full items-center rounded-sm px-3 py-2 text-sm font-normal text-muted-foreground"
+              className="flex w-full items-center rounded-sm px-3 py-2 font-normal text-muted-foreground text-sm"
               disabled
               type="button"
             >
               {impersonateLoading
                 ? "Preparing link..."
-                : impersonateError ?? "Preparing link..."}
+                : (impersonateError ?? "Preparing link...")}
             </button>
           )}
         </DropdownMenuItem>
 
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="rounded-sm px-3 py-2 text-sm font-normal hover:bg-muted">
+          <DropdownMenuSubTrigger className="rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted">
             Update role
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-40">
             {(["admin", "creator", "regular"] as const).map((role) => (
               <DropdownMenuItem
-                key={role}
                 className="p-0"
+                key={role}
                 onSelect={(event) => event.preventDefault()}
               >
                 <form
@@ -207,11 +207,11 @@ export function AdminUserActionsMenu({
                 >
                   <CloseAfterSubmit onDone={handleDone} />
                   <ActionSubmitButton
-                    className="w-full justify-start rounded-sm px-3 py-1.5 text-sm font-normal hover:bg-muted"
+                    className="w-full justify-start rounded-sm px-3 py-1.5 font-normal text-sm hover:bg-muted"
+                    disabled={isSelf || currentRole === role}
                     pendingLabel="Updating..."
                     size="sm"
                     variant="ghost"
-                    disabled={isSelf || currentRole === role}
                   >
                     {role === "admin"
                       ? "Admin"

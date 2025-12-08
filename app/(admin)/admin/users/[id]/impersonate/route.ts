@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { createAuditLogEntry, createImpersonationToken, getUserById } from "@/lib/db/queries";
+import {
+  createAuditLogEntry,
+  createImpersonationToken,
+  getUserById,
+} from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 

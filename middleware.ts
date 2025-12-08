@@ -1,43 +1,16 @@
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
-const ONE_MINUTE = 60 * 1000;
-const API_RATE_LIMIT = {
-  limit: 120,
-  windowMs: ONE_MINUTE,
-};
-
-type Bucket = { count: number; resetAt: number };
-const edgeBuckets = new Map<string, Bucket>();
-
-function incrementEdgeRateLimit(
-  key: string,
-  { limit, windowMs }: { limit: number; windowMs: number }
-) {
-  const now = Date.now();
-  const bucket = edgeBuckets.get(key);
-
-  if (!bucket || bucket.resetAt <= now) {
-    const resetAt = now + windowMs;
-    edgeBuckets.set(key, { count: 1, resetAt });
-    return { allowed: true, remaining: limit - 1, resetAt };
-  }
-
-  if (bucket.count >= limit) {
-    return { allowed: false, remaining: 0, resetAt: bucket.resetAt };
-  }
-
-  bucket.count += 1;
-  return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
-}
-
+const isProduction = process.env.NODE_ENV === "production";
 const DEFAULT_ALLOWED_ORIGINS = [
   process.env.APP_BASE_URL,
   process.env.NEXTAUTH_URL,
   process.env.NEXT_PUBLIC_APP_URL,
   process.env.EXPO_PUBLIC_API_BASE_URL,
   process.env.EXPO_PUBLIC_WEB_BASE_URL,
+];
+const LOCAL_ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:8081",
@@ -50,15 +23,105 @@ const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS ?? "")
 
 const ALLOWED_ORIGINS = Array.from(
   new Set(
-    [...DEFAULT_ALLOWED_ORIGINS, ...CORS_ALLOWED_ORIGINS].filter(
-      (origin): origin is string => Boolean(origin)
-    )
+    [
+      ...DEFAULT_ALLOWED_ORIGINS,
+      ...(isProduction ? [] : LOCAL_ALLOWED_ORIGINS),
+      ...CORS_ALLOWED_ORIGINS,
+    ].filter((origin): origin is string => Boolean(origin))
   )
 );
 const CANONICAL_HOST =
   process.env.CANONICAL_HOST?.toLowerCase() ?? "khasigpt.com";
 const SHOULD_ENFORCE_CANONICAL =
   process.env.NODE_ENV === "production" && typeof CANONICAL_HOST === "string";
+const ONE_MINUTE = 60 * 1000;
+const API_RATE_LIMIT = {
+  limit: 120,
+  windowMs: ONE_MINUTE,
+};
+type RateLimitBucket = { count: number; resetAt: number };
+const buckets = new Map<string, RateLimitBucket>();
+const kvRestUrl =
+  process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
+const kvRestToken =
+  process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null;
+const hasRestKv = Boolean(kvRestUrl && kvRestToken);
+
+async function incrementRestKv(key: string) {
+  if (!hasRestKv) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${kvRestUrl}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${kvRestToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([
+        ["INCR", key],
+        ["PTTL", key],
+        ["PEXPIRE", key, API_RATE_LIMIT.windowMs.toString()],
+      ]),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = (await response.json()) as { result?: unknown[] } | null;
+    const results = Array.isArray(json?.result) ? json?.result : null;
+    const unwrap = (value: unknown) =>
+      value && typeof value === "object" && "result" in value
+        ? (value as { result: unknown }).result
+        : value;
+    const countRaw = Array.isArray(results) ? unwrap(results[0]) : null;
+    const ttlRaw = Array.isArray(results) ? unwrap(results[1]) : null;
+    const count = typeof countRaw === "number" ? countRaw : Number(countRaw);
+    const ttl = typeof ttlRaw === "number" ? ttlRaw : Number(ttlRaw);
+
+    if (!Number.isFinite(count)) {
+      return null;
+    }
+
+    const resetAt =
+      Number.isFinite(ttl) && ttl > 0
+        ? Date.now() + ttl
+        : Date.now() + API_RATE_LIMIT.windowMs;
+
+    return {
+      allowed: count <= API_RATE_LIMIT.limit,
+      resetAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function incrementRateLimit(key: string) {
+  const kvResult = await incrementRestKv(key);
+  if (kvResult) {
+    return kvResult;
+  }
+
+  const now = Date.now();
+  const bucket = buckets.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    const resetAt = now + API_RATE_LIMIT.windowMs;
+    buckets.set(key, { count: 1, resetAt });
+    return { allowed: true, resetAt };
+  }
+
+  if (bucket.count >= API_RATE_LIMIT.limit) {
+    return { allowed: false, resetAt: bucket.resetAt };
+  }
+
+  bucket.count += 1;
+  buckets.set(key, bucket);
+  return { allowed: true, resetAt: bucket.resetAt };
+}
 
 function getCorsHeaders(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -81,10 +144,7 @@ function getCorsHeaders(request: NextRequest) {
   return headers;
 }
 
-function applyCorsHeaders(
-  response: NextResponse,
-  corsHeaders: Headers | null
-) {
+function applyCorsHeaders(response: NextResponse, corsHeaders: Headers | null) {
   if (!corsHeaders) {
     return response;
   }
@@ -123,10 +183,7 @@ export async function middleware(request: NextRequest) {
         const requestHeaders =
           request.headers.get("Access-Control-Request-Headers") ??
           "authorization,content-type";
-        preflightHeaders.set(
-          "Access-Control-Allow-Headers",
-          requestHeaders
-        );
+        preflightHeaders.set("Access-Control-Allow-Headers", requestHeaders);
       }
 
       return new Response(null, {
@@ -136,7 +193,7 @@ export async function middleware(request: NextRequest) {
     }
 
     const key = `api:${getClientKeyFromHeaders(request.headers)}`;
-    const { allowed, resetAt } = incrementEdgeRateLimit(key, API_RATE_LIMIT);
+    const { allowed, resetAt } = await incrementRateLimit(key);
 
     if (!allowed) {
       const retryAfter = Math.max(

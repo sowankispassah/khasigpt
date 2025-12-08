@@ -5,20 +5,17 @@ import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import {
+  consumeImpersonationToken,
   createAuditLogEntry,
+  createGuestUser,
   ensureOAuthUser,
   getUser,
   getUserById,
-  consumeImpersonationToken,
-  createGuestUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import {
-  incrementRateLimit,
-  resetRateLimit,
-} from "@/lib/security/rate-limit";
-import { authConfig } from "./auth.config";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
+import { authConfig } from "./auth.config";
 
 export type UserRole = "regular" | "creator" | "admin";
 
@@ -35,7 +32,6 @@ declare module "next-auth" {
     } & DefaultSession["user"];
   }
 
-  // biome-ignore lint/nursery/useConsistentTypeDefinitions: Required augmentation type
   interface User {
     id?: string;
     email?: string | null;
@@ -248,25 +244,25 @@ export const {
           return false;
         }
 
-        const profileImage =
-          typeof user.image === "string" ? user.image : null;
+        const profileImage = typeof user.image === "string" ? user.image : null;
         try {
           const fullName =
             typeof user.name === "string" ? user.name.trim() : "";
           const googleFirstName =
             typeof (user as Record<string, unknown>).given_name === "string"
               ? ((user as Record<string, string>).given_name ?? "").trim()
-              : fullName.split(" ")[0] ?? "";
+              : (fullName.split(" ")[0] ?? "");
           const googleLastName =
             typeof (user as Record<string, unknown>).family_name === "string"
               ? ((user as Record<string, string>).family_name ?? "").trim()
               : fullName.split(" ").slice(1).join(" ");
 
-          const { user: dbUser, isNewUser: isNewOAuthUser } = await ensureOAuthUser(user.email, {
-            image: profileImage,
-            firstName: googleFirstName || null,
-            lastName: googleLastName || null,
-          });
+          const { user: dbUser, isNewUser: isNewOAuthUser } =
+            await ensureOAuthUser(user.email, {
+              image: profileImage,
+              firstName: googleFirstName || null,
+              lastName: googleLastName || null,
+            });
           (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
           user.role = dbUser.role as UserRole;
@@ -321,13 +317,14 @@ export const {
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
         token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
-      } else {
-        if (!token.role) {
-          token.role = "regular";
-        }
+      } else if (!token.role) {
+        token.role = "regular";
       }
 
-      let cachedDbUser: Awaited<ReturnType<typeof getUserById>> | null | undefined;
+      let cachedDbUser:
+        | Awaited<ReturnType<typeof getUserById>>
+        | null
+        | undefined;
       const ensureDbUser = async () => {
         if (!token.id) {
           cachedDbUser = null;
@@ -354,7 +351,9 @@ export const {
           token.lastName = (session.lastName as string | null) ?? null;
         }
         if ("allowPersonalKnowledge" in session) {
-          token.allowPersonalKnowledge = Boolean(session.allowPersonalKnowledge);
+          token.allowPersonalKnowledge = Boolean(
+            session.allowPersonalKnowledge
+          );
         }
       }
 
@@ -370,7 +369,10 @@ export const {
       ) {
         const record = await ensureDbUser();
         if (record) {
-          if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
+          if (
+            typeof token.dateOfBirth === "undefined" ||
+            token.dateOfBirth === null
+          ) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
           token.imageVersion =
@@ -379,14 +381,21 @@ export const {
               : record.image
                 ? new Date().toISOString()
                 : null;
-          if (typeof token.firstName === "undefined" || token.firstName === null) {
+          if (
+            typeof token.firstName === "undefined" ||
+            token.firstName === null
+          ) {
             token.firstName = record.firstName ?? null;
           }
-          if (typeof token.lastName === "undefined" || token.lastName === null) {
+          if (
+            typeof token.lastName === "undefined" ||
+            token.lastName === null
+          ) {
             token.lastName = record.lastName ?? null;
           }
           if (typeof token.allowPersonalKnowledge === "undefined") {
-            token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+            token.allowPersonalKnowledge =
+              record.allowPersonalKnowledge ?? false;
           }
         }
       } else if (typeof token.imageVersion === "undefined") {
@@ -406,14 +415,14 @@ export const {
 
       if (token.id) {
         const record = await ensureDbUser();
-        if (!record) {
-          // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
-          token = {} as typeof token;
-        } else {
+        if (record) {
           if (record.role) {
             token.role = record.role as UserRole;
           }
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+        } else {
+          // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
+          token = {} as typeof token;
         }
       }
 
@@ -431,7 +440,9 @@ export const {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
         session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
-        session.user.imageVersion = (token.imageVersion ?? null) as string | null;
+        session.user.imageVersion = (token.imageVersion ?? null) as
+          | string
+          | null;
         session.user.firstName = (token.firstName ?? null) as string | null;
         session.user.lastName = (token.lastName ?? null) as string | null;
         session.user.allowPersonalKnowledge = Boolean(

@@ -412,7 +412,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "chat.deleted_notice",
-    defaultText: "This chat has been deleted. You are viewing it in read-only mode.",
+    defaultText:
+      "This chat has been deleted. You are viewing it in read-only mode.",
     description: "Banner text shown to admins when viewing a deleted chat.",
   },
   {
@@ -488,26 +489,22 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "profile.picture.error.upload_generic",
-    defaultText:
-      "Failed to update profile image. Please try again.",
+    defaultText: "Failed to update profile image. Please try again.",
     description: "Generic error for failed uploads.",
   },
   {
     key: "profile.picture.error.unexpected",
-    defaultText:
-      "Unexpected error while uploading image. Please try again.",
+    defaultText: "Unexpected error while uploading image. Please try again.",
     description: "Error when an unexpected upload issue occurs.",
   },
   {
     key: "profile.picture.error.remove_generic",
-    defaultText:
-      "Failed to remove profile image. Please try again.",
+    defaultText: "Failed to remove profile image. Please try again.",
     description: "Generic error when removing the profile image fails.",
   },
   {
     key: "profile.picture.error.unexpected_remove",
-    defaultText:
-      "Unexpected error while removing image. Please try again.",
+    defaultText: "Unexpected error while removing image. Please try again.",
     description: "Unexpected error when removing the image.",
   },
   {
@@ -625,7 +622,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "sidebar.history.login_prompt",
     defaultText: "Login to save and revisit previous chats!",
-    description: "Message shown when history is unavailable because the user is signed out.",
+    description:
+      "Message shown when history is unavailable because the user is signed out.",
   },
   {
     key: "sidebar.history.empty",
@@ -681,7 +679,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "sidebar.history.delete_dialog.description",
     defaultText:
       "This action cannot be undone. This will permanently delete your chat and remove it from our servers.",
-    description: "Delete confirmation dialog description in chat history sidebar.",
+    description:
+      "Delete confirmation dialog description in chat history sidebar.",
   },
   {
     key: "sidebar.history.delete_dialog.confirm",
@@ -756,7 +755,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "subscriptions.plan_overview.credits_allocated",
     defaultText: "Admin credits remaining",
-    description: "Row label for remaining credits that were manually granted by an admin.",
+    description:
+      "Row label for remaining credits that were manually granted by an admin.",
   },
   {
     key: "subscriptions.plan_overview.credits_recharged",
@@ -806,7 +806,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "subscriptions.recharge_history.unknown_plan",
     defaultText: "Plan unavailable",
-    description: "Fallback text when a plan name is missing in recharge history.",
+    description:
+      "Fallback text when a plan name is missing in recharge history.",
   },
   {
     key: "subscriptions.recharge_history.trigger_label",
@@ -816,7 +817,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "subscriptions.recharge_history.close_button",
     defaultText: "Close",
-    description: "Label for the close button inside the recharge history dialog.",
+    description:
+      "Label for the close button inside the recharge history dialog.",
   },
   {
     key: "subscriptions.recharge_history.status.pending",
@@ -1073,17 +1075,20 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "recharge.dialog.title",
     defaultText: "Review your recharge",
-    description: "Title for the order confirmation dialog on the recharge page.",
+    description:
+      "Title for the order confirmation dialog on the recharge page.",
   },
   {
     key: "recharge.dialog.description",
-    defaultText: "Confirm the plan details and apply a coupon before continuing to payment.",
+    defaultText:
+      "Confirm the plan details and apply a coupon before continuing to payment.",
     description: "Helper text shown in the order confirmation dialog.",
   },
   {
     key: "recharge.dialog.plan_placeholder",
     defaultText: "Selected plan",
-    description: "Fallback label when the plan name is loading inside the dialog.",
+    description:
+      "Fallback label when the plan name is loading inside the dialog.",
   },
   {
     key: "recharge.dialog.summary.discount",
@@ -1108,7 +1113,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "recharge.dialog.coupon_required",
     defaultText: "Enter a coupon code to validate.",
-    description: "Inline error shown when the user tries to validate with an empty code.",
+    description:
+      "Inline error shown when the user tries to validate with an empty code.",
   },
   {
     key: "recharge.dialog.coupon_invalid",
@@ -1714,7 +1720,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "forum.thread.back_to_forum",
     defaultText: "Back to forum",
-    description: "Button label that returns the viewer to the forum listing page.",
+    description:
+      "Button label that returns the viewer to the forum listing page.",
   },
   {
     key: "forum.thread.post.no_content",
@@ -1794,7 +1801,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "forum.thread.actions.delete_confirm",
-    defaultText: "Are you sure you want to delete this thread? This action cannot be undone.",
+    defaultText:
+      "Are you sure you want to delete this thread? This action cannot be undone.",
     description: "Confirmation message before deleting a thread.",
   },
   {
@@ -1816,12 +1824,14 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "creator_dashboard.metrics.redemptions",
     defaultText: "Total redemptions",
-    description: "Metric label indicating the total number of coupon redemptions.",
+    description:
+      "Metric label indicating the total number of coupon redemptions.",
   },
   {
     key: "creator_dashboard.metrics.revenue",
     defaultText: "Recharge volume",
-    description: "Metric label for total recharge revenue generated by coupons.",
+    description:
+      "Metric label for total recharge revenue generated by coupons.",
   },
   {
     key: "creator_dashboard.metrics.savings",
@@ -1856,7 +1866,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "coupon.reward_status.none",
     defaultText: "No redemptions yet",
-    description: "Helper text when rewards are unavailable due to zero redemptions.",
+    description:
+      "Helper text when rewards are unavailable due to zero redemptions.",
   },
   {
     key: "creator_dashboard.coupons.title",
@@ -1865,7 +1876,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "creator_dashboard.coupons.subtitle",
-    defaultText: "Review status, validity, and performance for every code assigned to you.",
+    defaultText:
+      "Review status, validity, and performance for every code assigned to you.",
     description: "Helper text beneath the coupon section heading.",
   },
   {
@@ -1951,7 +1963,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "creator_dashboard.redemptions.empty",
-    defaultText: "No redemptions are recorded yet. Share your code to see activity here.",
+    defaultText:
+      "No redemptions are recorded yet. Share your code to see activity here.",
     description: "Empty-state message when no coupon redemptions exist.",
   },
   {
@@ -1967,17 +1980,20 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "creator_dashboard.redemptions.payment",
     defaultText: "Payment",
-    description: "Table column label for the payment amount collected from the user.",
+    description:
+      "Table column label for the payment amount collected from the user.",
   },
   {
     key: "creator_dashboard.redemptions.discount",
     defaultText: "Discount",
-    description: "Table column label for the discount applied to the redemption.",
+    description:
+      "Table column label for the discount applied to the redemption.",
   },
   {
     key: "creator_dashboard.redemptions.reward",
     defaultText: "Your reward",
-    description: "Table column label for the creator reward amount per redemption.",
+    description:
+      "Table column label for the creator reward amount per redemption.",
   },
   {
     key: "creator_dashboard.redemptions.date",

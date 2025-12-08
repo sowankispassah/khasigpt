@@ -26,8 +26,7 @@ export function AdminChatTables({
   initialDeletedChats,
   pageSize = 10,
 }: Props) {
-  const [activeChats, setActiveChats] =
-    useState<ChatRow[]>(initialActiveChats);
+  const [activeChats, setActiveChats] = useState<ChatRow[]>(initialActiveChats);
   const [deletedChats, setDeletedChats] =
     useState<ChatRow[]>(initialDeletedChats);
   const [loadingActive, setLoadingActive] = useState(false);
@@ -109,17 +108,17 @@ export function AdminChatTables({
           <table className="w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
               <tr>
-                <th className="py-3 px-3 text-left">Chat</th>
-                <th className="py-3 px-3 text-left">Owner</th>
-                <th className="py-3 px-3 text-left">Visibility</th>
-                <th className="py-3 px-3 text-left">Created</th>
-                <th className="py-3 px-3 text-left">Actions</th>
+                <th className="px-3 py-3 text-left">Chat</th>
+                <th className="px-3 py-3 text-left">Owner</th>
+                <th className="px-3 py-3 text-left">Visibility</th>
+                <th className="px-3 py-3 text-left">Created</th>
+                <th className="px-3 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
               {activeChats.map((chat) => (
                 <tr className="border-t text-sm" key={chat.id}>
-                  <td className="py-3 px-3">
+                  <td className="px-3 py-3">
                     <div className="flex flex-col gap-1">
                       <Link
                         className="font-medium text-primary text-sm hover:underline"
@@ -132,7 +131,7 @@ export function AdminChatTables({
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-xs">
+                  <td className="px-3 py-3 text-xs">
                     <div className="flex flex-col">
                       <span>{chat.userEmail ?? "Unknown user"}</span>
                       <span className="font-mono text-[11px] text-muted-foreground">
@@ -140,11 +139,11 @@ export function AdminChatTables({
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-3 capitalize">{chat.visibility}</td>
-                  <td className="py-3 px-3 text-muted-foreground text-xs">
+                  <td className="px-3 py-3 capitalize">{chat.visibility}</td>
+                  <td className="px-3 py-3 text-muted-foreground text-xs">
                     {new Date(chat.createdAt).toLocaleString()}
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="px-3 py-3">
                     <Button
                       disabled={isPending}
                       onClick={() => handleSoftDelete(chat.id)}
@@ -158,7 +157,7 @@ export function AdminChatTables({
               ))}
               {activeChats.length === 0 && (
                 <tr>
-                  <td className="py-6 px-3 text-muted-foreground" colSpan={5}>
+                  <td className="px-3 py-6 text-muted-foreground" colSpan={5}>
                     No chat sessions found.
                   </td>
                 </tr>
@@ -167,12 +166,14 @@ export function AdminChatTables({
           </table>
         </div>
         <div className="flex items-center justify-end gap-3">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             Page {pageActive + 1}
           </span>
           <Button
             disabled={pageActive === 0 || loadingActive}
-            onClick={() => loadPage({ deleted: false, page: Math.max(0, pageActive - 1) })}
+            onClick={() =>
+              loadPage({ deleted: false, page: Math.max(0, pageActive - 1) })
+            }
             size="sm"
             variant="outline"
           >
@@ -206,17 +207,17 @@ export function AdminChatTables({
           <table className="w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
               <tr>
-                <th className="py-3 px-3 text-left">Chat</th>
-                <th className="py-3 px-3 text-left">Owner</th>
-                <th className="py-3 px-3 text-left">Visibility</th>
-                <th className="py-3 px-3 text-left">Deleted</th>
-                <th className="py-3 px-3 text-left">Actions</th>
+                <th className="px-3 py-3 text-left">Chat</th>
+                <th className="px-3 py-3 text-left">Owner</th>
+                <th className="px-3 py-3 text-left">Visibility</th>
+                <th className="px-3 py-3 text-left">Deleted</th>
+                <th className="px-3 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
               {deletedChats.map((chat) => (
                 <tr className="border-t text-sm" key={chat.id}>
-                  <td className="py-3 px-3">
+                  <td className="px-3 py-3">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <Link
@@ -225,7 +226,10 @@ export function AdminChatTables({
                         >
                           {chat.title || "Untitled chat"}
                         </Link>
-                        <Badge variant="outline" className="border-amber-500 text-amber-600">
+                        <Badge
+                          className="border-amber-500 text-amber-600"
+                          variant="outline"
+                        >
                           Deleted
                         </Badge>
                       </div>
@@ -234,7 +238,7 @@ export function AdminChatTables({
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-xs">
+                  <td className="px-3 py-3 text-xs">
                     <div className="flex flex-col">
                       <span>{chat.userEmail ?? "Unknown user"}</span>
                       <span className="font-mono text-[11px] text-muted-foreground">
@@ -242,15 +246,15 @@ export function AdminChatTables({
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-3 capitalize">{chat.visibility}</td>
-                  <td className="py-3 px-3 text-muted-foreground text-xs">
+                  <td className="px-3 py-3 capitalize">{chat.visibility}</td>
+                  <td className="px-3 py-3 text-muted-foreground text-xs">
                     {chat.deletedAt
                       ? formatDistanceToNow(new Date(chat.deletedAt), {
                           addSuffix: true,
                         })
                       : "—"}
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="px-3 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         disabled={isPending}
@@ -274,7 +278,7 @@ export function AdminChatTables({
               ))}
               {deletedChats.length === 0 && (
                 <tr>
-                  <td className="py-6 px-3 text-muted-foreground" colSpan={5}>
+                  <td className="px-3 py-6 text-muted-foreground" colSpan={5}>
                     No deleted chats.
                   </td>
                 </tr>
@@ -283,12 +287,14 @@ export function AdminChatTables({
           </table>
         </div>
         <div className="flex items-center justify-end gap-3">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground text-xs">
             Page {pageDeleted + 1}
           </span>
           <Button
             disabled={pageDeleted === 0 || loadingDeleted}
-            onClick={() => loadPage({ deleted: true, page: Math.max(0, pageDeleted - 1) })}
+            onClick={() =>
+              loadPage({ deleted: true, page: Math.max(0, pageDeleted - 1) })
+            }
             size="sm"
             variant="outline"
           >

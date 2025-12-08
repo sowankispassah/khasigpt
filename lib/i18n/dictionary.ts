@@ -6,14 +6,15 @@ import {
   getAppSetting,
   setAppSetting,
 } from "@/lib/db/queries";
-import {
-  translationKey,
-  translationValue,
-} from "@/lib/db/schema";
+import { translationKey, translationValue } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import { withTimeout } from "@/lib/utils/async";
 
-import { getAllLanguages, resolveLanguage, type LanguageOption } from "./languages";
+import {
+  getAllLanguages,
+  type LanguageOption,
+  resolveLanguage,
+} from "./languages";
 
 export type TranslationDefinition = {
   key: string;
@@ -90,8 +91,6 @@ const TRANSLATION_CACHE_TTL_MS =
     : 1000 * 60 * 60 * 6;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
-
-
 
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]
@@ -225,8 +224,7 @@ const FALLBACK_BUNDLE: TranslationBundle = {
 };
 
 const skipTranslationCache =
-  typeof process !== "undefined" &&
-  process.env.SKIP_TRANSLATION_CACHE === "1";
+  typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
 
 async function persistBundle(key: string, bundle: TranslationBundle) {
   await setAppSetting({
@@ -294,7 +292,9 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
 
   BUNDLE_CACHE.set(key, {
     data: existing?.data ?? FALLBACK_BUNDLE,
-    inflight: inflight.then(() => {}),
+    inflight: inflight.then(() => {
+      return;
+    }),
   });
 }
 
@@ -410,7 +410,7 @@ export async function publishAllTranslations() {
       if (typeof previous === "string") {
         process.env.SKIP_TRANSLATION_CACHE = previous;
       } else {
-        delete process.env.SKIP_TRANSLATION_CACHE;
+        process.env.SKIP_TRANSLATION_CACHE = undefined;
       }
     }
   }
@@ -498,10 +498,16 @@ export async function getTranslationsForKeys(
 
     return result;
   } catch (error) {
-    console.error("[i18n] Falling back to default texts for bulk translations.", error);
-    return definitions.reduce<Record<string, string>>((accumulator, definition) => {
-      accumulator[definition.key] = definition.defaultText;
-      return accumulator;
-    }, {});
+    console.error(
+      "[i18n] Falling back to default texts for bulk translations.",
+      error
+    );
+    return definitions.reduce<Record<string, string>>(
+      (accumulator, definition) => {
+        accumulator[definition.key] = definition.defaultText;
+        return accumulator;
+      },
+      {}
+    );
   }
 }

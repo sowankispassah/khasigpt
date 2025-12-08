@@ -6,14 +6,14 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  CartesianGrid,
   Line,
   LineChart,
-  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
+  type TooltipProps,
   XAxis,
   YAxis,
-  type TooltipProps,
 } from "recharts";
 
 type DailyUsageDatum = {
@@ -103,43 +103,68 @@ export function DailyUsageChart({
       return;
     }
     container.scrollLeft = container.scrollWidth;
-  }, [preparedData]);
+  }, []);
 
   return (
-    <div className="w-full focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0" style={{ minHeight: 240 }}>
-      <div className="h-64 w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0" ref={scrollContainerRef}>
+    <div
+      className="w-full focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+      style={{ minHeight: 240 }}
+    >
+      <div
+        className="h-64 w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        ref={scrollContainerRef}
+      >
         <div className="h-full min-w-[560px]">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer height="100%" width="100%">
             <ChartComponent
               data={preparedData}
               margin={{ top: 10, bottom: 0, left: 8, right: 24 }}
             >
               <defs>
-                <linearGradient id={`usage-gradient-${gradientId}`} x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="5%" stopColor={DARK_GREEN_LIGHT} stopOpacity={0.55} />
-                  <stop offset="95%" stopColor={DARK_GREEN} stopOpacity={0.12} />
+                <linearGradient
+                  id={`usage-gradient-${gradientId}`}
+                  x1="0"
+                  x2="0"
+                  y1="0"
+                  y2="1"
+                >
+                  <stop
+                    offset="5%"
+                    stopColor={DARK_GREEN_LIGHT}
+                    stopOpacity={0.55}
+                  />
+                  <stop
+                    offset="95%"
+                    stopColor={DARK_GREEN}
+                    stopOpacity={0.12}
+                  />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" vertical={false} opacity={0.35} />
+              <CartesianGrid
+                opacity={0.35}
+                stroke="hsl(var(--border))"
+                strokeDasharray="4 4"
+                vertical={false}
+              />
               <XAxis
-                dataKey="formattedDate"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
                 axisLine={false}
-                tickLine={false}
+                dataKey="formattedDate"
                 interval="preserveStartEnd"
                 padding={{ left: 8, right: 16 }}
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                tickLine={false}
               />
               <YAxis
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                allowDecimals={false}
                 axisLine={false}
+                domain={yDomain}
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
                 tickLine={false}
                 width={40}
-                domain={yDomain}
-                allowDecimals={false}
               />
               <Tooltip<number, string>
-                cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
                 content={(props) => <DailyUsageTooltip {...props} />}
+                cursor={{ stroke: DARK_GREEN, strokeOpacity: 0.35 }}
               />
               {variant === "bar" ? (
                 <Bar
@@ -149,22 +174,22 @@ export function DailyUsageChart({
                 />
               ) : variant === "line" ? (
                 <Line
-                  type="monotone"
+                  activeDot={{ r: 6 }}
                   dataKey="credits"
+                  dot={{ r: 4, fill: DARK_GREEN }}
                   stroke={DARK_GREEN}
                   strokeWidth={2.5}
-                  dot={{ r: 4, fill: DARK_GREEN }}
-                  activeDot={{ r: 6 }}
+                  type="monotone"
                 />
               ) : (
                 <Area
-                  type="monotone"
-                  dataKey="credits"
-                  stroke={DARK_GREEN}
-                  fillOpacity={1}
-                  fill={`url(#usage-gradient-${gradientId})`}
-                  strokeWidth={2.5}
                   activeDot={{ r: 5 }}
+                  dataKey="credits"
+                  fill={`url(#usage-gradient-${gradientId})`}
+                  fillOpacity={1}
+                  stroke={DARK_GREEN}
+                  strokeWidth={2.5}
+                  type="monotone"
                 />
               )}
             </ChartComponent>
@@ -179,7 +204,7 @@ function DailyUsageTooltip({
   active,
   payload,
 }: TooltipProps<number, string> & {
-  payload?: ReadonlyArray<ChartTooltipPayload>;
+  payload?: readonly ChartTooltipPayload[];
 }) {
   if (!active || !payload || payload.length === 0) {
     return null;

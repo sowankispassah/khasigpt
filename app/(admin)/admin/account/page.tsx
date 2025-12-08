@@ -1,21 +1,20 @@
-import Link from "next/link";
 import { format } from "date-fns";
-
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
+  type ChatFinancialSummary,
   listChatFinancialSummaries,
+  listModelConfigs,
   listPaidRechargeTotals,
   listRechargeRecords,
-  listModelConfigs,
-  type ChatFinancialSummary,
   type RechargeRecord,
 } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
-import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ExportButton } from "./transaction-export-button";
 import { RechargeExportButton } from "./recharge-export-button";
+import { ExportButton } from "./transaction-export-button";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -81,7 +80,7 @@ type ModelPricingRow = {
 
 function parseDate(value?: string): Date | undefined {
   if (!value) {
-    return undefined;
+    return;
   }
 
   const parsed = new Date(value);
@@ -200,15 +199,28 @@ function aggregateRechargeTotals(
 }
 
 function normalizeCurrencyAmount(amount: number, currency: string) {
-  const divisor = currency.toUpperCase() === "USD" ? 100 : currency.toUpperCase() === "INR" ? 100 : 100;
+  const divisor =
+    currency.toUpperCase() === "USD"
+      ? 100
+      : currency.toUpperCase() === "INR"
+        ? 100
+        : 100;
   return amount / divisor;
 }
 
-function mapRechargeRows(records: RechargeRecord[], usdToInr: number): RechargeTableRow[] {
+function mapRechargeRows(
+  records: RechargeRecord[],
+  usdToInr: number
+): RechargeTableRow[] {
   return records.map((record) => {
     const baseAmount = normalizeCurrencyAmount(record.amount, record.currency);
     const currency = record.currency.toUpperCase();
-    const amountUsd = currency === "USD" ? baseAmount : usdToInr > 0 ? baseAmount / usdToInr : 0;
+    const amountUsd =
+      currency === "USD"
+        ? baseAmount
+        : usdToInr > 0
+          ? baseAmount / usdToInr
+          : 0;
     const amountInr = currency === "INR" ? baseAmount : baseAmount * usdToInr;
 
     return {
@@ -225,7 +237,10 @@ function mapRechargeRows(records: RechargeRecord[], usdToInr: number): RechargeT
   });
 }
 
-function mapModelPricingRows(configs: ModelConfig[], usdToInr: number): ModelPricingRow[] {
+function mapModelPricingRows(
+  configs: ModelConfig[],
+  usdToInr: number
+): ModelPricingRow[] {
   return configs.map((config) => {
     const userInputUsd = 0;
     const userOutputUsd = 0;
@@ -235,7 +250,8 @@ function mapModelPricingRows(configs: ModelConfig[], usdToInr: number): ModelPri
     const totalProviderUsd = providerInputUsd + providerOutputUsd;
     const profitUsd = totalUserUsd - totalProviderUsd;
     const profitInr = profitUsd * usdToInr;
-    const marginPercent = totalUserUsd > 0 ? (profitUsd / totalUserUsd) * 100 : 0;
+    const marginPercent =
+      totalUserUsd > 0 ? (profitUsd / totalUserUsd) * 100 : 0;
 
     return {
       id: config.id,
@@ -264,14 +280,23 @@ export default async function AdminAccountPage({
 
   const from = parseDate(resolvedSearchParams?.from);
   const to = parseDate(resolvedSearchParams?.to);
-  const page = Math.max(1, Number.parseInt(resolvedSearchParams?.page ?? "1", 10));
+  const page = Math.max(
+    1,
+    Number.parseInt(resolvedSearchParams?.page ?? "1", 10)
+  );
   const pageSize = Math.min(
-    Math.max(1, Number.parseInt(resolvedSearchParams?.pageSize ?? String(DEFAULT_PAGE_SIZE), 10)),
+    Math.max(
+      1,
+      Number.parseInt(
+        resolvedSearchParams?.pageSize ?? String(DEFAULT_PAGE_SIZE),
+        10
+      )
+    ),
     MAX_PAGE_SIZE
   );
 
   const [
-    { rate, fetchedAt },
+    { rate, fetchedAt: _fetchedAt },
     chatSummaries,
     rechargeSummaries,
     rechargeRecords,
@@ -294,10 +319,8 @@ export default async function AdminAccountPage({
 
   const usdToInr = rate;
   const chatRows = mapChatRows(chatSummaries.records, usdToInr);
-  const { totalUsd: totalRechargeUsd, totalInr: totalRechargeInr } = aggregateRechargeTotals(
-    rechargeSummaries,
-    usdToInr
-  );
+  const { totalUsd: totalRechargeUsd, totalInr: totalRechargeInr } =
+    aggregateRechargeTotals(rechargeSummaries, usdToInr);
   const rechargeRows = mapRechargeRows(rechargeRecords.records, usdToInr);
   const modelRows = mapModelPricingRows(modelConfigs, usdToInr);
 
@@ -310,12 +333,17 @@ export default async function AdminAccountPage({
   });
 
   const totalPages = Math.max(1, Math.ceil(chatSummaries.total / pageSize));
-  const rechargeTotalPages = Math.max(1, Math.ceil(rechargeRecords.total / pageSize));
+  const rechargeTotalPages = Math.max(
+    1,
+    Math.ceil(rechargeRecords.total / pageSize)
+  );
 
   const chatExportRows = chatRows.map((row) => ({
     chatId: row.chatId,
     userEmail: row.userEmail,
-    createdAt: row.createdAt ? format(row.createdAt, "yyyy-MM-dd HH:mm:ss") : "",
+    createdAt: row.createdAt
+      ? format(row.createdAt, "yyyy-MM-dd HH:mm:ss")
+      : "",
     inputTokens: row.inputTokens,
     outputTokens: row.outputTokens,
     credits: row.credits,
@@ -335,13 +363,15 @@ export default async function AdminAccountPage({
     amountUsd: row.amountUsd,
     amountInr: row.amountInr,
     currency: row.currency,
-    expiresAt: row.expiresAt ? format(row.expiresAt, "yyyy-MM-dd HH:mm:ss") : "",
+    expiresAt: row.expiresAt
+      ? format(row.expiresAt, "yyyy-MM-dd HH:mm:ss")
+      : "",
   }));
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Per-chat profit</h1>
+        <h1 className="font-semibold text-2xl">Per-chat profit</h1>
         <p className="text-muted-foreground text-sm">
           Track revenue, provider cost, and margin for each chat session.
         </p>
@@ -350,13 +380,13 @@ export default async function AdminAccountPage({
       <section className="grid gap-4 md:grid-cols-3">
         {summaryCards.map((card) => (
           <article
-            key={card.title}
             className="flex flex-col gap-2 rounded-lg border bg-card p-4 shadow-sm"
+            key={card.title}
           >
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="font-medium text-muted-foreground text-sm">
               {card.title}
             </span>
-            <span className="text-lg font-semibold">{card.value}</span>
+            <span className="font-semibold text-lg">{card.value}</span>
             {card.description ? (
               <p className="text-muted-foreground text-xs leading-relaxed">
                 {card.description}
@@ -369,7 +399,7 @@ export default async function AdminAccountPage({
       <section className="rounded-lg border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Chat profit log</h2>
+            <h2 className="font-semibold text-lg">Chat profit log</h2>
             <p className="text-muted-foreground text-sm">
               Revenue and provider cost for each chat transcript.
             </p>
@@ -378,7 +408,10 @@ export default async function AdminAccountPage({
 
         <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
           <div className="flex flex-col">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="from">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor="from"
+            >
               From
             </label>
             <input
@@ -390,7 +423,10 @@ export default async function AdminAccountPage({
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="to">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor="to"
+            >
               To
             </label>
             <input
@@ -402,15 +438,18 @@ export default async function AdminAccountPage({
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="pageSize">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor="pageSize"
+            >
               Rows per page
             </label>
             <input
               className="w-28 rounded-md border bg-background px-3 py-2 text-sm"
               defaultValue={pageSize}
               id="pageSize"
-              min={1}
               max={MAX_PAGE_SIZE}
+              min={1}
               name="pageSize"
               type="number"
             />
@@ -446,30 +485,46 @@ export default async function AdminAccountPage({
             <tbody>
               {chatRows.length === 0 ? (
                 <tr>
-                  <td className="py-6 text-center text-muted-foreground" colSpan={9}>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={9}
+                  >
                     No chat usage found for the selected range.
                   </td>
                 </tr>
               ) : (
                 chatRows.map((row) => {
-                  const dateLabel = row.createdAt ? format(row.createdAt, "PPpp") : "—";
+                  const dateLabel = row.createdAt
+                    ? format(row.createdAt, "PPpp")
+                    : "—";
                   return (
-                    <tr key={`${row.chatId}-${dateLabel}`} className="border-t text-sm">
+                    <tr
+                      className="border-t text-sm"
+                      key={`${row.chatId}-${dateLabel}`}
+                    >
                       <td className="py-2">{dateLabel}</td>
-                      <td className="py-2 font-mono text-xs">{row.chatId.slice(0, 12)}</td>
+                      <td className="py-2 font-mono text-xs">
+                        {row.chatId.slice(0, 12)}
+                      </td>
                       <td className="py-2">{row.userEmail}</td>
-                      <td className="py-2 text-right">{formatNumber(row.inputTokens)}</td>
-                      <td className="py-2 text-right">{formatNumber(row.outputTokens)}</td>
-                      <td className="py-2 text-right">{formatNumber(row.credits, 2)}</td>
+                      <td className="py-2 text-right">
+                        {formatNumber(row.inputTokens)}
+                      </td>
+                      <td className="py-2 text-right">
+                        {formatNumber(row.outputTokens)}
+                      </td>
+                      <td className="py-2 text-right">
+                        {formatNumber(row.credits, 2)}
+                      </td>
                       <td className="py-2 text-right">
                         {row.isFreeUsage ? (
-                          <span className="text-xs font-medium text-muted-foreground">
+                          <span className="font-medium text-muted-foreground text-xs">
                             Free credits
                           </span>
                         ) : (
                           <div className="flex flex-col items-end">
                             <span>{formatCurrency(row.chargeInr, "INR")}</span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-muted-foreground text-xs">
                               {formatCurrency(row.chargeUsd, "USD")}
                             </span>
                           </div>
@@ -477,8 +532,10 @@ export default async function AdminAccountPage({
                       </td>
                       <td className="py-2 text-right">
                         <div className="flex flex-col items-end">
-                          <span>{formatCurrency(row.providerCostInr, "INR")}</span>
-                          <span className="text-xs text-muted-foreground">
+                          <span>
+                            {formatCurrency(row.providerCostInr, "INR")}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
                             {formatCurrency(row.providerCostUsd, "USD")}
                           </span>
                         </div>
@@ -486,7 +543,9 @@ export default async function AdminAccountPage({
                       <td
                         className={cn(
                           "py-2 text-right font-medium",
-                          row.profitInr < 0 ? "text-destructive" : "text-emerald-600"
+                          row.profitInr < 0
+                            ? "text-destructive"
+                            : "text-emerald-600"
                         )}
                       >
                         {formatCurrency(row.profitInr, "INR")}
@@ -504,20 +563,20 @@ export default async function AdminAccountPage({
             Page {page} of {totalPages}
           </span>
           <div className="flex items-center gap-2">
-          <PaginationLink
-            direction="prev"
-            disabled={page <= 1}
-            label="Previous"
-            page={page - 1}
-            searchParams={resolvedSearchParams}
-          />
-          <PaginationLink
-            direction="next"
-            disabled={page >= totalPages}
-            label="Next"
-            page={page + 1}
-            searchParams={resolvedSearchParams}
-          />
+            <PaginationLink
+              direction="prev"
+              disabled={page <= 1}
+              label="Previous"
+              page={page - 1}
+              searchParams={resolvedSearchParams}
+            />
+            <PaginationLink
+              direction="next"
+              disabled={page >= totalPages}
+              label="Next"
+              page={page + 1}
+              searchParams={resolvedSearchParams}
+            />
           </div>
         </div>
       </section>
@@ -525,9 +584,10 @@ export default async function AdminAccountPage({
       <section className="rounded-lg border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Recharge log</h2>
+            <h2 className="font-semibold text-lg">Recharge log</h2>
             <p className="text-muted-foreground text-sm">
-              Breakdown of every successful top-up and the current subscription expiry.
+              Breakdown of every successful top-up and the current subscription
+              expiry.
             </p>
           </div>
           <RechargeExportButton rows={rechargeExportRows} />
@@ -549,21 +609,29 @@ export default async function AdminAccountPage({
             <tbody>
               {rechargeRows.length === 0 ? (
                 <tr>
-                  <td className="py-6 text-center text-muted-foreground" colSpan={7}>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={7}
+                  >
                     No paid recharges found for the selected range.
                   </td>
                 </tr>
               ) : (
                 rechargeRows.map((row) => (
-                  <tr key={`${row.orderId}-${row.createdAt.toISOString()}`} className="border-t text-sm">
+                  <tr
+                    className="border-t text-sm"
+                    key={`${row.orderId}-${row.createdAt.toISOString()}`}
+                  >
                     <td className="py-2">{format(row.createdAt, "PPpp")}</td>
-                    <td className="py-2 font-mono text-xs">{row.orderId.slice(0, 16)}</td>
+                    <td className="py-2 font-mono text-xs">
+                      {row.orderId.slice(0, 16)}
+                    </td>
                     <td className="py-2">{row.userEmail}</td>
                     <td className="py-2">{row.planName}</td>
                     <td className="py-2 text-right">
                       <div className="flex flex-col items-end">
                         <span>{formatCurrency(row.amountInr, "INR")}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           {formatCurrency(row.amountUsd, "USD")}
                         </span>
                       </div>
@@ -584,20 +652,20 @@ export default async function AdminAccountPage({
             Page {page} of {rechargeTotalPages}
           </span>
           <div className="flex items-center gap-2">
-          <PaginationLink
-            direction="prev"
-            disabled={page <= 1}
-            label="Previous"
-            page={page - 1}
-            searchParams={resolvedSearchParams}
-          />
-          <PaginationLink
-            direction="next"
-            disabled={page >= rechargeTotalPages}
-            label="Next"
-            page={page + 1}
-            searchParams={resolvedSearchParams}
-          />
+            <PaginationLink
+              direction="prev"
+              disabled={page <= 1}
+              label="Previous"
+              page={page - 1}
+              searchParams={resolvedSearchParams}
+            />
+            <PaginationLink
+              direction="next"
+              disabled={page >= rechargeTotalPages}
+              label="Next"
+              page={page + 1}
+              searchParams={resolvedSearchParams}
+            />
           </div>
         </div>
       </section>
@@ -605,7 +673,7 @@ export default async function AdminAccountPage({
       <section className="rounded-lg border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Model pricing summary</h2>
+            <h2 className="font-semibold text-lg">Model pricing summary</h2>
             <p className="text-muted-foreground text-sm">
               User pricing versus provider cost per one million tokens.
             </p>
@@ -627,7 +695,10 @@ export default async function AdminAccountPage({
             <tbody>
               {modelRows.length === 0 ? (
                 <tr>
-                  <td className="py-6 text-center text-muted-foreground" colSpan={6}>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={6}
+                  >
                     No model pricing information available.
                   </td>
                 </tr>
@@ -641,38 +712,54 @@ export default async function AdminAccountPage({
                   const totalProviderInr = row.totalProviderUsd * usdToInr;
 
                   return (
-                    <tr key={row.id} className="border-t text-sm">
+                    <tr className="border-t text-sm" key={row.id}>
                       <td className="py-2">
                         <div className="flex flex-col">
                           <span>{row.name}</span>
-                          {!row.enabled ? (
-                            <span className="text-xs text-muted-foreground">Disabled</span>
-                          ) : null}
+                          {row.enabled ? null : (
+                            <span className="text-muted-foreground text-xs">
+                              Disabled
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-2 capitalize">{row.provider}</td>
-                      <td className="py-2 text-xs text-muted-foreground">
-                        <div>Input: {formatCurrency(row.userInputUsd, "USD")} ({formatCurrency(userInputInr, "INR")})</div>
-                        <div>Output: {formatCurrency(row.userOutputUsd, "USD")} ({formatCurrency(userOutputInr, "INR")})</div>
-                        <div>Total: {formatCurrency(row.totalUserUsd, "USD")} ({formatCurrency(totalUserInr, "INR")})</div>
-                      </td>
-                      <td className="py-2 text-xs text-muted-foreground">
+                      <td className="py-2 text-muted-foreground text-xs">
                         <div>
-                          Input: {formatCurrency(row.providerInputUsd, "USD")} ({formatCurrency(providerInputInr, "INR")})
+                          Input: {formatCurrency(row.userInputUsd, "USD")} (
+                          {formatCurrency(userInputInr, "INR")})
                         </div>
                         <div>
-                          Output: {formatCurrency(row.providerOutputUsd, "USD")} ({formatCurrency(providerOutputInr, "INR")})
+                          Output: {formatCurrency(row.userOutputUsd, "USD")} (
+                          {formatCurrency(userOutputInr, "INR")})
                         </div>
                         <div>
-                          Total: {formatCurrency(row.totalProviderUsd, "USD")} ({formatCurrency(totalProviderInr, "INR")})
+                          Total: {formatCurrency(row.totalUserUsd, "USD")} (
+                          {formatCurrency(totalUserInr, "INR")})
                         </div>
                       </td>
-                      <td className="py-2 text-xs text-muted-foreground">
+                      <td className="py-2 text-muted-foreground text-xs">
+                        <div>
+                          Input: {formatCurrency(row.providerInputUsd, "USD")} (
+                          {formatCurrency(providerInputInr, "INR")})
+                        </div>
+                        <div>
+                          Output: {formatCurrency(row.providerOutputUsd, "USD")}{" "}
+                          ({formatCurrency(providerOutputInr, "INR")})
+                        </div>
+                        <div>
+                          Total: {formatCurrency(row.totalProviderUsd, "USD")} (
+                          {formatCurrency(totalProviderInr, "INR")})
+                        </div>
+                      </td>
+                      <td className="py-2 text-muted-foreground text-xs">
                         <div>{formatCurrency(row.profitUsd, "USD")}</div>
                         <div>{formatCurrency(row.profitInr, "INR")}</div>
                       </td>
                       <td className="py-2 text-right font-medium">
-                        {Number.isFinite(row.marginPercent) ? `${row.marginPercent.toFixed(2)}%` : "—"}
+                        {Number.isFinite(row.marginPercent)
+                          ? `${row.marginPercent.toFixed(2)}%`
+                          : "—"}
                       </td>
                     </tr>
                   );
@@ -690,7 +777,7 @@ function PaginationLink({
   disabled,
   label,
   page,
-  direction,
+  direction: _direction,
   searchParams,
 }: {
   disabled: boolean;

@@ -19,8 +19,9 @@ import {
 import { toast } from "sonner";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import { saveChatModelAsCookie } from "@/app/(chat)/actions";
-import { SelectItem } from "@/components/ui/select";
+import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
+import { SelectItem } from "@/components/ui/select";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -32,16 +33,10 @@ import {
   PromptInputToolbar,
   PromptInputTools,
 } from "./elements/prompt-input";
-import {
-  ArrowUpIcon,
-  ChevronDownIcon,
-  PaperclipIcon,
-  StopIcon,
-} from "./icons";
+import { ArrowUpIcon, ChevronDownIcon, PaperclipIcon, StopIcon } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import { Button } from "./ui/button";
 import type { VisibilityType } from "./visibility-selector";
-import { useTranslation } from "@/components/language-provider";
 
 function PureMultimodalInput({
   chatId,
@@ -51,11 +46,11 @@ function PureMultimodalInput({
   stop,
   attachments,
   setAttachments,
-  messages,
+  messages: _messages,
   setMessages,
   sendMessage,
   className,
-  selectedVisibilityType,
+  selectedVisibilityType: _selectedVisibilityType,
   selectedModelId,
   onModelChange,
 }: {
@@ -196,45 +191,48 @@ function PureMultimodalInput({
     resetHeight,
   ]);
 
-  const uploadFile = useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    try {
-      const response = await fetch("/api/files/upload", {
-        method: "POST",
-        body: formData,
-      });
+      try {
+        const response = await fetch("/api/files/upload", {
+          method: "POST",
+          body: formData,
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
+        if (response.ok) {
+          const data = await response.json();
+          const { url, pathname, contentType } = data;
 
-        return {
-          url,
-          name: pathname,
-          contentType,
-        };
-      }
-      const { error } = await response.json();
-      const fallbackError = translate(
-        "chat.upload.error_generic",
-        "Failed to upload file, please try again!"
-      );
-      const errorMessage =
-        typeof error === "string" && error.trim().length > 0
-          ? error
-          : fallbackError;
-      toast.error(errorMessage);
-    } catch (_error) {
-      toast.error(
-        translate(
+          return {
+            url,
+            name: pathname,
+            contentType,
+          };
+        }
+        const { error } = await response.json();
+        const fallbackError = translate(
           "chat.upload.error_generic",
           "Failed to upload file, please try again!"
-        )
-      );
-    }
-  }, [translate]);
+        );
+        const errorMessage =
+          typeof error === "string" && error.trim().length > 0
+            ? error
+            : fallbackError;
+        toast.error(errorMessage);
+      } catch (_error) {
+        toast.error(
+          translate(
+            "chat.upload.error_generic",
+            "Failed to upload file, please try again!"
+          )
+        );
+      }
+    },
+    [translate]
+  );
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -458,9 +456,7 @@ function PureModelSelectorCompact({
         className="flex h-8 items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
         type="button"
       >
-        <span className="font-medium text-xs">
-          {selectedModel?.name}
-        </span>
+        <span className="font-medium text-xs">{selectedModel?.name}</span>
         <ChevronDownIcon size={16} />
       </Trigger>
       <PromptInputModelSelectContent className="min-w-[260px] p-0">
@@ -504,8 +500,3 @@ function PureStopButton({
 }
 
 const StopButton = memo(PureStopButton);
-
-
-
-
-

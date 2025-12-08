@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
+import { useTranslation } from "@/components/language-provider";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
-import { useTranslation } from "@/components/language-provider";
 
 import { type RegisterActionState, register } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -84,7 +84,7 @@ function RegisterContent() {
       setIsSuccessful(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status]);
+  }, [state.status, translate]);
 
   const handleSubmit = (formData: FormData) => {
     setEmail(formData.get("email") as string);
@@ -94,41 +94,40 @@ function RegisterContent() {
   };
 
   return (
-    <>
-      <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
-        <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
-          <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
-            <p className="text-muted-foreground text-sm">
-              {translate(
-                "auth.subtitle",
-                "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
-              )}
-            </p>
-            <Image
-              alt="KhasiGPT logo"
-              className="mt-4 h-7 w-auto dark:invert dark:brightness-150"
-              height={32}
-              priority
-              src="/images/khasigptlogo.png"
-              width={160}
-            />
-            <h3 className="font-semibold text-xl dark:text-zinc-50">
-              {translate("register.title", "Sign Up To KhasiGPT")}
-            </h3>
-          </div>
-          <AuthForm
-            action={handleSubmit}
-            credentialsVisible={showEmailFields}
-            defaultEmail={email}
-            lead={
-              <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
-            }
-            emailButtonLabel={translate(
-              "register.continue_with_email",
-              "Sign up with Email"
+    <div className="flex h-dvh w-screen items-start justify-center bg-background pt-12 md:items-center md:pt-0">
+      <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
+        <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
+          <p className="text-muted-foreground text-sm">
+            {translate(
+              "auth.subtitle",
+              "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
             )}
-            onShowCredentials={() => setShowEmailFields(true)}
-          >
+          </p>
+          <Image
+            alt="KhasiGPT logo"
+            className="mt-4 h-7 w-auto dark:brightness-150 dark:invert"
+            height={32}
+            priority
+            src="/images/khasigptlogo.png"
+            width={160}
+          />
+          <h3 className="font-semibold text-xl dark:text-zinc-50">
+            {translate("register.title", "Sign Up To KhasiGPT")}
+          </h3>
+        </div>
+        <AuthForm
+          action={handleSubmit}
+          credentialsVisible={showEmailFields}
+          defaultEmail={email}
+          emailButtonLabel={translate(
+            "register.continue_with_email",
+            "Sign up with Email"
+          )}
+          lead={
+            <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
+          }
+          onShowCredentials={() => setShowEmailFields(true)}
+        >
           <div className="flex items-start gap-3 rounded-md border border-input bg-muted/40 px-3 py-3 text-muted-foreground text-sm dark:bg-muted/60">
             <input
               className="mt-1 h-4 w-4 shrink-0 rounded border border-input"
@@ -178,12 +177,10 @@ function RegisterContent() {
             href="/login"
           >
             {translate("register.login_prompt_link", "Sign in")}
-          </Link>
-          {" "}
+          </Link>{" "}
           {translate("register.login_prompt_suffix", "instead.")}
         </p>
       </div>
     </div>
-    </>
   );
 }

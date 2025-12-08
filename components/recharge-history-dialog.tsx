@@ -7,13 +7,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
@@ -59,8 +59,8 @@ export function RechargeHistoryDialog({
           aria-label={labels.trigger}
           className="h-8 w-8 shrink-0"
           size="icon"
-          variant="ghost"
           title={labels.trigger}
+          variant="ghost"
         >
           <InfoIcon className="h-4 w-4" />
         </Button>
@@ -75,7 +75,7 @@ export function RechargeHistoryDialog({
         {hasRows ? (
           <div className="max-h-96 overflow-auto rounded-md border">
             <table className="w-full divide-y divide-border text-sm">
-              <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2 text-left">{labels.plan}</th>
                   <th className="px-4 py-2 text-left">{labels.amount}</th>
@@ -89,7 +89,7 @@ export function RechargeHistoryDialog({
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-0.5">
                         <span className="font-medium">{row.planLabel}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           {row.orderId}
                         </span>
                       </div>
@@ -99,7 +99,7 @@ export function RechargeHistoryDialog({
                       <div className="flex items-center justify-center gap-2">
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs",
                             row.statusColor
                           )}
                         >
@@ -110,13 +110,13 @@ export function RechargeHistoryDialog({
                           <Button
                             aria-label={labels.retry}
                             className="h-7 w-7"
-                            size="icon"
-                            title={labels.retry}
-                            variant="ghost"
                             onClick={() => {
                               setOpen(false);
                               router.push("/recharge");
                             }}
+                            size="icon"
+                            title={labels.retry}
+                            variant="ghost"
                           >
                             <RefreshCcw className="h-3.5 w-3.5" />
                           </Button>
@@ -130,7 +130,7 @@ export function RechargeHistoryDialog({
             </table>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">{labels.empty}</p>
+          <p className="text-muted-foreground text-sm">{labels.empty}</p>
         )}
         <DialogFooter>
           <DialogClose>{labels.close}</DialogClose>

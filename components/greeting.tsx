@@ -25,14 +25,17 @@ export const Greeting = () => {
     "transition-all duration-500 ease-out will-change-transform";
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 px-4 text-center sm:gap-3" key="overview">
+    <div
+      className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 px-4 text-center sm:gap-3"
+      key="overview"
+    >
       <div
-        className={`${baseClasses} font-semibold text-xl md:text-2xl ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+        className={`${baseClasses} font-semibold text-xl md:text-2xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
       >
         {translate("greeting.title", "Hello there!")}
       </div>
       <div
-        className={`${baseClasses} text-xl text-muted-foreground md:text-2xl delay-75 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+        className={`${baseClasses} text-muted-foreground text-xl delay-75 md:text-2xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
       >
         {translate("greeting.subtitle", "How can I help you today?")}
       </div>

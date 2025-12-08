@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
-import { Input } from "@/components/ui/input";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const DEBOUNCE_MS = 350;
 
-export function TranslationSearchForm({ defaultValue }: { defaultValue: string }) {
+export function TranslationSearchForm({
+  defaultValue,
+}: {
+  defaultValue: string;
+}) {
   const [value, setValue] = useState(defaultValue);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -79,7 +82,7 @@ export function TranslationSearchForm({ defaultValue }: { defaultValue: string }
   return (
     <div className="rounded-lg border bg-background p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-1 min-w-[240px] items-center gap-2">
+        <div className="flex min-w-[240px] flex-1 items-center gap-2">
           <Input
             aria-label="Search translations"
             className="flex-1"
@@ -102,7 +105,7 @@ export function TranslationSearchForm({ defaultValue }: { defaultValue: string }
         <span
           aria-live="polite"
           className={cn(
-            "text-xs text-muted-foreground transition-opacity",
+            "text-muted-foreground text-xs transition-opacity",
             isPending ? "opacity-100" : "opacity-0"
           )}
         >

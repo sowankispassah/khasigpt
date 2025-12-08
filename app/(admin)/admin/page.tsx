@@ -1,5 +1,5 @@
-﻿import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+﻿import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 
 import {
   getChatCount,
@@ -22,9 +22,8 @@ export default async function AdminOverviewPage() {
   let recentUsers: Awaited<ReturnType<typeof listUsers>> = [];
   let recentChats: Awaited<ReturnType<typeof listChats>> = [];
   let recentAudits: Awaited<ReturnType<typeof listAuditLog>> = [];
-  let recentContactMessages: Awaited<
-    ReturnType<typeof listContactMessages>
-  > = [];
+  let recentContactMessages: Awaited<ReturnType<typeof listContactMessages>> =
+    [];
 
   const queryTimeoutRaw = Number.parseInt(
     process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
@@ -64,7 +63,11 @@ export default async function AdminOverviewPage() {
   chatCount = await safeQuery("chat count", getChatCount(), 0);
   recentUsers = await safeQuery("recent users", listUsers({ limit: 5 }), []);
   recentChats = await safeQuery("recent chats", listChats({ limit: 5 }), []);
-  recentAudits = await safeQuery("recent audit log entries", listAuditLog({ limit: 5 }), []);
+  recentAudits = await safeQuery(
+    "recent audit log entries",
+    listAuditLog({ limit: 5 }),
+    []
+  );
   contactMessageCount = await safeQuery(
     "contact message count",
     getContactMessageCount(),
@@ -82,27 +85,27 @@ export default async function AdminOverviewPage() {
         <MetricCard label="Total users" value={userCount} />
         <MetricCard label="Total chats" value={chatCount} />
         <MetricCard
+          description="Last 5 accounts"
           label="Recent users"
           value={recentUsers.length}
-          description="Last 5 accounts"
         />
         <MetricCard
+          description="Last 5 records"
           label="Audit events"
           value={recentAudits.length}
-          description="Last 5 records"
         />
         <MetricCard
+          description="Total messages received"
           label="Contact requests"
           value={contactMessageCount}
-          description="Total messages received"
         />
       </section>
 
       <section className="grid items-stretch gap-8 xl:grid-cols-2">
         <DataPanel title="Newest users">
           <div className="hidden md:block">
-            <table className="min-w-[640px] w-full table-fixed text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+            <table className="w-full min-w-[640px] table-fixed text-sm">
+              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">Email</th>
                   <th className="px-4 py-3 text-left font-medium">Role</th>
@@ -112,15 +115,20 @@ export default async function AdminOverviewPage() {
               </thead>
               <tbody className="divide-y divide-border/60 text-sm">
                 {recentUsers.map((user) => (
-                  <tr key={user.id} className="bg-card/70 transition hover:bg-muted/20">
+                  <tr
+                    className="bg-card/70 transition hover:bg-muted/20"
+                    key={user.id}
+                  >
                     <td className="px-4 py-3">
-                      <span className="block truncate font-medium">{user.email}</span>
+                      <span className="block truncate font-medium">
+                        {user.email}
+                      </span>
                     </td>
                     <td className="px-4 py-3 capitalize">{user.role}</td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
-                          "rounded-full px-3 py-1 text-xs font-semibold",
+                          "rounded-full px-3 py-1 font-semibold text-xs",
                           user.isActive
                             ? "bg-emerald-100 text-emerald-700"
                             : "bg-amber-100 text-amber-700"
@@ -129,8 +137,10 @@ export default async function AdminOverviewPage() {
                         {user.isActive ? "Active" : "Suspended"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {formatDistanceToNow(new Date(user.createdAt), {
+                        addSuffix: true,
+                      })}
                     </td>
                   </tr>
                 ))}
@@ -140,13 +150,13 @@ export default async function AdminOverviewPage() {
           <div className="flex flex-col gap-3 text-sm md:hidden">
             {recentUsers.map((user) => (
               <div
-                key={user.id}
                 className="rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm"
+                key={user.id}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-col">
                     <span className="font-semibold">{user.email}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-muted-foreground text-xs">
                       Joined{" "}
                       {formatDistanceToNow(new Date(user.createdAt), {
                         addSuffix: true,
@@ -155,7 +165,7 @@ export default async function AdminOverviewPage() {
                   </div>
                   <span
                     className={cn(
-                      "rounded-full px-3 py-1 text-xs font-semibold",
+                      "rounded-full px-3 py-1 font-semibold text-xs",
                       user.isActive
                         ? "bg-emerald-100 text-emerald-700"
                         : "bg-amber-100 text-amber-700"
@@ -166,7 +176,9 @@ export default async function AdminOverviewPage() {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <p className="text-muted-foreground uppercase tracking-wide">Role</p>
+                    <p className="text-muted-foreground uppercase tracking-wide">
+                      Role
+                    </p>
                     <p className="mt-1 font-medium capitalize">{user.role}</p>
                   </div>
                   <div>
@@ -185,8 +197,8 @@ export default async function AdminOverviewPage() {
 
         <DataPanel title="Latest contact requests">
           <div className="hidden md:block">
-            <table className="min-w-[680px] w-full table-fixed text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+            <table className="w-full min-w-[680px] table-fixed text-sm">
+              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">Subject</th>
                   <th className="px-4 py-3 text-left font-medium">From</th>
@@ -207,25 +219,25 @@ export default async function AdminOverviewPage() {
                 ) : (
                   recentContactMessages.map((message) => (
                     <tr
-                      key={message.id}
                       className="bg-card/70 transition hover:bg-muted/20"
+                      key={message.id}
                     >
                       <td className="px-4 py-3">
                         <div className="font-semibold">{message.subject}</div>
-                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        <p className="mt-1 line-clamp-2 text-muted-foreground text-xs">
                           {message.message}
                         </p>
                       </td>
                       <td className="px-4 py-3">
                         <div className="font-medium">{message.name}</div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-muted-foreground text-xs">
                           {message.email}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
                         {message.phone ? message.phone : "N/A"}
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
                         {formatDistanceToNow(new Date(message.createdAt), {
                           addSuffix: true,
                         })}
@@ -244,17 +256,21 @@ export default async function AdminOverviewPage() {
             ) : (
               recentContactMessages.map((message) => (
                 <div
-                  key={message.id}
                   className="rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm"
+                  key={message.id}
                 >
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs uppercase text-muted-foreground">
+                    <span className="text-muted-foreground text-xs uppercase">
                       {formatDistanceToNow(new Date(message.createdAt), {
                         addSuffix: true,
                       })}
                     </span>
-                    <h3 className="text-base font-semibold">{message.subject}</h3>
-                    <p className="text-xs text-muted-foreground">{message.message}</p>
+                    <h3 className="font-semibold text-base">
+                      {message.subject}
+                    </h3>
+                    <p className="text-muted-foreground text-xs">
+                      {message.message}
+                    </p>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
                     <div>
@@ -282,8 +298,8 @@ export default async function AdminOverviewPage() {
 
       <DataPanel title="Latest chats">
         <div className="hidden md:block">
-          <table className="min-w-[720px] w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Chat</th>
                 <th className="px-4 py-3 text-left font-medium">Owner</th>
@@ -293,7 +309,10 @@ export default async function AdminOverviewPage() {
             </thead>
             <tbody className="divide-y divide-border/60 text-sm">
               {recentChats.map((chat) => (
-                <tr key={chat.id} className="bg-card/70 transition hover:bg-muted/20">
+                <tr
+                  className="bg-card/70 transition hover:bg-muted/20"
+                  key={chat.id}
+                >
                   <td className="px-4 py-3">
                     <Link
                       className="line-clamp-1 cursor-pointer font-semibold text-primary hover:underline"
@@ -304,17 +323,22 @@ export default async function AdminOverviewPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="block truncate" title={chat.userEmail ?? chat.userId}>
+                    <span
+                      className="block truncate"
+                      title={chat.userEmail ?? chat.userId}
+                    >
                       {chat.userEmail ?? chat.userId}
                     </span>
                   </td>
                   <td className="px-4 py-3 capitalize">
-                    <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+                    <span className="rounded-full bg-secondary px-3 py-1 font-medium text-secondary-foreground text-xs">
                       {chat.visibility}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {formatDistanceToNow(new Date(chat.createdAt), { addSuffix: true })}
+                  <td className="px-4 py-3 text-muted-foreground text-xs">
+                    {formatDistanceToNow(new Date(chat.createdAt), {
+                      addSuffix: true,
+                    })}
                   </td>
                 </tr>
               ))}
@@ -324,25 +348,27 @@ export default async function AdminOverviewPage() {
         <div className="flex flex-col gap-3 text-sm md:hidden">
           {recentChats.map((chat) => (
             <Link
-              key={chat.id}
               className="cursor-pointer rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm transition hover:bg-muted/20"
               href={`/chat/${chat.id}?admin=1`}
+              key={chat.id}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="line-clamp-1 font-semibold">
                   {chat.title || "Untitled chat"}
                 </p>
-                <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground capitalize">
+                <span className="rounded-full bg-secondary px-3 py-1 font-medium text-secondary-foreground text-xs capitalize">
                   {chat.visibility}
                 </span>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">
+              <div className="mt-2 text-muted-foreground text-xs">
                 <p className="truncate" title={chat.userEmail ?? chat.userId}>
                   {chat.userEmail ?? chat.userId}
                 </p>
                 <p className="mt-1">
                   Created{" "}
-                  {formatDistanceToNow(new Date(chat.createdAt), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(chat.createdAt), {
+                    addSuffix: true,
+                  })}
                 </p>
               </div>
             </Link>
@@ -363,10 +389,10 @@ export default async function AdminOverviewPage() {
             </thead>
             <tbody>
               {recentAudits.map((entry) => (
-                <tr key={entry.id} className="border-t text-sm">
+                <tr className="border-t text-sm" key={entry.id}>
                   <td className="py-2 font-medium">{entry.action}</td>
                   <td className="py-2">{entry.actorId}</td>
-                  <td className="py-2 text-xs text-muted-foreground">
+                  <td className="py-2 text-muted-foreground text-xs">
                     {JSON.stringify(entry.target)}
                   </td>
                   <td className="py-2 text-muted-foreground">
@@ -382,18 +408,18 @@ export default async function AdminOverviewPage() {
         <div className="flex flex-col gap-3 text-sm md:hidden">
           {recentAudits.map((entry) => (
             <div
-              key={entry.id}
               className="rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm"
+              key={entry.id}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-semibold">{entry.action}</p>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   {formatDistanceToNow(new Date(entry.createdAt), {
                     addSuffix: true,
                   })}
                 </span>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">
+              <div className="mt-2 text-muted-foreground text-xs">
                 <p>
                   <span className="font-semibold text-foreground">Actor:</span>{" "}
                   {entry.actorId}
@@ -422,7 +448,7 @@ function MetricCard({
   return (
     <div className="rounded-lg border bg-card p-4">
       <p className="text-muted-foreground text-xs uppercase">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <p className="mt-2 font-semibold text-2xl">{value}</p>
       {description ? (
         <p className="text-muted-foreground text-xs">{description}</p>
       ) : null}
@@ -440,7 +466,7 @@ function DataPanel({
   return (
     <section className="flex h-full flex-col rounded-xl border bg-card/80 p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
           {title}
         </h2>
       </div>
@@ -452,6 +478,3 @@ function DataPanel({
     </section>
   );
 }
-
-
-

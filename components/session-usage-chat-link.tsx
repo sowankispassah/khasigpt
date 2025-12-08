@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  type MouseEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
   useState,
   useTransition,
-  type MouseEvent,
-  type ReactNode,
 } from "react";
 
 type SessionUsageChatLinkProps = {
@@ -27,10 +27,12 @@ export function SessionUsageChatLink({
   const [isPending, startTransition] = useTransition();
   const [showProgress, setShowProgress] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timerId) => clearTimeout(timerId));
+    for (const timerId of timersRef.current) {
+      clearTimeout(timerId);
+    }
     timersRef.current = [];
   }, []);
 
@@ -87,7 +89,7 @@ export function SessionUsageChatLink({
         router.push(href);
       });
     },
-    [href, isPending, router, startProgress, startTransition]
+    [href, isPending, router, startProgress]
   );
 
   return (
@@ -103,12 +105,7 @@ export function SessionUsageChatLink({
           />
         </div>
       ) : null}
-      <Link
-        className={className}
-        href={href}
-        onClick={handleClick}
-        prefetch
-      >
+      <Link className={className} href={href} onClick={handleClick} prefetch>
         {children}
       </Link>
     </>

@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { AdminCouponsManager } from "@/components/admin-coupons-manager";
 import {
-  getCouponRedemptionsForAdmin,
   getCouponPayoutsForAdmin,
+  getCouponRedemptionsForAdmin,
   listCouponsWithStats,
   listCreators,
 } from "@/lib/db/queries";
@@ -39,7 +39,7 @@ export default async function AdminCouponsPage() {
   ]);
   const fallbackNowIso = new Date().toISOString();
   const toIsoString = (
-    value: Date | string | null | undefined,
+    value: Date | string | null | undefined
   ): string | null => {
     if (!value) {
       return null;
@@ -94,23 +94,26 @@ export default async function AdminCouponsPage() {
   const creatorOptions = creators.map((creator) => ({
     id: creator.id,
     name:
-      [creator.firstName, creator.lastName]
-        .filter(Boolean)
-        .join(" ")
-        .trim() || creator.email || "Unnamed creator",
+      [creator.firstName, creator.lastName].filter(Boolean).join(" ").trim() ||
+      creator.email ||
+      "Unnamed creator",
     email: creator.email ?? null,
   }));
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Coupons & referrals</h1>
+        <h1 className="font-semibold text-2xl">Coupons & referrals</h1>
         <p className="text-muted-foreground text-sm">
-          Assign codes to creators, manage validity windows, and monitor performance.
+          Assign codes to creators, manage validity windows, and monitor
+          performance.
         </p>
       </header>
 
-      <AdminCouponsManager coupons={serializedCoupons} creators={creatorOptions} />
+      <AdminCouponsManager
+        coupons={serializedCoupons}
+        creators={creatorOptions}
+      />
     </div>
   );
 }

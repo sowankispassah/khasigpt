@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,12 +29,12 @@ export function AdminNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timerId) => {
+    for (const timerId of timersRef.current) {
       clearTimeout(timerId);
-    });
+    }
     timersRef.current = [];
   }, []);
 
@@ -48,7 +54,7 @@ export function AdminNav({ className }: { className?: string }) {
     clearTimers();
     setIsNavigating(false);
     setProgress(0);
-  }, [pathname, clearTimers]);
+  }, [clearTimers]);
 
   useEffect(() => {
     return () => {
@@ -92,7 +98,12 @@ export function AdminNav({ className }: { className?: string }) {
           />
         </div>
       ) : null}
-      <nav className={cn("flex flex-wrap items-center gap-3 text-sm font-medium", className)}>
+      <nav
+        className={cn(
+          "flex flex-wrap items-center gap-3 font-medium text-sm",
+          className
+        )}
+      >
         {ADMIN_LINKS.map((link) => {
           const isActive = pathname === link.href;
           return (

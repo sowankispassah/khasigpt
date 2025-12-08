@@ -1,21 +1,21 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
+import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
+  getAppSetting,
   getUserBalanceSummary,
   listPricingPlans,
-  getAppSetting,
 } from "@/lib/db/queries";
-import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
   getTranslationBundle,
   getTranslationsForKeys,
 } from "@/lib/i18n/dictionary";
-import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 
 export default async function RechargePage() {
   const session = await auth();
@@ -71,17 +71,19 @@ export default async function RechargePage() {
   });
 
   let recommendedPlanId: string | null =
-    recommendedPlanSetting && sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
+    recommendedPlanSetting &&
+    sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
       ? recommendedPlanSetting
       : null;
 
   if (!recommendedPlanId) {
-    let highestPrice = -Infinity;
-    let highestAllowance = -Infinity;
+    let highestPrice = Number.NEGATIVE_INFINITY;
+    let highestAllowance = Number.NEGATIVE_INFINITY;
     for (const plan of sortedPlans) {
       if (
         plan.priceInPaise > highestPrice ||
-        (plan.priceInPaise === highestPrice && plan.tokenAllowance > highestAllowance)
+        (plan.priceInPaise === highestPrice &&
+          plan.tokenAllowance > highestAllowance)
       ) {
         recommendedPlanId = plan.id;
         highestPrice = plan.priceInPaise;
@@ -97,13 +99,13 @@ export default async function RechargePage() {
     const nameKey = `recharge.plan.${plan.id}.name`;
     const descriptionKey = `recharge.plan.${plan.id}.description`;
 
-    const localizedName =
-      planTranslations[nameKey]?.trim().length
-        ? planTranslations[nameKey]
-        : plan.name;
+    const localizedName = planTranslations[nameKey]?.trim().length
+      ? planTranslations[nameKey]
+      : plan.name;
 
     const rawDescription = plan.description ?? "";
-    const translatedDescription = planTranslations[descriptionKey]?.trim() ?? "";
+    const translatedDescription =
+      planTranslations[descriptionKey]?.trim() ?? "";
     const localizedDescription =
       translatedDescription.length > 0
         ? translatedDescription
@@ -122,13 +124,15 @@ export default async function RechargePage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
       <header className="flex flex-col gap-6">
         <div>
-          <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
+          <BackToHomeButton
+            label={t("navigation.back_to_home", "Back to home")}
+          />
         </div>
         <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
-          <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
             {t("recharge.tagline", "Pricing")}
           </span>
-          <h1 className="text-3xl font-semibold md:text-4xl">
+          <h1 className="font-semibold text-3xl md:text-4xl">
             {t("recharge.title", "Choose your plan")}
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
@@ -141,6 +145,7 @@ export default async function RechargePage() {
       </header>
 
       <RechargePlans
+        activePlanId={activePlanId}
         plans={localizedPlans.map((plan) => ({
           id: plan.id,
           name: plan.name,
@@ -150,7 +155,6 @@ export default async function RechargePage() {
           billingCycleDays: plan.billingCycleDays,
           isActive: plan.isActive,
         }))}
-        activePlanId={activePlanId}
         recommendedPlanId={recommendedPlanId}
         user={{
           name: session.user.name ?? null,
@@ -160,7 +164,7 @@ export default async function RechargePage() {
       />
 
       <section className="rounded-2xl border bg-card/80 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">
+        <h2 className="font-semibold text-lg">
           {t("recharge.current_balance.title", "Current balance")}
         </h2>
         <dl className="mt-4 grid gap-6 sm:grid-cols-2">
@@ -168,9 +172,9 @@ export default async function RechargePage() {
             <dt className="text-muted-foreground text-xs uppercase tracking-wide">
               {t("recharge.current_balance.remaining", "Credits remaining")}
             </dt>
-            <dd className="mt-2 text-2xl font-semibold">
+            <dd className="mt-2 font-semibold text-2xl">
               {formatCreditValue(balance.creditsRemaining)}{" "}
-              <span className="text-muted-foreground text-sm font-normal">
+              <span className="font-normal text-muted-foreground text-sm">
                 / {formatCreditValue(balance.creditsTotal)}
               </span>
             </dd>
@@ -178,9 +182,12 @@ export default async function RechargePage() {
           {balance.expiresAt ? (
             <div>
               <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                {t("recharge.current_balance.valid_until", "Credits valid until")}
+                {t(
+                  "recharge.current_balance.valid_until",
+                  "Credits valid until"
+                )}
               </dt>
-              <dd className="mt-2 text-lg font-semibold">
+              <dd className="mt-2 font-semibold text-lg">
                 {expiryFormatter.format(balance.expiresAt)}
               </dd>
             </div>
@@ -190,5 +197,3 @@ export default async function RechargePage() {
     </div>
   );
 }
-
-

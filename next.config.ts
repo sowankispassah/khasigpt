@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
@@ -36,7 +37,12 @@ const connectSrc = [
   "https://checkout.razorpay.com",
   "https://api.razorpay.com",
   ...(isDevelopment
-    ? ["ws://localhost:*", "ws://127.0.0.1:*", "http://localhost:*", "http://127.0.0.1:*"]
+    ? [
+        "ws://localhost:*",
+        "ws://127.0.0.1:*",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+      ]
     : []),
 ].join(" ");
 
@@ -112,6 +118,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  outputFileTracingRoot: path.join(__dirname),
 };
 
 export default nextConfig;

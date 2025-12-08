@@ -1,7 +1,9 @@
 import "server-only";
 
-import { sanitizeText } from "@/lib/utils";
 import type { RagEntry } from "@/lib/db/schema";
+import { sanitizeText } from "@/lib/utils";
+
+const BASIC_LATIN_REGEX = /^[a-z0-9\s.,!?'"()-:;]+$/i;
 
 export function normalizeTags(tags: string[] | undefined | null): string[] {
   if (!tags?.length) {
@@ -57,7 +59,11 @@ export function normalizeSourceUrl(value?: string | null): string | null {
 }
 
 export function buildSupabaseMetadata(
-  entry: RagEntry & { categoryName?: string | null; chunkIndex?: number; chunkId?: string }
+  entry: RagEntry & {
+    categoryName?: string | null;
+    chunkIndex?: number;
+    chunkId?: string;
+  }
 ) {
   return {
     title: entry.title,
@@ -90,7 +96,7 @@ export function detectQueryLanguage(text: string): string {
   if (pnarMarkers.some((marker) => normalized.includes(marker))) {
     return "pna";
   }
-  if (/^[a-z0-9\s.,!?'"()-:;]+$/i.test(normalized)) {
+  if (BASIC_LATIN_REGEX.test(normalized)) {
     return "en";
   }
   return "mul";

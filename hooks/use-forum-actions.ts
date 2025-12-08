@@ -39,15 +39,12 @@ export function useForumActions() {
     isDeletingThread: false,
   });
 
-  const updateState = useCallback(
-    (patch: Partial<ForumActionState>) => {
-      setState((prev) => ({
-        ...prev,
-        ...patch,
-      }));
-    },
-    []
-  );
+  const updateState = useCallback((patch: Partial<ForumActionState>) => {
+    setState((prev) => ({
+      ...prev,
+      ...patch,
+    }));
+  }, []);
 
   const createThread = useCallback(
     async (payload: CreateThreadPayload) => {
@@ -195,19 +192,22 @@ export function useForumActions() {
     [updateState]
   );
 
-  const deleteThread = useCallback(async (threadSlug: string) => {
-    updateState({ isDeletingThread: true });
-    try {
-      await fetchWithErrorHandlers(
-        `/api/forum/threads/${encodeURIComponent(threadSlug)}`,
-        {
-          method: "DELETE",
-        }
-      );
-    } finally {
-      updateState({ isDeletingThread: false });
-    }
-  }, [updateState]);
+  const deleteThread = useCallback(
+    async (threadSlug: string) => {
+      updateState({ isDeletingThread: true });
+      try {
+        await fetchWithErrorHandlers(
+          `/api/forum/threads/${encodeURIComponent(threadSlug)}`,
+          {
+            method: "DELETE",
+          }
+        );
+      } finally {
+        updateState({ isDeletingThread: false });
+      }
+    },
+    [updateState]
+  );
 
   const helpers = useMemo(
     () => ({

@@ -6,14 +6,24 @@ const STATIC_ASSETS = [
   "/favicon.png",
   "/opengraph-image.png",
 ];
-const SHELL_ROUTES = ["/", "/chat", "/chat/recharge", "/chat/profile", "/chat/subscriptions"];
+const SHELL_ROUTES = [
+  "/",
+  "/chat",
+  "/chat/recharge",
+  "/chat/profile",
+  "/chat/subscriptions",
+];
 const OFFLINE_FALLBACK = "/offline";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_VERSION)
-      .then((cache) => cache.addAll([...new Set([...STATIC_ASSETS, ...SHELL_ROUTES, OFFLINE_FALLBACK])]))
+      .then((cache) =>
+        cache.addAll([
+          ...new Set([...STATIC_ASSETS, ...SHELL_ROUTES, OFFLINE_FALLBACK]),
+        ])
+      )
       .then(() => self.skipWaiting())
   );
 });
@@ -21,18 +31,16 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     Promise.all([
-      caches
-        .keys()
-        .then((keys) =>
-          Promise.all(
-            keys.map((key) => {
-              if (key !== CACHE_VERSION) {
-                return caches.delete(key);
-              }
-              return undefined;
-            })
-          )
-        ),
+      caches.keys().then((keys) =>
+        Promise.all(
+          keys.map((key) => {
+            if (key !== CACHE_VERSION) {
+              return caches.delete(key);
+            }
+            return false;
+          })
+        )
+      ),
       (async () => {
         if (self.registration.navigationPreload) {
           await self.registration.navigationPreload.enable();
@@ -61,8 +69,13 @@ self.addEventListener("fetch", (event) => {
           const networkResponse = await fetch(request);
           cache.put(request, networkResponse.clone());
           return networkResponse;
-        } catch (error) {
-          return cachedResponse || preloadResponse || (await cache.match(OFFLINE_FALLBACK)) || Response.error();
+        } catch (_error) {
+          return (
+            cachedResponse ||
+            preloadResponse ||
+            (await cache.match(OFFLINE_FALLBACK)) ||
+            Response.error()
+          );
         }
       })()
     );
@@ -75,15 +88,19 @@ self.addEventListener("fetch", (event) => {
       const cachedResponse = await cache.match(request);
       if (cachedResponse) {
         fetch(request)
-          .then((networkResponse) => cache.put(request, networkResponse.clone()))
-          .catch(() => {});
+          .then((networkResponse) =>
+            cache.put(request, networkResponse.clone())
+          )
+          .catch((error) => {
+            console.warn("[sw] failed to refresh cache", error);
+          });
         return cachedResponse;
       }
       try {
         const networkResponse = await fetch(request);
         cache.put(request, networkResponse.clone());
         return networkResponse;
-      } catch (error) {
+      } catch (_error) {
         return cachedResponse;
       }
     })()

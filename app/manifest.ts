@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
+const _siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {

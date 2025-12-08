@@ -1,5 +1,5 @@
+import { createHmac } from "node:crypto";
 import Razorpay from "razorpay";
-import { createHmac } from "crypto";
 
 import { ChatSDKError } from "@/lib/errors";
 
@@ -40,11 +40,12 @@ function getRazorpayKeys() {
   const mode = resolveMode();
   const keyId =
     mode === "test"
-      ? process.env.RAZORPAY_TEST_KEY_ID ?? process.env.RAZORPAY_KEY_ID
+      ? (process.env.RAZORPAY_TEST_KEY_ID ?? process.env.RAZORPAY_KEY_ID)
       : process.env.RAZORPAY_KEY_ID;
   const keySecret =
     mode === "test"
-      ? process.env.RAZORPAY_TEST_KEY_SECRET ?? process.env.RAZORPAY_KEY_SECRET
+      ? (process.env.RAZORPAY_TEST_KEY_SECRET ??
+        process.env.RAZORPAY_KEY_SECRET)
       : process.env.RAZORPAY_KEY_SECRET;
 
   cachedKeys = {

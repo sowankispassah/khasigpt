@@ -14,15 +14,35 @@ const buckets = new Map<string, Bucket>();
 type RateLimitOptions = { windowMs?: number; limit?: number };
 type RateLimitResult = { allowed: boolean; remaining: number; resetAt: number };
 
-const redisUrl = process.env.REDIS_URL ?? process.env.KV_URL ?? null;
+const rawRedisUrl = process.env.REDIS_URL ?? process.env.KV_URL ?? null;
+const redisUrl = (() => {
+  if (!rawRedisUrl) {
+    return null;
+  }
+  try {
+    // Validate URL format to avoid redis client throwing on bad input.
+    new URL(rawRedisUrl);
+    return rawRedisUrl;
+  } catch {
+    console.warn("[rate-limit] Ignoring invalid Redis URL");
+    return null;
+  }
+})();
+const kvRestUrl =
+  process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
+const kvRestToken =
+  process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null;
 let redisClient: RedisClientType | null = null;
 let redisReady = false;
+const hasRestKv = Boolean(kvRestUrl && kvRestToken);
 
 async function getRedisClient(): Promise<RedisClientType | null> {
   if (typeof EdgeRuntime !== "undefined") {
     return null;
   }
-  if (!redisUrl) return null;
+  if (!redisUrl) {
+    return null;
+  }
   if (redisClient && redisReady) {
     return redisClient;
   }
@@ -82,7 +102,9 @@ async function incrementRedis(
     const count = Number(countRaw);
     const ttl = Number(ttlRaw);
     const resetAt =
-      Number.isFinite(ttl) && ttl > 0 ? Date.now() + ttl : Date.now() + windowMs;
+      Number.isFinite(ttl) && ttl > 0
+        ? Date.now() + ttl
+        : Date.now() + windowMs;
     const remaining = Math.max(limit - count, 0);
 
     return {
@@ -96,13 +118,74 @@ async function incrementRedis(
   }
 }
 
+async function incrementRestKv(
+  key: string,
+  { windowMs, limit }: Required<RateLimitOptions>
+): Promise<RateLimitResult | null> {
+  if (!hasRestKv) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${kvRestUrl}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${kvRestToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([
+        ["INCR", key],
+        ["PTTL", key],
+        ["PEXPIRE", key, windowMs.toString()],
+      ]),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = (await response.json()) as { result?: unknown[] } | null;
+    const results = Array.isArray(json?.result) ? json?.result : null;
+    const unwrapResult = (value: unknown) =>
+      value && typeof value === "object" && "result" in value
+        ? (value as { result: unknown }).result
+        : value;
+
+    const countRaw = Array.isArray(results) ? unwrapResult(results[0]) : null;
+    const ttlRaw = Array.isArray(results) ? unwrapResult(results[1]) : null;
+    const count = typeof countRaw === "number" ? countRaw : Number(countRaw);
+    const ttl = typeof ttlRaw === "number" ? ttlRaw : Number(ttlRaw);
+
+    if (!Number.isFinite(count)) {
+      return null;
+    }
+
+    const resetAt =
+      Number.isFinite(ttl) && ttl > 0
+        ? Date.now() + ttl
+        : Date.now() + windowMs;
+    const remaining = Math.max(limit - count, 0);
+
+    return {
+      allowed: count <= limit,
+      remaining,
+      resetAt,
+    };
+  } catch (error) {
+    console.error("[rate-limit] KV REST pipeline failed", error);
+    return null;
+  }
+}
+
 export async function incrementRateLimit(
   key: string,
-  {
-    windowMs = DEFAULT_WINDOW_MS,
-    limit = DEFAULT_LIMIT,
-  }: RateLimitOptions = {}
+  { windowMs = DEFAULT_WINDOW_MS, limit = DEFAULT_LIMIT }: RateLimitOptions = {}
 ): Promise<RateLimitResult> {
+  const kvResult = await incrementRestKv(key, { windowMs, limit });
+  if (kvResult) {
+    return kvResult;
+  }
+
   const redisResult = await incrementRedis(key, { windowMs, limit });
   if (redisResult) {
     return redisResult;

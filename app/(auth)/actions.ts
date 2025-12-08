@@ -5,10 +5,10 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import {
+  createAuditLogEntry,
   createEmailVerificationTokenRecord,
   createUser,
   deleteEmailVerificationTokensForUser,
-  createAuditLogEntry,
   getUser,
   updateUserPassword,
 } from "@/lib/db/queries";
@@ -102,22 +102,22 @@ export const register = async (
 
     const [existingUser] = await getUser(validatedData.email);
 
-    if (existingUser && existingUser.isActive) {
+    if (existingUser?.isActive) {
       return { status: "user_exists" };
     }
 
     let userRecord = existingUser;
 
-    if (!userRecord) {
-      userRecord = await createUser(
-        validatedData.email,
-        validatedData.password
-      );
-    } else {
+    if (userRecord) {
       await updateUserPassword({
         id: userRecord.id,
         password: validatedData.password,
       });
+    } else {
+      userRecord = await createUser(
+        validatedData.email,
+        validatedData.password
+      );
     }
 
     const clientInfo = await getClientInfoFromHeaders();

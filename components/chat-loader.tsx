@@ -13,7 +13,7 @@ const ChatSkeleton = () => (
       <div className="h-6 w-full rounded-full bg-muted/80" />
       <div className="mt-auto flex flex-col gap-2">
         <div className="h-9 rounded-2xl bg-muted" />
-        <div className="h-16 rounded-xl border border-dashed border-muted-foreground/40" />
+        <div className="h-16 rounded-xl border border-muted-foreground/40 border-dashed" />
       </div>
     </div>
   </div>
@@ -43,7 +43,9 @@ export function preloadChat() {
   if (typeof window === "undefined") {
     return;
   }
-  void loadChatModule();
+  loadChatModule().catch((error) => {
+    console.warn("Chat module preload failed", error);
+  });
 }
 
 const ChatClient = dynamic<ChatLoaderProps>(
@@ -57,7 +59,7 @@ const ChatClient = dynamic<ChatLoaderProps>(
 export function ChatLoader(props: ChatLoaderProps) {
   useEffect(() => {
     if (typeof window === "undefined") {
-      return undefined;
+      return;
     }
 
     let idleId: number | null = null;
@@ -83,7 +85,10 @@ export function ChatLoader(props: ChatLoaderProps) {
     schedulePreload();
 
     return () => {
-      if (idleId !== null && typeof anyWindow.cancelIdleCallback === "function") {
+      if (
+        idleId !== null &&
+        typeof anyWindow.cancelIdleCallback === "function"
+      ) {
         anyWindow.cancelIdleCallback(idleId);
       }
       if (timeoutId !== null) {

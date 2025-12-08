@@ -1,16 +1,15 @@
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
 import { cookies } from "next/headers";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-
-import { LanguageProvider } from "@/components/language-provider";
-import { ThemeProvider } from "@/components/theme-provider";
-import { PageUserMenu } from "@/components/page-user-menu";
+import { Toaster } from "sonner";
 import { auth } from "@/app/(auth)/auth";
-import { isForumEnabled } from "@/lib/forum/config";
-import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
+import { LanguageProvider } from "@/components/language-provider";
+import { PageUserMenu } from "@/components/page-user-menu";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
+import { ThemeProvider } from "@/components/theme-provider";
+import { isForumEnabled } from "@/lib/forum/config";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -205,11 +204,13 @@ export default async function RootLayout({
     >
       <head>
         <script
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Needed to keep theme-color meta in sync */
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
           }}
         />
         <script
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Inject structured data for SEO */
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData),
           }}

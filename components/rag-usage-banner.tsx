@@ -1,7 +1,7 @@
 "use client";
 
-import type { RagUsageEvent } from "@/lib/rag/types";
 import { Badge } from "@/components/ui/badge";
+import type { RagUsageEvent } from "@/lib/rag/types";
 import { SparklesIcon } from "./icons";
 
 export function RagUsageBanner({ usage }: { usage: RagUsageEvent }) {
@@ -11,7 +11,7 @@ export function RagUsageBanner({ usage }: { usage: RagUsageEvent }) {
 
   return (
     <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-primary">
+      <div className="flex flex-wrap items-center gap-2 text-primary text-xs uppercase tracking-wide">
         <SparklesIcon size={16} />
         <span>
           Answer enriched using custom data ({usage.entries.length}{" "}

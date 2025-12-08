@@ -1,12 +1,11 @@
 "use server";
 
 import { generateText, type UIMessage } from "ai";
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { getTitleLanguageModel } from "@/lib/ai/providers";
-import type { ModelConfig } from "@/lib/db/schema";
 import {
   createAuditLogEntry,
   createUserSubscription,
@@ -14,6 +13,7 @@ import {
   getMessageById,
   updateChatVisiblityById,
 } from "@/lib/db/queries";
+import type { ModelConfig } from "@/lib/db/schema";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 export async function saveChatModelAsCookie(model: string) {

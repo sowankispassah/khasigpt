@@ -1,22 +1,18 @@
+import Link from "next/link";
+import { ActionSubmitButton } from "@/components/action-submit-button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   listTranslationEntries,
   type TranslationTableEntry,
 } from "@/lib/db/queries";
-import {
-  getAllLanguages,
-  type LanguageOption,
-} from "@/lib/i18n/languages";
-import Link from "next/link";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ActionSubmitButton } from "@/components/action-submit-button";
-import { TranslationSearchForm } from "./translation-search-form";
-
+import { getAllLanguages, type LanguageOption } from "@/lib/i18n/languages";
 import {
   publishTranslationsAction,
   saveDefaultTextAction,
   saveTranslationValueAction,
 } from "./translation-actions";
+import { TranslationSearchForm } from "./translation-search-form";
 
 const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
   {
@@ -72,7 +68,8 @@ const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
 const FALLBACK_SECTION: SectionDefinition = {
   id: "general",
   label: "Shared & Other",
-  description: "Strings that are reused across multiple pages or not yet categorized.",
+  description:
+    "Strings that are reused across multiple pages or not yet categorized.",
   prefixes: [],
 };
 
@@ -91,7 +88,7 @@ export default async function AdminTranslationsPage({
 
   const queryParam = resolvedSearchParams?.q;
   const rawQuery = Array.isArray(queryParam)
-    ? queryParam[0] ?? ""
+    ? (queryParam[0] ?? "")
     : typeof queryParam === "string"
       ? queryParam
       : "";
@@ -106,14 +103,12 @@ export default async function AdminTranslationsPage({
       ? entries.filter((entry) => matchesQuery(entry, searchQuery))
       : entries;
   const sectionGroups =
-    filteredEntries.length > 0
-      ? organizeEntriesBySection(filteredEntries)
-      : [];
+    filteredEntries.length > 0 ? organizeEntriesBySection(filteredEntries) : [];
 
   return (
     <div className="space-y-6">
       <header className="space-y-1.5">
-        <h1 className="text-2xl font-semibold">Translations</h1>
+        <h1 className="font-semibold text-2xl">Translations</h1>
         <p className="text-muted-foreground text-sm">
           Manage default English copy and provide localized text. Leave a
           translation blank to fall back to the English text. Need to wire a new
@@ -126,18 +121,18 @@ export default async function AdminTranslationsPage({
 
       <TranslationSummary
         languages={activeLanguages}
-        visibleEntries={filteredEntries.length}
-        totalEntries={entries.length}
         searchQuery={searchQuery}
+        totalEntries={entries.length}
+        visibleEntries={filteredEntries.length}
       />
 
       {entries.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-muted/40 p-8 text-center text-muted-foreground">
+        <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
           No translation keys have been registered yet. Introduce translations
           in your components using the translation helper to populate this list.
         </div>
       ) : filteredEntries.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-muted/40 p-8 text-center text-muted-foreground">
+        <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
           No translations matched{" "}
           <span className="font-semibold">“{rawQuery.trim()}”</span>. Try a
           different search term or{" "}
@@ -148,12 +143,10 @@ export default async function AdminTranslationsPage({
         </div>
       ) : (
         <>
-          <TranslationSectionNavigation
-            sections={sectionGroups}
-          />
+          <TranslationSectionNavigation sections={sectionGroups} />
           <TranslationSections
-            sections={sectionGroups}
             nonDefaultLanguages={nonDefaultLanguages}
+            sections={sectionGroups}
           />
         </>
       )}
@@ -186,19 +179,20 @@ function TranslationSummary({
       <div className="flex flex-col">
         <span className="font-semibold text-base">{showingLabel}</span>
         <span className="text-muted-foreground">
-          {languages.length} active {languages.length === 1 ? "language" : "languages"}
+          {languages.length} active{" "}
+          {languages.length === 1 ? "language" : "languages"}
         </span>
       </div>
       <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
         <div className="flex flex-wrap gap-2">
           {languages.map((language) => (
             <span
-              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium tracking-wide"
+              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 font-medium text-xs tracking-wide"
               key={language.id}
             >
               {language.name}
               {language.isDefault ? (
-                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] uppercase text-primary-foreground">
+                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-primary-foreground uppercase">
                   Default
                 </span>
               ) : null}
@@ -209,9 +203,9 @@ function TranslationSummary({
           <ActionSubmitButton
             pendingLabel="Publishing..."
             size="sm"
+            successMessage="Translations published"
             type="submit"
             variant="default"
-            successMessage="Translations published"
           >
             Publish translations
           </ActionSubmitButton>
@@ -232,7 +226,7 @@ function TranslationTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] border-collapse">
         <thead>
-          <tr className="border-b bg-muted/50 text-sm text-muted-foreground">
+          <tr className="border-b bg-muted/50 text-muted-foreground text-sm">
             <th className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wide">
               Key
             </th>
@@ -251,7 +245,7 @@ function TranslationTable({
         </thead>
         <tbody className="divide-y">
           {entries.map((entry) => (
-            <tr key={entry.keyId} className="align-top">
+            <tr className="align-top" key={entry.keyId}>
               <td className="whitespace-nowrap px-4 py-4 text-sm">
                 <div className="flex flex-col gap-1">
                   <span className="font-medium">{entry.key}</span>
@@ -282,9 +276,9 @@ function TranslationTable({
                     <ActionSubmitButton
                       pendingLabel="Saving..."
                       size="sm"
+                      successMessage="Default text saved"
                       type="submit"
                       variant="outline"
-                      successMessage="Default text saved"
                     >
                       Save
                     </ActionSubmitButton>
@@ -300,7 +294,10 @@ function TranslationTable({
               {nonDefaultLanguages.map((language) => {
                 const translation = entry.translations[language.code];
                 return (
-                  <td className="px-4 py-4" key={`${entry.keyId}-${language.id}`}>
+                  <td
+                    className="px-4 py-4"
+                    key={`${entry.keyId}-${language.id}`}
+                  >
                     <form
                       action={saveTranslationValueAction}
                       className="flex flex-col gap-2 text-sm"
@@ -321,13 +318,13 @@ function TranslationTable({
                         <ActionSubmitButton
                           pendingLabel="Saving..."
                           size="sm"
-                          type="submit"
-                          variant="outline"
                           successMessage={
                             translation?.value
                               ? `${language.name} translation saved`
                               : `${language.name} translation cleared (falls back to English)`
                           }
+                          type="submit"
+                          variant="outline"
                         >
                           {translation?.value ? "Update" : "Save"}
                         </ActionSubmitButton>
@@ -379,7 +376,9 @@ function organizeEntriesBySection(
     sectionMap.get(matchedSection.id)?.entries.push(entry);
   }
 
-  return definitions.map((definition) => sectionMap.get(definition.id)!);
+  return definitions
+    .map((definition) => sectionMap.get(definition.id))
+    .filter(Boolean) as TranslationSectionGroup[];
 }
 
 function TranslationSectionNavigation({
@@ -389,18 +388,18 @@ function TranslationSectionNavigation({
 }) {
   return (
     <nav className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase tracking-wide">
         Jump to section
       </p>
       <div className="flex flex-wrap gap-2">
         {sections.map((section) => (
           <a
-            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3 py-1 font-medium text-foreground text-xs transition hover:border-primary/40 hover:text-primary"
             href={`#translation-section-${section.id}`}
             key={section.id}
           >
             {section.label}
-            <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
+            <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] text-muted-foreground uppercase">
               {section.entries.length}
             </span>
           </a>
@@ -430,21 +429,21 @@ function TranslationSections({
             key={section.id}
             {...(isForumSection ? { open: true } : {})}
           >
-            <summary className="flex cursor-pointer flex-col gap-1 bg-muted/40 px-4 py-3 text-sm font-semibold text-foreground outline-none transition hover:bg-muted">
+            <summary className="flex cursor-pointer flex-col gap-1 bg-muted/40 px-4 py-3 font-semibold text-foreground text-sm outline-none transition hover:bg-muted">
               <div className="flex items-center justify-between gap-2">
                 <span>{section.label}</span>
-                <span className="text-muted-foreground text-xs font-normal">
+                <span className="font-normal text-muted-foreground text-xs">
                   {section.entries.length}{" "}
                   {section.entries.length === 1 ? "string" : "strings"}
                 </span>
               </div>
               {section.description ? (
-                <span className="text-muted-foreground text-xs font-normal">
+                <span className="font-normal text-muted-foreground text-xs">
                   {section.description}
                 </span>
               ) : null}
             </summary>
-            <div className="border-t border-border">
+            <div className="border-border border-t">
               {hasEntries ? (
                 <div className="p-4">
                   <TranslationTable
@@ -453,10 +452,10 @@ function TranslationSections({
                   />
                 </div>
               ) : (
-                <p className="px-4 py-6 text-sm text-muted-foreground">
+                <p className="px-4 py-6 text-muted-foreground text-sm">
                   No translations have been registered for this section yet.
                   Wrap copy in the translation helper using the suggested prefix{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 text-xs text-foreground">
+                  <code className="rounded bg-muted px-1 py-0.5 text-foreground text-xs">
                     {section.prefixes[0] ?? "general."}
                   </code>{" "}
                   to populate this table.
@@ -483,7 +482,5 @@ function matchesQuery(entry: TranslationTableEntry, query: string): boolean {
     ),
   ];
 
-  return haystacks.some((text) =>
-    (text ?? "").toLowerCase().includes(query)
-  );
+  return haystacks.some((text) => (text ?? "").toLowerCase().includes(query));
 }

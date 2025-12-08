@@ -5,12 +5,11 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   extractReasoningMiddleware,
-  wrapLanguageModel,
   type LanguageModel,
+  wrapLanguageModel,
 } from "ai";
-
-import { ChatSDKError } from "@/lib/errors";
 import type { ModelConfig } from "@/lib/db/schema";
+import { ChatSDKError } from "@/lib/errors";
 
 const openaiClient =
   process.env.OPENAI_API_KEY !== undefined
@@ -55,7 +54,6 @@ export function resolveLanguageModel(config: ModelConfig): LanguageModel {
         const client = ensureClient(googleClient, "Google Gemini");
         return client.languageModel(config.providerModelId);
       }
-      case "custom":
       default:
         throw new ChatSDKError(
           "bad_request:api",

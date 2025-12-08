@@ -1,7 +1,16 @@
 "use client";
 
-import { Suspense, createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
+import {
+  createContext,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const CALLBACK_STORAGE_KEY = "auth.callbackUrl";
 

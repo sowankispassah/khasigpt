@@ -3,12 +3,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
 import {
-  createForumThread,
-  getForumOverview,
-} from "@/lib/forum/service";
+  forumDisabledResponse,
+  forumErrorResponse,
+} from "@/lib/forum/api-helpers";
 import { isForumEnabled } from "@/lib/forum/config";
+import { createForumThread, getForumOverview } from "@/lib/forum/service";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +17,7 @@ const createThreadSchema = z.object({
   content: z.string().min(24),
   summary: z.string().max(800).optional(),
   categorySlug: z.string().min(1),
-  tagSlugs: z
-    .array(z.string().min(1).max(64))
-    .max(5)
-    .optional(),
+  tagSlugs: z.array(z.string().min(1).max(64)).max(5).optional(),
 });
 
 export async function GET(request: NextRequest) {

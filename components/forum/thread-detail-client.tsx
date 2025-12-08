@@ -1,27 +1,23 @@
 "use client";
 
+import {
+  ArrowLeft,
+  Bell,
+  BellOff,
+  Clock,
+  EllipsisVertical,
+  Eye,
+  MessageSquare,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, MessageSquare, Eye, Clock, EllipsisVertical, ArrowLeft } from "lucide-react";
-
-import type {
-  ForumPostListItemPayload,
-  ForumThreadDetailPayload,
-  ForumThreadListItemPayload,
-  ForumUserSummary,
-} from "@/lib/forum/types";
-import type { ForumPostReactionType } from "@/lib/db/schema";
-import { useForumActions } from "@/hooks/use-forum-actions";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LoaderIcon } from "@/components/icons";
-import { cn, sanitizeText } from "@/lib/utils";
-import { formatForumUserName } from "@/lib/forum/utils";
-import { useTranslation } from "@/components/language-provider";
 import { OfficialBadge } from "@/components/forum/official-badge";
+import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +25,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
+import { useForumActions } from "@/hooks/use-forum-actions";
+import type { ForumPostReactionType } from "@/lib/db/schema";
+import type {
+  ForumPostListItemPayload,
+  ForumThreadDetailPayload,
+  ForumThreadListItemPayload,
+  ForumUserSummary,
+} from "@/lib/forum/types";
+import { formatForumUserName } from "@/lib/forum/utils";
+import { cn, sanitizeText } from "@/lib/utils";
 
 type ThreadDetailClientProps = {
   initialDetail: ForumThreadDetailPayload;
@@ -140,11 +147,7 @@ function formatRelative(value: string, locale: string) {
 
 function initialsFromUser(user: ForumUserSummary) {
   const base =
-    user.displayName ||
-    user.firstName ||
-    user.lastName ||
-    user.email ||
-    "F";
+    user.displayName || user.firstName || user.lastName || user.email || "F";
   const letters = base
     .split(" ")
     .filter(Boolean)
@@ -155,18 +158,19 @@ function initialsFromUser(user: ForumUserSummary) {
   return letters || "F";
 }
 
+const PARAGRAPH_SPLIT_REGEX = /\n{2,}/;
+
 function renderPostContent(content: string, fallback: string) {
   const sanitized = sanitizeText(content);
-  const paragraphs = sanitized.split(/\n{2,}/).filter(Boolean);
+  const paragraphs = sanitized.split(PARAGRAPH_SPLIT_REGEX).filter(Boolean);
   if (paragraphs.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        {fallback}
-      </p>
-    );
+    return <p className="text-muted-foreground text-sm">{fallback}</p>;
   }
   return paragraphs.map((paragraph, index) => (
-    <p className="text-sm leading-6 text-foreground" key={`${paragraph}-${index}`}>
+    <p
+      className="text-foreground text-sm leading-6"
+      key={`${paragraph.slice(0, 32)}-${index}`}
+    >
       {paragraph}
     </p>
   ));
@@ -232,11 +236,11 @@ export function ThreadDetailClient({
         // ignore
       }
     };
-    void loadAvatar();
+    loadAvatar();
     return () => {
       isMounted = false;
     };
-  }, [viewer.id, viewer.imageVersion]);
+  }, [viewer.id]);
 
   const handleSubscribe = async () => {
     if (!viewer.id) {
@@ -279,7 +283,7 @@ export function ThreadDetailClient({
       const newPost: ForumPostListItemPayload = {
         id: result.id,
         threadId: result.threadId,
-       author: authorSummary,
+        author: authorSummary,
         content,
         isEdited: false,
         isDeleted: false,
@@ -299,7 +303,9 @@ export function ThreadDetailClient({
         lastRepliedAt: timestamp,
         lastResponder: authorSummary,
       }));
-      toast.success(translate("forum.thread.toast.reply_posted", "Reply posted!"));
+      toast.success(
+        translate("forum.thread.toast.reply_posted", "Reply posted!")
+      );
     } catch (error) {
       console.error(error);
     }
@@ -388,7 +394,9 @@ export function ThreadDetailClient({
   const initialPostUserReactions = initialPost
     ? new Set(viewerReactions[initialPost.id] ?? [])
     : null;
-  const initialPostIsBusy = initialPost ? busyPostIds.has(initialPost.id) : false;
+  const initialPostIsBusy = initialPost
+    ? busyPostIds.has(initialPost.id)
+    : false;
   const postNoContentCopy = translate(
     "forum.thread.post.no_content",
     "This post does not include any content."
@@ -473,7 +481,7 @@ export function ThreadDetailClient({
     <div className="space-y-8">
       <div>
         <Button
-          className="cursor-pointer gap-2 px-0 text-sm text-muted-foreground hover:text-foreground"
+          className="cursor-pointer gap-2 px-0 text-muted-foreground text-sm hover:text-foreground"
           disabled={isBackNavigating}
           onClick={handleBackToForum}
           size="sm"
@@ -495,7 +503,7 @@ export function ThreadDetailClient({
       <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
               <Avatar className="h-8 w-8">
                 {thread.author.avatarUrl ? (
                   <AvatarImage
@@ -513,12 +521,12 @@ export function ThreadDetailClient({
                   <OfficialBadge size="sm" srLabel={officialLabel} />
                 ) : null}
               </span>
-              <span className="rounded-full border border-primary/30 px-2 py-0.5 text-xs font-semibold uppercase tracking-widest text-primary">
+              <span className="rounded-full border border-primary/30 px-2 py-0.5 font-semibold text-primary text-xs uppercase tracking-widest">
                 {translatedCategoryName}
               </span>
             </div>
-            <h1 className="mt-2 text-3xl font-semibold">{thread.title}</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
+            <h1 className="mt-2 font-semibold text-3xl">{thread.title}</h1>
+            <p className="mt-2 text-muted-foreground text-sm">
               {translate("forum.thread.meta.started", "Started {date}").replace(
                 "{date}",
                 formatDate(thread.createdAt, activeLanguage.code)
@@ -527,7 +535,7 @@ export function ThreadDetailClient({
             <div className="mt-4 flex flex-wrap gap-2">
               {thread.tags.map((tag) => (
                 <Link
-                  className="cursor-pointer rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary/30 hover:bg-primary/5"
+                  className="cursor-pointer rounded-full border border-border px-3 py-1 text-muted-foreground text-xs transition hover:border-primary/30 hover:bg-primary/5"
                   href={`/forum?tag=${tag.slug}`}
                   key={tag.id}
                 >
@@ -553,7 +561,8 @@ export function ThreadDetailClient({
                       disabled={initialPostIsBusy}
                       key={`initial-${reaction}`}
                       onClick={() =>
-                        initialPost && handleReactionToggle(initialPost.id, reaction)
+                        initialPost &&
+                        handleReactionToggle(initialPost.id, reaction)
                       }
                       type="button"
                     >
@@ -564,7 +573,10 @@ export function ThreadDetailClient({
                               "forum.thread.reaction.insightful",
                               "Insightful"
                             )
-                          : translate("forum.thread.reaction.support", "Support")}
+                          : translate(
+                              "forum.thread.reaction.support",
+                              "Support"
+                            )}
                       ({initialPost.reactions[reaction]})
                     </button>
                   ))}
@@ -619,9 +631,9 @@ export function ThreadDetailClient({
                   {thread.status !== "resolved" ? (
                     <DropdownMenuItem
                       disabled={isUpdatingThreadStatus}
-                      onSelect={(event) => {
+                      onSelect={async (event) => {
                         event.preventDefault();
-                        void handleResolveThread();
+                        await handleResolveThread();
                       }}
                     >
                       {translate(
@@ -634,7 +646,7 @@ export function ThreadDetailClient({
                       disabled={isUpdatingThreadStatus}
                       onSelect={(event) => {
                         event.preventDefault();
-                        void handleReopenThread();
+                        handleReopenThread();
                       }}
                     >
                       {translate(
@@ -649,7 +661,7 @@ export function ThreadDetailClient({
                     disabled={isDeletingThread}
                     onSelect={(event) => {
                       event.preventDefault();
-                      void handleDeleteThread();
+                      handleDeleteThread();
                     }}
                   >
                     {translate("forum.thread.actions.delete", "Delete thread")}
@@ -659,7 +671,7 @@ export function ThreadDetailClient({
             ) : null}
           </div>
         </div>
-        <div className="mt-4 flex flex-wrap gap-6 text-xs text-muted-foreground">
+        <div className="mt-4 flex flex-wrap gap-6 text-muted-foreground text-xs">
           <span className="inline-flex items-center gap-1.5">
             <MessageSquare className="h-4 w-4" />
             {translate("forum.thread.meta.replies", "{count} replies").replace(
@@ -692,7 +704,7 @@ export function ThreadDetailClient({
 
       <section className="space-y-4">
         {replyPosts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-2xl border border-border border-dashed p-6 text-center text-muted-foreground text-sm">
             {noRepliesCopy}
           </div>
         ) : (
@@ -743,7 +755,9 @@ export function ThreadDetailClient({
                           )}
                           disabled={isBusy}
                           key={`${post.id}-${reaction}`}
-                          onClick={() => handleReactionToggle(post.id, reaction)}
+                          onClick={() =>
+                            handleReactionToggle(post.id, reaction)
+                          }
                           type="button"
                         >
                           {reaction === "like"
@@ -753,7 +767,10 @@ export function ThreadDetailClient({
                                   "forum.thread.reaction.insightful",
                                   "Insightful"
                                 )
-                              : translate("forum.thread.reaction.support", "Support")}
+                              : translate(
+                                  "forum.thread.reaction.support",
+                                  "Support"
+                                )}
                           ({post.reactions[reaction]})
                         </button>
                       ))}
@@ -767,14 +784,13 @@ export function ThreadDetailClient({
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">
+        <h2 className="font-semibold text-lg">
           {translate("forum.thread.section.add_reply", "Add a reply")}
         </h2>
         <ReplyComposer
           disabled={!viewer.id}
           isSubmitting={isCreatingReply}
           onSubmit={handleReplySubmit}
-          viewerName={viewerName}
           strings={{
             placeholderSignedIn: translate(
               "forum.thread.reply.placeholder_signed_in",
@@ -794,6 +810,7 @@ export function ThreadDetailClient({
               "Replies should be at least 8 characters."
             ),
           }}
+          viewerName={viewerName}
         />
       </section>
     </div>

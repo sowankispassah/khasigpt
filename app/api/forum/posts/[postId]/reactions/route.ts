@@ -3,9 +3,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
-import { toggleForumPostReaction } from "@/lib/forum/service";
+import {
+  forumDisabledResponse,
+  forumErrorResponse,
+} from "@/lib/forum/api-helpers";
 import { isForumEnabled } from "@/lib/forum/config";
+import { toggleForumPostReaction } from "@/lib/forum/service";
 
 const reactionSchema = z.object({
   type: z.enum(["like", "insightful", "support"]),
@@ -17,10 +20,7 @@ type PostRouteContext = {
   }>;
 };
 
-export async function POST(
-  request: NextRequest,
-  context: PostRouteContext
-) {
+export async function POST(request: NextRequest, context: PostRouteContext) {
   if (!(await isForumEnabled())) {
     return forumDisabledResponse();
   }

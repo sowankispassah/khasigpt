@@ -46,12 +46,14 @@ export function LocationSection({
       },
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {
-          setStatus("Location permission denied. You can enable it later when needed.");
+          setStatus(
+            "Location permission denied. You can enable it later when needed."
+          );
         } else {
           setStatus("Unable to get location. Please try again later.");
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
     );
   };
 
@@ -60,7 +62,11 @@ export function LocationSection({
       return;
     }
     hasAutoCapturedRef.current = true;
-    if (typeof navigator === "undefined" || !navigator.permissions || !navigator.geolocation) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.permissions ||
+      !navigator.geolocation
+    ) {
       return;
     }
     navigator.permissions
@@ -89,23 +95,24 @@ export function LocationSection({
       .catch(() => {
         // Ignore permission query errors.
       });
-  }, [startTransition]);
+  }, []);
 
   return (
     <section className="rounded-lg border bg-card p-6 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Location (optional)</h2>
+          <h2 className="font-semibold text-lg">Location (optional)</h2>
           <p className="text-muted-foreground text-sm">
-            Save your current location to power nearby business searches. If your device already
-            allows location, we capture it automatically; otherwise you can save it manually.
+            Save your current location to power nearby business searches. If
+            your device already allows location, we capture it automatically;
+            otherwise you can save it manually.
           </p>
         </div>
         <Button
-          onClick={handleCapture}
           disabled={isPending}
-          variant="outline"
+          onClick={handleCapture}
           size="sm"
+          variant="outline"
         >
           {isPending ? (
             <span className="flex items-center gap-2">
@@ -120,15 +127,17 @@ export function LocationSection({
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-xs uppercase text-muted-foreground">Latitude</p>
+          <p className="text-muted-foreground text-xs uppercase">Latitude</p>
           <p className="font-mono">{initialLatitude ?? "—"}</p>
         </div>
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-xs uppercase text-muted-foreground">Longitude</p>
+          <p className="text-muted-foreground text-xs uppercase">Longitude</p>
           <p className="font-mono">{initialLongitude ?? "—"}</p>
         </div>
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-xs uppercase text-muted-foreground">Accuracy (m)</p>
+          <p className="text-muted-foreground text-xs uppercase">
+            Accuracy (m)
+          </p>
           <p className="font-mono">
             {initialAccuracy !== null && initialAccuracy !== undefined
               ? Math.round(initialAccuracy)
@@ -136,15 +145,19 @@ export function LocationSection({
           </p>
         </div>
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
-          <p className="text-xs uppercase text-muted-foreground">Last updated</p>
+          <p className="text-muted-foreground text-xs uppercase">
+            Last updated
+          </p>
           <p className="font-mono">
-            {updatedAt ? new Date(updatedAt).toLocaleString() : "Not captured yet"}
+            {updatedAt
+              ? new Date(updatedAt).toLocaleString()
+              : "Not captured yet"}
           </p>
         </div>
       </div>
 
       {status ? (
-        <p className="mt-3 text-sm text-muted-foreground">{status}</p>
+        <p className="mt-3 text-muted-foreground text-sm">{status}</p>
       ) : null}
     </section>
   );

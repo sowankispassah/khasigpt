@@ -4,7 +4,10 @@ import { auth } from "@/app/(auth)/auth";
 import { getCouponByCode, getPricingPlanById } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 
-function calculateDiscountAmount(planPriceInPaise: number, discountPercentage: number) {
+function calculateDiscountAmount(
+  planPriceInPaise: number,
+  discountPercentage: number
+) {
   if (!(Number.isFinite(planPriceInPaise) && planPriceInPaise > 0)) {
     return 0;
   }
@@ -30,21 +33,31 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     const planId = body?.planId as string | undefined;
-    const rawCouponCode = typeof body?.couponCode === "string" ? body.couponCode : null;
+    const rawCouponCode =
+      typeof body?.couponCode === "string" ? body.couponCode : null;
     const normalizedCouponCode = rawCouponCode?.trim().toUpperCase() ?? null;
 
     if (!planId) {
-      return new ChatSDKError("bad_request:api", "Pricing plan id is required.").toResponse();
+      return new ChatSDKError(
+        "bad_request:api",
+        "Pricing plan id is required."
+      ).toResponse();
     }
 
     if (!normalizedCouponCode) {
-      return new ChatSDKError("bad_request:api", "Coupon code is required.").toResponse();
+      return new ChatSDKError(
+        "bad_request:api",
+        "Coupon code is required."
+      ).toResponse();
     }
 
     const plan = await getPricingPlanById({ id: planId });
 
     if (!plan) {
-      return new ChatSDKError("not_found:api", "Pricing plan not found.").toResponse();
+      return new ChatSDKError(
+        "not_found:api",
+        "Pricing plan not found."
+      ).toResponse();
     }
 
     const coupon = await getCouponByCode(normalizedCouponCode);
@@ -56,7 +69,10 @@ export async function POST(request: Request) {
       (coupon.validFrom && coupon.validFrom.getTime() > now) ||
       (coupon.validTo && coupon.validTo.getTime() < now)
     ) {
-      throw new ChatSDKError("bad_request:coupon", "Coupon is invalid or expired.");
+      throw new ChatSDKError(
+        "bad_request:coupon",
+        "Coupon is invalid or expired."
+      );
     }
 
     const discountAmount = calculateDiscountAmount(
@@ -65,7 +81,10 @@ export async function POST(request: Request) {
     );
 
     if (discountAmount <= 0) {
-      throw new ChatSDKError("bad_request:coupon", "Coupon cannot be applied to this plan.");
+      throw new ChatSDKError(
+        "bad_request:coupon",
+        "Coupon cannot be applied to this plan."
+      );
     }
 
     const finalAmount = Math.max(plan.priceInPaise - discountAmount, 1);

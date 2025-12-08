@@ -1,8 +1,9 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
-import * as React from "react";
+import React from "react";
 import useSWR from "swr";
+import { useTranslation } from "@/components/language-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -14,7 +15,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTranslation } from "@/components/language-provider";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -38,6 +38,19 @@ type UserDropdownMenuProps = {
   forumEnabled?: boolean;
 };
 
+const AVATAR_COLORS = [
+  "#EF4444",
+  "#F97316",
+  "#F59E0B",
+  "#10B981",
+  "#3B82F6",
+  "#6366F1",
+  "#8B5CF6",
+  "#EC4899",
+];
+const NON_ALPHA_REGEX = /[^a-zA-Z\s]/g;
+const WHITESPACE_SPLIT_REGEX = /\s+/;
+
 export function getInitials(name?: string | null, email?: string | null) {
   const source = name ?? email ?? "";
   if (!source) {
@@ -45,8 +58,8 @@ export function getInitials(name?: string | null, email?: string | null) {
   }
 
   const parts = source
-    .replace(/[^a-zA-Z\s]/g, " ")
-    .split(/\s+/)
+    .replace(NON_ALPHA_REGEX, " ")
+    .split(WHITESPACE_SPLIT_REGEX)
     .filter(Boolean);
 
   if (parts.length === 0 && email) {
@@ -59,17 +72,6 @@ export function getInitials(name?: string | null, email?: string | null) {
 
   return parts[0][0].toUpperCase();
 }
-
-const AVATAR_COLORS = [
-  "#EF4444",
-  "#F97316",
-  "#F59E0B",
-  "#10B981",
-  "#3B82F6",
-  "#6366F1",
-  "#8B5CF6",
-  "#EC4899",
-];
 
 export function getAvatarColor(key?: string | null) {
   const value = key ?? "";
@@ -115,11 +117,11 @@ export const UserMenuTrigger = React.forwardRef<
 
   return (
     <button
+      aria-busy={isBusy}
       className={cn(
         "relative flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/40 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className
       )}
-      aria-busy={isBusy}
       ref={ref}
       type="button"
       {...props}
@@ -173,15 +175,18 @@ export function UserDropdownMenu({
   const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
-  const [pendingLanguageCode, setPendingLanguageCode] = React.useState<string | null>(null);
-  const [isMenuProgressVisible, setIsMenuProgressVisible] = React.useState(false);
+  const [pendingLanguageCode, setPendingLanguageCode] = React.useState<
+    string | null
+  >(null);
+  const [isMenuProgressVisible, setIsMenuProgressVisible] =
+    React.useState(false);
   const [menuProgress, setMenuProgress] = React.useState(0);
   const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const ignoreNextLanguageOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
-  const progressTimersRef = React.useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const progressTimersRef = React.useRef<ReturnType<typeof setTimeout>[]>([]);
   const {
     languages: translationLanguages,
     activeLanguage,
@@ -244,7 +249,7 @@ export function UserDropdownMenu({
         const label =
           data.plan.name && priceLabel
             ? `${data.plan.name} (${priceLabel})`
-            : data.plan.name ?? priceLabel ?? null;
+            : (data.plan.name ?? priceLabel ?? null);
 
         setPlanLabel(label ?? null);
       } else {
@@ -274,9 +279,9 @@ export function UserDropdownMenu({
   }, []);
 
   const clearProgressTimers = React.useCallback(() => {
-    progressTimersRef.current.forEach((timerId) => {
+    for (const timerId of progressTimersRef.current) {
       clearTimeout(timerId);
-    });
+    }
     progressTimersRef.current = [];
   }, []);
 
@@ -313,7 +318,13 @@ export function UserDropdownMenu({
     ) {
       hideMenuProgress();
     }
-  }, [hideMenuProgress, isBusy, isLanguageUpdating, pendingAction, pendingLanguageCode]);
+  }, [
+    hideMenuProgress,
+    isBusy,
+    isLanguageUpdating,
+    pendingAction,
+    pendingLanguageCode,
+  ]);
 
   React.useEffect(() => {
     return () => {
@@ -321,30 +332,40 @@ export function UserDropdownMenu({
     };
   }, [clearProgressTimers]);
 
-  const handleSelect = (
-    event: Event,
-    actionType: "navigate" | "theme" | "signOut" | "language",
-    actionId: string | null,
-    callback: () => void,
-    options?: { skipProgress?: boolean }
-  ) => {
-    event.preventDefault();
-    if (isBusy && actionType !== "language") {
-      return;
-    }
-    const skipProgress = options?.skipProgress ?? false;
-    if (skipProgress) {
-      setPendingAction(null);
+  const handleSelect = React.useCallback(
+    (
+      event: Event,
+      {
+        actionType,
+        actionId,
+        callback,
+        skipProgress,
+      }: {
+        actionType: "navigate" | "theme" | "signOut" | "language";
+        actionId: string | null;
+        callback: () => void;
+        skipProgress?: boolean;
+      }
+    ) => {
+      event.preventDefault();
+      if (isBusy && actionType !== "language") {
+        return;
+      }
+      const shouldSkip = skipProgress ?? false;
+      if (shouldSkip) {
+        setPendingAction(null);
+        callback();
+        return;
+      }
+      startMenuProgress();
+      onActionStart?.();
+      if (actionType !== "language") {
+        setPendingAction(actionId ?? actionType);
+      }
       callback();
-      return;
-    }
-    startMenuProgress();
-    onActionStart?.();
-    if (actionType !== "language") {
-      setPendingAction(actionId ?? actionType);
-    }
-    callback();
-  };
+    },
+    [isBusy, onActionStart, startMenuProgress]
+  );
 
   const handleMenuOpenChange = React.useCallback(
     (open: boolean) => {
@@ -353,7 +374,9 @@ export function UserDropdownMenu({
         onOpenChange?.(true);
         if (isAuthenticated && !planLoadTriggeredRef.current) {
           planLoadTriggeredRef.current = true;
-          void fetchPlan();
+          fetchPlan().catch((error) =>
+            console.warn("Failed to load plan", error)
+          );
         }
         return;
       }
@@ -368,12 +391,7 @@ export function UserDropdownMenu({
       setPendingLanguageCode(null);
       hideMenuProgress();
     },
-    [
-      fetchPlan,
-      isAuthenticated,
-      onMenuClose,
-      onOpenChange,
-    ]
+    [fetchPlan, isAuthenticated, onMenuClose, onOpenChange, hideMenuProgress]
   );
 
   React.useEffect(() => {
@@ -428,12 +446,16 @@ export function UserDropdownMenu({
 
   const handleLanguageSelect = React.useCallback(
     (event: Event, code: string) => {
-      handleSelect(event, "language", code, () => {
-        setPendingLanguageCode(code);
-        setLanguage(code);
+      handleSelect(event, {
+        actionType: "language",
+        actionId: code,
+        callback: () => {
+          setPendingLanguageCode(code);
+          setLanguage(code);
+        },
       });
     },
-    [setLanguage]
+    [setLanguage, handleSelect]
   );
 
   React.useEffect(() => {
@@ -476,15 +498,20 @@ export function UserDropdownMenu({
   const renderInfoLinks = (className?: string) =>
     infoLinks.map((item) => (
       <DropdownMenuItem
-        key={item.path}
         className={cn("cursor-pointer", className)}
         data-testid={item.testId}
+        key={item.path}
         onSelect={(event) =>
-          handleSelect(event, "navigate", item.path, () => {
-            ignoreNextResourcesOpenRef.current = false;
-            setIsResourcesOpen(false);
-            onNavigate(item.path);
-          }, { skipProgress: currentPathname === item.path })
+          handleSelect(event, {
+            actionType: "navigate",
+            actionId: item.path,
+            callback: () => {
+              ignoreNextResourcesOpenRef.current = false;
+              setIsResourcesOpen(false);
+              onNavigate(item.path);
+            },
+            skipProgress: currentPathname === item.path,
+          })
         }
       >
         <span className="flex w-full items-center justify-between gap-2">
@@ -494,11 +521,16 @@ export function UserDropdownMenu({
     ));
 
   const activeLanguageLabel = translate("user_menu.language.active", "Active");
-  const updatingLanguageLabel = translate("user_menu.language.updating", "Updating…");
+  const updatingLanguageLabel = translate(
+    "user_menu.language.updating",
+    "Updating…"
+  );
   const primaryLabel =
     (userDisplayName && userDisplayName.trim().length > 0
       ? userDisplayName.trim()
-      : null) ?? userEmail ?? null;
+      : null) ??
+    userEmail ??
+    null;
   const shouldSkipPathProgress = React.useCallback(
     (path: string | null | undefined) =>
       path && currentPathname ? currentPathname === path : false,
@@ -521,8 +553,8 @@ export function UserDropdownMenu({
       <DropdownMenu onOpenChange={handleMenuOpenChange} open={isMenuOpen}>
         <DropdownMenuTrigger
           asChild
-          ref={dropdownTriggerRef}
           data-user-menu-trigger="1"
+          ref={dropdownTriggerRef}
         >
           {trigger}
         </DropdownMenuTrigger>
@@ -532,213 +564,212 @@ export function UserDropdownMenu({
           data-testid="user-nav-menu"
           side={side}
         >
-        {primaryLabel && isAuthenticated ? (
-          <DropdownMenuItem
-            className="cursor-pointer font-medium text-foreground"
-            data-testid="user-nav-item-email"
-            onSelect={(event) =>
-              handleSelect(
-                event,
-                "navigate",
-                "navigate:profile-email",
-                () => onNavigate("/profile"),
-                { skipProgress: shouldSkipPathProgress("/profile") }
-              )
-            }
-          >
-            <span className="flex w-full items-center justify-between gap-2">
-              {primaryLabel}
-            </span>
-          </DropdownMenuItem>
-        ) : null}
-        {isAuthenticated && (
-          <>
-            {primaryLabel ? <DropdownMenuSeparator /> : null}
+          {primaryLabel && isAuthenticated ? (
             <DropdownMenuItem
-              className="cursor-pointer"
-              data-testid="user-nav-item-profile"
+              className="cursor-pointer font-medium text-foreground"
+              data-testid="user-nav-item-email"
               onSelect={(event) =>
-                handleSelect(
-                  event,
-                  "navigate",
-                  "navigate:profile",
-                  () => onNavigate("/profile"),
-                  { skipProgress: shouldSkipPathProgress("/profile") }
-                )
+                handleSelect(event, {
+                  actionType: "navigate",
+                  actionId: "navigate:profile-email",
+                  callback: () => onNavigate("/profile"),
+                  skipProgress: shouldSkipPathProgress("/profile"),
+                })
               }
             >
               <span className="flex w-full items-center justify-between gap-2">
-                {translate("user_menu.profile", "Profile")}
+                {primaryLabel}
               </span>
             </DropdownMenuItem>
-            <DropdownMenuItem
-              className="flex cursor-pointer flex-col items-start gap-1"
-              data-testid="user-nav-item-manage-subscriptions"
-              onSelect={(event) =>
-                handleSelect(
-                  event,
-                  "navigate",
-                  "navigate:subscriptions",
-                  () => onNavigate("/subscriptions"),
-                  { skipProgress: shouldSkipPathProgress("/subscriptions") }
-                )
-              }
-            >
-              <span className="flex w-full items-center justify-between gap-2">
-                {translate(
-                  "user_menu.manage_subscriptions",
-                  "Manage Subscriptions"
-                )}
-              </span>
-              <span className="text-muted-foreground text-xs opacity-80">
-                {isPlanLoading
-                  ? translate(
-                      "user_menu.manage_subscriptions_status_checking",
-                      "Checking plan..."
-                    )
-                  : planLabel ??
-                    translate(
-                      "user_menu.manage_subscriptions_status_fallback",
-                      "Free Plan"
-                    )}
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer"
-              data-testid="user-nav-item-upgrade-plan"
-              onSelect={(event) =>
-                handleSelect(
-                  event,
-                  "navigate",
-                  "navigate:recharge",
-                  () => onNavigate("/recharge"),
-                  { skipProgress: shouldSkipPathProgress("/recharge") }
-                )
-              }
-            >
-              <span className="flex w-full items-center justify-between gap-2">
-                {translate("user_menu.upgrade_plan", "Upgrade plan")}
-              </span>
-            </DropdownMenuItem>
-            {isAdmin ? (
+          ) : null}
+          {isAuthenticated && (
+            <>
+              {primaryLabel ? <DropdownMenuSeparator /> : null}
               <DropdownMenuItem
                 className="cursor-pointer"
-                data-testid="user-nav-item-admin"
+                data-testid="user-nav-item-profile"
                 onSelect={(event) =>
-                  handleSelect(
-                    event,
-                    "navigate",
-                    "navigate:admin",
-                    () => {
-                      window.open("/admin", "_blank", "noopener,noreferrer");
-                      setIsMenuOpen(false);
-                    },
-                    { skipProgress: true }
-                  )
+                  handleSelect(event, {
+                    actionType: "navigate",
+                    actionId: "navigate:profile",
+                    callback: () => onNavigate("/profile"),
+                    skipProgress: shouldSkipPathProgress("/profile"),
+                  })
+                }
+              >
+                <span className="flex w-full items-center justify-between gap-2">
+                  {translate("user_menu.profile", "Profile")}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex cursor-pointer flex-col items-start gap-1"
+                data-testid="user-nav-item-manage-subscriptions"
+                onSelect={(event) =>
+                  handleSelect(event, {
+                    actionType: "navigate",
+                    actionId: "navigate:subscriptions",
+                    callback: () => onNavigate("/subscriptions"),
+                    skipProgress: shouldSkipPathProgress("/subscriptions"),
+                  })
                 }
               >
                 <span className="flex w-full items-center justify-between gap-2">
                   {translate(
-                    "user_menu.open_admin_console",
-                    "Open admin console"
+                    "user_menu.manage_subscriptions",
+                    "Manage Subscriptions"
                   )}
                 </span>
+                <span className="text-muted-foreground text-xs opacity-80">
+                  {isPlanLoading
+                    ? translate(
+                        "user_menu.manage_subscriptions_status_checking",
+                        "Checking plan..."
+                      )
+                    : (planLabel ??
+                      translate(
+                        "user_menu.manage_subscriptions_status_fallback",
+                        "Free Plan"
+                      ))}
+                </span>
               </DropdownMenuItem>
-            ) : null}
-            {isCreator ? (
               <DropdownMenuItem
                 className="cursor-pointer"
-                data-testid="user-nav-item-creator"
+                data-testid="user-nav-item-upgrade-plan"
                 onSelect={(event) =>
-                  handleSelect(
-                    event,
-                    "navigate",
-                    "navigate:creator",
-                    () => onNavigate("/creator-dashboard"),
-                    { skipProgress: shouldSkipPathProgress("/creator-dashboard") }
-                  )
+                  handleSelect(event, {
+                    actionType: "navigate",
+                    actionId: "navigate:recharge",
+                    callback: () => onNavigate("/recharge"),
+                    skipProgress: shouldSkipPathProgress("/recharge"),
+                  })
                 }
               >
                 <span className="flex w-full items-center justify-between gap-2">
-                  {translate("user_menu.creator_dashboard", "Creator dashboard")}
+                  {translate("user_menu.upgrade_plan", "Upgrade plan")}
                 </span>
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator />
-          </>
-        )}
+              {isAdmin ? (
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  data-testid="user-nav-item-admin"
+                  onSelect={(event) =>
+                    handleSelect(event, {
+                      actionType: "navigate",
+                      actionId: "navigate:admin",
+                      callback: () => {
+                        window.open("/admin", "_blank", "noopener,noreferrer");
+                        setIsMenuOpen(false);
+                      },
+                      skipProgress: true,
+                    })
+                  }
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    {translate(
+                      "user_menu.open_admin_console",
+                      "Open admin console"
+                    )}
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
+              {isCreator ? (
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  data-testid="user-nav-item-creator"
+                  onSelect={(event) =>
+                    handleSelect(event, {
+                      actionType: "navigate",
+                      actionId: "navigate:creator",
+                      callback: () => onNavigate("/creator-dashboard"),
+                      skipProgress:
+                        shouldSkipPathProgress("/creator-dashboard"),
+                    })
+                  }
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    {translate(
+                      "user_menu.creator_dashboard",
+                      "Creator dashboard"
+                    )}
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuSeparator />
+            </>
+          )}
 
-        {forumEnabled ? (
-          <DropdownMenuItem
-            className="cursor-pointer"
-            data-testid="user-nav-item-forum"
-            onSelect={(event) =>
-              handleSelect(
-                event,
-                "navigate",
-                "navigate:forum",
-                () => onNavigate("/forum"),
-                { skipProgress: shouldSkipPathProgress("/forum") }
-              )
-            }
+          {forumEnabled ? (
+            <DropdownMenuItem
+              className="cursor-pointer"
+              data-testid="user-nav-item-forum"
+              onSelect={(event) =>
+                handleSelect(event, {
+                  actionType: "navigate",
+                  actionId: "navigate:forum",
+                  callback: () => onNavigate("/forum"),
+                  skipProgress: shouldSkipPathProgress("/forum"),
+                })
+              }
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                {translate("user_menu.community_forum", "Community Forum")}
+              </span>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuSub
+            onOpenChange={handleResourcesOpenChange}
+            open={isResourcesOpen}
           >
-            <span className="flex w-full items-center justify-between gap-2">
-              {translate("user_menu.community_forum", "Community Forum")}
-            </span>
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuSub onOpenChange={handleResourcesOpenChange} open={isResourcesOpen}>
-          <DropdownMenuSubTrigger
-            className={cn(
-              "flex w-full cursor-pointer items-center justify-between gap-2 [&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform sm:w-auto sm:justify-start",
-              "[&>svg]:rotate-90 data-[state=open]:[&>svg]:-rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
-            )}
-            data-testid="user-nav-item-more"
-            onKeyDown={handleResourcesKeyDown}
-            onPointerDown={handleResourcesPointerDown}
-          >
-            {translate("user_menu.resources", "Resources")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent
-            className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg"
-          >
-            {renderInfoLinks()}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuSub
-          onOpenChange={(open) => {
-            if (open) {
-              if (ignoreNextLanguageOpenRef.current) {
-                ignoreNextLanguageOpenRef.current = false;
+            <DropdownMenuSubTrigger
+              className={cn(
+                "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start [&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform",
+                "data-[state=open]:[&>svg]:-rotate-90 [&>svg]:rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
+              )}
+              data-testid="user-nav-item-more"
+              onKeyDown={handleResourcesKeyDown}
+              onPointerDown={handleResourcesPointerDown}
+            >
+              {translate("user_menu.resources", "Resources")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
+              {renderInfoLinks()}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub
+            onOpenChange={(open) => {
+              if (open) {
+                if (ignoreNextLanguageOpenRef.current) {
+                  ignoreNextLanguageOpenRef.current = false;
+                  return;
+                }
+                setIsLanguageOpen(true);
                 return;
               }
-              setIsLanguageOpen(true);
-              return;
-            }
-            ignoreNextLanguageOpenRef.current = false;
-            setIsLanguageOpen(false);
-          }}
-          open={isLanguageOpen}
-        >
-          <DropdownMenuSubTrigger
-            className={cn(
-              "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start",
-              "[&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform",
-              "[&>svg]:rotate-90 data-[state=open]:[&>svg]:-rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
-            )}
-            data-testid="user-nav-item-language"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              setIsLanguageOpen((prev) => {
-                const next = !prev;
-                ignoreNextLanguageOpenRef.current = !next;
-                return next;
-              });
+              ignoreNextLanguageOpenRef.current = false;
+              setIsLanguageOpen(false);
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
+            open={isLanguageOpen}
+          >
+            <DropdownMenuSubTrigger
+              className={cn(
+                "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start",
+                "[&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform",
+                "data-[state=open]:[&>svg]:-rotate-90 [&>svg]:rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
+              )}
+              data-testid="user-nav-item-language"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setIsLanguageOpen((prev) => {
+                    const next = !prev;
+                    ignoreNextLanguageOpenRef.current = !next;
+                    return next;
+                  });
+                }
+              }}
+              onPointerDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 setIsLanguageOpen((prev) => {
@@ -746,75 +777,86 @@ export function UserDropdownMenu({
                   ignoreNextLanguageOpenRef.current = !next;
                   return next;
                 });
-              }
-            }}
-          >
-            <span className="flex items-center gap-2">
-              {translate("user_menu.language", "Language")}
-              <span className="text-muted-foreground text-xs">
-                {activeLanguage.name}
+              }}
+            >
+              <span className="flex items-center gap-2">
+                {translate("user_menu.language", "Language")}
+                <span className="text-muted-foreground text-xs">
+                  {activeLanguage.name}
+                </span>
               </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
+              {translationLanguages.map((language) => (
+                <DropdownMenuItem
+                  className={cn(
+                    "cursor-pointer justify-between",
+                    language.code === activeLanguage.code
+                      ? "font-medium text-primary"
+                      : undefined
+                  )}
+                  data-testid={`user-nav-language-${language.code}`}
+                  disabled={
+                    isLanguageUpdating && language.code !== activeLanguage.code
+                  }
+                  key={language.code}
+                  onSelect={(event) =>
+                    handleLanguageSelect(event, language.code)
+                  }
+                >
+                  {language.name}
+                  <span className="flex items-center gap-2 text-muted-foreground text-xs">
+                    {pendingLanguageCode === language.code
+                      ? updatingLanguageLabel
+                      : language.code === activeLanguage.code
+                        ? isLanguageUpdating
+                          ? updatingLanguageLabel
+                          : activeLanguageLabel
+                        : null}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="cursor-pointer"
+            data-testid="user-nav-item-theme"
+            onSelect={(event) =>
+              handleSelect(event, {
+                actionType: "theme",
+                actionId: "theme",
+                callback: onToggleTheme,
+              })
+            }
+          >
+            <span className="flex w-full items-center justify-between gap-2">
+              {resolvedTheme === "light"
+                ? translate("user_menu.theme.dark", "Dark mode")
+                : translate("user_menu.theme.light", "Light mode")}
             </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
-            {translationLanguages.map((language) => (
+          </DropdownMenuItem>
+          {showSignOut ? (
+            <>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
-                key={language.code}
-                className={cn(
-                  "cursor-pointer justify-between",
-                  language.code === activeLanguage.code
-                    ? "font-medium text-primary"
-                    : undefined
-                )}
-                data-testid={`user-nav-language-${language.code}`}
-                disabled={
-                  isLanguageUpdating && language.code !== activeLanguage.code
+                className="cursor-pointer text-destructive focus:text-destructive"
+                data-testid="user-nav-item-auth"
+                onSelect={(event) =>
+                  onSignOut &&
+                  handleSelect(event, {
+                    actionType: "signOut",
+                    actionId: "signOut",
+                    callback: onSignOut,
+                  })
                 }
-                onSelect={(event) => handleLanguageSelect(event, language.code)}
               >
-                {language.name}
-                <span className="flex items-center gap-2 text-muted-foreground text-xs">
-                  {pendingLanguageCode === language.code
-                    ? updatingLanguageLabel
-                    : language.code === activeLanguage.code
-                      ? isLanguageUpdating
-                        ? updatingLanguageLabel
-                        : activeLanguageLabel
-                      : null}
+                <span className="flex w-full items-center justify-between gap-2">
+                  {translate("user_menu.sign_out", "Sign out")}
                 </span>
               </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="cursor-pointer"
-          data-testid="user-nav-item-theme"
-          onSelect={(event) => handleSelect(event, "theme", "theme", onToggleTheme)}
-        >
-          <span className="flex w-full items-center justify-between gap-2">
-            {resolvedTheme === "light"
-              ? translate("user_menu.theme.dark", "Dark mode")
-              : translate("user_menu.theme.light", "Light mode")}
-          </span>
-        </DropdownMenuItem>
-        {showSignOut ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="cursor-pointer text-destructive focus:text-destructive"
-              data-testid="user-nav-item-auth"
-              onSelect={(event) =>
-                onSignOut &&
-                handleSelect(event, "signOut", "signOut", onSignOut)
-              }
-            >
-              <span className="flex w-full items-center justify-between gap-2">
-                {translate("user_menu.sign_out", "Sign out")}
-              </span>
-            </DropdownMenuItem>
-          </>
-        ) : null}
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </>

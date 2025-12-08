@@ -25,7 +25,8 @@ export function forumErrorResponse(error: unknown) {
   return NextResponse.json(
     {
       code: "bad_request:api",
-      message: "Unable to process the request right now. Please try again later.",
+      message:
+        "Unable to process the request right now. Please try again later.",
     },
     { status: 500 }
   );

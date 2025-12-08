@@ -1,7 +1,4 @@
-import type {
-  ForumPostReactionType,
-  ForumThreadStatus,
-} from "@/lib/db/schema";
+import type { ForumPostReactionType, ForumThreadStatus } from "@/lib/db/schema";
 
 export type ForumUserSummary = {
   id: string;
@@ -93,10 +90,7 @@ export type ForumThreadDetailResult = {
   viewerReactions: Record<string, ForumPostReactionType[]>;
 };
 
-export type ForumOverviewPayload = Omit<
-  ForumOverviewResult,
-  "threads"
-> & {
+export type ForumOverviewPayload = Omit<ForumOverviewResult, "threads"> & {
   threads: ForumThreadListItemPayload[];
 };
 

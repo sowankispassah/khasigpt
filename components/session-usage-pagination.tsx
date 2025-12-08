@@ -72,7 +72,7 @@ export function SessionUsagePagination({
         });
       });
     },
-    [paramsSnapshot, pathname, range, router, startTransition]
+    [paramsSnapshot, pathname, range, router]
   );
 
   const navigateToPage = useCallback(
@@ -108,10 +108,7 @@ export function SessionUsagePagination({
           className="text-muted-foreground text-xs uppercase"
           htmlFor="session-usage-sort"
         >
-          {translate(
-            "subscriptions.session_usage.sort.label",
-            "Sort sessions"
-          )}
+          {translate("subscriptions.session_usage.sort.label", "Sort sessions")}
         </label>
         <select
           className="cursor-pointer rounded-md border bg-background px-3 py-1 text-sm"

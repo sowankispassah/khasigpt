@@ -3,12 +3,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
+import {
+  forumDisabledResponse,
+  forumErrorResponse,
+} from "@/lib/forum/api-helpers";
+import { isForumEnabled } from "@/lib/forum/config";
 import {
   resolveForumThreadId,
   toggleForumSubscription,
 } from "@/lib/forum/service";
-import { isForumEnabled } from "@/lib/forum/config";
 
 const subscriptionSchema = z.object({
   subscribe: z.boolean(),

@@ -2,10 +2,10 @@ import { geolocation } from "@vercel/functions";
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
-  smoothStream,
-  streamText,
   type LanguageModelUsage,
   type StepResult,
+  smoothStream,
+  streamText,
 } from "ai";
 import { unstable_cache as cache } from "next/cache";
 import { after } from "next/server";
@@ -19,42 +19,46 @@ import { getUsage } from "tokenlens/helpers";
 import { auth, type UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
+import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
-import { getModelRegistry } from "@/lib/ai/model-registry";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DEFAULT_RAG_TIMEOUT_MS,
+  isProductionEnvironment,
   RAG_MATCH_THRESHOLD_SETTING_KEY,
   RAG_TIMEOUT_MS_SETTING_KEY,
-  isProductionEnvironment,
 } from "@/lib/constants";
-import { loadFreeMessageSettings } from "@/lib/free-messages";
 import {
   createStreamId,
   deleteChatById,
-  getChatById,
+  getActiveSubscriptionForUser,
   getAppSetting,
+  getChatById,
   getMessageCountByUserId,
   getMessagesByChatId,
   recordTokenUsage,
-  getActiveSubscriptionForUser,
   saveChat,
   saveMessages,
   updateChatLastContextById,
   updateChatTitleById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import type { ChatMessage } from "@/lib/types";
-import type { AppUsage } from "@/lib/usage";
-import { convertToUIMessages, generateUUID, getTextFromMessage } from "@/lib/utils";
+import { loadFreeMessageSettings } from "@/lib/free-messages";
+import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
 import { buildRagAugmentation } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import type { ChatMessage } from "@/lib/types";
+import type { AppUsage } from "@/lib/usage";
+import {
+  convertToUIMessages,
+  generateUUID,
+  getTextFromMessage,
+} from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
-import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -63,7 +67,7 @@ export const runtime = "nodejs";
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
 
-const RAG_AUGMENTATION_TIMEOUT_MS = 5000;
+const _RAG_AUGMENTATION_TIMEOUT_MS = 5000;
 const RAG_TIMEOUT_SYMBOL = Symbol("rag-augmentation-timeout");
 const DEFAULT_CHAT_TITLE = "New Chat";
 const STREAM_HEADERS: HeadersInit = {
@@ -167,10 +171,7 @@ async function buildRagAugmentationWithTimeout(
     const result = await Promise.race([
       buildRagAugmentation(params),
       new Promise<typeof RAG_TIMEOUT_SYMBOL>((resolve) => {
-        timeout = setTimeout(
-          () => resolve(RAG_TIMEOUT_SYMBOL),
-          timeoutMs
-        );
+        timeout = setTimeout(() => resolve(RAG_TIMEOUT_SYMBOL), timeoutMs);
       }),
     ]);
 
@@ -179,21 +180,26 @@ async function buildRagAugmentationWithTimeout(
     }
 
     if (result === RAG_TIMEOUT_SYMBOL) {
-      console.warn(
-        `RAG augmentation timed out after ${timeoutMs}ms`,
-        { chatId: params.chatId }
-      );
+      console.warn(`RAG augmentation timed out after ${timeoutMs}ms`, {
+        chatId: params.chatId,
+      });
       return null;
     }
 
     return result;
   } catch (error) {
-    console.warn("Failed to build RAG augmentation", { chatId: params.chatId }, error);
+    console.warn(
+      "Failed to build RAG augmentation",
+      { chatId: params.chatId },
+      error
+    );
     return null;
   }
 }
 
-async function enforceChatRateLimit(request: Request): Promise<Response | null> {
+async function enforceChatRateLimit(
+  request: Request
+): Promise<Response | null> {
   const clientKey = getClientKeyFromHeaders(request.headers);
   const { allowed, resetAt } = await incrementRateLimit(
     `api:chat:${clientKey}`,
@@ -338,18 +344,20 @@ export async function POST(request: Request) {
         : typeof ragTimeoutSetting === "string"
           ? Number(ragTimeoutSetting)
           : Number.NaN;
-    const ragTimeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout > 0
-      ? Math.min(Math.max(1000, Math.round(parsedTimeout)), 60000)
-      : DEFAULT_RAG_TIMEOUT_MS;
+    const ragTimeoutMs =
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0
+        ? Math.min(Math.max(1000, Math.round(parsedTimeout)), 60_000)
+        : DEFAULT_RAG_TIMEOUT_MS;
     const thresholdParsed =
       typeof ragMatchThresholdSetting === "number"
         ? ragMatchThresholdSetting
         : typeof ragMatchThresholdSetting === "string"
           ? Number(ragMatchThresholdSetting)
           : Number.NaN;
-    const ragMatchThreshold = Number.isFinite(thresholdParsed) && thresholdParsed > 0
-      ? Math.min(Math.max(thresholdParsed, 0.01), 1)
-      : DEFAULT_RAG_MATCH_THRESHOLD;
+    const ragMatchThreshold =
+      Number.isFinite(thresholdParsed) && thresholdParsed > 0
+        ? Math.min(Math.max(thresholdParsed, 0.01), 1)
+        : DEFAULT_RAG_MATCH_THRESHOLD;
 
     const chat = await getChatById({ id });
 
@@ -367,7 +375,7 @@ export async function POST(request: Request) {
         visibility: selectedVisibilityType,
       });
 
-      void (async () => {
+      (async () => {
         try {
           const generatedTitle = await generateTitleFromUserMessage({
             message,
@@ -375,10 +383,7 @@ export async function POST(request: Request) {
           });
           const normalizedTitle = generatedTitle.trim();
 
-          if (
-            normalizedTitle.length > 0 &&
-            normalizedTitle !== fallbackTitle
-          ) {
+          if (normalizedTitle.length > 0 && normalizedTitle !== fallbackTitle) {
             await updateChatTitleById({
               chatId: id,
               title: normalizedTitle,
@@ -392,14 +397,17 @@ export async function POST(request: Request) {
 
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
-    const ragAugmentation = await buildRagAugmentationWithTimeout({
-      chatId: id,
-      userId: session.user.id,
-      modelConfig,
-      queryText: getTextFromMessage(message),
-      useCustomKnowledge: customKnowledgeEnabled,
-      threshold: ragMatchThreshold,
-    }, ragTimeoutMs);
+    const ragAugmentation = await buildRagAugmentationWithTimeout(
+      {
+        chatId: id,
+        userId: session.user.id,
+        modelConfig,
+        queryText: getTextFromMessage(message),
+        useCustomKnowledge: customKnowledgeEnabled,
+        threshold: ragMatchThreshold,
+      },
+      ragTimeoutMs
+    );
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -422,7 +430,9 @@ export async function POST(request: Request) {
         .filter((value) => typeof value === "string" && value.trim().length > 0)
         .join("\n\n") || null;
 
-    const promptText = uiMessages.map((entry) => getTextFromMessage(entry)).join(" ");
+    const promptText = uiMessages
+      .map((entry) => getTextFromMessage(entry))
+      .join(" ");
     const estimateTokensFromText = (text: string) => {
       const trimmed = text.trim();
       if (!trimmed.length) {
@@ -539,11 +549,11 @@ export async function POST(request: Request) {
         const providers = await getTokenlensCatalog();
         const modelId = modelConfig.providerModelId;
 
-        if (!providers) {
-          mergedUsage = usage as AppUsage;
-        } else {
+        if (providers) {
           const summary = getUsage({ modelId, usage, providers });
           mergedUsage = { ...usage, ...summary, modelId } as AppUsage;
+        } else {
+          mergedUsage = usage as AppUsage;
         }
       } catch (err) {
         console.warn("TokenLens enrichment failed", err);
@@ -612,7 +622,7 @@ export async function POST(request: Request) {
       clientAbortHandled = true;
 
       if (latestStepUsage) {
-        void (async () => {
+        (async () => {
           await persistAssistantSnapshot(latestStepResult ?? undefined);
           await handleUsageReport(latestStepUsage, { persistContext: false });
         })();
@@ -630,7 +640,7 @@ export async function POST(request: Request) {
           modelId: modelConfig.providerModelId,
         };
 
-        void (async () => {
+        (async () => {
           await persistAssistantSnapshot(undefined, partialText);
           await recordUsageReport(fallbackUsage, { persistContext: false });
         })();
@@ -666,7 +676,7 @@ export async function POST(request: Request) {
       onFinish: async ({ usage }) => {
         await handleUsageReport(usage, { persistContext: !clientAborted });
       },
-      onStepFinish: async (stepResult) => {
+      onStepFinish: (stepResult) => {
         latestStepUsage = stepResult?.usage ?? null;
         latestStepResult = stepResult ?? null;
       },
@@ -701,7 +711,8 @@ export async function POST(request: Request) {
         await saveMessages({
           messages: messages.map((currentMessage) => ({
             id:
-              typeof currentMessage.id === "string" && currentMessage.id.length > 0
+              typeof currentMessage.id === "string" &&
+              currentMessage.id.length > 0
                 ? currentMessage.id
                 : generateUUID(),
             role: currentMessage.role,
@@ -711,7 +722,11 @@ export async function POST(request: Request) {
             chatId: id,
           })),
         }).catch((error) => {
-          console.warn("Failed to persist assistant messages", { chatId: id }, error);
+          console.warn(
+            "Failed to persist assistant messages",
+            { chatId: id },
+            error
+          );
         });
 
         await persistUserMessagePromise;
@@ -817,4 +832,3 @@ export async function DELETE(request: Request) {
 
   return Response.json(deletedChat, { status: 200 });
 }
-

@@ -1,4 +1,4 @@
-export async function withTimeout<T>(
+export function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   onTimeout?: () => void

@@ -1,28 +1,27 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-
-import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
-import { SessionUsagePagination } from "@/components/session-usage-pagination";
 import { auth } from "@/app/(auth)/auth";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { DailyUsageChartSwitcher } from "@/components/daily-usage-chart-switcher";
+import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
+import { RechargeHistoryDialog } from "@/components/recharge-history-dialog";
+import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
+import { SessionUsagePagination } from "@/components/session-usage-pagination";
+import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   getDailyTokenUsageForUser,
   getSessionTokenUsageForUser,
   getUserBalanceSummary,
   listUserRechargeHistory,
 } from "@/lib/db/queries";
-import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
-import { cookies } from "next/headers";
-import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
-import { DailyUsageChartSwitcher } from "@/components/daily-usage-chart-switcher";
-import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import {
-  SESSION_SORT_DEFAULT,
   isSessionSortOption,
+  SESSION_SORT_DEFAULT,
   type SessionSortOption,
 } from "@/lib/subscriptions/session-sort";
-import { RechargeHistoryDialog } from "@/components/recharge-history-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -94,22 +93,25 @@ export default async function SubscriptionsPage({
     ? sessionSortParam
     : SESSION_SORT_DEFAULT;
 
-  const [{ dictionary }, balance, rawDailyUsage, sessionUsage, rechargeHistory] =
-    await Promise.all([
-      getTranslationBundle(preferredLanguage),
-      getUserBalanceSummary(session.user.id),
-      getDailyTokenUsageForUser(session.user.id, range),
-      getSessionTokenUsageForUser(session.user.id, {
-        sortBy: sessionSort,
-      }),
-      listUserRechargeHistory({ userId: session.user.id, limit: 10 }),
-    ]);
+  const [
+    { dictionary },
+    balance,
+    rawDailyUsage,
+    sessionUsage,
+    rechargeHistory,
+  ] = await Promise.all([
+    getTranslationBundle(preferredLanguage),
+    getUserBalanceSummary(session.user.id),
+    getDailyTokenUsageForUser(session.user.id, range),
+    getSessionTokenUsageForUser(session.user.id, {
+      sortBy: sessionSort,
+    }),
+    listUserRechargeHistory({ userId: session.user.id, limit: 10 }),
+  ]);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
-  const sessionsPageParam = toSingleValue(
-    resolvedSearchParams?.sessionsPage
-  );
+  const sessionsPageParam = toSingleValue(resolvedSearchParams?.sessionsPage);
   let sessionsPage = Number.parseInt(sessionsPageParam ?? "", 10);
   if (!Number.isFinite(sessionsPage) || sessionsPage < 1) {
     sessionsPage = 1;
@@ -128,11 +130,8 @@ export default async function SubscriptionsPage({
     sessionsPage * SESSIONS_PAGE_SIZE
   );
 
-  const formatDateTime = (
-    date: Date | null,
-    key: string,
-    fallback: string
-  ) => (date ? istDateTimeFormatter.format(date) : t(key, fallback));
+  const formatDateTime = (date: Date | null, key: string, fallback: string) =>
+    date ? istDateTimeFormatter.format(date) : t(key, fallback);
 
   const formatCredits = (tokens: number) =>
     (tokens / TOKENS_PER_CREDIT).toLocaleString("en-IN", {
@@ -145,27 +144,24 @@ export default async function SubscriptionsPage({
       maximumFractionDigits: 2,
     });
   const formatRechargeAmount = (amount: number, currency: string) =>
-    new Intl.NumberFormat(
-      currency === "USD" ? "en-US" : "en-IN",
-      {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 2,
-      }
-    ).format(amount);
+    new Intl.NumberFormat(currency === "USD" ? "en-US" : "en-IN", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
+    }).format(amount);
   const formatRechargeStatus = (status: string) => {
     const normalized = status?.toLowerCase() ?? "";
     if (normalized === "paid") {
       return t("subscriptions.recharge_history.status.paid", "Paid");
     }
     if (normalized === "processing") {
-      return t("subscriptions.recharge_history.status.processing", "Processing");
+      return t(
+        "subscriptions.recharge_history.status.processing",
+        "Processing"
+      );
     }
-    return t(
-      "subscriptions.recharge_history.status.failed",
-      "Failed"
-    );
+    return t("subscriptions.recharge_history.status.failed", "Failed");
   };
 
   const billedTokensUsed = Math.max(
@@ -198,7 +194,9 @@ export default async function SubscriptionsPage({
           ? "bg-amber-100 text-amber-900"
           : "bg-destructive/10 text-destructive";
     const createdAt =
-      entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
+      entry.createdAt instanceof Date
+        ? entry.createdAt
+        : new Date(entry.createdAt);
     const dateLabel = istDateTimeFormatter.format(createdAt);
 
     return {
@@ -239,7 +237,8 @@ export default async function SubscriptionsPage({
   const currentPlanLabel = hasPaidPlan
     ? planPriceLabel
       ? `${plan?.name} (${planPriceLabel})`
-      : plan?.name ?? t("subscriptions.plan_overview.active_plan", "Active plan")
+      : (plan?.name ??
+        t("subscriptions.plan_overview.active_plan", "Active plan"))
     : t("subscriptions.plan_overview.no_plan", "No plan yet");
 
   const freeCreditsRemaining = isManualPlan
@@ -287,14 +286,16 @@ export default async function SubscriptionsPage({
         )
       : null;
   const rangeStart = dailySeries[0]?.day ?? new Date();
-  const rangeEnd = dailySeries[dailySeries.length - 1]?.day ?? new Date();
+  const rangeEnd = dailySeries.at(-1)?.day ?? new Date();
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:gap-8">
       <div className="flex items-center gap-3">
-        <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
+        <BackToHomeButton
+          label={t("navigation.back_to_home", "Back to home")}
+        />
         <Link
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-muted-foreground/80"
+          className="inline-flex items-center gap-2 font-medium text-muted-foreground text-sm transition-colors hover:text-muted-foreground/80"
           href="/profile"
         >
           {t("subscriptions.manage_profile", "Manage profile")}
@@ -302,7 +303,7 @@ export default async function SubscriptionsPage({
       </div>
 
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">
+        <h1 className="font-semibold text-2xl">
           {t("subscriptions.title", "Subscriptions & Credits")}
         </h1>
         <p className="text-muted-foreground text-sm">
@@ -330,9 +331,9 @@ export default async function SubscriptionsPage({
           label={t("subscriptions.metric.plan_expires", "Plan expires")}
           value={
             <div className="flex flex-col">
-              <span className="text-2xl font-semibold">{expiryDateLabel}</span>
+              <span className="font-semibold text-2xl">{expiryDateLabel}</span>
               {expiryDaysLabel ? (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   {expiryDaysLabel}
                 </span>
               ) : null}
@@ -343,7 +344,7 @@ export default async function SubscriptionsPage({
 
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">
+          <h2 className="font-semibold text-lg">
             {t("subscriptions.plan_overview.title", "Plan overview")}
           </h2>
           <dl className="mt-4 space-y-2 text-sm">
@@ -360,16 +361,23 @@ export default async function SubscriptionsPage({
             {showFreeCredits ? (
               <div className="flex items-center justify-between">
                 <dt className="text-muted-foreground">
-                  {t("subscriptions.plan_overview.free_credits", "Free credits")}
+                  {t(
+                    "subscriptions.plan_overview.free_credits",
+                    "Free credits"
+                  )}
                 </dt>
                 <dd>
-                  {formatCreditValue(freeCreditsRemaining)} {t("subscriptions.unit.credits", "credits")}
+                  {formatCreditValue(freeCreditsRemaining)}{" "}
+                  {t("subscriptions.unit.credits", "credits")}
                 </dd>
               </div>
             ) : null}
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t("subscriptions.plan_overview.credits_remaining", "Credits remaining")}
+                {t(
+                  "subscriptions.plan_overview.credits_remaining",
+                  "Credits remaining"
+                )}
               </dt>
               <dd>{formatCreditValue(balance.creditsRemaining)}</dd>
             </div>
@@ -384,7 +392,10 @@ export default async function SubscriptionsPage({
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t("subscriptions.plan_overview.credits_recharged", "Paid credits remaining")}
+                {t(
+                  "subscriptions.plan_overview.credits_recharged",
+                  "Paid credits remaining"
+                )}
               </dt>
               <dd>{formatCreditValue(rechargedCredits)}</dd>
             </div>
@@ -396,7 +407,7 @@ export default async function SubscriptionsPage({
                 <div className="flex flex-col items-end">
                   <span>{expiryDateLabel}</span>
                   {expiryDaysLabel ? (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-muted-foreground text-xs">
                       {expiryDaysLabel}
                     </span>
                   ) : null}
@@ -407,11 +418,14 @@ export default async function SubscriptionsPage({
         </div>
 
         <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">
+          <h2 className="font-semibold text-lg">
             {t("subscriptions.quick_actions.title", "Quick actions")}
           </h2>
-          <p className="text-muted-foreground mt-2 text-sm">
-            {t("subscriptions.quick_actions.recharge_prefix", "Need more credits? Visit the")}{" "}
+          <p className="mt-2 text-muted-foreground text-sm">
+            {t(
+              "subscriptions.quick_actions.recharge_prefix",
+              "Need more credits? Visit the"
+            )}{" "}
             <Link className="underline" href="/recharge">
               {t("subscriptions.quick_actions.recharge_link", "recharge page")}
             </Link>
@@ -429,18 +443,21 @@ export default async function SubscriptionsPage({
       <section className="rounded-lg border bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">
+            <h2 className="font-semibold text-lg">
               {t("subscriptions.daily_usage.title", "Daily usage")}
             </h2>
             <p className="text-muted-foreground text-sm">
-              {t("subscriptions.daily_usage.subtitle", "Credits consumed per day.")}
+              {t(
+                "subscriptions.daily_usage.subtitle",
+                "Credits consumed per day."
+              )}
             </p>
           </div>
           <DailyUsageRangeSelect currentRange={range} options={RANGE_OPTIONS} />
         </div>
 
         {maxTokens === 0 ? (
-          <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 text-sm text-muted-foreground">
+          <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 text-muted-foreground text-sm">
             {t(
               "subscriptions.daily_usage.empty",
               "No usage recorded in this range."
@@ -451,12 +468,12 @@ export default async function SubscriptionsPage({
             <div className="mt-6">
               <DailyUsageChartSwitcher data={dailyChartData} />
             </div>
-            <div className="mt-3 flex justify-between text-xs text-muted-foreground">
+            <div className="mt-3 flex justify-between text-muted-foreground text-xs">
               <span>{istMonthDayFormatter.format(rangeStart)}</span>
               <span>{istMonthDayFormatter.format(rangeEnd)}</span>
             </div>
             {peakEntry ? (
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-2 text-muted-foreground text-xs">
                 {t(
                   "subscriptions.daily_usage.peak_day",
                   "Peak day: {date} • {credits} credits"
@@ -470,7 +487,7 @@ export default async function SubscriptionsPage({
       </section>
 
       <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">
+        <h2 className="font-semibold text-lg">
           {t("subscriptions.session_usage.title", "Usage by session")}
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -510,12 +527,15 @@ export default async function SubscriptionsPage({
               {displayedSessions.length === 0 ? (
                 <tr>
                   <td className="py-4 text-muted-foreground" colSpan={4}>
-                    {t("subscriptions.session_usage.empty", "No usage recorded yet.")}
+                    {t(
+                      "subscriptions.session_usage.empty",
+                      "No usage recorded yet."
+                    )}
                   </td>
                 </tr>
               ) : (
                 displayedSessions.map((entry) => (
-                  <tr key={entry.chatId} className="border-t">
+                  <tr className="border-t" key={entry.chatId}>
                     <td className="py-3">
                       <SessionUsageChatLink
                         className="flex cursor-pointer flex-col text-left"
@@ -528,19 +548,19 @@ export default async function SubscriptionsPage({
                               "Untitled chat"
                             )}
                         </span>
-                        <span className="font-mono text-xs text-muted-foreground">
+                        <span className="font-mono text-muted-foreground text-xs">
                           {entry.chatId}
                         </span>
                       </SessionUsageChatLink>
                     </td>
-                    <td className="py-2 text-sm text-muted-foreground">
+                    <td className="py-2 text-muted-foreground text-sm">
                       {formatDateTime(
                         entry.chatCreatedAt,
                         "subscriptions.session_usage.created.unknown",
                         "Not available"
                       )}
                     </td>
-                    <td className="py-2 text-sm text-muted-foreground">
+                    <td className="py-2 text-muted-foreground text-sm">
                       {formatDateTime(
                         entry.lastUsedAt,
                         "subscriptions.session_usage.last_used.unknown",
@@ -558,9 +578,9 @@ export default async function SubscriptionsPage({
         </div>
         <SessionUsagePagination
           range={range}
+          sessionSort={sessionSort}
           sessionsPage={sessionsPage}
           totalPages={totalSessionPages}
-          sessionSort={sessionSort}
         />
       </section>
     </div>
@@ -570,7 +590,7 @@ export default async function SubscriptionsPage({
 function MetricCard({ label, value }: { label: string; value: ReactNode }) {
   const renderValue =
     typeof value === "string" || typeof value === "number" ? (
-      <span className="text-2xl font-semibold">{value}</span>
+      <span className="font-semibold text-2xl">{value}</span>
     ) : (
       value
     );
@@ -583,7 +603,9 @@ function MetricCard({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function toSingleValue(value: string | string[] | undefined): string | undefined {
+function toSingleValue(
+  value: string | string[] | undefined
+): string | undefined {
   if (Array.isArray(value)) {
     return value[0];
   }
@@ -609,7 +631,11 @@ function buildDailySeries(
     const month = Number.parseInt(monthStr, 10);
     const day = Number.parseInt(dayStr, 10);
 
-    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day)
+    ) {
       return new Date(key);
     }
 
@@ -623,7 +649,7 @@ function buildDailySeries(
   if (raw.length === 0) {
     const today = normalizeToIstMidnight(new Date());
     return Array.from({ length: range }, (_, idx) => {
-      const day = new Date(today.getTime() - (range - 1 - idx) * 86400000);
+      const day = new Date(today.getTime() - (range - 1 - idx) * 86_400_000);
       return { day, totalTokens: 0 };
     });
   }
@@ -638,10 +664,10 @@ function buildDailySeries(
   const end = normalizeToIstMidnight(
     new Date(Math.max(Date.now(), latestDataDay.getTime()))
   );
-  const start = new Date(end.getTime() - (range - 1) * 86400000);
+  const start = new Date(end.getTime() - (range - 1) * 86_400_000);
 
   return Array.from({ length: range }, (_, idx) => {
-    const day = new Date(start.getTime() + idx * 86400000);
+    const day = new Date(start.getTime() + idx * 86_400_000);
     const key = toIstKey(day);
     return {
       day,
@@ -650,7 +676,7 @@ function buildDailySeries(
   });
 }
 
-function buildSessionQuery(range: number, sessionsPage: number) {
+function _buildSessionQuery(range: number, sessionsPage: number) {
   const params = new URLSearchParams();
   params.set("range", String(range));
   if (sessionsPage > 1) {

@@ -1,9 +1,8 @@
 "use server";
 
 import { z } from "zod";
-
-import { auth } from "../auth";
 import { updateUserProfile } from "@/lib/db/queries";
+import { auth } from "../auth";
 
 export type CompleteProfileState =
   | { status: "idle" }

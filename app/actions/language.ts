@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 
-import { getLanguageByCode, getDefaultLanguage } from "@/lib/i18n/languages";
+import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 
 const LANGUAGE_COOKIE = "lang";
 const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;

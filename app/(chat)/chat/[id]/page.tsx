@@ -5,11 +5,15 @@ import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { loadChatModels } from "@/lib/ai/models";
-import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
-import { getAppSetting, getChatById, getMessagesByChatId } from "@/lib/db/queries";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
-import { convertToUIMessages } from "@/lib/utils";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
+import {
+  getAppSetting,
+  getChatById,
+  getMessagesByChatId,
+} from "@/lib/db/queries";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
+import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -72,28 +76,23 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   const chatModelFromCookie = cookieStore.get("chat-model");
   const fallbackModelId =
-    chatModelFromCookie?.value ??
-    defaultModel?.id ??
-    models[0]?.id ??
-    "";
+    chatModelFromCookie?.value ?? defaultModel?.id ?? models[0]?.id ?? "";
 
   const deletedBanner = chat.deletedAt && isAdmin;
 
   if (!chatModelFromCookie) {
     return (
       <>
-        {deletedBanner && (
-          <DeletedNotice dictionary={dictionary} />
-        )}
+        {deletedBanner && <DeletedNotice dictionary={dictionary} />}
         <ChatLoader
           autoResume={true}
+          customKnowledgeEnabled={customKnowledgeEnabled}
           id={chat.id}
           initialChatModel={fallbackModelId}
           initialMessages={uiMessages}
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
           suggestedPrompts={suggestedPrompts}
-          customKnowledgeEnabled={customKnowledgeEnabled}
         />
         <DataStreamHandler />
       </>
@@ -105,13 +104,13 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       {deletedBanner && <DeletedNotice dictionary={dictionary} />}
       <ChatLoader
         autoResume={true}
+        customKnowledgeEnabled={customKnowledgeEnabled}
         id={chat.id}
         initialChatModel={fallbackModelId}
         initialMessages={uiMessages}
         initialVisibilityType={chat.visibility}
         isReadonly={session?.user?.id !== chat.userId}
         suggestedPrompts={suggestedPrompts}
-        customKnowledgeEnabled={customKnowledgeEnabled}
       />
       <DataStreamHandler />
     </>
@@ -120,11 +119,9 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
 function DeletedNotice({ dictionary }: { dictionary: Record<string, string> }) {
   return (
-    <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+    <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
       {dictionary["chat.deleted_notice"] ??
         "This chat has been deleted. You are viewing it in read-only mode."}
     </div>
   );
 }
-
-

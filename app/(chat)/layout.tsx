@@ -1,16 +1,14 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ModelConfigProvider } from "@/components/model-config-provider";
-import { FeatureFlagsProvider } from "@/components/feature-flags-provider";
 import { DataStreamProvider } from "@/components/data-stream-provider";
+import { FeatureFlagsProvider } from "@/components/feature-flags-provider";
+import { ModelConfigProvider } from "@/components/model-config-provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { loadChatModels } from "@/lib/ai/models";
-import { loadFeatureFlags } from "@/lib/feature-flags";
 import { getUserBalanceSummary, getUserById } from "@/lib/db/queries";
+import { loadFeatureFlags } from "@/lib/feature-flags";
 import { auth } from "../(auth)/auth";
-
-export const experimental_ppr = true;
 
 export default async function Layout({
   children,
@@ -18,12 +16,22 @@ export default async function Layout({
   children: React.ReactNode;
 }) {
   const [featureFlags, { models, defaultModel }, session, cookieStore] =
-    await Promise.all([loadFeatureFlags(), loadChatModels(), auth(), cookies()]);
+    await Promise.all([
+      loadFeatureFlags(),
+      loadChatModels(),
+      auth(),
+      cookies(),
+    ]);
 
   const dbUser = session?.user ? await getUserById(session.user.id) : null;
   const profileUser = dbUser ?? session?.user ?? null;
 
-  if (profileUser && (!profileUser.dateOfBirth || !profileUser.firstName || !profileUser.lastName)) {
+  if (
+    profileUser &&
+    (!profileUser.dateOfBirth ||
+      !profileUser.firstName ||
+      !profileUser.lastName)
+  ) {
     redirect("/complete-profile");
   }
 
@@ -31,7 +39,7 @@ export default async function Layout({
     ? await getUserBalanceSummary(profileUser.id)
     : null;
 
-  const sidebarBalance = balance
+  const _sidebarBalance = balance
     ? {
         tokensRemaining: balance.tokensRemaining,
         tokensTotal: balance.tokensTotal,
@@ -53,23 +61,18 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
 
   return (
-    <>
-      <FeatureFlagsProvider value={featureFlags}>
-        <ModelConfigProvider
-          defaultModelId={defaultModel?.id ?? null}
-          models={models}
-        >
-          <DataStreamProvider>
-            <SidebarProvider defaultOpen={defaultSidebarOpen}>
-              <AppSidebar user={session?.user} />
-              <SidebarInset>{children}</SidebarInset>
-            </SidebarProvider>
-          </DataStreamProvider>
-        </ModelConfigProvider>
-      </FeatureFlagsProvider>
-    </>
+    <FeatureFlagsProvider value={featureFlags}>
+      <ModelConfigProvider
+        defaultModelId={defaultModel?.id ?? null}
+        models={models}
+      >
+        <DataStreamProvider>
+          <SidebarProvider defaultOpen={defaultSidebarOpen}>
+            <AppSidebar user={session?.user} />
+            <SidebarInset>{children}</SidebarInset>
+          </SidebarProvider>
+        </DataStreamProvider>
+      </ModelConfigProvider>
+    </FeatureFlagsProvider>
   );
 }
-
-
-

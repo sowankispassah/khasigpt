@@ -5,6 +5,7 @@ const MULTI_DASH_REGEX = /-{2,}/g;
 const LEADING_TRAILING_DASH_REGEX = /^-+|-+$/g;
 const NON_ALPHANUMERIC_REGEX = /[^a-z0-9]+/gi;
 const MARKUP_BREAK_REGEX = /\n{3,}/g;
+const TRAILING_WORD_REGEX = /\s+\S*$/;
 
 export function sanitizeForumContent(value: string) {
   if (typeof value !== "string") {
@@ -46,7 +47,10 @@ export function buildForumExcerpt(content: string, maxLength = 280) {
   if (safeContent.length <= maxLength) {
     return safeContent;
   }
-  return `${safeContent.slice(0, maxLength).replace(/\s+\S*$/, "").trim()}…`;
+  return `${safeContent
+    .slice(0, maxLength)
+    .replace(TRAILING_WORD_REGEX, "")
+    .trim()}…`;
 }
 
 export function formatForumUserName(

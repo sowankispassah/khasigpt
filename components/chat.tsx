@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
+import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,10 +22,8 @@ import {
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Vote } from "@/lib/db/schema";
-import { ChatSDKError } from "@/lib/errors";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { useTranslation } from "@/components/language-provider";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -40,7 +39,7 @@ export function Chat({
   isReadonly,
   autoResume,
   suggestedPrompts,
-  customKnowledgeEnabled,
+  customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -101,7 +100,7 @@ export function Chat({
     onData: (dataPart) => {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
-    onFinish: async () => {
+    onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {
@@ -118,7 +117,7 @@ export function Chat({
             return prev;
           }
           const next = [...prev];
-          const last = next[next.length - 1];
+          const last = next.at(-1);
           if (last?.role === "user") {
             next.pop();
           }
@@ -214,8 +213,8 @@ export function Chat({
           isReadonly={isReadonly}
           messages={messages}
           regenerate={regenerate}
-          selectedVisibilityType={visibilityType}
           selectedModelId={currentModelId}
+          selectedVisibilityType={visibilityType}
           sendMessage={sendMessage}
           setMessages={setMessages}
           status={status}
@@ -265,10 +264,7 @@ export function Chat({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate(
-                "chat.recharge.alert.title",
-                "Credit top-up required"
-              )}
+              {translate("chat.recharge.alert.title", "Credit top-up required")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {translate(
@@ -287,10 +283,7 @@ export function Chat({
                 router.push("/recharge");
               }}
             >
-              {translate(
-                "chat.recharge.alert.confirm",
-                "Go to recharge"
-              )}
+              {translate("chat.recharge.alert.confirm", "Go to recharge")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -312,10 +305,7 @@ export function Chat({
               ).replace(
                 "{subject}",
                 process.env.NODE_ENV === "production"
-                  ? translate(
-                      "chat.gateway.alert.subject.owner",
-                      "the owner"
-                    )
+                  ? translate("chat.gateway.alert.subject.owner", "the owner")
                   : translate("chat.gateway.alert.subject.you", "you")
               )}
             </AlertDialogDescription>

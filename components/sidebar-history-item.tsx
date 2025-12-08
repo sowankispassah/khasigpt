@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Chat } from "@/lib/db/schema";
+import { preloadChat } from "./chat-loader";
 import {
   CheckCircleFillIcon,
   GlobeIcon,
@@ -24,7 +25,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "./ui/sidebar";
-import { preloadChat } from "./chat-loader";
 
 const PureChatItem = ({
   chat,
@@ -50,17 +50,15 @@ const PureChatItem = ({
         <button
           aria-busy={isNavigating}
           className="flex w-full items-center gap-2 truncate text-left"
-          onFocus={preloadChat}
           onClick={() => {
             onOpen(chat.id);
           }}
+          onFocus={preloadChat}
           onMouseEnter={preloadChat}
           onTouchStart={preloadChat}
           type="button"
         >
-          <span className="flex-1 truncate">
-            {chat.title}
-          </span>
+          <span className="flex-1 truncate">{chat.title}</span>
         </button>
       </SidebarMenuButton>
 

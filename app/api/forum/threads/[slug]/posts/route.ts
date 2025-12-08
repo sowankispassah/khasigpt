@@ -3,9 +3,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
-import { createForumPost } from "@/lib/forum/service";
+import {
+  forumDisabledResponse,
+  forumErrorResponse,
+} from "@/lib/forum/api-helpers";
 import { isForumEnabled } from "@/lib/forum/config";
+import { createForumPost } from "@/lib/forum/service";
 
 const createPostSchema = z.object({
   content: z.string().min(8),

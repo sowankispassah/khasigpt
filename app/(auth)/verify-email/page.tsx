@@ -13,7 +13,7 @@ function resolveToken(param: string | string[] | undefined) {
   if (!param) {
     return null;
   }
-  return Array.isArray(param) ? param[0] ?? null : param;
+  return Array.isArray(param) ? (param[0] ?? null) : param;
 }
 
 function getVerificationCopy(status: string) {
@@ -74,7 +74,7 @@ export default async function VerifyEmailPage({
         >
           {message}
         </p>
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+        <div className="flex flex-col gap-2 text-muted-foreground text-sm">
           <p>Continue to sign in once your account is ready.</p>
           <div className="flex justify-center">
             <Link

@@ -1,20 +1,19 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
-import { signOut, useSession } from "next-auth/react";
-import { useTheme } from "next-themes";
+import { useSession } from "next-auth/react";
 import {
+  type MouseEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
   useTransition,
-  type MouseEvent,
 } from "react";
-import dynamic from "next/dynamic";
-import Image from "next/image";
 import { PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,17 +54,16 @@ const SidebarHistory = dynamic(
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
-  const { data: sessionData, status } = useSession();
-  const { setTheme, resolvedTheme } = useTheme();
+  const { data: sessionData } = useSession();
   const [isPending, startTransition] = useTransition();
   const [showProgress, setShowProgress] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timerId) => {
+    for (const timerId of timersRef.current) {
       clearTimeout(timerId);
-    });
+    }
     timersRef.current = [];
   }, []);
 
@@ -100,8 +98,8 @@ export function AppSidebar({ user }: { user: User | undefined }) {
   }, [clearTimers]);
 
   const activeUser = sessionData?.user ?? user;
-  const userEmail = activeUser?.email ?? "";
-  const isAdmin = activeUser?.role === "admin";
+  const _userEmail = activeUser?.email ?? "";
+  const _isAdmin = activeUser?.role === "admin";
 
   const createNewChatHref = () => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -144,7 +142,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
         router.push("/");
       });
     },
-    [isPending, router, setOpenMobile, startProgress, startTransition]
+    [isPending, router, setOpenMobile, startProgress]
   );
 
   return (
@@ -162,48 +160,48 @@ export function AppSidebar({ user }: { user: User | undefined }) {
       ) : null}
       <Sidebar className="group-data-[side=left]:border-r-0">
         <SidebarHeader>
-        <SidebarMenu>
-          <div className="flex flex-row items-center justify-between">
-            <Link
-              className="flex cursor-pointer flex-row items-center"
-              href="/"
-              onClick={handleLogoClick}
-            >
-              <Image
-                alt="KhasiGPT logo"
-                className="h-8 w-6 rounded-md object-contain dark:invert dark:brightness-150"
-                height={32}
-                priority
-                src="/images/khasigptlogo.png"
-                width={24}
-              />
-              <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                KhasiGPT
-              </span>
-            </Link>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-busy={isPending}
-                    className="h-8 px-2 md:h-fit md:px-2"
-                    data-testid="new-chat-button"
-                    disabled={isPending}
-                    onClick={handleNewChat}
-                    type="button"
-                    variant="outline"
-                  >
-                    <PlusIcon />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent align="end">New Chat</TooltipContent>
-              </Tooltip>
+          <SidebarMenu>
+            <div className="flex flex-row items-center justify-between">
+              <Link
+                className="flex cursor-pointer flex-row items-center"
+                href="/"
+                onClick={handleLogoClick}
+              >
+                <Image
+                  alt="KhasiGPT logo"
+                  className="h-8 w-6 rounded-md object-contain dark:brightness-150 dark:invert"
+                  height={32}
+                  priority
+                  src="/images/khasigptlogo.png"
+                  width={24}
+                />
+                <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
+                  KhasiGPT
+                </span>
+              </Link>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      aria-busy={isPending}
+                      className="h-8 px-2 md:h-fit md:px-2"
+                      data-testid="new-chat-button"
+                      disabled={isPending}
+                      onClick={handleNewChat}
+                      type="button"
+                      variant="outline"
+                    >
+                      <PlusIcon />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent align="end">New Chat</TooltipContent>
+                </Tooltip>
 
-              <div className="md:hidden" />
+                <div className="md:hidden" />
+              </div>
             </div>
-          </div>
-        </SidebarMenu>
-      </SidebarHeader>
+          </SidebarMenu>
+        </SidebarHeader>
         <SidebarContent>
           <SidebarHistory user={user} />
         </SidebarContent>

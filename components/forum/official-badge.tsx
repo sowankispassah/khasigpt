@@ -18,7 +18,10 @@ export function OfficialBadge({
   const dimension = size === "sm" ? 14 : 20;
 
   return (
-    <span className={cn("inline-flex items-center justify-center", className)} title={srLabel}>
+    <span
+      className={cn("inline-flex items-center justify-center", className)}
+      title={srLabel}
+    >
       <Image
         alt={srLabel}
         className="rounded-full"

@@ -1,6 +1,5 @@
-import { unstable_cache } from "next/cache";
-
 import { asc, eq } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 
 import { db } from "@/lib/db/queries";
 import { language } from "@/lib/db/schema";
@@ -14,10 +13,11 @@ export type LanguageOption = {
 };
 
 const shouldBypassCache =
-  typeof process !== "undefined" &&
-  process.env.SKIP_TRANSLATION_CACHE === "1";
+  typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
 
-const serializeLanguage = (entry: typeof language.$inferSelect): LanguageOption => ({
+const serializeLanguage = (
+  entry: typeof language.$inferSelect
+): LanguageOption => ({
   id: entry.id,
   code: entry.code,
   name: entry.name,
@@ -27,10 +27,7 @@ const serializeLanguage = (entry: typeof language.$inferSelect): LanguageOption 
 
 const getAllLanguagesCached = unstable_cache(
   async (): Promise<LanguageOption[]> => {
-    const rows = await db
-      .select()
-      .from(language)
-      .orderBy(asc(language.name));
+    const rows = await db.select().from(language).orderBy(asc(language.name));
 
     return rows.map(serializeLanguage);
   },
@@ -40,10 +37,7 @@ const getAllLanguagesCached = unstable_cache(
 
 export const getAllLanguages = async (): Promise<LanguageOption[]> => {
   if (shouldBypassCache) {
-    const rows = await db
-      .select()
-      .from(language)
-      .orderBy(asc(language.name));
+    const rows = await db.select().from(language).orderBy(asc(language.name));
     return rows.map(serializeLanguage);
   }
   return getAllLanguagesCached();
@@ -109,13 +103,10 @@ export const getDefaultLanguage = async () => {
   }
 
   if (active.length > 0) {
-    return active[0]!;
+    return active[0] ?? null;
   }
 
-  const rows = await db
-    .select()
-    .from(language)
-    .orderBy(asc(language.name));
+  const rows = await db.select().from(language).orderBy(asc(language.name));
 
   const all = rows.map(serializeLanguage);
   return all[0] ?? null;
@@ -127,9 +118,9 @@ export async function resolveLanguage(preferredCode?: string | null) {
     preferredCode ? getLanguageByCode(preferredCode) : Promise.resolve(null),
   ]);
 
-  const fallback = languages.find((entry) => entry.isDefault) ?? languages[0] ?? null;
-  const languageOption =
-    preferred && preferred.isActive ? preferred : fallback;
+  const fallback =
+    languages.find((entry) => entry.isDefault) ?? languages[0] ?? null;
+  const languageOption = preferred?.isActive ? preferred : fallback;
 
   if (!languageOption) {
     throw new Error("No active languages are configured");

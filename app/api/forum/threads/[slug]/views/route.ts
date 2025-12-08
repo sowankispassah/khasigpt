@@ -1,12 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
+import {
+  forumDisabledResponse,
+  forumErrorResponse,
+} from "@/lib/forum/api-helpers";
+import { isForumEnabled } from "@/lib/forum/config";
 import {
   recordForumThreadView,
   resolveForumThreadId,
 } from "@/lib/forum/service";
-import { isForumEnabled } from "@/lib/forum/config";
 
 type ThreadViewRouteContext = {
   params: Promise<{

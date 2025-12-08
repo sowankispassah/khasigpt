@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-
-import type {
-  ForumCategorySummary,
-  ForumTagSummary,
-} from "@/lib/forum/types";
-import { cn } from "@/lib/utils";
 import { useTranslation } from "@/components/language-provider";
+import type { ForumCategorySummary, ForumTagSummary } from "@/lib/forum/types";
+import { cn } from "@/lib/utils";
 
 type ForumSidebarProps = {
   categories: ForumCategorySummary[];
@@ -53,12 +49,12 @@ export function ForumSidebar({
     <aside className="space-y-10">
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wider">
             {translate("forum.sidebar.categories.title", "Categories")}
           </h2>
           {showReset ? (
             <Link
-              className="text-xs font-medium text-primary transition hover:text-primary/80"
+              className="font-medium text-primary text-xs transition hover:text-primary/80"
               href="/forum"
             >
               {translate("forum.sidebar.categories.reset", "Reset")}
@@ -70,7 +66,8 @@ export function ForumSidebar({
             <Link
               className={cn(
                 "flex cursor-pointer items-center justify-between rounded-lg border border-transparent px-3 py-2 transition hover:border-primary/30 hover:bg-primary/5",
-                !activeCategorySlug && "border-primary/40 bg-primary/10 font-semibold"
+                !activeCategorySlug &&
+                  "border-primary/40 bg-primary/10 font-semibold"
               )}
               href={buildQuery({
                 tag: activeTagSlug,
@@ -81,7 +78,10 @@ export function ForumSidebar({
                 {translate("forum.sidebar.categories.all", "All discussions")}
               </span>
               <span className="text-muted-foreground text-xs">
-                {categories.reduce((acc, category) => acc + category.threadCount, 0)}
+                {categories.reduce(
+                  (acc, category) => acc + category.threadCount,
+                  0
+                )}
               </span>
             </Link>
           </li>
@@ -116,7 +116,7 @@ export function ForumSidebar({
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+        <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wider">
           {translate("forum.sidebar.tags.title", "Trending Tags")}
         </h2>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -134,12 +134,12 @@ export function ForumSidebar({
               const isActive = activeTagSlug === tag.slug;
               return (
                 <Link
-                  key={tag.id}
                   className={cn(
-                    "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition hover:border-primary/30 hover:bg-primary/5",
+                    "cursor-pointer rounded-full border px-3 py-1 font-medium text-xs transition hover:border-primary/30 hover:bg-primary/5",
                     isActive && "border-primary bg-primary/10 text-primary"
                   )}
                   href={href}
+                  key={tag.id}
                 >
                   #{tag.label}
                 </Link>

@@ -90,7 +90,9 @@ export function MessageEditor({
               if (index !== -1) {
                 const updatedParts =
                   message.parts?.map((part) =>
-                    part.type === "text" ? { ...part, text: draftContent } : part
+                    part.type === "text"
+                      ? { ...part, text: draftContent }
+                      : part
                   ) ?? [];
                 const hasTextPart = updatedParts.some(
                   (part) => part.type === "text"

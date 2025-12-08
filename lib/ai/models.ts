@@ -3,10 +3,10 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 
 import {
-  MODEL_REGISTRY_CACHE_TAG,
   getModelRegistry,
-  mapToModelSummary,
+  MODEL_REGISTRY_CACHE_TAG,
   type ModelSummary,
+  mapToModelSummary,
 } from "./model-registry";
 
 export type ChatModel = ModelSummary;
@@ -15,11 +15,13 @@ const CHAT_MODELS_CACHE_KEY = "chat-models";
 
 export const loadChatModels = unstable_cache(
   async () => {
-  try {
-    const { configs, defaultConfig } = await getModelRegistry();
+    try {
+      const { configs, defaultConfig } = await getModelRegistry();
 
-    const models = configs.map(mapToModelSummary);
-    const defaultModel = defaultConfig ? mapToModelSummary(defaultConfig) : null;
+      const models = configs.map(mapToModelSummary);
+      const defaultModel = defaultConfig
+        ? mapToModelSummary(defaultConfig)
+        : null;
 
       return {
         models,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const PROGRESS_STEPS = [
   { value: 12, delay: 0 },
@@ -21,7 +21,9 @@ export function GlobalProgressBar() {
   const originalFetchRef = useRef<typeof fetch | null>(null);
 
   const clearTimers = useCallback(() => {
-    timeoutsRef.current.forEach((id) => window.clearTimeout(id));
+    for (const id of timeoutsRef.current) {
+      window.clearTimeout(id);
+    }
     timeoutsRef.current = [];
     if (fallbackRef.current !== null) {
       window.clearTimeout(fallbackRef.current);
@@ -49,17 +51,19 @@ export function GlobalProgressBar() {
   const start = useCallback(() => {
     clearTimers();
     setIsVisible(true);
-    PROGRESS_STEPS.forEach(({ value, delay }) => {
+    for (const { value, delay } of PROGRESS_STEPS) {
       const id = window.setTimeout(() => setProgress(value), delay);
       timeoutsRef.current.push(id);
-    });
+    }
     fallbackRef.current = window.setTimeout(finishIfIdle, 5000);
   }, [clearTimers, finishIfIdle]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      if (!target) return;
+      if (!target) {
+        return;
+      }
       const clickable = target.closest(
         'button, a, [role="button"], [data-clickable], input[type="submit"], input[type="button"], [data-nav]'
       );
@@ -101,10 +105,7 @@ export function GlobalProgressBar() {
         const response = await originalFetch(...args);
         return response;
       } finally {
-        pendingFetchesRef.current = Math.max(
-          0,
-          pendingFetchesRef.current - 1
-        );
+        pendingFetchesRef.current = Math.max(0, pendingFetchesRef.current - 1);
         finishIfIdle();
       }
     };

@@ -1,23 +1,22 @@
 "use client";
 
+import { Filter, Search as SearchIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Filter, Search as SearchIcon } from "lucide-react";
-
-import type {
-  ForumThreadListItemPayload,
-  ForumOverviewPayload,
-} from "@/lib/forum/types";
-import { fetchWithErrorHandlers } from "@/lib/utils";
+import { ForumCategoryManager } from "@/components/forum/forum-category-manager";
 import { ThreadCard } from "@/components/forum/thread-card";
+import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LoaderIcon } from "@/components/icons";
-import { ForumCategoryManager } from "@/components/forum/forum-category-manager";
-import { useTranslation } from "@/components/language-provider";
+import type {
+  ForumOverviewPayload,
+  ForumThreadListItemPayload,
+} from "@/lib/forum/types";
+import { fetchWithErrorHandlers } from "@/lib/utils";
 
 const ForumComposer = dynamic(() =>
   import("./forum-composer").then((mod) => mod.ForumComposer)
@@ -203,7 +202,9 @@ export function ForumClient({
       setHasMoreState(data.hasMore);
       setSubscribedSet((prev) => {
         const next = new Set(prev);
-        data.subscribedThreadIds.forEach((id) => next.add(id));
+        for (const id of data.subscribedThreadIds) {
+          next.add(id);
+        }
         return next;
       });
     } catch (error) {
@@ -235,155 +236,155 @@ export function ForumClient({
         </div>
       ) : null}
       <div className="space-y-8">
-      <section className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-8 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-6">
-          <div className="space-y-4">
-            <p className="text-sm font-semibold uppercase tracking-wider text-primary">
-              {translate("forum.hero.tagline", "Community Forum")}
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-              {translate(
-                "forum.hero.title",
-                "Discuss product ideas with KhasiGPT builders"
-              )}
-            </h1>
-            <p className="text-muted-foreground text-sm md:text-base">
-              {translate(
-                "forum.hero.subtitle",
-                "Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance."
-              )}
-            </p>
-            <div className="flex gap-6 text-sm">
-              <div>
-                <p className="text-2xl font-semibold">{totalThreads}</p>
-                <p className="text-muted-foreground text-xs">
-                  {translate("forum.hero.stats.total_label", "Total topics")}
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-semibold">{totalActiveThreads}</p>
-                <p className="text-muted-foreground text-xs">
-                  {translate("forum.hero.stats.visible_label", "Visible now")}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex w-full flex-col items-center gap-4 md:w-auto">
-            <div className="relative hidden h-16 w-16 overflow-hidden rounded-2xl border border-border bg-card md:block">
-              <Image
-                alt={translate(
-                  "forum.hero.image_alt",
-                  "KhasiGPT community badge"
+        <section className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-8 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div className="space-y-4">
+              <p className="font-semibold text-primary text-sm uppercase tracking-wider">
+                {translate("forum.hero.tagline", "Community Forum")}
+              </p>
+              <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
+                {translate(
+                  "forum.hero.title",
+                  "Discuss product ideas with KhasiGPT builders"
                 )}
-                className="object-contain p-2"
-                height={64}
-                priority
-                src="/images/khasigptlogo.png"
-                width={64}
+              </h1>
+              <p className="text-muted-foreground text-sm md:text-base">
+                {translate(
+                  "forum.hero.subtitle",
+                  "Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance."
+                )}
+              </p>
+              <div className="flex gap-6 text-sm">
+                <div>
+                  <p className="font-semibold text-2xl">{totalThreads}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {translate("forum.hero.stats.total_label", "Total topics")}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-2xl">{totalActiveThreads}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {translate("forum.hero.stats.visible_label", "Visible now")}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex w-full flex-col items-center gap-4 md:w-auto">
+              <div className="relative hidden h-16 w-16 overflow-hidden rounded-2xl border border-border bg-card md:block">
+                <Image
+                  alt={translate(
+                    "forum.hero.image_alt",
+                    "KhasiGPT community badge"
+                  )}
+                  className="object-contain p-2"
+                  height={64}
+                  priority
+                  src="/images/khasigptlogo.png"
+                  width={64}
+                />
+              </div>
+              <ForumComposer
+                categories={categoriesForComposer}
+                tags={tagsForComposer}
+                viewerId={viewer.id}
+                viewerName={viewer.name}
+              />
+              {isAdmin ? (
+                <ForumCategoryManager className="w-full justify-center" />
+              ) : null}
+            </div>
+          </div>
+          <form
+            className="mt-8 flex flex-col gap-3 md:flex-row"
+            onSubmit={handleSearchSubmit}
+          >
+            <div className="relative flex-1">
+              <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder={translate(
+                  "forum.search.placeholder",
+                  "Search discussions, tags, or keywords"
+                )}
+                value={searchTerm}
               />
             </div>
-            <ForumComposer
-              categories={categoriesForComposer}
-              tags={tagsForComposer}
-              viewerId={viewer.id}
-              viewerName={viewer.name}
-            />
-            {isAdmin ? (
-              <ForumCategoryManager className="w-full justify-center" />
-            ) : null}
-          </div>
-        </div>
-        <form
-          className="mt-8 flex flex-col gap-3 md:flex-row"
-          onSubmit={handleSearchSubmit}
-        >
-          <div className="relative flex-1">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={translate(
-                "forum.search.placeholder",
-                "Search discussions, tags, or keywords"
-              )}
-              value={searchTerm}
-            />
-          </div>
-          <Button
-            className="cursor-pointer"
-            disabled={isSearching}
-            type="submit"
-            variant="secondary"
-          >
-            {isSearching ? (
-              <span className="inline-flex items-center gap-2">
-                <LoaderIcon className="animate-spin" size={16} />
-                {translate("forum.search.pending", "Searching…")}
-              </span>
-            ) : (
-              translate("forum.search.submit", "Search")
-            )}
-          </Button>
-        </form>
-        {activeFilters.length > 0 ? (
-          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-dashed border-primary/30 px-3 py-1 text-xs text-muted-foreground">
-            <Filter className="h-3.5 w-3.5" />
-            {translate("forum.filters.label", "Active filters:")}
-            {activeFilters.map((filter) => (
-              <span className="font-medium text-foreground" key={filter}>
-                {filter}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="space-y-4">
-        {threads.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-10 text-center">
-            <p className="text-lg font-semibold">
-              {translate("forum.empty.title", "No discussions yet")}
-            </p>
-            <p className="text-muted-foreground mt-2 text-sm">
-              {translate(
-                "forum.empty.subtitle",
-                "Be the first to start a topic in this category."
-              )}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {threads.map((thread) => (
-              <ThreadCard
-                isSubscribed={subscribedSet.has(thread.id)}
-                key={thread.id}
-                onNavigateStart={handleThreadNavigateStart}
-                thread={thread}
-              />
-            ))}
-          </div>
-        )}
-
-        {hasMoreState ? (
-          <div className="flex justify-center pt-4">
             <Button
               className="cursor-pointer"
-              disabled={isLoadingMore}
-              onClick={loadMore}
-              variant="outline"
+              disabled={isSearching}
+              type="submit"
+              variant="secondary"
             >
-              {isLoadingMore ? (
+              {isSearching ? (
                 <span className="inline-flex items-center gap-2">
                   <LoaderIcon className="animate-spin" size={16} />
-                  {translate("forum.list.loading_more", "Loading…")}
+                  {translate("forum.search.pending", "Searching…")}
                 </span>
               ) : (
-                translate("forum.list.load_more", "Load more discussions")
+                translate("forum.search.submit", "Search")
               )}
             </Button>
-          </div>
-        ) : null}
-      </section>
+          </form>
+          {activeFilters.length > 0 ? (
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-primary/30 border-dashed px-3 py-1 text-muted-foreground text-xs">
+              <Filter className="h-3.5 w-3.5" />
+              {translate("forum.filters.label", "Active filters:")}
+              {activeFilters.map((filter) => (
+                <span className="font-medium text-foreground" key={filter}>
+                  {filter}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="space-y-4">
+          {threads.length === 0 ? (
+            <div className="rounded-2xl border border-border border-dashed p-10 text-center">
+              <p className="font-semibold text-lg">
+                {translate("forum.empty.title", "No discussions yet")}
+              </p>
+              <p className="mt-2 text-muted-foreground text-sm">
+                {translate(
+                  "forum.empty.subtitle",
+                  "Be the first to start a topic in this category."
+                )}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {threads.map((thread) => (
+                <ThreadCard
+                  isSubscribed={subscribedSet.has(thread.id)}
+                  key={thread.id}
+                  onNavigateStart={handleThreadNavigateStart}
+                  thread={thread}
+                />
+              ))}
+            </div>
+          )}
+
+          {hasMoreState ? (
+            <div className="flex justify-center pt-4">
+              <Button
+                className="cursor-pointer"
+                disabled={isLoadingMore}
+                onClick={loadMore}
+                variant="outline"
+              >
+                {isLoadingMore ? (
+                  <span className="inline-flex items-center gap-2">
+                    <LoaderIcon className="animate-spin" size={16} />
+                    {translate("forum.list.loading_more", "Loading…")}
+                  </span>
+                ) : (
+                  translate("forum.list.load_more", "Load more discussions")
+                )}
+              </Button>
+            </div>
+          ) : null}
+        </section>
       </div>
     </>
   );

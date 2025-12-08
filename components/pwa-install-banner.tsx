@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -71,10 +71,13 @@ export function PwaInstallBanner() {
   useEffect(() => {
     const mediaQuery = window.matchMedia("(display-mode: standalone)");
     const updateStandalone = () =>
-      setIsStandalone(mediaQuery.matches || (window.navigator as any).standalone);
+      setIsStandalone(
+        mediaQuery.matches || (window.navigator as any).standalone
+      );
     updateStandalone();
 
-    const handler = (event: MediaQueryListEvent) => setIsStandalone(event.matches);
+    const handler = (event: MediaQueryListEvent) =>
+      setIsStandalone(event.matches);
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener("change", handler);
       return () => mediaQuery.removeEventListener("change", handler);
@@ -109,10 +112,10 @@ export function PwaInstallBanner() {
     <div className="fixed inset-x-4 bottom-4 z-50 rounded-2xl border border-border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/70 md:inset-x-auto md:right-6 md:max-w-sm">
       <div className="flex items-start gap-3">
         <div className="flex-1 space-y-1">
-          <p className="text-sm font-semibold">Install KhasiGPT</p>
+          <p className="font-semibold text-sm">Install KhasiGPT</p>
           <p className="text-muted-foreground text-xs">
-            Use KhasiGPT like a native app. Works offline with instant access from
-            your home screen.
+            Use KhasiGPT like a native app. Works offline with instant access
+            from your home screen.
           </p>
         </div>
         <button
@@ -125,10 +128,15 @@ export function PwaInstallBanner() {
         </button>
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <Button className="cursor-pointer flex-1" onClick={handleInstall}>
+        <Button className="flex-1 cursor-pointer" onClick={handleInstall}>
           Add to home screen
         </Button>
-        <Button className="cursor-pointer" onClick={persistDismissed} type="button" variant="ghost">
+        <Button
+          className="cursor-pointer"
+          onClick={persistDismissed}
+          type="button"
+          variant="ghost"
+        >
           Maybe later
         </Button>
       </div>

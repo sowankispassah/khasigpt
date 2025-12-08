@@ -1,16 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
-
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { LoaderIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { LoaderIcon, PlusIcon } from "@/components/icons";
-import { fetchWithErrorHandlers } from "@/lib/utils";
 import { getForumSlugBase } from "@/lib/forum/utils";
+import { fetchWithErrorHandlers } from "@/lib/utils";
 
 type ForumCategoryManagerProps = {
   className?: string;
@@ -18,6 +23,11 @@ type ForumCategoryManagerProps = {
 
 export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
   const router = useRouter();
+  const nameId = useId();
+  const slugId = useId();
+  const descriptionId = useId();
+  const positionId = useId();
+  const lockedId = useId();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [slugInput, setSlugInput] = useState("");
@@ -47,9 +57,7 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
     event.preventDefault();
     const normalizedName = name.trim();
     if (normalizedName.length < 3) {
-      toast.error(
-        "Category name must be at least 3 characters long."
-      );
+      toast.error("Category name must be at least 3 characters long.");
       return;
     }
     if (derivedSlug.length === 0) {
@@ -65,7 +73,8 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
         body: JSON.stringify({
           name: normalizedName,
           slug: derivedSlug,
-          description: description.trim().length > 0 ? description.trim() : undefined,
+          description:
+            description.trim().length > 0 ? description.trim() : undefined,
           position: Number.parseInt(position, 10) || 0,
           isLocked,
         }),
@@ -84,10 +93,7 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
   return (
     <Sheet onOpenChange={setOpen} open={open}>
       <SheetTrigger asChild>
-        <Button
-          className={className}
-          variant="outline"
-        >
+        <Button className={className} variant="outline">
           <PlusIcon />
           Add category
         </Button>
@@ -98,16 +104,22 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
         </SheetHeader>
         <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Name</label>
+            <label className="font-medium text-sm" htmlFor={nameId}>
+              Name
+            </label>
             <Input
+              id={nameId}
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Product Help"
               value={name}
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Slug</label>
+            <label className="font-medium text-sm" htmlFor={slugId}>
+              Slug
+            </label>
             <Input
+              id={slugId}
               onBlur={() => setIsSlugDirty(true)}
               onChange={(event) => {
                 setIsSlugDirty(true);
@@ -118,8 +130,11 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Description</label>
+            <label className="font-medium text-sm" htmlFor={descriptionId}>
+              Description
+            </label>
             <Textarea
+              id={descriptionId}
               maxLength={500}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Visible on the forum page to describe what belongs here."
@@ -128,8 +143,11 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Position</label>
+              <label className="font-medium text-sm" htmlFor={positionId}>
+                Position
+              </label>
               <Input
+                id={positionId}
                 min={0}
                 onChange={(event) => setPosition(event.target.value)}
                 type="number"
@@ -137,25 +155,24 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Locked</label>
+              <label className="font-medium text-sm" htmlFor={lockedId}>
+                Locked
+              </label>
               <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
                 <input
                   checked={isLocked}
                   className="h-4 w-4 cursor-pointer accent-primary"
+                  id={lockedId}
                   onChange={(event) => setIsLocked(event.target.checked)}
                   type="checkbox"
                 />
-                <span className="text-sm text-muted-foreground">
+                <span className="text-muted-foreground text-sm">
                   Prevent new threads in this category
                 </span>
               </div>
             </div>
           </div>
-          <Button
-            className="w-full"
-            disabled={isSubmitting}
-            type="submit"
-          >
+          <Button className="w-full" disabled={isSubmitting} type="submit">
             {isSubmitting ? (
               <span className="inline-flex items-center gap-2">
                 <LoaderIcon className="animate-spin" size={16} />

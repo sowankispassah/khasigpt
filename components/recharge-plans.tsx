@@ -1,12 +1,12 @@
 "use client";
 
-import type React from "react";
 import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
+import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 
 import { LoaderIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -15,9 +15,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "@/components/language-provider";
+
+const DESCRIPTION_SPLIT_REGEX = /\r?\n/;
+const BULLET_PREFIX_REGEX = /^[\s*-\u2022]+/;
+const FEATURE_SPLIT_REGEX = /\n/;
 
 type PlanForClient = {
   id: string;
@@ -120,9 +124,10 @@ export function RechargePlans({
     discountPercentage: number;
     finalAmount: number;
   } | null>(null);
-  const [couponFeedback, setCouponFeedback] = useState<
-    { type: "success" | "error"; message: string } | null
-  >(null);
+  const [couponFeedback, setCouponFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const { translate } = useTranslation();
@@ -188,7 +193,6 @@ export function RechargePlans({
     })}`;
   }, []);
 
-
   const processCheckout = useCallback(
     async (plan: PlanForClient, couponCode?: string | null) => {
       if (plan.priceInPaise === 0) {
@@ -222,11 +226,20 @@ export function RechargePlans({
           );
         }
 
-        const responseBody = (await orderResponse.json()) as RazorpayOrderResponse;
-        const { key, orderId, amount, currency, plan: orderPlan } = responseBody;
+        const responseBody =
+          (await orderResponse.json()) as RazorpayOrderResponse;
+        const {
+          key,
+          orderId,
+          amount,
+          currency,
+          plan: orderPlan,
+        } = responseBody;
 
         if (responseBody.appliedCoupon && responseBody.discountAmount > 0) {
-          const savings = `₹${(responseBody.discountAmount / 100).toLocaleString("en-IN", {
+          const savings = `₹${(
+            responseBody.discountAmount / 100
+          ).toLocaleString("en-IN", {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           })}`;
@@ -259,22 +272,30 @@ export function RechargePlans({
             name: orderPlan?.name ?? plan.name,
             description:
               orderPlan?.description ??
-              translate("recharge.plan.checkout_description", "Recharge credits"),
+              translate(
+                "recharge.plan.checkout_description",
+                "Recharge credits"
+              ),
             order_id: orderId,
             handler: async (response: RazorpaySuccessResponse) => {
               try {
-                const verifyResponse = await fetch("/api/billing/razorpay/verify", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    orderId: response.razorpay_order_id,
-                    paymentId: response.razorpay_payment_id,
-                    signature: response.razorpay_signature,
-                  }),
-                });
+                const verifyResponse = await fetch(
+                  "/api/billing/razorpay/verify",
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      orderId: response.razorpay_order_id,
+                      paymentId: response.razorpay_payment_id,
+                      signature: response.razorpay_signature,
+                    }),
+                  }
+                );
 
                 if (!verifyResponse.ok) {
-                  const errorBody = await verifyResponse.json().catch(() => null);
+                  const errorBody = await verifyResponse
+                    .json()
+                    .catch(() => null);
                   throw new Error(
                     errorBody?.message ??
                       translate(
@@ -301,7 +322,10 @@ export function RechargePlans({
               ondismiss: () => {
                 setStatus({
                   type: "info",
-                  message: translate("recharge.status.cancelled", "Payment cancelled."),
+                  message: translate(
+                    "recharge.status.cancelled",
+                    "Payment cancelled."
+                  ),
                 });
                 resolve();
               },
@@ -429,11 +453,7 @@ export function RechargePlans({
     } finally {
       setIsValidatingCoupon(false);
     }
-  }, [
-    normalizedCouponInput,
-    selectedPlan,
-    translate,
-  ]);
+  }, [normalizedCouponInput, selectedPlan, translate]);
 
   const handleProceedToPayment = useCallback(async () => {
     if (!selectedPlan) {
@@ -497,8 +517,8 @@ export function RechargePlans({
                 })}`;
 
           const descriptionFeatures = (plan.description ?? "")
-            .split(/\r?\n/)
-            .map((line) => line.replace(/^[\s*-\u2022]+/, "").trim())
+            .split(DESCRIPTION_SPLIT_REGEX)
+            .map((line) => line.replace(BULLET_PREFIX_REGEX, "").trim())
             .filter((line) => line.length > 0);
 
           const features =
@@ -511,10 +531,16 @@ export function RechargePlans({
           const buttonLabel = effectiveIsActive
             ? isFreePlan
               ? translate("recharge.plan.pill.active", "Previously recharged")
-              : translate("recharge.plan.button.recharge_again", "Recharge again")
+              : translate(
+                  "recharge.plan.button.recharge_again",
+                  "Recharge again"
+                )
             : isFreePlan
               ? translate("recharge.plan.button.free", "Free Plan")
-              : translate("recharge.plan.button.get", "Get {plan}").replace("{plan}", plan.name);
+              : translate("recharge.plan.button.get", "Get {plan}").replace(
+                  "{plan}",
+                  plan.name
+                );
 
           const buttonVariant = isFreePlan ? "outline" : "default";
 
@@ -530,7 +556,10 @@ export function RechargePlans({
               {isRecommended ? (
                 <div className="-translate-x-1/2 absolute top-2.5 left-1/2 flex">
                   <span className="rounded-full bg-amber-500/15 px-2 py-[2px] font-semibold text-[11px] text-amber-600">
-                    {translate("recharge.plan.badge.recommended", "Recommended")}
+                    {translate(
+                      "recharge.plan.badge.recommended",
+                      "Recommended"
+                    )}
                   </span>
                 </div>
               ) : null}
@@ -558,10 +587,7 @@ export function RechargePlans({
                           {translate(
                             "recharge.plan.credits",
                             "{credits} credits"
-                          ).replace(
-                            "{credits}",
-                            credits.toLocaleString()
-                          )}
+                          ).replace("{credits}", credits.toLocaleString())}
                         </p>
                       ) : null}
                       {plan.billingCycleDays > 0 ? (
@@ -578,12 +604,12 @@ export function RechargePlans({
                   {features.length > 0 ? (
                     <div className="space-y-2">
                       <ul className="space-y-2 text-sm">
-                        {features.map((feature, featureIndex) => {
-                          const lines = feature.split(/\n/);
-                          return lines.map((line, lineIndex) => (
+                        {features.map((feature) => {
+                          const lines = feature.split(FEATURE_SPLIT_REGEX);
+                          return lines.map((line) => (
                             <li
                               className="flex items-start gap-2"
-                              key={`${featureIndex}-${lineIndex}`}
+                              key={`${feature}-${line}`}
                             >
                               <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
                               <span>{line}</span>
@@ -631,7 +657,7 @@ export function RechargePlans({
         })}
       </section>
 
-      <AlertDialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+      <AlertDialog onOpenChange={handleDialogOpenChange} open={isDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -648,22 +674,29 @@ export function RechargePlans({
             <div className="rounded-lg border bg-muted/30 p-4 text-sm">
               <div className="flex items-center justify-between">
                 <span className="font-medium">
-                  {selectedPlan?.name ?? translate("recharge.dialog.plan_placeholder", "Selected plan")}
+                  {selectedPlan?.name ??
+                    translate(
+                      "recharge.dialog.plan_placeholder",
+                      "Selected plan"
+                    )}
                 </span>
                 <span>{formatPaise(selectedPlanPrice)}</span>
               </div>
               {selectedPlan?.billingCycleDays ? (
                 <p className="text-muted-foreground text-xs">
-                  {translate("recharge.plan.validity", "Validity: {days} days").replace(
-                    "{days}",
-                    String(selectedPlan.billingCycleDays)
-                  )}
+                  {translate(
+                    "recharge.plan.validity",
+                    "Validity: {days} days"
+                  ).replace("{days}", String(selectedPlan.billingCycleDays))}
                 </p>
               ) : null}
               {appliedDiscount > 0 ? (
                 <div className="mt-3 flex items-center justify-between text-emerald-600 text-sm">
                   <span>
-                    {translate("recharge.dialog.summary.discount", "Coupon discount")}
+                    {translate(
+                      "recharge.dialog.summary.discount",
+                      "Coupon discount"
+                    )}
                     {couponValidation?.discountPercentage
                       ? ` (${couponValidation.discountPercentage}%)`
                       : ""}
@@ -671,23 +704,35 @@ export function RechargePlans({
                   <span>-{formatPaise(appliedDiscount)}</span>
                 </div>
               ) : null}
-              <div className="mt-4 flex items-center justify-between text-base font-semibold">
-                <span>{translate("recharge.dialog.summary.total", "Total due")}</span>
+              <div className="mt-4 flex items-center justify-between font-semibold text-base">
+                <span>
+                  {translate("recharge.dialog.summary.total", "Total due")}
+                </span>
                 <span>{formatPaise(finalAmountInPaise)}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label
+                className="font-medium text-sm"
+                htmlFor="coupon-code-input"
+              >
                 {translate("recharge.dialog.coupon_label", "Coupon code")}
               </label>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
-                  aria-label={translate("recharge.dialog.coupon_label", "Coupon code")}
+                  aria-label={translate(
+                    "recharge.dialog.coupon_label",
+                    "Coupon code"
+                  )}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 font-mono text-sm uppercase tracking-wide"
+                  id="coupon-code-input"
                   maxLength={32}
                   onChange={handleCouponInputChange}
-                  placeholder={translate("recharge.coupon.placeholder", "CREATOR10")}
+                  placeholder={translate(
+                    "recharge.coupon.placeholder",
+                    "CREATOR10"
+                  )}
                   spellCheck={false}
                   value={couponInput}
                 />
@@ -708,7 +753,10 @@ export function RechargePlans({
                         <LoaderIcon size={14} />
                       </span>
                       <span>
-                        {translate("recharge.dialog.validating", "Validating...")}
+                        {translate(
+                          "recharge.dialog.validating",
+                          "Validating..."
+                        )}
                       </span>
                     </span>
                   ) : (
@@ -758,7 +806,10 @@ export function RechargePlans({
                     <LoaderIcon size={16} />
                   </span>
                   <span>
-                    {translate("recharge.plan.button.processing", "Processing...")}
+                    {translate(
+                      "recharge.plan.button.processing",
+                      "Processing..."
+                    )}
                   </span>
                 </span>
               ) : (

@@ -100,6 +100,6 @@ export async function GET() {
     updatedAt:
       record?.updatedAt instanceof Date
         ? record.updatedAt.toISOString()
-        : record?.updatedAt ?? null,
+        : (record?.updatedAt ?? null),
   });
 }

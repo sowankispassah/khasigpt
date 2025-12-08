@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -28,12 +22,12 @@ export function BackToHomeButton({
   const [isPending, startTransition] = useTransition();
   const [showProgress, setShowProgress] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timerId) => {
+    for (const timerId of timersRef.current) {
       clearTimeout(timerId);
-    });
+    }
     timersRef.current = [];
   }, []);
 
@@ -95,15 +89,15 @@ export function BackToHomeButton({
         </div>
       ) : null}
       <button
-        type="button"
+        aria-busy={isPending}
+        aria-disabled={isPending}
         className={cn(
-          "inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80 cursor-pointer",
+          "inline-flex cursor-pointer items-center gap-2 font-medium text-primary text-sm transition-colors hover:text-primary/80",
           isPending && "opacity-75",
           className
         )}
         onClick={handleClick}
-        aria-busy={isPending}
-        aria-disabled={isPending}
+        type="button"
       >
         <ArrowLeft aria-hidden="true" className="h-4 w-4" />
         <span>{label}</span>

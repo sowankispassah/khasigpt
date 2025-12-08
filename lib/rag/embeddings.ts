@@ -2,10 +2,12 @@ import "server-only";
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { embed } from "ai";
-
-import { ChatSDKError } from "@/lib/errors";
 import { isProductionEnvironment } from "@/lib/constants";
-import { DEFAULT_RAG_EMBEDDING_MODEL, MAX_RAG_EMBEDDABLE_CHARS } from "./constants";
+import { ChatSDKError } from "@/lib/errors";
+import {
+  DEFAULT_RAG_EMBEDDING_MODEL,
+  MAX_RAG_EMBEDDABLE_CHARS,
+} from "./constants";
 
 const openaiEmbeddingClient =
   process.env.OPENAI_API_KEY !== undefined

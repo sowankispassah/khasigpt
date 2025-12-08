@@ -3,9 +3,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { forumDisabledResponse, forumErrorResponse } from "@/lib/forum/api-helpers";
-import { createForumCategory } from "@/lib/forum/service";
+import {
+  forumDisabledResponse,
+  forumErrorResponse,
+} from "@/lib/forum/api-helpers";
 import { isForumEnabled } from "@/lib/forum/config";
+import { createForumCategory } from "@/lib/forum/service";
 
 const createCategorySchema = z.object({
   name: z.string().min(3).max(128),

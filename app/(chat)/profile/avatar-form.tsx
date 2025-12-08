@@ -1,24 +1,20 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import {
+  type ChangeEvent,
+  type FormEvent,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type FormEvent,
 } from "react";
-import { useSession } from "next-auth/react";
 import { useSWRConfig } from "swr";
-
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LoaderIcon } from "@/components/icons";
-import {
-  getAvatarColor,
-  getInitials,
-} from "@/components/user-dropdown-menu";
 import { useTranslation } from "@/components/language-provider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { getAvatarColor, getInitials } from "@/components/user-dropdown-menu";
 
 const ACCEPTED_TYPES = [
   "image/png",
@@ -45,9 +41,9 @@ export function AvatarForm({
   const [preview, setPreview] = useState<string | null>(initialImage);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"upload" | "remove" | null>(
-    null
-  );
+  const [pendingAction, setPendingAction] = useState<
+    "upload" | "remove" | null
+  >(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error" | null>(
     null
@@ -71,9 +67,9 @@ export function AvatarForm({
   }, [initialImage, selectedFile]);
 
   useEffect(() => {
-    let currentPreview = preview;
+    const currentPreview = preview;
     return () => {
-      if (currentPreview && currentPreview.startsWith("blob:")) {
+      if (currentPreview?.startsWith("blob:")) {
         URL.revokeObjectURL(currentPreview);
       }
     };
@@ -97,7 +93,9 @@ export function AvatarForm({
       return;
     }
 
-    if (!ACCEPTED_TYPES.includes(file.type as (typeof ACCEPTED_TYPES)[number])) {
+    if (
+      !ACCEPTED_TYPES.includes(file.type as (typeof ACCEPTED_TYPES)[number])
+    ) {
       setSelectedFile(null);
       setMessageType("error");
       setMessage(
@@ -121,7 +119,7 @@ export function AvatarForm({
       return;
     }
 
-    if (preview && preview.startsWith("blob:")) {
+    if (preview?.startsWith("blob:")) {
       URL.revokeObjectURL(preview);
     }
 
@@ -178,16 +176,12 @@ export function AvatarForm({
         image: string;
         updatedAt?: string | null;
       };
-      const newVersion =
-        body.updatedAt ?? new Date().toISOString();
+      const newVersion = body.updatedAt ?? new Date().toISOString();
       setSelectedFile(null);
       setPreview(body.image);
       setMessageType("success");
       setMessage(
-        translate(
-          "profile.picture.success.upload",
-          "Profile picture updated."
-        )
+        translate("profile.picture.success.upload", "Profile picture updated.")
       );
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
@@ -195,10 +189,10 @@ export function AvatarForm({
           ? null
           : `/api/profile/avatar?v=${encodeURIComponent(currentVersion ?? "none")}`;
       if (currentKey) {
-        void mutate(currentKey, undefined, false);
+        await mutate(currentKey, undefined, false);
       }
       const nextKey = `/api/profile/avatar?v=${encodeURIComponent(newVersion)}`;
-      void mutate(
+      await mutate(
         nextKey,
         { image: body.image, updatedAt: newVersion },
         false
@@ -247,17 +241,13 @@ export function AvatarForm({
         image: null;
         updatedAt?: string | null;
       };
-      const newVersion =
-        body.updatedAt ?? new Date().toISOString();
+      const newVersion = body.updatedAt ?? new Date().toISOString();
 
       setSelectedFile(null);
       setPreview(null);
       setMessageType("success");
       setMessage(
-        translate(
-          "profile.picture.success.remove",
-          "Profile picture removed."
-        )
+        translate("profile.picture.success.remove", "Profile picture removed.")
       );
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
@@ -265,10 +255,10 @@ export function AvatarForm({
           ? null
           : `/api/profile/avatar?v=${encodeURIComponent(currentVersion ?? "none")}`;
       if (currentKey) {
-        void mutate(currentKey, undefined, false);
+        await mutate(currentKey, undefined, false);
       }
       const nextKey = `/api/profile/avatar?v=${encodeURIComponent(newVersion)}`;
-      void mutate(nextKey, { image: null, updatedAt: newVersion }, false);
+      await mutate(nextKey, { image: null, updatedAt: newVersion }, false);
       await update?.({ user: { imageVersion: newVersion } });
     } catch (error) {
       console.error("Failed to remove profile image", error);
@@ -291,9 +281,13 @@ export function AvatarForm({
     <form className="space-y-4" onSubmit={handleUpload}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Avatar className="h-20 w-20 overflow-hidden">
-          <AvatarImage alt="Profile picture" className="object-cover" src={preview ?? undefined} />
+          <AvatarImage
+            alt="Profile picture"
+            className="object-cover"
+            src={preview ?? undefined}
+          />
           <AvatarFallback
-            className="text-lg font-semibold uppercase text-white"
+            className="font-semibold text-lg text-white uppercase"
             style={{ backgroundColor: avatarColor }}
           >
             {initials}
@@ -350,7 +344,7 @@ export function AvatarForm({
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             {translate(
               "profile.picture.size_help",
               "PNG, JPG, or WEBP up to 2 MB."

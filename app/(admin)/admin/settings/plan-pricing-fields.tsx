@@ -1,13 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { cn } from "@/lib/utils";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
-const currencyFormatter = (
-  value: number,
-  currency: "INR" | "USD"
-): string => {
+const currencyFormatter = (value: number, currency: "INR" | "USD"): string => {
   return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
     style: "currency",
     currency,
@@ -65,18 +62,19 @@ export function PlanPricingFields({
     const price = Number(priceInRupees);
     const tokens = Number(tokenAllowance);
 
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(tokens) || tokens <= 0) {
+    if (
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(tokens) ||
+      tokens <= 0
+    ) {
       return null;
     }
 
     const perMillionInr = (price / tokens) * 1_000_000;
     const perMillionUsd = usdToInr > 0 ? perMillionInr / usdToInr : 0;
     return { perMillionInr, perMillionUsd };
-  }, [
-    priceInRupees,
-    tokenAllowance,
-    usdToInr,
-  ]);
+  }, [priceInRupees, tokenAllowance, usdToInr]);
 
   const providerBreakdowns = useMemo(() => {
     if (!preview) {
@@ -87,7 +85,9 @@ export function PlanPricingFields({
       const profitInr = preview.perMillionInr - model.providerCostPerMillionInr;
       const profitUsd = preview.perMillionUsd - model.providerCostPerMillionUsd;
       const marginPercent =
-        preview.perMillionInr > 0 ? (profitInr / preview.perMillionInr) * 100 : 0;
+        preview.perMillionInr > 0
+          ? (profitInr / preview.perMillionInr) * 100
+          : 0;
 
       return {
         ...model,
@@ -112,7 +112,7 @@ export function PlanPricingFields({
     <>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium" htmlFor="plan-price">
+          <label className="font-medium text-sm" htmlFor="plan-price">
             Price (INR)
           </label>
           <input
@@ -120,16 +120,16 @@ export function PlanPricingFields({
             id="plan-price"
             min="0"
             name="priceInRupees"
+            onChange={handlePriceChange}
             placeholder="299"
             required
             step="0.01"
             type="number"
             value={priceInRupees}
-            onChange={handlePriceChange}
           />
         </div>
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium" htmlFor="plan-tokens">
+          <label className="font-medium text-sm" htmlFor="plan-tokens">
             Token allowance
           </label>
           <input
@@ -137,20 +137,21 @@ export function PlanPricingFields({
             id="plan-tokens"
             min={0}
             name="tokenAllowance"
+            onChange={handleAllowanceChange}
             placeholder="100000"
             required
             type="number"
             value={tokenAllowance}
-            onChange={handleAllowanceChange}
           />
           <p className="text-muted-foreground text-xs">
-            {Number.isFinite(Number(tokenAllowance)) && Number(tokenAllowance) > 0
+            {Number.isFinite(Number(tokenAllowance)) &&
+            Number(tokenAllowance) > 0
               ? `~ ${(Number(tokenAllowance) / TOKENS_PER_CREDIT).toLocaleString("en-IN")} credits (${TOKENS_PER_CREDIT} tokens = 1 credit)`
               : `Credits auto-calculate at ${TOKENS_PER_CREDIT} tokens per credit.`}
           </p>
         </div>
       </div>
-      <div className="rounded-md border border-dashed border-muted-foreground/50 bg-muted/20 p-4 text-xs leading-relaxed sm:text-sm">
+      <div className="rounded-md border border-muted-foreground/50 border-dashed bg-muted/20 p-4 text-xs leading-relaxed sm:text-sm">
         {preview ? (
           <>
             <p className="font-medium text-foreground">
@@ -166,27 +167,35 @@ export function PlanPricingFields({
               <div className="mt-3 space-y-3">
                 {providerBreakdowns.map((model) => (
                   <div
-                    key={model.id}
                     className="rounded-md border border-muted-foreground/30 bg-background/80 p-3 text-xs sm:text-sm"
+                    key={model.id}
                   >
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground">
-          <span>{model.name}</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {model.providerLabel}
-          </span>
-          {model.isMarginBaseline && (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-              Margin baseline
-            </span>
-          )}
-        </div>
+                    <div className="flex flex-wrap items-center gap-2 font-semibold text-foreground text-xs">
+                      <span>{model.name}</span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
+                        {model.providerLabel}
+                      </span>
+                      {model.isMarginBaseline && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-[10px] text-emerald-700">
+                          Margin baseline
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 text-muted-foreground">
                       Provider cost / 1M tokens:
                       <span className="ml-1 font-semibold text-foreground">
-                        {currencyFormatter(model.providerCostPerMillionInr, "INR")}
+                        {currencyFormatter(
+                          model.providerCostPerMillionInr,
+                          "INR"
+                        )}
                       </span>
                       <span className="ml-1">
-                        ({currencyFormatter(model.providerCostPerMillionUsd, "USD")})
+                        (
+                        {currencyFormatter(
+                          model.providerCostPerMillionUsd,
+                          "USD"
+                        )}
+                        )
                       </span>
                     </p>
                     <p className="mt-1">
@@ -194,7 +203,9 @@ export function PlanPricingFields({
                       <span
                         className={cn(
                           "ml-1 font-semibold",
-                          model.profitInr >= 0 ? "text-emerald-600" : "text-destructive"
+                          model.profitInr >= 0
+                            ? "text-emerald-600"
+                            : "text-destructive"
                         )}
                       >
                         {currencyFormatter(model.profitInr, "INR")}
@@ -202,7 +213,7 @@ export function PlanPricingFields({
                       <span className="ml-1 text-muted-foreground">
                         ({currencyFormatter(model.profitUsd, "USD")})
                       </span>
-                      <span className="ml-2 text-xs font-medium text-muted-foreground">
+                      <span className="ml-2 font-medium text-muted-foreground text-xs">
                         {model.marginPercent.toFixed(2)}%
                       </span>
                     </p>
@@ -211,7 +222,8 @@ export function PlanPricingFields({
               </div>
             ) : (
               <p className="mt-3 text-muted-foreground">
-                Add provider costs for at least one active model to see per-model margin estimates.
+                Add provider costs for at least one active model to see
+                per-model margin estimates.
               </p>
             )}
           </>

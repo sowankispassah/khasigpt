@@ -10,7 +10,7 @@ export default async function AdminAuditLogPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h2 className="text-xl font-semibold">Audit log</h2>
+        <h2 className="font-semibold text-xl">Audit log</h2>
         <p className="text-muted-foreground text-sm">
           Every administrative action is recorded for compliance.
         </p>
@@ -39,8 +39,8 @@ export default async function AdminAuditLogPage() {
               </tr>
             ) : (
               auditEntries.map((entry) => (
-                <tr key={entry.id} className="border-t text-sm align-top">
-                  <td className="py-3 text-xs text-muted-foreground">
+                <tr className="border-t align-top text-sm" key={entry.id}>
+                  <td className="py-3 text-muted-foreground text-xs">
                     {new Date(entry.createdAt).toLocaleString()}
                     <div className="text-[11px] text-muted-foreground/80">
                       {formatDistanceToNow(new Date(entry.createdAt), {
@@ -62,10 +62,10 @@ export default async function AdminAuditLogPage() {
                       {entry.userAgent ?? "—"}
                     </span>
                   </td>
-                  <td className="py-3 text-xs text-muted-foreground">
+                  <td className="py-3 text-muted-foreground text-xs">
                     {JSON.stringify(entry.target)}
                   </td>
-                  <td className="py-3 text-xs text-muted-foreground">
+                  <td className="py-3 text-muted-foreground text-xs">
                     {entry.metadata ? JSON.stringify(entry.metadata) : "—"}
                   </td>
                 </tr>

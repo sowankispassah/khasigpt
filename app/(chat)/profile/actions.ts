@@ -1,22 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { auth, signOut } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   updateUserActiveState,
+  updateUserLocation,
   updateUserName,
   updateUserPassword,
-  updateUserLocation,
 } from "@/lib/db/queries";
 import {
   createPersonalKnowledgeEntry,
   deletePersonalKnowledgeEntry,
   updatePersonalKnowledgeEntry,
 } from "@/lib/rag/service";
-import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import type { SanitizedRagEntry } from "@/lib/rag/types";
-import { z } from "zod";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 async function requireUser() {
   const session = await auth();
@@ -144,10 +144,9 @@ export async function updateNameAction(
 
 export async function deactivateAccountAction(
   _prevState: DeactivateAccountState,
-  formData: FormData
+  _formData: FormData
 ): Promise<DeactivateAccountState> {
   const user = await requireUser();
-  void formData;
 
   const updated = await updateUserActiveState({
     id: user.id,
@@ -203,7 +202,10 @@ export async function savePersonalKnowledgeAction(input: {
   const content = input.content?.trim() ?? "";
 
   if (title.length < 3) {
-    return { success: false, error: "Title must be at least 3 characters long." };
+    return {
+      success: false,
+      error: "Title must be at least 3 characters long.",
+    };
   }
   if (content.length < 16) {
     return {
@@ -240,7 +242,8 @@ export async function savePersonalKnowledgeAction(input: {
 
     return { success: true, entry };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save entry.";
+    const message =
+      error instanceof Error ? error.message : "Unable to save entry.";
     return { success: false, error: message };
   }
 }
@@ -290,7 +293,8 @@ export async function updateUserLocationAction(input: {
     revalidatePath("/profile");
     return { success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save location";
+    const message =
+      error instanceof Error ? error.message : "Unable to save location";
     return { success: false, error: message };
   }
 }
@@ -328,7 +332,8 @@ export async function deletePersonalKnowledgeAction({
 
     return { success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to delete entry.";
+    const message =
+      error instanceof Error ? error.message : "Unable to delete entry.";
     return { success: false, error: message };
   }
 }

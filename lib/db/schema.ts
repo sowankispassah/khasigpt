@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -14,13 +14,17 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AppUsage } from "../usage";
 
-export const userRoleEnum = pgEnum("user_role", ["regular", "creator", "admin"]);
+export const userRoleEnum = pgEnum("user_role", [
+  "regular",
+  "creator",
+  "admin",
+]);
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
 export const authProviderEnum = pgEnum("auth_provider", [
@@ -156,10 +160,11 @@ export const ragEntryStatusEnum = pgEnum("rag_entry_status", [
 ]);
 export type RagEntryStatus = (typeof ragEntryStatusEnum.enumValues)[number];
 
-export const ragEntryApprovalStatusEnum = pgEnum(
-  "rag_entry_approval_status",
-  ["pending", "approved", "rejected"]
-);
+export const ragEntryApprovalStatusEnum = pgEnum("rag_entry_approval_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
 export type RagEntryApprovalStatus =
   (typeof ragEntryApprovalStatusEnum.enumValues)[number];
 
@@ -193,19 +198,13 @@ export const ragEntry = pgTable(
     title: text("title").notNull(),
     content: text("content").notNull(),
     type: ragEntryTypeEnum("type").notNull().default("text"),
-    tags: text("tags")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
+    tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
     sourceUrl: text("sourceUrl"),
     categoryId: uuid("categoryId").references(() => ragCategory.id, {
       onDelete: "set null",
     }),
     status: ragEntryStatusEnum("status").notNull().default("inactive"),
-    models: text("models")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
+    models: text("models").array().notNull().default(sql`ARRAY[]::text[]`),
     addedBy: uuid("addedBy")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -290,14 +289,8 @@ export const ragEntryVersion = pgTable(
     approvedBy: uuid("approvedBy").references(() => user.id, {
       onDelete: "set null",
     }),
-    tags: text("tags")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
-    models: text("models")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
+    tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    models: text("models").array().notNull().default(sql`ARRAY[]::text[]`),
     sourceUrl: text("sourceUrl"),
     categoryId: uuid("categoryId"),
     diff: jsonb("diff").notNull().default(sql`'{}'::jsonb`),
@@ -387,9 +380,7 @@ export const paymentTransaction = pgTable(
     creatorId: uuid("creatorId").references(() => user.id, {
       onDelete: "set null",
     }),
-    status: paymentTransactionStatusEnum("status")
-      .notNull()
-      .default("pending"),
+    status: paymentTransactionStatusEnum("status").notNull().default("pending"),
     amount: integer("amount").notNull(),
     currency: varchar("currency", { length: 16 }).notNull(),
     discountAmount: integer("discountAmount").notNull().default(0),
@@ -610,14 +601,12 @@ export const ragRetrievalLog = pgTable(
     ragEntryId: uuid("ragEntryId")
       .notNull()
       .references(() => ragEntry.id, { onDelete: "cascade" }),
-    chatId: uuid("chatId")
-      .references(() => chat.id, { onDelete: "cascade" }),
+    chatId: uuid("chatId").references(() => chat.id, { onDelete: "cascade" }),
     modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
       onDelete: "set null",
     }),
     modelKey: text("modelKey").notNull(),
-    userId: uuid("userId")
-      .references(() => user.id, { onDelete: "set null" }),
+    userId: uuid("userId").references(() => user.id, { onDelete: "set null" }),
     score: doublePrecision("score").notNull().default(0),
     queryText: text("queryText").notNull(),
     queryLanguage: varchar("queryLanguage", { length: 16 }),
@@ -761,7 +750,9 @@ export const impersonationToken = pgTable(
   (table) => ({
     tokenIdx: uniqueIndex("ImpersonationToken_token_idx").on(table.token),
     targetIdx: index("ImpersonationToken_target_idx").on(table.targetUserId),
-    creatorIdx: index("ImpersonationToken_creator_idx").on(table.createdByAdminId),
+    creatorIdx: index("ImpersonationToken_creator_idx").on(
+      table.createdByAdminId
+    ),
   })
 );
 
@@ -771,7 +762,9 @@ export const auditLog = pgTable(
   "AuditLog",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    actorId: uuid("actorId").notNull().references(() => user.id),
+    actorId: uuid("actorId")
+      .notNull()
+      .references(() => user.id),
     action: varchar("action", { length: 128 }).notNull(),
     target: jsonb("target").notNull(),
     metadata: jsonb("metadata"),
@@ -1032,9 +1025,7 @@ export const forumPostReaction = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    type: forumPostReactionTypeEnum("type")
-      .notNull()
-      .default("like"),
+    type: forumPostReactionTypeEnum("type").notNull().default("like"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({

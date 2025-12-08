@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import { Button } from "@/components/ui/button";
 import { DailyUsageChart } from "@/components/daily-usage-chart";
+import { Button } from "@/components/ui/button";
 
 type ChartVariant = "area" | "bar" | "line";
 
@@ -32,7 +31,9 @@ export function DailyUsageChartSwitcher({
     if (typeof window === "undefined") {
       return;
     }
-    const stored = window.localStorage.getItem(STORAGE_KEY) as ChartVariant | null;
+    const stored = window.localStorage.getItem(
+      STORAGE_KEY
+    ) as ChartVariant | null;
     if (stored && chartOptions.some((option) => option.value === stored)) {
       setVariant(stored);
     }
@@ -50,12 +51,12 @@ export function DailyUsageChartSwitcher({
       <div className="flex items-center justify-end gap-2">
         {chartOptions.map((option) => (
           <Button
+            className="cursor-pointer"
             key={option.value}
+            onClick={() => handleVariantChange(option.value)}
             size="sm"
             type="button"
             variant={variant === option.value ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => handleVariantChange(option.value)}
           >
             {option.label}
           </Button>

@@ -1,9 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
-import type { RagEntryStatus } from "@/lib/db/schema";
-import { savePersonalKnowledgeAction, deletePersonalKnowledgeAction } from "./actions";
+import {
+  LoaderIcon,
+  PencilEditIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,7 +27,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { LoaderIcon, PencilEditIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import type { RagEntryStatus } from "@/lib/db/schema";
+import {
+  deletePersonalKnowledgeAction,
+  savePersonalKnowledgeAction,
+} from "./actions";
 
 type StructuredField = {
   key: string;
@@ -56,6 +71,14 @@ type DraftEntry = {
   structured: Record<string, string>;
 };
 
+const createEmptyStructured = () => {
+  const result: Record<string, string> = {};
+  for (const field of STRUCTURED_FIELDS) {
+    result[field.key] = "";
+  }
+  return result;
+};
+
 export function PersonalKnowledgeSection({
   entries,
 }: {
@@ -66,20 +89,18 @@ export function PersonalKnowledgeSection({
   const [draft, setDraft] = useState<DraftEntry>({
     id: null,
     mainText: "",
-    structured: STRUCTURED_FIELDS.reduce(
-      (acc, field) => ({ ...acc, [field.key]: "" }),
-      {} as Record<string, string>
-    ),
+    structured: createEmptyStructured(),
   });
   const [isPending, startTransition] = useTransition();
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const sortedItems = useMemo(
     () =>
       [...items].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       ),
     [items]
   );
@@ -88,15 +109,14 @@ export function PersonalKnowledgeSection({
     setDraft({
       id: null,
       mainText: "",
-      structured: STRUCTURED_FIELDS.reduce(
-        (acc, field) => ({ ...acc, [field.key]: "" }),
-        {} as Record<string, string>
-      ),
+      structured: createEmptyStructured(),
     });
   }, []);
 
   const beginProgress = useCallback(() => {
-    timers.current.forEach((timerId) => clearTimeout(timerId));
+    for (const timerId of timers.current) {
+      clearTimeout(timerId);
+    }
     setProgressVisible(true);
     setProgress(12);
     timers.current = [
@@ -107,7 +127,9 @@ export function PersonalKnowledgeSection({
   }, []);
 
   const finishProgress = useCallback(() => {
-    timers.current.forEach((timerId) => clearTimeout(timerId));
+    for (const timerId of timers.current) {
+      clearTimeout(timerId);
+    }
     timers.current = [];
     setProgress(100);
     setTimeout(() => {
@@ -118,7 +140,9 @@ export function PersonalKnowledgeSection({
 
   useEffect(() => {
     return () => {
-      timers.current.forEach((timerId) => clearTimeout(timerId));
+      for (const timerId of timers.current) {
+        clearTimeout(timerId);
+      }
     };
   }, []);
 
@@ -132,10 +156,7 @@ export function PersonalKnowledgeSection({
       ...prev,
       id: entry.id,
       mainText: entry.content,
-      structured: STRUCTURED_FIELDS.reduce(
-        (acc, field) => ({ ...acc, [field.key]: "" }),
-        {} as Record<string, string>
-      ),
+      structured: createEmptyStructured(),
     }));
     setDialogOpen(true);
   };
@@ -159,7 +180,8 @@ export function PersonalKnowledgeSection({
       return field.format ? field.format(value) : `${field.label}: ${value}`;
     }).filter(Boolean);
 
-    const combinedContent = `${structuredSentences.join(". ")}. ${mainText}`.trim();
+    const combinedContent =
+      `${structuredSentences.join(". ")}. ${mainText}`.trim();
     const titleFromName = draft.structured.fullName?.trim() ?? "";
     const computedTitle = titleFromName
       ? `${titleFromName} - Personal knowledge`
@@ -194,11 +216,15 @@ export function PersonalKnowledgeSection({
               ...next,
             ];
           });
-          toast.success(draft.id ? "Entry updated" : "Entry submitted for review");
+          toast.success(
+            draft.id ? "Entry updated" : "Entry submitted for review"
+          );
           setDialogOpen(false);
           resetDraft();
         })
-        .catch(() => toast.error("Unable to save your entry. Please try again."))
+        .catch(() =>
+          toast.error("Unable to save your entry. Please try again.")
+        )
         .finally(() => finishProgress());
     });
   };
@@ -220,19 +246,29 @@ export function PersonalKnowledgeSection({
     });
   };
 
-  const statusBadge = (status: SerializedPersonalKnowledgeEntry["approvalStatus"]) => {
+  const statusBadge = (
+    status: SerializedPersonalKnowledgeEntry["approvalStatus"]
+  ) => {
     const variants: Record<
       SerializedPersonalKnowledgeEntry["approvalStatus"],
       { label: string; className: string }
     > = {
-      approved: { label: "Approved", className: "bg-emerald-100 text-emerald-700" },
-      pending: { label: "Pending approval", className: "bg-amber-100 text-amber-800" },
+      approved: {
+        label: "Approved",
+        className: "bg-emerald-100 text-emerald-700",
+      },
+      pending: {
+        label: "Pending approval",
+        className: "bg-amber-100 text-amber-800",
+      },
       rejected: { label: "Rejected", className: "bg-rose-100 text-rose-700" },
     };
     const variant = variants[status];
     return (
-      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${variant.className}`}>
-        <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+      <span
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${variant.className}`}
+      >
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
         {variant.label}
       </span>
     );
@@ -251,9 +287,10 @@ export function PersonalKnowledgeSection({
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Personal knowledge</h2>
+          <h2 className="font-semibold text-lg">Personal knowledge</h2>
           <p className="text-muted-foreground text-sm">
-            This information will be used to generate responses when users on the platform ask or search about you.
+            This information will be used to generate responses when users on
+            the platform ask or search about you.
           </p>
           <p className="text-muted-foreground text-xs">
             New or edited entries stay pending until an admin approves them.
@@ -267,7 +304,7 @@ export function PersonalKnowledgeSection({
 
       <div className="mt-4 space-y-3">
         {sortedItems.length === 0 ? (
-          <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+          <div className="rounded-md border border-dashed p-4 text-muted-foreground text-sm">
             No personal knowledge added yet.
           </div>
         ) : (
@@ -279,7 +316,7 @@ export function PersonalKnowledgeSection({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold">{entry.title}</h3>
+                    <h3 className="font-semibold text-base">{entry.title}</h3>
                     {statusBadge(entry.approvalStatus)}
                   </div>
                   <p className="text-muted-foreground text-sm">
@@ -309,7 +346,7 @@ export function PersonalKnowledgeSection({
                   </Button>
                 </div>
               </div>
-              <p className="text-sm leading-relaxed text-foreground/90 line-clamp-3">
+              <p className="line-clamp-3 text-foreground/90 text-sm leading-relaxed">
                 {entry.content}
               </p>
             </div>
@@ -330,7 +367,8 @@ export function PersonalKnowledgeSection({
           <DialogHeader>
             <DialogTitle>{draft.id ? "Edit entry" : "Add entry"}</DialogTitle>
             <DialogDescription>
-              Keep details concise and focused on information you want the platform to surface about you.
+              Keep details concise and focused on information you want the
+              platform to surface about you.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -361,7 +399,12 @@ export function PersonalKnowledgeSection({
               <Textarea
                 className="min-h-[160px] resize-y"
                 id="pk-content"
-                onChange={(event) => setDraft((prev) => ({ ...prev, mainText: event.target.value }))}
+                onChange={(event) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    mainText: event.target.value,
+                  }))
+                }
                 placeholder="Write what people should know about you when they search or ask about you. Your story, your profession, your achievements or anything that you do that people can know about"
                 required
                 value={draft.mainText}

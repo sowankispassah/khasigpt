@@ -2,16 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { ForumSidebar } from "@/components/forum/forum-sidebar";
 import { ForumClient } from "@/components/forum/forum-client";
-import {
-  getForumOverview,
-  type ForumThreadListItem,
-} from "@/lib/forum/service";
-import type {
-  ForumThreadListItemPayload,
-} from "@/lib/forum/types";
+import { ForumSidebar } from "@/components/forum/forum-sidebar";
 import { isForumEnabled } from "@/lib/forum/config";
+import {
+  type ForumThreadListItem,
+  getForumOverview,
+} from "@/lib/forum/service";
+import type { ForumThreadListItemPayload } from "@/lib/forum/types";
 
 export const metadata: Metadata = {
   title: "Community Forum",
@@ -38,9 +36,7 @@ type ForumPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function ForumPage({
-  searchParams,
-}: ForumPageProps) {
+export default async function ForumPage({ searchParams }: ForumPageProps) {
   const forumEnabled = await isForumEnabled();
   if (!forumEnabled) {
     notFound();
@@ -89,7 +85,11 @@ export default async function ForumPage({
       <div className="flex-1">
         <ForumClient
           categoriesForComposer={composerCategories}
-          filters={{ category: categorySlug, tag: tagSlug, search: searchQuery }}
+          filters={{
+            category: categorySlug,
+            tag: tagSlug,
+            search: searchQuery,
+          }}
           hasMore={overview.hasMore}
           initialThreads={initialThreads}
           nextCursor={overview.nextCursor}

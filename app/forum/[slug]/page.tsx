@@ -3,17 +3,17 @@ import { notFound } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { ThreadDetailClient } from "@/components/forum/thread-detail-client";
+import { isForumEnabled } from "@/lib/forum/config";
 import {
-  getForumThreadDetail,
-  type ForumThreadListItem,
   type ForumPostListItem,
+  type ForumThreadListItem,
+  getForumThreadDetail,
 } from "@/lib/forum/service";
 import type {
+  ForumPostListItemPayload,
   ForumThreadDetailPayload,
   ForumThreadListItemPayload,
-  ForumPostListItemPayload,
 } from "@/lib/forum/types";
-import { isForumEnabled } from "@/lib/forum/config";
 
 export const dynamic = "force-dynamic";
 

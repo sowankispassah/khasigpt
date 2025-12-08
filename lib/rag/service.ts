@@ -9,55 +9,45 @@ import {
   gte,
   ilike,
   inArray,
-  isNull,
   isNotNull,
+  isNull,
   or,
   sql,
 } from "drizzle-orm";
-
+import { getModelRegistry } from "@/lib/ai/model-registry";
 import { db } from "@/lib/db/queries";
+import type { ModelConfig } from "@/lib/db/schema";
 import {
-  ragEntry,
+  type RagEntryApprovalStatus,
+  type RagEntry as RagEntryModel,
+  type RagEntryStatus,
+  ragCategory,
   ragChunk,
+  ragEntry,
   ragEntryVersion,
   ragRetrievalLog,
-  ragCategory,
   user,
-  type RagEntry as RagEntryModel,
-  type RagEntryApprovalStatus,
-  type RagEntryStatus,
 } from "@/lib/db/schema";
-import type { ModelConfig } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import { getModelRegistry } from "@/lib/ai/model-registry";
-import { generateRagEmbedding } from "./embeddings";
 import {
-  hasSupabaseConfig,
-  patchSupabaseEmbedding,
-  searchSupabaseEmbeddings,
-  upsertSupabaseEmbedding,
-  type SupabaseRagMatch,
-  deleteSupabaseEmbedding,
-} from "./supabase";
-import {
-  CUSTOM_KNOWLEDGE_STORAGE_KEY,
-  DEFAULT_RAG_TIMEOUT_MS,
   DEFAULT_RAG_MATCH_LIMIT,
   DEFAULT_RAG_MATCH_THRESHOLD,
+  DEFAULT_RAG_TIMEOUT_MS,
   DEFAULT_RAG_VERSION_HISTORY_LIMIT,
+  MAX_RAG_CHUNK_CHARS,
   MAX_RAG_CONTENT_CHARS,
   MAX_RAG_CONTEXT_CHARS,
-  MAX_RAG_CHUNK_CHARS,
   RAG_CHUNK_OVERLAP_CHARS,
 } from "./constants";
+import { generateRagEmbedding } from "./embeddings";
 import {
-  normalizeModels,
-  normalizeSourceUrl,
-  normalizeTags,
-  sanitizeRagContent,
-  detectQueryLanguage,
-  buildSupabaseMetadata,
-} from "./utils";
+  deleteSupabaseEmbedding,
+  hasSupabaseConfig,
+  patchSupabaseEmbedding,
+  type SupabaseRagMatch,
+  searchSupabaseEmbeddings,
+  upsertSupabaseEmbedding,
+} from "./supabase";
 import type {
   AdminRagEntry,
   RagAnalyticsSummary,
@@ -65,12 +55,21 @@ import type {
   SanitizedRagEntry,
   UpsertRagEntryInput,
 } from "./types";
+import {
+  buildSupabaseMetadata,
+  detectQueryLanguage,
+  normalizeModels,
+  normalizeSourceUrl,
+  normalizeTags,
+  sanitizeRagContent,
+} from "./utils";
 import { ragEntrySchema } from "./validation";
 
 const diffEngine = new diff_match_patch();
 const NO_MATCH_SUPPLEMENT =
   "No saved knowledge matched this request. Do not fabricate or cite sources that were not retrieved. " +
   "If the user asks about uploaded or custom knowledge, explain that no matching reference was found and ask for more detail.";
+const WORD_SPLIT_REGEX = /\s+/;
 
 function toSanitizedEntry(
   entry: RagEntryModel,
@@ -97,7 +96,7 @@ async function getCategoryNameById(categoryId: string | null | undefined) {
   return record?.name ?? null;
 }
 
-export async function listRagCategories() {
+export function listRagCategories() {
   return db
     .select({
       id: ragCategory.id,
@@ -110,10 +109,7 @@ export async function listRagCategories() {
 export async function createRagCategory({ name }: { name: string }) {
   const trimmed = name.trim();
   if (!trimmed) {
-    throw new ChatSDKError(
-      "bad_request:api",
-      "Category name is required"
-    );
+    throw new ChatSDKError("bad_request:api", "Category name is required");
   }
 
   const [record] = await db
@@ -131,19 +127,17 @@ export async function createRagCategory({ name }: { name: string }) {
     if (existing) {
       return existing;
     }
-    throw new ChatSDKError(
-      "bad_request:api",
-      "Unable to create category"
-    );
+    throw new ChatSDKError("bad_request:api", "Unable to create category");
   }
 
   return record;
 }
 
-function buildEmbeddableText(entry: RagEntryModel) {
-  const tags = Array.isArray(entry.tags) && entry.tags.length
-    ? `Tags: ${entry.tags.join(", ")}`
-    : "";
+function _buildEmbeddableText(entry: RagEntryModel) {
+  const tags =
+    Array.isArray(entry.tags) && entry.tags.length
+      ? `Tags: ${entry.tags.join(", ")}`
+      : "";
   const source = entry.sourceUrl ? `Source: ${entry.sourceUrl}` : "";
   return [
     `Title: ${entry.title}`,
@@ -168,7 +162,10 @@ async function getEntryById(id: string): Promise<RagEntryModel | null> {
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("RAG operation timed out")), ms);
+    const timer = setTimeout(
+      () => reject(new Error("RAG operation timed out")),
+      ms
+    );
     promise
       .then((value) => {
         clearTimeout(timer);
@@ -192,7 +189,10 @@ function trimContent(content: string) {
 
 function chunkForPrompt(content: string) {
   const max = Math.max(200, MAX_RAG_CHUNK_CHARS);
-  const overlap = Math.max(0, Math.min(RAG_CHUNK_OVERLAP_CHARS, Math.floor(max / 2)));
+  const overlap = Math.max(
+    0,
+    Math.min(RAG_CHUNK_OVERLAP_CHARS, Math.floor(max / 2))
+  );
   const normalized = content.trim();
   if (normalized.length <= max) {
     return [normalized];
@@ -232,7 +232,9 @@ function composeRagResult({
       const header = entry.sourceUrl
         ? `Reference: ${entry.title} (${entry.sourceUrl})`
         : `Reference: ${entry.title}`;
-      return [header, trimContent(chunkContent ?? "")].filter(Boolean).join("\n");
+      return [header, trimContent(chunkContent ?? "")]
+        .filter(Boolean)
+        .join("\n");
     })
     .reduce<string[]>((acc, section) => {
       const total = acc.join("\n\n").length;
@@ -245,7 +247,9 @@ function composeRagResult({
 
   const safetyPrefix =
     "Use only the references below. If they do not answer the question, say you don't know and ask for clarification. Do not invent sources.";
-  const finalSupplement = [safetyPrefix, systemSupplement].filter(Boolean).join("\n\n");
+  const finalSupplement = [safetyPrefix, systemSupplement]
+    .filter(Boolean)
+    .join("\n\n");
 
   const clientEvent: RagUsageEvent = {
     chatId,
@@ -264,8 +268,7 @@ function composeRagResult({
     })),
   };
 
-  void db
-    .insert(ragRetrievalLog)
+  db.insert(ragRetrievalLog)
     .values(
       resolved.map(({ entry, score }) => ({
         ragEntryId: entry.id,
@@ -289,7 +292,10 @@ function composeRagResult({
   };
 }
 
-async function syncEmbedding(entry: RagEntryModel, { reembed } = { reembed: true }) {
+async function syncEmbedding(
+  entry: RagEntryModel,
+  { reembed } = { reembed: true }
+) {
   const chunks = chunkForPrompt(entry.content);
   const now = new Date();
   let chunkRows =
@@ -338,7 +344,9 @@ async function syncEmbedding(entry: RagEntryModel, { reembed } = { reembed: true
   for (const chunk of chunkRows) {
     try {
       if (reembed) {
-        const { vector, model, dimensions } = await generateRagEmbedding(chunk.content);
+        const { vector, model, dimensions } = await generateRagEmbedding(
+          chunk.content
+        );
         await upsertSupabaseEmbedding({
           entry: { ...entry, content: chunk.content },
           chunkId: chunk.id,
@@ -358,7 +366,11 @@ async function syncEmbedding(entry: RagEntryModel, { reembed } = { reembed: true
       } else {
         await patchSupabaseEmbedding(
           { ...entry, content: chunk.content },
-          { chunkId: chunk.id, chunkIndex: chunk.chunkIndex, content: chunk.content }
+          {
+            chunkId: chunk.id,
+            chunkIndex: chunk.chunkIndex,
+            content: chunk.content,
+          }
         );
       }
     } catch (error) {
@@ -366,7 +378,8 @@ async function syncEmbedding(entry: RagEntryModel, { reembed } = { reembed: true
         .update(ragEntry)
         .set({
           embeddingStatus: "failed",
-          embeddingError: error instanceof Error ? error.message : "Embedding failed",
+          embeddingError:
+            error instanceof Error ? error.message : "Embedding failed",
         })
         .where(eq(ragEntry.id, entry.id));
       console.warn("[rag] chunk embedding/upsert failed", {
@@ -440,7 +453,9 @@ export async function createRagEntry({
       ((input.approvalStatus ?? "approved") === "approved" ? actorId : null),
   });
   const tags = normalizeTags(parsed.tags);
-  const models = await normalizeModelAssignments(normalizeModels(parsed.models));
+  const models = await normalizeModelAssignments(
+    normalizeModels(parsed.models)
+  );
   const title = parsed.title.trim();
   const content = sanitizeRagContent(parsed.content);
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
@@ -462,7 +477,9 @@ export async function createRagEntry({
       addedBy: actorId,
       approvalStatus: parsed.approvalStatus,
       personalForUserId: parsed.personalForUserId ?? null,
-      approvedBy: parsed.approvedBy ?? (parsed.approvalStatus === "approved" ? actorId : null),
+      approvedBy:
+        parsed.approvedBy ??
+        (parsed.approvalStatus === "approved" ? actorId : null),
       createdAt: now,
       updatedAt: now,
       embeddingStatus: "pending",
@@ -525,10 +542,7 @@ export async function updateRagEntry({
   const personalForUserId =
     input.personalForUserId ?? existing.personalForUserId ?? null;
   const approvedBy =
-    input.approvedBy ??
-    (approvalStatus === "approved"
-      ? actorId
-      : null);
+    input.approvedBy ?? (approvalStatus === "approved" ? actorId : null);
 
   const parsed = ragEntrySchema.parse({
     ...input,
@@ -538,7 +552,9 @@ export async function updateRagEntry({
     approvedBy,
   });
   const tags = normalizeTags(parsed.tags);
-  const models = await normalizeModelAssignments(normalizeModels(parsed.models));
+  const models = await normalizeModelAssignments(
+    normalizeModels(parsed.models)
+  );
   const title = parsed.title.trim();
   const content = sanitizeRagContent(parsed.content);
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
@@ -556,7 +572,7 @@ export async function updateRagEntry({
       personalForUserId: parsed.personalForUserId ?? null,
       approvedBy:
         parsed.approvalStatus === "approved"
-          ? parsed.approvedBy ?? existing.approvedBy ?? actorId
+          ? (parsed.approvedBy ?? existing.approvedBy ?? actorId)
           : null,
       tags,
       models,
@@ -763,7 +779,7 @@ export async function restoreRagEntry({
   await syncEmbedding(updated, { reembed: false });
 }
 
-export async function getRagVersions(entryId: string) {
+export function getRagVersions(entryId: string) {
   return db
     .select({
       id: ragEntryVersion.id,
@@ -772,7 +788,9 @@ export async function getRagVersions(entryId: string) {
       status: ragEntryVersion.status,
       createdAt: ragEntryVersion.createdAt,
       changeSummary: ragEntryVersion.changeSummary,
-      editorName: sql<string | null>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
+      editorName: sql<
+        string | null
+      >`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
     })
     .from(ragEntryVersion)
     .leftJoin(user, eq(user.id, ragEntryVersion.editorId))
@@ -856,10 +874,7 @@ export async function listPersonalKnowledgeForUser(userId: string) {
     .from(ragEntry)
     .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
     .where(
-      and(
-        eq(ragEntry.personalForUserId, userId),
-        isNull(ragEntry.deletedAt)
-      )
+      and(eq(ragEntry.personalForUserId, userId), isNull(ragEntry.deletedAt))
     )
     .orderBy(desc(ragEntry.updatedAt));
 
@@ -868,7 +883,7 @@ export async function listPersonalKnowledgeForUser(userId: string) {
   );
 }
 
-export async function createPersonalKnowledgeEntry({
+export function createPersonalKnowledgeEntry({
   userId,
   title,
   content,
@@ -907,7 +922,11 @@ export async function updatePersonalKnowledgeEntry({
   content: string;
 }) {
   const existing = await getEntryById(entryId);
-  if (!existing || existing.personalForUserId !== userId || existing.deletedAt) {
+  if (
+    !existing ||
+    existing.personalForUserId !== userId ||
+    existing.deletedAt
+  ) {
     throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
   }
 
@@ -977,7 +996,7 @@ export async function listUserAddedKnowledgeEntries({
       ownerId: user.id,
       ownerName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       ownerEmail: user.email,
-      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)` ,
+      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)`,
       lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
       avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
       categoryName: ragCategory.name,
@@ -1000,7 +1019,9 @@ export async function listUserAddedKnowledgeEntries({
     .limit(limit);
 
   return rows.map((row) => ({
-    entry: toSanitizedEntry(row.entry, { categoryName: row.categoryName ?? null }),
+    entry: toSanitizedEntry(row.entry, {
+      categoryName: row.categoryName ?? null,
+    }),
     creator: {
       id: row.ownerId ?? "",
       name: row.ownerName,
@@ -1042,7 +1063,9 @@ export async function updateUserAddedKnowledgeApproval({
   const status: RagEntryStatus =
     approvalStatus === "approved" ? "active" : "inactive";
   const approvedBy =
-    approvalStatus === "approved" || approvalStatus === "rejected" ? actorId : null;
+    approvalStatus === "approved" || approvalStatus === "rejected"
+      ? actorId
+      : null;
 
   const [updated] = await db
     .update(ragEntry)
@@ -1088,14 +1111,16 @@ export async function updateUserAddedKnowledgeApproval({
   return toSanitizedEntry(updated, { categoryName });
 }
 
-export async function listAdminRagEntries(limit = 120): Promise<AdminRagEntry[]> {
+export async function listAdminRagEntries(
+  limit = 120
+): Promise<AdminRagEntry[]> {
   const rows = await db
     .select({
       entry: ragEntry,
       creatorId: user.id,
       creatorName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       creatorEmail: user.email,
-      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)` ,
+      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)`,
       lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
       avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
       categoryName: ragCategory.name,
@@ -1118,7 +1143,9 @@ export async function listAdminRagEntries(limit = 120): Promise<AdminRagEntry[]>
     .limit(limit);
 
   return rows.map((row) => ({
-    entry: toSanitizedEntry(row.entry, { categoryName: row.categoryName ?? null }),
+    entry: toSanitizedEntry(row.entry, {
+      categoryName: row.categoryName ?? null,
+    }),
     creator: {
       id: row.creatorId ?? "",
       name: row.creatorName,
@@ -1143,10 +1170,10 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
   const [statusCounts] = await db
     .select({
       totalEntries: sql<number>`COUNT(*)`,
-      activeEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'active' THEN 1 ELSE 0 END)` ,
-      inactiveEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'inactive' THEN 1 ELSE 0 END)` ,
-      archivedEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'archived' THEN 1 ELSE 0 END)` ,
-      pendingEmbeddings: sql<number>`SUM(CASE WHEN ${ragEntry.embeddingStatus} <> 'ready' THEN 1 ELSE 0 END)` ,
+      activeEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'active' THEN 1 ELSE 0 END)`,
+      inactiveEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'inactive' THEN 1 ELSE 0 END)`,
+      archivedEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'archived' THEN 1 ELSE 0 END)`,
+      pendingEmbeddings: sql<number>`SUM(CASE WHEN ${ragEntry.embeddingStatus} <> 'ready' THEN 1 ELSE 0 END)`,
     })
     .from(ragEntry)
     .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)));
@@ -1169,7 +1196,7 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
       name: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       email: user.email,
       entryCount: sql<number>`COUNT(${ragEntry.id})`,
-      activeEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'active' THEN 1 ELSE 0 END)` ,
+      activeEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'active' THEN 1 ELSE 0 END)`,
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
@@ -1191,7 +1218,10 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
     pendingEmbeddings: statusCounts?.pendingEmbeddings ?? 0,
     retrievals7d,
     topModel: modelUsage[0]
-      ? { modelKey: modelUsage[0].modelKey, retrievals: modelUsage[0].retrievals }
+      ? {
+          modelKey: modelUsage[0].modelKey,
+          retrievals: modelUsage[0].retrievals,
+        }
       : undefined,
     modelUsage,
     creatorStats: creatorStats.map((creator) => ({
@@ -1222,13 +1252,10 @@ export async function buildRagAugmentation({
   queryText: string;
   useCustomKnowledge: boolean;
   threshold?: number;
-}): Promise<
-  | {
-      systemSupplement: string;
-      clientEvent: RagUsageEvent;
-    }
-  | null
-> {
+}): Promise<{
+  systemSupplement: string;
+  clientEvent: RagUsageEvent;
+} | null> {
   if (!useCustomKnowledge) {
     return null;
   }
@@ -1237,7 +1264,10 @@ export async function buildRagAugmentation({
     return null;
   }
 
-  const rawThreshold = Math.max(typeof threshold === "number" ? threshold : DEFAULT_RAG_MATCH_THRESHOLD, 0);
+  const rawThreshold = Math.max(
+    typeof threshold === "number" ? threshold : DEFAULT_RAG_MATCH_THRESHOLD,
+    0
+  );
   const effectiveThreshold =
     queryText.trim().length < 40
       ? Math.min(Math.max(rawThreshold, 0.2), 0.4)
@@ -1245,7 +1275,8 @@ export async function buildRagAugmentation({
   const modelFilters = Array.from(
     new Set(
       [modelConfig.id, modelConfig.key].filter(
-        (value): value is string => typeof value === "string" && value.length > 0
+        (value): value is string =>
+          typeof value === "string" && value.length > 0
       )
     )
   );
@@ -1282,7 +1313,10 @@ export async function buildRagAugmentation({
       threshold: effectiveThreshold,
       matches: matches.length,
     });
-    const fallbackThreshold = Math.max(0.15, Math.min(effectiveThreshold * 0.75, effectiveThreshold));
+    const fallbackThreshold = Math.max(
+      0.15,
+      Math.min(effectiveThreshold * 0.75, effectiveThreshold)
+    );
     matches = await withTimeout(
       searchSupabaseEmbeddings({
         embedding: vector,
@@ -1373,7 +1407,7 @@ export async function buildRagAugmentation({
     // Fallback to a simple word-based content/title search in DB
     const terms = trimmedQuery
       .toLowerCase()
-      .split(/\s+/)
+      .split(WORD_SPLIT_REGEX)
       .map((word) => word.trim())
       .filter((word) => word.length >= 3)
       .slice(0, 5);
@@ -1448,8 +1482,6 @@ export async function buildRagAugmentation({
   });
 }
 
-export { CUSTOM_KNOWLEDGE_STORAGE_KEY };
-
 export async function rebuildAllRagEmbeddings() {
   const entries = await db
     .select()
@@ -1464,10 +1496,14 @@ export async function rebuildAllRagEmbeddings() {
         .update(ragEntry)
         .set({
           embeddingStatus: "failed",
-          embeddingError: error instanceof Error ? error.message : "Embedding failed",
+          embeddingError:
+            error instanceof Error ? error.message : "Embedding failed",
         })
         .where(eq(ragEntry.id, entry.id));
-      console.warn("[rag] rebuild embedding failed", { entryId: entry.id, error });
+      console.warn("[rag] rebuild embedding failed", {
+        entryId: entry.id,
+        error,
+      });
     }
   }
 }

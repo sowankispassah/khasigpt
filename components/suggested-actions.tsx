@@ -3,8 +3,8 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { motion } from "framer-motion";
 import { memo } from "react";
-import type { ChatMessage } from "@/lib/types";
 import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
+import type { ChatMessage } from "@/lib/types";
 import { Suggestion } from "./elements/suggestion";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -21,9 +21,13 @@ function PureSuggestedActions({
   prompts,
 }: SuggestedActionsProps) {
   const normalizedPrompts =
-    prompts?.map((prompt) => prompt.trim()).filter((prompt) => prompt.length > 0) ?? [];
+    prompts
+      ?.map((prompt) => prompt.trim())
+      .filter((prompt) => prompt.length > 0) ?? [];
   const suggestedActions =
-    normalizedPrompts.length > 0 ? normalizedPrompts : DEFAULT_SUGGESTED_PROMPTS;
+    normalizedPrompts.length > 0
+      ? normalizedPrompts
+      : DEFAULT_SUGGESTED_PROMPTS;
 
   return (
     <div
