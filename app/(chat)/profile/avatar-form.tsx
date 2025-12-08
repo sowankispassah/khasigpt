@@ -38,6 +38,7 @@ export function AvatarForm({
 }: AvatarFormProps) {
   const { data: sessionData, update } = useSession();
   const { mutate } = useSWRConfig();
+  const [savedImage, setSavedImage] = useState<string | null>(initialImage);
   const [preview, setPreview] = useState<string | null>(initialImage);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -61,10 +62,21 @@ export function AvatarForm({
   );
 
   useEffect(() => {
-    if (!selectedFile) {
-      setPreview(initialImage);
-    }
-  }, [initialImage, selectedFile]);
+    // Initialize once from the initial image; don't overwrite after uploads.
+    setSavedImage(initialImage);
+    setPreview(initialImage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ image: string | null }>;
+      setSavedImage(custom.detail?.image ?? null);
+      setPreview(custom.detail?.image ?? null);
+    };
+    window.addEventListener("user-avatar-updated", handler);
+    return () => window.removeEventListener("user-avatar-updated", handler);
+  }, []);
 
   useEffect(() => {
     const currentPreview = preview;
@@ -123,8 +135,9 @@ export function AvatarForm({
       URL.revokeObjectURL(preview);
     }
 
+    const objectUrl = URL.createObjectURL(file);
     setSelectedFile(file);
-    setPreview(URL.createObjectURL(file));
+    setPreview(objectUrl);
   };
 
   const handleChooseImage = () => {
@@ -177,12 +190,20 @@ export function AvatarForm({
         updatedAt?: string | null;
       };
       const newVersion = body.updatedAt ?? new Date().toISOString();
-      setSelectedFile(null);
+      setSavedImage(body.image);
       setPreview(body.image);
+      setSelectedFile(null);
       setMessageType("success");
       setMessage(
         translate("profile.picture.success.upload", "Profile picture updated.")
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("user-avatar-updated", {
+            detail: { image: body.image, version: newVersion },
+          })
+        );
+      }
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
         currentVersion === undefined
@@ -243,12 +264,20 @@ export function AvatarForm({
       };
       const newVersion = body.updatedAt ?? new Date().toISOString();
 
-      setSelectedFile(null);
+      setSavedImage(null);
       setPreview(null);
+      setSelectedFile(null);
       setMessageType("success");
       setMessage(
         translate("profile.picture.success.remove", "Profile picture removed.")
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("user-avatar-updated", {
+            detail: { image: null, version: newVersion },
+          })
+        );
+      }
       const currentVersion = sessionData?.user.imageVersion ?? null;
       const currentKey =
         currentVersion === undefined

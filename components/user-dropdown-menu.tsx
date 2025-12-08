@@ -104,14 +104,35 @@ export const UserMenuTrigger = React.forwardRef<
 >(({ user, className, isBusy = false, ...props }, ref) => {
   const initials = getInitials(user.name, user.email);
   const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
-  // Always fetch the latest avatar; append version to bust caches if present.
+  const [avatarOverride, setAvatarOverride] = React.useState<string | null>(
+    null
+  );
+  const [versionOverride, setVersionOverride] = React.useState<
+    string | null
+  >(null);
   const avatarKey = `/api/profile/avatar?v=${encodeURIComponent(
-    user.imageVersion ?? "none"
+    versionOverride ?? user.imageVersion ?? "none"
   )}`;
+
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{
+        image: string | null;
+        version?: string | null;
+      }>;
+      setAvatarOverride(custom.detail?.image ?? null);
+      if (custom.detail?.version) {
+        setVersionOverride(custom.detail.version);
+      }
+    };
+    window.addEventListener("user-avatar-updated", handler);
+    return () => window.removeEventListener("user-avatar-updated", handler);
+  }, []);
+
   const { data } = useSWR<{ image: string | null }>(avatarKey, fetcher, {
     revalidateOnFocus: false,
   });
-  const avatarSrc = data?.image ?? null;
+  const avatarSrc = avatarOverride ?? data?.image ?? null;
 
   return (
     <button
