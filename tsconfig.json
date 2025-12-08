@@ -30,17 +30,15 @@
     "strictNullChecks": true
   },
   "include": [
-    "**/*.d.ts",
+    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next-build/types/**/*.ts",
-    ".next-output/types/**/*.ts",
-    ".next/types/**/*.ts",
-    "build_output/types/**/*.ts",
-    "next-env.d.ts",
+    "**/*.mts",
+    "**/*.cts",
     "next.config.js",
-    "tmp-next/types/**/*.ts",
-    "dist-next/types/**/*.ts"
+    "next.config.ts",
+    "**/*.mjs",
+    "**/*.cjs"
   ],
   "exclude": [
     "node_modules"

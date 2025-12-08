@@ -95,7 +95,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  distDir: "dist-next",
   images: {
     remotePatterns: [
       {

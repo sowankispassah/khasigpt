@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "set NEXT_DISABLE_OUTPUT_TRACE=1&& next build",
+    "build": "next build",
     "start": "next start",
     "lint": "pnpm exec ultracite check",
     "format": "pnpm exec ultracite fix",
