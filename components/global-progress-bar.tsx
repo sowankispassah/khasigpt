@@ -77,6 +77,16 @@ export function GlobalProgressBar() {
   }, [clearHideTimer, ensureTicking]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hidePreload =
+      (window as unknown as { __hidePreloadProgress?: () => void })
+        .__hidePreloadProgress;
+    if (typeof hidePreload === "function") {
+      hidePreload();
+    }
+  }, []);
+
+  useEffect(() => {
     const handleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) {

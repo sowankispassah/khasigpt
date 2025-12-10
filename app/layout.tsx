@@ -68,6 +68,69 @@ const structuredData = {
   ],
 } as const;
 
+const PRELOAD_PROGRESS_STYLE = `
+  #__preload-progress {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 4px;
+    pointer-events: none;
+    z-index: 9999;
+    background: rgba(0,0,0,0.05);
+  }
+  #__preload-progress-bar {
+    height: 100%;
+    width: 100%;
+    transform-origin: left;
+    transform: scaleX(0);
+    background: var(--primary, #22c55e);
+    transition: transform 150ms ease-out;
+  }
+`;
+
+const PRELOAD_PROGRESS_SCRIPT = `(function() {
+  if (window.__preloadProgressInit) return;
+  window.__preloadProgressInit = true;
+  var container = document.createElement('div');
+  container.id = '__preload-progress';
+  var bar = document.createElement('div');
+  bar.id = '__preload-progress-bar';
+  container.appendChild(bar);
+  document.documentElement.appendChild(container);
+
+  var start = performance.now();
+  var progress = 0;
+  var raf;
+  var done = false;
+
+  function step() {
+    if (done) return;
+    var elapsed = performance.now() - start;
+    var target = Math.min(95, 8 + elapsed * 0.045); // reach ~90% in ~2s
+    var delta = Math.max(0.4, (target - progress) * 0.2);
+    progress = Math.min(target, progress + delta);
+    bar.style.transform = 'scaleX(' + (progress / 100) + ')';
+    raf = requestAnimationFrame(step);
+  }
+
+  function finish() {
+    if (done) return;
+    done = true;
+    cancelAnimationFrame(raf);
+    bar.style.transform = 'scaleX(1)';
+    setTimeout(function() {
+      if (container && container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+    }, 220);
+  }
+
+  window.__hidePreloadProgress = finish;
+  step();
+  window.addEventListener('load', finish);
+})();`;
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: siteName,
@@ -197,6 +260,17 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: PRELOAD_PROGRESS_STYLE,
+          }}
+        />
+        <script
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Needed for early paint progress */
+          dangerouslySetInnerHTML={{
+            __html: PRELOAD_PROGRESS_SCRIPT,
+          }}
+        />
         <script
           /* biome-ignore lint/security/noDangerouslySetInnerHtml: Needed to keep theme-color meta in sync */
           dangerouslySetInnerHTML={{
