@@ -51,7 +51,6 @@ export function preloadChat() {
 const ChatClient = dynamic<ChatLoaderProps>(
   () => loadChatModule().then((module) => module.Chat),
   {
-    ssr: false,
     loading: ChatSkeleton,
   }
 );

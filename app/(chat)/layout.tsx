@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
@@ -13,6 +14,9 @@ import { loadFeatureFlags } from "@/lib/feature-flags";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { auth } from "../(auth)/auth";
 
+const loadFeatureFlagsCached = cache(loadFeatureFlags);
+const getUserBalanceSummaryCached = cache(getUserBalanceSummary);
+
 export default async function Layout({
   children,
 }: {
@@ -20,7 +24,7 @@ export default async function Layout({
 }) {
   const [featureFlags, { models, defaultModel }, session, cookieStore] =
     await Promise.all([
-      loadFeatureFlags(),
+      loadFeatureFlagsCached(),
       loadChatModels(),
       auth(),
       cookies(),
@@ -42,7 +46,7 @@ export default async function Layout({
   }
 
   const balance = profileUser
-    ? await getUserBalanceSummary(profileUser.id)
+    ? await getUserBalanceSummaryCached(profileUser.id)
     : null;
 
   const _sidebarBalance = balance
