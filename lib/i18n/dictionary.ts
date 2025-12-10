@@ -77,20 +77,20 @@ const mergeWithStaticDictionary = (dictionary: Record<string, string>) => {
 };
 
 const parsedTimeout = Number.parseInt(
-  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "2000",
+  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "1200",
   10
 );
 const TRANSLATION_QUERY_TIMEOUT_MS =
-  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 2000;
+  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1200;
 
 const parsedInitialTimeout = Number.parseInt(
-  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "5000",
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "1500",
   10
 );
 const TRANSLATION_INITIAL_TIMEOUT_MS =
   Number.isFinite(parsedInitialTimeout) && parsedInitialTimeout > 0
     ? parsedInitialTimeout
-    : 5000;
+    : 1500;
 
 const parsedCacheTtl = Number.parseInt(
   process.env.TRANSLATION_CACHE_TTL_MS ?? `${1000 * 60 * 60 * 6}`,

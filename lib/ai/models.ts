@@ -8,15 +8,25 @@ import {
   type ModelSummary,
   mapToModelSummary,
 } from "./model-registry";
+import { withTimeout } from "@/lib/utils/async";
 
 export type ChatModel = ModelSummary;
 
 const CHAT_MODELS_CACHE_KEY = "chat-models";
+const MODEL_LOAD_TIMEOUT_MS = 1500;
 
 export const loadChatModels = unstable_cache(
   async () => {
     try {
-      const { configs, defaultConfig } = await getModelRegistry();
+      const { configs, defaultConfig } = await withTimeout(
+        getModelRegistry(),
+        MODEL_LOAD_TIMEOUT_MS,
+        () => {
+          console.warn(
+            `[models] Model registry timed out after ${MODEL_LOAD_TIMEOUT_MS}ms; falling back.`
+          );
+        }
+      );
 
       const models = configs.map(mapToModelSummary);
       const defaultModel = defaultConfig
