@@ -27,6 +27,19 @@ export type CustomUIDataTypes = {
   clear: null;
   finish: null;
   usage: AppUsage;
+  ragUsage: {
+    chatId: string;
+    modelId: string;
+    modelName: string;
+    entries: Array<{
+      id: string;
+      title: string;
+      status: string;
+      tags: string[];
+      score: number;
+      sourceUrl: string | null;
+    }>;
+  };
 };
 
 export type ChatMessage = UIMessage<

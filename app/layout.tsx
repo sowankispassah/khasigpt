@@ -1,17 +1,18 @@
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
-import { cookies } from "next/headers";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-
+import { GlobalProgressBar } from "@/components/global-progress-bar";
 import { LanguageProvider } from "@/components/language-provider";
-import { ThemeProvider } from "@/components/theme-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
-import { auth } from "@/app/(auth)/auth";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
+import { ThemeProvider } from "@/components/theme-provider";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { auth } from "./(auth)/auth";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const siteName = "KhasiGPT";
@@ -67,8 +68,67 @@ const structuredData = {
   ],
 } as const;
 
+const PRELOAD_PROGRESS_STYLE = `
+  #__preload-progress {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 4px;
+    pointer-events: none;
+    z-index: 9999;
+    background: rgba(0,0,0,0.05);
+  }
+  #__preload-progress-bar {
+    height: 100%;
+    width: 100%;
+    transform-origin: left;
+    transform: scaleX(0);
+    background: var(--primary, #22c55e);
+    transition: transform 180ms ease-out;
+    animation: __preloadGrow 2800ms cubic-bezier(.25,.8,.4,1) forwards;
+  }
+  @keyframes __preloadGrow {
+    0% { transform: scaleX(0); }
+    12% { transform: scaleX(0.28); }
+    35% { transform: scaleX(0.6); }
+    62% { transform: scaleX(0.78); }
+    100% { transform: scaleX(0.9); }
+  }
+`;
+
+const PRELOAD_PROGRESS_SCRIPT = `(function() {
+  if (window.__preloadProgressInit) return;
+  window.__preloadProgressInit = true;
+  var container = document.createElement('div');
+  container.id = '__preload-progress';
+  var bar = document.createElement('div');
+  bar.id = '__preload-progress-bar';
+  container.appendChild(bar);
+  document.documentElement.appendChild(container);
+
+  var done = false;
+
+  function finish() {
+    if (done) return;
+    done = true;
+    bar.style.transform = 'scaleX(1)';
+    setTimeout(function() {
+      if (container && container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+    }, 220);
+  }
+
+  window.__hidePreloadProgress = finish;
+  window.addEventListener('load', finish);
+  setTimeout(finish, 4500);
+})();`;
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  applicationName: siteName,
+  category: "technology",
   title: {
     default: siteTitle,
     template: `%s – ${siteName}`,
@@ -84,6 +144,20 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/",
+  },
+  manifest: "/manifest.webmanifest",
+  authors: [
+    {
+      name: siteName,
+      url: siteUrl,
+    },
+  ],
+  creator: siteName,
+  publisher: siteName,
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
   },
   openGraph: {
     type: "website",
@@ -109,6 +183,11 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  appleWebApp: {
+    capable: true,
+    title: siteTitle,
+    statusBarStyle: "default",
   },
   icons: {
     icon: [
@@ -163,14 +242,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value;
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
-
-  const sessionToken =
-    cookieStore.get("__Secure-authjs.session-token") ??
-    cookieStore.get("authjs.session-token");
-  const session = sessionToken ? await auth() : null;
+  const session = await auth();
 
   return (
     <html
@@ -179,12 +254,25 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: PRELOAD_PROGRESS_STYLE,
+          }}
+        />
         <script
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Needed for early paint progress */
+          dangerouslySetInnerHTML={{
+            __html: PRELOAD_PROGRESS_SCRIPT,
+          }}
+        />
+        <script
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Needed to keep theme-color meta in sync */
           dangerouslySetInnerHTML={{
             __html: THEME_COLOR_SCRIPT,
           }}
         />
         <script
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Inject structured data for SEO */
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData),
           }}
@@ -204,11 +292,13 @@ export default async function RootLayout({
             languages={languages}
           >
             <SessionProvider session={session ?? undefined}>
-              <PageUserMenu />
+              <GlobalProgressBar />
+              <PageUserMenu forumEnabled />
               {children}
             </SessionProvider>
             <Toaster position="top-center" />
             <SpeedInsights />
+            <PwaInstallBanner />
           </LanguageProvider>
         </ThemeProvider>
       </body>

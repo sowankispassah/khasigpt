@@ -162,7 +162,12 @@ export const PromptInputSubmit = ({
 }: PromptInputSubmitProps) => {
   let Icon = <SendIcon className="size-4" />;
 
-  if (status && status !== "ready" && status !== "streaming" && status !== "error") {
+  if (
+    status &&
+    status !== "ready" &&
+    status !== "streaming" &&
+    status !== "error"
+  ) {
     Icon = <Loader2Icon className="size-4 animate-spin" />;
   } else if (status === "streaming") {
     Icon = <SquareIcon className="size-4" />;

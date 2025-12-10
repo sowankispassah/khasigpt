@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import Link from "next/link";
 import { useActionState } from "react";
@@ -21,7 +21,7 @@ function ForgotPasswordForm() {
   );
 
   return (
-    <form className="space-y-4" action={formAction}>
+    <form action={formAction} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="email">Email address</Label>
         <Input
@@ -52,14 +52,14 @@ export default function ForgotPasswordPage() {
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-6 shadow-sm">
         <div className="space-y-2 text-center">
-          <h1 className="text-xl font-semibold">Forgot password</h1>
+          <h1 className="font-semibold text-xl">Forgot password</h1>
           <p className="text-muted-foreground text-sm">
             Enter your email and we will send you a link to reset your password.
           </p>
         </div>
         <ForgotPasswordForm />
         <p className="text-center text-muted-foreground text-sm">
-          Remembered your password? {" "}
+          Remembered your password?{" "}
           <Link className="underline" href="/login">
             Back to sign in
           </Link>

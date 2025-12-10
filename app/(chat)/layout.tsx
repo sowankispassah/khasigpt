@@ -1,16 +1,21 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { SessionProvider } from "next-auth/react";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ModelConfigProvider } from "@/components/model-config-provider";
-import { FeatureFlagsProvider } from "@/components/feature-flags-provider";
 import { DataStreamProvider } from "@/components/data-stream-provider";
+import { FeatureFlagsProvider } from "@/components/feature-flags-provider";
+import { LanguageProvider } from "@/components/language-provider";
+import { ModelConfigProvider } from "@/components/model-config-provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { loadChatModels } from "@/lib/ai/models";
+import { getUserBalanceSummary, getUserById } from "@/lib/db/queries";
 import { loadFeatureFlags } from "@/lib/feature-flags";
-import { getUserBalanceSummary } from "@/lib/db/queries";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { auth } from "../(auth)/auth";
 
-export const experimental_ppr = true;
+const loadFeatureFlagsCached = cache(loadFeatureFlags);
+const getUserBalanceSummaryCached = cache(getUserBalanceSummary);
 
 export default async function Layout({
   children,
@@ -18,22 +23,33 @@ export default async function Layout({
   children: React.ReactNode;
 }) {
   const [featureFlags, { models, defaultModel }, session, cookieStore] =
-    await Promise.all([loadFeatureFlags(), loadChatModels(), auth(), cookies()]);
+    await Promise.all([
+      loadFeatureFlagsCached(),
+      loadChatModels(),
+      auth(),
+      cookies(),
+    ]);
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const { languages, activeLanguage, dictionary } =
+    await getTranslationBundle(preferredLanguage);
+
+  const dbUser = session?.user ? await getUserById(session.user.id) : null;
+  const profileUser = dbUser ?? session?.user ?? null;
 
   if (
-    session?.user &&
-    (!session.user.dateOfBirth ||
-      !session.user.firstName ||
-      !session.user.lastName)
+    profileUser &&
+    (!profileUser.dateOfBirth ||
+      !profileUser.firstName ||
+      !profileUser.lastName)
   ) {
     redirect("/complete-profile");
   }
 
-  const balance = session?.user
-    ? await getUserBalanceSummary(session.user.id)
+  const balance = profileUser
+    ? await getUserBalanceSummaryCached(profileUser.id)
     : null;
 
-  const sidebarBalance = balance
+  const _sidebarBalance = balance
     ? {
         tokensRemaining: balance.tokensRemaining,
         tokensTotal: balance.tokensTotal,
@@ -51,26 +67,30 @@ export default async function Layout({
           : null,
       }
     : null;
-  const isCollapsed = cookieStore.get("sidebar_state")?.value !== "true";
+  const sidebarState = cookieStore.get("sidebar_state")?.value;
+  const defaultSidebarOpen = sidebarState !== "false";
 
   return (
-    <>
-      <FeatureFlagsProvider value={featureFlags}>
-        <ModelConfigProvider
-          defaultModelId={defaultModel?.id ?? null}
-          models={models}
-        >
-          <DataStreamProvider>
-            <SidebarProvider defaultOpen={!isCollapsed}>
-              <AppSidebar user={session?.user} />
-              <SidebarInset>{children}</SidebarInset>
-            </SidebarProvider>
-          </DataStreamProvider>
-        </ModelConfigProvider>
-      </FeatureFlagsProvider>
-    </>
+    <SessionProvider session={session ?? undefined}>
+      <LanguageProvider
+        activeLanguage={activeLanguage}
+        dictionary={dictionary}
+        languages={languages}
+      >
+        <FeatureFlagsProvider value={featureFlags}>
+          <ModelConfigProvider
+            defaultModelId={defaultModel?.id ?? null}
+            models={models}
+          >
+            <DataStreamProvider>
+              <SidebarProvider defaultOpen={defaultSidebarOpen}>
+                <AppSidebar user={session?.user} />
+                <SidebarInset>{children}</SidebarInset>
+              </SidebarProvider>
+            </DataStreamProvider>
+          </ModelConfigProvider>
+        </FeatureFlagsProvider>
+      </LanguageProvider>
+    </SessionProvider>
   );
 }
-
-
-

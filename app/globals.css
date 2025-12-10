@@ -332,3 +332,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer base {
+  .recharts-wrapper:focus,
+  .recharts-wrapper:focus-visible,
+  .recharts-wrapper *:focus,
+  .recharts-wrapper *:focus-visible,
+  .recharts-surface:focus,
+  .recharts-surface:focus-visible,
+  .recharts-surface *:focus,
+  .recharts-surface *:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}

@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import {
+  createAuditLogEntry,
   createEmailVerificationTokenRecord,
   createUser,
   deleteEmailVerificationTokensForUser,
@@ -12,6 +13,7 @@ import {
   updateUserPassword,
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { signIn } from "./auth";
 
 const authFormSchema = z.object({
@@ -100,23 +102,36 @@ export const register = async (
 
     const [existingUser] = await getUser(validatedData.email);
 
-    if (existingUser && existingUser.isActive) {
+    if (existingUser?.isActive) {
       return { status: "user_exists" };
     }
 
     let userRecord = existingUser;
 
-    if (!userRecord) {
-      userRecord = await createUser(
-        validatedData.email,
-        validatedData.password
-      );
-    } else {
+    if (userRecord) {
       await updateUserPassword({
         id: userRecord.id,
         password: validatedData.password,
       });
+    } else {
+      userRecord = await createUser(
+        validatedData.email,
+        validatedData.password
+      );
     }
+
+    const clientInfo = await getClientInfoFromHeaders();
+    await createAuditLogEntry({
+      actorId: userRecord.id,
+      action: "user.signup",
+      target: { userId: userRecord.id, email: validatedData.email },
+      metadata: {
+        provider: "credentials",
+        reactivated: Boolean(existingUser),
+      },
+      subjectUserId: userRecord.id,
+      ...clientInfo,
+    });
 
     await deleteEmailVerificationTokensForUser({ userId: userRecord.id });
 

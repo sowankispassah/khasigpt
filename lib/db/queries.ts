@@ -6,6 +6,8 @@
   require("server-only");
 }
 
+import { randomBytes } from "node:crypto";
+import { setDefaultResultOrder } from "node:dns";
 import {
   and,
   asc,
@@ -15,62 +17,73 @@ import {
   gt,
   gte,
   inArray,
-  lt,
-  lte,
   isNotNull,
   isNull,
+  lt,
+  lte,
   or,
-  sql,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { setDefaultResultOrder } from "node:dns";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
-import { TOKENS_PER_CREDIT } from "../constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
+import {
+  getFallbackUsdToInrRate,
+  getUsdToInrRate,
+} from "../services/exchange-rate";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
 import {
-  appSetting,
-  auditLog,
-  language,
-  contactMessage,
-  chat,
-  document,
-  emailVerificationToken,
-  modelConfig,
-  message,
-  passwordResetToken,
-  paymentTransaction,
-  pricingPlan,
-  translationKey,
-  translationValue,
-  stream,
-  suggestion,
-  tokenUsage,
-  user,
-  userSubscription,
-  vote,
   type AppSetting,
   type AuditLog,
-  type Language,
+  appSetting,
+  auditLog,
+  type Chat,
   type ContactMessage,
   type ContactMessageStatus,
-  type Chat,
+  type Coupon,
+  type CouponRewardPayout,
+  chat,
+  contactMessage,
+  coupon,
+  couponRedemption,
+  couponRewardPayout,
   type DBMessage,
+  document,
   type EmailVerificationToken,
+  emailVerificationToken,
+  type ImpersonationToken,
+  impersonationToken,
+  type Language,
+  language,
   type ModelConfig,
+  message,
+  modelConfig,
   type PasswordResetToken,
   type PaymentTransaction,
   type PricingPlan,
+  passwordResetToken,
+  paymentTransaction,
+  pricingPlan,
+  type Suggestion,
+  stream,
+  suggestion,
+  type TokenUsage,
   type TranslationKey,
   type TranslationValue,
-  type Suggestion,
-  type TokenUsage,
+  tokenUsage,
+  translationKey,
+  translationValue,
   type User,
   type UserSubscription,
+  user,
+  userProfileImage,
+  userSubscription,
+  vote,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -91,7 +104,10 @@ function normalizeEndOfDay(date: Date) {
   return end;
 }
 
-function buildDateRangeConditions<T>(column: T, range?: DateRange): SQL<boolean>[] {
+function buildDateRangeConditions<T>(
+  column: T,
+  range?: DateRange
+): SQL<boolean>[] {
   if (!range) {
     return [];
   }
@@ -103,7 +119,9 @@ function buildDateRangeConditions<T>(column: T, range?: DateRange): SQL<boolean>
   }
 
   if (range.end) {
-    conditions.push(lte(column as any, normalizeEndOfDay(range.end)) as SQL<boolean>);
+    conditions.push(
+      lte(column as any, normalizeEndOfDay(range.end)) as SQL<boolean>
+    );
   }
 
   return conditions;
@@ -130,6 +148,123 @@ function convertSubunitAmount(amount: number, currency: string): number {
   return numericAmount / divisor;
 }
 
+function normalizeCouponCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+function toInteger(value: number | string | null | undefined): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
+function maskUserIdentifier(identifier: string | null | undefined): string {
+  const raw = identifier?.trim() ?? "";
+  const base = raw.includes("@")
+    ? (raw.split("@")[0] ?? "")
+    : raw.replace(/\s+/g, "");
+  const source = base.replace(/\s+/g, "");
+  if (!source) {
+    return "User ****";
+  }
+  const visible = source.slice(0, 3) || source;
+  const maskLength = Math.max(source.length - visible.length, 4);
+  return `${visible}${"*".repeat(maskLength)}`;
+}
+
+function sanitizeAuditString(
+  value: string | null | undefined,
+  maxLength = 512
+): string | null {
+  if (!value) {
+    return null;
+  }
+  const cleaned = value.replace(/[\r\n]/g, " ").trim();
+  if (!cleaned) {
+    return null;
+  }
+  return cleaned.slice(0, maxLength);
+}
+
+function calculateRewardAmount(
+  totalRevenueInPaise: number,
+  rewardPercentage: number
+) {
+  if (!(Number.isFinite(totalRevenueInPaise) && totalRevenueInPaise > 0)) {
+    return 0;
+  }
+  if (!(Number.isFinite(rewardPercentage) && rewardPercentage > 0)) {
+    return 0;
+  }
+  const rawReward = (totalRevenueInPaise * rewardPercentage) / 100;
+  let reward = Math.round(rawReward);
+  if (reward <= 0 && rawReward > 0) {
+    reward = 1;
+  }
+  return reward;
+}
+
+function createCouponStatsSubquery() {
+  return db
+    .select({
+      couponId: couponRedemption.couponId,
+      usageCount: sql<number>`COUNT(${couponRedemption.id})`.as("usageCount"),
+      totalDiscount:
+        sql<number>`COALESCE(SUM(${couponRedemption.discountAmount}), 0)`.as(
+          "totalDiscount"
+        ),
+      totalRevenue:
+        sql<number>`COALESCE(SUM(${couponRedemption.paymentAmount}), 0)`.as(
+          "totalRevenue"
+        ),
+      lastRedemptionAt: sql<Date | null>`MAX(${couponRedemption.createdAt})`.as(
+        "lastRedemptionAt"
+      ),
+    })
+    .from(couponRedemption)
+    .groupBy(couponRedemption.couponId)
+    .as("coupon_stats");
+}
+
+function createCouponPayoutStatsSubquery() {
+  return db
+    .select({
+      couponId: couponRewardPayout.couponId,
+      totalPaid: sql<number>`COALESCE(SUM(${couponRewardPayout.amount}), 0)`.as(
+        "totalPaid"
+      ),
+      payoutCount: sql<number>`COUNT(${couponRewardPayout.id})`.as(
+        "payoutCount"
+      ),
+    })
+    .from(couponRewardPayout)
+    .groupBy(couponRewardPayout.couponId)
+    .as("coupon_payout_stats");
+}
+
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
@@ -152,14 +287,20 @@ const poolConfig = {
   max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
 };
 
-// biome-ignore lint: Forbidden non-null assertion.
+const postgresUrl = process.env.POSTGRES_URL;
+if (!postgresUrl) {
+  throw new ChatSDKError(
+    "bad_request:configuration",
+    "POSTGRES_URL is not configured"
+  );
+}
+
 const client =
-  globalDbState.postgresClient ?? postgres(process.env.POSTGRES_URL!, poolConfig);
+  globalDbState.postgresClient ?? postgres(postgresUrl, poolConfig);
 
 globalDbState.postgresClient ??= client;
 
-export const db =
-  globalDbState.drizzleDb ?? drizzle(client);
+export const db = globalDbState.drizzleDb ?? drizzle(client);
 
 globalDbState.drizzleDb ??= db;
 
@@ -167,8 +308,10 @@ function normalizeEmailValue(email: string): string {
   return email.trim().toLowerCase();
 }
 
-const DEFAULT_COST_PER_MILLION = 1;
+const IST_OFFSET_MINUTES = 330;
+const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60 * 1000;
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
+const LANGUAGE_CODE_REGEX = /^[a-z0-9-]{2,16}$/;
 
 const PAYMENT_STATUS_PENDING: PaymentTransaction["status"] = "pending";
 const PAYMENT_STATUS_PROCESSING: PaymentTransaction["status"] = "processing";
@@ -194,6 +337,10 @@ export async function getUser(email: string): Promise<User[]> {
 }
 
 export async function getUserById(id: string): Promise<User | null> {
+  if (typeof id !== "string" || !isValidUUID(id)) {
+    return null;
+  }
+
   try {
     const [record] = await db
       .select()
@@ -203,14 +350,14 @@ export async function getUserById(id: string): Promise<User | null> {
 
     return record ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to get user by id"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to get user by id");
   }
 }
 
-export async function createUser(email: string, password: string): Promise<User> {
+export async function createUser(
+  email: string,
+  password: string
+): Promise<User> {
   const hashedPassword = generateHashedPassword(password);
   const normalizedEmail = normalizeEmailValue(email);
 
@@ -276,6 +423,7 @@ export async function createGuestUser() {
       .returning({
         id: user.id,
         email: user.email,
+        role: user.role,
       });
   } catch (_error) {
     throw new ChatSDKError(
@@ -287,8 +435,12 @@ export async function createGuestUser() {
 
 export async function ensureOAuthUser(
   email: string,
-  profile?: { image?: string | null; firstName?: string | null; lastName?: string | null }
-): Promise<User> {
+  profile?: {
+    image?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  }
+): Promise<{ user: User; isNewUser: boolean }> {
   const normalizedEmail = normalizeEmailValue(email);
   const [existing] = await getUser(normalizedEmail);
 
@@ -303,15 +455,19 @@ export async function ensureOAuthUser(
 
     let userRecord = existing;
 
-    if (
-      profile?.image &&
-      (!userRecord.image || userRecord.image !== profile.image)
-    ) {
-      const updatedImage = await updateUserImage({
-        id: userRecord.id,
-        image: profile.image,
+    const activeProfileImage = await getActiveUserProfileImage({
+      userId: userRecord.id,
+    });
+
+    if (!activeProfileImage?.imageUrl && profile?.image) {
+      const updated = await setActiveUserProfileImage({
+        userId: userRecord.id,
+        imageUrl: profile.image,
+        source: "google",
       });
-      userRecord = updatedImage ?? userRecord;
+      if (updated?.user) {
+        userRecord = updated.user;
+      }
     }
 
     const nameUpdates: Partial<typeof user.$inferInsert> = {};
@@ -343,15 +499,17 @@ export async function ensureOAuthUser(
       userRecord = updated ?? userRecord;
     }
 
-    return userRecord;
+    return { user: userRecord, isNewUser: false };
   }
 
-  return await createOAuthUser(
+  const newUser = await createOAuthUser(
     normalizedEmail,
     profile?.image ?? null,
     profile?.firstName ?? null,
     profile?.lastName ?? null
   );
+
+  return { user: newUser, isNewUser: true };
 }
 
 export async function deleteEmailVerificationTokensForUser({
@@ -388,11 +546,7 @@ export async function deletePasswordResetTokensForUser({
   }
 }
 
-export async function deletePasswordResetTokenById({
-  id,
-}: {
-  id: string;
-}) {
+export async function deletePasswordResetTokenById({ id }: { id: string }) {
   try {
     await db.delete(passwordResetToken).where(eq(passwordResetToken.id, id));
   } catch (_error) {
@@ -512,7 +666,9 @@ export async function verifyUserEmailByToken(
       .limit(1);
 
     if (!matchingUser) {
-      await deleteEmailVerificationTokensForUser({ userId: tokenRecord.userId });
+      await deleteEmailVerificationTokensForUser({
+        userId: tokenRecord.userId,
+      });
       return { status: "not_found" };
     }
 
@@ -603,10 +759,7 @@ export async function restoreChatById({ id }: { id: string }) {
 
     return restored ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to restore chat"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to restore chat");
   }
 }
 
@@ -663,7 +816,9 @@ export async function getChatsByUserId({
       db
         .select()
         .from(chat)
-        .where(whereCondition ? and(whereCondition, baseCondition) : baseCondition)
+        .where(
+          whereCondition ? and(whereCondition, baseCondition) : baseCondition
+        )
         .orderBy(desc(chat.createdAt))
         .limit(extendedLimit);
 
@@ -724,6 +879,10 @@ export async function getChatById({
   id: string;
   includeDeleted?: boolean;
 }) {
+  if (!isValidUUID(id)) {
+    return null;
+  }
+
   try {
     const condition = includeDeleted
       ? eq(chat.id, id)
@@ -736,15 +895,26 @@ export async function getChatById({
 
     return selectedChat;
   } catch (_error) {
-    throw new ChatSDKError("bad_request:database", "Failed to get chat by id");
+    const cause =
+      _error instanceof Error ? _error.message : "Failed to get chat by id";
+    throw new ChatSDKError("bad_request:database", cause);
   }
 }
 
 export async function saveMessages({ messages }: { messages: DBMessage[] }) {
   try {
-    return await db.insert(message).values(messages);
+    if (!messages.length) {
+      return [];
+    }
+
+    // Ignore duplicates when the same message id is persisted twice (e.g. when
+    // resuming a stream or retrying after a transient error).
+    return await db.insert(message).values(messages).onConflictDoNothing();
   } catch (_error) {
-    throw new ChatSDKError("bad_request:database", "Failed to save messages");
+    console.error("Failed to save messages", _error);
+    const cause =
+      _error instanceof Error ? _error.message : "Failed to save messages";
+    throw new ChatSDKError("bad_request:database", cause);
   }
 }
 
@@ -999,6 +1169,23 @@ export async function updateChatVisiblityById({
   }
 }
 
+export async function updateChatTitleById({
+  chatId,
+  title,
+}: {
+  chatId: string;
+  title: string;
+}) {
+  try {
+    return await db.update(chat).set({ title }).where(eq(chat.id, chatId));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update chat title by id"
+    );
+  }
+}
+
 export async function updateChatLastContextById({
   chatId,
   context,
@@ -1020,16 +1207,12 @@ export async function updateChatLastContextById({
 
 export async function getMessageCountByUserId({
   id,
-  differenceInHours,
+  since,
 }: {
   id: string;
-  differenceInHours: number;
+  since: Date;
 }) {
   try {
-    const twentyFourHoursAgo = new Date(
-      Date.now() - differenceInHours * 60 * 60 * 1000
-    );
-
     const [stats] = await db
       .select({ count: count(message.id) })
       .from(message)
@@ -1037,7 +1220,7 @@ export async function getMessageCountByUserId({
       .where(
         and(
           eq(chat.userId, id),
-          gte(message.createdAt, twentyFourHoursAgo),
+          gte(message.createdAt, since),
           eq(message.role, "user")
         )
       )
@@ -1138,6 +1321,50 @@ export async function updateUserPassword({
   }
 }
 
+export async function updateUserLocation({
+  id,
+  latitude,
+  longitude,
+  accuracy,
+  consent = true,
+}: {
+  id: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  consent?: boolean;
+}) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  const acc = Number(accuracy);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new ChatSDKError("bad_request:api", "Invalid coordinates");
+  }
+
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        locationLatitude: lat,
+        locationLongitude: lng,
+        locationAccuracy: Number.isFinite(acc) ? acc : null,
+        locationConsent: Boolean(consent),
+        locationUpdatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update user location"
+    );
+  }
+}
+
 export async function updateUserProfile({
   id,
   dateOfBirth,
@@ -1163,9 +1390,64 @@ export async function updateUserProfile({
 
     return updated ?? null;
   } catch (_error) {
+    throw new ChatSDKError("bad_request:database", "Failed to update profile");
+  }
+}
+
+const IMPERSONATION_TOKEN_BYTES = 32;
+const IMPERSONATION_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+export async function createImpersonationToken({
+  targetUserId,
+  createdByAdminId,
+}: {
+  targetUserId: string;
+  createdByAdminId: string;
+}): Promise<ImpersonationToken> {
+  const token = randomBytes(IMPERSONATION_TOKEN_BYTES).toString("hex");
+  const expiresAt = new Date(Date.now() + IMPERSONATION_TOKEN_TTL_MS);
+
+  try {
+    const [record] = await db
+      .insert(impersonationToken)
+      .values({
+        token,
+        targetUserId,
+        createdByAdminId,
+        expiresAt,
+      })
+      .returning();
+
+    return record;
+  } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
-      "Failed to update profile"
+      "Failed to create impersonation token"
+    );
+  }
+}
+
+export async function consumeImpersonationToken(
+  token: string
+): Promise<ImpersonationToken | null> {
+  try {
+    const [record] = await db
+      .update(impersonationToken)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(impersonationToken.token, token),
+          isNull(impersonationToken.usedAt),
+          gt(impersonationToken.expiresAt, new Date())
+        )
+      )
+      .returning();
+
+    return record ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to consume impersonation token"
     );
   }
 }
@@ -1192,10 +1474,7 @@ export async function updateUserName({
 
     return updated ?? null;
   } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to update name"
-    );
+    throw new ChatSDKError("bad_request:database", "Failed to update name");
   }
 }
 
@@ -1206,23 +1485,17 @@ export async function updateUserImage({
   id: string;
   image: string | null;
 }) {
-  try {
-    const [updated] = await db
-      .update(user)
-      .set({
-        image,
-        updatedAt: new Date(),
-      })
-      .where(eq(user.id, id))
-      .returning();
-
-    return updated ?? null;
-  } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to update user profile image"
-    );
+  if (!image) {
+    await clearActiveUserProfileImage({ userId: id });
+    return getUserById(id);
   }
+
+  const result = await setActiveUserProfileImage({
+    userId: id,
+    imageUrl: image,
+    source: "upload",
+  });
+  return result?.user ?? null;
 }
 
 export async function updateUserRole({
@@ -1244,6 +1517,129 @@ export async function updateUserRole({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update user role"
+    );
+  }
+}
+
+export async function getActiveUserProfileImage({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    const [record] = await db
+      .select()
+      .from(userProfileImage)
+      .where(
+        and(
+          eq(userProfileImage.userId, userId),
+          eq(userProfileImage.isActive, true)
+        )
+      )
+      .limit(1);
+
+    return record ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load user profile image"
+    );
+  }
+}
+
+export async function setActiveUserProfileImage({
+  userId,
+  imageUrl,
+  source,
+}: {
+  userId: string;
+  imageUrl: string;
+  source: string;
+}) {
+  const now = new Date();
+  try {
+    return await db.transaction(async (tx) => {
+      await tx
+        .update(userProfileImage)
+        .set({ isActive: false })
+        .where(eq(userProfileImage.userId, userId));
+
+      const [record] = await tx
+        .insert(userProfileImage)
+        .values({
+          userId,
+          imageUrl,
+          source,
+          isActive: true,
+        })
+        .returning();
+
+      const [updatedUser] = await tx
+        .update(user)
+        .set({
+          image: imageUrl,
+          updatedAt: now,
+        })
+        .where(eq(user.id, userId))
+        .returning();
+
+      return { record, user: updatedUser ?? null };
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to store profile image"
+    );
+  }
+}
+
+export async function clearActiveUserProfileImage({
+  userId,
+}: {
+  userId: string;
+}) {
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(userProfileImage)
+        .set({ isActive: false })
+        .where(eq(userProfileImage.userId, userId));
+
+      await tx
+        .update(user)
+        .set({ image: null, updatedAt: new Date() })
+        .where(eq(user.id, userId));
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to clear profile image"
+    );
+  }
+}
+
+export async function updateUserPersonalKnowledgePermission({
+  id,
+  allowPersonalKnowledge,
+}: {
+  id: string;
+  allowPersonalKnowledge: boolean;
+}) {
+  try {
+    const [updated] = await db
+      .update(user)
+      .set({
+        allowPersonalKnowledge,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update personal knowledge setting"
     );
   }
 }
@@ -1278,6 +1674,16 @@ export async function updateUserAuthProvider({
   id: string;
   authProvider: User["authProvider"];
 }) {
+  const existing = await getUserById(id);
+  if (!existing) {
+    throw new ChatSDKError("bad_request:database", "User not found");
+  }
+
+  // Preserve the original signup provider; do not downgrade/override once set.
+  if (existing.authProvider && existing.authProvider !== authProvider) {
+    return existing;
+  }
+
   try {
     const [updated] = await db
       .update(user)
@@ -1313,6 +1719,21 @@ export async function listUsers({
       return [];
     }
     throw new ChatSDKError("bad_request:database", "Failed to list users");
+  }
+}
+
+export async function listCreators(): Promise<User[]> {
+  try {
+    return await db
+      .select()
+      .from(user)
+      .where(eq(user.role, "creator"))
+      .orderBy(asc(user.firstName), asc(user.lastName));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to list creators");
   }
 }
 
@@ -1367,7 +1788,9 @@ export async function listChats({
           : (and(...conditions) as SQL<boolean>);
 
     const query =
-      whereCondition !== undefined ? baseQuery.where(whereCondition) : baseQuery;
+      whereCondition !== undefined
+        ? baseQuery.where(whereCondition)
+        : baseQuery;
 
     return await query
       .orderBy(desc(chat.createdAt))
@@ -1393,9 +1816,9 @@ export async function getChatCount({
 
     const filterCondition = onlyDeleted
       ? (isNotNull(chat.deletedAt) as SQL<boolean>)
-      : !includeDeleted
-        ? (isNull(chat.deletedAt) as SQL<boolean>)
-        : undefined;
+      : includeDeleted
+        ? undefined
+        : (isNull(chat.deletedAt) as SQL<boolean>);
 
     const builder =
       filterCondition !== undefined
@@ -1491,12 +1914,26 @@ export async function createAuditLogEntry({
   action,
   target,
   metadata,
+  subjectUserId,
+  ipAddress,
+  userAgent,
+  device,
 }: {
   actorId: string;
   action: string;
   target: Record<string, unknown>;
   metadata?: Record<string, unknown> | null;
+  subjectUserId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  device?: string | null;
 }): Promise<AuditLog | null> {
+  const targetUserId =
+    typeof target?.userId === "string" ? (target.userId as string) : null;
+  const derivedSubjectUserId =
+    (subjectUserId && isValidUUID(subjectUserId) ? subjectUserId : null) ??
+    (targetUserId && isValidUUID(targetUserId) ? targetUserId : null);
+
   try {
     const [entry] = await db
       .insert(auditLog)
@@ -1505,6 +1942,10 @@ export async function createAuditLogEntry({
         action,
         target,
         metadata: metadata ?? null,
+        subjectUserId: derivedSubjectUserId,
+        ipAddress: sanitizeAuditString(ipAddress, 128),
+        userAgent: sanitizeAuditString(userAgent),
+        device: sanitizeAuditString(device, 64),
       })
       .returning();
 
@@ -1523,11 +1964,33 @@ export async function createAuditLogEntry({
 export async function listAuditLog({
   limit = 50,
   offset = 0,
+  userId,
 }: {
   limit?: number;
   offset?: number;
+  userId?: string | null;
 } = {}): Promise<AuditLog[]> {
   try {
+    const conditions: SQL<boolean>[] = [];
+    if (userId && isValidUUID(userId)) {
+      conditions.push(
+        or(
+          eq(auditLog.actorId, userId),
+          eq(auditLog.subjectUserId, userId)
+        ) as SQL<boolean>
+      );
+    }
+
+    if (conditions.length > 0) {
+      return await db
+        .select()
+        .from(auditLog)
+        .where(and(...conditions))
+        .orderBy(desc(auditLog.createdAt))
+        .limit(limit)
+        .offset(offset);
+    }
+
     return await db
       .select()
       .from(auditLog)
@@ -1717,8 +2180,14 @@ export async function listUserCreditHistory({
       .from(auditLog)
       .where(
         or(
-          and(eq(auditLog.action, "billing.manual_credit.grant"), targetUserCondition),
-          and(eq(auditLog.action, "billing.recharge"), eq(auditLog.actorId, userId))
+          and(
+            eq(auditLog.action, "billing.manual_credit.grant"),
+            targetUserCondition
+          ),
+          and(
+            eq(auditLog.action, "billing.recharge"),
+            eq(auditLog.actorId, userId)
+          )
         )
       )
       .orderBy(desc(auditLog.createdAt))
@@ -1749,8 +2218,8 @@ export async function createModelConfig({
   config = null,
   isEnabled = true,
   isDefault = false,
-  inputCostPerMillion = DEFAULT_COST_PER_MILLION,
-  outputCostPerMillion = DEFAULT_COST_PER_MILLION,
+  isMarginBaseline = false,
+  freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
   inputProviderCostPerMillion = 0,
   outputProviderCostPerMillion = 0,
 }: {
@@ -1766,8 +2235,8 @@ export async function createModelConfig({
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   isDefault?: boolean;
-  inputCostPerMillion?: number;
-  outputCostPerMillion?: number;
+  isMarginBaseline?: boolean;
+  freeMessagesPerDay?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
 }): Promise<ModelConfig> {
@@ -1789,8 +2258,8 @@ export async function createModelConfig({
         config,
         isEnabled,
         isDefault,
-        inputCostPerMillion,
-        outputCostPerMillion,
+        isMarginBaseline,
+        freeMessagesPerDay,
         inputProviderCostPerMillion,
         outputProviderCostPerMillion,
         createdAt: now,
@@ -1806,12 +2275,19 @@ export async function createModelConfig({
       );
     }
 
+    let result = created;
+
     if (isDefault) {
       await setDefaultModelConfig(created.id);
-      return { ...created, isDefault: true };
+      result = { ...result, isDefault: true };
     }
 
-    return created;
+    if (isMarginBaseline) {
+      await setMarginBaselineModel(created.id);
+      result = { ...result, isMarginBaseline: true };
+    }
+
+    return result;
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -1896,9 +2372,9 @@ export async function listModelConfigs({
 
     const deletedCondition = onlyDeleted
       ? (isNotNull(modelConfig.deletedAt) as SQL<boolean>)
-      : !includeDeleted
-        ? (isNull(modelConfig.deletedAt) as SQL<boolean>)
-        : undefined;
+      : includeDeleted
+        ? undefined
+        : (isNull(modelConfig.deletedAt) as SQL<boolean>);
 
     const enabledCondition = includeDisabled
       ? undefined
@@ -1907,7 +2383,7 @@ export async function listModelConfigs({
     const whereCondition =
       deletedCondition && enabledCondition
         ? (and(deletedCondition, enabledCondition) as SQL<boolean>)
-        : deletedCondition ?? enabledCondition;
+        : (deletedCondition ?? enabledCondition);
 
     const builder =
       whereCondition !== undefined
@@ -1942,10 +2418,10 @@ export async function updateModelConfig({
   supportsReasoning?: boolean;
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
-  inputCostPerMillion?: number;
-  outputCostPerMillion?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
+  freeMessagesPerDay?: number;
+  isMarginBaseline?: boolean;
 }): Promise<ModelConfig | null> {
   try {
     const updateData: Partial<typeof modelConfig.$inferInsert> = {};
@@ -1980,12 +2456,6 @@ export async function updateModelConfig({
     if (patch.isEnabled !== undefined) {
       updateData.isEnabled = patch.isEnabled;
     }
-    if (patch.inputCostPerMillion !== undefined) {
-      updateData.inputCostPerMillion = patch.inputCostPerMillion;
-    }
-    if (patch.outputCostPerMillion !== undefined) {
-      updateData.outputCostPerMillion = patch.outputCostPerMillion;
-    }
     if (patch.inputProviderCostPerMillion !== undefined) {
       updateData.inputProviderCostPerMillion =
         patch.inputProviderCostPerMillion;
@@ -1993,6 +2463,12 @@ export async function updateModelConfig({
     if (patch.outputProviderCostPerMillion !== undefined) {
       updateData.outputProviderCostPerMillion =
         patch.outputProviderCostPerMillion;
+    }
+    if (patch.freeMessagesPerDay !== undefined) {
+      updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
+    }
+    if (patch.isMarginBaseline !== undefined) {
+      updateData.isMarginBaseline = patch.isMarginBaseline;
     }
 
     const [updated] = await db
@@ -2004,7 +2480,16 @@ export async function updateModelConfig({
       .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
       .returning();
 
-    return updated ?? null;
+    if (!updated) {
+      return null;
+    }
+
+    if (patch.isMarginBaseline) {
+      await setMarginBaselineModel(id);
+      return { ...updated, isMarginBaseline: true };
+    }
+
+    return updated;
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -2017,7 +2502,12 @@ export async function deleteModelConfig(id: string) {
   try {
     await db
       .update(modelConfig)
-      .set({ deletedAt: new Date(), isDefault: false, isEnabled: false })
+      .set({
+        deletedAt: new Date(),
+        isDefault: false,
+        isMarginBaseline: false,
+        isEnabled: false,
+      })
       .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
   } catch (_error) {
     throw new ChatSDKError(
@@ -2046,7 +2536,9 @@ export async function setDefaultModelConfig(id: string) {
       await tx
         .update(modelConfig)
         .set({ isDefault: false, updatedAt: now })
-        .where(and(eq(modelConfig.isDefault, true), isNull(modelConfig.deletedAt)));
+        .where(
+          and(eq(modelConfig.isDefault, true), isNull(modelConfig.deletedAt))
+        );
 
       await tx
         .update(modelConfig)
@@ -2057,6 +2549,34 @@ export async function setDefaultModelConfig(id: string) {
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to set default model configuration"
+    );
+  }
+}
+
+export async function setMarginBaselineModel(id: string) {
+  const now = new Date();
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(modelConfig)
+        .set({ isMarginBaseline: false, updatedAt: now })
+        .where(
+          and(
+            eq(modelConfig.isMarginBaseline, true),
+            isNull(modelConfig.deletedAt)
+          )
+        );
+
+      await tx
+        .update(modelConfig)
+        .set({ isMarginBaseline: true, updatedAt: now })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to set margin baseline model"
     );
   }
 }
@@ -2249,6 +2769,925 @@ export async function hardDeletePricingPlan(id: string) {
   }
 }
 
+export type CouponWithStats = {
+  id: string;
+  code: string;
+  discountPercentage: number;
+  creatorRewardPercentage: number;
+  creatorRewardStatus: string;
+  creatorId: string;
+  creatorName: string | null;
+  creatorEmail: string | null;
+  validFrom: Date;
+  validTo: Date | null;
+  isActive: boolean;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  usageCount: number;
+  totalRevenueInPaise: number;
+  totalDiscountInPaise: number;
+  lastRedemptionAt: Date | null;
+  estimatedRewardInPaise: number;
+  totalPaidInPaise: number;
+};
+
+function fetchCouponStats(includePayouts: boolean): Promise<any[]> {
+  const stats = createCouponStatsSubquery();
+  const payoutStats = includePayouts ? createCouponPayoutStatsSubquery() : null;
+
+  let query = db
+    .select({
+      id: coupon.id,
+      code: coupon.code,
+      discountPercentage: coupon.discountPercentage,
+      creatorRewardPercentage: coupon.creatorRewardPercentage,
+      creatorRewardStatus: coupon.creatorRewardStatus,
+      creatorId: coupon.creatorId,
+      validFrom: coupon.validFrom,
+      validTo: coupon.validTo,
+      isActive: coupon.isActive,
+      description: coupon.description,
+      createdAt: coupon.createdAt,
+      updatedAt: coupon.updatedAt,
+      creatorFirstName: user.firstName,
+      creatorLastName: user.lastName,
+      creatorEmail: user.email,
+      usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+      totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+      totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+      lastRedemptionAt: stats.lastRedemptionAt,
+      totalPaidInPaise: includePayouts
+        ? sql<number>`COALESCE(${payoutStats?.totalPaid}, 0)`
+        : sql<number>`0`,
+    })
+    .from(coupon)
+    .leftJoin(user, eq(coupon.creatorId, user.id))
+    .leftJoin(stats, eq(stats.couponId, coupon.id))
+    .orderBy(desc(coupon.createdAt));
+
+  if (includePayouts && payoutStats) {
+    query = query.leftJoin(payoutStats, eq(payoutStats.couponId, coupon.id));
+  }
+
+  return query;
+}
+
+export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
+  try {
+    const rows = await fetchCouponStats(true);
+
+    return rows.map((row) => {
+      const computedName = [row.creatorFirstName, row.creatorLastName]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join(" ");
+
+      const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+      const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+      const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+      const estimatedRewardInPaise = calculateRewardAmount(
+        grossRevenue,
+        row.creatorRewardPercentage ?? 0
+      );
+      const lastRedemptionAt = toDate(row.lastRedemptionAt);
+      const totalPaidInPaise = toInteger(row.totalPaidInPaise);
+
+      return {
+        id: row.id,
+        code: row.code,
+        discountPercentage: row.discountPercentage,
+        creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+        creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+        creatorId: row.creatorId,
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        isActive: row.isActive,
+        description: row.description,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        creatorName: computedName || row.creatorEmail || null,
+        creatorEmail: row.creatorEmail,
+        usageCount: row.usageCount ?? 0,
+        totalRevenueInPaise,
+        totalDiscountInPaise,
+        lastRedemptionAt,
+        estimatedRewardInPaise,
+        totalPaidInPaise,
+      };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      const rows = await fetchCouponStats(false);
+      return rows.map((row) => {
+        const computedName = [row.creatorFirstName, row.creatorLastName]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join(" ");
+
+        const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+        const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+        const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+        const estimatedRewardInPaise = calculateRewardAmount(
+          grossRevenue,
+          row.creatorRewardPercentage ?? 0
+        );
+        const lastRedemptionAt = toDate(row.lastRedemptionAt);
+
+        return {
+          id: row.id,
+          code: row.code,
+          discountPercentage: row.discountPercentage,
+          creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+          creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+          creatorId: row.creatorId,
+          validFrom: row.validFrom,
+          validTo: row.validTo,
+          isActive: row.isActive,
+          description: row.description,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          creatorName: computedName || row.creatorEmail || null,
+          creatorEmail: row.creatorEmail,
+          usageCount: row.usageCount ?? 0,
+          totalRevenueInPaise,
+          totalDiscountInPaise,
+          lastRedemptionAt,
+          estimatedRewardInPaise,
+          totalPaidInPaise: 0,
+        };
+      });
+    }
+    console.error("listCouponsWithStats failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load coupon analytics"
+    );
+  }
+}
+
+export async function getCouponById(id: string): Promise<Coupon | null> {
+  try {
+    const [record] = await db
+      .select()
+      .from(coupon)
+      .where(eq(coupon.id, id))
+      .limit(1);
+
+    return record ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to load coupon");
+  }
+}
+
+export async function getCouponByCode(code: string): Promise<Coupon | null> {
+  const normalized = normalizeCouponCode(code);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const [record] = await db
+      .select()
+      .from(coupon)
+      .where(eq(coupon.code, normalized))
+      .limit(1);
+    return record ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to lookup coupon");
+  }
+}
+
+export async function upsertCoupon({
+  id,
+  code,
+  discountPercentage,
+  creatorRewardPercentage,
+  creatorId,
+  validFrom,
+  validTo,
+  description,
+  isActive = true,
+}: {
+  id?: string | null;
+  code: string;
+  discountPercentage: number;
+  creatorRewardPercentage?: number;
+  creatorId: string;
+  validFrom: Date;
+  validTo: Date | null;
+  description?: string | null;
+  isActive?: boolean;
+}): Promise<Coupon> {
+  const normalizedCode = normalizeCouponCode(code);
+  if (!normalizedCode) {
+    throw new ChatSDKError("bad_request:coupon", "Coupon code is required");
+  }
+  const percentage = Math.min(Math.max(Math.round(discountPercentage), 1), 95);
+  const rewardPercentage = Math.min(
+    Math.max(Math.round(creatorRewardPercentage ?? 0), 0),
+    95
+  );
+  const now = new Date();
+
+  try {
+    if (id) {
+      const [updated] = await db
+        .update(coupon)
+        .set({
+          code: normalizedCode,
+          discountPercentage: percentage,
+          creatorRewardPercentage: rewardPercentage,
+          creatorId,
+          validFrom,
+          validTo: validTo ?? null,
+          description: description ?? null,
+          isActive,
+          updatedAt: now,
+        })
+        .where(eq(coupon.id, id))
+        .returning();
+
+      if (!updated) {
+        throw new ChatSDKError("not_found:coupon", "Coupon not found");
+      }
+
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(coupon)
+      .values({
+        code: normalizedCode,
+        discountPercentage: percentage,
+        creatorRewardPercentage: rewardPercentage,
+        creatorId,
+        validFrom,
+        validTo: validTo ?? null,
+        description: description ?? null,
+        isActive,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!created) {
+      throw new ChatSDKError("bad_request:database", "Failed to create coupon");
+    }
+
+    return created;
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to save coupon");
+  }
+}
+
+export async function setCouponStatus({
+  id,
+  isActive,
+}: {
+  id: string;
+  isActive: boolean;
+}): Promise<void> {
+  try {
+    await db
+      .update(coupon)
+      .set({
+        isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(coupon.id, id));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to update coupon");
+  }
+}
+
+const VALID_REWARD_STATUSES = new Set(["pending", "paid"]);
+const MAX_CREATOR_REDEMPTIONS_PAGE_SIZE = 50;
+
+export async function setCouponRewardStatus({
+  id,
+  rewardStatus,
+}: {
+  id: string;
+  rewardStatus: "pending" | "paid";
+}): Promise<void> {
+  if (!VALID_REWARD_STATUSES.has(rewardStatus)) {
+    throw new ChatSDKError("bad_request:coupon", "Invalid reward status");
+  }
+
+  try {
+    await db
+      .update(coupon)
+      .set({
+        creatorRewardStatus: rewardStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(coupon.id, id));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update reward status"
+    );
+  }
+}
+
+export async function recordCouponRedemptionFromTransaction(
+  transaction: PaymentTransaction
+): Promise<void> {
+  if (!transaction.couponId) {
+    return;
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: couponRedemption.id })
+        .from(couponRedemption)
+        .where(eq(couponRedemption.orderId, transaction.orderId))
+        .limit(1);
+
+      if (existing) {
+        return;
+      }
+
+      const [couponRecord] = await tx
+        .select({
+          id: coupon.id,
+          creatorId: coupon.creatorId,
+        })
+        .from(coupon)
+        .where(eq(coupon.id, transaction.couponId as string))
+        .limit(1);
+
+      if (!couponRecord) {
+        return;
+      }
+
+      await tx.insert(couponRedemption).values({
+        couponId: couponRecord.id,
+        userId: transaction.userId,
+        creatorId: couponRecord.creatorId,
+        planId: transaction.planId,
+        orderId: transaction.orderId,
+        paymentAmount: transaction.amount,
+        discountAmount: Math.max(0, transaction.discountAmount ?? 0),
+      });
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return;
+    }
+    console.error("Failed to record coupon redemption", error);
+  }
+}
+
+export async function recordCouponRewardPayout({
+  couponId,
+  amountInPaise,
+  note,
+  recordedBy,
+}: {
+  couponId: string;
+  amountInPaise: number;
+  note?: string | null;
+  recordedBy: string;
+}): Promise<CouponRewardPayout> {
+  if (!couponId) {
+    throw new ChatSDKError("bad_request:coupon", "Coupon id is required");
+  }
+  if (!(Number.isFinite(amountInPaise) && amountInPaise > 0)) {
+    throw new ChatSDKError(
+      "bad_request:coupon",
+      "Payout amount must be greater than zero"
+    );
+  }
+
+  try {
+    const [existingCoupon] = await db
+      .select({ id: coupon.id })
+      .from(coupon)
+      .where(eq(coupon.id, couponId))
+      .limit(1);
+
+    if (!existingCoupon) {
+      throw new ChatSDKError("not_found:coupon", "Coupon not found");
+    }
+
+    const [payout] = await db
+      .insert(couponRewardPayout)
+      .values({
+        couponId,
+        amount: Math.round(amountInPaise),
+        note: note ?? null,
+        recordedBy,
+      })
+      .returning();
+
+    if (!payout) {
+      throw new ChatSDKError("bad_request:database", "Failed to record payout");
+    }
+
+    return payout;
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to record payout");
+  }
+}
+
+export async function listCouponRewardPayouts(
+  couponId: string,
+  limit = 20
+): Promise<CouponRewardPayout[]> {
+  if (!couponId) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select()
+      .from(couponRewardPayout)
+      .where(eq(couponRewardPayout.couponId, couponId))
+      .orderBy(desc(couponRewardPayout.createdAt))
+      .limit(Math.max(1, Math.min(limit, 100)));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load payout history"
+    );
+  }
+}
+
+export type CreatorCouponSummary = {
+  creator: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
+  coupons: Array<{
+    id: string;
+    code: string;
+    discountPercentage: number;
+    creatorRewardPercentage: number;
+    creatorRewardStatus: string;
+    validFrom: Date;
+    validTo: Date | null;
+    isActive: boolean;
+    usageCount: number;
+    totalRevenueInPaise: number;
+    totalDiscountInPaise: number;
+    lastRedemptionAt: Date | null;
+    estimatedRewardInPaise: number;
+    paidRewardInPaise: number;
+    remainingRewardInPaise: number;
+  }>;
+  totals: {
+    usageCount: number;
+    totalRevenueInPaise: number;
+    totalDiscountInPaise: number;
+    totalRewardInPaise: number;
+    pendingRewardInPaise: number;
+    totalPaidInPaise: number;
+    remainingRewardInPaise: number;
+  };
+};
+
+export type CouponRedemptionDetail = {
+  id: string;
+  couponId: string;
+  couponCode: string;
+  userLabel: string;
+  paymentAmountInPaise: number;
+  discountAmountInPaise: number;
+  rewardInPaise: number;
+  createdAt: Date;
+};
+
+export type CreatorCouponRedemption = {
+  id: string;
+  couponId: string;
+  couponCode: string;
+  orderId: string;
+  userLabel: string;
+  paymentAmountInPaise: number;
+  discountAmountInPaise: number;
+  rewardInPaise: number;
+  createdAt: Date;
+};
+
+export type CreatorRedemptionSortField = "date" | "payment";
+
+export type CreatorCouponRedemptionsResult = {
+  redemptions: CreatorCouponRedemption[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  sortBy: CreatorRedemptionSortField;
+  sortDirection: "asc" | "desc";
+};
+
+export async function getCreatorCouponSummary(
+  creatorId: string
+): Promise<CreatorCouponSummary | null> {
+  try {
+    const [creatorRecord] = await db
+      .select({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      })
+      .from(user)
+      .where(eq(user.id, creatorId))
+      .limit(1);
+
+    if (!creatorRecord) {
+      return null;
+    }
+
+    const stats = createCouponStatsSubquery();
+    const payoutStats = createCouponPayoutStatsSubquery();
+    const couponRows = await db
+      .select({
+        id: coupon.id,
+        code: coupon.code,
+        discountPercentage: coupon.discountPercentage,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        creatorRewardStatus: coupon.creatorRewardStatus,
+        validFrom: coupon.validFrom,
+        validTo: coupon.validTo,
+        isActive: coupon.isActive,
+        usageCount: sql<number>`COALESCE(${stats.usageCount}, 0)`,
+        totalRevenueInPaise: sql<number>`COALESCE(${stats.totalRevenue}, 0)`,
+        totalDiscountInPaise: sql<number>`COALESCE(${stats.totalDiscount}, 0)`,
+        lastRedemptionAt: stats.lastRedemptionAt,
+        totalPaidInPaise: sql<number>`COALESCE(${payoutStats.totalPaid}, 0)`,
+      })
+      .from(coupon)
+      .leftJoin(stats, eq(stats.couponId, coupon.id))
+      .leftJoin(payoutStats, eq(payoutStats.couponId, coupon.id))
+      .where(eq(coupon.creatorId, creatorId))
+      .orderBy(desc(coupon.createdAt));
+
+    const coupons = couponRows.map((row) => {
+      const usageCount = toInteger(row.usageCount);
+      const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
+      const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
+      const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
+      const rewardInPaise = calculateRewardAmount(
+        grossRevenue,
+        row.creatorRewardPercentage ?? 0
+      );
+      const lastRedemptionAt = toDate(row.lastRedemptionAt);
+      const paidRewardInPaise = toInteger(row.totalPaidInPaise);
+      const remainingRewardInPaise = Math.max(
+        rewardInPaise - paidRewardInPaise,
+        0
+      );
+      return {
+        id: row.id,
+        code: row.code,
+        discountPercentage: row.discountPercentage,
+        creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
+        creatorRewardStatus: row.creatorRewardStatus ?? "pending",
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        isActive: row.isActive,
+        usageCount,
+        totalRevenueInPaise,
+        totalDiscountInPaise,
+        lastRedemptionAt,
+        estimatedRewardInPaise: rewardInPaise,
+        paidRewardInPaise,
+        remainingRewardInPaise,
+      };
+    });
+    const totals = coupons.reduce(
+      (acc, couponRow) => {
+        acc.usageCount += couponRow.usageCount;
+        acc.totalRevenueInPaise += couponRow.totalRevenueInPaise;
+        acc.totalDiscountInPaise += couponRow.totalDiscountInPaise;
+        acc.totalRewardInPaise += couponRow.estimatedRewardInPaise;
+        acc.totalPaidInPaise += couponRow.paidRewardInPaise;
+        acc.remainingRewardInPaise += couponRow.remainingRewardInPaise;
+        if (couponRow.creatorRewardStatus === "paid") {
+          acc.pendingRewardInPaise += 0;
+        } else {
+          acc.pendingRewardInPaise += couponRow.remainingRewardInPaise;
+        }
+        return acc;
+      },
+      {
+        usageCount: 0,
+        totalRevenueInPaise: 0,
+        totalDiscountInPaise: 0,
+        totalRewardInPaise: 0,
+        pendingRewardInPaise: 0,
+        totalPaidInPaise: 0,
+        remainingRewardInPaise: 0,
+      }
+    );
+
+    return {
+      creator: {
+        id: creatorRecord.id,
+        email: creatorRecord.email,
+        name:
+          [creatorRecord.firstName, creatorRecord.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || creatorRecord.email,
+      },
+      coupons,
+      totals,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    console.error("getCreatorCouponSummary failed", error);
+    const cause =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load creator summary";
+    throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
+export async function getCouponPayoutsForAdmin({
+  couponIds,
+  limitPerCoupon = 10,
+}: {
+  couponIds: string[];
+  limitPerCoupon?: number;
+}): Promise<Record<string, CouponRewardPayout[]>> {
+  if (couponIds.length === 0) {
+    return {};
+  }
+  const limit = Math.max(1, Math.min(limitPerCoupon, 50));
+  const totalLimit = limit * couponIds.length;
+
+  try {
+    const rows = await db
+      .select()
+      .from(couponRewardPayout)
+      .where(inArray(couponRewardPayout.couponId, couponIds))
+      .orderBy(desc(couponRewardPayout.createdAt))
+      .limit(totalLimit);
+
+    const grouped = new Map<string, CouponRewardPayout[]>();
+    for (const row of rows) {
+      const existing = grouped.get(row.couponId) ?? [];
+      if (existing.length < limit) {
+        existing.push(row);
+        grouped.set(row.couponId, existing);
+      }
+    }
+    return Object.fromEntries(grouped.entries());
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {};
+    }
+    console.error("getCouponPayoutsForAdmin failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load coupon payouts"
+    );
+  }
+}
+
+export async function getCreatorCouponRedemptions({
+  creatorId,
+  page = 1,
+  pageSize = 10,
+  sortBy = "date",
+  sortDirection = "desc",
+}: {
+  creatorId: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: CreatorRedemptionSortField;
+  sortDirection?: "asc" | "desc";
+}): Promise<CreatorCouponRedemptionsResult> {
+  const normalizedPage =
+    Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
+  const normalizedPageSize =
+    Number.isFinite(pageSize) && pageSize && pageSize > 0
+      ? Math.floor(pageSize)
+      : 10;
+  const limit = Math.min(normalizedPageSize, MAX_CREATOR_REDEMPTIONS_PAGE_SIZE);
+  const offset = (normalizedPage - 1) * limit;
+  const normalizedSortBy: CreatorRedemptionSortField =
+    sortBy === "payment" ? "payment" : "date";
+  const normalizedSortDirection = sortDirection === "asc" ? "asc" : "desc";
+
+  const sortColumn =
+    normalizedSortBy === "payment"
+      ? couponRedemption.paymentAmount
+      : couponRedemption.createdAt;
+  const orderClause =
+    normalizedSortDirection === "asc" ? asc(sortColumn) : desc(sortColumn);
+
+  try {
+    const [rows, totalResult] = await Promise.all([
+      db
+        .select({
+          id: couponRedemption.id,
+          couponId: couponRedemption.couponId,
+          orderId: couponRedemption.orderId,
+          paymentAmount: couponRedemption.paymentAmount,
+          discountAmount: couponRedemption.discountAmount,
+          createdAt: couponRedemption.createdAt,
+          couponCode: coupon.code,
+          creatorRewardPercentage: coupon.creatorRewardPercentage,
+          userFirstName: user.firstName,
+          userLastName: user.lastName,
+          userEmail: user.email,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+        .innerJoin(user, eq(user.id, couponRedemption.userId))
+        .where(eq(coupon.creatorId, creatorId))
+        .orderBy(orderClause)
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(couponRedemption)
+        .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+        .where(eq(coupon.creatorId, creatorId)),
+    ]);
+
+    const totalCount = toInteger(totalResult?.[0]?.count);
+
+    const redemptions: CreatorCouponRedemption[] = rows.map((row) => {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter((value): value is string =>
+            Boolean(
+              value && typeof value === "string" && value.trim().length > 0
+            )
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      return {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        orderId: row.orderId,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+    });
+
+    return {
+      redemptions,
+      totalCount,
+      page: normalizedPage,
+      pageSize: limit,
+      sortBy: normalizedSortBy,
+      sortDirection: normalizedSortDirection,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        redemptions: [],
+        totalCount: 0,
+        page: normalizedPage,
+        pageSize: limit,
+        sortBy: normalizedSortBy,
+        sortDirection: normalizedSortDirection,
+      };
+    }
+    console.error("getCreatorCouponRedemptions failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load creator redemptions"
+    );
+  }
+}
+
+export async function getCouponRedemptionsForAdmin({
+  couponIds,
+  limitPerCoupon = 5,
+}: {
+  couponIds: string[];
+  limitPerCoupon?: number;
+}): Promise<Record<string, CouponRedemptionDetail[]>> {
+  if (!couponIds.length) {
+    return {};
+  }
+  const limit = Math.max(1, Math.min(limitPerCoupon, 25));
+  const sliceSize = limit * couponIds.length;
+
+  try {
+    const rows = await db
+      .select({
+        id: couponRedemption.id,
+        couponId: couponRedemption.couponId,
+        couponCode: coupon.code,
+        paymentAmount: couponRedemption.paymentAmount,
+        discountAmount: couponRedemption.discountAmount,
+        createdAt: couponRedemption.createdAt,
+        creatorRewardPercentage: coupon.creatorRewardPercentage,
+        userFirstName: user.firstName,
+        userLastName: user.lastName,
+        userEmail: user.email,
+      })
+      .from(couponRedemption)
+      .innerJoin(coupon, eq(coupon.id, couponRedemption.couponId))
+      .innerJoin(user, eq(user.id, couponRedemption.userId))
+      .where(inArray(couponRedemption.couponId, couponIds))
+      .orderBy(desc(couponRedemption.createdAt))
+      .limit(sliceSize);
+
+    const grouped = new Map<string, CouponRedemptionDetail[]>();
+
+    for (const row of rows) {
+      const identifier =
+        [row.userFirstName, row.userLastName]
+          .filter((value): value is string =>
+            Boolean(
+              value && typeof value === "string" && value.trim().length > 0
+            )
+          )
+          .join("") ||
+        row.userEmail?.trim() ||
+        null;
+      const paymentAmountInPaise = toInteger(row.paymentAmount);
+      const discountAmountInPaise = toInteger(row.discountAmount);
+      const rewardInPaise = calculateRewardAmount(
+        paymentAmountInPaise + discountAmountInPaise,
+        row.creatorRewardPercentage ?? 0
+      );
+
+      const detail: CouponRedemptionDetail = {
+        id: row.id,
+        couponId: row.couponId,
+        couponCode: row.couponCode,
+        userLabel: maskUserIdentifier(identifier),
+        paymentAmountInPaise,
+        discountAmountInPaise,
+        rewardInPaise,
+        createdAt: row.createdAt,
+      };
+
+      const existing = grouped.get(row.couponId) ?? [];
+      if (existing.length < limit) {
+        existing.push(detail);
+        grouped.set(row.couponId, existing);
+      }
+    }
+
+    return Object.fromEntries(grouped.entries());
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {};
+    }
+    console.error("getCouponRedemptionsForAdmin failed", error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to load coupon redemptions"
+    );
+  }
+}
+
 export async function createPaymentTransaction({
   userId,
   planId,
@@ -2256,6 +3695,9 @@ export async function createPaymentTransaction({
   amount,
   currency,
   notes = null,
+  couponId = null,
+  creatorId = null,
+  discountAmount = 0,
 }: {
   userId: string;
   planId: string;
@@ -2263,6 +3705,9 @@ export async function createPaymentTransaction({
   amount: number;
   currency: string;
   notes?: Record<string, unknown> | null;
+  couponId?: string | null;
+  creatorId?: string | null;
+  discountAmount?: number;
 }): Promise<PaymentTransaction> {
   try {
     return await db.transaction(async (tx) => {
@@ -2284,6 +3729,9 @@ export async function createPaymentTransaction({
           planId,
           amount,
           currency,
+          couponId,
+          creatorId,
+          discountAmount: Math.max(0, discountAmount ?? 0),
           notes: notes ?? null,
         })
         .returning();
@@ -2442,6 +3890,10 @@ export async function markPaymentTransactionFailed({
 export async function getActiveSubscriptionForUser(
   userId: string
 ): Promise<UserSubscription | null> {
+  if (typeof userId !== "string" || !isValidUUID(userId)) {
+    return null;
+  }
+
   const now = new Date();
 
   try {
@@ -2460,6 +3912,10 @@ export async function getActiveSubscriptionForUser(
 export async function hasAnySubscriptionForUser(
   userId: string
 ): Promise<boolean> {
+  if (typeof userId !== "string" || !isValidUUID(userId)) {
+    return false;
+  }
+
   try {
     const [existing] = await db
       .select({ id: userSubscription.id })
@@ -2525,17 +3981,29 @@ export async function createUserSubscription({
       }
 
       const allowance = Math.max(0, plan.tokenAllowance);
+      const isPaidPlan = plan.priceInPaise > 0;
       const expiresAt = addDays(now, Math.max(1, plan.billingCycleDays));
       const active = await getActiveSubscriptionInternal(tx, userId, now);
 
       if (active) {
+        const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
+        const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
+        const updatedManual = isPaidPlan
+          ? currentManual
+          : currentManual + allowance;
+        const updatedPaid = isPaidPlan ? currentPaid + allowance : currentPaid;
+        const updatedBalance = updatedManual + updatedPaid;
+
         const [updated] = await tx
           .update(userSubscription)
           .set({
             planId: plan.id,
             tokenAllowance: active.tokenAllowance + allowance,
-            tokenBalance: active.tokenBalance + allowance,
-            expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
+            tokenBalance: updatedBalance,
+            manualTokenBalance: updatedManual,
+            paidTokenBalance: updatedPaid,
+            expiresAt:
+              active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
             status: "active",
             updatedAt: now,
           })
@@ -2553,6 +4021,8 @@ export async function createUserSubscription({
           status: "active",
           tokenAllowance: allowance,
           tokenBalance: allowance,
+          manualTokenBalance: isPaidPlan ? 0 : allowance,
+          paidTokenBalance: isPaidPlan ? allowance : 0,
           tokensUsed: 0,
           startedAt: now,
           expiresAt,
@@ -2598,12 +4068,20 @@ export async function grantUserCredits({
       const active = await getActiveSubscriptionInternal(tx, userId, now);
 
       if (active) {
+        const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
+        const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
+        const updatedManual = currentManual + tokens;
+        const updatedBalance = updatedManual + currentPaid;
+
         const [updated] = await tx
           .update(userSubscription)
           .set({
-            tokenBalance: active.tokenBalance + tokens,
+            tokenBalance: updatedBalance,
             tokenAllowance: active.tokenAllowance + tokens,
-            expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
+            manualTokenBalance: updatedManual,
+            paidTokenBalance: currentPaid,
+            expiresAt:
+              active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
             updatedAt: now,
           })
           .where(eq(userSubscription.id, active.id))
@@ -2622,6 +4100,8 @@ export async function grantUserCredits({
           status: "active",
           tokenAllowance: tokens,
           tokenBalance: tokens,
+          manualTokenBalance: tokens,
+          paidTokenBalance: 0,
           tokensUsed: 0,
           startedAt: now,
           expiresAt,
@@ -2650,6 +4130,8 @@ export type UserBalanceSummary = {
   tokensTotal: number;
   creditsRemaining: number;
   creditsTotal: number;
+  allocatedCredits: number;
+  rechargedCredits: number;
   expiresAt: Date | null;
   startedAt: Date | null;
 };
@@ -2661,6 +4143,8 @@ const EMPTY_BALANCE: UserBalanceSummary = {
   tokensTotal: 0,
   creditsRemaining: 0,
   creditsTotal: 0,
+  allocatedCredits: 0,
+  rechargedCredits: 0,
   expiresAt: null,
   startedAt: null,
 };
@@ -2677,6 +4161,10 @@ export type ActiveSubscriptionSummary = {
 export async function getUserBalanceSummary(
   userId: string
 ): Promise<UserBalanceSummary> {
+  if (typeof userId !== "string" || !isValidUUID(userId)) {
+    return EMPTY_BALANCE;
+  }
+
   try {
     const subscription = await getActiveSubscriptionForUser(userId);
     const latestSubscription =
@@ -2699,8 +4187,13 @@ export async function getUserBalanceSummary(
 
     const tokensRemaining = Math.max(0, latestSubscription.tokenBalance);
     const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
-    const creditsRemaining = Math.floor(tokensRemaining / TOKENS_PER_CREDIT);
-    const creditsTotal = Math.floor(tokensTotal / TOKENS_PER_CREDIT);
+    const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
+    const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
+    const manualTokens = Math.max(
+      0,
+      latestSubscription.manualTokenBalance ?? 0
+    );
+    const paidTokens = Math.max(0, latestSubscription.paidTokenBalance ?? 0);
 
     return {
       subscription: latestSubscription,
@@ -2709,6 +4202,8 @@ export async function getUserBalanceSummary(
       tokensTotal,
       creditsRemaining,
       creditsTotal,
+      allocatedCredits: manualTokens / TOKENS_PER_CREDIT,
+      rechargedCredits: paidTokens / TOKENS_PER_CREDIT,
       expiresAt: latestSubscription.expiresAt,
       startedAt: latestSubscription.startedAt,
     };
@@ -2744,7 +4239,10 @@ export async function listActiveSubscriptionSummaries({
       .innerJoin(user, eq(userSubscription.userId, user.id))
       .leftJoin(
         pricingPlan,
-        and(eq(userSubscription.planId, pricingPlan.id), isNull(pricingPlan.deletedAt))
+        and(
+          eq(userSubscription.planId, pricingPlan.id),
+          isNull(pricingPlan.deletedAt)
+        )
       )
       .where(
         and(
@@ -2772,12 +4270,14 @@ export async function recordTokenUsage({
   modelConfigId,
   inputTokens,
   outputTokens,
+  deductCredits = true,
 }: {
   userId: string;
   chatId: string;
   modelConfigId: string | null;
   inputTokens: number;
   outputTokens: number;
+  deductCredits?: boolean;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
 
@@ -2790,102 +4290,191 @@ export async function recordTokenUsage({
 
   const now = new Date();
   let exhausted = false;
+  let baselineCostSnapshot: ProviderCostSnapshot | null = null;
+  let modelCostSnapshot: ProviderCostSnapshot | null = null;
+  let usdToInr = 0;
+
+  if (deductCredits) {
+    try {
+      const rateResult = await getUsdToInrRate();
+      if (
+        rateResult &&
+        Number.isFinite(rateResult.rate) &&
+        rateResult.rate > 0
+      ) {
+        usdToInr = rateResult.rate;
+      }
+    } catch (error) {
+      console.warn(
+        "[token-usage] Failed to load USD to INR exchange rate. Falling back to default.",
+        error
+      );
+    }
+
+    if (!usdToInr || !Number.isFinite(usdToInr) || usdToInr <= 0) {
+      usdToInr = getFallbackUsdToInrRate();
+    }
+
+    if (modelConfigId) {
+      modelCostSnapshot = await getModelProviderCostSnapshot(
+        modelConfigId,
+        usdToInr
+      );
+    }
+
+    baselineCostSnapshot = await getBaselineProviderCostSnapshot(
+      usdToInr,
+      modelCostSnapshot
+    );
+  }
 
   try {
-    const usage = await db.transaction(async (tx) => {
-      let inputRate = DEFAULT_COST_PER_MILLION;
-      let outputRate = DEFAULT_COST_PER_MILLION;
+    const usageRecord = await db.transaction(async (tx) => {
+      let subscription: UserSubscription | null = null;
+      let tokensToDeduct = 0;
+      let manualTokensDeducted = 0;
+      let paidTokensDeducted = 0;
+      let remainingManualBalance = 0;
+      let remainingPaidBalance = 0;
 
-      if (modelConfigId) {
-        const [config] = await tx
+      if (deductCredits) {
+        subscription = await getActiveSubscriptionInternal(tx, userId, now);
+
+        if (!subscription) {
+          throw new ChatSDKError(
+            "payment_required:credits",
+            "No active subscription found for user"
+          );
+        }
+
+        const [plan] = await tx
           .select({
-            inputCostPerMillion: modelConfig.inputCostPerMillion,
-            outputCostPerMillion: modelConfig.outputCostPerMillion,
+            id: pricingPlan.id,
+            priceInPaise: pricingPlan.priceInPaise,
+            tokenAllowance: pricingPlan.tokenAllowance,
           })
-          .from(modelConfig)
-          .where(eq(modelConfig.id, modelConfigId))
+          .from(pricingPlan)
+          .where(eq(pricingPlan.id, subscription.planId))
           .limit(1);
 
-        if (config) {
-          const normalizedInput = normalizeCostRate(config.inputCostPerMillion);
-          const normalizedOutput = normalizeCostRate(
-            config.outputCostPerMillion
+        const allowance =
+          plan?.tokenAllowance && plan.tokenAllowance > 0
+            ? plan.tokenAllowance
+            : Math.max(subscription.tokenAllowance, 0);
+
+        let planPricePerTokenPaise =
+          plan && allowance && allowance > 0 && plan.priceInPaise > 0
+            ? plan.priceInPaise / allowance
+            : 0;
+
+        if (!planPricePerTokenPaise || planPricePerTokenPaise <= 0) {
+          planPricePerTokenPaise =
+            baselineCostSnapshot?.costPerTokenPaise ??
+            modelCostSnapshot?.costPerTokenPaise ??
+            0;
+        }
+
+        const baselineCostPerTokenPaise =
+          baselineCostSnapshot?.costPerTokenPaise ??
+          modelCostSnapshot?.costPerTokenPaise ??
+          planPricePerTokenPaise;
+
+        const modelCostPerTokenPaise =
+          modelCostSnapshot?.costPerTokenPaise ?? baselineCostPerTokenPaise;
+
+        const costMultiplier = computeCostMultiplier({
+          planPricePerTokenPaise,
+          baselineCostPerTokenPaise,
+          modelCostPerTokenPaise,
+        });
+
+        tokensToDeduct = calculateTokenDeduction({
+          inputTokens,
+          outputTokens,
+          costMultiplier,
+        });
+
+        if (tokensToDeduct > 0 && subscription.tokenBalance < tokensToDeduct) {
+          const consumedTokens = Math.max(0, subscription.tokenBalance);
+
+          await tx
+            .update(userSubscription)
+            .set({
+              tokenBalance: 0,
+              manualTokenBalance: 0,
+              paidTokenBalance: 0,
+              tokensUsed: Math.min(
+                subscription.tokenAllowance,
+                subscription.tokensUsed + consumedTokens
+              ),
+              status: "exhausted",
+              updatedAt: now,
+            })
+            .where(eq(userSubscription.id, subscription.id));
+
+          exhausted = true;
+          return null;
+        }
+
+        const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
+        const paidBalance = Math.max(0, subscription.paidTokenBalance ?? 0);
+
+        if (tokensToDeduct > 0) {
+          manualTokensDeducted = Math.min(tokensToDeduct, manualBalance);
+          paidTokensDeducted = Math.min(
+            tokensToDeduct - manualTokensDeducted,
+            paidBalance
           );
-          if (normalizedInput !== null) {
-            inputRate = normalizedInput;
-          }
-          if (normalizedOutput !== null) {
-            outputRate = normalizedOutput;
-          }
+          remainingManualBalance = manualBalance - manualTokensDeducted;
+          remainingPaidBalance = paidBalance - paidTokensDeducted;
+        } else {
+          remainingManualBalance = manualBalance;
+          remainingPaidBalance = paidBalance;
         }
       }
 
-      const subscription = await getActiveSubscriptionInternal(tx, userId, now);
-
-      if (!subscription) {
-        throw new ChatSDKError(
-          "payment_required:credits",
-          "No active subscription found for user"
-        );
-      }
-
-      const tokensToDeduct = calculateTokenDeduction({
-        inputTokens,
-        outputTokens,
-        inputRate,
-        outputRate,
-      });
-
-      if (
-        tokensToDeduct > 0 &&
-        subscription.tokenBalance < tokensToDeduct
-      ) {
-        const consumedTokens = Math.max(0, subscription.tokenBalance);
-
-        await tx
-          .update(userSubscription)
-          .set({
-            tokenBalance: 0,
-            tokensUsed: Math.min(
-              subscription.tokenAllowance,
-              subscription.tokensUsed + consumedTokens
-            ),
-            status: "exhausted",
-            updatedAt: now,
-          })
-          .where(eq(userSubscription.id, subscription.id));
-
-        exhausted = true;
-        return null;
-      }
-
-      const [usage] = await tx
+      const [insertedUsage] = await tx
         .insert(tokenUsage)
         .values({
           userId,
           chatId,
           modelConfigId: modelConfigId ?? null,
-          subscriptionId: subscription.id,
+          subscriptionId: subscription?.id ?? null,
           inputTokens,
           outputTokens,
           totalTokens,
+          manualTokens: manualTokensDeducted,
+          paidTokens: paidTokensDeducted,
           createdAt: now,
         })
         .returning();
 
-      const remaining = subscription.tokenBalance - tokensToDeduct;
+      if (subscription) {
+        const remaining =
+          tokensToDeduct > 0
+            ? Math.max(0, remainingManualBalance + remainingPaidBalance)
+            : subscription.tokenBalance;
 
-      await tx
-        .update(userSubscription)
-        .set({
-          tokenBalance: remaining,
-          tokensUsed: subscription.tokensUsed + tokensToDeduct,
-          status: remaining > 0 ? "active" : "exhausted",
-          updatedAt: now,
-        })
-        .where(eq(userSubscription.id, subscription.id));
+        await tx
+          .update(userSubscription)
+          .set({
+            tokenBalance: remaining,
+            manualTokenBalance:
+              tokensToDeduct > 0
+                ? remainingManualBalance
+                : Math.max(0, subscription.manualTokenBalance ?? 0),
+            paidTokenBalance:
+              tokensToDeduct > 0
+                ? remainingPaidBalance
+                : Math.max(0, subscription.paidTokenBalance ?? 0),
+            tokensUsed: subscription.tokensUsed + tokensToDeduct,
+            status: remaining > 0 ? "active" : "exhausted",
+            updatedAt: now,
+          })
+          .where(eq(userSubscription.id, subscription.id));
+      }
 
-      return usage ?? null;
+      return insertedUsage ?? null;
     });
 
     if (exhausted) {
@@ -2895,14 +4484,14 @@ export async function recordTokenUsage({
       );
     }
 
-    if (!usage) {
+    if (!usageRecord) {
       throw new ChatSDKError(
         "bad_request:database",
         "Failed to record token usage"
       );
     }
 
-    return usage;
+    return usageRecord;
   } catch (error) {
     if (error instanceof ChatSDKError) {
       throw error;
@@ -2948,6 +4537,33 @@ export async function getTokenUsageTotalsForUser(userId: string): Promise<{
   }
 }
 
+function dateToIstKey(date: Date): string {
+  const istMillis = date.getTime() + IST_OFFSET_MS;
+  const istDate = new Date(istMillis);
+  const year = istDate.getUTCFullYear();
+  const month = String(istDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(istDate.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function istKeyToDate(key: string): Date {
+  const [yearStr = "", monthStr = "", dayStr = ""] = key.split("-");
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  const day = Number.parseInt(dayStr, 10);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
+    return new Date(key);
+  }
+
+  const midnightIstMillis = Date.UTC(year, month - 1, day);
+  return new Date(midnightIstMillis - IST_OFFSET_MS);
+}
+
 export async function getDailyTokenUsageForUser(
   userId: string,
   days: number
@@ -2978,13 +4594,13 @@ export async function getDailyTokenUsageForUser(
         row.createdAt instanceof Date
           ? row.createdAt
           : new Date(row.createdAt as unknown as string);
-      const key = created.toISOString().slice(0, 10);
+      const key = dateToIstKey(created);
       buckets.set(key, (buckets.get(key) ?? 0) + (row.totalTokens ?? 0));
     }
 
     return Array.from(buckets.entries())
-      .map(([day, totalTokens]) => ({
-        day: new Date(`${day}T00:00:00.000Z`),
+      .map(([dayKey, totalTokens]) => ({
+        day: istKeyToDate(dayKey),
         totalTokens,
       }))
       .sort((a, b) => a.day.getTime() - b.day.getTime());
@@ -3000,32 +4616,104 @@ export async function getDailyTokenUsageForUser(
 }
 
 export async function getSessionTokenUsageForUser(
-  userId: string
-): Promise<Array<{ chatId: string; totalTokens: number }>> {
+  userId: string,
+  options: { sortBy?: "latest" | "usage" } = {}
+): Promise<
+  Array<{
+    chatId: string;
+    chatTitle: string | null;
+    chatCreatedAt: Date | null;
+    totalTokens: number;
+    lastUsedAt: Date | null;
+  }>
+> {
   try {
     const rows = await db
       .select({
         chatId: tokenUsage.chatId,
         totalTokens: tokenUsage.totalTokens,
+        createdAt: tokenUsage.createdAt,
+        chatTitle: chat.title,
+        chatCreatedAt: chat.createdAt,
       })
       .from(tokenUsage)
+      .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .where(eq(tokenUsage.userId, userId));
 
-    const aggregates = new Map<string, number>();
+    const aggregates = new Map<
+      string,
+      {
+        totalTokens: number;
+        lastUsedAt: Date | null;
+        chatTitle: string | null;
+        chatCreatedAt: Date | null;
+      }
+    >();
 
     for (const row of rows) {
       if (!row.chatId) {
         continue;
       }
-      aggregates.set(
-        row.chatId,
-        (aggregates.get(row.chatId) ?? 0) + (row.totalTokens ?? 0)
-      );
+
+      const createdAtValue =
+        row.createdAt instanceof Date
+          ? row.createdAt
+          : row.createdAt
+            ? new Date(row.createdAt as unknown as string)
+            : null;
+
+      const existing = aggregates.get(row.chatId) ?? {
+        totalTokens: 0,
+        lastUsedAt: null,
+        chatTitle: null,
+        chatCreatedAt: null,
+      };
+
+      existing.totalTokens += row.totalTokens ?? 0;
+
+      if (
+        createdAtValue &&
+        (!existing.lastUsedAt ||
+          createdAtValue.getTime() > existing.lastUsedAt.getTime())
+      ) {
+        existing.lastUsedAt = createdAtValue;
+      }
+
+      if (!existing.chatTitle && row.chatTitle) {
+        existing.chatTitle = row.chatTitle;
+      }
+
+      if (!existing.chatCreatedAt && row.chatCreatedAt) {
+        existing.chatCreatedAt =
+          row.chatCreatedAt instanceof Date
+            ? row.chatCreatedAt
+            : new Date(row.chatCreatedAt as unknown as string);
+      }
+
+      aggregates.set(row.chatId, existing);
     }
 
+    const sortBy = options.sortBy === "usage" ? "usage" : "latest";
+
     return Array.from(aggregates.entries())
-      .map(([chatId, totalTokens]) => ({ chatId, totalTokens }))
-      .sort((a, b) => b.totalTokens - a.totalTokens);
+      .map(([chatId, data]) => ({
+        chatId,
+        chatTitle: data.chatTitle,
+        chatCreatedAt: data.chatCreatedAt,
+        totalTokens: data.totalTokens,
+        lastUsedAt: data.lastUsedAt,
+      }))
+      .sort((a, b) => {
+        if (sortBy === "usage") {
+          if (b.totalTokens === a.totalTokens) {
+            return (
+              (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0)
+            );
+          }
+          return b.totalTokens - a.totalTokens;
+        }
+        return (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0);
+      });
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -3046,7 +4734,7 @@ function isTableMissingError(error: unknown): boolean {
     return false;
   }
 
-  const message =
+  const errorMessage =
     "message" in error && error.message
       ? String((error as { message?: unknown }).message)
       : "";
@@ -3057,19 +4745,19 @@ function isTableMissingError(error: unknown): boolean {
       : "";
 
   return (
-    message.includes("does not exist") ||
-    message.includes("undefined_table") ||
+    errorMessage.includes("does not exist") ||
+    errorMessage.includes("undefined_table") ||
     stack.includes("does not exist") ||
     stack.includes("undefined_table")
   );
 }
 
-function isColumnMissingError(error: unknown, columnName: string): boolean {
+function _isColumnMissingError(error: unknown, columnName: string): boolean {
   if (!error || typeof error !== "object") {
     return false;
   }
 
-  const message =
+  const errorMessage =
     "message" in error && error.message
       ? String((error as { message?: unknown }).message)
       : "";
@@ -3080,8 +4768,8 @@ function isColumnMissingError(error: unknown, columnName: string): boolean {
       : "";
 
   return (
-    message.includes(`column "${columnName}"`) ||
-    message.includes("undefined_column") ||
+    errorMessage.includes(`column "${columnName}"`) ||
+    errorMessage.includes("undefined_column") ||
     stack.includes(`column "${columnName}"`) ||
     stack.includes("undefined_column")
   );
@@ -3173,6 +4861,8 @@ async function getActiveSubscriptionInternal(
       .set({
         status: "exhausted",
         tokenBalance: 0,
+        manualTokenBalance: 0,
+        paidTokenBalance: 0,
         updatedAt: now,
       })
       .where(eq(userSubscription.id, subscription.id));
@@ -3182,55 +4872,221 @@ async function getActiveSubscriptionInternal(
   return subscription;
 }
 
-function normalizeCostRate(rate: number | null | undefined): number | null {
-  if (typeof rate !== "number" || Number.isNaN(rate)) {
-    return null;
-  }
-
-  if (rate <= 0) {
-    return null;
-  }
-
-  return rate;
-}
-
 function calculateTokenDeduction({
   inputTokens,
   outputTokens,
-  inputRate,
-  outputRate,
+  costMultiplier = 1,
 }: {
   inputTokens: number;
   outputTokens: number;
-  inputRate: number;
-  outputRate: number;
+  costMultiplier?: number;
 }): number {
-  const normalizedInputRate =
-    typeof inputRate === "number"
-      ? inputRate
-      : DEFAULT_COST_PER_MILLION;
-  const normalizedOutputRate =
-    typeof outputRate === "number"
-      ? outputRate
-      : DEFAULT_COST_PER_MILLION;
+  const totalTokens = Math.max(1, Math.round(inputTokens + outputTokens));
+  const normalizedMultiplier =
+    Number.isFinite(costMultiplier) && costMultiplier && costMultiplier > 1
+      ? costMultiplier
+      : 1;
+  const adjustedTokens = totalTokens * normalizedMultiplier;
+  return Math.max(1, Math.ceil(adjustedTokens));
+}
 
-  const weightedInput =
-    (inputTokens * normalizedInputRate) / DEFAULT_COST_PER_MILLION;
-  const weightedOutput =
-    (outputTokens * normalizedOutputRate) / DEFAULT_COST_PER_MILLION;
-
-  const total = weightedInput + weightedOutput;
-
-  if (!Number.isFinite(total) || total <= 0) {
-    return TOKENS_PER_CREDIT;
+function computeCostMultiplier({
+  planPricePerTokenPaise,
+  baselineCostPerTokenPaise,
+  modelCostPerTokenPaise,
+}: {
+  planPricePerTokenPaise: number;
+  baselineCostPerTokenPaise: number;
+  modelCostPerTokenPaise: number;
+}): number {
+  if (
+    !Number.isFinite(planPricePerTokenPaise) ||
+    planPricePerTokenPaise <= 0 ||
+    !Number.isFinite(baselineCostPerTokenPaise) ||
+    baselineCostPerTokenPaise <= 0 ||
+    !Number.isFinite(modelCostPerTokenPaise) ||
+    modelCostPerTokenPaise <= 0
+  ) {
+    return 1;
   }
 
-  const creditsToDeduct = Math.max(
-    1,
-    Math.ceil(total / TOKENS_PER_CREDIT)
-  );
+  const targetRatio = planPricePerTokenPaise / baselineCostPerTokenPaise;
 
-  return creditsToDeduct * TOKENS_PER_CREDIT;
+  if (!Number.isFinite(targetRatio) || targetRatio <= 0) {
+    return 1;
+  }
+
+  const requiredPricePerToken = modelCostPerTokenPaise * targetRatio;
+  const multiplier = requiredPricePerToken / planPricePerTokenPaise;
+
+  if (!Number.isFinite(multiplier) || multiplier <= 1) {
+    return 1;
+  }
+
+  return multiplier;
+}
+
+type ProviderCostSnapshot = {
+  modelId: string;
+  isDefault: boolean;
+  isMarginBaseline: boolean;
+  costPerTokenPaise: number;
+};
+
+async function getModelProviderCostSnapshot(
+  modelId: string,
+  usdToInr: number
+): Promise<ProviderCostSnapshot | null> {
+  const [row] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+      deletedAt: modelConfig.deletedAt,
+    })
+    .from(modelConfig)
+    .where(eq(modelConfig.id, modelId))
+    .limit(1);
+
+  if (!row || row.deletedAt) {
+    return null;
+  }
+
+  const totalUsdPerMillion =
+    Number(row.inputCost ?? 0) + Number(row.outputCost ?? 0);
+  return {
+    modelId: row.id,
+    isDefault: row.isDefault ?? false,
+    isMarginBaseline: row.isMarginBaseline ?? false,
+    costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+      totalUsdPerMillion,
+      usdToInr
+    ),
+  };
+}
+
+async function getBaselineProviderCostSnapshot(
+  usdToInr: number,
+  existingSnapshot?: ProviderCostSnapshot | null
+): Promise<ProviderCostSnapshot | null> {
+  if (existingSnapshot?.isMarginBaseline) {
+    return existingSnapshot;
+  }
+
+  const [baselineModel] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+    })
+    .from(modelConfig)
+    .where(
+      and(
+        eq(modelConfig.isMarginBaseline, true),
+        eq(modelConfig.isEnabled, true),
+        isNull(modelConfig.deletedAt)
+      )
+    )
+    .limit(1);
+
+  if (baselineModel) {
+    const totalUsdPerMillion =
+      Number(baselineModel.inputCost ?? 0) +
+      Number(baselineModel.outputCost ?? 0);
+    return {
+      modelId: baselineModel.id,
+      isDefault: baselineModel.isDefault ?? false,
+      isMarginBaseline: true,
+      costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+        totalUsdPerMillion,
+        usdToInr
+      ),
+    };
+  }
+
+  const [defaultModel] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+    })
+    .from(modelConfig)
+    .where(
+      and(
+        eq(modelConfig.isDefault, true),
+        eq(modelConfig.isEnabled, true),
+        isNull(modelConfig.deletedAt)
+      )
+    )
+    .limit(1);
+
+  if (defaultModel) {
+    const totalUsdPerMillion =
+      Number(defaultModel.inputCost ?? 0) +
+      Number(defaultModel.outputCost ?? 0);
+    return {
+      modelId: defaultModel.id,
+      isDefault: true,
+      isMarginBaseline: defaultModel.isMarginBaseline ?? false,
+      costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+        totalUsdPerMillion,
+        usdToInr
+      ),
+    };
+  }
+
+  const [fallbackModel] = await db
+    .select({
+      id: modelConfig.id,
+      isDefault: modelConfig.isDefault,
+      isMarginBaseline: modelConfig.isMarginBaseline,
+      inputCost: modelConfig.inputProviderCostPerMillion,
+      outputCost: modelConfig.outputProviderCostPerMillion,
+    })
+    .from(modelConfig)
+    .where(and(eq(modelConfig.isEnabled, true), isNull(modelConfig.deletedAt)))
+    .orderBy(asc(modelConfig.createdAt))
+    .limit(1);
+
+  if (!fallbackModel) {
+    return null;
+  }
+
+  const fallbackUsdPerMillion =
+    Number(fallbackModel.inputCost ?? 0) +
+    Number(fallbackModel.outputCost ?? 0);
+
+  return {
+    modelId: fallbackModel.id,
+    isDefault: fallbackModel.isDefault ?? false,
+    isMarginBaseline: fallbackModel.isMarginBaseline ?? false,
+    costPerTokenPaise: convertUsdPerMillionToPaisePerToken(
+      fallbackUsdPerMillion,
+      usdToInr
+    ),
+  };
+}
+
+function convertUsdPerMillionToPaisePerToken(
+  usdPerMillion: number,
+  usdToInr: number
+): number {
+  if (!Number.isFinite(usdPerMillion) || usdPerMillion <= 0) {
+    return 0;
+  }
+  const safeRate =
+    Number.isFinite(usdToInr) && usdToInr > 0
+      ? usdToInr
+      : getFallbackUsdToInrRate();
+  const perTokenUsd = usdPerMillion / 1_000_000;
+  const perTokenInr = perTokenUsd * safeRate;
+  return perTokenInr * 100;
 }
 
 export type TranslationTableEntry = {
@@ -3389,8 +5245,10 @@ export async function createLanguageEntry({
     throw new Error("Language code is required");
   }
 
-  if (!/^[a-z0-9-]{2,16}$/.test(normalizedCode)) {
-    throw new Error("Language code must be 2-16 characters and use lowercase letters, numbers, or hyphens.");
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    throw new Error(
+      "Language code must be 2-16 characters and use lowercase letters, numbers, or hyphens."
+    );
   }
 
   if (!normalizedName) {
@@ -3437,7 +5295,10 @@ export async function listPaidRechargeTotals(
   range?: DateRange
 ): Promise<CurrencyTotal[]> {
   try {
-    const dateConditions = buildDateRangeConditions(paymentTransaction.updatedAt, range);
+    const dateConditions = buildDateRangeConditions(
+      paymentTransaction.updatedAt,
+      range
+    );
 
     const rows = await db
       .select({
@@ -3447,7 +5308,10 @@ export async function listPaidRechargeTotals(
       .from(paymentTransaction)
       .where(
         dateConditions.length > 0
-          ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+          ? and(
+              eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+              ...dateConditions
+            )
           : eq(paymentTransaction.status, PAYMENT_STATUS_PAID)
       )
       .groupBy(paymentTransaction.currency);
@@ -3558,7 +5422,10 @@ export async function getDailyFinancialMetrics(
       .orderBy(rechargeDate);
 
     const usageDate = sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`;
-    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const usageConditions = buildDateRangeConditions(
+      tokenUsage.createdAt,
+      range
+    );
 
     const usageQueryBase = db
       .select({
@@ -3584,24 +5451,29 @@ export async function getDailyFinancialMetrics(
       ? usageQueryBase.where(usageWhere)
       : usageQueryBase;
 
-    const usageRows = await usageQuery
-      .groupBy(usageDate)
-      .orderBy(usageDate);
+    const usageRows = await usageQuery.groupBy(usageDate).orderBy(usageDate);
 
     const metricsMap = new Map<string, DailyFinancialMetric>();
 
+    const ensureDailyMetric = (date: string) => {
+      const existing = metricsMap.get(date);
+      if (existing) {
+        return existing;
+      }
+      const initialMetric: DailyFinancialMetric = {
+        date,
+        recharge: {},
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        providerCostUsd: 0,
+      };
+      metricsMap.set(date, initialMetric);
+      return initialMetric;
+    };
+
     for (const row of rechargeRows) {
       const date = row.date;
-      if (!metricsMap.has(date)) {
-        metricsMap.set(date, {
-          date,
-          recharge: {},
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const metric = metricsMap.get(date)!;
+      const metric = ensureDailyMetric(date);
       const currency = row.currency ?? "INR";
       metric.recharge[currency] =
         (metric.recharge[currency] ?? 0) +
@@ -3610,16 +5482,7 @@ export async function getDailyFinancialMetrics(
 
     for (const row of usageRows) {
       const date = row.date;
-      if (!metricsMap.has(date)) {
-        metricsMap.set(date, {
-          date,
-          recharge: {},
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const metric = metricsMap.get(date)!;
+      const metric = ensureDailyMetric(date);
       metric.totalInputTokens += row.totalInputTokens ?? 0;
       metric.totalOutputTokens += row.totalOutputTokens ?? 0;
       metric.providerCostUsd += row.providerCostUsd ?? 0;
@@ -3673,7 +5536,10 @@ export async function getUserFinancialRecords({
 
     const rechargeWhere =
       rechargeConditions.length > 0
-        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...rechargeConditions)
+        ? and(
+            eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+            ...rechargeConditions
+          )
         : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
 
     const rechargeRows = await db
@@ -3687,10 +5553,18 @@ export async function getUserFinancialRecords({
       .from(paymentTransaction)
       .innerJoin(user, eq(paymentTransaction.userId, user.id))
       .where(rechargeWhere)
-      .groupBy(rechargeDate, paymentTransaction.userId, user.email, paymentTransaction.currency);
+      .groupBy(
+        rechargeDate,
+        paymentTransaction.userId,
+        user.email,
+        paymentTransaction.currency
+      );
 
     const usageDate = sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`;
-    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const usageConditions = buildDateRangeConditions(
+      tokenUsage.createdAt,
+      range
+    );
 
     const usageQueryBase = db
       .select({
@@ -3710,7 +5584,8 @@ export async function getUserFinancialRecords({
       .from(tokenUsage)
       .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
 
-    const usageWhere = usageConditions.length > 0 ? and(...usageConditions) : undefined;
+    const usageWhere =
+      usageConditions.length > 0 ? and(...usageConditions) : undefined;
 
     const usageQuery = usageWhere
       ? usageQueryBase.where(usageWhere)
@@ -3720,21 +5595,44 @@ export async function getUserFinancialRecords({
 
     const map = new Map<string, UserFinancialRecord>();
 
+    const ensureRecord = (
+      key: string,
+      defaults: Omit<
+        UserFinancialRecord,
+        | "rechargeAmount"
+        | "totalInputTokens"
+        | "totalOutputTokens"
+        | "providerCostUsd"
+      > & {
+        rechargeAmount?: number;
+        totalInputTokens?: number;
+        totalOutputTokens?: number;
+        providerCostUsd?: number;
+      }
+    ) => {
+      const existing = map.get(key);
+      if (existing) {
+        return existing;
+      }
+      const record: UserFinancialRecord = {
+        rechargeAmount: defaults.rechargeAmount ?? 0,
+        totalInputTokens: defaults.totalInputTokens ?? 0,
+        totalOutputTokens: defaults.totalOutputTokens ?? 0,
+        providerCostUsd: defaults.providerCostUsd ?? 0,
+        ...defaults,
+      };
+      map.set(key, record);
+      return record;
+    };
+
     for (const row of rechargeRows) {
       const key = `${row.userId ?? "unknown"}::${row.date}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          date: row.date,
-          userId: row.userId ?? "unknown",
-          email: row.email ?? null,
-          currency: row.currency ?? "INR",
-          rechargeAmount: 0,
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const record = map.get(key)!;
+      const record = ensureRecord(key, {
+        date: row.date,
+        userId: row.userId ?? "unknown",
+        email: row.email ?? null,
+        currency: row.currency ?? "INR",
+      });
       record.currency = row.currency ?? record.currency ?? "INR";
       record.rechargeAmount += convertSubunitAmount(
         row.amount ?? 0,
@@ -3744,19 +5642,12 @@ export async function getUserFinancialRecords({
 
     for (const row of usageRows) {
       const key = `${row.userId ?? "unknown"}::${row.date}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          date: row.date,
-          userId: row.userId ?? "unknown",
-          email: null,
-          currency: "INR",
-          rechargeAmount: 0,
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          providerCostUsd: 0,
-        });
-      }
-      const record = map.get(key)!;
+      const record = ensureRecord(key, {
+        date: row.date,
+        userId: row.userId ?? "unknown",
+        email: null,
+        currency: "INR",
+      });
       record.totalInputTokens += row.totalInputTokens ?? 0;
       record.totalOutputTokens += row.totalOutputTokens ?? 0;
       record.providerCostUsd += row.providerCostUsd ?? 0;
@@ -3792,7 +5683,7 @@ export type ChatFinancialSummary = {
   usageStartedAt: Date | null;
   totalInputTokens: number;
   totalOutputTokens: number;
-  userChargeUsd: number;
+  userChargeInr: number;
   providerCostUsd: number;
 };
 
@@ -3801,7 +5692,7 @@ export type ChatFinancialSummariesResult = {
   totals: {
     totalInputTokens: number;
     totalOutputTokens: number;
-    userChargeUsd: number;
+    userChargeInr: number;
     providerCostUsd: number;
   };
   records: ChatFinancialSummary[];
@@ -3817,7 +5708,10 @@ export async function listChatFinancialSummaries({
   offset?: number;
 }): Promise<ChatFinancialSummariesResult> {
   try {
-    const usageConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const usageConditions = buildDateRangeConditions(
+      tokenUsage.createdAt,
+      range
+    );
 
     const query = db
       .select({
@@ -3828,12 +5722,16 @@ export async function listChatFinancialSummaries({
         usageStartedAt: sql<Date>`MIN(${tokenUsage.createdAt})`,
         totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
         totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
-        userChargeUsd: sql<number>`
+        userChargeInr: sql<number>`
           COALESCE(SUM(
-            (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputCostPerMillion}, 0)
-            ) / 1000000.0
+            CASE
+              WHEN ${tokenUsage.subscriptionId} IS NULL
+                OR ${pricingPlan.tokenAllowance} IS NULL
+                OR ${pricingPlan.tokenAllowance} <= 0
+              THEN 0
+              ELSE ${tokenUsage.paidTokens} *
+                ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
+            END
           ), 0)
         `,
         providerCostUsd: sql<number>`
@@ -3849,6 +5747,11 @@ export async function listChatFinancialSummaries({
       .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
       .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .leftJoin(user, eq(tokenUsage.userId, user.id))
+      .leftJoin(
+        userSubscription,
+        eq(tokenUsage.subscriptionId, userSubscription.id)
+      )
+      .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id))
       .groupBy(
         tokenUsage.chatId,
         tokenUsage.userId,
@@ -3867,14 +5770,14 @@ export async function listChatFinancialSummaries({
       (acc, row) => {
         acc.totalInputTokens += row.totalInputTokens ?? 0;
         acc.totalOutputTokens += row.totalOutputTokens ?? 0;
-        acc.userChargeUsd += row.userChargeUsd ?? 0;
+        acc.userChargeInr += row.userChargeInr ?? 0;
         acc.providerCostUsd += row.providerCostUsd ?? 0;
         return acc;
       },
       {
         totalInputTokens: 0,
         totalOutputTokens: 0,
-        userChargeUsd: 0,
+        userChargeInr: 0,
         providerCostUsd: 0,
       }
     );
@@ -3893,7 +5796,7 @@ export async function listChatFinancialSummaries({
         totals: {
           totalInputTokens: 0,
           totalOutputTokens: 0,
-          userChargeUsd: 0,
+          userChargeInr: 0,
           providerCostUsd: 0,
         },
         records: [],
@@ -3936,11 +5839,17 @@ export async function listRechargeRecords({
   offset?: number;
 } = {}): Promise<RechargeRecordsResult> {
   try {
-    const dateConditions = buildDateRangeConditions(paymentTransaction.createdAt, range);
+    const dateConditions = buildDateRangeConditions(
+      paymentTransaction.createdAt,
+      range
+    );
 
     const whereClause =
       dateConditions.length > 0
-        ? and(eq(paymentTransaction.status, PAYMENT_STATUS_PAID), ...dateConditions)
+        ? and(
+            eq(paymentTransaction.status, PAYMENT_STATUS_PAID),
+            ...dateConditions
+          )
         : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
 
     const rows = await db
@@ -3994,7 +5903,8 @@ export async function listRechargeRecords({
         planId: row.planId,
         planName: row.planName ?? null,
         currency: row.currency,
-        amount: typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0),
+        amount:
+          typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0),
         status: row.status,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -4008,6 +5918,64 @@ export async function listRechargeRecords({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load recharge records"
+    );
+  }
+}
+
+export type UserRechargeHistoryEntry = {
+  orderId: string;
+  planId: string;
+  planName: string | null;
+  currency: string;
+  amount: number;
+  status: PaymentTransaction["status"];
+  createdAt: Date;
+};
+
+export async function listUserRechargeHistory({
+  userId,
+  limit = 10,
+}: {
+  userId: string;
+  limit?: number;
+}): Promise<UserRechargeHistoryEntry[]> {
+  if (!userId) {
+    return [];
+  }
+
+  try {
+    const rows = await db
+      .select({
+        orderId: paymentTransaction.orderId,
+        planId: paymentTransaction.planId,
+        planName: pricingPlan.name,
+        currency: paymentTransaction.currency,
+        amount: paymentTransaction.amount,
+        status: paymentTransaction.status,
+        createdAt: paymentTransaction.createdAt,
+      })
+      .from(paymentTransaction)
+      .leftJoin(pricingPlan, eq(paymentTransaction.planId, pricingPlan.id))
+      .where(eq(paymentTransaction.userId, userId))
+      .orderBy(desc(paymentTransaction.createdAt))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      orderId: row.orderId,
+      planId: row.planId,
+      planName: row.planName ?? null,
+      currency: (row.currency ?? "INR").toUpperCase(),
+      amount: convertSubunitAmount(row.amount ?? 0, row.currency ?? "INR"),
+      status: row.status,
+      createdAt: row.createdAt,
+    }));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load recharge history"
     );
   }
 }

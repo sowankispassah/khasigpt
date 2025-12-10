@@ -6,19 +6,41 @@ import {
   getAppSetting,
   setAppSetting,
 } from "@/lib/db/queries";
-import {
-  translationKey,
-  translationValue,
-} from "@/lib/db/schema";
+import { translationKey, translationValue } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import { withTimeout } from "@/lib/utils/async";
 
-import { getAllLanguages, resolveLanguage, type LanguageOption } from "./languages";
+import {
+  getAllLanguages,
+  type LanguageOption,
+  resolveLanguage,
+} from "./languages";
 
 export type TranslationDefinition = {
   key: string;
   defaultText: string;
   description?: string;
+};
+
+const LANGUAGE_FALLBACK_DICTIONARIES: Record<string, Record<string, string>> = {
+  kha: {
+    "recharge.dialog.title": "Peit bniah ïa ka jingrecharge",
+    "recharge.dialog.description":
+      "Pynshisha ïa ki bynta jong ka plan bad pyndap ïa ka coupon shwa ban bteng sha ka jingsiew.",
+    "recharge.dialog.plan_placeholder": "Ka plan kaba phi la jied",
+    "recharge.plan.validity": "Ka jingtreikam: {days} sngi",
+    "recharge.dialog.summary.discount": "Ka jingduna na ka coupon",
+    "recharge.dialog.summary.total": "Ka bai baroh",
+    "recharge.dialog.coupon_label": "Code jong ka coupon",
+    "recharge.dialog.coupon_helper":
+      "Ka coupon kam dei kaba hap ban pyndonkam. Iehtylli lada phim don.",
+    "recharge.dialog.coupon_required": "Tiep ïa u code coupon ban pynshisha.",
+    "recharge.dialog.coupon_invalid": "Ka coupon ka bakla ne la kut por.",
+    "recharge.dialog.coupon_applied": "La pyndonkam ïa ka coupon katba dei.",
+    "recharge.dialog.validate": "Pynshisha ïa ka coupon",
+    "recharge.dialog.validating": "Dang pynshisha...",
+    "recharge.dialog.proceed": "Bteng sha ka jingsiew",
+  },
 };
 
 const FALLBACK_LANGUAGE: LanguageOption = {
@@ -28,6 +50,17 @@ const FALLBACK_LANGUAGE: LanguageOption = {
   isDefault: true,
   isActive: true,
 };
+
+const FALLBACK_LANGUAGES: LanguageOption[] = [
+  FALLBACK_LANGUAGE,
+  {
+    id: "fallback-kha",
+    code: "kha",
+    name: "Khasi",
+    isDefault: false,
+    isActive: true,
+  },
+];
 
 const STATIC_DICTIONARY_BASE = Object.freeze(
   STATIC_TRANSLATION_DEFINITIONS.reduce<Record<string, string>>(
@@ -44,20 +77,20 @@ const mergeWithStaticDictionary = (dictionary: Record<string, string>) => {
 };
 
 const parsedTimeout = Number.parseInt(
-  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "2000",
+  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "1200",
   10
 );
 const TRANSLATION_QUERY_TIMEOUT_MS =
-  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 2000;
+  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1200;
 
 const parsedInitialTimeout = Number.parseInt(
-  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "5000",
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "1500",
   10
 );
 const TRANSLATION_INITIAL_TIMEOUT_MS =
   Number.isFinite(parsedInitialTimeout) && parsedInitialTimeout > 0
     ? parsedInitialTimeout
-    : 5000;
+    : 1500;
 
 const parsedCacheTtl = Number.parseInt(
   process.env.TRANSLATION_CACHE_TTL_MS ?? `${1000 * 60 * 60 * 6}`,
@@ -69,8 +102,6 @@ const TRANSLATION_CACHE_TTL_MS =
     : 1000 * 60 * 60 * 6;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
-
-
 
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]
@@ -167,10 +198,16 @@ async function loadTranslationBundle(preferredCode?: string | null) {
     dictionary[row.key] = row.value ?? row.defaultText;
   }
 
+  const languageFallback =
+    LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
+
   return {
     languages,
     activeLanguage,
-    dictionary: mergeWithStaticDictionary(dictionary),
+    dictionary: mergeWithStaticDictionary({
+      ...languageFallback,
+      ...dictionary,
+    }),
   };
 }
 
@@ -191,15 +228,26 @@ type PersistedBundle = TranslationBundle & {
 
 const BUNDLE_CACHE = new Map<string, CachedBundle>();
 
-const FALLBACK_BUNDLE: TranslationBundle = {
-  languages: [FALLBACK_LANGUAGE],
-  activeLanguage: FALLBACK_LANGUAGE,
-  dictionary: mergeWithStaticDictionary({}),
+const buildFallbackBundle = (
+  preferredCode?: string | null
+): TranslationBundle => {
+  const activeLanguage =
+    FALLBACK_LANGUAGES.find((entry) => entry.code === preferredCode) ??
+    FALLBACK_LANGUAGE;
+  const languageFallback =
+    LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
+
+  return {
+    languages: [...FALLBACK_LANGUAGES],
+    activeLanguage,
+    dictionary: mergeWithStaticDictionary(languageFallback),
+  };
 };
 
+const FALLBACK_BUNDLE: TranslationBundle = buildFallbackBundle();
+
 const skipTranslationCache =
-  typeof process !== "undefined" &&
-  process.env.SKIP_TRANSLATION_CACHE === "1";
+  typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
 
 async function persistBundle(key: string, bundle: TranslationBundle) {
   await setAppSetting({
@@ -266,12 +314,12 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     });
 
   BUNDLE_CACHE.set(key, {
-    data: existing?.data ?? FALLBACK_BUNDLE,
-    inflight: inflight.then(() => {}),
+    data: existing?.data ?? buildFallbackBundle(preferredCode),
+    inflight: inflight.then(() => {
+      return;
+    }),
   });
 }
-
-scheduleBundleRefresh("__default", null);
 
 export async function getTranslationBundle(
   preferredCode?: string | null
@@ -320,9 +368,10 @@ export async function getTranslationBundle(
     return bundle;
   } catch (error) {
     console.error("[i18n] Falling back to static translations.", error);
-    BUNDLE_CACHE.set(key, { data: FALLBACK_BUNDLE });
+    const fallbackBundle = buildFallbackBundle(preferredCode);
+    BUNDLE_CACHE.set(key, { data: fallbackBundle });
     scheduleBundleRefresh(key, preferredCode);
-    return FALLBACK_BUNDLE;
+    return fallbackBundle;
   }
 }
 
@@ -385,7 +434,7 @@ export async function publishAllTranslations() {
       if (typeof previous === "string") {
         process.env.SKIP_TRANSLATION_CACHE = previous;
       } else {
-        delete process.env.SKIP_TRANSLATION_CACHE;
+        process.env.SKIP_TRANSLATION_CACHE = undefined;
       }
     }
   }
@@ -473,10 +522,16 @@ export async function getTranslationsForKeys(
 
     return result;
   } catch (error) {
-    console.error("[i18n] Falling back to default texts for bulk translations.", error);
-    return definitions.reduce<Record<string, string>>((accumulator, definition) => {
-      accumulator[definition.key] = definition.defaultText;
-      return accumulator;
-    }, {});
+    console.error(
+      "[i18n] Falling back to default texts for bulk translations.",
+      error
+    );
+    return definitions.reduce<Record<string, string>>(
+      (accumulator, definition) => {
+        accumulator[definition.key] = definition.defaultText;
+        return accumulator;
+      },
+      {}
+    );
   }
 }

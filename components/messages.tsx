@@ -1,11 +1,9 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
-import equal from "fast-deep-equal";
 import { ArrowDownIcon } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
-import { useDataStream } from "./data-stream-provider";
 import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
 import { LoaderIcon } from "./icons";
@@ -36,7 +34,7 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
-  selectedModelId,
+  selectedModelId: _selectedModelId,
   sendMessage,
   suggestedPrompts,
   selectedVisibilityType,
@@ -55,7 +53,7 @@ function PureMessages({
   const mountedChatRef = useRef<string | null>(null);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
-      ? lastMessage.parts
+      ? (lastMessage.parts
           ?.map((part) => {
             if (part.type === "text") {
               return `text-${part.text?.length ?? 0}`;
@@ -65,10 +63,8 @@ function PureMessages({
             }
             return part.type;
           })
-          .join("|") ?? ""
+          .join("|") ?? "")
       : null;
-
-  useDataStream();
 
   useEffect(() => {
     if (status !== "ready" && status !== "streaming" && status !== "error") {
@@ -162,19 +158,22 @@ function PureMessages({
             status !== "streaming" &&
             status !== "error" &&
             isLastUserMessage && (
-            <div className="flex w-full items-start gap-2 md:gap-3 justify-start">
-              <div className="min-w-[1.5rem]" />
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex size-4 items-center justify-center animate-spin text-muted-foreground">
-                    <LoaderIcon size={14} />
-                  </span>
+              <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+                <div className="min-w-[1.5rem]" />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
+                      <LoaderIcon size={14} />
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="min-h-[24px] min-w-[24px] shrink-0" ref={messagesEndRef} />
+          <div
+            className="min-h-[24px] min-w-[24px] shrink-0"
+            ref={messagesEndRef}
+          />
         </ConversationContent>
       </Conversation>
 
@@ -192,35 +191,4 @@ function PureMessages({
   );
 }
 
-export const Messages = memo(PureMessages, (prevProps, nextProps) => {
-  if (prevProps.isArtifactVisible && nextProps.isArtifactVisible) {
-    return true;
-  }
-
-  if (prevProps.status !== nextProps.status) {
-    return false;
-  }
-  if (prevProps.selectedModelId !== nextProps.selectedModelId) {
-    return false;
-  }
-  if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType) {
-    return false;
-  }
-  if (prevProps.messages.length !== nextProps.messages.length) {
-    return false;
-  }
-  if (!equal(prevProps.messages, nextProps.messages)) {
-    return false;
-  }
-  if (!equal(prevProps.votes, nextProps.votes)) {
-    return false;
-  }
-  if (
-    (prevProps.suggestedPrompts ?? []).join("||") !==
-    (nextProps.suggestedPrompts ?? []).join("||")
-  ) {
-    return false;
-  }
-
-  return true;
-});
+export const Messages = memo(PureMessages);

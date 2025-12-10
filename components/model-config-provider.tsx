@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-  useMemo,
-} from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 type ModelSummary = {
   id: string;
@@ -18,8 +13,6 @@ type ModelSummary = {
   reasoningTag: string | null;
   systemPrompt: string | null;
   codeTemplate: string | null;
-  inputCostPerMillion: number;
-  outputCostPerMillion: number;
   inputProviderCostPerMillion: number;
   outputProviderCostPerMillion: number;
 };

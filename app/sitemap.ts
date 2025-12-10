@@ -2,12 +2,7 @@ import type { MetadataRoute } from "next";
 
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 
-const marketingRoutes = [
-  "/",
-  "/about",
-  "/privacy-policy",
-  "/terms-of-service",
-];
+const marketingRoutes = ["/", "/about", "/privacy-policy", "/terms-of-service"];
 
 const accountRoutes = [
   "/login",

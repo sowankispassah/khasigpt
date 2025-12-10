@@ -6,7 +6,7 @@ import postgres from "postgres";
 
 try {
   setDefaultResultOrder("ipv4first");
-} catch (error) {
+} catch (_error) {
   // setDefaultResultOrder isn't available on older Node versions; ignore in that case.
 }
 
