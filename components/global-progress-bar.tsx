@@ -3,60 +3,78 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const PROGRESS_STEPS = [
-  { value: 12, delay: 0 },
-  { value: 38, delay: 140 },
-  { value: 64, delay: 320 },
-  { value: 82, delay: 520 },
-];
+// A lightweight, nprogress-like bar tuned for App Router.
+// It advances smoothly toward 90% while work is in-flight,
+// then finishes quickly once network and navigation settle.
+const START_PROGRESS = 8;
+const MAX_PENDING_PROGRESS = 92;
+const TICK_INTERVAL = 120;
 
 export function GlobalProgressBar() {
   const pathname = usePathname();
   const [progress, setProgress] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
-  const timeoutsRef = useRef<number[]>([]);
-  const fallbackRef = useRef<number | null>(null);
-  const prevPathRef = useRef<string | null>(pathname);
   const pendingFetchesRef = useRef(0);
   const originalFetchRef = useRef<typeof fetch | null>(null);
+  const intervalRef = useRef<number | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
+  const prevPathRef = useRef<string | null>(pathname);
 
-  const clearTimers = useCallback(() => {
-    for (const id of timeoutsRef.current) {
-      window.clearTimeout(id);
-    }
-    timeoutsRef.current = [];
-    if (fallbackRef.current !== null) {
-      window.clearTimeout(fallbackRef.current);
-      fallbackRef.current = null;
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current !== null) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
   }, []);
 
-  const finish = useCallback(() => {
-    clearTimers();
-    setProgress(100);
-    const hideId = window.setTimeout(() => {
+  const stopTicking = useCallback(() => {
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = window.setTimeout(() => {
       setIsVisible(false);
       setProgress(0);
+      stopTicking();
     }, 220);
-    timeoutsRef.current.push(hideId);
-  }, [clearTimers]);
+  }, [clearHideTimer, stopTicking]);
 
-  const finishIfIdle = useCallback(() => {
-    if (pendingFetchesRef.current > 0) {
+  const tick = useCallback(() => {
+    setProgress((current) => {
+      const hasPending = pendingFetchesRef.current > 0;
+      const target = hasPending ? MAX_PENDING_PROGRESS : 100;
+      const rate = hasPending ? 0.16 : 0.35;
+      const minStep = hasPending ? 0.6 : 2.5;
+      const delta = Math.max(minStep, (target - current) * rate);
+      const next = Math.min(target, current + delta);
+
+      if (!hasPending && next >= 99.5) {
+        scheduleHide();
+      }
+
+      return next;
+    });
+  }, [scheduleHide]);
+
+  const ensureTicking = useCallback(() => {
+    if (intervalRef.current !== null) {
       return;
     }
-    finish();
-  }, [finish]);
+    intervalRef.current = window.setInterval(tick, TICK_INTERVAL);
+  }, [tick]);
 
   const start = useCallback(() => {
-    clearTimers();
+    clearHideTimer();
     setIsVisible(true);
-    for (const { value, delay } of PROGRESS_STEPS) {
-      const id = window.setTimeout(() => setProgress(value), delay);
-      timeoutsRef.current.push(id);
-    }
-    fallbackRef.current = window.setTimeout(finishIfIdle, 5000);
-  }, [clearTimers, finishIfIdle]);
+    setProgress((current) =>
+      current > 0 && current < MAX_PENDING_PROGRESS ? current : START_PROGRESS
+    );
+    ensureTicking();
+  }, [clearHideTimer, ensureTicking]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -79,16 +97,20 @@ export function GlobalProgressBar() {
     return () => {
       window.removeEventListener("click", handleClick, { capture: true });
       window.removeEventListener("popstate", handlePopState);
-      clearTimers();
+      clearHideTimer();
+      stopTicking();
     };
-  }, [clearTimers, start]);
+  }, [clearHideTimer, start, stopTicking]);
 
   useEffect(() => {
-    if (prevPathRef.current !== null && prevPathRef.current !== pathname) {
-      finishIfIdle();
+    const changed = prevPathRef.current !== null && prevPathRef.current !== pathname;
+    if (changed) {
+      pendingFetchesRef.current = 0;
+      setProgress((current) => Math.max(current, 96));
+      scheduleHide();
     }
     prevPathRef.current = pathname;
-  }, [finishIfIdle, pathname]);
+  }, [pathname, scheduleHide]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -106,17 +128,22 @@ export function GlobalProgressBar() {
         return response;
       } finally {
         pendingFetchesRef.current = Math.max(0, pendingFetchesRef.current - 1);
-        finishIfIdle();
+        if (pendingFetchesRef.current === 0) {
+          setProgress((current) => Math.max(current, 96));
+          scheduleHide();
+        }
       }
     };
 
     return () => {
       pendingFetchesRef.current = 0;
+      stopTicking();
+      clearHideTimer();
       if (originalFetchRef.current) {
         window.fetch = originalFetchRef.current;
       }
     };
-  }, [finishIfIdle, start]);
+  }, [clearHideTimer, scheduleHide, start, stopTicking]);
 
   if (!isVisible) {
     return null;
@@ -128,7 +155,7 @@ export function GlobalProgressBar() {
       className="pointer-events-none fixed inset-x-0 top-0 z-50 h-1 bg-border/50"
     >
       <div
-        className="h-full w-full origin-left scale-x-0 bg-primary transition-[transform] duration-200"
+        className="h-full w-full origin-left scale-x-0 bg-primary transition-[transform] duration-150 ease-out"
         style={{ transform: `scaleX(${progress / 100})` }}
       />
     </div>
