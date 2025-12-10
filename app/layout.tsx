@@ -85,7 +85,15 @@ const PRELOAD_PROGRESS_STYLE = `
     transform-origin: left;
     transform: scaleX(0);
     background: var(--primary, #22c55e);
-    transition: transform 150ms ease-out;
+    transition: transform 180ms ease-out;
+    animation: __preloadGrow 2800ms cubic-bezier(.25,.8,.4,1) forwards;
+  }
+  @keyframes __preloadGrow {
+    0% { transform: scaleX(0); }
+    12% { transform: scaleX(0.28); }
+    35% { transform: scaleX(0.6); }
+    62% { transform: scaleX(0.78); }
+    100% { transform: scaleX(0.9); }
   }
 `;
 
@@ -99,25 +107,11 @@ const PRELOAD_PROGRESS_SCRIPT = `(function() {
   container.appendChild(bar);
   document.documentElement.appendChild(container);
 
-  var start = performance.now();
-  var progress = 0;
-  var raf;
   var done = false;
-
-  function step() {
-    if (done) return;
-    var elapsed = performance.now() - start;
-    var target = Math.min(95, 8 + elapsed * 0.045); // reach ~90% in ~2s
-    var delta = Math.max(0.4, (target - progress) * 0.2);
-    progress = Math.min(target, progress + delta);
-    bar.style.transform = 'scaleX(' + (progress / 100) + ')';
-    raf = requestAnimationFrame(step);
-  }
 
   function finish() {
     if (done) return;
     done = true;
-    cancelAnimationFrame(raf);
     bar.style.transform = 'scaleX(1)';
     setTimeout(function() {
       if (container && container.parentNode) {
@@ -127,8 +121,8 @@ const PRELOAD_PROGRESS_SCRIPT = `(function() {
   }
 
   window.__hidePreloadProgress = finish;
-  step();
   window.addEventListener('load', finish);
+  setTimeout(finish, 4500);
 })();`;
 
 export const metadata: Metadata = {
