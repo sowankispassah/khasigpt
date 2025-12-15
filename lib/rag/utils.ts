@@ -1,6 +1,5 @@
 import "server-only";
 
-import type { RagEntry } from "@/lib/db/schema";
 import { sanitizeText } from "@/lib/utils";
 
 const BASIC_LATIN_REGEX = /^[a-z0-9\s.,!?'"()-:;]+$/i;
@@ -56,30 +55,6 @@ export function normalizeSourceUrl(value?: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-export function buildSupabaseMetadata(
-  entry: RagEntry & {
-    categoryName?: string | null;
-    chunkIndex?: number;
-    chunkId?: string;
-  }
-) {
-  return {
-    title: entry.title,
-    tags: entry.tags,
-    type: entry.type,
-    status: entry.status,
-    models: entry.models,
-    version: entry.version,
-    addedBy: entry.addedBy,
-    approvalStatus: entry.approvalStatus,
-    personalForUserId: entry.personalForUserId ?? null,
-    categoryId: entry.categoryId,
-    categoryName: entry.categoryName ?? null,
-    chunkIndex: entry.chunkIndex ?? null,
-    chunkId: entry.chunkId ?? null,
-  };
 }
 
 export function detectQueryLanguage(text: string): string {

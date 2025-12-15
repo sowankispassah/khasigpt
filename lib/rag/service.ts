@@ -7,56 +7,44 @@ import {
   desc,
   eq,
   gte,
-  ilike,
   inArray,
   isNotNull,
   isNull,
-  or,
   sql,
 } from "drizzle-orm";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { db } from "@/lib/db/queries";
-import type { ModelConfig } from "@/lib/db/schema";
 import {
   type RagEntryApprovalStatus,
   type RagEntry as RagEntryModel,
   type RagEntryStatus,
   ragCategory,
-  ragChunk,
   ragEntry,
   ragEntryVersion,
   ragRetrievalLog,
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
 import {
-  DEFAULT_RAG_MATCH_LIMIT,
-  DEFAULT_RAG_MATCH_THRESHOLD,
-  DEFAULT_RAG_TIMEOUT_MS,
-  DEFAULT_RAG_VERSION_HISTORY_LIMIT,
-  MAX_RAG_CHUNK_CHARS,
-  MAX_RAG_CONTENT_CHARS,
-  MAX_RAG_CONTEXT_CHARS,
-  RAG_CHUNK_OVERLAP_CHARS,
-} from "./constants";
-import { generateRagEmbedding } from "./embeddings";
-import {
-  deleteSupabaseEmbedding,
-  hasSupabaseConfig,
-  patchSupabaseEmbedding,
-  type SupabaseRagMatch,
-  searchSupabaseEmbeddings,
-  upsertSupabaseEmbedding,
-} from "./supabase";
+  deleteFileSearchDocument,
+  deleteGeminiFile,
+  extractDocumentNameFromOperation,
+  findFileSearchDocumentNameByRagEntryId,
+  getGeminiApiKey,
+  getGeminiFileSearchStoreName,
+  importFileToSearchStore,
+  type GeminiFileSearchCustomMetadata,
+  uploadFileResumable,
+  waitForFileSearchOperation,
+} from "./gemini-file-search";
 import type {
   AdminRagEntry,
   RagAnalyticsSummary,
-  RagUsageEvent,
   SanitizedRagEntry,
   UpsertRagEntryInput,
 } from "./types";
 import {
-  buildSupabaseMetadata,
   detectQueryLanguage,
   normalizeModels,
   normalizeSourceUrl,
@@ -66,10 +54,7 @@ import {
 import { ragEntrySchema } from "./validation";
 
 const diffEngine = new diff_match_patch();
-const NO_MATCH_SUPPLEMENT =
-  "No saved knowledge matched this request. Do not fabricate or cite sources that were not retrieved. " +
-  "If the user asks about uploaded or custom knowledge, explain that no matching reference was found and ask for more detail.";
-const WORD_SPLIT_REGEX = /\s+/;
+const GEMINI_FILE_SEARCH_METADATA_KEY = "geminiFileSearch";
 
 function toSanitizedEntry(
   entry: RagEntryModel,
@@ -133,7 +118,7 @@ export async function createRagCategory({ name }: { name: string }) {
   return record;
 }
 
-function _buildEmbeddableText(entry: RagEntryModel) {
+function buildIndexableText(entry: RagEntryModel) {
   const tags =
     Array.isArray(entry.tags) && entry.tags.length
       ? `Tags: ${entry.tags.join(", ")}`
@@ -160,235 +145,238 @@ async function getEntryById(id: string): Promise<RagEntryModel | null> {
   return record ?? null;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("RAG operation timed out")),
-      ms
-    );
-    promise
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-  });
+function readGeminiFileSearchDocumentName(
+  entry: RagEntryModel
+): string | null {
+  const metadata =
+    (entry.metadata as Record<string, unknown> | null | undefined) ?? {};
+  const geminiMetadata = metadata[GEMINI_FILE_SEARCH_METADATA_KEY] as any;
+  const documentName =
+    typeof geminiMetadata?.documentName === "string"
+      ? geminiMetadata.documentName
+      : null;
+  return documentName && documentName.includes("/documents/")
+    ? documentName
+    : null;
 }
 
-function trimContent(content: string) {
-  if (!content) {
-    return "";
-  }
-  return content.length > MAX_RAG_CONTENT_CHARS
-    ? `${content.slice(0, MAX_RAG_CONTENT_CHARS)}\n\n[...]`
-    : content;
-}
+async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
+  const storeName = getGeminiFileSearchStoreName();
+  const apiKey = getGeminiApiKey();
+  const canUseGemini = Boolean(storeName && apiKey);
 
-function chunkForPrompt(content: string) {
-  const max = Math.max(200, MAX_RAG_CHUNK_CHARS);
-  const overlap = Math.max(
-    0,
-    Math.min(RAG_CHUNK_OVERLAP_CHARS, Math.floor(max / 2))
-  );
-  const normalized = content.trim();
-  if (normalized.length <= max) {
-    return [normalized];
-  }
-  const chunks: string[] = [];
-  let cursor = 0;
-  while (cursor < normalized.length && chunks.length < 20) {
-    const end = Math.min(normalized.length, cursor + max);
-    const slice = normalized.slice(cursor, end);
-    chunks.push(slice.trim());
-    cursor = end - overlap;
-  }
-  return chunks;
-}
+  const shouldIndex =
+    entry.status === "active" &&
+    entry.approvalStatus === "approved" &&
+    !entry.deletedAt;
 
-function composeRagResult({
-  resolved,
-  chatId,
-  modelConfig,
-  trimmedQuery,
-  userId,
-}: {
-  resolved: Array<{
-    entry: RagEntryModel;
-    score: number;
-    chunkContent: string;
-    chunkIndex: number | null;
-    chunkId: string | null;
-  }>;
-  chatId: string;
-  modelConfig: ModelConfig;
-  trimmedQuery: string;
-  userId: string;
-}) {
-  const systemSupplement = resolved
-    .flatMap(({ entry, chunkContent }) => {
-      const header = entry.sourceUrl
-        ? `Reference: ${entry.title} (${entry.sourceUrl})`
-        : `Reference: ${entry.title}`;
-      return [header, trimContent(chunkContent ?? "")]
-        .filter(Boolean)
-        .join("\n");
-    })
-    .reduce<string[]>((acc, section) => {
-      const total = acc.join("\n\n").length;
-      if (total + section.length <= MAX_RAG_CONTEXT_CHARS) {
-        acc.push(section);
-      }
-      return acc;
-    }, [])
-    .join("\n\n");
-
-  const safetyPrefix =
-    "Use only the references below. If they do not answer the question, say you don't know and ask for clarification. Do not invent sources.";
-  const finalSupplement = [safetyPrefix, systemSupplement]
-    .filter(Boolean)
-    .join("\n\n");
-
-  const clientEvent: RagUsageEvent = {
-    chatId,
-    modelId: modelConfig.id,
-    modelName: modelConfig.displayName,
-    entries: resolved.map(({ entry, score, chunkIndex, chunkId }) => ({
-      id: entry.id,
-      title: entry.title,
-      status: entry.status,
-      approvalStatus: entry.approvalStatus,
-      tags: entry.tags,
-      sourceUrl: entry.sourceUrl ?? null,
-      score,
-      chunkIndex,
-      chunkId,
-    })),
+  const existingDocumentName = readGeminiFileSearchDocumentName(entry);
+  const metadata =
+    (entry.metadata as Record<string, unknown> | null | undefined) ?? {};
+  const removeGeminiMetadata = () => {
+    const { [GEMINI_FILE_SEARCH_METADATA_KEY]: _omit, ...rest } = metadata;
+    return rest;
   };
 
-  db.insert(ragRetrievalLog)
-    .values(
-      resolved.map(({ entry, score }) => ({
-        ragEntryId: entry.id,
-        chatId,
-        modelConfigId: modelConfig.id,
-        modelKey: modelConfig.key,
-        userId,
-        score,
-        queryText: trimmedQuery,
-        queryLanguage: detectQueryLanguage(trimmedQuery),
-        metadata: buildSupabaseMetadata(entry),
-      }))
-    )
-    .catch((error) => {
-      console.warn("[rag] failed to record retrieval log", { error, chatId });
-    });
-
-  return {
-    systemSupplement: finalSupplement,
-    clientEvent,
-  };
-}
-
-async function syncEmbedding(
-  entry: RagEntryModel,
-  { reembed } = { reembed: true }
-) {
-  const chunks = chunkForPrompt(entry.content);
-  const now = new Date();
-  let chunkRows =
-    reembed === false
-      ? await db
-          .select()
-          .from(ragChunk)
-          .where(eq(ragChunk.entryId, entry.id))
-          .orderBy(asc(ragChunk.chunkIndex))
-      : [];
-
-  if (reembed || !chunkRows.length) {
-    await db.delete(ragChunk).where(eq(ragChunk.entryId, entry.id));
-    chunkRows = chunks.length
-      ? await db
-          .insert(ragChunk)
-          .values(
-            chunks.map((content, index) => ({
-              entryId: entry.id,
-              chunkIndex: index,
-              content,
-              createdAt: now,
-              updatedAt: now,
-            }))
-          )
-          .returning()
-      : [];
-  }
-
-  if (!hasSupabaseConfig()) {
+  const markFailed = async (error: unknown) => {
     await db
       .update(ragEntry)
       .set({
-        embeddingStatus: "ready",
+        embeddingStatus: "failed",
+        embeddingError:
+          error instanceof Error ? error.message : "File Search indexing failed",
         embeddingUpdatedAt: new Date(),
-        embeddingError: null,
       })
       .where(eq(ragEntry.id, entry.id));
-    return;
-  }
+  };
 
-  if (reembed) {
-    await deleteSupabaseEmbedding(entry.id);
-  }
+  if (!shouldIndex) {
+    if (!existingDocumentName) {
+      await db
+        .update(ragEntry)
+        .set({
+          metadata: removeGeminiMetadata(),
+          embeddingStatus: "ready",
+          embeddingModel: "gemini-file-search",
+          embeddingDimensions: null,
+          embeddingError: null,
+          embeddingUpdatedAt: new Date(),
+        })
+        .where(eq(ragEntry.id, entry.id));
+      return;
+    }
 
-  for (const chunk of chunkRows) {
-    try {
-      if (reembed) {
-        const { vector, model, dimensions } = await generateRagEmbedding(
-          chunk.content
-        );
-        await upsertSupabaseEmbedding({
-          entry: { ...entry, content: chunk.content },
-          chunkId: chunk.id,
-          chunkIndex: chunk.chunkIndex,
-          embedding: vector,
-        });
-        await db
-          .update(ragEntry)
-          .set({
-            embeddingStatus: "ready",
-            embeddingModel: model,
-            embeddingDimensions: dimensions,
-            embeddingUpdatedAt: new Date(),
-            embeddingError: null,
-          })
-          .where(eq(ragEntry.id, entry.id));
-      } else {
-        await patchSupabaseEmbedding(
-          { ...entry, content: chunk.content },
-          {
-            chunkId: chunk.id,
-            chunkIndex: chunk.chunkIndex,
-            content: chunk.content,
-          }
-        );
-      }
-    } catch (error) {
+    if (!canUseGemini) {
       await db
         .update(ragEntry)
         .set({
           embeddingStatus: "failed",
           embeddingError:
-            error instanceof Error ? error.message : "Embedding failed",
+            "Cannot de-index File Search document: missing GEMINI_FILE_SEARCH_STORE_NAME and/or Gemini API key.",
+          embeddingUpdatedAt: new Date(),
         })
         .where(eq(ragEntry.id, entry.id));
-      console.warn("[rag] chunk embedding/upsert failed", {
+      return;
+    }
+
+    try {
+      await deleteFileSearchDocument(existingDocumentName);
+      await db
+        .update(ragEntry)
+        .set({
+          metadata: removeGeminiMetadata(),
+          embeddingStatus: "ready",
+          embeddingModel: "gemini-file-search",
+          embeddingDimensions: null,
+          embeddingError: null,
+          embeddingUpdatedAt: new Date(),
+        })
+        .where(eq(ragEntry.id, entry.id));
+    } catch (error) {
+      console.warn("[rag] failed to de-index File Search document", {
         entryId: entry.id,
-        chunkId: chunk.id,
-        chunkIndex: chunk.chunkIndex,
+        documentName: existingDocumentName,
         error,
       });
+      await markFailed(error);
     }
+    return;
+  }
+
+  if (!storeName) {
+    await db
+      .update(ragEntry)
+      .set({
+        embeddingStatus: "failed",
+        embeddingError:
+          "Missing GEMINI_FILE_SEARCH_STORE_NAME. Cannot index custom knowledge into Gemini File Search.",
+        embeddingUpdatedAt: new Date(),
+      })
+      .where(eq(ragEntry.id, entry.id));
+    return;
+  }
+  if (!apiKey) {
+    await db
+      .update(ragEntry)
+      .set({
+        embeddingStatus: "failed",
+        embeddingError:
+          "Missing Gemini API key. Set GEMINI_API_KEY (or GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY).",
+        embeddingUpdatedAt: new Date(),
+      })
+      .where(eq(ragEntry.id, entry.id));
+    return;
+  }
+
+  await db
+    .update(ragEntry)
+    .set({
+      embeddingStatus: "pending",
+      embeddingError: null,
+    })
+    .where(eq(ragEntry.id, entry.id));
+
+  try {
+    if (existingDocumentName) {
+      await deleteFileSearchDocument(existingDocumentName);
+    }
+
+    const title = entry.title?.trim() ?? "";
+    const displayNameBase = title.length > 0 ? title : `RAG ${entry.id}`;
+    const displayName = `${displayNameBase}`.slice(0, 512);
+
+    const rawModels = Array.isArray(entry.models) ? entry.models : [];
+    const modelValues = new Set<string>();
+    for (const value of rawModels) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        modelValues.add(value.trim());
+      }
+    }
+    if (modelValues.size === 0) {
+      modelValues.add("*");
+    } else {
+      const registry = await getModelRegistry();
+      const idToKey = new Map(registry.configs.map((config) => [config.id, config.key]));
+      for (const value of rawModels) {
+        const key = idToKey.get(value);
+        if (key) {
+          modelValues.add(key);
+        }
+      }
+    }
+
+    const customMetadata: GeminiFileSearchCustomMetadata[] = [
+      { key: "rag_entry_id", stringValue: entry.id },
+      { key: "models", stringListValue: { values: Array.from(modelValues) } },
+    ];
+
+    const bytes = new TextEncoder().encode(buildIndexableText(entry));
+    const uploadedFile = await uploadFileResumable({
+      bytes,
+      mimeType: "text/plain",
+      displayName,
+    });
+
+    let documentName: string | null = null;
+    try {
+      const operation = await importFileToSearchStore({
+        fileSearchStoreName: storeName,
+        fileName: uploadedFile.name,
+        customMetadata,
+      });
+
+      const finished = await waitForFileSearchOperation({
+        operationName: operation.name,
+      });
+
+      documentName =
+        extractDocumentNameFromOperation(finished) ??
+        (await findFileSearchDocumentNameByRagEntryId({
+          fileSearchStoreName: storeName,
+          ragEntryId: entry.id,
+        }));
+      if (!documentName) {
+        throw new Error(
+          `Gemini importFile operation finished without a document name (${operation.name}).`
+        );
+      }
+    } finally {
+      deleteGeminiFile(uploadedFile.name).catch((error) => {
+        console.warn("[rag] failed to delete temporary Gemini file", {
+          entryId: entry.id,
+          fileName: uploadedFile.name,
+          error,
+        });
+      });
+    }
+
+    const nextMetadata = {
+      ...removeGeminiMetadata(),
+      [GEMINI_FILE_SEARCH_METADATA_KEY]: {
+        storeName,
+        documentName,
+        indexedAt: new Date().toISOString(),
+      },
+    };
+
+    await db
+      .update(ragEntry)
+      .set({
+        metadata: nextMetadata,
+        embeddingStatus: "ready",
+        embeddingModel: "gemini-file-search",
+        embeddingDimensions: null,
+        embeddingError: null,
+        embeddingUpdatedAt: new Date(),
+        supabaseVectorId: null,
+      })
+      .where(eq(ragEntry.id, entry.id));
+  } catch (error) {
+    console.warn("[rag] Gemini File Search index sync failed", {
+      entryId: entry.id,
+      error,
+    });
+    await markFailed(error);
   }
 }
 
@@ -506,7 +494,7 @@ export async function createRagEntry({
   });
 
   try {
-    await syncEmbedding(created, { reembed: true });
+    await syncGeminiFileSearchIndex(created);
   } catch (error) {
     await db
       .update(ragEntry)
@@ -609,7 +597,7 @@ export async function updateRagEntry({
 
   if (shouldReembed) {
     try {
-      await syncEmbedding(updated, { reembed: true });
+      await syncGeminiFileSearchIndex(updated);
     } catch (error) {
       await db
         .update(ragEntry)
@@ -621,7 +609,7 @@ export async function updateRagEntry({
         .where(eq(ragEntry.id, id));
     }
   } else {
-    await syncEmbedding(updated, { reembed: false });
+    await syncGeminiFileSearchIndex(updated);
   }
 
   const refreshed = await getEntryById(updated.id);
@@ -674,7 +662,7 @@ export async function bulkUpdateRagStatus({
       editorId: actorId,
     });
 
-    await syncEmbedding(entry, { reembed: false });
+    await syncGeminiFileSearchIndex(entry);
   }
 
   const categoryNames = await Promise.all(
@@ -730,7 +718,7 @@ export async function deleteRagEntries({
       editorId: actorId,
     });
 
-    await syncEmbedding(entry, { reembed: false });
+    await syncGeminiFileSearchIndex(entry);
   }
 }
 
@@ -776,7 +764,7 @@ export async function restoreRagEntry({
     editorId: actorId,
   });
 
-  await syncEmbedding(updated, { reembed: false });
+  await syncGeminiFileSearchIndex(updated);
 }
 
 export function getRagVersions(entryId: string) {
@@ -862,7 +850,7 @@ export async function restoreRagVersion({
     editorId: actorId,
   });
 
-  await syncEmbedding(updated, { reembed: true });
+  await syncGeminiFileSearchIndex(updated);
 }
 
 export async function listPersonalKnowledgeForUser(userId: string) {
@@ -1105,7 +1093,7 @@ export async function updateUserAddedKnowledgeApproval({
     editorId: actorId,
   });
 
-  await syncEmbedding(updated, { reembed: false });
+  await syncGeminiFileSearchIndex(updated);
 
   const categoryName = await getCategoryNameById(updated.categoryId);
   return toSanitizedEntry(updated, { categoryName });
@@ -1231,258 +1219,153 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
   };
 }
 
-function passesModelFilter(entry: RagEntryModel, model: ModelConfig) {
-  if (!entry.models?.length) {
-    return true;
-  }
-  return entry.models.includes(model.id) || entry.models.includes(model.key);
-}
-
-export async function buildRagAugmentation({
+export async function recordGeminiFileSearchRetrieval({
   chatId,
   userId,
   modelConfig,
   queryText,
-  useCustomKnowledge,
-  threshold = DEFAULT_RAG_MATCH_THRESHOLD,
+  groundingMetadata,
 }: {
   chatId: string;
   userId: string;
-  modelConfig: ModelConfig;
+  modelConfig: { id: string; key: string };
   queryText: string;
-  useCustomKnowledge: boolean;
-  threshold?: number;
-}): Promise<{
-  systemSupplement: string;
-  clientEvent: RagUsageEvent;
-} | null> {
-  if (!useCustomKnowledge) {
-    return null;
+  groundingMetadata: unknown;
+}) {
+  const grounding = groundingMetadata as any;
+  const groundingChunks =
+    grounding?.groundingChunks ??
+    grounding?.grounding_chunks ??
+    ([] as unknown[]);
+
+  if (!Array.isArray(groundingChunks) || groundingChunks.length === 0) {
+    return;
   }
 
-  if (!hasSupabaseConfig()) {
+  const extractDocumentName = (retrievedContext: any): string | null => {
+    const candidates = [
+      retrievedContext?.uri,
+      retrievedContext?.documentName,
+      retrievedContext?.document_name,
+      retrievedContext?.name,
+      retrievedContext?.document?.name,
+      retrievedContext?.fileSearchDocument?.name,
+      retrievedContext?.file_search_document?.name,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.includes("/documents/")) {
+        return candidate;
+      }
+    }
+
     return null;
+  };
+
+  const retrievedContexts: Array<{ documentName: string; title?: string }> = [];
+  for (const chunk of groundingChunks) {
+    const retrievedContext =
+      (chunk as any)?.retrievedContext ?? (chunk as any)?.retrieved_context;
+    const documentName = extractDocumentName(retrievedContext);
+    if (!documentName) {
+      continue;
+    }
+    retrievedContexts.push({
+      documentName,
+      title:
+        typeof retrievedContext?.title === "string"
+          ? retrievedContext.title
+          : undefined,
+    });
   }
 
-  const rawThreshold = Math.max(
-    typeof threshold === "number" ? threshold : DEFAULT_RAG_MATCH_THRESHOLD,
-    0
-  );
-  const effectiveThreshold =
-    queryText.trim().length < 40
-      ? Math.min(Math.max(rawThreshold, 0.2), 0.4)
-      : Math.min(rawThreshold, 1);
-  const modelFilters = Array.from(
+  const documentNames = Array.from(
     new Set(
-      [modelConfig.id, modelConfig.key].filter(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0
-      )
+      retrievedContexts
+        .map((ctx) => ctx.documentName)
+        .filter(
+          (name): name is string => typeof name === "string" && name.length > 0
+        )
     )
   );
 
-  const trimmedQuery = queryText.trim();
-  if (!trimmedQuery) {
-    return null;
+  if (documentNames.length === 0) {
+    return;
   }
 
-  const { vector } = await generateRagEmbedding(trimmedQuery);
-  let matches = await withTimeout(
-    searchSupabaseEmbeddings({
-      embedding: vector,
-      limit: DEFAULT_RAG_MATCH_LIMIT,
-      threshold: effectiveThreshold,
-      modelIds: modelFilters.length ? modelFilters : null,
-      status: "active",
-    }),
-    DEFAULT_RAG_TIMEOUT_MS
-  ).catch((error) => {
-    console.warn("[rag] retrieval failed or timed out", error);
-    return [] as SupabaseRagMatch[];
-  });
+  const documentNameExpr = sql<string>`(${ragEntry.metadata} -> '${sql.raw(
+    GEMINI_FILE_SEARCH_METADATA_KEY
+  )}' ->> 'documentName')`;
 
-  let filteredMatches = matches.filter((match) => {
-    if (!match || typeof match.score !== "number") {
-      return false;
-    }
-    return match.score >= effectiveThreshold;
-  });
-  if (!filteredMatches.length) {
-    console.warn("[rag] no matches above threshold", {
-      chatId,
-      threshold: effectiveThreshold,
-      matches: matches.length,
-    });
-    const fallbackThreshold = Math.max(
-      0.15,
-      Math.min(effectiveThreshold * 0.75, effectiveThreshold)
-    );
-    matches = await withTimeout(
-      searchSupabaseEmbeddings({
-        embedding: vector,
-        limit: DEFAULT_RAG_MATCH_LIMIT,
-        threshold: fallbackThreshold,
-        modelIds: [modelConfig.id],
-        status: "active",
-      }),
-      DEFAULT_RAG_TIMEOUT_MS
-    ).catch((error) => {
-      console.warn("[rag] fallback retrieval failed or timed out", error);
-      return [] as SupabaseRagMatch[];
-    });
-    filteredMatches = matches.filter((match) => {
-      if (!match || typeof match.score !== "number") {
-        return false;
-      }
-      return match.score >= fallbackThreshold;
-    });
-    if (!filteredMatches.length) {
-      console.warn("[rag] fallback search also returned no matches", {
-        chatId,
-        threshold: fallbackThreshold,
-      });
-      return {
-        systemSupplement: NO_MATCH_SUPPLEMENT,
-        clientEvent: {
-          chatId,
-          modelId: modelConfig.id,
-          modelName: modelConfig.displayName,
-          entries: [],
-        },
-      };
-    }
-  }
-
-  const ids = filteredMatches.map((match) => match.rag_entry_id);
   const rows = await db
-    .select()
+    .select({
+      id: ragEntry.id,
+      metadata: ragEntry.metadata,
+    })
     .from(ragEntry)
     .where(
       and(
-        inArray(ragEntry.id, ids),
         isNull(ragEntry.deletedAt),
-        eq(ragEntry.approvalStatus, "approved")
+        eq(ragEntry.status, "active"),
+        eq(ragEntry.approvalStatus, "approved"),
+        inArray(documentNameExpr, documentNames)
       )
     );
 
-  const entryMap = new Map(rows.map((row) => [row.id, row]));
-
-  const resolved = filteredMatches
-    .map((match) => {
-      const entry = entryMap.get(match.rag_entry_id);
-      if (!entry) {
-        return null;
-      }
-      if (entry.status !== "active" || entry.approvalStatus !== "approved") {
-        return null;
-      }
-      if (!passesModelFilter(entry, modelConfig)) {
-        return null;
-      }
-      const chunkIndex =
-        typeof match.metadata?.chunkIndex === "number"
-          ? match.metadata.chunkIndex
-          : null;
-      return {
-        entry,
-        score: match.score,
-        chunkContent: match.content,
-        chunkIndex,
-        chunkId: match.chunk_id ?? null,
-      };
-    })
-    .filter(Boolean) as Array<{
-    entry: RagEntryModel;
-    score: number;
-    chunkContent: string;
-    chunkIndex: number | null;
-    chunkId: string | null;
-  }>;
-
-  if (!resolved.length) {
-    console.warn("[rag] matches filtered out after validation", {
-      chatId,
-      rawMatches: matches.length,
-    });
-    // Fallback to a simple word-based content/title search in DB
-    const terms = trimmedQuery
-      .toLowerCase()
-      .split(WORD_SPLIT_REGEX)
-      .map((word) => word.trim())
-      .filter((word) => word.length >= 3)
-      .slice(0, 5);
-
-    const wordConditions =
-      terms.length > 0
-        ? terms.map((term) =>
-            or(
-              ilike(ragEntry.content, `%${term}%`),
-              ilike(ragEntry.title, `%${term}%`)
-            )
-          )
-        : [ilike(ragEntry.content, `%${trimmedQuery}%`)];
-
-    const fallbackRows = await db
-      .select({
-        entry: ragEntry,
-        chunkContent: ragChunk.content,
-        chunkIndex: ragChunk.chunkIndex,
-        chunkId: ragChunk.id,
-      })
-      .from(ragChunk)
-      .innerJoin(ragEntry, eq(ragChunk.entryId, ragEntry.id))
-      .where(
-        and(
-          isNull(ragEntry.deletedAt),
-          eq(ragEntry.status, "active"),
-          eq(ragEntry.approvalStatus, "approved"),
-          wordConditions.length > 1 ? or(...wordConditions) : wordConditions[0]
-        )
-      )
-      .limit(DEFAULT_RAG_MATCH_LIMIT * 4);
-
-    const fallbackResolved = fallbackRows
-      .filter(({ entry }) => passesModelFilter(entry, modelConfig))
-      .map(({ entry, chunkContent, chunkIndex, chunkId }) => ({
-        entry,
-        score: 0.01,
-        chunkContent: trimContent(chunkContent ?? entry.content),
-        chunkIndex: chunkIndex ?? null,
-        chunkId: chunkId ?? null,
-      }))
-      .slice(0, DEFAULT_RAG_MATCH_LIMIT);
-
-    if (!fallbackResolved.length) {
-      return {
-        systemSupplement: NO_MATCH_SUPPLEMENT,
-        clientEvent: {
-          chatId,
-          modelId: modelConfig.id,
-          modelName: modelConfig.displayName,
-          entries: [],
-        },
-      };
-    }
-
-    return composeRagResult({
-      resolved: fallbackResolved,
-      chatId,
-      modelConfig,
-      trimmedQuery,
-      userId,
-    });
+  if (!rows.length) {
+    return;
   }
 
-  return composeRagResult({
-    resolved,
-    chatId,
-    modelConfig,
-    trimmedQuery,
-    userId,
-  });
+  const documentToTitle = new Map(
+    retrievedContexts.map((ctx) => [ctx.documentName, ctx.title] as const)
+  );
+  const now = new Date();
+  const trimmedQuery = queryText.trim();
+  const queryLanguage = detectQueryLanguage(trimmedQuery);
+
+  await db
+    .insert(ragRetrievalLog)
+    .values(
+      rows.map((row) => {
+        const rowMetadata =
+          (row.metadata as Record<string, unknown> | null | undefined) ?? {};
+        const geminiMetadata = rowMetadata[GEMINI_FILE_SEARCH_METADATA_KEY] as any;
+        const documentName =
+          typeof geminiMetadata?.documentName === "string"
+            ? geminiMetadata.documentName
+            : null;
+
+        return {
+          ragEntryId: row.id,
+          chatId,
+          modelConfigId: modelConfig.id,
+          modelKey: modelConfig.key,
+          userId,
+          score: 1,
+          queryText: trimmedQuery,
+          queryLanguage,
+          applied: true,
+          metadata: documentName
+            ? {
+                geminiFileSearch: {
+                  documentName,
+                  title: documentToTitle.get(documentName) ?? null,
+                  recordedAt: now.toISOString(),
+                },
+              }
+            : { geminiFileSearch: { recordedAt: now.toISOString() } },
+        };
+      })
+    )
+    .catch((error) => {
+      console.warn("[rag] failed to record Gemini File Search retrieval logs", {
+        error,
+        chatId,
+      });
+    });
 }
 
-export async function rebuildAllRagEmbeddings() {
+export async function rebuildAllRagFileSearchIndexes() {
   const entries = await db
     .select()
     .from(ragEntry)
@@ -1490,17 +1373,19 @@ export async function rebuildAllRagEmbeddings() {
 
   for (const entry of entries) {
     try {
-      await syncEmbedding(entry, { reembed: true });
+      await syncGeminiFileSearchIndex(entry);
     } catch (error) {
       await db
         .update(ragEntry)
         .set({
           embeddingStatus: "failed",
           embeddingError:
-            error instanceof Error ? error.message : "Embedding failed",
+            error instanceof Error
+              ? error.message
+              : "File Search re-index failed",
         })
         .where(eq(ragEntry.id, entry.id));
-      console.warn("[rag] rebuild embedding failed", {
+      console.warn("[rag] rebuild File Search index failed", {
         entryId: entry.id,
         error,
       });

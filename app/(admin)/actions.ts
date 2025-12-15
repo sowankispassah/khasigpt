@@ -8,11 +8,8 @@ import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
-  DEFAULT_RAG_TIMEOUT_MS,
   FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
-  RAG_MATCH_THRESHOLD_SETTING_KEY,
-  RAG_TIMEOUT_MS_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -61,14 +58,13 @@ import {
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
-import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
 import {
   bulkUpdateRagStatus,
   createRagCategory,
   createRagEntry,
   deletePersonalKnowledgeEntry,
   deleteRagEntries,
-  rebuildAllRagEmbeddings,
+  rebuildAllRagFileSearchIndexes,
   restoreRagEntry,
   restoreRagVersion,
   updateRagEntry,
@@ -217,54 +213,26 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
   const enabled = parseBoolean(formData.get("customKnowledgeEnabled"));
-  const timeoutRaw = formData.get("ragTimeoutSeconds")?.toString();
-  let timeoutSeconds = Number(timeoutRaw);
-
-  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
-    timeoutSeconds = DEFAULT_RAG_TIMEOUT_MS / 1000;
-  }
-
-  timeoutSeconds = Math.min(Math.max(1, timeoutSeconds), 60);
-  const timeoutMs = Math.round(timeoutSeconds * 1000);
-  const thresholdRaw = formData.get("ragMatchThreshold")?.toString();
-  let ragMatchThreshold = Number(thresholdRaw);
-
-  if (!Number.isFinite(ragMatchThreshold) || ragMatchThreshold <= 0) {
-    ragMatchThreshold = DEFAULT_RAG_MATCH_THRESHOLD;
-  }
-
-  ragMatchThreshold = Math.min(Math.max(0.01, ragMatchThreshold), 1);
-
-  await Promise.all([
-    setAppSetting({
-      key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
-      value: enabled,
-    }),
-    setAppSetting({
-      key: RAG_TIMEOUT_MS_SETTING_KEY,
-      value: timeoutMs,
-    }),
-    setAppSetting({
-      key: RAG_MATCH_THRESHOLD_SETTING_KEY,
-      value: ragMatchThreshold,
-    }),
-  ]);
+  await setAppSetting({
+    key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+    value: enabled,
+  });
 
   await createAuditLogEntry({
     actorId: actor.id,
-    action: "settings.rag.update",
+    action: "settings.custom_knowledge.update",
     target: { setting: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY },
-    metadata: { enabled, timeoutMs, ragMatchThreshold },
+    metadata: { enabled },
   });
 
   revalidatePath("/admin/settings");
   revalidatePath("/admin/rag");
 }
 
-export async function rebuildRagEmbeddingsAction() {
+export async function rebuildRagFileSearchIndexAction() {
   "use server";
   await requireAdmin();
-  await rebuildAllRagEmbeddings();
+  await rebuildAllRagFileSearchIndexes();
   revalidatePath("/admin/rag");
 }
 

@@ -3,9 +3,9 @@ import "server-only";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import {
   extractReasoningMiddleware,
-  type LanguageModel,
   wrapLanguageModel,
 } from "ai";
 import type { ModelConfig } from "@/lib/db/schema";
@@ -39,7 +39,7 @@ function ensureClient<T>(client: T | null, name: string): T {
   return client;
 }
 
-export function resolveLanguageModel(config: ModelConfig): LanguageModel {
+export function resolveLanguageModel(config: ModelConfig): LanguageModelV2 {
   const baseModel = (() => {
     switch (config.provider) {
       case "openai": {
@@ -76,7 +76,7 @@ export function resolveLanguageModel(config: ModelConfig): LanguageModel {
 
 export function getTitleLanguageModel(
   preferredModel?: ModelConfig | null
-): LanguageModel {
+): LanguageModelV2 {
   if (preferredModel) {
     try {
       return resolveLanguageModel(preferredModel);
@@ -96,7 +96,7 @@ export function getTitleLanguageModel(
   return client.languageModel(DEFAULT_TITLE_MODEL);
 }
 
-export function getArtifactLanguageModel(): LanguageModel {
+export function getArtifactLanguageModel(): LanguageModelV2 {
   const client = ensureClient(openaiClient, "OpenAI");
   return client.languageModel(DEFAULT_TITLE_MODEL);
 }

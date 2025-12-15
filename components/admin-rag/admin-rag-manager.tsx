@@ -1040,24 +1040,24 @@ export function AdminRagManager({
 }
 
 function AnalyticsSummary({ analytics }: { analytics: RagAnalyticsSummary }) {
-  const cards = [
-    {
-      label: "Active entries",
-      value: analytics.activeEntries.toLocaleString(),
-      description: `${analytics.totalEntries.toLocaleString()} total`,
-    },
-    {
-      label: "Pending embeddings",
-      value: analytics.pendingEmbeddings.toLocaleString(),
-      description: "Need re-indexing",
-    },
-    {
-      label: "Retrievals (7d)",
-      value: analytics.retrievals7d.toLocaleString(),
-      description: analytics.topModel
-        ? `${analytics.topModel.modelKey} is trending`
-        : "No usage yet",
-    },
+    const cards = [
+      {
+        label: "Active entries",
+        value: analytics.activeEntries.toLocaleString(),
+        description: `${analytics.totalEntries.toLocaleString()} total`,
+      },
+      {
+        label: "Pending indexing",
+        value: analytics.pendingEmbeddings.toLocaleString(),
+        description: "Need re-indexing",
+      },
+      {
+        label: "Retrievals (7d)",
+        value: analytics.retrievals7d.toLocaleString(),
+        description: analytics.topModel
+          ? `${analytics.topModel.modelKey} is trending`
+          : "No usage yet",
+      },
     {
       label: "Top creators",
       value: analytics.creatorStats[0]?.name ?? "—",

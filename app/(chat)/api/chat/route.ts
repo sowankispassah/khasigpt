@@ -2,10 +2,12 @@ import { geolocation } from "@vercel/functions";
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
+  extractReasoningMiddleware,
   type LanguageModelUsage,
   type StepResult,
   smoothStream,
   streamText,
+  wrapLanguageModel,
 } from "ai";
 import { unstable_cache as cache } from "next/cache";
 import { after } from "next/server";
@@ -18,6 +20,7 @@ import { fetchModels } from "tokenlens/fetch";
 import { getUsage } from "tokenlens/helpers";
 import { auth, type UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
+import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
@@ -25,11 +28,9 @@ import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
-  DEFAULT_RAG_TIMEOUT_MS,
   isProductionEnvironment,
-  RAG_MATCH_THRESHOLD_SETTING_KEY,
-  RAG_TIMEOUT_MS_SETTING_KEY,
 } from "@/lib/constants";
+import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import {
   createStreamId,
   deleteChatById,
@@ -46,8 +47,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
-import { DEFAULT_RAG_MATCH_THRESHOLD } from "@/lib/rag/constants";
-import { buildRagAugmentation } from "@/lib/rag/service";
+import { recordGeminiFileSearchRetrieval } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
@@ -67,8 +67,6 @@ export const runtime = "nodejs";
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
 
-const _RAG_AUGMENTATION_TIMEOUT_MS = 5000;
-const RAG_TIMEOUT_SYMBOL = Symbol("rag-augmentation-timeout");
 const DEFAULT_CHAT_TITLE = "New Chat";
 const STREAM_HEADERS: HeadersInit = {
   "Content-Type": "text/event-stream",
@@ -156,47 +154,6 @@ function buildFallbackTitleFromMessage(message: ChatMessage) {
   return `${normalized.slice(0, 77).trim()}...`;
 }
 
-type RagAugmentationParams = Parameters<typeof buildRagAugmentation>[0];
-
-async function buildRagAugmentationWithTimeout(
-  params: RagAugmentationParams,
-  timeoutMs: number
-) {
-  if (!params.useCustomKnowledge) {
-    return null;
-  }
-
-  try {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    const result = await Promise.race([
-      buildRagAugmentation(params),
-      new Promise<typeof RAG_TIMEOUT_SYMBOL>((resolve) => {
-        timeout = setTimeout(() => resolve(RAG_TIMEOUT_SYMBOL), timeoutMs);
-      }),
-    ]);
-
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-
-    if (result === RAG_TIMEOUT_SYMBOL) {
-      console.warn(`RAG augmentation timed out after ${timeoutMs}ms`, {
-        chatId: params.chatId,
-      });
-      return null;
-    }
-
-    return result;
-  } catch (error) {
-    console.warn(
-      "Failed to build RAG augmentation",
-      { chatId: params.chatId },
-      error
-    );
-    return null;
-  }
-}
-
 async function enforceChatRateLimit(
   request: Request
 ): Promise<Response | null> {
@@ -281,14 +238,10 @@ export async function POST(request: Request) {
       freeMessageSettings,
       registry,
       customKnowledgeSetting,
-      ragTimeoutSetting,
-      ragMatchThresholdSetting,
     ] = await Promise.all([
       loadFreeMessageSettings(),
       getModelRegistry(),
       getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-      getAppSetting<string | number>(RAG_TIMEOUT_MS_SETTING_KEY),
-      getAppSetting<string | number>(RAG_MATCH_THRESHOLD_SETTING_KEY),
     ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
@@ -338,27 +291,6 @@ export async function POST(request: Request) {
           ? customKnowledgeSetting.toLowerCase() === "true"
           : false;
 
-    const parsedTimeout =
-      typeof ragTimeoutSetting === "number"
-        ? ragTimeoutSetting
-        : typeof ragTimeoutSetting === "string"
-          ? Number(ragTimeoutSetting)
-          : Number.NaN;
-    const ragTimeoutMs =
-      Number.isFinite(parsedTimeout) && parsedTimeout > 0
-        ? Math.min(Math.max(1000, Math.round(parsedTimeout)), 60_000)
-        : DEFAULT_RAG_TIMEOUT_MS;
-    const thresholdParsed =
-      typeof ragMatchThresholdSetting === "number"
-        ? ragMatchThresholdSetting
-        : typeof ragMatchThresholdSetting === "string"
-          ? Number(ragMatchThresholdSetting)
-          : Number.NaN;
-    const ragMatchThreshold =
-      Number.isFinite(thresholdParsed) && thresholdParsed > 0
-        ? Math.min(Math.max(thresholdParsed, 0.01), 1)
-        : DEFAULT_RAG_MATCH_THRESHOLD;
-
     const chat = await getChatById({ id });
 
     if (chat) {
@@ -397,17 +329,7 @@ export async function POST(request: Request) {
 
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
-    const ragAugmentation = await buildRagAugmentationWithTimeout(
-      {
-        chatId: id,
-        userId: session.user.id,
-        modelConfig,
-        queryText: getTextFromMessage(message),
-        useCustomKnowledge: customKnowledgeEnabled,
-        threshold: ragMatchThreshold,
-      },
-      ragTimeoutMs
-    );
+    const userQueryText = getTextFromMessage(message);
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -418,17 +340,74 @@ export async function POST(request: Request) {
       country,
     };
 
-    const languageModel = resolveLanguageModel(modelConfig);
     const baseInstruction = systemPrompt({
       selectedChatModel,
       requestHints,
       modelSystemPrompt: modelConfig.systemPrompt ?? null,
     });
-    const ragInstruction = ragAugmentation?.systemSupplement ?? null;
     const systemInstruction =
-      [baseInstruction, ragInstruction]
-        .filter((value) => typeof value === "string" && value.trim().length > 0)
-        .join("\n\n") || null;
+      typeof baseInstruction === "string" && baseInstruction.trim().length > 0
+        ? baseInstruction
+        : null;
+
+    const escapeFilterValue = (value: string) =>
+      value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+    const supportsGeminiFileSearchModel = (providerModelId: string) => {
+      const normalized = providerModelId.includes("/")
+        ? providerModelId.split("/").at(-1) ?? providerModelId
+        : providerModelId;
+
+      return (
+        normalized === "gemini-pro-latest" ||
+        normalized === "gemini-flash-latest" ||
+        normalized === "gemini-3-pro-preview" ||
+        normalized.startsWith("gemini-3-pro-preview-") ||
+        normalized === "gemini-2.5-pro" ||
+        normalized.startsWith("gemini-2.5-pro-") ||
+        normalized === "gemini-2.5-flash" ||
+        normalized.startsWith("gemini-2.5-flash-") ||
+        normalized === "gemini-2.5-flash-lite" ||
+        normalized.startsWith("gemini-2.5-flash-lite-")
+      );
+    };
+
+    const fileSearchStoreName = getGeminiFileSearchStoreName();
+    const useGeminiFileSearch =
+      customKnowledgeEnabled &&
+      modelConfig.provider === "google" &&
+      typeof fileSearchStoreName === "string" &&
+      supportsGeminiFileSearchModel(modelConfig.providerModelId);
+
+    const metadataFilter = useGeminiFileSearch
+      ? Array.from(
+          new Set(
+            ["*", modelConfig.id, modelConfig.key].filter(
+              (value): value is string =>
+                typeof value === "string" && value.trim().length > 0
+            )
+          )
+        )
+          .map((value) => `models:\"${escapeFilterValue(value)}\"`)
+          .join(" OR ")
+      : null;
+
+    let languageModel = useGeminiFileSearch
+      ? createGeminiFileSearchLanguageModel({
+          modelId: modelConfig.providerModelId,
+          storeName: fileSearchStoreName!,
+          metadataFilter,
+        })
+      : resolveLanguageModel(modelConfig);
+
+    if (useGeminiFileSearch && modelConfig.supportsReasoning && modelConfig.reasoningTag) {
+      languageModel = wrapLanguageModel({
+        model: languageModel,
+        middleware: extractReasoningMiddleware({
+          tagName: modelConfig.reasoningTag,
+        }),
+      });
+    }
 
     const promptText = uiMessages
       .map((entry) => getTextFromMessage(entry))
@@ -474,7 +453,6 @@ export async function POST(request: Request) {
     const usageReady = new Promise<void>((resolve) => {
       resolveUsageReady = resolve;
     });
-    const ragClientEvent = ragAugmentation?.clientEvent ?? null;
     after(async () => {
       try {
         await usageReady;
@@ -661,6 +639,7 @@ export async function POST(request: Request) {
     const result = streamText({
       model: languageModel,
       ...(systemInstruction ? { system: systemInstruction } : {}),
+      ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
       messages: convertToModelMessages(uiMessages),
       experimental_transform: smoothStream({ chunking: "word" }),
       experimental_telemetry: {
@@ -673,8 +652,36 @@ export async function POST(request: Request) {
         }
       },
       abortSignal: request.signal,
-      onFinish: async ({ usage }) => {
+      onFinish: async ({ usage, providerMetadata, steps }) => {
         await handleUsageReport(usage, { persistContext: !clientAborted });
+
+        if (!useGeminiFileSearch) {
+          return;
+        }
+
+        const mergedProviderMetadata =
+          providerMetadata ?? steps.at(-1)?.providerMetadata;
+        const groundingMetadata = (mergedProviderMetadata as any)?.google
+          ?.groundingMetadata;
+
+        if (!groundingMetadata) {
+          return;
+        }
+
+        try {
+          await recordGeminiFileSearchRetrieval({
+            chatId: id,
+            userId: session.user.id,
+            modelConfig: { id: modelConfig.id, key: modelConfig.key },
+            queryText: userQueryText,
+            groundingMetadata,
+          });
+        } catch (error) {
+          console.warn("[rag] failed to record Gemini File Search retrieval", {
+            chatId: id,
+            error,
+          });
+        }
       },
       onStepFinish: (stepResult) => {
         latestStepUsage = stepResult?.usage ?? null;
@@ -735,20 +742,22 @@ export async function POST(request: Request) {
           resolveUsageReady?.();
         }
       },
-      onError: () => {
+      onError: (error) => {
+        const text = error instanceof Error ? error.message : String(error);
+        const match = text.match(/retry in ([0-9]+(?:\\.[0-9]+)?)s/i);
+        if (match?.[1]) {
+          const seconds = Math.max(1, Math.ceil(Number(match[1])));
+          return `Gemini rate limit reached. Please retry in ~${seconds}s.`;
+        }
+        if (text.toLowerCase().includes("quota")) {
+          return "Gemini quota exceeded. Please wait and try again.";
+        }
         return "Oops, an error occurred!";
       },
     });
 
     const combinedStream = new ReadableStream({
       start(controller) {
-        if (ragClientEvent) {
-          controller.enqueue({
-            type: "data-ragUsage",
-            data: ragClientEvent,
-          });
-        }
-
         const reader = uiStream.getReader();
 
         (async () => {

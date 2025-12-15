@@ -273,29 +273,6 @@ export const ragEntry = pgTable(
 
 export type RagEntry = InferSelectModel<typeof ragEntry>;
 
-export const ragChunk = pgTable(
-  "RagChunk",
-  {
-    id: uuid("id").primaryKey().notNull().defaultRandom(),
-    entryId: uuid("entryid")
-      .notNull()
-      .references(() => ragEntry.id, { onDelete: "cascade" }),
-    chunkIndex: integer("chunkindex").notNull(),
-    content: text("content").notNull(),
-    createdAt: timestamp("createdat").notNull().defaultNow(),
-    updatedAt: timestamp("updatedat").notNull().defaultNow(),
-  },
-  (table) => ({
-    entryIdx: index("RagChunk_entry_idx").on(table.entryId),
-    entryChunkUnique: uniqueIndex("RagChunk_entry_chunk_idx").on(
-      table.entryId,
-      table.chunkIndex
-    ),
-  })
-);
-
-export type RagChunk = InferSelectModel<typeof ragChunk>;
-
 export const ragEntryVersion = pgTable(
   "RagEntryVersion",
   {
