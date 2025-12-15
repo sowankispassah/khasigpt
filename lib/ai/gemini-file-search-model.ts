@@ -16,7 +16,7 @@ import { getGeminiApiKey } from "@/lib/rag/gemini-file-search";
 
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const FILE_SEARCH_SYSTEM_INSTRUCTION =
-  "Use the file_search tool to ground answers in the provided File Search store whenever it may be relevant. If the files do not contain the answer, say you don't know rather than guessing.";
+  "You have access to a File Search store containing optional custom knowledge. Use file_search only when it improves correctness (e.g., questions about our product, policies, internal docs, or other curated content). If retrieved content is irrelevant or does not contain the needed information, ignore it and answer normally. Never invent facts; if you are unsure, say you don't know.";
 
 function toJsonValue(value: unknown): JSONValue {
   if (value === undefined) {

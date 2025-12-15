@@ -3,7 +3,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
-import { cn, sanitizeText } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
 import { LoaderIcon } from "./icons";
@@ -133,7 +133,7 @@ const PurePreviewMessage = ({
                             "w-full": isAssistantMessage,
                           })}
                         >
-                          {sanitizeText(part.text)}
+                          {part.text}
                         </Response>
                         {isAssistantMessage && showStreamingSpinner && (
                           <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
