@@ -75,8 +75,17 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const uiMessages = convertToUIMessages(messagesFromDb);
 
   const chatModelFromCookie = cookieStore.get("chat-model");
+  const cookieModelValue =
+    typeof chatModelFromCookie?.value === "string" ? chatModelFromCookie.value : "";
+  const resolvedCookieModelId =
+    cookieModelValue &&
+    (models.some((model) => model.id === cookieModelValue)
+      ? cookieModelValue
+      : models.find((model) => model.key === cookieModelValue)?.id ??
+        models.find((model) => model.providerModelId === cookieModelValue)?.id ??
+        "");
   const fallbackModelId =
-    chatModelFromCookie?.value ?? defaultModel?.id ?? models[0]?.id ?? "";
+    resolvedCookieModelId || defaultModel?.id || models[0]?.id || "";
 
   const deletedBanner = chat.deletedAt && isAdmin;
 

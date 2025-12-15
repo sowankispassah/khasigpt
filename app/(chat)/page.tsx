@@ -30,8 +30,17 @@ export default async function Page() {
   const id = generateUUID();
 
   const modelIdFromCookie = cookieStore.get("chat-model");
+  const cookieModelValue =
+    typeof modelIdFromCookie?.value === "string" ? modelIdFromCookie.value : "";
+  const resolvedCookieModelId =
+    cookieModelValue &&
+    (models.some((model) => model.id === cookieModelValue)
+      ? cookieModelValue
+      : models.find((model) => model.key === cookieModelValue)?.id ??
+        models.find((model) => model.providerModelId === cookieModelValue)?.id ??
+        "");
   const fallbackModelId =
-    modelIdFromCookie?.value ?? defaultModel?.id ?? models[0]?.id ?? "";
+    resolvedCookieModelId || defaultModel?.id || models[0]?.id || "";
 
   const customKnowledgeEnabled =
     typeof customKnowledgeSetting === "boolean"

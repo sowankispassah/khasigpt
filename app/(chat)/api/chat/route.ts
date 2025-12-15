@@ -248,6 +248,10 @@ export async function POST(request: Request) {
     );
     const modelConfig =
       enabledConfigs.find((config) => config.id === selectedChatModel) ??
+      enabledConfigs.find((config) => config.key === selectedChatModel) ??
+      enabledConfigs.find(
+        (config) => config.providerModelId === selectedChatModel
+      ) ??
       enabledConfigs.find((config) => config.isDefault) ??
       enabledConfigs[0];
 
