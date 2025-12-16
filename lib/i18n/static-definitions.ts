@@ -3,8 +3,9 @@ import type { TranslationDefinition } from "./dictionary";
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "greeting.title",
-    defaultText: "Hello there!",
-    description: "Greeting headline above the chat input.",
+    defaultText: "Hi, {name}",
+    description:
+      "Greeting headline above the chat input. Use {name} as the placeholder for the user's first name.",
   },
   {
     key: "greeting.subtitle",
