@@ -6,7 +6,6 @@ import {
   asc,
   desc,
   eq,
-  gte,
   inArray,
   isNotNull,
   isNull,
@@ -21,7 +20,6 @@ import {
   ragCategory,
   ragEntry,
   ragEntryVersion,
-  ragRetrievalLog,
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
@@ -34,6 +32,7 @@ import {
   getGeminiApiKey,
   getGeminiFileSearchStoreName,
   importFileToSearchStore,
+  normalizeFileSearchDocumentName,
   type GeminiFileSearchCustomMetadata,
   uploadFileResumable,
   waitForFileSearchOperation,
@@ -45,7 +44,6 @@ import type {
   UpsertRagEntryInput,
 } from "./types";
 import {
-  detectQueryLanguage,
   normalizeModels,
   normalizeSourceUrl,
   normalizeTags,
@@ -67,68 +65,6 @@ function toSanitizedEntry(
     metadata: (entry.metadata ?? {}) as Record<string, unknown>,
     categoryName: extras?.categoryName ?? null,
   };
-}
-
-function toIsoStringOrNull(value: Date | string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-function toNumber(value: unknown): number {
-  if (typeof value === "number") {
-    return value;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function toNullableNumber(value: unknown): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function getRetrievalStatsByEntryId(entryIds: string[]) {
-  if (entryIds.length === 0) {
-    return new Map<
-      string,
-      { retrievalCount: number; lastRetrievedAt: Date | string | null; avgScore: number | null }
-    >();
-  }
-
-  const rows = await db
-    .select({
-      ragEntryId: ragRetrievalLog.ragEntryId,
-      retrievalCount: sql<number>`COUNT(${ragRetrievalLog.id})`,
-      lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
-      avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
-    })
-    .from(ragRetrievalLog)
-    .where(inArray(ragRetrievalLog.ragEntryId, entryIds))
-    .groupBy(ragRetrievalLog.ragEntryId);
-
-  const stats = new Map<
-    string,
-    { retrievalCount: number; lastRetrievedAt: Date | string | null; avgScore: number | null }
-  >();
-
-  for (const row of rows) {
-    stats.set(row.ragEntryId, {
-      retrievalCount: toNumber(row.retrievalCount),
-      lastRetrievedAt: row.lastRetrievedAt ?? null,
-      avgScore: toNullableNumber(row.avgScore),
-    });
-  }
-
-  return stats;
 }
 
 async function getCategoryNameById(categoryId: string | null | undefined) {
@@ -217,9 +153,7 @@ function readGeminiFileSearchDocumentName(
     typeof geminiMetadata?.documentName === "string"
       ? geminiMetadata.documentName
       : null;
-  return documentName && documentName.includes("/documents/")
-    ? documentName
-    : null;
+  return normalizeFileSearchDocumentName(documentName);
 }
 
 async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
@@ -253,7 +187,7 @@ async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
   };
 
   if (!shouldIndex) {
-    if (!existingDocumentName) {
+    if (!canUseGemini) {
       await db
         .update(ragEntry)
         .set({
@@ -268,13 +202,30 @@ async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
       return;
     }
 
-    if (!canUseGemini) {
+    const documentNamesToDelete = new Set<string>();
+    if (existingDocumentName) {
+      documentNamesToDelete.add(existingDocumentName);
+    } else if (storeName) {
+      const discovered = await findFileSearchDocumentNameByRagEntryId({
+        fileSearchStoreName: storeName,
+        ragEntryId: entry.id,
+      });
+      if (discovered) {
+        documentNamesToDelete.add(
+          normalizeFileSearchDocumentName(discovered) ?? discovered
+        );
+      }
+    }
+
+    if (documentNamesToDelete.size === 0) {
       await db
         .update(ragEntry)
         .set({
-          embeddingStatus: "failed",
-          embeddingError:
-            "Cannot de-index File Search document: missing GEMINI_FILE_SEARCH_STORE_NAME and/or Gemini API key.",
+          metadata: removeGeminiMetadata(),
+          embeddingStatus: "ready",
+          embeddingModel: "gemini-file-search",
+          embeddingDimensions: null,
+          embeddingError: null,
           embeddingUpdatedAt: new Date(),
         })
         .where(eq(ragEntry.id, entry.id));
@@ -282,7 +233,10 @@ async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
     }
 
     try {
-      await deleteFileSearchDocument(existingDocumentName);
+      for (const documentName of documentNamesToDelete) {
+        await deleteFileSearchDocument(documentName);
+      }
+
       await db
         .update(ragEntry)
         .set({
@@ -1055,11 +1009,7 @@ export async function listUserAddedKnowledgeEntries({
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
 
-  const entryIds = rows.map((row) => row.entry.id);
-  const statsById = await getRetrievalStatsByEntryId(entryIds);
-
   return rows.map((row) => {
-    const stats = statsById.get(row.entry.id);
     return {
       entry: toSanitizedEntry(row.entry, {
         categoryName: row.categoryName ?? null,
@@ -1069,9 +1019,6 @@ export async function listUserAddedKnowledgeEntries({
         name: row.ownerName,
         email: row.ownerEmail,
       },
-      retrievalCount: stats?.retrievalCount ?? 0,
-      lastRetrievedAt: toIsoStringOrNull(stats?.lastRetrievedAt),
-      avgScore: stats?.avgScore ?? null,
     };
   });
 }
@@ -1163,11 +1110,7 @@ export async function listAdminRagEntries(
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
 
-  const entryIds = rows.map((row) => row.entry.id);
-  const statsById = await getRetrievalStatsByEntryId(entryIds);
-
   return rows.map((row) => {
-    const stats = statsById.get(row.entry.id);
     return {
       entry: toSanitizedEntry(row.entry, {
         categoryName: row.categoryName ?? null,
@@ -1177,9 +1120,6 @@ export async function listAdminRagEntries(
         name: row.creatorName,
         email: row.creatorEmail,
       },
-      retrievalCount: stats?.retrievalCount ?? 0,
-      lastRetrievedAt: toIsoStringOrNull(stats?.lastRetrievedAt),
-      avgScore: stats?.avgScore ?? null,
     };
   });
 }
@@ -1196,18 +1136,6 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
     .from(ragEntry)
     .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)));
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-  const modelUsage = await db
-    .select({
-      modelKey: ragRetrievalLog.modelKey,
-      retrievals: sql<number>`COUNT(*)`,
-    })
-    .from(ragRetrievalLog)
-    .where(gte(ragRetrievalLog.createdAt, sevenDaysAgo))
-    .groupBy(ragRetrievalLog.modelKey)
-    .orderBy(desc(sql<number>`COUNT(*)`));
-
   const creatorStats = await db
     .select({
       id: user.id,
@@ -1223,25 +1151,12 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
     .orderBy(desc(sql<number>`COUNT(${ragEntry.id})`))
     .limit(6);
 
-  const retrievals7d = modelUsage.reduce(
-    (total, usage) => total + usage.retrievals,
-    0
-  );
-
   return {
     totalEntries: statusCounts?.totalEntries ?? 0,
     activeEntries: statusCounts?.activeEntries ?? 0,
     inactiveEntries: statusCounts?.inactiveEntries ?? 0,
     archivedEntries: statusCounts?.archivedEntries ?? 0,
     pendingEmbeddings: statusCounts?.pendingEmbeddings ?? 0,
-    retrievals7d,
-    topModel: modelUsage[0]
-      ? {
-          modelKey: modelUsage[0].modelKey,
-          retrievals: modelUsage[0].retrievals,
-        }
-      : undefined,
-    modelUsage,
     creatorStats: creatorStats.map((creator) => ({
       ...creator,
       id: creator.id ?? "",
@@ -1249,150 +1164,45 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
   };
 }
 
-export async function recordGeminiFileSearchRetrieval({
-  chatId,
-  userId,
-  modelConfig,
-  queryText,
-  groundingMetadata,
+export async function listActiveRagEntryIdsForModel({
+  modelConfigId,
+  modelKey,
 }: {
-  chatId: string;
-  userId: string;
-  modelConfig: { id: string; key: string };
-  queryText: string;
-  groundingMetadata: unknown;
-}) {
-  const grounding = groundingMetadata as any;
-  const groundingChunks =
-    grounding?.groundingChunks ??
-    grounding?.grounding_chunks ??
-    ([] as unknown[]);
-
-  if (!Array.isArray(groundingChunks) || groundingChunks.length === 0) {
-    return;
-  }
-
-  const extractDocumentName = (retrievedContext: any): string | null => {
-    const candidates = [
-      retrievedContext?.uri,
-      retrievedContext?.documentName,
-      retrievedContext?.document_name,
-      retrievedContext?.name,
-      retrievedContext?.document?.name,
-      retrievedContext?.fileSearchDocument?.name,
-      retrievedContext?.file_search_document?.name,
-    ];
-
-    for (const candidate of candidates) {
-      if (typeof candidate === "string" && candidate.includes("/documents/")) {
-        return candidate;
-      }
-    }
-
-    return null;
-  };
-
-  const retrievedContexts: Array<{ documentName: string; title?: string }> = [];
-  for (const chunk of groundingChunks) {
-    const retrievedContext =
-      (chunk as any)?.retrievedContext ?? (chunk as any)?.retrieved_context;
-    const documentName = extractDocumentName(retrievedContext);
-    if (!documentName) {
-      continue;
-    }
-    retrievedContexts.push({
-      documentName,
-      title:
-        typeof retrievedContext?.title === "string"
-          ? retrievedContext.title
-          : undefined,
-    });
-  }
-
-  const documentNames = Array.from(
-    new Set(
-      retrievedContexts
-        .map((ctx) => ctx.documentName)
-        .filter(
-          (name): name is string => typeof name === "string" && name.length > 0
-        )
-    )
-  );
-
-  if (documentNames.length === 0) {
-    return;
-  }
-
-  const documentNameExpr = sql<string>`(${ragEntry.metadata} -> '${sql.raw(
-    GEMINI_FILE_SEARCH_METADATA_KEY
-  )}' ->> 'documentName')`;
-
+  modelConfigId: string;
+  modelKey?: string | null;
+}): Promise<string[]> {
   const rows = await db
     .select({
       id: ragEntry.id,
-      metadata: ragEntry.metadata,
+      models: ragEntry.models,
     })
     .from(ragEntry)
     .where(
       and(
         isNull(ragEntry.deletedAt),
         eq(ragEntry.status, "active"),
-        eq(ragEntry.approvalStatus, "approved"),
-        inArray(documentNameExpr, documentNames)
+        eq(ragEntry.approvalStatus, "approved")
       )
-    );
-
-  if (!rows.length) {
-    return;
-  }
-
-  const documentToTitle = new Map(
-    retrievedContexts.map((ctx) => [ctx.documentName, ctx.title] as const)
-  );
-  const now = new Date();
-  const trimmedQuery = queryText.trim();
-  const queryLanguage = detectQueryLanguage(trimmedQuery);
-
-  await db
-    .insert(ragRetrievalLog)
-    .values(
-      rows.map((row) => {
-        const rowMetadata =
-          (row.metadata as Record<string, unknown> | null | undefined) ?? {};
-        const geminiMetadata = rowMetadata[GEMINI_FILE_SEARCH_METADATA_KEY] as any;
-        const documentName =
-          typeof geminiMetadata?.documentName === "string"
-            ? geminiMetadata.documentName
-            : null;
-
-        return {
-          ragEntryId: row.id,
-          chatId,
-          modelConfigId: modelConfig.id,
-          modelKey: modelConfig.key,
-          userId,
-          score: 1,
-          queryText: trimmedQuery,
-          queryLanguage,
-          applied: true,
-          metadata: documentName
-            ? {
-                geminiFileSearch: {
-                  documentName,
-                  title: documentToTitle.get(documentName) ?? null,
-                  recordedAt: now.toISOString(),
-                },
-              }
-            : { geminiFileSearch: { recordedAt: now.toISOString() } },
-        };
-      })
     )
-    .catch((error) => {
-      console.warn("[rag] failed to record Gemini File Search retrieval logs", {
-        error,
-        chatId,
-      });
-    });
+    .orderBy(desc(ragEntry.updatedAt));
+
+  const normalizedKey = modelKey?.trim() ?? null;
+
+  return rows
+    .filter((row) => {
+      const models = Array.isArray(row.models) ? row.models : [];
+      if (models.length === 0) {
+        return true;
+      }
+      if (models.includes(modelConfigId)) {
+        return true;
+      }
+      if (normalizedKey && models.includes(normalizedKey)) {
+        return true;
+      }
+      return false;
+    })
+    .map((row) => row.id);
 }
 
 export async function rebuildAllRagFileSearchIndexes() {

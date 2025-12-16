@@ -60,9 +60,6 @@ export type SerializedAdminRagEntry = {
     updatedAt: string;
   };
   creator: AdminRagEntry["creator"];
-  retrievalCount: number;
-  lastRetrievedAt: string | null;
-  avgScore: number | null;
 };
 
 type AdminRagManagerProps = {
@@ -270,9 +267,6 @@ export function AdminRagManager({
           updatedAt: new Date(entry.updatedAt).toISOString(),
         },
         creator: fallbackCreator,
-        retrievalCount: source?.retrievalCount ?? 0,
-        lastRetrievedAt: source?.lastRetrievedAt ?? null,
-        avgScore: source?.avgScore ?? null,
       } as SerializedAdminRagEntry;
     },
     [currentUser]
@@ -661,7 +655,6 @@ export function AdminRagManager({
                 <th className="px-2 py-2">Status</th>
                 <th className="px-2 py-2">Models</th>
                 <th className="px-2 py-2">Tags</th>
-                <th className="px-2 py-2">Retrievals</th>
                 <th className="px-2 py-2">Updated</th>
                 <th className="px-2 py-2">Actions</th>
               </tr>
@@ -671,7 +664,7 @@ export function AdminRagManager({
                 <tr>
                   <td
                     className="px-2 py-6 text-center text-muted-foreground"
-                    colSpan={9}
+                    colSpan={8}
                   >
                     No entries match your filters.
                   </td>
@@ -732,14 +725,6 @@ export function AdminRagManager({
                           </Badge>
                         ))}
                       </div>
-                    </td>
-                    <td className="px-2 py-3">
-                      <div className="font-semibold">{item.retrievalCount}</div>
-                      <p className="text-muted-foreground text-xs">
-                        {item.lastRetrievedAt
-                          ? `last ${formatDate(item.lastRetrievedAt)}`
-                          : "—"}
-                      </p>
                     </td>
                     <td className="px-2 py-3 text-muted-foreground text-xs">
                       {formatDate(item.entry.updatedAt)}
@@ -1040,26 +1025,24 @@ export function AdminRagManager({
 }
 
 function AnalyticsSummary({ analytics }: { analytics: RagAnalyticsSummary }) {
-    const cards = [
-      {
-        label: "Active entries",
-        value: analytics.activeEntries.toLocaleString(),
-        description: `${analytics.totalEntries.toLocaleString()} total`,
-      },
-      {
-        label: "Pending indexing",
-        value: analytics.pendingEmbeddings.toLocaleString(),
-        description: "Need re-indexing",
-      },
-      {
-        label: "Retrievals (7d)",
-        value: analytics.retrievals7d.toLocaleString(),
-        description: analytics.topModel
-          ? `${analytics.topModel.modelKey} is trending`
-          : "No usage yet",
-      },
+  const cards = [
     {
-      label: "Top creators",
+      label: "Active entries",
+      value: analytics.activeEntries.toLocaleString(),
+      description: `${analytics.totalEntries.toLocaleString()} total`,
+    },
+    {
+      label: "Inactive entries",
+      value: analytics.inactiveEntries.toLocaleString(),
+      description: `${analytics.archivedEntries.toLocaleString()} archived`,
+    },
+    {
+      label: "Pending indexing",
+      value: analytics.pendingEmbeddings.toLocaleString(),
+      description: "Needs syncing",
+    },
+    {
+      label: "Top creator",
       value: analytics.creatorStats[0]?.name ?? "—",
       description: analytics.creatorStats[0]
         ? `${analytics.creatorStats[0].entryCount} entries`

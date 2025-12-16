@@ -34,9 +34,6 @@ export type SerializedUserKnowledgeEntry = {
     name: string | null;
     email: string | null;
   };
-  retrievalCount: number;
-  lastRetrievedAt: string | null;
-  avgScore: number | null;
 };
 
 const statusTone: Record<

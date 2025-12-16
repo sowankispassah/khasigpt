@@ -253,7 +253,7 @@ function buildFileSearchTools({
       file_search: {
         file_search_store_names: [storeName],
         ...(metadataFilter?.trim()
-          ? { metadata_filter: metadataFilter.trim() }
+          ? { metadataFilter: metadataFilter.trim() }
           : {}),
       },
     },

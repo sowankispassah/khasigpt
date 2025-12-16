@@ -12,7 +12,6 @@ Custom knowledge lets admins add curated content that Gemini can retrieve at ans
 - Fully managed from the Admin Dashboard (`/admin/rag`)
 - Model targeting via `models[]` (empty list = applies to all)
 - Automatic index sync on create/update/status changes
-- Retrieval logging via Gemini `groundingMetadata`
 
 ---
 
@@ -50,8 +49,8 @@ Custom metadata attached to each imported document:
 ## 🔍 Retrieval Logic (Chat)
 When the selected model is a Google Gemini model that supports File Search and custom knowledge is enabled:
 - The chat API calls Gemini with `tools: [{ file_search: ... }]`
-- A `metadata_filter` ensures only documents matching `models:"*"` or the current model are eligible
-- Gemini returns citations/retrieval context via `groundingMetadata`, which is recorded as retrieval logs
+- A `metadata_filter` ensures only active + approved entries for the current model are eligible (by `rag_entry_id`)
+- Gemini returns retrieval context via `groundingMetadata` (not stored as metrics)
 
 ---
 

@@ -30,9 +30,6 @@ export type AdminRagEntry = {
     name: string;
     email: string | null;
   };
-  retrievalCount: number;
-  lastRetrievedAt: string | null;
-  avgScore: number | null;
 };
 
 export type RagAnalyticsSummary = {
@@ -41,12 +38,6 @@ export type RagAnalyticsSummary = {
   inactiveEntries: number;
   archivedEntries: number;
   pendingEmbeddings: number;
-  retrievals7d: number;
-  topModel?: {
-    modelKey: string;
-    retrievals: number;
-  };
-  modelUsage: Array<{ modelKey: string; retrievals: number }>;
   creatorStats: Array<{
     id: string;
     name: string;

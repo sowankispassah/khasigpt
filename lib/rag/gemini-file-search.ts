@@ -41,6 +41,21 @@ export type GeminiFileSearchCustomMetadata = {
   stringListValue?: { values: string[] };
 };
 
+export function normalizeFileSearchDocumentName(
+  value: string | null | undefined
+): string | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  // Handles:
+  // - fileSearchStores/<store>/documents/<doc>
+  // - https://.../v1beta/fileSearchStores/<store>/documents/<doc>
+  // - .../documents/<doc>/chunks/<n>
+  const match = value.match(/fileSearchStores\/[^/]+\/documents\/[^/?#]+/);
+  return match?.[0] ?? null;
+}
+
 export function getGeminiApiKey(): string | null {
   return (
     process.env.GEMINI_API_KEY ??
@@ -426,8 +441,11 @@ export function extractDocumentNameFromOperation(
   ];
 
   for (const value of candidates) {
-    if (typeof value === "string" && value.includes("/documents/")) {
-      return value;
+    const normalized = normalizeFileSearchDocumentName(
+      typeof value === "string" ? value : null
+    );
+    if (normalized) {
+      return normalized;
     }
   }
 
@@ -445,6 +463,10 @@ export async function deleteFileSearchDocument(documentName: string) {
       },
     }
   );
+
+  if (response.status === 404) {
+    return;
+  }
 
   if (!response.ok) {
     throw new ChatSDKError(

@@ -54,15 +54,12 @@ export default async function AdminRagPage() {
   ]);
 
   const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
-    creator: entry.creator,
-    retrievalCount: entry.retrievalCount,
-    avgScore: entry.avgScore,
-    lastRetrievedAt: entry.lastRetrievedAt,
     entry: {
       ...entry.entry,
       createdAt: serializeDate(entry.entry.createdAt),
       updatedAt: serializeDate(entry.entry.updatedAt),
     },
+    creator: entry.creator,
   }));
 
   const serializedUserKnowledge: SerializedUserKnowledgeEntry[] =
@@ -79,9 +76,6 @@ export default async function AdminRagPage() {
             : (row.entry.updatedAt as unknown as string),
       },
       creator: row.creator,
-      retrievalCount: row.retrievalCount,
-      lastRetrievedAt: row.lastRetrievedAt,
-      avgScore: row.avgScore,
     }));
 
   const modelOptions = registry.configs

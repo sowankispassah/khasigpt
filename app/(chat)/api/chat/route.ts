@@ -47,7 +47,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
-import { recordGeminiFileSearchRetrieval } from "@/lib/rag/service";
+import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
@@ -377,24 +377,30 @@ export async function POST(request: Request) {
     };
 
     const fileSearchStoreName = getGeminiFileSearchStoreName();
-    const useGeminiFileSearch =
+    const canUseGeminiFileSearch =
       customKnowledgeEnabled &&
       modelConfig.provider === "google" &&
       typeof fileSearchStoreName === "string" &&
       supportsGeminiFileSearchModel(modelConfig.providerModelId);
 
-    const metadataFilter = useGeminiFileSearch
-      ? Array.from(
-          new Set(
-            ["*", modelConfig.id, modelConfig.key].filter(
-              (value): value is string =>
-                typeof value === "string" && value.trim().length > 0
-            )
-          )
-        )
-          .map((value) => `models:\"${escapeFilterValue(value)}\"`)
-          .join(" OR ")
-      : null;
+    const activeEntryIds = canUseGeminiFileSearch
+      ? await listActiveRagEntryIdsForModel({
+          modelConfigId: modelConfig.id,
+          modelKey: modelConfig.key,
+        })
+      : [];
+
+    const metadataFilter =
+      canUseGeminiFileSearch && activeEntryIds.length > 0
+        ? activeEntryIds
+            .map((id) => `rag_entry_id = \"${escapeFilterValue(id)}\"`)
+            .join(" OR ")
+        : null;
+
+    const useGeminiFileSearch =
+      canUseGeminiFileSearch &&
+      typeof metadataFilter === "string" &&
+      metadataFilter.trim().length > 0;
 
     let languageModel = useGeminiFileSearch
       ? createGeminiFileSearchLanguageModel({
@@ -656,36 +662,8 @@ export async function POST(request: Request) {
         }
       },
       abortSignal: request.signal,
-      onFinish: async ({ usage, providerMetadata, steps }) => {
+      onFinish: async ({ usage }) => {
         await handleUsageReport(usage, { persistContext: !clientAborted });
-
-        if (!useGeminiFileSearch) {
-          return;
-        }
-
-        const mergedProviderMetadata =
-          providerMetadata ?? steps.at(-1)?.providerMetadata;
-        const groundingMetadata = (mergedProviderMetadata as any)?.google
-          ?.groundingMetadata;
-
-        if (!groundingMetadata) {
-          return;
-        }
-
-        try {
-          await recordGeminiFileSearchRetrieval({
-            chatId: id,
-            userId: session.user.id,
-            modelConfig: { id: modelConfig.id, key: modelConfig.key },
-            queryText: userQueryText,
-            groundingMetadata,
-          });
-        } catch (error) {
-          console.warn("[rag] failed to record Gemini File Search retrieval", {
-            chatId: id,
-            error,
-          });
-        }
       },
       onStepFinish: (stepResult) => {
         latestStepUsage = stepResult?.usage ?? null;
