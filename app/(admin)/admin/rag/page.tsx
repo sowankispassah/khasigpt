@@ -76,30 +76,33 @@ export default async function AdminRagPage() {
     creatorStats: [],
   };
 
-  const [customKnowledgeEnabledSetting, categories, modelConfigs] =
-    await Promise.all([
-      safeQuery(
-        "custom knowledge setting",
-        getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-        null
-      ),
-      safeQuery("RAG categories", listRagCategories(), []),
-      safeQuery(
-        "model registry",
-        getModelRegistry().then((registry) => registry.configs),
-        []
-      ),
-    ]);
+  const customKnowledgeEnabledSetting = await safeQuery(
+    "custom knowledge setting",
+    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+    null
+  );
 
-  const [entries, analytics, userAddedKnowledge] = await Promise.all([
-    safeQuery("RAG entries", listAdminRagEntries(), []),
-    safeQuery("RAG analytics", getRagAnalyticsSummary(), fallbackAnalytics),
-    safeQuery(
-      "user added knowledge",
-      listUserAddedKnowledgeEntries({ limit: 240 }),
-      []
-    ),
-  ]);
+  const categories = await safeQuery("RAG categories", listRagCategories(), []);
+
+  const modelConfigs = await safeQuery(
+    "model registry",
+    getModelRegistry().then((registry) => registry.configs),
+    []
+  );
+
+  const entries = await safeQuery("RAG entries", listAdminRagEntries(), []);
+
+  const analytics = await safeQuery(
+    "RAG analytics",
+    getRagAnalyticsSummary(),
+    fallbackAnalytics
+  );
+
+  const userAddedKnowledge = await safeQuery(
+    "user added knowledge",
+    listUserAddedKnowledgeEntries({ limit: 240 }),
+    []
+  );
 
   const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
     entry: {
