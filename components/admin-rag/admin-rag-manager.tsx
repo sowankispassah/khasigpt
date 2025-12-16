@@ -55,7 +55,17 @@ import type {
 import { cn } from "@/lib/utils";
 
 export type SerializedAdminRagEntry = {
-  entry: Omit<AdminRagEntry["entry"], "createdAt" | "updatedAt"> & {
+  entry: {
+    id: string;
+    title: string;
+    content: string;
+    type: string;
+    status: RagEntryStatus;
+    tags: string[];
+    models: string[];
+    sourceUrl: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -256,18 +266,26 @@ export function AdminRagManager({
     (entry: SanitizedRagEntry, source?: SerializedAdminRagEntry | null) => {
       const fallbackCreator = source?.creator ?? {
         id: currentUser.id,
-        name: currentUser.name,
+        name: currentUser.name ?? currentUser.email ?? "Unknown",
         email: currentUser.email,
       };
       return {
         entry: {
-          ...entry,
+          id: entry.id,
+          title: entry.title,
+          content: entry.content,
+          type: entry.type,
+          status: entry.status,
+          tags: entry.tags,
+          models: entry.models,
+          sourceUrl: entry.sourceUrl ?? null,
+          categoryId: entry.categoryId ?? null,
           categoryName: entry.categoryName ?? null,
           createdAt: new Date(entry.createdAt).toISOString(),
           updatedAt: new Date(entry.updatedAt).toISOString(),
         },
         creator: fallbackCreator,
-      } as SerializedAdminRagEntry;
+      };
     },
     [currentUser]
   );

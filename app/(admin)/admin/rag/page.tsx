@@ -22,6 +22,33 @@ import {
   listRagCategories,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
+import { withTimeout } from "@/lib/utils/async";
+
+export const dynamic = "force-dynamic";
+
+const queryTimeoutRaw = Number.parseInt(
+  process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
+  10
+);
+const QUERY_TIMEOUT_MS =
+  Number.isFinite(queryTimeoutRaw) && queryTimeoutRaw > 0
+    ? queryTimeoutRaw
+    : 4000;
+
+async function safeQuery<T>(
+  label: string,
+  promise: Promise<T>,
+  fallback: T
+): Promise<T> {
+  try {
+    return await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
+      console.warn(`[admin] Query "${label}" timed out after ${QUERY_TIMEOUT_MS}ms.`);
+    });
+  } catch (error) {
+    console.error(`[admin] Failed to load "${label}"`, error);
+    return fallback;
+  }
+}
 
 function serializeDate(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -37,25 +64,55 @@ export default async function AdminRagPage() {
     redirect("/");
   }
 
+  const fallbackAnalytics = {
+    totalEntries: 0,
+    activeEntries: 0,
+    inactiveEntries: 0,
+    archivedEntries: 0,
+    pendingEmbeddings: 0,
+    creatorStats: [],
+  };
+
   const [
     entries,
     analytics,
-    registry,
+    modelConfigs,
     categories,
     customKnowledgeEnabledSetting,
     userAddedKnowledge,
   ] = await Promise.all([
-    listAdminRagEntries(),
-    getRagAnalyticsSummary(),
-    getModelRegistry(),
-    listRagCategories(),
-    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-    listUserAddedKnowledgeEntries({ limit: 240 }),
+    safeQuery("RAG entries", listAdminRagEntries(), []),
+    safeQuery("RAG analytics", getRagAnalyticsSummary(), fallbackAnalytics),
+    safeQuery(
+      "model registry",
+      getModelRegistry().then((registry) => registry.configs),
+      []
+    ),
+    safeQuery("RAG categories", listRagCategories(), []),
+    safeQuery(
+      "custom knowledge setting",
+      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+      null
+    ),
+    safeQuery(
+      "user added knowledge",
+      listUserAddedKnowledgeEntries({ limit: 240 }),
+      []
+    ),
   ]);
 
   const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
     entry: {
-      ...entry.entry,
+      id: entry.entry.id,
+      title: entry.entry.title,
+      content: entry.entry.content,
+      type: entry.entry.type,
+      status: entry.entry.status,
+      tags: entry.entry.tags,
+      models: entry.entry.models,
+      sourceUrl: entry.entry.sourceUrl ?? null,
+      categoryId: entry.entry.categoryId ?? null,
+      categoryName: entry.entry.categoryName ?? null,
       createdAt: serializeDate(entry.entry.createdAt),
       updatedAt: serializeDate(entry.entry.updatedAt),
     },
@@ -65,20 +122,19 @@ export default async function AdminRagPage() {
   const serializedUserKnowledge: SerializedUserKnowledgeEntry[] =
     userAddedKnowledge.map((row) => ({
       entry: {
-        ...row.entry,
-        createdAt:
-          row.entry.createdAt instanceof Date
-            ? row.entry.createdAt.toISOString()
-            : (row.entry.createdAt as unknown as string),
-        updatedAt:
-          row.entry.updatedAt instanceof Date
-            ? row.entry.updatedAt.toISOString()
-            : (row.entry.updatedAt as unknown as string),
+        id: row.entry.id,
+        title: row.entry.title,
+        content: row.entry.content,
+        approvalStatus: row.entry.approvalStatus,
+        status: row.entry.status,
+        createdAt: serializeDate(row.entry.createdAt),
+        updatedAt: serializeDate(row.entry.updatedAt),
+        personalForUserId: row.entry.personalForUserId ?? null,
       },
       creator: row.creator,
     }));
 
-  const modelOptions = registry.configs
+  const modelOptions = modelConfigs
     .filter((config) => config.isEnabled)
     .map((config) => ({
       id: config.id,

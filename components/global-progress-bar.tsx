@@ -18,12 +18,20 @@ export function GlobalProgressBar() {
   const originalFetchRef = useRef<typeof fetch | null>(null);
   const intervalRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const failSafeTimerRef = useRef<number | null>(null);
   const prevPathRef = useRef<string | null>(pathname);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current !== null) {
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
+    }
+  }, []);
+
+  const clearFailSafeTimer = useCallback(() => {
+    if (failSafeTimerRef.current !== null) {
+      window.clearTimeout(failSafeTimerRef.current);
+      failSafeTimerRef.current = null;
     }
   }, []);
 
@@ -36,12 +44,13 @@ export function GlobalProgressBar() {
 
   const scheduleHide = useCallback(() => {
     clearHideTimer();
+    clearFailSafeTimer();
     hideTimerRef.current = window.setTimeout(() => {
       setIsVisible(false);
       setProgress(0);
       stopTicking();
     }, 220);
-  }, [clearHideTimer, stopTicking]);
+  }, [clearFailSafeTimer, clearHideTimer, stopTicking]);
 
   const tick = useCallback(() => {
     setProgress((current) => {
@@ -69,12 +78,18 @@ export function GlobalProgressBar() {
 
   const start = useCallback(() => {
     clearHideTimer();
+    clearFailSafeTimer();
     setIsVisible(true);
     setProgress((current) =>
       current > 0 && current < MAX_PENDING_PROGRESS ? current : START_PROGRESS
     );
     ensureTicking();
-  }, [clearHideTimer, ensureTicking]);
+    failSafeTimerRef.current = window.setTimeout(() => {
+      pendingFetchesRef.current = 0;
+      setProgress(100);
+      scheduleHide();
+    }, 15000);
+  }, [clearFailSafeTimer, clearHideTimer, ensureTicking, scheduleHide]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -108,9 +123,10 @@ export function GlobalProgressBar() {
       window.removeEventListener("click", handleClick, { capture: true });
       window.removeEventListener("popstate", handlePopState);
       clearHideTimer();
+      clearFailSafeTimer();
       stopTicking();
     };
-  }, [clearHideTimer, start, stopTicking]);
+  }, [clearFailSafeTimer, clearHideTimer, start, stopTicking]);
 
   useEffect(() => {
     const changed = prevPathRef.current !== null && prevPathRef.current !== pathname;
@@ -149,11 +165,12 @@ export function GlobalProgressBar() {
       pendingFetchesRef.current = 0;
       stopTicking();
       clearHideTimer();
+      clearFailSafeTimer();
       if (originalFetchRef.current) {
         window.fetch = originalFetchRef.current;
       }
     };
-  }, [clearHideTimer, scheduleHide, start, stopTicking]);
+  }, [clearFailSafeTimer, clearHideTimer, scheduleHide, start, stopTicking]);
 
   if (!isVisible) {
     return null;

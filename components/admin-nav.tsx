@@ -46,6 +46,11 @@ export function AdminNav({ className }: { className?: string }) {
       setTimeout(() => setProgress(40), 120),
       setTimeout(() => setProgress(70), 260),
       setTimeout(() => setProgress(90), 520),
+      setTimeout(() => {
+        clearTimers();
+        setIsNavigating(false);
+        setProgress(0);
+      }, 12000),
     ];
     timersRef.current = timers;
   }, [clearTimers]);
