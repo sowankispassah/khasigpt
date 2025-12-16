@@ -45,6 +45,9 @@ async function safeQuery<T>(
       console.warn(`[admin] Query "${label}" timed out after ${QUERY_TIMEOUT_MS}ms.`);
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "timeout") {
+      return fallback;
+    }
     console.error(`[admin] Failed to load "${label}"`, error);
     return fallback;
   }
@@ -73,27 +76,24 @@ export default async function AdminRagPage() {
     creatorStats: [],
   };
 
-  const [
-    entries,
-    analytics,
-    modelConfigs,
-    categories,
-    customKnowledgeEnabledSetting,
-    userAddedKnowledge,
-  ] = await Promise.all([
+  const [customKnowledgeEnabledSetting, categories, modelConfigs] =
+    await Promise.all([
+      safeQuery(
+        "custom knowledge setting",
+        getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+        null
+      ),
+      safeQuery("RAG categories", listRagCategories(), []),
+      safeQuery(
+        "model registry",
+        getModelRegistry().then((registry) => registry.configs),
+        []
+      ),
+    ]);
+
+  const [entries, analytics, userAddedKnowledge] = await Promise.all([
     safeQuery("RAG entries", listAdminRagEntries(), []),
     safeQuery("RAG analytics", getRagAnalyticsSummary(), fallbackAnalytics),
-    safeQuery(
-      "model registry",
-      getModelRegistry().then((registry) => registry.configs),
-      []
-    ),
-    safeQuery("RAG categories", listRagCategories(), []),
-    safeQuery(
-      "custom knowledge setting",
-      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-      null
-    ),
     safeQuery(
       "user added knowledge",
       listUserAddedKnowledgeEntries({ limit: 240 }),

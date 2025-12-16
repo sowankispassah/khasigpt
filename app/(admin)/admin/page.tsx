@@ -48,6 +48,9 @@ export default async function AdminOverviewPage() {
       return result;
     } catch (error) {
       const duration = Date.now() - startedAt;
+      if (error instanceof Error && error.message === "timeout") {
+        return fallback;
+      }
       console.error(
         `[admin] Failed to load ${label} after ${duration}ms`,
         error
