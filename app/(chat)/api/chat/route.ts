@@ -20,8 +20,8 @@ import { fetchModels } from "tokenlens/fetch";
 import { getUsage } from "tokenlens/helpers";
 import { auth, type UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
-import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
+import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
@@ -30,7 +30,6 @@ import {
   DEFAULT_FREE_MESSAGES_PER_DAY,
   isProductionEnvironment,
 } from "@/lib/constants";
-import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import {
   createStreamId,
   deleteChatById,
@@ -47,6 +46,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
+import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -333,7 +333,6 @@ export async function POST(request: Request) {
 
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
-    const userQueryText = getTextFromMessage(message);
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -393,7 +392,7 @@ export async function POST(request: Request) {
     const metadataFilter =
       canUseGeminiFileSearch && activeEntryIds.length > 0
         ? activeEntryIds
-            .map((id) => `rag_entry_id = \"${escapeFilterValue(id)}\"`)
+            .map((id) => `rag_entry_id = "${escapeFilterValue(id)}"`)
             .join(" OR ")
         : null;
 
@@ -402,10 +401,15 @@ export async function POST(request: Request) {
       typeof metadataFilter === "string" &&
       metadataFilter.trim().length > 0;
 
-    let languageModel = useGeminiFileSearch
+    const geminiFileSearchStoreName =
+      useGeminiFileSearch && typeof fileSearchStoreName === "string"
+        ? fileSearchStoreName
+        : null;
+
+    let languageModel = geminiFileSearchStoreName
       ? createGeminiFileSearchLanguageModel({
           modelId: modelConfig.providerModelId,
-          storeName: fileSearchStoreName!,
+          storeName: geminiFileSearchStoreName,
           metadataFilter,
         })
       : resolveLanguageModel(modelConfig);

@@ -434,7 +434,7 @@ export function createGeminiFileSearchLanguageModel({
       const candidate = rawResponse?.candidates?.[0] ?? null;
       const candidateContent = candidate?.content?.parts ?? [];
 
-      let finishReason: LanguageModelV2FinishReason = mapGeminiFinishReason(
+      const finishReason: LanguageModelV2FinishReason = mapGeminiFinishReason(
         candidate?.finishReason
       );
       const usage: LanguageModelV2Usage = {

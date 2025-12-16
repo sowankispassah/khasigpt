@@ -2,13 +2,13 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
+import { withTimeout } from "@/lib/utils/async";
 import {
   getModelRegistry,
   MODEL_REGISTRY_CACHE_TAG,
   type ModelSummary,
   mapToModelSummary,
 } from "./model-registry";
-import { withTimeout } from "@/lib/utils/async";
 
 export type ChatModel = ModelSummary;
 

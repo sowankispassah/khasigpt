@@ -56,6 +56,9 @@ export function AdminNav({ className }: { className?: string }) {
   }, [clearTimers]);
 
   useEffect(() => {
+    if (!pathname) {
+      return;
+    }
     clearTimers();
     setIsNavigating(false);
     setProgress(0);

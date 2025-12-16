@@ -5,7 +5,7 @@ import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 
-export default function Error({
+export default function AdminError({
   error,
   reset,
 }: {
@@ -33,4 +33,3 @@ export default function Error({
     </div>
   );
 }
-

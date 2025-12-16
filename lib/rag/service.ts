@@ -29,11 +29,11 @@ import {
   deleteGeminiFile,
   extractDocumentNameFromOperation,
   findFileSearchDocumentNameByRagEntryId,
+  type GeminiFileSearchCustomMetadata,
   getGeminiApiKey,
   getGeminiFileSearchStoreName,
   importFileToSearchStore,
   normalizeFileSearchDocumentName,
-  type GeminiFileSearchCustomMetadata,
   uploadFileResumable,
   waitForFileSearchOperation,
 } from "./gemini-file-search";

@@ -288,6 +288,11 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     return;
   }
 
+  const fallbackBundle =
+    typeof preferredCode === "string" && preferredCode.trim().length > 0
+      ? buildFallbackBundle(preferredCode)
+      : FALLBACK_BUNDLE;
+
   const inflight = withTimeout(
     loadTranslationBundle(preferredCode),
     TRANSLATION_QUERY_TIMEOUT_MS,
@@ -314,7 +319,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     });
 
   BUNDLE_CACHE.set(key, {
-    data: existing?.data ?? buildFallbackBundle(preferredCode),
+    data: existing?.data ?? fallbackBundle,
     inflight: inflight.then(() => {
       return;
     }),
@@ -368,7 +373,10 @@ export async function getTranslationBundle(
     return bundle;
   } catch (error) {
     console.error("[i18n] Falling back to static translations.", error);
-    const fallbackBundle = buildFallbackBundle(preferredCode);
+    const fallbackBundle =
+      typeof preferredCode === "string" && preferredCode.trim().length > 0
+        ? buildFallbackBundle(preferredCode)
+        : FALLBACK_BUNDLE;
     BUNDLE_CACHE.set(key, { data: fallbackBundle });
     scheduleBundleRefresh(key, preferredCode);
     return fallbackBundle;

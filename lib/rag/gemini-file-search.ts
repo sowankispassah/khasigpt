@@ -371,7 +371,7 @@ export async function findFileSearchDocumentNameByRagEntryId({
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    let pageToken: string | undefined = undefined;
+    let pageToken: string | undefined;
     let bestDocument: GeminiDocument | null = null;
 
     while (true) {
@@ -383,8 +383,7 @@ export async function findFileSearchDocumentNameByRagEntryId({
       const documents = Array.isArray(page.documents) ? page.documents : [];
       for (const document of documents) {
         if (
-          document?.name &&
-          document.name.includes("/documents/") &&
+          document?.name?.includes("/documents/") &&
           documentHasStringMetadata({
             document,
             key: "rag_entry_id",

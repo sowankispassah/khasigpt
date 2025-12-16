@@ -62,13 +62,6 @@ export function AvatarForm({
   );
 
   useEffect(() => {
-    // Initialize once from the initial image; don't overwrite after uploads.
-    setSavedImage(initialImage);
-    setPreview(initialImage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     const handler = (event: Event) => {
       const custom = event as CustomEvent<{ image: string | null }>;
       setSavedImage(custom.detail?.image ?? null);
@@ -100,7 +93,7 @@ export function AvatarForm({
     if (!file) {
       setSelectedFile(null);
       if (!selectedFile) {
-        setPreview(initialImage);
+        setPreview(savedImage);
       }
       return;
     }
@@ -304,7 +297,7 @@ export function AvatarForm({
     }
   };
 
-  const showRemoveButton = Boolean(preview);
+  const showRemoveButton = Boolean(savedImage);
 
   return (
     <form className="space-y-4" onSubmit={handleUpload}>

@@ -3,8 +3,8 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { ReactNode } from "react";
 
-import type { ArtifactKind } from "./artifact";
 import type { ChatMessage } from "@/lib/types";
+import type { ArtifactKind } from "./artifact";
 
 export type ArtifactToolbarItem = {
   description: string;

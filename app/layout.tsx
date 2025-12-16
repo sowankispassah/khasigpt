@@ -1,7 +1,7 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
 import { Toaster } from "sonner";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
 import { LanguageProvider } from "@/components/language-provider";
@@ -255,6 +255,7 @@ export default async function RootLayout({
     >
       <head>
         <style
+          /* biome-ignore lint/security/noDangerouslySetInnerHtml: Needed for early paint progress */
           dangerouslySetInnerHTML={{
             __html: PRELOAD_PROGRESS_STYLE,
           }}
