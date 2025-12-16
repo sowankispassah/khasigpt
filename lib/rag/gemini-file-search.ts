@@ -299,8 +299,10 @@ async function listFileSearchDocuments({
   );
   const normalizedPageSize = Math.min(20, Math.max(1, Math.floor(pageSize)));
   url.searchParams.set("pageSize", String(normalizedPageSize));
+  url.searchParams.set("page_size", String(normalizedPageSize));
   if (pageToken) {
     url.searchParams.set("pageToken", pageToken);
+    url.searchParams.set("page_token", pageToken);
   }
 
   const response = await fetch(url.toString(), {

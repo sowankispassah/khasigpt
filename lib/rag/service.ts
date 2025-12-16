@@ -69,6 +69,68 @@ function toSanitizedEntry(
   };
 }
 
+function toIsoStringOrNull(value: Date | string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function getRetrievalStatsByEntryId(entryIds: string[]) {
+  if (entryIds.length === 0) {
+    return new Map<
+      string,
+      { retrievalCount: number; lastRetrievedAt: Date | string | null; avgScore: number | null }
+    >();
+  }
+
+  const rows = await db
+    .select({
+      ragEntryId: ragRetrievalLog.ragEntryId,
+      retrievalCount: sql<number>`COUNT(${ragRetrievalLog.id})`,
+      lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
+      avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
+    })
+    .from(ragRetrievalLog)
+    .where(inArray(ragRetrievalLog.ragEntryId, entryIds))
+    .groupBy(ragRetrievalLog.ragEntryId);
+
+  const stats = new Map<
+    string,
+    { retrievalCount: number; lastRetrievedAt: Date | string | null; avgScore: number | null }
+  >();
+
+  for (const row of rows) {
+    stats.set(row.ragEntryId, {
+      retrievalCount: toNumber(row.retrievalCount),
+      lastRetrievedAt: row.lastRetrievedAt ?? null,
+      avgScore: toNullableNumber(row.avgScore),
+    });
+  }
+
+  return stats;
+}
+
 async function getCategoryNameById(categoryId: string | null | undefined) {
   if (!categoryId) {
     return null;
@@ -984,50 +1046,34 @@ export async function listUserAddedKnowledgeEntries({
       ownerId: user.id,
       ownerName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       ownerEmail: user.email,
-      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)`,
-      lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
-      avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
       categoryName: ragCategory.name,
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.personalForUserId))
     .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
-    .leftJoin(ragRetrievalLog, eq(ragRetrievalLog.ragEntryId, ragEntry.id))
     .where(and(...conditions))
-    .groupBy(
-      ragEntry.id,
-      user.id,
-      user.firstName,
-      user.lastName,
-      user.email,
-      ragCategory.id,
-      ragCategory.name
-    )
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
 
-  return rows.map((row) => ({
-    entry: toSanitizedEntry(row.entry, {
-      categoryName: row.categoryName ?? null,
-    }),
-    creator: {
-      id: row.ownerId ?? "",
-      name: row.ownerName,
-      email: row.ownerEmail,
-    },
-    retrievalCount: row.retrievalCount,
-    lastRetrievedAt: (() => {
-      if (!row.lastRetrievedAt) {
-        return null;
-      }
-      if (row.lastRetrievedAt instanceof Date) {
-        return row.lastRetrievedAt.toISOString();
-      }
-      const parsed = new Date(row.lastRetrievedAt as unknown as string);
-      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-    })(),
-    avgScore: row.avgScore,
-  }));
+  const entryIds = rows.map((row) => row.entry.id);
+  const statsById = await getRetrievalStatsByEntryId(entryIds);
+
+  return rows.map((row) => {
+    const stats = statsById.get(row.entry.id);
+    return {
+      entry: toSanitizedEntry(row.entry, {
+        categoryName: row.categoryName ?? null,
+      }),
+      creator: {
+        id: row.ownerId ?? "",
+        name: row.ownerName,
+        email: row.ownerEmail,
+      },
+      retrievalCount: stats?.retrievalCount ?? 0,
+      lastRetrievedAt: toIsoStringOrNull(stats?.lastRetrievedAt),
+      avgScore: stats?.avgScore ?? null,
+    };
+  });
 }
 
 export async function updateUserAddedKnowledgeApproval({
@@ -1108,50 +1154,34 @@ export async function listAdminRagEntries(
       creatorId: user.id,
       creatorName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       creatorEmail: user.email,
-      retrievalCount: sql<number>`COALESCE(COUNT(${ragRetrievalLog.id}), 0)`,
-      lastRetrievedAt: sql<Date | null>`MAX(${ragRetrievalLog.createdAt})`,
-      avgScore: sql<number | null>`AVG(${ragRetrievalLog.score})`,
       categoryName: ragCategory.name,
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
     .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
-    .leftJoin(ragRetrievalLog, eq(ragRetrievalLog.ragEntryId, ragEntry.id))
     .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)))
-    .groupBy(
-      ragEntry.id,
-      user.id,
-      user.firstName,
-      user.lastName,
-      user.email,
-      ragCategory.id,
-      ragCategory.name
-    )
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
 
-  return rows.map((row) => ({
-    entry: toSanitizedEntry(row.entry, {
-      categoryName: row.categoryName ?? null,
-    }),
-    creator: {
-      id: row.creatorId ?? "",
-      name: row.creatorName,
-      email: row.creatorEmail,
-    },
-    retrievalCount: row.retrievalCount,
-    lastRetrievedAt: (() => {
-      if (!row.lastRetrievedAt) {
-        return null;
-      }
-      if (row.lastRetrievedAt instanceof Date) {
-        return row.lastRetrievedAt.toISOString();
-      }
-      const parsed = new Date(row.lastRetrievedAt as unknown as string);
-      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-    })(),
-    avgScore: row.avgScore,
-  }));
+  const entryIds = rows.map((row) => row.entry.id);
+  const statsById = await getRetrievalStatsByEntryId(entryIds);
+
+  return rows.map((row) => {
+    const stats = statsById.get(row.entry.id);
+    return {
+      entry: toSanitizedEntry(row.entry, {
+        categoryName: row.categoryName ?? null,
+      }),
+      creator: {
+        id: row.creatorId ?? "",
+        name: row.creatorName,
+        email: row.creatorEmail,
+      },
+      retrievalCount: stats?.retrievalCount ?? 0,
+      lastRetrievedAt: toIsoStringOrNull(stats?.lastRetrievedAt),
+      avgScore: stats?.avgScore ?? null,
+    };
+  });
 }
 
 export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
