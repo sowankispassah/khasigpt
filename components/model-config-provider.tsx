@@ -4,17 +4,9 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 type ModelSummary = {
   id: string;
-  key: string;
-  provider: string;
-  providerModelId: string;
   name: string;
   description: string;
   supportsReasoning: boolean;
-  reasoningTag: string | null;
-  systemPrompt: string | null;
-  codeTemplate: string | null;
-  inputProviderCostPerMillion: number;
-  outputProviderCostPerMillion: number;
 };
 
 type ModelConfigContextValue = {

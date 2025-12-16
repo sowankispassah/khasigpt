@@ -16,13 +16,10 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 
 export default async function AdminOverviewPage() {
-  let userCount = 0;
-  let chatCount = 0;
-  let contactMessageCount = 0;
-  let recentUsers: Awaited<ReturnType<typeof listUsers>> = [];
-  let recentChats: Awaited<ReturnType<typeof listChats>> = [];
-  let recentAudits: Awaited<ReturnType<typeof listAuditLog>> = [];
-  let recentContactMessages: Awaited<ReturnType<typeof listContactMessages>> =
+  const fallbackUsers: Awaited<ReturnType<typeof listUsers>> = [];
+  const fallbackChats: Awaited<ReturnType<typeof listChats>> = [];
+  const fallbackAudits: Awaited<ReturnType<typeof listAuditLog>> = [];
+  const fallbackContactMessages: Awaited<ReturnType<typeof listContactMessages>> =
     [];
 
   const queryTimeoutRaw = Number.parseInt(
@@ -59,25 +56,31 @@ export default async function AdminOverviewPage() {
     }
   }
 
-  userCount = await safeQuery("user count", getUserCount(), 0);
-  chatCount = await safeQuery("chat count", getChatCount(), 0);
-  recentUsers = await safeQuery("recent users", listUsers({ limit: 5 }), []);
-  recentChats = await safeQuery("recent chats", listChats({ limit: 5 }), []);
-  recentAudits = await safeQuery(
-    "recent audit log entries",
-    listAuditLog({ limit: 5 }),
-    []
-  );
-  contactMessageCount = await safeQuery(
-    "contact message count",
-    getContactMessageCount(),
-    0
-  );
-  recentContactMessages = await safeQuery(
-    "recent contact messages",
-    listContactMessages({ limit: 5 }),
-    []
-  );
+  const [
+    userCount,
+    chatCount,
+    recentUsers,
+    recentChats,
+    recentAudits,
+    contactMessageCount,
+    recentContactMessages,
+  ] = await Promise.all([
+    safeQuery("user count", getUserCount(), 0),
+    safeQuery("chat count", getChatCount(), 0),
+    safeQuery("recent users", listUsers({ limit: 5 }), fallbackUsers),
+    safeQuery("recent chats", listChats({ limit: 5 }), fallbackChats),
+    safeQuery(
+      "recent audit log entries",
+      listAuditLog({ limit: 5 }),
+      fallbackAudits
+    ),
+    safeQuery("contact message count", getContactMessageCount(), 0),
+    safeQuery(
+      "recent contact messages",
+      listContactMessages({ limit: 5 }),
+      fallbackContactMessages
+    ),
+  ]);
 
   return (
     <div className="flex flex-col gap-10">

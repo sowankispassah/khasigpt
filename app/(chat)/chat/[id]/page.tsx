@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
 import { DataStreamHandler } from "@/components/data-stream-handler";
+import { DataStreamProvider } from "@/components/data-stream-provider";
+import { ModelConfigProvider } from "@/components/model-config-provider";
 import { loadChatModels } from "@/lib/ai/models";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import {
@@ -91,7 +93,44 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   if (!chatModelFromCookie) {
     return (
-      <>
+      <ModelConfigProvider
+        defaultModelId={defaultModel?.id ?? null}
+        models={models.map((model) => ({
+          id: model.id,
+          name: model.name,
+          description: model.description,
+          supportsReasoning: model.supportsReasoning,
+        }))}
+      >
+        <DataStreamProvider>
+          {deletedBanner && <DeletedNotice dictionary={dictionary} />}
+          <ChatLoader
+            autoResume={true}
+            customKnowledgeEnabled={customKnowledgeEnabled}
+            id={chat.id}
+            initialChatModel={fallbackModelId}
+            initialMessages={uiMessages}
+            initialVisibilityType={chat.visibility}
+            isReadonly={session?.user?.id !== chat.userId}
+            suggestedPrompts={suggestedPrompts}
+          />
+          <DataStreamHandler />
+        </DataStreamProvider>
+      </ModelConfigProvider>
+    );
+  }
+
+  return (
+    <ModelConfigProvider
+      defaultModelId={defaultModel?.id ?? null}
+      models={models.map((model) => ({
+        id: model.id,
+        name: model.name,
+        description: model.description,
+        supportsReasoning: model.supportsReasoning,
+      }))}
+    >
+      <DataStreamProvider>
         {deletedBanner && <DeletedNotice dictionary={dictionary} />}
         <ChatLoader
           autoResume={true}
@@ -104,25 +143,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           suggestedPrompts={suggestedPrompts}
         />
         <DataStreamHandler />
-      </>
-    );
-  }
-
-  return (
-    <>
-      {deletedBanner && <DeletedNotice dictionary={dictionary} />}
-      <ChatLoader
-        autoResume={true}
-        customKnowledgeEnabled={customKnowledgeEnabled}
-        id={chat.id}
-        initialChatModel={fallbackModelId}
-        initialMessages={uiMessages}
-        initialVisibilityType={chat.visibility}
-        isReadonly={session?.user?.id !== chat.userId}
-        suggestedPrompts={suggestedPrompts}
-      />
-      <DataStreamHandler />
-    </>
+      </DataStreamProvider>
+    </ModelConfigProvider>
   );
 }
 
