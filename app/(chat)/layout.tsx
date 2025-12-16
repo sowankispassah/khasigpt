@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ChatPreloader } from "@/components/chat-preloader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { auth } from "../(auth)/auth";
 
@@ -33,6 +34,7 @@ export default async function Layout({
 
   return (
     <SidebarProvider defaultOpen={defaultSidebarOpen}>
+      <ChatPreloader />
       <AppSidebar user={session.user} />
       <SidebarInset>{children}</SidebarInset>
     </SidebarProvider>

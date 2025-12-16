@@ -14,6 +14,7 @@ export function GlobalProgressBar() {
   const pathname = usePathname();
   const [progress, setProgress] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
+  const isVisibleRef = useRef(false);
   const pendingFetchesRef = useRef(0);
   const originalFetchRef = useRef<typeof fetch | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -46,6 +47,7 @@ export function GlobalProgressBar() {
     clearHideTimer();
     clearFailSafeTimer();
     hideTimerRef.current = window.setTimeout(() => {
+      isVisibleRef.current = false;
       setIsVisible(false);
       setProgress(0);
       stopTicking();
@@ -79,6 +81,7 @@ export function GlobalProgressBar() {
   const start = useCallback(() => {
     clearHideTimer();
     clearFailSafeTimer();
+    isVisibleRef.current = true;
     setIsVisible(true);
     setProgress((current) =>
       current > 0 && current < MAX_PENDING_PROGRESS ? current : START_PROGRESS
@@ -147,16 +150,25 @@ export function GlobalProgressBar() {
     originalFetchRef.current = originalFetch;
 
     window.fetch = async (...args) => {
-      pendingFetchesRef.current += 1;
-      start();
+      const shouldTrack = isVisibleRef.current;
+      if (shouldTrack) {
+        pendingFetchesRef.current += 1;
+        clearHideTimer();
+        ensureTicking();
+      }
       try {
         const response = await originalFetch(...args);
         return response;
       } finally {
-        pendingFetchesRef.current = Math.max(0, pendingFetchesRef.current - 1);
-        if (pendingFetchesRef.current === 0) {
-          setProgress((current) => Math.max(current, 96));
-          scheduleHide();
+        if (shouldTrack) {
+          pendingFetchesRef.current = Math.max(
+            0,
+            pendingFetchesRef.current - 1
+          );
+          if (pendingFetchesRef.current === 0) {
+            setProgress((current) => Math.max(current, 96));
+            scheduleHide();
+          }
         }
       }
     };
@@ -170,7 +182,13 @@ export function GlobalProgressBar() {
         window.fetch = originalFetchRef.current;
       }
     };
-  }, [clearFailSafeTimer, clearHideTimer, scheduleHide, start, stopTicking]);
+  }, [
+    clearFailSafeTimer,
+    clearHideTimer,
+    ensureTicking,
+    scheduleHide,
+    stopTicking,
+  ]);
 
   if (!isVisible) {
     return null;

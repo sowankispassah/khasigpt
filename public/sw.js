@@ -1,17 +1,10 @@
-const CACHE_VERSION = "khasigpt-cache-v2";
+const CACHE_VERSION = "khasigpt-cache-v3";
 const STATIC_ASSETS = [
   "/offline",
   "/manifest.webmanifest",
   "/favicon.ico",
   "/favicon.png",
   "/opengraph-image.png",
-];
-const SHELL_ROUTES = [
-  "/",
-  "/chat",
-  "/chat/recharge",
-  "/chat/profile",
-  "/chat/subscriptions",
 ];
 const OFFLINE_FALLBACK = "/offline";
 
@@ -20,9 +13,7 @@ self.addEventListener("install", (event) => {
     caches
       .open(CACHE_VERSION)
       .then((cache) =>
-        cache.addAll([
-          ...new Set([...STATIC_ASSETS, ...SHELL_ROUTES, OFFLINE_FALLBACK]),
-        ])
+        cache.addAll([...new Set([...STATIC_ASSETS, OFFLINE_FALLBACK])])
       )
       .then(() => self.skipWaiting())
   );
@@ -53,32 +44,41 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET" || request.url.includes("/api/")) {
+  if (request.method !== "GET") {
+    return;
+  }
+
+  const url = new URL(request.url);
+
+  // Only handle same-origin requests.
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Never cache API responses or Next.js internals (RSC/chunks). Let the browser handle caching.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/")) {
     return;
   }
 
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
-        const cache = await caches.open(CACHE_VERSION);
-        const preloadResponse = await event.preloadResponse;
-        const cachedResponse =
-          (await cache.match(request, { ignoreSearch: true })) ??
-          (await cache.match("/"));
         try {
-          const networkResponse = await fetch(request);
-          cache.put(request, networkResponse.clone());
-          return networkResponse;
-        } catch (_error) {
-          return (
-            cachedResponse ||
-            preloadResponse ||
-            (await cache.match(OFFLINE_FALLBACK)) ||
-            Response.error()
-          );
+          const preloadResponse = await event.preloadResponse;
+          if (preloadResponse) {
+            return preloadResponse;
+          }
+          return await fetch(request);
+        } catch {
+          const cache = await caches.open(CACHE_VERSION);
+          return (await cache.match(OFFLINE_FALLBACK)) || Response.error();
         }
       })()
     );
+    return;
+  }
+
+  if (request.destination !== "image" && request.destination !== "font") {
     return;
   }
 
@@ -87,21 +87,26 @@ self.addEventListener("fetch", (event) => {
       const cache = await caches.open(CACHE_VERSION);
       const cachedResponse = await cache.match(request);
       if (cachedResponse) {
-        fetch(request)
-          .then((networkResponse) =>
-            cache.put(request, networkResponse.clone())
-          )
-          .catch((error) => {
-            console.warn("[sw] failed to refresh cache", error);
-          });
+        event.waitUntil(
+          fetch(request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.ok) {
+                return cache.put(request, networkResponse.clone());
+              }
+              return undefined;
+            })
+            .catch(() => undefined)
+        );
         return cachedResponse;
       }
       try {
         const networkResponse = await fetch(request);
-        cache.put(request, networkResponse.clone());
+        if (networkResponse && networkResponse.ok) {
+          cache.put(request, networkResponse.clone());
+        }
         return networkResponse;
-      } catch (_error) {
-        return cachedResponse;
+      } catch {
+        return cachedResponse || Response.error();
       }
     })()
   );
