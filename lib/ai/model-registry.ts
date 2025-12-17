@@ -7,18 +7,42 @@ import {
   getModelConfigById,
   listModelConfigs,
   setDefaultModelConfig,
+  updateModelConfig,
 } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
 
 const SEED_MODEL_KEY = "openai-gpt-4o-mini";
 export const MODEL_REGISTRY_CACHE_TAG = "model-registry";
-const MODEL_REGISTRY_CACHE_KEY = "model-registry";
+const MODEL_REGISTRY_CACHE_KEY = "model-registry-v2";
+const modelRegistryRevalidateRaw = Number.parseInt(
+  process.env.MODEL_REGISTRY_REVALIDATE_SECONDS ?? "",
+  10
+);
+const MODEL_REGISTRY_REVALIDATE_SECONDS =
+  Number.isFinite(modelRegistryRevalidateRaw) && modelRegistryRevalidateRaw > 0
+    ? modelRegistryRevalidateRaw
+    : 300;
 
 async function ensureModelConfigs(): Promise<ModelConfig[]> {
-  const existing = await listModelConfigs();
+  const existingAll = await listModelConfigs({ includeDisabled: true });
+  const enabled = existingAll.filter((config) => config.isEnabled);
 
-  if (existing.length > 0) {
-    return existing;
+  if (enabled.length > 0) {
+    return enabled;
+  }
+
+  if (existingAll.length > 0) {
+    const preferredDefault = existingAll.find((config) => config.isDefault);
+    const fallback = preferredDefault ?? existingAll[0] ?? null;
+
+    if (fallback) {
+      console.warn(
+        "[models] No enabled models found; enabling the current default model."
+      );
+      await setDefaultModelConfig(fallback.id);
+      await updateModelConfig({ id: fallback.id, isEnabled: true });
+      return await listModelConfigs();
+    }
   }
 
   const created = await createModelConfig({
@@ -58,7 +82,7 @@ export const getModelRegistry = unstable_cache(
     };
   },
   [MODEL_REGISTRY_CACHE_KEY],
-  { tags: [MODEL_REGISTRY_CACHE_TAG] }
+  { tags: [MODEL_REGISTRY_CACHE_TAG], revalidate: MODEL_REGISTRY_REVALIDATE_SECONDS }
 );
 
 export async function getModelConfigOrThrow(id: string): Promise<ModelConfig> {
