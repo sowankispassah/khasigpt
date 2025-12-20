@@ -8,6 +8,7 @@
 
 import { randomBytes } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
+import { unstable_cache } from "next/cache";
 import {
   and,
   asc,
@@ -1835,7 +1836,26 @@ export async function getChatCount({
   }
 }
 
-export async function getAppSettings(): Promise<AppSetting[]> {
+export const APP_SETTING_CACHE_TAG = "app-settings";
+
+export function appSettingCacheTagForKey(key: string) {
+  return `app-setting:${key}`;
+}
+
+function shouldUseAppSettingCache(key: string) {
+  if (process.env.SKIP_APP_SETTING_CACHE === "1") {
+    return false;
+  }
+  if (
+    process.env.SKIP_TRANSLATION_CACHE === "1" &&
+    key.startsWith("translation_bundle:")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function getAppSettingsRaw(): Promise<AppSetting[]> {
   try {
     return await db.select().from(appSetting);
   } catch (_error) {
@@ -1849,7 +1869,7 @@ export async function getAppSettings(): Promise<AppSetting[]> {
   }
 }
 
-export async function getAppSetting<T>(key: string): Promise<T | null> {
+async function getAppSettingRaw<T>(key: string): Promise<T | null> {
   try {
     const [setting] = await db
       .select()
@@ -1868,6 +1888,38 @@ export async function getAppSetting<T>(key: string): Promise<T | null> {
       "Failed to load application setting"
     );
   }
+}
+
+export async function getAppSettings(): Promise<AppSetting[]> {
+  if (!shouldUseAppSettingCache("__all__")) {
+    return getAppSettingsRaw();
+  }
+
+  const cached = unstable_cache(
+    () => getAppSettingsRaw(),
+    [APP_SETTING_CACHE_TAG],
+    {
+      tags: [APP_SETTING_CACHE_TAG],
+    }
+  );
+
+  return cached();
+}
+
+export async function getAppSetting<T>(key: string): Promise<T | null> {
+  if (!shouldUseAppSettingCache(key)) {
+    return getAppSettingRaw(key);
+  }
+
+  const cached = unstable_cache(
+    () => getAppSettingRaw<T>(key),
+    [APP_SETTING_CACHE_TAG, key],
+    {
+      tags: [APP_SETTING_CACHE_TAG, appSettingCacheTagForKey(key)],
+    }
+  );
+
+  return cached();
 }
 
 export async function setAppSetting<T>({

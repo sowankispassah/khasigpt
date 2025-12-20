@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/constants";
@@ -19,9 +18,15 @@ export const metadata: Metadata = {
     "Understand the terms and conditions that govern your use of Khasigpt.",
 };
 
-export default async function TermsOfServicePage() {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+export const revalidate = 3600;
+
+export default async function TermsOfServicePage({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang } = await params;
+  const preferredLanguage = lang?.trim().toLowerCase() ?? null;
   const stored = await getAppSetting<string>("termsOfService");
   const storedByLanguage = await getAppSetting<Record<string, string>>(
     "termsOfServiceByLanguage"
@@ -124,13 +129,15 @@ function renderLegalContent(content: string) {
       );
     }
 
-    return (
-      <p
-        className="whitespace-pre-line"
-        key={`paragraph-${block.slice(0, 32) || index}`}
-      >
-        {block.replace(MULTILINE_REGEX, " ")}
+    const paragraphs = block
+      .split(MULTILINE_REGEX)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return paragraphs.map((paragraph, paragraphIndex) => (
+      <p key={`paragraph-${index}-${paragraphIndex}-${paragraph}`}>
+        {paragraph}
       </p>
-    );
+    ));
   });
 }

@@ -1,9 +1,14 @@
 "use client";
 
-import { type ChangeEvent, useActionState, useEffect, useState } from "react";
+import {
+  type ChangeEvent,
+  useActionState,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 import { LoaderIcon } from "@/components/icons";
-import { useTranslation } from "@/components/language-provider";
 import { type ContactFormState, submitContactFormAction } from "./actions";
 
 const initialState: ContactFormState = { status: "idle" };
@@ -24,13 +29,20 @@ const emptyValues: FormValues = {
   message: "",
 };
 
-export function ContactForm() {
+type ContactFormProps = {
+  translations?: Record<string, string>;
+};
+
+export function ContactForm({ translations = {} }: ContactFormProps) {
   const [state, formAction, isPending] = useActionState<
     ContactFormState,
     FormData
   >(submitContactFormAction, initialState);
   const [values, setValues] = useState<FormValues>(emptyValues);
-  const { translate } = useTranslation();
+  const translate = useCallback(
+    (key: string, fallback: string) => translations[key] ?? fallback,
+    [translations]
+  );
 
   useEffect(() => {
     if (state.status === "success") {

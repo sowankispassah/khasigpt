@@ -14,6 +14,8 @@ import {
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
+  APP_SETTING_CACHE_TAG,
+  appSettingCacheTagForKey,
   createAuditLogEntry,
   createLanguageEntry,
   createModelConfig,
@@ -80,6 +82,11 @@ async function requireAdmin() {
   }
 
   return session.user;
+}
+
+function revalidateAppSettingCache(key: string) {
+  revalidateTag(APP_SETTING_CACHE_TAG);
+  revalidateTag(appSettingCacheTagForKey(key));
 }
 
 export async function setUserRoleAction({
@@ -196,6 +203,7 @@ export async function updateForumAvailabilityAction(formData: FormData) {
     key: FORUM_FEATURE_FLAG_KEY,
     value: enabled,
   });
+  revalidateAppSettingCache(FORUM_FEATURE_FLAG_KEY);
   await createAuditLogEntry({
     actorId: actor.id,
     action: "forum.toggle",
@@ -217,6 +225,7 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
     key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
     value: enabled,
   });
+  revalidateAppSettingCache(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY);
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -800,6 +809,7 @@ export async function updatePrivacyPolicyAction(formData: FormData) {
   const content = formData.get("content")?.toString().trim() ?? "";
 
   await setAppSetting({ key: "privacyPolicy", value: content });
+  revalidateAppSettingCache("privacyPolicy");
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -820,6 +830,7 @@ export async function updateTermsOfServiceAction(formData: FormData) {
   const content = formData.get("content")?.toString().trim() ?? "";
 
   await setAppSetting({ key: "termsOfService", value: content });
+  revalidateAppSettingCache("termsOfService");
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -883,9 +894,11 @@ export async function updateAboutContentAction(formData: FormData) {
     key: "aboutUsContentByLanguage",
     value: aboutContentByLanguage,
   });
+  revalidateAppSettingCache("aboutUsContentByLanguage");
 
   if (language.isDefault) {
     await setAppSetting({ key: "aboutUsContent", value: content });
+    revalidateAppSettingCache("aboutUsContent");
   }
 
   await createAuditLogEntry({
@@ -954,9 +967,11 @@ export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
     key: "privacyPolicyByLanguage",
     value: privacyContentByLanguage,
   });
+  revalidateAppSettingCache("privacyPolicyByLanguage");
 
   if (language.isDefault) {
     await setAppSetting({ key: "privacyPolicy", value: content });
+    revalidateAppSettingCache("privacyPolicy");
   }
 
   await createAuditLogEntry({
@@ -1025,9 +1040,11 @@ export async function updateTermsOfServiceByLanguageAction(formData: FormData) {
     key: "termsOfServiceByLanguage",
     value: termsContentByLanguage,
   });
+  revalidateAppSettingCache("termsOfServiceByLanguage");
 
   if (language.isDefault) {
     await setAppSetting({ key: "termsOfService", value: content });
+    revalidateAppSettingCache("termsOfService");
   }
 
   await createAuditLogEntry({
@@ -1319,6 +1336,7 @@ export async function updateFreeMessageSettingsAction(formData: FormData) {
     key: FREE_MESSAGE_SETTINGS_KEY,
     value: normalized,
   });
+  revalidateAppSettingCache(FREE_MESSAGE_SETTINGS_KEY);
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -1397,9 +1415,11 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
     key: "suggestedPromptsByLanguage",
     value: promptsByLanguage,
   });
+  revalidateAppSettingCache("suggestedPromptsByLanguage");
 
   if (language.isDefault) {
     await setAppSetting({ key: "suggestedPrompts", value: prompts });
+    revalidateAppSettingCache("suggestedPrompts");
   }
 
   await createAuditLogEntry({
@@ -1566,6 +1586,7 @@ export async function setRecommendedPricingPlanAction(formData: FormData) {
     key: RECOMMENDED_PRICING_PLAN_SETTING_KEY,
     value,
   });
+  revalidateAppSettingCache(RECOMMENDED_PRICING_PLAN_SETTING_KEY);
 
   await createAuditLogEntry({
     actorId: actor.id,

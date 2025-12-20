@@ -1,15 +1,10 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { cookies } from "next/headers";
 import { Toaster } from "sonner";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
-import { LanguageProvider } from "@/components/language-provider";
-import { PageUserMenu } from "@/components/page-user-menu";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { ThemeProvider } from "@/components/theme-provider";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
-import { auth } from "./(auth)/auth";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -236,21 +231,15 @@ const THEME_COLOR_SCRIPT = `(function() {
   updateThemeColor();
 })();`;
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const { languages, activeLanguage, dictionary } =
-    await getTranslationBundle(preferredLanguage);
-  const session = await auth();
-
   return (
     <html
       className={`${geist.variable} ${geistMono.variable}`}
-      lang={activeLanguage.code}
+      lang="en"
       suppressHydrationWarning
     >
       <head>
@@ -287,20 +276,13 @@ export default async function RootLayout({
           disableTransitionOnChange
           enableSystem
         >
-          <LanguageProvider
-            activeLanguage={activeLanguage}
-            dictionary={dictionary}
-            languages={languages}
-          >
-            <SessionProvider session={session ?? undefined}>
-              <GlobalProgressBar />
-              <PageUserMenu forumEnabled />
-              {children}
-            </SessionProvider>
-            <Toaster position="top-center" />
-            <SpeedInsights />
-            <PwaInstallBanner />
-          </LanguageProvider>
+          <SessionProvider>
+            <GlobalProgressBar />
+            {children}
+          </SessionProvider>
+          <Toaster position="top-center" />
+          <SpeedInsights />
+          <PwaInstallBanner />
         </ThemeProvider>
       </body>
     </html>

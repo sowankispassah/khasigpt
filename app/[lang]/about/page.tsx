@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { JsonLd } from "@/components/json-ld";
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
-import { ContactForm } from "./contact-form";
+import { ContactForm } from "../../about/contact-form";
 
 const DOUBLE_NEWLINE_REGEX = /\n{2,}/;
 const HEADING_REGEX = /^#{1,6}\s/;
@@ -16,15 +15,11 @@ const LIST_ITEM_PREFIX_REGEX = /^-+\s*/;
 const MULTILINE_REGEX = /\n+/;
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
-const aboutUrl = `${siteUrl}/about`;
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   title: "About KhasiGPT | Khasi Language AI Mission & Team",
   description:
     "Discover the KhasiGPT mission, meet the team building Khasi-first AI assistance, and learn the best ways to contact us for partnerships or support.",
-  alternates: {
-    canonical: "/about",
-  },
   keywords: [
     "KhasiGPT team",
     "Khasi AI mission",
@@ -34,7 +29,6 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     type: "website",
-    url: aboutUrl,
     title: "Meet KhasiGPT – The Khasi Language AI Team",
     description:
       "KhasiGPT blends culture and AI to help Khasi speakers write, translate, and explore ideas confidently.",
@@ -56,9 +50,35 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function AboutPage() {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+export const revalidate = 3600;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}): Promise<Metadata> {
+  const { lang } = await params;
+  const language = lang?.trim().toLowerCase();
+  const aboutPath = `/${language}/about`;
+  const aboutUrl = `${siteUrl}${aboutPath}`;
+
+  return {
+    ...baseMetadata,
+    alternates: { canonical: aboutPath },
+    openGraph: {
+      ...baseMetadata.openGraph,
+      url: aboutUrl,
+    },
+  };
+}
+
+export default async function AboutPage({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang } = await params;
+  const preferredLanguage = lang?.trim().toLowerCase() ?? null;
   const stored = await getAppSetting<string>("aboutUsContent");
   const storedByLanguage = await getAppSetting<Record<string, string>>(
     "aboutUsContentByLanguage"
@@ -100,6 +120,9 @@ export default async function AboutPage() {
       : defaultLanguageContent && defaultLanguageContent.trim().length > 0
         ? defaultLanguageContent
         : englishContent) ?? englishContent;
+
+  const aboutPath = `/${activeLanguage.code}/about`;
+  const aboutUrl = `${siteUrl}${aboutPath}`;
 
   return (
     <>
@@ -265,10 +288,15 @@ function renderAboutContent(content: string) {
       );
     }
 
-    return (
-      <p key={`paragraph-${block.slice(0, 32) || index}`}>
-        {block.replace(MULTILINE_REGEX, " ")}
+    const paragraphs = block
+      .split(MULTILINE_REGEX)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return paragraphs.map((paragraph, paragraphIndex) => (
+      <p key={`paragraph-${index}-${paragraphIndex}-${paragraph}`}>
+        {paragraph}
       </p>
-    );
+    ));
   });
 }

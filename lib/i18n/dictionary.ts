@@ -1,6 +1,9 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
 
 import {
+  APP_SETTING_CACHE_TAG,
+  appSettingCacheTagForKey,
   db,
   deleteAppSetting,
   getAppSetting,
@@ -219,6 +222,7 @@ type TranslationBundle = {
 
 type CachedBundle = {
   data: TranslationBundle;
+  cachedAt: number;
   inflight?: Promise<void>;
 };
 
@@ -257,6 +261,8 @@ async function persistBundle(key: string, bundle: TranslationBundle) {
       cachedAt: new Date().toISOString(),
     } satisfies PersistedBundle,
   });
+  revalidateTag(APP_SETTING_CACHE_TAG);
+  revalidateTag(appSettingCacheTagForKey(`${TRANSLATION_CACHE_PREFIX}${key}`));
 }
 
 async function readPersistedBundle(
@@ -303,7 +309,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     }
   )
     .then(async (bundle) => {
-      BUNDLE_CACHE.set(key, { data: bundle });
+      BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
       await persistBundle(key, bundle).catch((error) => {
         console.error("[i18n] Failed to persist translation bundle.", error);
       });
@@ -320,6 +326,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
 
   BUNDLE_CACHE.set(key, {
     data: existing?.data ?? fallbackBundle,
+    cachedAt: existing?.cachedAt ?? Date.now(),
     inflight: inflight.then(() => {
       return;
     }),
@@ -333,13 +340,7 @@ export async function getTranslationBundle(
   const cached = BUNDLE_CACHE.get(key);
   if (cached) {
     if (!cached.inflight) {
-      const persisted = await readPersistedBundle(key);
-      if (!persisted) {
-        scheduleBundleRefresh(key, preferredCode);
-      } else if (
-        Date.now() - new Date(persisted.cachedAt).getTime() >
-        TRANSLATION_CACHE_TTL_MS
-      ) {
+      if (Date.now() - cached.cachedAt > TRANSLATION_CACHE_TTL_MS) {
         scheduleBundleRefresh(key, preferredCode);
       }
     }
@@ -349,8 +350,12 @@ export async function getTranslationBundle(
   const persisted = await readPersistedBundle(key);
   if (persisted) {
     const { cachedAt, ...bundle } = persisted;
-    BUNDLE_CACHE.set(key, { data: bundle });
-    if (Date.now() - new Date(cachedAt).getTime() > TRANSLATION_CACHE_TTL_MS) {
+    const parsedCachedAt = new Date(cachedAt).getTime();
+    const resolvedCachedAt = Number.isNaN(parsedCachedAt)
+      ? Date.now()
+      : parsedCachedAt;
+    BUNDLE_CACHE.set(key, { data: bundle, cachedAt: resolvedCachedAt });
+    if (Date.now() - resolvedCachedAt > TRANSLATION_CACHE_TTL_MS) {
       scheduleBundleRefresh(key, preferredCode);
     }
     return bundle;
@@ -366,7 +371,7 @@ export async function getTranslationBundle(
         );
       }
     );
-    BUNDLE_CACHE.set(key, { data: bundle });
+    BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
     await persistBundle(key, bundle).catch((error) => {
       console.error("[i18n] Failed to persist translation bundle.", error);
     });
@@ -377,7 +382,7 @@ export async function getTranslationBundle(
       typeof preferredCode === "string" && preferredCode.trim().length > 0
         ? buildFallbackBundle(preferredCode)
         : FALLBACK_BUNDLE;
-    BUNDLE_CACHE.set(key, { data: fallbackBundle });
+    BUNDLE_CACHE.set(key, { data: fallbackBundle, cachedAt: Date.now() });
     scheduleBundleRefresh(key, preferredCode);
     return fallbackBundle;
   }
@@ -407,14 +412,20 @@ export async function invalidateTranslationBundleCache(
   }
 
   await Promise.all(
-    targets.map((key) =>
-      deleteAppSetting(`${TRANSLATION_CACHE_PREFIX}${key}`).catch((error) => {
-        console.error(
-          `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
-          error
-        );
-      })
-    )
+    targets.map((key) => {
+      const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
+      return deleteAppSetting(persistedKey)
+        .catch((error) => {
+          console.error(
+            `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
+            error
+          );
+        })
+        .finally(() => {
+          revalidateTag(APP_SETTING_CACHE_TAG);
+          revalidateTag(appSettingCacheTagForKey(persistedKey));
+        });
+    })
   );
 }
 

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
-import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/constants";
+import { DEFAULT_PRIVACY_POLICY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
@@ -14,22 +13,26 @@ const LIST_ITEM_PREFIX_REGEX = /^-+\s*/;
 const MULTILINE_REGEX = /\n+/;
 
 export const metadata: Metadata = {
-  title: "Terms of Service",
+  title: "Privacy Policy",
   description:
-    "Understand the terms and conditions that govern your use of Khasigpt.",
+    "Learn how Khasigpt collects, uses, and protects your personal information.",
 };
 
-export default async function TermsOfServicePage() {
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const stored = await getAppSetting<string>("termsOfService");
+export const revalidate = 3600;
+
+export default async function PrivacyPolicyPage({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang } = await params;
+  const preferredLanguage = lang?.trim().toLowerCase() ?? null;
+  const stored = await getAppSetting<string>("privacyPolicy");
   const storedByLanguage = await getAppSetting<Record<string, string>>(
-    "termsOfServiceByLanguage"
+    "privacyPolicyByLanguage"
   );
   const englishContent =
-    stored && stored.trim().length > 0
-      ? stored.trim()
-      : DEFAULT_TERMS_OF_SERVICE;
+    stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
   const { activeLanguage, languages, dictionary } =
     await getTranslationBundle(preferredLanguage);
 
@@ -52,7 +55,7 @@ export default async function TermsOfServicePage() {
     ? normalizedContentByLanguage[defaultLanguage.code]
     : undefined;
   const localizedContent = normalizedContentByLanguage[activeLanguage.code];
-  const resolvedContent =
+  const content =
     (localizedContent && localizedContent.trim().length > 0
       ? localizedContent
       : defaultLanguageContent && defaultLanguageContent.trim().length > 0
@@ -70,7 +73,7 @@ export default async function TermsOfServicePage() {
       <header className="space-y-2">
         <p className="font-medium text-primary text-sm">Khasigpt</p>
         <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
-          {t("legal.terms.title", "Terms of Service")}
+          {t("legal.privacy.title", "Privacy Policy")}
         </h1>
         <p className="text-muted-foreground">
           {t("legal.last_updated_prefix", "Last updated") +
@@ -79,7 +82,7 @@ export default async function TermsOfServicePage() {
       </header>
 
       <section className="space-y-3 text-muted-foreground text-sm leading-6 md:text-base md:leading-7">
-        {renderLegalContent(resolvedContent)}
+        {renderLegalContent(content)}
       </section>
     </div>
   );
@@ -124,13 +127,15 @@ function renderLegalContent(content: string) {
       );
     }
 
-    return (
-      <p
-        className="whitespace-pre-line"
-        key={`paragraph-${block.slice(0, 32) || index}`}
-      >
-        {block.replace(MULTILINE_REGEX, " ")}
+    const paragraphs = block
+      .split(MULTILINE_REGEX)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return paragraphs.map((paragraph, paragraphIndex) => (
+      <p key={`paragraph-${index}-${paragraphIndex}-${paragraph}`}>
+        {paragraph}
       </p>
-    );
+    ));
   });
 }

@@ -4,10 +4,7 @@ import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { DEFAULT_PRIVACY_POLICY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
-import {
-  getTranslationBundle,
-  getTranslationsForKeys,
-} from "@/lib/i18n/dictionary";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 const DOUBLE_NEWLINE_REGEX = /\n{2,}/;
 const HEADING_REGEX = /^#{1,6}\s/;
@@ -31,7 +28,7 @@ export default async function PrivacyPolicyPage() {
   );
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
-  const { activeLanguage, languages } =
+  const { activeLanguage, languages, dictionary } =
     await getTranslationBundle(preferredLanguage);
 
   const normalizedContentByLanguage: Record<string, string> = {};
@@ -60,36 +57,21 @@ export default async function PrivacyPolicyPage() {
         ? defaultLanguageContent
         : englishContent) ?? englishContent;
 
-  const translations = await getTranslationsForKeys(preferredLanguage, [
-    {
-      key: "navigation.back_to_home",
-      defaultText: "Back to home",
-    },
-    {
-      key: "legal.privacy.title",
-      defaultText: "Privacy Policy",
-    },
-    {
-      key: "legal.last_updated_prefix",
-      defaultText: "Last updated",
-    },
-  ]);
+  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
       <div>
-        <BackToHomeButton
-          label={translations["navigation.back_to_home"] ?? "Back to home"}
-        />
+        <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
       </div>
 
       <header className="space-y-2">
         <p className="font-medium text-primary text-sm">Khasigpt</p>
         <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
-          {translations["legal.privacy.title"] ?? "Privacy Policy"}
+          {t("legal.privacy.title", "Privacy Policy")}
         </h1>
         <p className="text-muted-foreground">
-          {(translations["legal.last_updated_prefix"] ?? "Last updated") +
+          {t("legal.last_updated_prefix", "Last updated") +
             `: ${new Date().getFullYear()}`}
         </p>
       </header>
