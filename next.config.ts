@@ -1,7 +1,19 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { NextConfig } from "next";
+import { PRELOAD_PROGRESS_SCRIPT, THEME_COLOR_SCRIPT } from "./lib/security/inline-scripts";
+import { buildStructuredData, getSiteUrl } from "./lib/seo/site";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+
+const inlineScriptHashes = [
+  PRELOAD_PROGRESS_SCRIPT,
+  THEME_COLOR_SCRIPT,
+  JSON.stringify(buildStructuredData(getSiteUrl())),
+].map(
+  (content) =>
+    `'sha256-${createHash("sha256").update(content).digest("base64")}'`
+);
 
 const scriptSrc = isDevelopment
   ? [
@@ -19,6 +31,7 @@ const scriptSrc = isDevelopment
       "'self'",
       "'strict-dynamic'",
       "'nonce-__NEXT_SCRIPT_NONCE__'",
+      ...inlineScriptHashes,
       "https://cdn.jsdelivr.net",
       "https://checkout.razorpay.com",
     ].join(" ");

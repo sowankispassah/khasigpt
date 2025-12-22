@@ -111,7 +111,7 @@ export function GlobalProgressBar() {
         return;
       }
       const clickable = target.closest(
-        'button, a, [role="button"], [data-clickable], input[type="submit"], input[type="button"], [data-nav]'
+        'button, a, summary, label[for], [role="button"], [role="tab"], [role="link"], [data-clickable], input[type="submit"], input[type="button"], [data-nav], .cursor-pointer'
       );
       if (clickable) {
         start();

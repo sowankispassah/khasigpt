@@ -5,130 +5,34 @@ import { Toaster } from "sonner";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { ThemeProvider } from "@/components/theme-provider";
+import {
+  PRELOAD_PROGRESS_SCRIPT,
+  PRELOAD_PROGRESS_STYLE,
+  THEME_COLOR_SCRIPT,
+} from "@/lib/security/inline-scripts";
+import {
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  buildStructuredData,
+  getSiteUrl,
+} from "@/lib/seo/site";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
-const siteName = "KhasiGPT";
-const siteTitle = "KhasiGPT – Khasi Language AI Assistance";
-const siteDescription =
-  "Chat with KhasiGPT, the AI assistant built for Khasi speakers. Write, translate, and explore ideas in Khasi with cultural context and accurate language support.";
-const siteLogo = new URL("/images/khasigptlogo.png", siteUrl).toString();
-const structuredData = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": `${siteUrl}/#organization`,
-      name: siteName,
-      url: siteUrl,
-      logo: siteLogo,
-    },
-    {
-      "@type": "WebSite",
-      "@id": `${siteUrl}/#website`,
-      url: siteUrl,
-      name: siteTitle,
-      publisher: {
-        "@id": `${siteUrl}/#organization`,
-      },
-      inLanguage: "en",
-    },
-    {
-      "@type": "SiteNavigationElement",
-      name: "Chat",
-      url: `${siteUrl}/chat`,
-    },
-    {
-      "@type": "SiteNavigationElement",
-      name: "About",
-      url: `${siteUrl}/about`,
-    },
-    {
-      "@type": "SiteNavigationElement",
-      name: "Pricing",
-      url: `${siteUrl}/chat/recharge`,
-    },
-    {
-      "@type": "SiteNavigationElement",
-      name: "Privacy Policy",
-      url: `${siteUrl}/privacy-policy`,
-    },
-    {
-      "@type": "SiteNavigationElement",
-      name: "Terms of Service",
-      url: `${siteUrl}/terms-of-service`,
-    },
-  ],
-} as const;
-
-const PRELOAD_PROGRESS_STYLE = `
-  #__preload-progress {
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: 0;
-    height: 4px;
-    pointer-events: none;
-    z-index: 9999;
-    background: rgba(0,0,0,0.05);
-  }
-  #__preload-progress-bar {
-    height: 100%;
-    width: 100%;
-    transform-origin: left;
-    transform: scaleX(0);
-    background: var(--primary, #22c55e);
-    transition: transform 180ms ease-out;
-    animation: __preloadGrow 2800ms cubic-bezier(.25,.8,.4,1) forwards;
-  }
-  @keyframes __preloadGrow {
-    0% { transform: scaleX(0); }
-    12% { transform: scaleX(0.28); }
-    35% { transform: scaleX(0.6); }
-    62% { transform: scaleX(0.78); }
-    100% { transform: scaleX(0.9); }
-  }
-`;
-
-const PRELOAD_PROGRESS_SCRIPT = `(function() {
-  if (window.__preloadProgressInit) return;
-  window.__preloadProgressInit = true;
-  var container = document.createElement('div');
-  container.id = '__preload-progress';
-  var bar = document.createElement('div');
-  bar.id = '__preload-progress-bar';
-  container.appendChild(bar);
-  document.documentElement.appendChild(container);
-
-  var done = false;
-
-  function finish() {
-    if (done) return;
-    done = true;
-    bar.style.transform = 'scaleX(1)';
-    setTimeout(function() {
-      if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
-      }
-    }, 220);
-  }
-
-  window.__hidePreloadProgress = finish;
-  window.addEventListener('load', finish);
-  setTimeout(finish, 4500);
-})();`;
+const siteUrl = getSiteUrl();
+const structuredData = buildStructuredData(siteUrl);
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  applicationName: siteName,
+  applicationName: SITE_NAME,
   category: "technology",
   title: {
-    default: siteTitle,
-    template: `%s – ${siteName}`,
+    default: SITE_TITLE,
+    template: `%s – ${SITE_NAME}`,
   },
-  description: siteDescription,
+  description: SITE_DESCRIPTION,
   keywords: [
     "KhasiGPT",
     "Khasi AI",
@@ -143,12 +47,12 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   authors: [
     {
-      name: siteName,
+      name: SITE_NAME,
       url: siteUrl,
     },
   ],
-  creator: siteName,
-  publisher: siteName,
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
   formatDetection: {
     telephone: false,
     address: false,
@@ -158,9 +62,9 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: siteUrl,
-    siteName,
-    title: siteTitle,
-    description: siteDescription,
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: [
       {
         url: "/opengraph-image.png",
@@ -172,8 +76,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: siteTitle,
-    description: siteDescription,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
   robots: {
     index: true,
@@ -181,7 +85,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: siteTitle,
+    title: SITE_TITLE,
     statusBarStyle: "default",
   },
   icons: {
@@ -212,24 +116,6 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
 });
 
-const LIGHT_THEME_COLOR = "hsl(0 0% 100%)";
-const DARK_THEME_COLOR = "hsl(240deg 10% 3.92%)";
-const THEME_COLOR_SCRIPT = `(function() {
-  var html = document.documentElement;
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.setAttribute('name', 'theme-color');
-    document.head.appendChild(meta);
-  }
-  function updateThemeColor() {
-    var isDark = html.classList.contains('dark');
-    meta.setAttribute('content', isDark ? '${DARK_THEME_COLOR}' : '${LIGHT_THEME_COLOR}');
-  }
-  var observer = new MutationObserver(updateThemeColor);
-  observer.observe(html, { attributes: true, attributeFilter: ['class'] });
-  updateThemeColor();
-})();`;
 
 export default function RootLayout({
   children,
