@@ -57,6 +57,8 @@ import {
   document,
   type EmailVerificationToken,
   emailVerificationToken,
+  type ImageModelConfig,
+  imageModelConfig,
   type ImpersonationToken,
   impersonationToken,
   type Language,
@@ -2633,6 +2635,324 @@ export async function setMarginBaselineModel(id: string) {
   }
 }
 
+export async function createImageModelConfig({
+  key,
+  provider,
+  providerModelId,
+  displayName,
+  description = "",
+  config = null,
+  priceInPaise = 0,
+  tokensPerImage = TOKENS_PER_CREDIT,
+  isEnabled = true,
+  isActive = false,
+}: {
+  key: string;
+  provider: ImageModelConfig["provider"];
+  providerModelId: string;
+  displayName: string;
+  description?: string;
+  config?: Record<string, unknown> | null;
+  priceInPaise?: number;
+  tokensPerImage?: number;
+  isEnabled?: boolean;
+  isActive?: boolean;
+}): Promise<ImageModelConfig> {
+  const now = new Date();
+  const resolvedTokensPerImage = Math.max(1, Math.round(tokensPerImage));
+  const resolvedPriceInPaise = Math.max(0, Math.round(priceInPaise));
+
+  try {
+    const [created] = await db
+      .insert(imageModelConfig)
+      .values({
+        key,
+        provider,
+        providerModelId,
+        displayName,
+        description,
+        config,
+        priceInPaise: resolvedPriceInPaise,
+        tokensPerImage: resolvedTokensPerImage,
+        isEnabled,
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      })
+      .returning();
+
+    if (!created) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to create image model configuration"
+      );
+    }
+
+    if (isActive) {
+      await setActiveImageModelConfig(created.id);
+      return { ...created, isActive: true };
+    }
+
+    return created;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to create image model configuration"
+    );
+  }
+}
+
+export async function getImageModelConfigById({
+  id,
+  includeDeleted = false,
+}: {
+  id: string;
+  includeDeleted?: boolean;
+}): Promise<ImageModelConfig | null> {
+  try {
+    const condition = includeDeleted
+      ? eq(imageModelConfig.id, id)
+      : and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt));
+
+    const [configResult] = await db
+      .select()
+      .from(imageModelConfig)
+      .where(condition)
+      .limit(1);
+
+    return configResult ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load image model configuration"
+    );
+  }
+}
+
+export async function getImageModelConfigByKey({
+  key,
+  includeDeleted = false,
+}: {
+  key: string;
+  includeDeleted?: boolean;
+}): Promise<ImageModelConfig | null> {
+  try {
+    const condition = includeDeleted
+      ? eq(imageModelConfig.key, key)
+      : and(eq(imageModelConfig.key, key), isNull(imageModelConfig.deletedAt));
+
+    const [configResult] = await db
+      .select()
+      .from(imageModelConfig)
+      .where(condition)
+      .limit(1);
+
+    return configResult ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load image model configuration"
+    );
+  }
+}
+
+export async function listImageModelConfigs({
+  includeDisabled = false,
+  includeDeleted = false,
+  onlyDeleted = false,
+  limit = 100,
+}: {
+  includeDisabled?: boolean;
+  includeDeleted?: boolean;
+  onlyDeleted?: boolean;
+  limit?: number;
+} = {}): Promise<ImageModelConfig[]> {
+  try {
+    const baseBuilder = db.select().from(imageModelConfig);
+
+    const deletedCondition = onlyDeleted
+      ? (isNotNull(imageModelConfig.deletedAt) as SQL<boolean>)
+      : includeDeleted
+        ? undefined
+        : (isNull(imageModelConfig.deletedAt) as SQL<boolean>);
+
+    const enabledCondition = includeDisabled
+      ? undefined
+      : (eq(imageModelConfig.isEnabled, true) as SQL<boolean>);
+
+    const whereCondition =
+      deletedCondition && enabledCondition
+        ? (and(deletedCondition, enabledCondition) as SQL<boolean>)
+        : (deletedCondition ?? enabledCondition);
+
+    const builder =
+      whereCondition !== undefined
+        ? baseBuilder.where(whereCondition)
+        : baseBuilder;
+
+    return await builder.orderBy(desc(imageModelConfig.createdAt)).limit(limit);
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    console.error("listImageModelConfigs failed", _error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list image model configurations"
+    );
+  }
+}
+
+export async function getActiveImageModelConfig(): Promise<ImageModelConfig | null> {
+  try {
+    const [activeModel] = await db
+      .select()
+      .from(imageModelConfig)
+      .where(
+        and(
+          eq(imageModelConfig.isActive, true),
+          eq(imageModelConfig.isEnabled, true),
+          isNull(imageModelConfig.deletedAt)
+        )
+      )
+      .limit(1);
+
+    return activeModel ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load active image model configuration"
+    );
+  }
+}
+
+export async function updateImageModelConfig({
+  id,
+  ...patch
+}: {
+  id: string;
+  provider?: ImageModelConfig["provider"];
+  providerModelId?: string;
+  displayName?: string;
+  description?: string | null;
+  config?: Record<string, unknown> | null;
+  priceInPaise?: number;
+  tokensPerImage?: number;
+  isEnabled?: boolean;
+}): Promise<ImageModelConfig | null> {
+  try {
+    const updateData: Partial<typeof imageModelConfig.$inferInsert> = {};
+
+    if (patch.provider !== undefined) {
+      updateData.provider = patch.provider;
+    }
+    if (patch.providerModelId !== undefined) {
+      updateData.providerModelId = patch.providerModelId;
+    }
+    if (patch.displayName !== undefined) {
+      updateData.displayName = patch.displayName;
+    }
+    if (patch.description !== undefined) {
+      updateData.description = patch.description ?? "";
+    }
+    if (patch.config !== undefined) {
+      updateData.config = patch.config ?? null;
+    }
+    if (patch.priceInPaise !== undefined) {
+      updateData.priceInPaise = Math.max(0, Math.round(patch.priceInPaise));
+    }
+    if (patch.tokensPerImage !== undefined) {
+      updateData.tokensPerImage = Math.max(
+        1,
+        Math.round(patch.tokensPerImage)
+      );
+    }
+    if (patch.isEnabled !== undefined) {
+      updateData.isEnabled = patch.isEnabled;
+    }
+
+    const [updated] = await db
+      .update(imageModelConfig)
+      .set({
+        ...updateData,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update image model configuration"
+    );
+  }
+}
+
+export async function deleteImageModelConfig(id: string) {
+  try {
+    await db
+      .update(imageModelConfig)
+      .set({
+        deletedAt: new Date(),
+        isActive: false,
+        isEnabled: false,
+      })
+      .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to delete image model configuration"
+    );
+  }
+}
+
+export async function hardDeleteImageModelConfig(id: string) {
+  try {
+    await db.delete(imageModelConfig).where(eq(imageModelConfig.id, id));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to hard delete image model configuration"
+    );
+  }
+}
+
+export async function setActiveImageModelConfig(id: string) {
+  const now = new Date();
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(imageModelConfig)
+        .set({ isActive: false, updatedAt: now })
+        .where(
+          and(eq(imageModelConfig.isActive, true), isNull(imageModelConfig.deletedAt))
+        );
+
+      await tx
+        .update(imageModelConfig)
+        .set({ isActive: true, isEnabled: true, updatedAt: now })
+        .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)));
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to set active image model configuration"
+    );
+  }
+}
+
 export async function listPricingPlans({
   includeInactive = false,
   includeDeleted = false,
@@ -4551,6 +4871,94 @@ export async function recordTokenUsage({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to record token usage"
+    );
+  }
+}
+
+export async function deductImageCredits({
+  userId,
+  tokensToDeduct,
+}: {
+  userId: string;
+  tokensToDeduct: number;
+}): Promise<void> {
+  const resolvedTokens = Math.max(1, Math.round(tokensToDeduct));
+
+  if (resolvedTokens <= 0) {
+    throw new ChatSDKError(
+      "bad_request:usage",
+      "Token usage must be greater than zero"
+    );
+  }
+
+  const now = new Date();
+
+  try {
+    await db.transaction(async (tx) => {
+      const subscription = await getActiveSubscriptionInternal(tx, userId, now);
+
+      if (!subscription) {
+        throw new ChatSDKError(
+          "payment_required:credits",
+          "No active subscription found for user"
+        );
+      }
+
+      if (subscription.tokenBalance < resolvedTokens) {
+        await tx
+          .update(userSubscription)
+          .set({
+            tokenBalance: 0,
+            manualTokenBalance: 0,
+            paidTokenBalance: 0,
+            tokensUsed: Math.min(
+              subscription.tokenAllowance,
+              subscription.tokensUsed + subscription.tokenBalance
+            ),
+            status: "exhausted",
+            updatedAt: now,
+          })
+          .where(eq(userSubscription.id, subscription.id));
+
+        throw new ChatSDKError(
+          "payment_required:credits",
+          "Insufficient credits remaining"
+        );
+      }
+
+      const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
+      const paidBalance = Math.max(0, subscription.paidTokenBalance ?? 0);
+      const manualTokensDeducted = Math.min(resolvedTokens, manualBalance);
+      const paidTokensDeducted = Math.min(
+        resolvedTokens - manualTokensDeducted,
+        paidBalance
+      );
+      const remainingManualBalance = manualBalance - manualTokensDeducted;
+      const remainingPaidBalance = paidBalance - paidTokensDeducted;
+      const remaining = Math.max(
+        0,
+        remainingManualBalance + remainingPaidBalance
+      );
+
+      await tx
+        .update(userSubscription)
+        .set({
+          tokenBalance: remaining,
+          manualTokenBalance: remainingManualBalance,
+          paidTokenBalance: remainingPaidBalance,
+          tokensUsed: subscription.tokensUsed + resolvedTokens,
+          status: remaining > 0 ? "active" : "exhausted",
+          updatedAt: now,
+        })
+        .where(eq(userSubscription.id, subscription.id));
+    });
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to deduct image credits"
     );
   }
 }

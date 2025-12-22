@@ -6,6 +6,7 @@ import { ChatLoader } from "@/components/chat-loader";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { DataStreamProvider } from "@/components/data-stream-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
+import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import {
@@ -28,18 +29,19 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const session = await auth();
   const [
-    session,
     modelsResult,
     suggestedPrompts,
     translationBundle,
     customKnowledgeSetting,
+    imageGenerationAccess,
   ] = await Promise.all([
-    auth(),
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
     getTranslationBundle(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+    getImageGenerationAccess({ userId: session?.user?.id ?? null }),
   ]);
   const { dictionary } = translationBundle;
   const customKnowledgeEnabled =
@@ -108,6 +110,10 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             autoResume={true}
             customKnowledgeEnabled={customKnowledgeEnabled}
             id={chat.id}
+            imageGeneration={{
+              enabled: imageGenerationAccess.enabled,
+              canGenerate: imageGenerationAccess.canGenerate,
+            }}
             initialChatModel={fallbackModelId}
             initialMessages={uiMessages}
             initialVisibilityType={chat.visibility}
@@ -136,6 +142,10 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           autoResume={true}
           customKnowledgeEnabled={customKnowledgeEnabled}
           id={chat.id}
+          imageGeneration={{
+            enabled: imageGenerationAccess.enabled,
+            canGenerate: imageGenerationAccess.canGenerate,
+          }}
           initialChatModel={fallbackModelId}
           initialMessages={uiMessages}
           initialVisibilityType={chat.visibility}

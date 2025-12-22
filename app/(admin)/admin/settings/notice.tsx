@@ -43,6 +43,41 @@ const NOTICE_MESSAGES: Record<
     message:
       "Failed to create the model configuration. Check your inputs and try again.",
   },
+  "image-model-created": {
+    type: "success",
+    message: "Image model configuration created.",
+  },
+  "image-model-updated": {
+    type: "success",
+    message: "Image model configuration updated.",
+  },
+  "image-model-deleted": {
+    type: "success",
+    message: "Image model configuration deleted.",
+  },
+  "image-model-hard-deleted": {
+    type: "success",
+    message: "Image model configuration permanently deleted.",
+  },
+  "image-model-activated": {
+    type: "success",
+    message: "Active image model updated.",
+  },
+  "image-model-key-conflict": {
+    type: "error",
+    message:
+      "Image model key already exists. Choose a different key or edit the existing configuration.",
+  },
+  "image-model-key-soft-deleted": {
+    type: "error",
+    message:
+      "A soft-deleted image model uses this key. Restore or hard delete it before creating a new one.",
+  },
+  "image-model-create-error": {
+    type: "error",
+    message:
+      "Failed to create the image model configuration. Check your inputs and try again.",
+  },
   "privacy-updated": { type: "success", message: "Privacy policy updated." },
   "terms-updated": { type: "success", message: "Terms of service updated." },
   "about-updated": { type: "success", message: "About page content updated." },

@@ -1,19 +1,25 @@
 import { formatDistanceToNow } from "date-fns";
 import type { ReactNode } from "react";
 import {
+  createImageModelConfigAction,
   createLanguageAction,
   createModelConfigAction,
   createPricingPlanAction,
+  deleteImageModelConfigAction,
   deleteModelConfigAction,
   deletePricingPlanAction,
+  hardDeleteImageModelConfigAction,
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
+  updateImageGenerationAvailabilityAction,
+  setActiveImageModelConfigAction,
   setDefaultModelConfigAction,
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
   updateForumAvailabilityAction,
   updateFreeMessageSettingsAction,
+  updateImageModelConfigAction,
   updateLanguageStatusAction,
   updateModelConfigAction,
   updatePlanTranslationAction,
@@ -23,6 +29,7 @@ import {
   updateTermsOfServiceByLanguageAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { parseImageGenerationEnabledSetting } from "@/lib/ai/image-generation";
 import {
   DEFAULT_ABOUT_US,
   DEFAULT_FREE_MESSAGES_PER_DAY,
@@ -30,12 +37,14 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
   FORUM_FEATURE_FLAG_KEY,
+  IMAGE_GENERATION_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
   getAppSetting,
   getTranslationValuesForKeys,
+  listImageModelConfigs,
   listModelConfigs,
   listPricingPlans,
 } from "@/lib/db/queries";
@@ -46,6 +55,7 @@ import { getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { cn } from "@/lib/utils";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
+import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 
@@ -87,6 +97,17 @@ function EnabledBadge({ enabled }: { enabled: boolean }) {
   return (
     <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
       Disabled
+    </span>
+  );
+}
+
+function ActiveBadge({ active }: { active: boolean }) {
+  if (!active) {
+    return null;
+  }
+  return (
+    <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
+      Active
     </span>
   );
 }
@@ -138,6 +159,7 @@ export default async function AdminSettingsPage({
   const [
     exchangeRate,
     modelsRaw,
+    imageModelConfigs,
     plansRaw,
     privacyPolicySetting,
     termsOfServiceSetting,
@@ -151,9 +173,15 @@ export default async function AdminSettingsPage({
     languages,
     freeMessageSettings,
     forumEnabledSetting,
+    imageGenerationEnabledSetting,
   ] = await Promise.all([
     getUsdToInrRate(),
     listModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
+    }),
+    listImageModelConfigs({
       includeDisabled: true,
       includeDeleted: true,
       limit: 200,
@@ -171,11 +199,14 @@ export default async function AdminSettingsPage({
     getAllLanguages(),
     loadFreeMessageSettings(),
     getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+    getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
   ]);
 
   const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
   const deletedModels = modelsRaw.filter((model) => model.deletedAt);
+  const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
+  const deletedImageModels = imageModelConfigs.filter((model) => model.deletedAt);
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -185,9 +216,12 @@ export default async function AdminSettingsPage({
     activePlans.some((plan) => plan.id === recommendedPlanSetting)
       ? recommendedPlanSetting
       : null;
-  const recommendedPlanName = recommendedPlanId
-    ? (activePlans.find((plan) => plan.id === recommendedPlanId)?.name ?? null)
+  const recommendedPlan = recommendedPlanId
+    ? activePlans.find((plan) => plan.id === recommendedPlanId) ?? null
     : null;
+  const recommendedPlanName = recommendedPlan?.name ?? null;
+  const recommendedPlanPriceInPaise = recommendedPlan?.priceInPaise ?? 0;
+  const recommendedPlanTokenAllowance = recommendedPlan?.tokenAllowance ?? 0;
 
   const privacyPolicyContent =
     privacyPolicySetting && privacyPolicySetting.trim().length > 0
@@ -298,6 +332,9 @@ export default async function AdminSettingsPage({
     }
   }
   const forumEnabled = parseForumEnabledSetting(forumEnabledSetting);
+  const imageGenerationEnabled = parseImageGenerationEnabledSetting(
+    imageGenerationEnabledSetting
+  );
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -433,6 +470,50 @@ export default async function AdminSettingsPage({
                 variant={forumEnabled ? "destructive" : "default"}
               >
                 {forumEnabled ? "Disable forum" : "Enable forum"}
+              </ActionSubmitButton>
+              <p className="text-muted-foreground text-xs">
+                Changes take effect immediately for all users.
+              </p>
+            </form>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Control access to optional, user-facing experiences."
+          title="Feature settings"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-sm">
+                  AI image generation
+                </span>
+                <EnabledBadge enabled={imageGenerationEnabled} />
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Show or hide the image generation entry points across the chat
+                experience.
+              </p>
+            </div>
+            <form
+              action={updateImageGenerationAvailabilityAction}
+              className="flex flex-col gap-3 text-sm"
+            >
+              <input
+                name="imageGenerationEnabled"
+                type="hidden"
+                value={(!imageGenerationEnabled).toString()}
+              />
+              <ActionSubmitButton
+                pendingLabel={
+                  imageGenerationEnabled ? "Disabling…" : "Enabling…"
+                }
+                successMessage="Image generation availability updated."
+                variant={imageGenerationEnabled ? "destructive" : "default"}
+              >
+                {imageGenerationEnabled
+                  ? "Disable image generation"
+                  : "Enable image generation"}
               </ActionSubmitButton>
               <p className="text-muted-foreground text-xs">
                 Changes take effect immediately for all users.
@@ -1898,6 +1979,384 @@ export default async function AdminSettingsPage({
                       </span>
                     </div>
                     <form action={hardDeleteModelConfigAction}>
+                      <input name="id" type="hidden" value={model.id} />
+                      <ActionSubmitButton
+                        pendingLabel="Hard deleting..."
+                        size="sm"
+                        variant="destructive"
+                      >
+                        Hard delete
+                      </ActionSubmitButton>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Add Google Nano Banana (or other image models) and define per-image pricing."
+          title="Add image generation model"
+        >
+          <form
+            action={createImageModelConfigAction}
+            className="grid gap-4 md:grid-cols-2"
+          >
+            <div className="flex flex-col gap-2">
+              <label className="font-medium text-sm" htmlFor="imageModelKey">
+                Model key
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                id="imageModelKey"
+                name="key"
+                placeholder="google-nano-banana"
+                required
+              />
+              <p className="text-muted-foreground text-xs">
+                Internal identifier that must be unique.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="font-medium text-sm" htmlFor="imageProvider">
+                Provider
+              </label>
+              <select
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue="google"
+                id="imageProvider"
+                name="provider"
+                required
+              >
+                {PROVIDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label
+                className="font-medium text-sm"
+                htmlFor="imageProviderModelId"
+              >
+                Provider model ID
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                id="imageProviderModelId"
+                name="providerModelId"
+                placeholder="gemini-2.5-flash-image-preview"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label
+                className="font-medium text-sm"
+                htmlFor="imageDisplayName"
+              >
+                Display name
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                id="imageDisplayName"
+                name="displayName"
+                placeholder="Nano Banana (Image)"
+                required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <ImageModelPricingFields
+                initialTokensPerImage={TOKENS_PER_CREDIT}
+                inputIdPrefix="image-model-create"
+                recommendedPlanPriceInPaise={recommendedPlanPriceInPaise}
+                recommendedPlanTokenAllowance={recommendedPlanTokenAllowance}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label className="font-medium text-sm" htmlFor="imageDescription">
+                Description
+              </label>
+              <textarea
+                className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
+                id="imageDescription"
+                name="description"
+                placeholder="Explain what this image model is best suited for."
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                className="h-4 w-4"
+                defaultChecked
+                id="imageIsEnabled"
+                name="isEnabled"
+                type="checkbox"
+              />
+              <label className="font-medium text-sm" htmlFor="imageIsEnabled">
+                Enable immediately
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                className="h-4 w-4"
+                id="imageIsActive"
+                name="isActive"
+                type="checkbox"
+              />
+              <label className="font-medium text-sm" htmlFor="imageIsActive">
+                Set as active image model
+              </label>
+            </div>
+
+            <div className="flex justify-end md:col-span-2">
+              <ActionSubmitButton pendingLabel="Creating...">
+                Create image model
+              </ActionSubmitButton>
+            </div>
+          </form>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Configured image models">
+          <div className="space-y-6">
+            {activeImageModels.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No image models configured yet.
+              </p>
+            ) : (
+              activeImageModels.map((model) => {
+                const tokensPerImage = Number(
+                  model.tokensPerImage ?? TOKENS_PER_CREDIT
+                );
+                const creditsPerImage = tokensPerImage / TOKENS_PER_CREDIT;
+                const priceInRupees =
+                  typeof model.priceInPaise === "number"
+                    ? model.priceInPaise / 100
+                    : 0;
+
+                return (
+                  <details
+                    className="rounded-md border bg-background p-4"
+                    key={model.id}
+                  >
+                    <summary className="flex cursor-pointer flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{model.displayName}</span>
+                        <ProviderBadge value={model.provider} />
+                        <EnabledBadge enabled={model.isEnabled} />
+                        <ActiveBadge active={model.isActive} />
+                      </div>
+                      <span className="font-mono text-muted-foreground text-xs">
+                        {model.providerModelId}
+                      </span>
+                    </summary>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
+                        <h4 className="font-semibold text-foreground text-sm">
+                          Image pricing
+                        </h4>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Price (INR)
+                            </p>
+                            <p>
+                              {priceInRupees > 0
+                                ? priceInRupees.toLocaleString("en-IN", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })
+                                : "Not set"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Credits per image
+                            </p>
+                            <p>{creditsPerImage.toFixed(2)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                              Tokens per image
+                            </p>
+                            <p>{tokensPerImage.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <form
+                        action={updateImageModelConfigAction}
+                        className="grid gap-4 md:col-span-2 md:grid-cols-2"
+                      >
+                        <input name="id" type="hidden" value={model.id} />
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`image-model-display-name-${model.id}`}
+                          >
+                            Display name
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.displayName}
+                            id={`image-model-display-name-${model.id}`}
+                            name="displayName"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`image-model-provider-${model.id}`}
+                          >
+                            Provider
+                          </label>
+                          <select
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.provider}
+                            id={`image-model-provider-${model.id}`}
+                            name="provider"
+                          >
+                            {PROVIDER_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`image-model-provider-id-${model.id}`}
+                          >
+                            Provider model ID
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.providerModelId}
+                            id={`image-model-provider-id-${model.id}`}
+                            name="providerModelId"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <ImageModelPricingFields
+                            initialPriceInPaise={model.priceInPaise ?? 0}
+                            initialTokensPerImage={tokensPerImage}
+                            inputIdPrefix={`image-model-${model.id}`}
+                            recommendedPlanPriceInPaise={
+                              recommendedPlanPriceInPaise
+                            }
+                            recommendedPlanTokenAllowance={
+                              recommendedPlanTokenAllowance
+                            }
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2 md:col-span-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`image-model-description-${model.id}`}
+                          >
+                            Description
+                          </label>
+                          <textarea
+                            className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.description}
+                            id={`image-model-description-${model.id}`}
+                            name="description"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <input
+                            className="h-4 w-4"
+                            defaultChecked={model.isEnabled}
+                            id={`image-model-enabled-${model.id}`}
+                            name="isEnabled"
+                            type="checkbox"
+                          />
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`image-model-enabled-${model.id}`}
+                          >
+                            Enabled
+                          </label>
+                        </div>
+
+                        <div className="flex justify-end md:col-span-2">
+                          <ActionSubmitButton pendingLabel="Saving...">
+                            Save changes
+                          </ActionSubmitButton>
+                        </div>
+                      </form>
+
+                      <div className="flex flex-wrap gap-3 md:col-span-2">
+                        {!model.isActive && (
+                          <form action={setActiveImageModelConfigAction}>
+                            <input name="id" type="hidden" value={model.id} />
+                            <ActionSubmitButton
+                              pendingLabel="Updating..."
+                              size="sm"
+                              variant="outline"
+                            >
+                              Set as active
+                            </ActionSubmitButton>
+                          </form>
+                        )}
+
+                        <form action={deleteImageModelConfigAction}>
+                          <input name="id" type="hidden" value={model.id} />
+                          <ActionSubmitButton
+                            className="border border-destructive text-destructive hover:bg-destructive/10"
+                            pendingLabel="Soft deleting..."
+                            size="sm"
+                            variant="outline"
+                          >
+                            Soft delete
+                          </ActionSubmitButton>
+                        </form>
+                      </div>
+                    </div>
+                  </details>
+                );
+              })
+            )}
+          </div>
+
+          {deletedImageModels.length > 0 && (
+            <div className="mt-8 space-y-3">
+              <h3 className="font-semibold text-muted-foreground text-sm">
+                Deleted image models
+              </h3>
+              <div className="grid gap-2">
+                {deletedImageModels.map((model) => (
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
+                    key={model.id}
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">{model.displayName}</span>
+                      <span className="text-muted-foreground text-xs">
+                        Deleted{" "}
+                        {model.deletedAt
+                          ? formatDistanceToNow(new Date(model.deletedAt), {
+                              addSuffix: true,
+                            })
+                          : "recently"}
+                      </span>
+                    </div>
+                    <form action={hardDeleteImageModelConfigAction}>
                       <input name="id" type="hidden" value={model.id} />
                       <ActionSubmitButton
                         pendingLabel="Hard deleting..."

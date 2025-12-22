@@ -1,6 +1,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
+import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
@@ -24,6 +25,7 @@ type MessagesProps = {
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   suggestedPrompts: string[];
   selectedVisibilityType: VisibilityType;
+  isGeneratingImage?: boolean;
 };
 
 function PureMessages({
@@ -38,6 +40,7 @@ function PureMessages({
   sendMessage,
   suggestedPrompts,
   selectedVisibilityType,
+  isGeneratingImage = false,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
@@ -50,6 +53,7 @@ function PureMessages({
   } = useMessages({
     status,
   });
+  const { translate } = useTranslation();
   const mountedChatRef = useRef<string | null>(null);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
@@ -98,6 +102,15 @@ function PureMessages({
       });
     }
   }, [status, streamingSignature, isAtBottom, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isGeneratingImage) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      scrollToBottom("auto");
+    });
+  }, [isGeneratingImage, scrollToBottom]);
 
   if (messages.length === 0) {
     return (
@@ -153,6 +166,20 @@ function PureMessages({
               }
             />
           ))}
+
+          {isGeneratingImage && (
+            <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+              <div className="flex flex-col gap-2">
+                <div className="h-60 w-60 animate-pulse rounded-xl border bg-muted/60" />
+                <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                  <span className="inline-flex size-4 animate-spin items-center justify-center">
+                    <LoaderIcon size={14} />
+                  </span>
+                  {translate("image.generate.loading", "Generating...")}
+                </div>
+              </div>
+            </div>
+          )}
 
           {status !== "ready" &&
             status !== "streaming" &&

@@ -6,6 +6,7 @@ import { DataStreamHandler } from "@/components/data-stream-handler";
 import { DataStreamProvider } from "@/components/data-stream-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { Button } from "@/components/ui/button";
+import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
@@ -22,12 +23,17 @@ export default async function Page() {
     return <PublicLanding />;
   }
 
-  const [modelsResult, suggestedPrompts, customKnowledgeSetting] =
-    await Promise.all([
-      loadChatModels(),
-      loadSuggestedPrompts(preferredLanguage),
-      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-    ]);
+  const [
+    modelsResult,
+    suggestedPrompts,
+    customKnowledgeSetting,
+    imageGenerationAccess,
+  ] = await Promise.all([
+    loadChatModels(),
+    loadSuggestedPrompts(preferredLanguage),
+    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+    getImageGenerationAccess({ userId: session.user.id }),
+  ]);
 
   const { defaultModel, models } = modelsResult;
 
@@ -69,6 +75,10 @@ export default async function Page() {
             autoResume={false}
             customKnowledgeEnabled={customKnowledgeEnabled}
             id={id}
+            imageGeneration={{
+              enabled: imageGenerationAccess.enabled,
+              canGenerate: imageGenerationAccess.canGenerate,
+            }}
             initialChatModel={fallbackModelId}
             initialMessages={[]}
             initialVisibilityType="private"
@@ -93,13 +103,17 @@ export default async function Page() {
       }))}
     >
       <DataStreamProvider>
-        <ChatLoader
-          autoResume={false}
-          customKnowledgeEnabled={customKnowledgeEnabled}
-          id={id}
-          initialChatModel={fallbackModelId}
-          initialMessages={[]}
-          initialVisibilityType="private"
+      <ChatLoader
+        autoResume={false}
+        customKnowledgeEnabled={customKnowledgeEnabled}
+        id={id}
+        imageGeneration={{
+          enabled: imageGenerationAccess.enabled,
+          canGenerate: imageGenerationAccess.canGenerate,
+        }}
+        initialChatModel={fallbackModelId}
+        initialMessages={[]}
+        initialVisibilityType="private"
           isReadonly={false}
           key={id}
           suggestedPrompts={suggestedPrompts}

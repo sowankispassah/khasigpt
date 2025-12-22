@@ -168,6 +168,33 @@ export const modelConfig = pgTable("ModelConfig", {
 
 export type ModelConfig = InferSelectModel<typeof modelConfig>;
 
+export const imageModelConfig = pgTable(
+  "ImageModelConfig",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    key: varchar("key", { length: 64 }).notNull().unique(),
+    provider: modelProviderEnum("provider").notNull(),
+    providerModelId: varchar("providerModelId", { length: 128 }).notNull(),
+    displayName: varchar("displayName", { length: 128 }).notNull(),
+    description: text("description").notNull().default(""),
+    config: jsonb("config"),
+    priceInPaise: integer("priceInPaise").notNull().default(0),
+    tokensPerImage: integer("tokensPerImage").notNull().default(100),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    isActive: boolean("isActive").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  (table) => ({
+    activeIdx: uniqueIndex("ImageModelConfig_active_idx")
+      .on(table.isActive)
+      .where(sql`${table.isActive} = true`),
+  })
+);
+
+export type ImageModelConfig = InferSelectModel<typeof imageModelConfig>;
+
 export const ragEntryTypeEnum = pgEnum("rag_entry_type", [
   "text",
   "document",

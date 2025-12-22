@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { Attachment } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Loader } from "./elements/loader";
 import { CrossSmallIcon } from "./icons";
 import { Button } from "./ui/button";
@@ -12,10 +13,16 @@ export const PreviewAttachment = ({
   attachment,
   isUploading = false,
   onRemove,
+  className,
+  previewSize,
+  showName = true,
 }: {
   attachment: Attachment;
   isUploading?: boolean;
   onRemove?: () => void;
+  className?: string;
+  previewSize?: number;
+  showName?: boolean;
 }) => {
   const { name, url, contentType } = attachment;
   const isImage = Boolean(contentType?.startsWith("image"));
@@ -24,12 +31,17 @@ export const PreviewAttachment = ({
     width: number;
     height: number;
   } | null>(null);
+  const resolvedPreviewSize = previewSize ?? 64;
 
   if (!isImage) {
     return (
       <div
-        className="group relative size-16 overflow-hidden rounded-lg border bg-muted"
+        className={cn(
+          "group relative overflow-hidden rounded-lg border bg-muted",
+          className
+        )}
         data-testid="input-attachment-preview"
+        style={{ width: resolvedPreviewSize, height: resolvedPreviewSize }}
       >
         <div className="flex size-full items-center justify-center text-muted-foreground text-xs">
           File
@@ -55,9 +67,11 @@ export const PreviewAttachment = ({
           </Button>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 truncate bg-linear-to-t from-black/80 to-transparent px-1 py-0.5 text-[10px] text-white">
-          {name}
-        </div>
+        {showName ? (
+          <div className="absolute inset-x-0 bottom-0 truncate bg-linear-to-t from-black/80 to-transparent px-1 py-0.5 text-[10px] text-white">
+            {name}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -68,7 +82,10 @@ export const PreviewAttachment = ({
         <button
           aria-disabled={isUploading}
           aria-label={name ? `View ${name}` : "View image attachment"}
-          className="group relative size-16 cursor-pointer overflow-hidden rounded-lg border bg-muted outline-none ring-primary transition focus-visible:ring-2"
+          className={cn(
+            "group relative cursor-pointer overflow-hidden rounded-lg border bg-muted outline-none ring-primary transition focus-visible:ring-2",
+            className
+          )}
           data-testid="input-attachment-preview"
           onClick={(event) => {
             if (isUploading) {
@@ -86,14 +103,15 @@ export const PreviewAttachment = ({
               setOpen(true);
             }
           }}
+          style={{ width: resolvedPreviewSize, height: resolvedPreviewSize }}
           type="button"
         >
           <Image
             alt={name ?? "An image attachment"}
             className="size-full object-cover"
-            height={64}
+            height={resolvedPreviewSize}
             src={url}
-            width={64}
+            width={resolvedPreviewSize}
           />
 
           {isUploading && (
@@ -116,9 +134,11 @@ export const PreviewAttachment = ({
             </Button>
           )}
 
-          <div className="absolute inset-x-0 bottom-0 truncate bg-linear-to-t from-black/80 to-transparent px-1 py-0.5 text-[10px] text-white">
-            {name}
-          </div>
+          {showName ? (
+            <div className="absolute inset-x-0 bottom-0 truncate bg-linear-to-t from-black/80 to-transparent px-1 py-0.5 text-[10px] text-white">
+              {name}
+            </div>
+          ) : null}
         </button>
       </DialogTrigger>
 

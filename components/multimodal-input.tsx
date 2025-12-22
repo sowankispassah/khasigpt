@@ -33,9 +33,21 @@ import {
   PromptInputToolbar,
   PromptInputTools,
 } from "./elements/prompt-input";
-import { ArrowUpIcon, ChevronDownIcon, PaperclipIcon, StopIcon } from "./icons";
+import {
+  ArrowUpIcon,
+  ChevronDownIcon,
+  ImageIcon,
+  PaperclipIcon,
+  StopIcon,
+} from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import { Button } from "./ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 import type { VisibilityType } from "./visibility-selector";
 
 function PureMultimodalInput({
@@ -53,6 +65,12 @@ function PureMultimodalInput({
   selectedVisibilityType: _selectedVisibilityType,
   selectedModelId,
   onModelChange,
+  imageGenerationEnabled,
+  imageGenerationSelected,
+  imageGenerationCanGenerate,
+  isGeneratingImage,
+  onGenerateImage,
+  onToggleImageMode,
 }: {
   chatId: string;
   input: string;
@@ -68,6 +86,12 @@ function PureMultimodalInput({
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
+  imageGenerationEnabled: boolean;
+  imageGenerationSelected: boolean;
+  imageGenerationCanGenerate: boolean;
+  isGeneratingImage: boolean;
+  onGenerateImage: () => void;
+  onToggleImageMode: () => void;
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -75,6 +99,26 @@ function PureMultimodalInput({
   const { translate } = useTranslation();
   const inputPlaceholder = useMemo(
     () => translate("chat.input.placeholder", "Send a message..."),
+    [translate]
+  );
+  const imagePlaceholder = useMemo(
+    () =>
+      translate(
+        "image.input.placeholder",
+        "Describe the image you want to generate..."
+      ),
+    [translate]
+  );
+  const imageToggleLabel = useMemo(
+    () => translate("image.mode.toggle", "Generate image"),
+    [translate]
+  );
+  const imageToggleTooltip = useMemo(
+    () =>
+      translate(
+        "image.actions.locked.tooltip",
+        "Recharge credits to generate images."
+      ),
     [translate]
   );
 
@@ -168,6 +212,8 @@ function PureMultimodalInput({
     resetHeight,
   ]);
 
+  const isBusy = (status !== "ready" && status !== "error") || isGeneratingImage;
+
   const uploadFile = useCallback(
     async (file: File) => {
       const formData = new FormData();
@@ -252,7 +298,7 @@ function PureMultimodalInput({
         className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
         onSubmit={(event) => {
           event.preventDefault();
-          if (status !== "ready" && status !== "error") {
+          if (isBusy) {
             toast.error(
               translate(
                 "chat.input.wait_for_response",
@@ -260,7 +306,11 @@ function PureMultimodalInput({
               )
             );
           } else {
-            submitForm();
+            if (imageGenerationSelected) {
+              onGenerateImage();
+            } else {
+              submitForm();
+            }
           }
         }}
       >
@@ -306,7 +356,9 @@ function PureMultimodalInput({
             maxHeight={200}
             minHeight={44}
             onChange={handleInput}
-            placeholder={inputPlaceholder}
+            placeholder={
+              imageGenerationSelected ? imagePlaceholder : inputPlaceholder
+            }
             ref={textareaRef}
             rows={1}
             value={input}
@@ -317,7 +369,15 @@ function PureMultimodalInput({
             <AttachmentsButton
               fileInputRef={fileInputRef}
               isReasoningModel={isReasoningModel}
-              status={status}
+              isBusy={isBusy}
+            />
+            <ImageModeToggle
+              canGenerate={imageGenerationCanGenerate}
+              enabled={imageGenerationEnabled}
+              isActive={imageGenerationSelected}
+              label={imageToggleLabel}
+              tooltip={imageToggleTooltip}
+              onToggle={onToggleImageMode}
             />
             <ModelSelectorCompact
               onModelChange={onModelChange}
@@ -333,7 +393,7 @@ function PureMultimodalInput({
               disabled={
                 !input.trim() ||
                 uploadQueue.length > 0 ||
-                (status !== "ready" && status !== "error")
+                isBusy
               }
               status={status}
             >
@@ -355,6 +415,21 @@ export const MultimodalInput = memo(
     if (prevProps.status !== nextProps.status) {
       return false;
     }
+    if (prevProps.isGeneratingImage !== nextProps.isGeneratingImage) {
+      return false;
+    }
+    if (
+      prevProps.imageGenerationSelected !== nextProps.imageGenerationSelected
+    ) {
+      return false;
+    }
+    if (
+      prevProps.imageGenerationEnabled !== nextProps.imageGenerationEnabled ||
+      prevProps.imageGenerationCanGenerate !==
+        nextProps.imageGenerationCanGenerate
+    ) {
+      return false;
+    }
     if (!equal(prevProps.attachments, nextProps.attachments)) {
       return false;
     }
@@ -371,18 +446,18 @@ export const MultimodalInput = memo(
 
 function PureAttachmentsButton({
   fileInputRef,
-  status,
+  isBusy,
   isReasoningModel,
 }: {
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
-  status: UseChatHelpers<ChatMessage>["status"];
+  isBusy: boolean;
   isReasoningModel: boolean;
 }) {
   return (
     <Button
       className="aspect-square h-8 rounded-lg p-1 transition-colors hover:bg-accent"
       data-testid="attachments-button"
-      disabled={(status !== "ready" && status !== "error") || isReasoningModel}
+      disabled={isBusy || isReasoningModel}
       onClick={(event) => {
         event.preventDefault();
         fileInputRef.current?.click();
@@ -430,7 +505,7 @@ function PureModelSelectorCompact({
       value={selectedModel?.name}
     >
       <Trigger
-        className="flex h-8 items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="flex h-8 cursor-pointer items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
         type="button"
       >
         <span className="font-medium text-xs">{selectedModel?.name}</span>
@@ -453,6 +528,62 @@ function PureModelSelectorCompact({
 }
 
 const ModelSelectorCompact = memo(PureModelSelectorCompact);
+
+function ImageModeToggle({
+  enabled,
+  isActive,
+  canGenerate,
+  label,
+  tooltip,
+  onToggle,
+}: {
+  enabled: boolean;
+  isActive: boolean;
+  canGenerate: boolean;
+  label: string;
+  tooltip: string;
+  onToggle: () => void;
+}) {
+  if (!enabled) {
+    return null;
+  }
+
+  const button = (
+    <Button
+      aria-label={label}
+      aria-pressed={isActive}
+      className={cn(
+        "h-8 gap-1 rounded-lg border-0 px-2 text-xs transition-colors",
+        isActive
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "bg-background hover:bg-accent"
+      )}
+      onClick={(event) => {
+        event.preventDefault();
+        onToggle();
+      }}
+      size="sm"
+      type="button"
+      variant="ghost"
+    >
+      <ImageIcon size={14} />
+      <span className="hidden sm:inline">{label}</span>
+    </Button>
+  );
+
+  if (canGenerate) {
+    return button;
+  }
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function PureStopButton({
   stop,

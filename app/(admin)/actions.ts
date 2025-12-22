@@ -4,12 +4,14 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
+import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
+  IMAGE_GENERATION_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -17,30 +19,36 @@ import {
   APP_SETTING_CACHE_TAG,
   appSettingCacheTagForKey,
   createAuditLogEntry,
+  createImageModelConfig,
   createLanguageEntry,
   createModelConfig,
   createPricingPlan,
   deleteChatById,
+  deleteImageModelConfig,
   deleteModelConfig,
   deletePricingPlan,
   deleteTranslationValueEntry,
   getAppSetting,
+  getImageModelConfigByKey,
   getLanguageByIdRaw,
   getModelConfigByKey,
   getPricingPlanById,
   getTranslationKeyByKey,
   grantUserCredits,
   hardDeleteChatById,
+  hardDeleteImageModelConfig,
   hardDeleteModelConfig,
   hardDeletePricingPlan,
   recordCouponRewardPayout,
   restoreChatById,
+  setActiveImageModelConfig,
   setAppSetting,
   setCouponRewardStatus,
   setCouponStatus,
   setDefaultModelConfig,
   setMarginBaselineModel,
   updateLanguageActiveState,
+  updateImageModelConfig,
   updateModelConfig,
   updatePricingPlan,
   updateUserActiveState,
@@ -217,6 +225,30 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   revalidatePath("/forum/[slug]");
 }
 
+export async function updateImageGenerationAvailabilityAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("imageGenerationEnabled"));
+
+  await setAppSetting({
+    key: IMAGE_GENERATION_FEATURE_FLAG_KEY,
+    value: enabled,
+  });
+  revalidateAppSettingCache(IMAGE_GENERATION_FEATURE_FLAG_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.image_generation.toggle",
+    target: { setting: IMAGE_GENERATION_FEATURE_FLAG_KEY },
+    metadata: { enabled },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+}
+
 export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
@@ -282,6 +314,52 @@ function parseNumber(value: FormDataEntryValue | null | undefined) {
 
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseCreditsToTokens(value: FormDataEntryValue | null | undefined) {
+  const credits = parseNumber(value);
+  const tokens = Math.round(credits * TOKENS_PER_CREDIT);
+  return Math.max(1, tokens);
+}
+
+function parseCurrencyToPaise(value: FormDataEntryValue | null | undefined) {
+  const amount = parseNumber(value);
+  return Math.max(0, Math.round(amount * 100));
+}
+
+async function resolveImageModelPricing(formData: FormData) {
+  const priceInPaise = parseCurrencyToPaise(formData.get("priceInRupees"));
+  const creditsFallback = parseCreditsToTokens(
+    formData.get("creditsPerImage")
+  );
+
+  if (!priceInPaise) {
+    return { tokensPerImage: creditsFallback, priceInPaise: 0 };
+  }
+
+  const recommendedPlanId = await getAppSetting<string | null>(
+    RECOMMENDED_PRICING_PLAN_SETTING_KEY
+  );
+
+  if (!recommendedPlanId) {
+    return { tokensPerImage: creditsFallback, priceInPaise };
+  }
+
+  const plan = await getPricingPlanById({ id: recommendedPlanId });
+  const planPriceInPaise = plan?.priceInPaise ?? 0;
+  const planTokenAllowance = plan?.tokenAllowance ?? 0;
+
+  if (planPriceInPaise <= 0 || planTokenAllowance <= 0) {
+    return { tokensPerImage: creditsFallback, priceInPaise };
+  }
+
+  const pricePerTokenPaise = planPriceInPaise / planTokenAllowance;
+  const tokensPerImage = Math.max(
+    1,
+    Math.ceil(priceInPaise / pricePerTokenPaise)
+  );
+
+  return { tokensPerImage, priceInPaise };
 }
 
 function parseDateInput(value: FormDataEntryValue | null | undefined) {
@@ -800,6 +878,215 @@ export async function setMarginBaselineModelAction(formData: FormData) {
   revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=model-margin-baseline");
+}
+
+export async function createImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const key = formData.get("key")?.toString().trim();
+  const provider = formData.get("provider")?.toString().trim();
+  const providerModelId = formData.get("providerModelId")?.toString().trim();
+  const displayName = formData.get("displayName")?.toString().trim();
+
+  if (!key || !provider || !providerModelId || !displayName) {
+    throw new Error("Missing required image model configuration fields");
+  }
+
+  const description = formData.get("description")?.toString() ?? "";
+  const config = parseJson(formData.get("configJson"));
+  const isEnabled = parseBoolean(formData.get("isEnabled"));
+  const isActive = parseBoolean(formData.get("isActive"));
+  const pricing = await resolveImageModelPricing(formData);
+
+  const existingConfig = await getImageModelConfigByKey({
+    key,
+    includeDeleted: true,
+  });
+
+  if (existingConfig) {
+    if (existingConfig.deletedAt) {
+      redirect("/admin/settings?notice=image-model-key-soft-deleted");
+    } else {
+      redirect("/admin/settings?notice=image-model-key-conflict");
+    }
+  }
+
+  let created: Awaited<ReturnType<typeof createImageModelConfig>>;
+  try {
+    created = await createImageModelConfig({
+      key,
+      provider: provider as any,
+      providerModelId,
+      displayName,
+      description,
+      config,
+      priceInPaise: pricing.priceInPaise,
+      tokensPerImage: pricing.tokensPerImage,
+      isEnabled,
+      isActive,
+    });
+  } catch (error) {
+    console.error("Failed to create image model configuration", error);
+    redirect("/admin/settings?notice=image-model-create-error");
+  }
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "image_model.create",
+    target: { imageModelId: created.id },
+    metadata: { key, provider, providerModelId },
+  });
+
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=image-model-created");
+}
+
+export async function updateImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  const patch: {
+    provider?: any;
+    providerModelId?: string;
+    displayName?: string;
+    description?: string | null;
+    config?: Record<string, unknown> | null;
+    priceInPaise?: number;
+    tokensPerImage?: number;
+    isEnabled?: boolean;
+  } = {};
+
+  const provider = formData.get("provider");
+  if (provider) {
+    patch.provider = provider.toString();
+  }
+
+  const providerModelId = formData.get("providerModelId");
+  if (providerModelId) {
+    patch.providerModelId = providerModelId.toString();
+  }
+
+  const displayName = formData.get("displayName");
+  if (displayName) {
+    patch.displayName = displayName.toString();
+  }
+
+  if (formData.has("description")) {
+    patch.description = formData.get("description")?.toString() ?? "";
+  }
+
+  if (formData.has("configJson")) {
+    patch.config = parseJson(formData.get("configJson"));
+  }
+
+  if (formData.has("creditsPerImage") || formData.has("priceInRupees")) {
+    const pricing = await resolveImageModelPricing(formData);
+    patch.tokensPerImage = pricing.tokensPerImage;
+    patch.priceInPaise = pricing.priceInPaise;
+  }
+
+  if (formData.has("isEnabled")) {
+    patch.isEnabled = parseBoolean(formData.get("isEnabled"));
+  }
+
+  await updateImageModelConfig({
+    id,
+    ...patch,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "image_model.update",
+    target: { imageModelId: id },
+    metadata: patch,
+  });
+
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=image-model-updated");
+}
+
+export async function deleteImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  await deleteImageModelConfig(id);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "image_model.delete",
+    target: { imageModelId: id },
+  });
+
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=image-model-deleted");
+}
+
+export async function hardDeleteImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  await hardDeleteImageModelConfig(id);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "image_model.hard_delete",
+    target: { imageModelId: id },
+  });
+
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=image-model-hard-deleted");
+}
+
+export async function setActiveImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  await setActiveImageModelConfig(id);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "image_model.setActive",
+    target: { imageModelId: id },
+  });
+
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+
+  redirect("/admin/settings?notice=image-model-activated");
 }
 
 export async function updatePrivacyPolicyAction(formData: FormData) {

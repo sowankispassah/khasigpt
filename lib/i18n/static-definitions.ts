@@ -103,6 +103,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Generic close action label.",
   },
   {
+    key: "common.clear",
+    defaultText: "Clear",
+    description: "Generic clear/reset action label.",
+  },
+  {
     key: "user_menu.resources.about",
     defaultText: "About Us",
     description: "Link to the about page.",
@@ -421,6 +426,205 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "chat.input.placeholder",
     defaultText: "Send a message...",
     description: "Placeholder text for the main chat input.",
+  },
+  {
+    key: "image.mode.toggle",
+    defaultText: "Generate image",
+    description: "Label for the image generation mode toggle.",
+  },
+  {
+    key: "image.input.placeholder",
+    defaultText: "Describe the image you want to generate...",
+    description: "Placeholder text shown in image generation mode.",
+  },
+  {
+    key: "image.disabled",
+    defaultText: "Image generation is currently unavailable.",
+    description: "Toast message when image generation is disabled.",
+  },
+  {
+    key: "image.actions.title",
+    defaultText: "Generate images",
+    description: "Heading for the image generation shortcut on the chat home.",
+  },
+  {
+    key: "image.actions.subtitle",
+    defaultText: "Use Nano Banana to create visuals without leaving chat.",
+    description: "Supporting copy under the image generation shortcut.",
+  },
+  {
+    key: "image.actions.text_to_image.title",
+    defaultText: "Text to image",
+    description: "Card label for the text-to-image option.",
+  },
+  {
+    key: "image.actions.text_to_image.description",
+    defaultText: "Describe a scene and let Nano Banana render it.",
+    description: "Helper text for the text-to-image option card.",
+  },
+  {
+    key: "image.actions.image_to_image.title",
+    defaultText: "Image to image",
+    description: "Card label for the image-to-image option.",
+  },
+  {
+    key: "image.actions.image_to_image.description",
+    defaultText: "Transform an existing image with a new prompt.",
+    description: "Helper text for the image-to-image option card.",
+  },
+  {
+    key: "image.actions.locked.tooltip",
+    defaultText: "Recharge credits to generate images.",
+    description: "Tooltip shown when image generation is locked.",
+  },
+  {
+    key: "image.actions.locked.title",
+    defaultText: "Recharge credits to generate images",
+    description: "Modal title shown to free users attempting image generation.",
+  },
+  {
+    key: "image.actions.locked.description",
+    defaultText:
+      "Image generation is available for paid plans or users with active credits.",
+    description: "Modal description shown when image generation is locked.",
+  },
+  {
+    key: "image.actions.locked.cta",
+    defaultText: "Go to recharge",
+    description: "CTA button label to navigate to the recharge page.",
+  },
+  {
+    key: "image.page.title",
+    defaultText: "Image generation",
+    description: "Page title for the image generation screen.",
+  },
+  {
+    key: "image.page.subtitle",
+    defaultText:
+      "Create visuals with Nano Banana. Switch between text-to-image and image-to-image anytime.",
+    description: "Subtitle on the image generation page.",
+  },
+  {
+    key: "image.mode.text",
+    defaultText: "Text to image",
+    description: "Toggle label for text-to-image mode.",
+  },
+  {
+    key: "image.mode.image",
+    defaultText: "Image to image",
+    description: "Toggle label for image-to-image mode.",
+  },
+  {
+    key: "image.prompt.label",
+    defaultText: "Prompt",
+    description: "Label for the image generation prompt field.",
+  },
+  {
+    key: "image.prompt.placeholder",
+    defaultText: "A cinematic close-up of a banana astronaut...",
+    description: "Placeholder text for the image generation prompt field.",
+  },
+  {
+    key: "image.prompt.helper",
+    defaultText:
+      "Describe the image you want. Be specific with style, lighting, and mood.",
+    description: "Helper text under the image generation prompt.",
+  },
+  {
+    key: "image.prompt.required",
+    defaultText: "Add a prompt before generating.",
+    description: "Validation message for missing image prompt.",
+  },
+  {
+    key: "image.upload.label",
+    defaultText: "Reference image",
+    description: "Label for the image-to-image upload area.",
+  },
+  {
+    key: "image.upload.helper",
+    defaultText: "Upload a PNG or JPG (max 5MB).",
+    description: "Helper text for the image-to-image file uploader.",
+  },
+  {
+    key: "image.upload.clear",
+    defaultText: "Remove",
+    description: "Button label to clear the uploaded reference image.",
+  },
+  {
+    key: "image.upload.preview",
+    defaultText: "Reference preview",
+    description: "Alt text for the reference image preview.",
+  },
+  {
+    key: "image.upload.empty",
+    defaultText: "Add a reference image to guide the generation.",
+    description: "Placeholder text when no reference image is uploaded.",
+  },
+  {
+    key: "image.upload.invalid_type",
+    defaultText: "Please upload a PNG or JPG file.",
+    description: "Validation message for unsupported image types.",
+  },
+  {
+    key: "image.upload.too_large",
+    defaultText: "Images must be 5MB or smaller.",
+    description: "Validation message for oversized images.",
+  },
+  {
+    key: "image.upload.failed",
+    defaultText: "Failed to read the uploaded image.",
+    description: "Error message when the image file cannot be read.",
+  },
+  {
+    key: "image.upload.required",
+    defaultText: "Upload a reference image to continue.",
+    description: "Validation message when image-to-image is missing a file.",
+  },
+  {
+    key: "image.generate.cta",
+    defaultText: "Generate image",
+    description: "Primary CTA for starting image generation.",
+  },
+  {
+    key: "image.generate.loading",
+    defaultText: "Generating...",
+    description: "Loading label while an image is being generated.",
+  },
+  {
+    key: "image.generate.failed",
+    defaultText: "Image generation failed. Please try again.",
+    description: "Fallback error message when generation fails.",
+  },
+  {
+    key: "image.generate.empty",
+    defaultText: "No image was returned. Try a different prompt.",
+    description: "Message shown when the API returns no images.",
+  },
+  {
+    key: "image.results.title",
+    defaultText: "Generated output",
+    description: "Title for the image results panel.",
+  },
+  {
+    key: "image.results.count",
+    defaultText: "Results",
+    description: "Label prefix for the image results count.",
+  },
+  {
+    key: "image.results.alt",
+    defaultText: "Generated image",
+    description: "Alt text for generated images.",
+  },
+  {
+    key: "image.results.empty",
+    defaultText: "Your generated images will appear here.",
+    description: "Placeholder text when no images have been generated yet.",
+  },
+  {
+    key: "image.access.locked",
+    defaultText:
+      "Image generation is available for users with active credits or a paid plan.",
+    description: "Banner text shown when image generation is locked.",
   },
   {
     key: "profile.title",

@@ -36,6 +36,36 @@ const PurePreviewMessage = ({
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
   );
+  const messageAttachments = attachmentsFromMessage
+    .map((attachment, index) => {
+      const resolvedUrl = attachment.url ?? "";
+      if (!resolvedUrl) {
+        return null;
+      }
+      const filename =
+        attachment.filename ??
+        ("name" in attachment && typeof attachment.name === "string"
+          ? attachment.name
+          : undefined) ??
+        "file";
+
+      return {
+        id: `${message.id}-attachment-${index}`,
+        name: filename,
+        contentType: attachment.mediaType ?? "",
+        url: resolvedUrl,
+      };
+    })
+    .filter(
+      (
+        attachment
+      ): attachment is {
+        id: string;
+        name: string;
+        contentType: string;
+        url: string;
+      } => attachment !== null
+    );
 
   const isAssistantMessage = message.role === "assistant";
 
@@ -67,19 +97,26 @@ const PurePreviewMessage = ({
               message.role === "user" && mode !== "edit",
           })}
         >
-          {attachmentsFromMessage.length > 0 && (
+          {messageAttachments.length > 0 && (
             <div
-              className="flex flex-row justify-end gap-2"
+              className={cn(
+                "flex gap-2",
+                isAssistantMessage
+                  ? "flex-wrap items-start justify-start"
+                  : "flex-row justify-end"
+              )}
               data-testid={"message-attachments"}
             >
-              {attachmentsFromMessage.map((attachment) => (
+              {messageAttachments.map((attachment) => (
                 <PreviewAttachment
                   attachment={{
-                    name: attachment.filename ?? "file",
-                    contentType: attachment.mediaType,
+                    name: attachment.name,
+                    contentType: attachment.contentType,
                     url: attachment.url,
                   }}
-                  key={attachment.url}
+                  key={attachment.id}
+                  previewSize={isAssistantMessage ? 240 : undefined}
+                  showName={!isAssistantMessage}
                 />
               ))}
             </div>

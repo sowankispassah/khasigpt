@@ -27,6 +27,10 @@ type ChatLoaderProps = {
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  imageGeneration: {
+    enabled: boolean;
+    canGenerate: boolean;
+  };
   customKnowledgeEnabled: boolean;
 };
 
