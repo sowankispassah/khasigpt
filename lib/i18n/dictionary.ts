@@ -87,13 +87,13 @@ const TRANSLATION_QUERY_TIMEOUT_MS =
   Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1200;
 
 const parsedInitialTimeout = Number.parseInt(
-  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "1500",
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "300",
   10
 );
 const TRANSLATION_INITIAL_TIMEOUT_MS =
   Number.isFinite(parsedInitialTimeout) && parsedInitialTimeout > 0
     ? parsedInitialTimeout
-    : 1500;
+    : 300;
 
 const parsedCacheTtl = Number.parseInt(
   process.env.TRANSLATION_CACHE_TTL_MS ?? `${1000 * 60 * 60 * 6}`,
@@ -105,6 +105,41 @@ const TRANSLATION_CACHE_TTL_MS =
     : 1000 * 60 * 60 * 6;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
+
+const SHOULD_LOG_TRANSLATION_TIMEOUTS =
+  typeof process !== "undefined" && process.env.NODE_ENV === "development";
+const SHOULD_LOG_TRANSLATION_ERRORS =
+  typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  if (error instanceof Error) {
+    return error.message === "timeout";
+  }
+  if (typeof error === "object" && "message" in error) {
+    return (
+      String((error as { message?: unknown }).message ?? "") === "timeout"
+    );
+  }
+  return false;
+}
+
+function logTranslationTimeout(message: string) {
+  if (SHOULD_LOG_TRANSLATION_TIMEOUTS) {
+    console.warn(message);
+  }
+}
+
+function logTranslationError(message: string, error: unknown) {
+  if (isTimeoutError(error)) {
+    return;
+  }
+  if (SHOULD_LOG_TRANSLATION_ERRORS) {
+    console.error(message, error);
+  }
+}
 
 export async function registerTranslationKeys(
   definitions: TranslationDefinition[]
@@ -261,8 +296,6 @@ async function persistBundle(key: string, bundle: TranslationBundle) {
       cachedAt: new Date().toISOString(),
     } satisfies PersistedBundle,
   });
-  revalidateTag(APP_SETTING_CACHE_TAG);
-  revalidateTag(appSettingCacheTagForKey(`${TRANSLATION_CACHE_PREFIX}${key}`));
 }
 
 async function readPersistedBundle(
@@ -303,19 +336,25 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     loadTranslationBundle(preferredCode),
     TRANSLATION_QUERY_TIMEOUT_MS,
     () => {
-      console.warn(
+      logTranslationTimeout(
         `[i18n] Bundle refresh timed out after ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${key}".`
       );
     }
   )
-    .then(async (bundle) => {
+    .then((bundle) => {
       BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
-      await persistBundle(key, bundle).catch((error) => {
-        console.error("[i18n] Failed to persist translation bundle.", error);
+      void persistBundle(key, bundle).catch((error) => {
+        logTranslationError(
+          "[i18n] Failed to persist translation bundle.",
+          error
+        );
       });
     })
     .catch((error) => {
-      console.error("[i18n] Falling back to static translations.", error);
+      logTranslationError(
+        "[i18n] Falling back to static translations.",
+        error
+      );
     })
     .finally(() => {
       const current = BUNDLE_CACHE.get(key);
@@ -347,7 +386,21 @@ export async function getTranslationBundle(
     return cached.data;
   }
 
-  const persisted = await readPersistedBundle(key);
+  let persistedTimedOut = false;
+  const persisted = await withTimeout(
+    readPersistedBundle(key),
+    TRANSLATION_INITIAL_TIMEOUT_MS
+  ).catch((error) => {
+    if (isTimeoutError(error)) {
+      persistedTimedOut = true;
+      return null;
+    }
+    logTranslationError(
+      "[i18n] Failed to load persisted translation bundle.",
+      error
+    );
+    return null;
+  });
   if (persisted) {
     const { cachedAt, ...bundle } = persisted;
     const parsedCachedAt = new Date(cachedAt).getTime();
@@ -361,23 +414,36 @@ export async function getTranslationBundle(
     return bundle;
   }
 
+  if (persistedTimedOut) {
+    const fallbackBundle =
+      typeof preferredCode === "string" && preferredCode.trim().length > 0
+        ? buildFallbackBundle(preferredCode)
+        : FALLBACK_BUNDLE;
+    BUNDLE_CACHE.set(key, { data: fallbackBundle, cachedAt: Date.now() });
+    scheduleBundleRefresh(key, preferredCode);
+    return fallbackBundle;
+  }
+
   try {
     const bundle = await withTimeout(
       loadTranslationBundle(preferredCode),
       TRANSLATION_INITIAL_TIMEOUT_MS,
       () => {
-        console.warn(
+        logTranslationTimeout(
           `[i18n] Initial bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
         );
       }
     );
     BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
-    await persistBundle(key, bundle).catch((error) => {
-      console.error("[i18n] Failed to persist translation bundle.", error);
+    void persistBundle(key, bundle).catch((error) => {
+      logTranslationError(
+        "[i18n] Failed to persist translation bundle.",
+        error
+      );
     });
     return bundle;
   } catch (error) {
-    console.error("[i18n] Falling back to static translations.", error);
+    logTranslationError("[i18n] Falling back to static translations.", error);
     const fallbackBundle =
       typeof preferredCode === "string" && preferredCode.trim().length > 0
         ? buildFallbackBundle(preferredCode)
@@ -490,7 +556,7 @@ export async function getTranslationForKey(
 
     return result?.value ?? result?.defaultText ?? definition.defaultText;
   } catch (error) {
-    console.error(
+    logTranslationError(
       `[i18n] Falling back to default text for translation key "${definition.key}".`,
       error
     );
@@ -541,7 +607,7 @@ export async function getTranslationsForKeys(
 
     return result;
   } catch (error) {
-    console.error(
+    logTranslationError(
       "[i18n] Falling back to default texts for bulk translations.",
       error
     );

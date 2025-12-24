@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "next build",
+    "build": "node scripts/next-build.cjs",
     "start": "next start",
     "lint": "pnpm exec ultracite check",
     "format": "pnpm exec ultracite fix",

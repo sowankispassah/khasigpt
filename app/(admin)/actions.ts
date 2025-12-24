@@ -12,6 +12,7 @@ import {
   FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -31,6 +32,7 @@ import {
   getAppSetting,
   getImageModelConfigByKey,
   getLanguageByIdRaw,
+  getModelConfigById,
   getModelConfigByKey,
   getPricingPlanById,
   getTranslationKeyByKey,
@@ -1087,6 +1089,42 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
   revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=image-model-activated");
+}
+
+export async function setImagePromptTranslationModelAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const modelId = formData.get("modelId");
+  const normalizedModelId =
+    typeof modelId === "string" && modelId.trim().length > 0
+      ? modelId.trim()
+      : null;
+
+  if (normalizedModelId) {
+    const model = await getModelConfigById({ id: normalizedModelId });
+    if (!model || !model.isEnabled) {
+      redirect("/admin/settings?notice=image-translation-model-invalid");
+    }
+  }
+
+  await setAppSetting({
+    key: IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+    value: normalizedModelId,
+  });
+  revalidateAppSettingCache(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "image_prompt_translation_model.update",
+    target: { setting: IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY },
+    metadata: { modelId: normalizedModelId },
+  });
+
+  revalidatePath("/admin/settings");
+
+  redirect("/admin/settings?notice=image-translation-model-updated");
 }
 
 export async function updatePrivacyPolicyAction(formData: FormData) {

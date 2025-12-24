@@ -5,6 +5,7 @@ import { PRELOAD_PROGRESS_SCRIPT, THEME_COLOR_SCRIPT } from "./lib/security/inli
 import { buildStructuredData, getSiteUrl } from "./lib/seo/site";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+const distDir = process.env.NEXT_DIST_DIR?.trim();
 
 const inlineScriptHashes = [
   PRELOAD_PROGRESS_SCRIPT,
@@ -108,6 +109,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  ...(distDir ? { distDir } : {}),
   images: {
     remotePatterns: [
       {

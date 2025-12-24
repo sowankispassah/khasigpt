@@ -16,6 +16,7 @@ import {
   setDefaultModelConfigAction,
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
+  setImagePromptTranslationModelAction,
   updateAboutContentAction,
   updateForumAvailabilityAction,
   updateFreeMessageSettingsAction,
@@ -38,6 +39,7 @@ import {
   DEFAULT_TERMS_OF_SERVICE,
   FORUM_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -174,6 +176,7 @@ export default async function AdminSettingsPage({
     freeMessageSettings,
     forumEnabledSetting,
     imageGenerationEnabledSetting,
+    imagePromptTranslationModelSetting,
   ] = await Promise.all([
     getUsdToInrRate(),
     listModelConfigs({
@@ -200,6 +203,7 @@ export default async function AdminSettingsPage({
     loadFreeMessageSettings(),
     getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
+    getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
   ]);
 
   const usdToInr = exchangeRate.rate;
@@ -207,6 +211,16 @@ export default async function AdminSettingsPage({
   const deletedModels = modelsRaw.filter((model) => model.deletedAt);
   const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
   const deletedImageModels = imageModelConfigs.filter((model) => model.deletedAt);
+  const enabledModels = activeModels.filter((model) => model.isEnabled);
+  const imagePromptTranslationModelId =
+    typeof imagePromptTranslationModelSetting === "string" &&
+    imagePromptTranslationModelSetting.trim().length > 0
+      ? imagePromptTranslationModelSetting
+      : null;
+  const imagePromptTranslationModel = imagePromptTranslationModelId
+    ? activeModels.find((model) => model.id === imagePromptTranslationModelId) ??
+      null
+    : null;
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -1993,6 +2007,72 @@ export default async function AdminSettingsPage({
               </div>
             </div>
           )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Choose which text model translates Khasi prompts to English during image generation."
+          title="Image prompt translation model"
+        >
+          <form
+            action={setImagePromptTranslationModelAction}
+            className="grid gap-4 md:grid-cols-2"
+          >
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label
+                className="font-medium text-sm"
+                htmlFor="imagePromptTranslationModel"
+              >
+                Translation model
+              </label>
+              <select
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={imagePromptTranslationModel?.id ?? ""}
+                id="imagePromptTranslationModel"
+                name="modelId"
+              >
+                <option value="">
+                  Use server default translation model
+                </option>
+                {enabledModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.displayName} ({model.provider})
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">
+                Only enabled models are available. Selecting a model here
+                overrides the default translation model.
+              </p>
+            </div>
+
+            <div className="flex justify-end md:col-span-2">
+              <ActionSubmitButton pendingLabel="Saving...">
+                Save translation model
+              </ActionSubmitButton>
+            </div>
+          </form>
+
+          <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
+            <h4 className="font-semibold text-foreground text-sm">
+              Current selection
+            </h4>
+            {imagePromptTranslationModel ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="font-medium">
+                  {imagePromptTranslationModel.displayName}
+                </span>
+                <ProviderBadge value={imagePromptTranslationModel.provider} />
+                <EnabledBadge enabled={imagePromptTranslationModel.isEnabled} />
+                <span className="font-mono text-muted-foreground text-xs">
+                  {imagePromptTranslationModel.providerModelId}
+                </span>
+              </div>
+            ) : (
+              <p className="mt-2 text-muted-foreground">
+                Using the server default translation model.
+              </p>
+            )}
+          </div>
         </CollapsibleSection>
 
         <CollapsibleSection

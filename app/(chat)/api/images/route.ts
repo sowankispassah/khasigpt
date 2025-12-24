@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cookies } from "next/headers";
 import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import {
@@ -145,6 +146,8 @@ export async function POST(request: Request) {
   }
 
   const { chatId, visibility, prompt, imageUrl, userMessageId } = payload;
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
   const existingChat = await getChatById({ id: chatId });
   if (existingChat && existingChat.userId !== session.user.id) {
@@ -244,6 +247,7 @@ export async function POST(request: Request) {
       image: sourceImage,
       abortSignal: request.signal,
       modelId: access.model.providerModelId,
+      preferredLanguage,
     });
 
     const assistantParts = images.map((image, index) => ({

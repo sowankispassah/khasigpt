@@ -63,6 +63,15 @@ const NOTICE_MESSAGES: Record<
     type: "success",
     message: "Active image model updated.",
   },
+  "image-translation-model-updated": {
+    type: "success",
+    message: "Image prompt translation model updated.",
+  },
+  "image-translation-model-invalid": {
+    type: "error",
+    message:
+      "Selected translation model is unavailable or disabled. Choose an enabled model.",
+  },
   "image-model-key-conflict": {
     type: "error",
     message:

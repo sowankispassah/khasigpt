@@ -24,7 +24,9 @@ const redisUrl = (() => {
     new URL(rawRedisUrl);
     return rawRedisUrl;
   } catch {
-    console.warn("[rate-limit] Ignoring invalid Redis URL");
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+      console.warn("[rate-limit] Ignoring invalid Redis URL");
+    }
     return null;
   }
 })();

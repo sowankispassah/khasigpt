@@ -15,6 +15,8 @@ export const DEFAULT_FREE_MESSAGES_PER_DAY = 3;
 export const FREE_MESSAGE_SETTINGS_KEY = "chat.freeMessages";
 export const FORUM_FEATURE_FLAG_KEY = "forum.enabled";
 export const IMAGE_GENERATION_FEATURE_FLAG_KEY = "image.generation.enabled";
+export const IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY =
+  "image.prompt.translation.modelId";
 
 export const DEFAULT_SUGGESTED_PROMPTS = [
   "What are the advantages of using Next.js?",

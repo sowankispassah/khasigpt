@@ -6,7 +6,9 @@ import {
   listTranslationEntries,
   type TranslationTableEntry,
 } from "@/lib/db/queries";
+import { registerTranslationKeys } from "@/lib/i18n/dictionary";
 import { getAllLanguages, type LanguageOption } from "@/lib/i18n/languages";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import {
   publishTranslationsAction,
   saveDefaultTextAction,
@@ -46,6 +48,12 @@ const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
     prefixes: ["subscriptions.", "recharge.", "billing."],
   },
   {
+    id: "image",
+    label: "Image Generation",
+    description: "Chat image generation labels, prompts, and states.",
+    prefixes: ["image."],
+  },
+  {
     id: "about",
     label: "About & Contact",
     description: "About page sections and contact form labels.",
@@ -81,6 +89,7 @@ export default async function AdminTranslationsPage({
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
   const [languages, entries] = await Promise.all([
     getAllLanguages(),
     listTranslationEntries(),
