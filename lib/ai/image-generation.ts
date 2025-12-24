@@ -280,7 +280,6 @@ async function maybeTranslateImagePrompt({
         { role: "user", content: prompt },
       ],
       temperature: 0,
-      maxTokens: 256,
       abortSignal,
     });
 
