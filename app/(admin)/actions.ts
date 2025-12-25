@@ -14,6 +14,7 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -1662,6 +1663,7 @@ export async function updatePlanTranslationAction(formData: FormData) {
       },
     });
 
+    revalidateTag(PRICING_PLAN_CACHE_TAG);
     revalidatePath("/admin/settings");
     revalidatePath("/admin/translations");
     revalidatePath("/recharge");
@@ -1849,6 +1851,7 @@ export async function createPricingPlanAction(formData: FormData) {
     metadata: plan,
   });
 
+  revalidateTag(PRICING_PLAN_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
@@ -1928,6 +1931,7 @@ export async function updatePricingPlanAction(formData: FormData) {
     metadata: updates,
   });
 
+  revalidateTag(PRICING_PLAN_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
@@ -1979,6 +1983,7 @@ export async function deletePricingPlanAction(formData: FormData) {
     target: { planId: id },
   });
 
+  revalidateTag(PRICING_PLAN_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
@@ -2003,6 +2008,7 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
     target: { planId: id },
   });
 
+  revalidateTag(PRICING_PLAN_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");

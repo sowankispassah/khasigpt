@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
+import { unstable_cache } from "next/cache";
 import type { ReactNode } from "react";
 import {
   createImageModelConfigAction,
@@ -42,16 +43,20 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
+  APP_SETTING_CACHE_TAG,
   getAppSetting,
   getTranslationValuesForKeys,
   listImageModelConfigs,
   listModelConfigs,
   listPricingPlans,
 } from "@/lib/db/queries";
+import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import { parseForumEnabledSetting } from "@/lib/forum/config";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getAllLanguages } from "@/lib/i18n/languages";
@@ -71,6 +76,96 @@ const PROVIDER_OPTIONS = [
   { value: "google", label: "Google Gemini" },
   { value: "custom", label: "Custom (configure in code)" },
 ];
+
+const ADMIN_SETTINGS_CACHE_KEY = "admin-settings-data-v1";
+const ADMIN_SETTINGS_CACHE_TAGS = [
+  APP_SETTING_CACHE_TAG,
+  MODEL_REGISTRY_CACHE_TAG,
+  IMAGE_MODEL_REGISTRY_CACHE_TAG,
+  PRICING_PLAN_CACHE_TAG,
+  "languages",
+];
+
+const loadAdminSettingsData = unstable_cache(
+  async () => {
+    const [
+      exchangeRate,
+      modelsRaw,
+      imageModelConfigs,
+      plansRaw,
+      privacyPolicySetting,
+      termsOfServiceSetting,
+      aboutUsSetting,
+      aboutUsContentByLanguageSetting,
+      privacyPolicyByLanguageSetting,
+      termsOfServiceByLanguageSetting,
+      suggestedPromptsSetting,
+      suggestedPromptsByLanguageSetting,
+      recommendedPlanSetting,
+      languages,
+      freeMessageSettings,
+      forumEnabledSetting,
+      imageGenerationEnabledSetting,
+      imagePromptTranslationModelSetting,
+      imageFilenamePrefixSetting,
+    ] = await Promise.all([
+      getUsdToInrRate(),
+      listModelConfigs({
+        includeDisabled: true,
+        includeDeleted: true,
+        limit: 200,
+      }),
+      listImageModelConfigs({
+        includeDisabled: true,
+        includeDeleted: true,
+        limit: 200,
+      }),
+      listPricingPlans({ includeInactive: true, includeDeleted: true }),
+      getAppSetting<string>("privacyPolicy"),
+      getAppSetting<string>("termsOfService"),
+      getAppSetting<string>("aboutUsContent"),
+      getAppSetting<Record<string, string>>("aboutUsContentByLanguage"),
+      getAppSetting<Record<string, string>>("privacyPolicyByLanguage"),
+      getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
+      getAppSetting<string[]>("suggestedPrompts"),
+      getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
+      getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+      getAllLanguages(),
+      loadFreeMessageSettings(),
+      getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
+      getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
+      getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
+    ]);
+
+    return {
+      exchangeRate,
+      modelsRaw,
+      imageModelConfigs,
+      plansRaw,
+      privacyPolicySetting,
+      termsOfServiceSetting,
+      aboutUsSetting,
+      aboutUsContentByLanguageSetting,
+      privacyPolicyByLanguageSetting,
+      termsOfServiceByLanguageSetting,
+      suggestedPromptsSetting,
+      suggestedPromptsByLanguageSetting,
+      recommendedPlanSetting,
+      languages,
+      freeMessageSettings,
+      forumEnabledSetting,
+      imageGenerationEnabledSetting,
+      imagePromptTranslationModelSetting,
+      imageFilenamePrefixSetting,
+    };
+  },
+  [ADMIN_SETTINGS_CACHE_KEY],
+  {
+    tags: ADMIN_SETTINGS_CACHE_TAGS,
+    revalidate: 300,
+  }
+);
 
 function _formatCurrency(value: number, currency: "USD" | "INR") {
   return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
@@ -160,7 +255,7 @@ export default async function AdminSettingsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
 
-  const [
+  const {
     exchangeRate,
     modelsRaw,
     imageModelConfigs,
@@ -180,35 +275,7 @@ export default async function AdminSettingsPage({
     imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
-  ] = await Promise.all([
-    getUsdToInrRate(),
-    listModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-    listImageModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
-    getAppSetting<string>("privacyPolicy"),
-    getAppSetting<string>("termsOfService"),
-    getAppSetting<string>("aboutUsContent"),
-    getAppSetting<Record<string, string>>("aboutUsContentByLanguage"),
-    getAppSetting<Record<string, string>>("privacyPolicyByLanguage"),
-    getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
-    getAppSetting<string[]>("suggestedPrompts"),
-    getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
-    getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
-    getAllLanguages(),
-    loadFreeMessageSettings(),
-    getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
-    getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
-    getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
-    getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
-  ]);
+  } = await loadAdminSettingsData();
 
   const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);

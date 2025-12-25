@@ -19,6 +19,7 @@ export const IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY =
   "image.generation.filenamePrefix";
 export const IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY =
   "image.prompt.translation.modelId";
+export const PRICING_PLAN_CACHE_TAG = "pricing-plans";
 
 export const DEFAULT_SUGGESTED_PROMPTS = [
   "What are the advantages of using Next.js?",
