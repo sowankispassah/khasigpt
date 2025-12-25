@@ -700,8 +700,8 @@ export async function POST(request: Request) {
 
     const uiStream = result.toUIMessageStream({
       sendReasoning: modelConfig.supportsReasoning,
-      onFinish: async ({ messages }) => {
-        await saveMessages({
+      onFinish: ({ messages }) => {
+        void saveMessages({
           messages: messages.map((currentMessage) => ({
             id:
               typeof currentMessage.id === "string" &&
@@ -722,7 +722,7 @@ export async function POST(request: Request) {
           );
         });
 
-        await persistUserMessagePromise;
+        void persistUserMessagePromise;
 
         if (!finalMergedUsage) {
           resolveUsageReady?.();
@@ -754,15 +754,6 @@ export async function POST(request: Request) {
                 break;
               }
               controller.enqueue(value);
-            }
-
-            await usageReady;
-
-            if (finalMergedUsage) {
-              controller.enqueue({
-                type: "data-usage",
-                data: finalMergedUsage,
-              });
             }
 
             controller.close();
