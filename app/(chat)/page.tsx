@@ -32,7 +32,10 @@ export default async function Page() {
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-    getImageGenerationAccess({ userId: session.user.id }),
+    getImageGenerationAccess({
+      userId: session.user.id,
+      userRole: session.user.role,
+    }),
   ]);
 
   const { defaultModel, models } = modelsResult;
@@ -78,6 +81,8 @@ export default async function Page() {
             imageGeneration={{
               enabled: imageGenerationAccess.enabled,
               canGenerate: imageGenerationAccess.canGenerate,
+              requiresPaidCredits:
+                imageGenerationAccess.requiresPaidCredits ?? false,
             }}
             initialChatModel={fallbackModelId}
             initialMessages={[]}
@@ -110,6 +115,7 @@ export default async function Page() {
         imageGeneration={{
           enabled: imageGenerationAccess.enabled,
           canGenerate: imageGenerationAccess.canGenerate,
+          requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
         }}
         initialChatModel={fallbackModelId}
         initialMessages={[]}

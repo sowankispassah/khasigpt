@@ -41,7 +41,10 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     loadSuggestedPrompts(preferredLanguage),
     getTranslationBundle(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-    getImageGenerationAccess({ userId: session?.user?.id ?? null }),
+    getImageGenerationAccess({
+      userId: session?.user?.id ?? null,
+      userRole: session?.user?.role ?? null,
+    }),
   ]);
   const { dictionary } = translationBundle;
   const customKnowledgeEnabled =
@@ -113,6 +116,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             imageGeneration={{
               enabled: imageGenerationAccess.enabled,
               canGenerate: imageGenerationAccess.canGenerate,
+              requiresPaidCredits:
+                imageGenerationAccess.requiresPaidCredits ?? false,
             }}
             initialChatModel={fallbackModelId}
             initialMessages={uiMessages}
@@ -145,6 +150,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           imageGeneration={{
             enabled: imageGenerationAccess.enabled,
             canGenerate: imageGenerationAccess.canGenerate,
+            requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
           }}
           initialChatModel={fallbackModelId}
           initialMessages={uiMessages}

@@ -52,6 +52,7 @@ export function Chat({
   imageGeneration: {
     enabled: boolean;
     canGenerate: boolean;
+    requiresPaidCredits: boolean;
   };
   customKnowledgeEnabled: boolean;
 }) {
@@ -75,6 +76,24 @@ export function Chat({
   const [showActionProgress, setShowActionProgress] = useState(false);
   const [actionProgress, setActionProgress] = useState(0);
   const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const imageUpgradeTitle = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.title",
+        "Free credits can't be used for images"
+      )
+    : translate(
+        "image.actions.locked.title",
+        "Recharge credits to generate images"
+      );
+  const imageUpgradeDescription = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.description",
+        "You are using free credits. Recharge to generate images."
+      )
+    : translate(
+        "image.actions.locked.description",
+        "Image generation is available for paid plans or users with active credits."
+      );
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
@@ -284,6 +303,9 @@ export function Chat({
                 chatId={id}
                 imageGenerationCanGenerate={imageGeneration.canGenerate}
                 imageGenerationEnabled={imageGeneration.enabled}
+                imageGenerationRequiresPaidCredits={
+                  imageGeneration.requiresPaidCredits
+                }
                 imageGenerationSelected={isImageMode}
                 isGeneratingImage={isGeneratingImage}
                 input={input}
@@ -531,17 +553,9 @@ export function Chat({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {translate(
-                "image.actions.locked.title",
-                "Recharge credits to generate images"
-              )}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{imageUpgradeTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              {translate(
-                "image.actions.locked.description",
-                "Image generation is available for paid plans or users with active credits."
-              )}
+              {imageUpgradeDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

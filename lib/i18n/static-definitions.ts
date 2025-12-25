@@ -478,15 +478,33 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Tooltip shown when image generation is locked.",
   },
   {
+    key: "image.actions.locked.free.tooltip",
+    defaultText: "Free credits can't be used for images.",
+    description:
+      "Tooltip shown when image generation requires paid credits only.",
+  },
+  {
     key: "image.actions.locked.title",
     defaultText: "Recharge credits to generate images",
     description: "Modal title shown to free users attempting image generation.",
+  },
+  {
+    key: "image.actions.locked.free.title",
+    defaultText: "Free credits can't be used for images",
+    description:
+      "Modal title shown when paid credits are required for image generation.",
   },
   {
     key: "image.actions.locked.description",
     defaultText:
       "Image generation is available for paid plans or users with active credits.",
     description: "Modal description shown when image generation is locked.",
+  },
+  {
+    key: "image.actions.locked.free.description",
+    defaultText: "You are using free credits. Recharge to generate images.",
+    description:
+      "Modal description shown when users only have free credits.",
   },
   {
     key: "image.actions.locked.cta",

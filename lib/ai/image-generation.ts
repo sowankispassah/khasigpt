@@ -14,7 +14,9 @@ import {
   getAppSetting,
   getModelConfigById,
   getPricingPlanById,
+  getUserById,
 } from "@/lib/db/queries";
+import type { UserRole } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";
@@ -45,6 +47,10 @@ export type ImageGenerationAccess = {
   canGenerate: boolean;
   hasCredits: boolean;
   hasPaidPlan: boolean;
+  hasPaidCredits: boolean;
+  hasManualCredits: boolean;
+  requiresPaidCredits: boolean;
+  isAdmin: boolean;
   tokensPerImage: number;
   model: {
     id: string;
@@ -83,8 +89,10 @@ export function parseImageGenerationEnabledSetting(value: unknown): boolean {
 
 export async function getImageGenerationAccess({
   userId,
+  userRole,
 }: {
   userId: string | null;
+  userRole?: UserRole | null;
 }): Promise<ImageGenerationAccess> {
   const rawSetting = await getAppSetting<string | boolean | number>(
     IMAGE_GENERATION_FEATURE_FLAG_KEY
@@ -106,6 +114,10 @@ export async function getImageGenerationAccess({
         tokensPerImage,
       }
     : null;
+  const resolvedRole =
+    userRole ??
+    (userId ? (await getUserById(userId))?.role ?? null : null);
+  const isAdmin = resolvedRole === "admin";
 
   if (!enabled || !userId || !modelSummary) {
     return {
@@ -113,6 +125,10 @@ export async function getImageGenerationAccess({
       canGenerate: false,
       hasCredits: false,
       hasPaidPlan: false,
+      hasPaidCredits: false,
+      hasManualCredits: false,
+      requiresPaidCredits: enabled && !isAdmin,
+      isAdmin,
       tokensPerImage,
       model: modelSummary,
     };
@@ -125,20 +141,32 @@ export async function getImageGenerationAccess({
       canGenerate: false,
       hasCredits: false,
       hasPaidPlan: false,
+      hasPaidCredits: false,
+      hasManualCredits: false,
+      requiresPaidCredits: enabled && !isAdmin,
+      isAdmin,
       tokensPerImage,
       model: modelSummary,
     };
   }
 
   const hasCredits = (subscription.tokenBalance ?? 0) >= tokensPerImage;
+  const paidBalance = Math.max(0, subscription.paidTokenBalance ?? 0);
+  const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
+  const hasPaidCredits = paidBalance >= tokensPerImage;
+  const hasManualCredits = manualBalance >= tokensPerImage;
   const plan = await getPricingPlanById({ id: subscription.planId });
   const hasPaidPlan = (plan?.priceInPaise ?? 0) > 0;
 
   return {
     enabled,
-    canGenerate: hasCredits,
+    canGenerate: isAdmin ? hasCredits : hasPaidCredits,
     hasCredits,
     hasPaidPlan,
+    hasPaidCredits,
+    hasManualCredits,
+    requiresPaidCredits: enabled && !isAdmin && !hasPaidCredits,
+    isAdmin,
     tokensPerImage,
     model: modelSummary,
   };

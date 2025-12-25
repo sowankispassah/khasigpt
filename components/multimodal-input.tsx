@@ -68,6 +68,7 @@ function PureMultimodalInput({
   imageGenerationEnabled,
   imageGenerationSelected,
   imageGenerationCanGenerate,
+  imageGenerationRequiresPaidCredits,
   isGeneratingImage,
   onGenerateImage,
   onToggleImageMode,
@@ -89,6 +90,7 @@ function PureMultimodalInput({
   imageGenerationEnabled: boolean;
   imageGenerationSelected: boolean;
   imageGenerationCanGenerate: boolean;
+  imageGenerationRequiresPaidCredits: boolean;
   isGeneratingImage: boolean;
   onGenerateImage: () => void;
   onToggleImageMode: () => void;
@@ -115,11 +117,16 @@ function PureMultimodalInput({
   );
   const imageToggleTooltip = useMemo(
     () =>
-      translate(
-        "image.actions.locked.tooltip",
-        "Recharge credits to generate images."
-      ),
-    [translate]
+      imageGenerationRequiresPaidCredits
+        ? translate(
+            "image.actions.locked.free.tooltip",
+            "Free credits can't be used for images."
+          )
+        : translate(
+            "image.actions.locked.tooltip",
+            "Recharge credits to generate images."
+          ),
+    [translate, imageGenerationRequiresPaidCredits]
   );
 
   const fallbackModelId = useMemo(() => {
@@ -427,6 +434,12 @@ export const MultimodalInput = memo(
       prevProps.imageGenerationEnabled !== nextProps.imageGenerationEnabled ||
       prevProps.imageGenerationCanGenerate !==
         nextProps.imageGenerationCanGenerate
+    ) {
+      return false;
+    }
+    if (
+      prevProps.imageGenerationRequiresPaidCredits !==
+      nextProps.imageGenerationRequiresPaidCredits
     ) {
       return false;
     }

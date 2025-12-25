@@ -131,7 +131,10 @@ export async function POST(request: Request) {
   }
   const payload = parsed.data;
 
-  const access = await getImageGenerationAccess({ userId: session.user.id });
+  const access = await getImageGenerationAccess({
+    userId: session.user.id,
+    userRole: session.user.role,
+  });
   if (!access.enabled || !access.model) {
     return new ChatSDKError("forbidden:auth").toResponse();
   }
@@ -260,6 +263,7 @@ export async function POST(request: Request) {
     await deductImageCredits({
       userId: session.user.id,
       tokensToDeduct: access.tokensPerImage,
+      allowManualCredits: session.user.role === "admin",
     });
 
     await saveMessages({

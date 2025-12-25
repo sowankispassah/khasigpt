@@ -4878,9 +4878,11 @@ export async function recordTokenUsage({
 export async function deductImageCredits({
   userId,
   tokensToDeduct,
+  allowManualCredits = false,
 }: {
   userId: string;
   tokensToDeduct: number;
+  allowManualCredits?: boolean;
 }): Promise<void> {
   const resolvedTokens = Math.max(1, Math.round(tokensToDeduct));
 
@@ -4904,36 +4906,47 @@ export async function deductImageCredits({
         );
       }
 
-      if (subscription.tokenBalance < resolvedTokens) {
-        await tx
-          .update(userSubscription)
-          .set({
-            tokenBalance: 0,
-            manualTokenBalance: 0,
-            paidTokenBalance: 0,
-            tokensUsed: Math.min(
-              subscription.tokenAllowance,
-              subscription.tokensUsed + subscription.tokenBalance
-            ),
-            status: "exhausted",
-            updatedAt: now,
-          })
-          .where(eq(userSubscription.id, subscription.id));
+      const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
+      const paidBalance = Math.max(0, subscription.paidTokenBalance ?? 0);
+      const availableBalance = allowManualCredits
+        ? manualBalance + paidBalance
+        : paidBalance;
+
+      if (availableBalance < resolvedTokens) {
+        if (allowManualCredits) {
+          await tx
+            .update(userSubscription)
+            .set({
+              tokenBalance: 0,
+              manualTokenBalance: 0,
+              paidTokenBalance: 0,
+              tokensUsed: Math.min(
+                subscription.tokenAllowance,
+                subscription.tokensUsed + subscription.tokenBalance
+              ),
+              status: "exhausted",
+              updatedAt: now,
+            })
+            .where(eq(userSubscription.id, subscription.id));
+        }
 
         throw new ChatSDKError(
           "payment_required:credits",
-          "Insufficient credits remaining"
+          allowManualCredits
+            ? "Insufficient credits remaining"
+            : "Paid credits are required to generate images"
         );
       }
 
-      const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
-      const paidBalance = Math.max(0, subscription.paidTokenBalance ?? 0);
-      const manualTokensDeducted = Math.min(resolvedTokens, manualBalance);
-      const paidTokensDeducted = Math.min(
-        resolvedTokens - manualTokensDeducted,
-        paidBalance
-      );
-      const remainingManualBalance = manualBalance - manualTokensDeducted;
+      const manualTokensDeducted = allowManualCredits
+        ? Math.min(resolvedTokens, manualBalance)
+        : 0;
+      const paidTokensDeducted = allowManualCredits
+        ? Math.min(resolvedTokens - manualTokensDeducted, paidBalance)
+        : Math.min(resolvedTokens, paidBalance);
+      const remainingManualBalance = allowManualCredits
+        ? manualBalance - manualTokensDeducted
+        : manualBalance;
       const remainingPaidBalance = paidBalance - paidTokensDeducted;
       const remaining = Math.max(
         0,

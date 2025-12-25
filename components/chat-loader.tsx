@@ -30,6 +30,7 @@ type ChatLoaderProps = {
   imageGeneration: {
     enabled: boolean;
     canGenerate: boolean;
+    requiresPaidCredits: boolean;
   };
   customKnowledgeEnabled: boolean;
 };
