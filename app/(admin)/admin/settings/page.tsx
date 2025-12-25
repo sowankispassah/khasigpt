@@ -1872,11 +1872,17 @@ export default async function AdminSettingsPage({
 
                         <div className="flex items-center gap-3">
                           <input
+                            name="supportsReasoning"
+                            type="hidden"
+                            value="false"
+                          />
+                          <input
                             className="h-4 w-4"
                             defaultChecked={model.supportsReasoning}
                             id={`supportsReasoning-${model.id}`}
                             name="supportsReasoning"
                             type="checkbox"
+                            value="true"
                           />
                           <label
                             className="font-medium text-sm"
@@ -1888,11 +1894,17 @@ export default async function AdminSettingsPage({
 
                         <div className="flex items-center gap-3">
                           <input
+                            name="isEnabled"
+                            type="hidden"
+                            value="false"
+                          />
+                          <input
                             className="h-4 w-4"
                             defaultChecked={model.isEnabled}
                             id={`isEnabled-${model.id}`}
                             name="isEnabled"
                             type="checkbox"
+                            value="true"
                           />
                           <label
                             className="font-medium text-sm"
@@ -1904,11 +1916,17 @@ export default async function AdminSettingsPage({
 
                         <div className="flex items-center gap-3">
                           <input
+                            name="isDefault"
+                            type="hidden"
+                            value="false"
+                          />
+                          <input
                             className="h-4 w-4"
                             defaultChecked={model.isDefault}
                             id={`isDefault-${model.id}`}
                             name="isDefault"
                             type="checkbox"
+                            value="true"
                           />
                           <label
                             className="font-medium text-sm"
@@ -1919,7 +1937,10 @@ export default async function AdminSettingsPage({
                         </div>
 
                         <div className="flex justify-end md:col-span-2">
-                          <ActionSubmitButton pendingLabel="Saving...">
+                          <ActionSubmitButton
+                            pendingLabel="Saving..."
+                            successMessage="Model updated."
+                          >
                             Save changes
                           </ActionSubmitButton>
                         </div>
@@ -2360,11 +2381,17 @@ export default async function AdminSettingsPage({
 
                         <div className="flex items-center gap-3">
                           <input
+                            name="isEnabled"
+                            type="hidden"
+                            value="false"
+                          />
+                          <input
                             className="h-4 w-4"
                             defaultChecked={model.isEnabled}
                             id={`image-model-enabled-${model.id}`}
                             name="isEnabled"
                             type="checkbox"
+                            value="true"
                           />
                           <label
                             className="font-medium text-sm"
@@ -2375,7 +2402,10 @@ export default async function AdminSettingsPage({
                         </div>
 
                         <div className="flex justify-end md:col-span-2">
-                          <ActionSubmitButton pendingLabel="Saving...">
+                          <ActionSubmitButton
+                            pendingLabel="Saving..."
+                            successMessage="Image model updated."
+                          >
                             Save changes
                           </ActionSubmitButton>
                         </div>

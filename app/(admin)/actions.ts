@@ -287,6 +287,14 @@ function parseBoolean(value: FormDataEntryValue | null | undefined) {
   return normalized === "true" || normalized === "on" || normalized === "1";
 }
 
+function parseBooleanFromEntries(formData: FormData, key: string) {
+  const entries = formData.getAll(key);
+  if (entries.length === 0) {
+    return null;
+  }
+  return entries.some((entry) => parseBoolean(entry));
+}
+
 function parseJson(value: FormDataEntryValue | null | undefined) {
   if (!value) {
     return null;
@@ -718,10 +726,6 @@ export async function updateModelConfigAction(formData: FormData) {
     patch.codeTemplate = formData.get("codeTemplate")?.toString() ?? null;
   }
 
-  if (formData.has("supportsReasoning")) {
-    patch.supportsReasoning = parseBoolean(formData.get("supportsReasoning"));
-  }
-
   if (formData.has("reasoningTag")) {
     patch.reasoningTag = formData.get("reasoningTag")?.toString() ?? null;
   }
@@ -730,12 +734,22 @@ export async function updateModelConfigAction(formData: FormData) {
     patch.config = parseJson(formData.get("configJson"));
   }
 
-  if (formData.has("isEnabled")) {
-    patch.isEnabled = parseBoolean(formData.get("isEnabled"));
+  const supportsReasoningValue = parseBooleanFromEntries(
+    formData,
+    "supportsReasoning"
+  );
+  if (supportsReasoningValue !== null) {
+    patch.supportsReasoning = supportsReasoningValue;
   }
 
-  if (formData.has("isDefault")) {
-    patch.isDefault = parseBoolean(formData.get("isDefault"));
+  const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
+  if (isEnabledValue !== null) {
+    patch.isEnabled = isEnabledValue;
+  }
+
+  const isDefaultValue = parseBooleanFromEntries(formData, "isDefault");
+  if (isDefaultValue !== null) {
+    patch.isDefault = isDefaultValue;
   }
 
   if (formData.has("inputProviderCostPerMillion")) {
@@ -774,8 +788,6 @@ export async function updateModelConfigAction(formData: FormData) {
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
-
-  redirect("/admin/settings?notice=model-updated");
 }
 
 export async function deleteModelConfigAction(formData: FormData) {
@@ -996,8 +1008,9 @@ export async function updateImageModelConfigAction(formData: FormData) {
     patch.priceInPaise = pricing.priceInPaise;
   }
 
-  if (formData.has("isEnabled")) {
-    patch.isEnabled = parseBoolean(formData.get("isEnabled"));
+  const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
+  if (isEnabledValue !== null) {
+    patch.isEnabled = isEnabledValue;
   }
 
   await updateImageModelConfig({
@@ -1015,8 +1028,6 @@ export async function updateImageModelConfigAction(formData: FormData) {
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
-
-  redirect("/admin/settings?notice=image-model-updated");
 }
 
 export async function deleteImageModelConfigAction(formData: FormData) {
