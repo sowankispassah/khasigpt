@@ -568,7 +568,7 @@ function ImageModeToggle({
       className={cn(
         "h-8 gap-1 rounded-lg border-0 px-2 text-xs transition-colors",
         isActive
-          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
           : "bg-background hover:bg-accent"
       )}
       onClick={(event) => {
@@ -580,7 +580,7 @@ function ImageModeToggle({
       variant="ghost"
     >
       <ImageIcon size={14} />
-      <span className="hidden sm:inline">{label}</span>
+      <span className="inline">{label}</span>
     </Button>
   );
 

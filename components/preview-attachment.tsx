@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { Attachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Loader } from "./elements/loader";
-import { CrossSmallIcon } from "./icons";
+import { CrossSmallIcon, DownloadIcon } from "./icons";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "./ui/dialog";
 
@@ -16,6 +16,7 @@ export const PreviewAttachment = ({
   className,
   previewSize,
   showName = true,
+  showDownload = false,
 }: {
   attachment: Attachment;
   isUploading?: boolean;
@@ -23,6 +24,7 @@ export const PreviewAttachment = ({
   className?: string;
   previewSize?: number;
   showName?: boolean;
+  showDownload?: boolean;
 }) => {
   const { name, url, contentType } = attachment;
   const isImage = Boolean(contentType?.startsWith("image"));
@@ -32,6 +34,16 @@ export const PreviewAttachment = ({
     height: number;
   } | null>(null);
   const resolvedPreviewSize = previewSize ?? 64;
+  const imageExtension =
+    contentType === "image/png"
+      ? "png"
+      : contentType === "image/jpeg"
+        ? "jpg"
+        : "";
+  const downloadFilename =
+    name && imageExtension && !name.includes(".")
+      ? `${name}.${imageExtension}`
+      : name ?? `image${imageExtension ? `.${imageExtension}` : ""}`;
 
   if (!isImage) {
     return (
@@ -114,6 +126,22 @@ export const PreviewAttachment = ({
             width={resolvedPreviewSize}
           />
 
+          {showDownload && !isUploading ? (
+            <a
+              aria-label={
+                name ? `Download ${name}` : "Download image attachment"
+              }
+              className="absolute top-0.5 left-0.5 flex size-6 cursor-pointer items-center justify-center rounded-full bg-background/80 text-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+              download={downloadFilename}
+              href={url}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <DownloadIcon size={12} />
+            </a>
+          ) : null}
+
           {isUploading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50">
               <Loader size={16} />
@@ -144,6 +172,18 @@ export const PreviewAttachment = ({
 
       <DialogContent className="w-auto max-w-[95vw] overflow-hidden border-0 bg-transparent p-0 shadow-none">
         <div className="flex items-center justify-center">
+          {showDownload && !isUploading ? (
+            <a
+              aria-label={
+                name ? `Download ${name}` : "Download image attachment"
+              }
+              className="absolute top-3 right-3 z-10 flex size-9 cursor-pointer items-center justify-center rounded-full bg-background/90 text-foreground shadow-md"
+              download={downloadFilename}
+              href={url}
+            >
+              <DownloadIcon size={16} />
+            </a>
+          ) : null}
           <Image
             alt={name ?? "An image attachment"}
             className="h-auto max-h-[90vh] w-auto max-w-[95vw] object-contain"

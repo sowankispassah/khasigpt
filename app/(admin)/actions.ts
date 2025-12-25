@@ -12,6 +12,7 @@ import {
   FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
@@ -249,6 +250,29 @@ export async function updateImageGenerationAvailabilityAction(
 
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
+}
+
+export async function updateImageFilenamePrefixAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const rawPrefix = formData.get("imageFilenamePrefix");
+  const prefix =
+    typeof rawPrefix === "string" ? rawPrefix.trim() : "";
+
+  await setAppSetting({
+    key: IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+    value: prefix,
+  });
+  revalidateAppSettingCache(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.image_generation.filename_prefix",
+    target: { setting: IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY },
+    metadata: { prefix },
+  });
+
+  revalidatePath("/admin/settings");
 }
 
 export async function updateCustomKnowledgeSettingsAction(formData: FormData) {

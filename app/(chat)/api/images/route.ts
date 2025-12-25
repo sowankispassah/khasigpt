@@ -8,9 +8,11 @@ import {
   generateNanoBananaImage,
   getImageGenerationAccess,
 } from "@/lib/ai/image-generation";
+import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
 import {
   deductImageCredits,
   getChatById,
+  getAppSetting,
   saveChat,
   saveMessages,
 } from "@/lib/db/queries";
@@ -36,6 +38,25 @@ const imageRequestSchema = z.object({
   userMessageId: z.string().uuid().optional(),
   imageUrl: z.string().url().nullable().optional(),
 });
+
+const DEFAULT_IMAGE_FILENAME_PREFIX = "khasigpt-image";
+
+function normalizeImageFilenamePrefix(value: unknown) {
+  if (typeof value !== "string") {
+    return DEFAULT_IMAGE_FILENAME_PREFIX;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return DEFAULT_IMAGE_FILENAME_PREFIX;
+  }
+  const sanitized = trimmed
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+
+  return sanitized || DEFAULT_IMAGE_FILENAME_PREFIX;
+}
 
 function detectImageMime(buffer: ArrayBuffer, declaredType?: string | null) {
   const bytes = new Uint8Array(buffer);
@@ -151,6 +172,12 @@ export async function POST(request: Request) {
   const { chatId, visibility, prompt, imageUrl, userMessageId } = payload;
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const imageFilenamePrefixSetting = await getAppSetting<string>(
+    IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY
+  );
+  const imageFilenamePrefix = normalizeImageFilenamePrefix(
+    imageFilenamePrefixSetting
+  );
 
   const existingChat = await getChatById({ id: chatId });
   if (existingChat && existingChat.userId !== session.user.id) {
@@ -257,7 +284,7 @@ export async function POST(request: Request) {
       type: "file" as const,
       url: `data:${image.mediaType};base64,${image.base64}`,
       mediaType: image.mediaType,
-      filename: `nano-banana-${index + 1}`,
+      filename: `${imageFilenamePrefix}-${index + 1}`,
     }));
 
     await deductImageCredits({

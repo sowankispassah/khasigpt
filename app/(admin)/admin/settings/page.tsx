@@ -12,6 +12,7 @@ import {
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
   updateImageGenerationAvailabilityAction,
+  updateImageFilenamePrefixAction,
   setActiveImageModelConfigAction,
   setDefaultModelConfigAction,
   setMarginBaselineModelAction,
@@ -39,6 +40,7 @@ import {
   DEFAULT_TERMS_OF_SERVICE,
   FORUM_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   TOKENS_PER_CREDIT,
@@ -177,6 +179,7 @@ export default async function AdminSettingsPage({
     forumEnabledSetting,
     imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
+    imageFilenamePrefixSetting,
   ] = await Promise.all([
     getUsdToInrRate(),
     listModelConfigs({
@@ -204,6 +207,7 @@ export default async function AdminSettingsPage({
     getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
     getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
+    getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
   ]);
 
   const usdToInr = exchangeRate.rate;
@@ -212,6 +216,10 @@ export default async function AdminSettingsPage({
   const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
   const deletedImageModels = imageModelConfigs.filter((model) => model.deletedAt);
   const enabledModels = activeModels.filter((model) => model.isEnabled);
+  const imageFilenamePrefix =
+    typeof imageFilenamePrefixSetting === "string"
+      ? imageFilenamePrefixSetting
+      : "";
   const imagePromptTranslationModelId =
     typeof imagePromptTranslationModelSetting === "string" &&
     imagePromptTranslationModelSetting.trim().length > 0
@@ -534,6 +542,45 @@ export default async function AdminSettingsPage({
               </p>
             </form>
           </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Set defaults for generated image downloads."
+          title="Image generation defaults"
+        >
+          <form
+            action={updateImageFilenamePrefixAction}
+            className="grid gap-4 md:grid-cols-2"
+          >
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label
+                className="font-medium text-sm"
+                htmlFor="imageFilenamePrefix"
+              >
+                Download filename prefix
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={imageFilenamePrefix}
+                id="imageFilenamePrefix"
+                name="imageFilenamePrefix"
+                placeholder="nano-banana"
+              />
+              <p className="text-muted-foreground text-xs">
+                Leave blank to use the default prefix in generated image
+                downloads.
+              </p>
+            </div>
+
+            <div className="flex justify-end md:col-span-2">
+              <ActionSubmitButton
+                pendingLabel="Saving..."
+                successMessage="Image filename prefix updated."
+              >
+                Save defaults
+              </ActionSubmitButton>
+            </div>
+          </form>
         </CollapsibleSection>
 
         <CollapsibleSection

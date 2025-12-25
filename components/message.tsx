@@ -116,6 +116,7 @@ const PurePreviewMessage = ({
                   }}
                   key={attachment.id}
                   previewSize={isAssistantMessage ? 240 : undefined}
+                  showDownload={isAssistantMessage}
                   showName={!isAssistantMessage}
                 />
               ))}
