@@ -175,15 +175,24 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname === "/" &&
     (request.method === "GET" || request.method === "HEAD")
   ) {
+    const sessionCookie =
+      request.cookies.get("__Secure-authjs.session-token") ??
+      request.cookies.get("authjs.session-token") ??
+      request.cookies.get("__Secure-next-auth.session-token") ??
+      request.cookies.get("next-auth.session-token");
     const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
     const token = authSecret
       ? await getToken({ req: request, secret: authSecret })
       : null;
-    if (token) {
+    if (token || sessionCookie) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/chat";
       return NextResponse.rewrite(redirectUrl);
     }
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("callbackUrl", "/");
+    return NextResponse.redirect(loginUrl);
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
