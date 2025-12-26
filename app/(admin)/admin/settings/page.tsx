@@ -12,16 +12,16 @@ import {
   hardDeleteImageModelConfigAction,
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
-  updateImageGenerationAvailabilityAction,
-  updateImageFilenamePrefixAction,
   setActiveImageModelConfigAction,
   setDefaultModelConfigAction,
+  setImagePromptTranslationModelAction,
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
-  setImagePromptTranslationModelAction,
   updateAboutContentAction,
   updateForumAvailabilityAction,
   updateFreeMessageSettingsAction,
+  updateImageFilenamePrefixAction,
+  updateImageGenerationAvailabilityAction,
   updateImageModelConfigAction,
   updateLanguageStatusAction,
   updateModelConfigAction,
@@ -33,6 +33,8 @@ import {
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { parseImageGenerationEnabledSetting } from "@/lib/ai/image-generation";
+import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
   DEFAULT_ABOUT_US,
   DEFAULT_FREE_MESSAGES_PER_DAY,
@@ -55,16 +57,14 @@ import {
   listModelConfigs,
   listPricingPlans,
 } from "@/lib/db/queries";
-import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
-import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import { parseForumEnabledSetting } from "@/lib/forum/config";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getAllLanguages } from "@/lib/i18n/languages";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { cn } from "@/lib/utils";
+import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
-import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 

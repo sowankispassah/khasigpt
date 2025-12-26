@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import {
@@ -14,12 +14,32 @@ import {
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { signIn } from "./auth";
 
 const authFormSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
+
+const REGISTER_RATE_LIMIT = {
+  limit: 5,
+  windowMs: 10 * 60 * 1000,
+};
+
+async function allowRegisterAttempt(email: string) {
+  const headerStore = await headers();
+  const clientKey = getClientKeyFromHeaders(headerStore);
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const [ipResult, emailResult] = await Promise.all([
+    incrementRateLimit(`register:ip:${clientKey}`, REGISTER_RATE_LIMIT),
+    incrementRateLimit(`register:email:${normalizedEmail}`, REGISTER_RATE_LIMIT),
+  ]);
+
+  return ipResult.allowed && emailResult.allowed;
+}
 
 export type LoginActionState = {
   status:
@@ -82,7 +102,8 @@ export type RegisterActionState = {
     | "failed"
     | "user_exists"
     | "invalid_data"
-    | "terms_unaccepted";
+    | "terms_unaccepted"
+    | "rate_limited";
 };
 
 export const register = async (
@@ -99,6 +120,11 @@ export const register = async (
       email: formData.get("email"),
       password: formData.get("password"),
     });
+
+    const isAllowed = await allowRegisterAttempt(validatedData.email);
+    if (!isAllowed) {
+      return { status: "rate_limited" };
+    }
 
     const [existingUser] = await getUser(validatedData.email);
 

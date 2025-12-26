@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { DataStreamProvider } from "@/components/data-stream-provider";
@@ -10,7 +11,6 @@ import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { generateUUID } from "@/lib/utils";
-import { auth } from "@/app/(auth)/auth";
 
 export default async function Page() {
   const cookieStore = await cookies();

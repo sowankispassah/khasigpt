@@ -1,6 +1,6 @@
-import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const isProduction = process.env.NODE_ENV === "production";

@@ -46,7 +46,7 @@ export default async function Layout({
           <SidebarInset>{children}</SidebarInset>
         </SidebarProvider>
       ) : (
-        <>{children}</>
+        children
       )}
     </SiteShell>
   );

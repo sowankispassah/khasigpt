@@ -99,7 +99,7 @@ export async function getImageGenerationAccess({
   );
   const featureEnabled = parseImageGenerationEnabledSetting(rawSetting);
   const activeModel = await getActiveImageModel();
-  const modelEnabled = Boolean(activeModel && activeModel.isEnabled);
+  const modelEnabled = Boolean(activeModel?.isEnabled);
   const enabled = featureEnabled && modelEnabled;
   const tokensPerImage = Math.max(
     1,
@@ -247,7 +247,7 @@ async function resolveImagePromptTranslationModel() {
 
   if (normalizedModelId) {
     const modelConfig = await getModelConfigById({ id: normalizedModelId });
-    if (modelConfig && modelConfig.isEnabled) {
+    if (modelConfig?.isEnabled) {
       try {
         return resolveLanguageModel(modelConfig);
       } catch (error) {

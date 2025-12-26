@@ -72,6 +72,15 @@ function RegisterContent() {
           "You must accept the Terms of Service and Privacy Policy to continue."
         ),
       });
+    } else if (state.status === "rate_limited") {
+      setShowEmailFields(true);
+      toast({
+        type: "error",
+        description: translate(
+          "register.error.rate_limited",
+          "Too many sign-up attempts. Please try again later."
+        ),
+      });
     } else if (state.status === "verification_sent") {
       setShowEmailFields(true);
       toast({

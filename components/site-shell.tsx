@@ -1,6 +1,6 @@
+import { HtmlLangSync } from "@/components/html-lang-sync";
 import { LanguageProvider } from "@/components/language-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
-import { HtmlLangSync } from "@/components/html-lang-sync";
 import type { LanguageOption } from "@/lib/i18n/languages";
 
 type SiteShellProps = {

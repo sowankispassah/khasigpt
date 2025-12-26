@@ -1,5 +1,5 @@
-import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
+import { chromium } from "@playwright/test";
 
 const args = process.argv.slice(2);
 const getArg = (name) => {

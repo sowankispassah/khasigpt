@@ -417,7 +417,8 @@ export function Chat({
                       return;
                     }
 
-                    if (!data?.assistantMessage) {
+                    const assistantMessage = data?.assistantMessage;
+                    if (!assistantMessage) {
                       toast({
                         type: "error",
                         description: translate(
@@ -428,7 +429,7 @@ export function Chat({
                       return;
                     }
 
-                    setMessages((prev) => [...prev, data.assistantMessage!]);
+                    setMessages((prev) => [...prev, assistantMessage]);
                     mutate(unstable_serialize(getChatHistoryPaginationKey));
                   } catch (_error) {
                     toast({

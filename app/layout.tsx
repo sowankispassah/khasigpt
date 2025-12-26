@@ -11,11 +11,11 @@ import {
   THEME_COLOR_SCRIPT,
 } from "@/lib/security/inline-scripts";
 import {
+  buildStructuredData,
+  getSiteUrl,
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_TITLE,
-  buildStructuredData,
-  getSiteUrl,
 } from "@/lib/seo/site";
 
 import "./globals.css";
