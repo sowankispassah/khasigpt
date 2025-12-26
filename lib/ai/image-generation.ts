@@ -160,12 +160,12 @@ export async function getImageGenerationAccess({
 
   return {
     enabled,
-    canGenerate: isAdmin ? hasCredits : hasPaidCredits,
+    canGenerate: hasCredits,
     hasCredits,
     hasPaidPlan,
     hasPaidCredits,
     hasManualCredits,
-    requiresPaidCredits: enabled && !isAdmin && !hasPaidCredits,
+    requiresPaidCredits: false,
     isAdmin,
     tokensPerImage,
     model: modelSummary,

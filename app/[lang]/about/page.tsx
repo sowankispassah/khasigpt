@@ -182,6 +182,7 @@ export default async function AboutPage({
         <div>
           <BackToHomeButton
             label={t("navigation.back_to_home", "Back to home")}
+            href="/"
           />
         </div>
 

@@ -1,3 +1,4 @@
+import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -168,6 +169,21 @@ export async function middleware(request: NextRequest) {
     redirectUrl.host = CANONICAL_HOST;
     redirectUrl.protocol = "https:";
     return NextResponse.redirect(redirectUrl, 308);
+  }
+
+  if (
+    request.nextUrl.pathname === "/" &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
+    const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+    const token = authSecret
+      ? await getToken({ req: request, secret: authSecret })
+      : null;
+    if (token) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/chat";
+      return NextResponse.rewrite(redirectUrl);
+    }
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {

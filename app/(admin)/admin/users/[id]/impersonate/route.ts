@@ -43,7 +43,7 @@ export async function GET(
 
   const redirectUrl = new URL("/auth/impersonate", _request.url);
   redirectUrl.searchParams.set("token", tokenRecord.token);
-  redirectUrl.searchParams.set("redirectTo", "/chat");
+  redirectUrl.searchParams.set("redirectTo", "/");
 
   return NextResponse.redirect(redirectUrl.toString());
 }

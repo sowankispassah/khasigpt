@@ -39,13 +39,16 @@
     ".next-tmp/types/**/*.ts",
     ".next/types/**/*.ts",
     "/tmp/ai-next/types/**/*.ts",
-    "build_output/.next/types/**/*.ts",
     "next-env.d.ts",
     "next.config.js",
-    "next.config.ts",
-    ".next-build-clean/types/**/*.ts"
+    "next.config.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next",
+    ".next-build-clean",
+    ".next-tmp",
+    "build_output",
+    "dist-next"
   ]
 }

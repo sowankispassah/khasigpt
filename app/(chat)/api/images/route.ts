@@ -290,7 +290,7 @@ export async function POST(request: Request) {
     await deductImageCredits({
       userId: session.user.id,
       tokensToDeduct: access.tokensPerImage,
-      allowManualCredits: session.user.role === "admin",
+      allowManualCredits: true,
     });
 
     await saveMessages({

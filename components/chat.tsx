@@ -239,8 +239,9 @@ export function Chat({
   }, [query, sendMessage, hasAppendedQuery, id]);
 
   useEffect(() => {
-    if (pathname === "/" && newChatNonce) {
-      router.replace("/", { scroll: false });
+    if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
+      const nextPath = pathname === "/chat" ? "/chat" : "/";
+      router.replace(nextPath, { scroll: false });
     }
   }, [pathname, newChatNonce, router]);
 

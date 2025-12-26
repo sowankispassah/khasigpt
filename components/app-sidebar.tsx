@@ -114,9 +114,9 @@ export function AppSidebar({ user }: { user: User | undefined }) {
     }
     const targetHref = createNewChatHref();
     startProgress();
-    startTransition(() => {
-      setOpenMobile(false);
-      router.push(targetHref);
+      startTransition(() => {
+        setOpenMobile(false);
+        router.push(targetHref);
     });
   };
 

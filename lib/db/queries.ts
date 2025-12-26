@@ -4878,7 +4878,7 @@ export async function recordTokenUsage({
 export async function deductImageCredits({
   userId,
   tokensToDeduct,
-  allowManualCredits = false,
+  allowManualCredits = true,
 }: {
   userId: string;
   tokensToDeduct: number;

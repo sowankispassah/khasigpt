@@ -69,7 +69,10 @@ export default async function TermsOfServicePage({
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
       <div>
-        <BackToHomeButton label={t("navigation.back_to_home", "Back to home")} />
+        <BackToHomeButton
+          href="/"
+          label={t("navigation.back_to_home", "Back to home")}
+        />
       </div>
 
       <header className="space-y-2">
