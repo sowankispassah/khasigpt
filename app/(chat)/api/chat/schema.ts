@@ -21,7 +21,9 @@ export const postRequestBodySchema = z.object({
     role: z.enum(["user"]),
     parts: z.array(partSchema),
   }),
-  selectedChatModel: z.string().uuid(),
+  // Historically this cookie stored a model `key` (not the UUID id).
+  // Accept both so older clients/cookies don't hard-fail requests.
+  selectedChatModel: z.string().min(1).max(128),
   selectedVisibilityType: z.enum(["public", "private"]),
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useMemo, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,7 +17,6 @@ import {
   GlobeIcon,
   LockIcon,
 } from "./icons";
-import { useTranslation } from "@/components/language-provider";
 
 export type VisibilityType = "private" | "public";
 
