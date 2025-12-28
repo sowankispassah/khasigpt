@@ -19,6 +19,7 @@ const ADMIN_LINKS = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/chats", label: "Chats" },
   { href: "/admin/rag", label: "RAG" },
+  { href: "/admin/characters", label: "Characters" },
   { href: "/admin/contacts", label: "Contacts" },
   { href: "/admin/logs", label: "Audit Log" },
   { href: "/admin/settings", label: "Settings" },

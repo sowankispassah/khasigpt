@@ -21,6 +21,7 @@ import {
   isNull,
   lt,
   lte,
+  ne,
   or,
   type SQL,
   sql,
@@ -30,6 +31,7 @@ import { unstable_cache } from "next/cache";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
+import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import {
@@ -48,7 +50,12 @@ import {
   type ContactMessageStatus,
   type Coupon,
   type CouponRewardPayout,
+  type Character,
+  type CharacterAliasIndex,
+  type CharacterRefImage,
   chat,
+  character,
+  characterAliasIndex,
   contactMessage,
   coupon,
   couponRedemption,
@@ -2949,6 +2956,356 @@ export async function setActiveImageModelConfig(id: string) {
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to set active image model configuration"
+    );
+  }
+}
+
+function buildNormalizedAliases({
+  canonicalName,
+  aliases,
+}: {
+  canonicalName: string;
+  aliases: string[];
+}) {
+  const normalized = new Set<string>();
+  const candidates = [canonicalName, ...aliases];
+
+  for (const value of candidates) {
+    const normalizedValue = normalizeCharacterText(value);
+    if (normalizedValue) {
+      normalized.add(normalizedValue);
+    }
+  }
+
+  return Array.from(normalized);
+}
+
+export async function listCharactersForAdmin({
+  limit = 200,
+}: {
+  limit?: number;
+} = {}): Promise<Character[]> {
+  try {
+    return await db
+      .select()
+      .from(character)
+      .orderBy(desc(character.updatedAt))
+      .limit(limit);
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load characters"
+    );
+  }
+}
+
+export async function createCharacterWithAliases({
+  canonicalName,
+  aliases,
+  refImages,
+  lockedPrompt,
+  negativePrompt,
+  gender,
+  height,
+  weight,
+  complexion,
+  priority = 0,
+  enabled = true,
+}: {
+  canonicalName: string;
+  aliases: string[];
+  refImages: CharacterRefImage[];
+  lockedPrompt?: string | null;
+  negativePrompt?: string | null;
+  gender?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  complexion?: string | null;
+  priority?: number;
+  enabled?: boolean;
+}): Promise<Character> {
+  const now = new Date();
+  const aliasIndex = buildNormalizedAliases({ canonicalName, aliases });
+
+  try {
+    return await db.transaction(async (tx) => {
+      if (aliasIndex.length > 0) {
+        const conflicts = await tx
+          .select({
+            aliasNormalized: characterAliasIndex.aliasNormalized,
+          })
+          .from(characterAliasIndex)
+          .where(inArray(characterAliasIndex.aliasNormalized, aliasIndex))
+          .limit(1);
+
+        if (conflicts.length > 0) {
+          throw new ChatSDKError(
+            "bad_request:database",
+            "One or more aliases are already assigned to another character."
+          );
+        }
+      }
+
+      const [created] = await tx
+        .insert(character)
+        .values({
+          canonicalName,
+          aliases,
+          refImages,
+          lockedPrompt: lockedPrompt ?? null,
+          negativePrompt: negativePrompt ?? null,
+          gender: gender ?? null,
+          height: height ?? null,
+          weight: weight ?? null,
+          complexion: complexion ?? null,
+          priority,
+          enabled,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      if (!created) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Failed to create character"
+        );
+      }
+
+      if (aliasIndex.length > 0) {
+        await tx.insert(characterAliasIndex).values(
+          aliasIndex.map((aliasNormalized) => ({
+            aliasNormalized,
+            characterId: created.id,
+            createdAt: now,
+            updatedAt: now,
+          }))
+        );
+      }
+
+      return created;
+    });
+  } catch (_error) {
+    if (_error instanceof ChatSDKError) {
+      throw _error;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to create character");
+  }
+}
+
+export async function updateCharacterWithAliases({
+  id,
+  canonicalName,
+  aliases,
+  refImages,
+  lockedPrompt,
+  negativePrompt,
+  gender,
+  height,
+  weight,
+  complexion,
+  priority,
+  enabled,
+}: {
+  id: string;
+  canonicalName: string;
+  aliases: string[];
+  refImages: CharacterRefImage[];
+  lockedPrompt?: string | null;
+  negativePrompt?: string | null;
+  gender?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  complexion?: string | null;
+  priority?: number;
+  enabled?: boolean;
+}): Promise<Character | null> {
+  const now = new Date();
+  const aliasIndex = buildNormalizedAliases({ canonicalName, aliases });
+
+  try {
+    return await db.transaction(async (tx) => {
+      if (aliasIndex.length > 0) {
+        const conflicts = await tx
+          .select({
+            aliasNormalized: characterAliasIndex.aliasNormalized,
+          })
+          .from(characterAliasIndex)
+          .where(
+            and(
+              inArray(characterAliasIndex.aliasNormalized, aliasIndex),
+              ne(characterAliasIndex.characterId, id)
+            )
+          )
+          .limit(1);
+
+        if (conflicts.length > 0) {
+          throw new ChatSDKError(
+            "bad_request:database",
+            "One or more aliases are already assigned to another character."
+          );
+        }
+      }
+
+      const [updated] = await tx
+        .update(character)
+        .set({
+          canonicalName,
+          aliases,
+          refImages,
+          lockedPrompt: lockedPrompt ?? null,
+          negativePrompt: negativePrompt ?? null,
+          gender: gender ?? null,
+          height: height ?? null,
+          weight: weight ?? null,
+          complexion: complexion ?? null,
+          priority: priority ?? 0,
+          enabled: enabled ?? true,
+          updatedAt: now,
+        })
+        .where(eq(character.id, id))
+        .returning();
+
+      if (!updated) {
+        return null;
+      }
+
+      await tx
+        .delete(characterAliasIndex)
+        .where(eq(characterAliasIndex.characterId, id));
+
+      if (aliasIndex.length > 0) {
+        await tx.insert(characterAliasIndex).values(
+          aliasIndex.map((aliasNormalized) => ({
+            aliasNormalized,
+            characterId: id,
+            createdAt: now,
+            updatedAt: now,
+          }))
+        );
+      }
+
+      return updated;
+    });
+  } catch (_error) {
+    if (_error instanceof ChatSDKError) {
+      throw _error;
+    }
+    throw new ChatSDKError("bad_request:database", "Failed to update character");
+  }
+}
+
+export async function deleteCharacterById(id: string) {
+  try {
+    await db.delete(character).where(eq(character.id, id));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to delete character"
+    );
+  }
+}
+
+export async function listCharacterAliasIndex(): Promise<
+  Pick<CharacterAliasIndex, "aliasNormalized" | "characterId">[]
+> {
+  try {
+    return await db
+      .select({
+        aliasNormalized: characterAliasIndex.aliasNormalized,
+        characterId: characterAliasIndex.characterId,
+      })
+      .from(characterAliasIndex);
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load character alias index"
+    );
+  }
+}
+
+export async function getCharacterMatchCandidates(
+  ids: string[]
+): Promise<
+  Array<
+    Pick<Character, "id" | "priority" | "enabled"> & {
+      refImages: CharacterRefImage[];
+    }
+  >
+> {
+  if (!ids.length) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select({
+        id: character.id,
+        priority: character.priority,
+        enabled: character.enabled,
+        refImages: character.refImages,
+      })
+      .from(character)
+      .where(inArray(character.id, ids));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load character match candidates"
+    );
+  }
+}
+
+export async function getCharacterForImageGeneration(
+  id: string
+): Promise<{
+  id: string;
+  canonicalName: string;
+  refImages: CharacterRefImage[];
+  lockedPrompt: string | null;
+  negativePrompt: string | null;
+  gender: string | null;
+  height: string | null;
+  weight: string | null;
+  complexion: string | null;
+  enabled: boolean;
+  priority: number;
+} | null> {
+  try {
+    const [row] = await db
+      .select({
+        id: character.id,
+        canonicalName: character.canonicalName,
+        refImages: character.refImages,
+        lockedPrompt: character.lockedPrompt,
+        negativePrompt: character.negativePrompt,
+        gender: character.gender,
+        height: character.height,
+        weight: character.weight,
+        complexion: character.complexion,
+        enabled: character.enabled,
+        priority: character.priority,
+      })
+      .from(character)
+      .where(eq(character.id, id))
+      .limit(1);
+
+    return row ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load character profile"
     );
   }
 }

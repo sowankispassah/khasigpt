@@ -2,6 +2,11 @@ import "server-only";
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
+import {
+  buildCharacterReference,
+  type CharacterReferenceDeps,
+} from "@/lib/ai/character-reference";
+import type { ImageInput } from "@/lib/ai/image-types";
 import { getActiveImageModel } from "@/lib/ai/image-model-registry";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
@@ -30,17 +35,6 @@ const IMAGE_TRANSLATION_LANGUAGE_CODE =
   process.env.IMAGE_PROMPT_TRANSLATION_LANGUAGE_CODE ?? "kha";
 const IMAGE_TRANSLATION_MODE =
   process.env.IMAGE_PROMPT_TRANSLATION_MODE ?? "language";
-
-export const ALLOWED_IMAGE_MEDIA_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-]);
-export const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
-
-type ImageInput = {
-  data: string;
-  mediaType: string;
-};
 
 export type ImageGenerationAccess = {
   enabled: boolean;
@@ -542,12 +536,12 @@ function buildNoImageErrorDetails(
 
 async function requestNanoBananaImage({
   prompt,
-  image,
+  images,
   abortSignal,
   modelId,
 }: {
   prompt: string;
-  image?: ImageInput;
+  images?: ImageInput[];
   abortSignal?: AbortSignal;
   modelId: string;
 }) {
@@ -562,12 +556,14 @@ async function requestNanoBananaImage({
     },
   ];
 
-  if (image) {
-    messageParts.push({
-      type: "file",
-      data: image.data,
-      mediaType: image.mediaType,
-    });
+  if (images && images.length > 0) {
+    for (const image of images) {
+      messageParts.push({
+        type: "file",
+        data: image.data,
+        mediaType: image.mediaType,
+      });
+    }
   }
 
   return generateText({
@@ -587,15 +583,50 @@ async function requestNanoBananaImage({
   });
 }
 
+export async function buildGenerationRequest({
+  prompt,
+  sourceImages = [],
+  abortSignal,
+  characterReferenceDeps,
+}: {
+  prompt: string;
+  sourceImages?: ImageInput[];
+  abortSignal?: AbortSignal;
+  characterReferenceDeps?: CharacterReferenceDeps;
+}): Promise<{
+  prompt: string;
+  images?: ImageInput[];
+  matchedCharacterId?: string;
+  matchedAlias?: string;
+}> {
+  const reference = await buildCharacterReference({
+    prompt,
+    abortSignal,
+    deps: characterReferenceDeps,
+  });
+
+  const combinedImages = [
+    ...sourceImages,
+    ...(reference.referenceImages ?? []),
+  ];
+
+  return {
+    prompt: reference.prompt,
+    images: combinedImages.length > 0 ? combinedImages : undefined,
+    matchedCharacterId: reference.matchedCharacterId,
+    matchedAlias: reference.matchedAlias,
+  };
+}
+
 export async function generateNanoBananaImage({
   prompt,
-  image,
+  images,
   abortSignal,
   modelId,
   preferredLanguage,
 }: {
   prompt: string;
-  image?: ImageInput;
+  images?: ImageInput[];
   abortSignal?: AbortSignal;
   modelId: string;
   preferredLanguage?: string | null;
@@ -609,7 +640,7 @@ export async function generateNanoBananaImage({
 
   const result = await requestNanoBananaImage({
     prompt: resolvedPrompt,
-    image,
+    images,
     abortSignal,
     modelId,
   });
@@ -624,7 +655,7 @@ export async function generateNanoBananaImage({
     if (shouldRetry) {
       const retryResult = await requestNanoBananaImage({
         prompt: resolvedPrompt,
-        image,
+        images,
         abortSignal,
         modelId,
       });

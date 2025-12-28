@@ -3,11 +3,14 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import {
-  ALLOWED_IMAGE_MEDIA_TYPES,
+  buildGenerationRequest,
   generateNanoBananaImage,
   getImageGenerationAccess,
-  MAX_IMAGE_UPLOAD_BYTES,
 } from "@/lib/ai/image-generation";
+import {
+  ALLOWED_IMAGE_MEDIA_TYPES,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from "@/lib/ai/image-constants";
 import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
 import {
   deductImageCredits,
@@ -272,9 +275,15 @@ export async function POST(request: Request) {
   ];
 
   try {
-    const images = await generateNanoBananaImage({
+    const generationRequest = await buildGenerationRequest({
       prompt,
-      image: sourceImage,
+      sourceImages: sourceImage ? [sourceImage] : [],
+      abortSignal: request.signal,
+    });
+
+    const images = await generateNanoBananaImage({
+      prompt: generationRequest.prompt,
+      images: generationRequest.images,
       abortSignal: request.signal,
       modelId: access.model.providerModelId,
       preferredLanguage,

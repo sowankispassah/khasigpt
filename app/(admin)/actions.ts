@@ -22,11 +22,13 @@ import {
   APP_SETTING_CACHE_TAG,
   appSettingCacheTagForKey,
   createAuditLogEntry,
+  createCharacterWithAliases,
   createImageModelConfig,
   createLanguageEntry,
   createModelConfig,
   createPricingPlan,
   deleteChatById,
+  deleteCharacterById,
   deleteImageModelConfig,
   deleteModelConfig,
   deletePricingPlan,
@@ -55,6 +57,7 @@ import {
   updateLanguageActiveState,
   updateModelConfig,
   updatePricingPlan,
+  updateCharacterWithAliases,
   updateUserActiveState,
   updateUserPersonalKnowledgePermission,
   updateUserRole,
@@ -65,6 +68,7 @@ import type {
   RagEntryApprovalStatus,
   RagEntryStatus,
   UserRole,
+  CharacterRefImage,
 } from "@/lib/db/schema";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
@@ -2148,6 +2152,151 @@ export async function updateRagEntryAction({
 
   revalidatePath("/admin/rag");
   return entry;
+}
+
+function sanitizeAliasList(values: string[]) {
+  const unique = new Set<string>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed) {
+      unique.add(trimmed);
+    }
+  }
+  return Array.from(unique);
+}
+
+function sanitizeOptionalText(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeRefImages(refImages: CharacterRefImage[]) {
+  return refImages
+    .map((ref) => ({
+      imageId: ref.imageId?.trim() || null,
+      storageKey: ref.storageKey?.trim() || null,
+      url: ref.url?.trim() || null,
+      mimeType: ref.mimeType?.trim() || "image/png",
+      role: ref.role?.trim() || null,
+      isPrimary: Boolean(ref.isPrimary),
+      updatedAt: ref.updatedAt?.trim() || new Date().toISOString(),
+    }))
+    .filter((ref) => ref.url || ref.storageKey || ref.imageId);
+}
+
+export async function createCharacterAction({
+  canonicalName,
+  aliases,
+  refImages,
+  lockedPrompt,
+  negativePrompt,
+  gender,
+  height,
+  weight,
+  complexion,
+  priority,
+  enabled,
+}: {
+  canonicalName: string;
+  aliases: string[];
+  refImages: CharacterRefImage[];
+  lockedPrompt?: string | null;
+  negativePrompt?: string | null;
+  gender?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  complexion?: string | null;
+  priority?: number;
+  enabled?: boolean;
+}) {
+  await requireAdmin();
+
+  const trimmedName = canonicalName.trim();
+  if (!trimmedName) {
+    throw new Error("Canonical name is required.");
+  }
+
+  const sanitizedAliases = sanitizeAliasList(aliases);
+  const sanitizedRefImages = sanitizeRefImages(refImages);
+
+  const character = await createCharacterWithAliases({
+    canonicalName: trimmedName,
+    aliases: sanitizedAliases,
+    refImages: sanitizedRefImages,
+    lockedPrompt: sanitizeOptionalText(lockedPrompt),
+    negativePrompt: sanitizeOptionalText(negativePrompt),
+    gender: sanitizeOptionalText(gender),
+    height: sanitizeOptionalText(height),
+    weight: sanitizeOptionalText(weight),
+    complexion: sanitizeOptionalText(complexion),
+    priority: Number.isFinite(priority) ? Number(priority) : 0,
+    enabled: enabled ?? true,
+  });
+
+  revalidatePath("/admin/characters");
+  return character;
+}
+
+export async function updateCharacterAction({
+  id,
+  canonicalName,
+  aliases,
+  refImages,
+  lockedPrompt,
+  negativePrompt,
+  gender,
+  height,
+  weight,
+  complexion,
+  priority,
+  enabled,
+}: {
+  id: string;
+  canonicalName: string;
+  aliases: string[];
+  refImages: CharacterRefImage[];
+  lockedPrompt?: string | null;
+  negativePrompt?: string | null;
+  gender?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  complexion?: string | null;
+  priority?: number;
+  enabled?: boolean;
+}) {
+  await requireAdmin();
+
+  const trimmedName = canonicalName.trim();
+  if (!trimmedName) {
+    throw new Error("Canonical name is required.");
+  }
+
+  const sanitizedAliases = sanitizeAliasList(aliases);
+  const sanitizedRefImages = sanitizeRefImages(refImages);
+
+  const character = await updateCharacterWithAliases({
+    id,
+    canonicalName: trimmedName,
+    aliases: sanitizedAliases,
+    refImages: sanitizedRefImages,
+    lockedPrompt: sanitizeOptionalText(lockedPrompt),
+    negativePrompt: sanitizeOptionalText(negativePrompt),
+    gender: sanitizeOptionalText(gender),
+    height: sanitizeOptionalText(height),
+    weight: sanitizeOptionalText(weight),
+    complexion: sanitizeOptionalText(complexion),
+    priority: Number.isFinite(priority) ? Number(priority) : 0,
+    enabled: enabled ?? true,
+  });
+
+  revalidatePath("/admin/characters");
+  return character;
+}
+
+export async function deleteCharacterAction({ id }: { id: string }) {
+  await requireAdmin();
+  await deleteCharacterById(id);
+  revalidatePath("/admin/characters");
 }
 
 export async function bulkUpdateRagEntryStatusAction({

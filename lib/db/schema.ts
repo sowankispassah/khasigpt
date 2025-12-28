@@ -195,6 +195,66 @@ export const imageModelConfig = pgTable(
 
 export type ImageModelConfig = InferSelectModel<typeof imageModelConfig>;
 
+export type CharacterRefImage = {
+  imageId?: string | null;
+  storageKey?: string | null;
+  url?: string | null;
+  mimeType: string;
+  role?: string | null;
+  isPrimary?: boolean | null;
+  updatedAt?: string | null;
+};
+
+export const character = pgTable(
+  "Character",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    canonicalName: text("canonicalName").notNull(),
+    aliases: text("aliases").array().notNull().default(sql`ARRAY[]::text[]`),
+    refImages: jsonb("refImages")
+      .$type<CharacterRefImage[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    lockedPrompt: text("lockedPrompt"),
+    negativePrompt: text("negativePrompt"),
+    gender: text("gender"),
+    height: text("height"),
+    weight: text("weight"),
+    complexion: text("complexion"),
+    priority: integer("priority").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    canonicalNameIdx: index("Character_canonicalName_idx").on(
+      sql`lower(${table.canonicalName})`
+    ),
+    enabledIdx: index("Character_enabled_idx").on(table.enabled),
+  })
+);
+
+export type Character = InferSelectModel<typeof character>;
+
+export const characterAliasIndex = pgTable(
+  "CharacterAliasIndex",
+  {
+    aliasNormalized: text("aliasNormalized").primaryKey().notNull(),
+    characterId: uuid("characterId")
+      .notNull()
+      .references(() => character.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    characterIdx: index("CharacterAliasIndex_character_idx").on(
+      table.characterId
+    ),
+  })
+);
+
+export type CharacterAliasIndex = InferSelectModel<typeof characterAliasIndex>;
+
 export const ragEntryTypeEnum = pgEnum("rag_entry_type", [
   "text",
   "document",
