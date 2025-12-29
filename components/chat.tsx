@@ -342,7 +342,7 @@ export function Chat({
                     return;
                   }
 
-                  const imageAttachment = attachments.find((attachment) =>
+                  const imageAttachments = attachments.filter((attachment) =>
                     attachment.contentType?.startsWith("image/")
                   );
 
@@ -350,16 +350,12 @@ export function Chat({
 
                   const userMessageId = generateUUID();
                   const userParts = [
-                    ...(imageAttachment
-                      ? [
-                          {
-                            type: "file" as const,
-                            url: imageAttachment.url,
-                            filename: imageAttachment.name,
-                            mediaType: imageAttachment.contentType,
-                          },
-                        ]
-                      : []),
+                    ...imageAttachments.map((attachment) => ({
+                      type: "file" as const,
+                      url: attachment.url,
+                      filename: attachment.name,
+                      mediaType: attachment.contentType,
+                    })),
                     { type: "text" as const, text: trimmedPrompt },
                   ];
 
@@ -385,7 +381,9 @@ export function Chat({
                         visibility: visibilityType,
                         prompt: trimmedPrompt,
                         userMessageId,
-                        imageUrl: imageAttachment?.url ?? null,
+                        imageUrls: imageAttachments.map(
+                          (attachment) => attachment.url
+                        ),
                       }),
                     });
 

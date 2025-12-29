@@ -40,6 +40,7 @@ const imageRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(2000),
   userMessageId: z.string().uuid().optional(),
   imageUrl: z.string().url().nullable().optional(),
+  imageUrls: z.array(z.string().url()).optional(),
 });
 
 const DEFAULT_IMAGE_FILENAME_PREFIX = "khasigpt-image";
@@ -172,7 +173,8 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  const { chatId, visibility, prompt, imageUrl, userMessageId } = payload;
+  const { chatId, visibility, prompt, imageUrl, imageUrls, userMessageId } =
+    payload;
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const imageFilenamePrefixSetting = await getAppSetting<string>(
@@ -196,12 +198,20 @@ export async function POST(request: Request) {
     });
   }
 
-  let sourceImage: { data: string; mediaType: string } | undefined;
-  let sourceImageType: string | null = null;
+  const resolvedImageUrls = Array.from(
+    new Set([...(imageUrls ?? []), ...(imageUrl ? [imageUrl] : [])])
+  ).filter(Boolean);
 
-  if (imageUrl) {
+  const sourceImages: Array<{ data: string; mediaType: string }> = [];
+  const sourceImageParts: Array<{
+    type: "file";
+    url: string;
+    mediaType: string;
+  }> = [];
+
+  for (const url of resolvedImageUrls) {
     try {
-      const imageResponse = await fetch(imageUrl, {
+      const imageResponse = await fetch(url, {
         cache: "no-store",
         signal: request.signal,
       });
@@ -239,11 +249,15 @@ export async function POST(request: Request) {
         );
       }
 
-      sourceImageType = detected;
-      sourceImage = {
+      sourceImages.push({
         data: Buffer.from(buffer).toString("base64"),
         mediaType: detected,
-      };
+      });
+      sourceImageParts.push({
+        type: "file",
+        url,
+        mediaType: detected,
+      });
     } catch (_error) {
       return Response.json(
         {
@@ -259,15 +273,7 @@ export async function POST(request: Request) {
   const resolvedUserMessageId = userMessageId ?? generateUUID();
   const assistantMessageId = generateUUID();
   const userParts = [
-    ...(imageUrl
-      ? [
-          {
-            type: "file" as const,
-            url: imageUrl,
-            mediaType: sourceImageType ?? "image/png",
-          },
-        ]
-      : []),
+    ...sourceImageParts,
     {
       type: "text" as const,
       text: prompt,
@@ -277,7 +283,7 @@ export async function POST(request: Request) {
   try {
     const generationRequest = await buildGenerationRequest({
       prompt,
-      sourceImages: sourceImage ? [sourceImage] : [],
+      sourceImages,
       abortSignal: request.signal,
     });
 
@@ -298,6 +304,7 @@ export async function POST(request: Request) {
 
     await deductImageCredits({
       userId: session.user.id,
+      chatId,
       tokensToDeduct: access.tokensPerImage,
       allowManualCredits: true,
     });

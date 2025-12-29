@@ -15,6 +15,9 @@ import type { ImageInput } from "@/lib/ai/image-types";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 
 export const MAX_CHARACTER_REFS = 3;
+export const MAX_MATCHED_CHARACTERS = 3;
+export const MAX_TOTAL_CHARACTER_REFS =
+  MAX_CHARACTER_REFS * MAX_MATCHED_CHARACTERS;
 
 const ALIAS_INDEX_CACHE_TTL_MS = 5 * 60 * 1000;
 const REF_IMAGE_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -66,6 +69,8 @@ export type CharacterReferenceResult = {
   referenceImages?: ImageInput[];
   matchedCharacterId?: string;
   matchedAlias?: string;
+  matchedCharacterIds?: string[];
+  matchedAliases?: string[];
 };
 
 type AliasIndexCache = {
@@ -247,84 +252,102 @@ export async function detectCharacter({
   aliasIndex: CharacterAliasIndexEntry[];
   getCharactersByIds?: (ids: string[]) => Promise<CharacterMatchCandidate[]>;
 }): Promise<CharacterMatch | null> {
+  const matches = await detectCharacters({
+    prompt,
+    aliasIndex,
+    getCharactersByIds,
+    maxMatches: 1,
+  });
+
+  return matches[0] ?? null;
+}
+
+export async function detectCharacters({
+  prompt,
+  aliasIndex,
+  getCharactersByIds,
+  maxMatches = MAX_MATCHED_CHARACTERS,
+}: {
+  prompt: string;
+  aliasIndex: CharacterAliasIndexEntry[];
+  getCharactersByIds?: (ids: string[]) => Promise<CharacterMatchCandidate[]>;
+  maxMatches?: number;
+}): Promise<CharacterMatch[]> {
   const normalizedPrompt = normalizeCharacterText(prompt);
   const matches = findAliasMatches(normalizedPrompt, aliasIndex);
   if (!matches.length) {
-    return null;
+    return [];
   }
 
   if (!hasIdentityIntent(normalizedPrompt)) {
-    return null;
+    return [];
   }
 
-  const longestLength = Math.max(...matches.map((match) => match.aliasLength));
-  const longestMatches = matches.filter(
-    (match) => match.aliasLength === longestLength
-  );
   const uniqueCharacterIds = Array.from(
-    new Set(longestMatches.map((match) => match.characterId))
+    new Set(matches.map((match) => match.characterId))
   );
 
-  if (uniqueCharacterIds.length === 1) {
-    const characterId = uniqueCharacterIds[0];
+  const matchedAliases = new Map<string, string>();
+  const aliasLengths = new Map<string, number>();
+
+  for (const characterId of uniqueCharacterIds) {
     const matchedAlias = pickLongestAliasForCharacter(matches, characterId);
     if (!matchedAlias) {
-      return null;
+      continue;
     }
-    return { characterId, matchedAlias };
+    matchedAliases.set(characterId, matchedAlias);
+    aliasLengths.set(characterId, matchedAlias.length);
   }
 
-  if (!getCharactersByIds) {
-    return null;
+  if (matchedAliases.size === 0) {
+    return [];
   }
 
-  const candidates = await getCharactersByIds(uniqueCharacterIds);
-  if (!candidates.length) {
-    return null;
-  }
-
+  const candidates = getCharactersByIds
+    ? await getCharactersByIds(uniqueCharacterIds)
+    : [];
   const candidateById = new Map(
     candidates.map((candidate) => [candidate.id, candidate])
   );
-  const eligibleMatches = longestMatches.filter((match) => {
-    const candidate = candidateById.get(match.characterId);
-    return candidate ? candidate.enabled : false;
-  });
 
-  if (!eligibleMatches.length) {
-    return null;
+  const ranked = Array.from(matchedAliases.entries())
+    .map(([characterId, matchedAlias]) => {
+      const candidate = candidateById.get(characterId);
+      return {
+        characterId,
+        matchedAlias,
+        aliasLength: aliasLengths.get(characterId) ?? matchedAlias.length,
+        priority: candidate?.priority ?? 0,
+        refCount: candidate?.refImages.length ?? 0,
+        enabled: candidate?.enabled ?? true,
+      };
+    })
+    .filter((entry) => entry.enabled);
+
+  if (!ranked.length) {
+    return [];
   }
 
-  const sorted = [...eligibleMatches].sort((a, b) => {
-    const aCandidate = candidateById.get(a.characterId);
-    const bCandidate = candidateById.get(b.characterId);
-    const priorityDiff =
-      (bCandidate?.priority ?? 0) - (aCandidate?.priority ?? 0);
+  ranked.sort((a, b) => {
+    const aliasDiff = b.aliasLength - a.aliasLength;
+    if (aliasDiff !== 0) {
+      return aliasDiff;
+    }
+
+    const priorityDiff = b.priority - a.priority;
     if (priorityDiff !== 0) {
       return priorityDiff;
     }
 
-    const refCountDiff =
-      (bCandidate?.refImages.length ?? 0) -
-      (aCandidate?.refImages.length ?? 0);
-    if (refCountDiff !== 0) {
-      return refCountDiff;
-    }
-
-    return b.aliasLength - a.aliasLength;
+    return b.refCount - a.refCount;
   });
 
-  const best = sorted[0];
-  if (!best) {
-    return null;
-  }
-
-  const matchedAlias = pickLongestAliasForCharacter(matches, best.characterId);
-  if (!matchedAlias) {
-    return null;
-  }
-
-  return { characterId: best.characterId, matchedAlias };
+  return ranked
+    .slice(0, Math.max(1, maxMatches))
+    .map(({ characterId, matchedAlias }) => ({
+      characterId,
+      matchedAlias,
+    }));
 }
 
 function parseUpdatedAt(updatedAt: string | null | undefined) {
@@ -502,26 +525,53 @@ async function fetchReferenceImage(
 
 function applyCharacterConstraints(
   basePrompt: string,
-  character: CharacterForImageGeneration
+  characters: CharacterForImageGeneration[]
 ) {
   let finalPrompt = basePrompt;
-  const profileParts = [
-    character.gender ? `gender: ${character.gender}` : null,
-    character.height ? `height: ${character.height}` : null,
-    character.weight ? `weight: ${character.weight}` : null,
-    character.complexion ? `skin tone: ${character.complexion}` : null,
-  ].filter((entry): entry is string => Boolean(entry));
 
-  if (profileParts.length > 0) {
-    finalPrompt = `${finalPrompt}\n\nCHARACTER PROFILE: ${profileParts.join(
-      ", "
+  const profileLines: string[] = [];
+  const styleLines: string[] = [];
+  const negativeLines: string[] = [];
+
+  for (const character of characters) {
+    const profileParts = [
+      character.gender ? `gender: ${character.gender}` : null,
+      character.height ? `height: ${character.height}` : null,
+      character.weight ? `weight: ${character.weight}` : null,
+      character.complexion ? `skin tone: ${character.complexion}` : null,
+    ].filter((entry): entry is string => Boolean(entry));
+
+    if (profileParts.length > 0) {
+      profileLines.push(
+        `${character.canonicalName}: ${profileParts.join(", ")}`
+      );
+    }
+    if (character.lockedPrompt) {
+      styleLines.push(
+        `${character.canonicalName}: ${character.lockedPrompt}`
+      );
+    }
+    if (character.negativePrompt) {
+      negativeLines.push(
+        `${character.canonicalName}: ${character.negativePrompt}`
+      );
+    }
+  }
+
+  if (profileLines.length > 0) {
+    finalPrompt = `${finalPrompt}\n\nCHARACTER PROFILES:\n${profileLines.join(
+      "\n"
     )}`;
   }
-  if (character.lockedPrompt) {
-    finalPrompt = `${finalPrompt}\n\nSYSTEM STYLE/CONSTRAINTS: ${character.lockedPrompt}`;
+  if (styleLines.length > 0) {
+    finalPrompt = `${finalPrompt}\n\nSYSTEM STYLE/CONSTRAINTS:\n${styleLines.join(
+      "\n"
+    )}`;
   }
-  if (character.negativePrompt) {
-    finalPrompt = `${finalPrompt}\n\nNEGATIVE CONSTRAINTS: ${character.negativePrompt}`;
+  if (negativeLines.length > 0) {
+    finalPrompt = `${finalPrompt}\n\nNEGATIVE CONSTRAINTS:\n${negativeLines.join(
+      "\n"
+    )}`;
   }
   return finalPrompt;
 }
@@ -543,54 +593,87 @@ export async function buildCharacterReference({
     return { prompt };
   }
 
-  const characterMatch = await detectCharacter({
+  const characterMatches = await detectCharacters({
     prompt,
     aliasIndex,
     getCharactersByIds: deps?.getCharactersByIds ?? getCharacterMatchCandidates,
   });
 
-  if (!characterMatch) {
+  if (!characterMatches.length) {
     return { prompt };
   }
 
-  const character = deps?.getCharacterById
-    ? await deps.getCharacterById(characterMatch.characterId)
-    : await getCharacterForImageGeneration(characterMatch.characterId);
+  const matchedCharacterIds = characterMatches.map(
+    (match) => match.characterId
+  );
+  const matchedAliases = characterMatches.map((match) => match.matchedAlias);
 
-  if (!character || !character.enabled) {
+  const fetchCharacter =
+    deps?.getCharacterById ?? getCharacterForImageGeneration;
+  const characterRecords = await Promise.all(
+    characterMatches.map((match) => fetchCharacter(match.characterId))
+  );
+  const matchedCharacters = characterMatches
+    .map((match, index) => ({
+      match,
+      character: characterRecords[index],
+    }))
+    .filter(
+      (
+        entry
+      ): entry is {
+        match: CharacterMatch;
+        character: CharacterForImageGeneration;
+      } => Boolean(entry.character && entry.character.enabled)
+    );
+
+  if (!matchedCharacters.length) {
     return {
       prompt,
-      matchedCharacterId: characterMatch.characterId,
-      matchedAlias: characterMatch.matchedAlias,
+      matchedCharacterId: characterMatches[0]?.characterId,
+      matchedAlias: characterMatches[0]?.matchedAlias,
+      matchedCharacterIds,
+      matchedAliases,
     };
   }
 
-  const selectedRefImages = selectRefImages(character.refImages ?? []);
-  if (!selectedRefImages.length) {
+  const selectedRefs = matchedCharacters.flatMap(({ character }) =>
+    selectRefImages(character.refImages ?? [])
+  );
+  if (!selectedRefs.length) {
     return {
       prompt,
-      matchedCharacterId: character.id,
-      matchedAlias: characterMatch.matchedAlias,
+      matchedCharacterId: matchedCharacters[0]?.character.id,
+      matchedAlias: matchedCharacters[0]?.match.matchedAlias,
+      matchedCharacterIds,
+      matchedAliases,
     };
   }
+
+  const cappedRefs = selectedRefs.slice(0, MAX_TOTAL_CHARACTER_REFS);
 
   const fetcher = deps?.fetchReferenceImage ?? fetchReferenceImage;
   const referenceImages = await Promise.all(
-    selectedRefImages.map((ref) => fetcher(ref, abortSignal))
+    cappedRefs.map((ref) => fetcher(ref, abortSignal))
   );
 
   if (referenceImages.some((image) => !image)) {
     console.error("Failed to load character reference images", {
-      characterId: character.id,
-      matchedAlias: characterMatch.matchedAlias,
+      matchedCharacterIds,
+      matchedAliases,
     });
     return { prompt };
   }
 
   return {
-    prompt: applyCharacterConstraints(prompt, character),
+    prompt: applyCharacterConstraints(
+      prompt,
+      matchedCharacters.map(({ character }) => character)
+    ),
     referenceImages: referenceImages as ImageInput[],
-    matchedCharacterId: character.id,
-    matchedAlias: characterMatch.matchedAlias,
+    matchedCharacterId: matchedCharacters[0]?.character.id,
+    matchedAlias: matchedCharacters[0]?.match.matchedAlias,
+    matchedCharacterIds,
+    matchedAliases,
   };
 }

@@ -598,6 +598,8 @@ export async function buildGenerationRequest({
   images?: ImageInput[];
   matchedCharacterId?: string;
   matchedAlias?: string;
+  matchedCharacterIds?: string[];
+  matchedAliases?: string[];
 }> {
   const reference = await buildCharacterReference({
     prompt,
@@ -615,6 +617,8 @@ export async function buildGenerationRequest({
     images: combinedImages.length > 0 ? combinedImages : undefined,
     matchedCharacterId: reference.matchedCharacterId,
     matchedAlias: reference.matchedAlias,
+    matchedCharacterIds: reference.matchedCharacterIds,
+    matchedAliases: reference.matchedAliases,
   };
 }
 

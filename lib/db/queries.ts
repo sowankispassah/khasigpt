@@ -5234,10 +5234,12 @@ export async function recordTokenUsage({
 
 export async function deductImageCredits({
   userId,
+  chatId,
   tokensToDeduct,
   allowManualCredits = true,
 }: {
   userId: string;
+  chatId: string;
   tokensToDeduct: number;
   allowManualCredits?: boolean;
 }): Promise<void> {
@@ -5309,6 +5311,29 @@ export async function deductImageCredits({
         0,
         remainingManualBalance + remainingPaidBalance
       );
+
+      const [usageRecord] = await tx
+        .insert(tokenUsage)
+        .values({
+          userId,
+          chatId,
+          modelConfigId: null,
+          subscriptionId: subscription.id,
+          inputTokens: resolvedTokens,
+          outputTokens: 0,
+          totalTokens: resolvedTokens,
+          manualTokens: manualTokensDeducted,
+          paidTokens: paidTokensDeducted,
+          createdAt: now,
+        })
+        .returning();
+
+      if (!usageRecord) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Failed to record image token usage"
+        );
+      }
 
       await tx
         .update(userSubscription)
@@ -6538,6 +6563,14 @@ export async function listChatFinancialSummaries({
   offset?: number;
 }): Promise<ChatFinancialSummariesResult> {
   try {
+    const toNumber = (value: unknown) => {
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? value : 0;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
     const usageConditions = buildDateRangeConditions(
       tokenUsage.createdAt,
       range
@@ -6594,9 +6627,17 @@ export async function listChatFinancialSummaries({
       : query
     ).orderBy(desc(sql<Date>`MIN(${tokenUsage.createdAt})`));
 
-    const total = usageRows.length;
+    const normalizedRows = usageRows.map((row) => ({
+      ...row,
+      totalInputTokens: toNumber(row.totalInputTokens),
+      totalOutputTokens: toNumber(row.totalOutputTokens),
+      userChargeInr: toNumber(row.userChargeInr),
+      providerCostUsd: toNumber(row.providerCostUsd),
+    }));
 
-    const aggregates = usageRows.reduce(
+    const total = normalizedRows.length;
+
+    const aggregates = normalizedRows.reduce(
       (acc, row) => {
         acc.totalInputTokens += row.totalInputTokens ?? 0;
         acc.totalOutputTokens += row.totalOutputTokens ?? 0;
@@ -6612,7 +6653,7 @@ export async function listChatFinancialSummaries({
       }
     );
 
-    const records = usageRows.slice(offset, offset + limit);
+    const records = normalizedRows.slice(offset, offset + limit);
 
     return {
       total,

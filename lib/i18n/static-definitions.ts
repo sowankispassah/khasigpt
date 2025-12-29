@@ -93,6 +93,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Menu item linking to the creator performance dashboard.",
   },
   {
+    key: "user_menu.community_forum",
+    defaultText: "Community Forum",
+    description: "Menu item linking to the community forum.",
+  },
+  {
     key: "common.cancel",
     defaultText: "Cancel",
     description: "Generic cancel action label.",
@@ -218,6 +223,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Error shown when the user account is inactive.",
   },
   {
+    key: "login.error.link_required",
+    defaultText:
+      "Please use the sign-in link sent to your email before continuing.",
+    description: "Error shown when the account requires email link sign-in.",
+  },
+  {
     key: "register.title",
     defaultText: "Sign Up To KhasiGPT",
     description: "Heading for the registration page.",
@@ -253,6 +264,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText:
       "You must accept the Terms of Service and Privacy Policy to continue.",
     description: "Toast message when the user has not accepted terms.",
+  },
+  {
+    key: "register.error.rate_limited",
+    defaultText: "Too many attempts. Please wait and try again.",
+    description: "Toast message when registration is rate limited.",
   },
   {
     key: "register.success.verification_sent",
@@ -305,6 +321,137 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "register.login_prompt_suffix",
     defaultText: "instead.",
     description: "Suffix text after the login link on the register page.",
+  },
+  {
+    key: "forgot_password.title",
+    defaultText: "Forgot password",
+    description: "Heading for the forgot password page.",
+  },
+  {
+    key: "forgot_password.subtitle",
+    defaultText:
+      "Enter your email and we will send you a link to reset your password.",
+    description: "Supporting copy on the forgot password page.",
+  },
+  {
+    key: "forgot_password.email_label",
+    defaultText: "Email address",
+    description: "Label for the email input on the forgot password form.",
+  },
+  {
+    key: "forgot_password.email_placeholder",
+    defaultText: "you@example.com",
+    description: "Placeholder text for the forgot password email input.",
+  },
+  {
+    key: "forgot_password.sending",
+    defaultText: "Sending...",
+    description: "Button label while the reset link is being sent.",
+  },
+  {
+    key: "forgot_password.submit",
+    defaultText: "Send reset link",
+    description: "Button label to request a password reset link.",
+  },
+  {
+    key: "forgot_password.remembered",
+    defaultText: "Remembered your password?",
+    description: "Prompt before the back-to-sign-in link.",
+  },
+  {
+    key: "forgot_password.back_to_sign_in",
+    defaultText: "Back to sign in",
+    description: "Link text back to the sign-in page.",
+  },
+  {
+    key: "reset_password.title",
+    defaultText: "Reset password",
+    description: "Heading for the reset password page.",
+  },
+  {
+    key: "reset_password.subtitle",
+    defaultText: "Choose a new password for your account.",
+    description: "Supporting copy on the reset password page.",
+  },
+  {
+    key: "reset_password.invalid_title",
+    defaultText: "Invalid link",
+    description: "Heading shown when reset password link is invalid.",
+  },
+  {
+    key: "reset_password.invalid_message",
+    defaultText:
+      "This password reset link is missing or malformed. Request a new link and try again.",
+    description: "Message shown when reset password link is invalid.",
+  },
+  {
+    key: "verify_email.title.verified",
+    defaultText: "Email verified",
+    description: "Heading shown when the email is verified.",
+  },
+  {
+    key: "verify_email.message.verified",
+    defaultText:
+      "Your account is now active. You can sign in using your email and password.",
+    description: "Message shown after successful email verification.",
+  },
+  {
+    key: "verify_email.title.already_verified",
+    defaultText: "Email already verified",
+    description: "Heading shown when the email is already verified.",
+  },
+  {
+    key: "verify_email.message.already_verified",
+    defaultText: "You can sign in right away using your credentials.",
+    description: "Message shown when the email was already verified.",
+  },
+  {
+    key: "verify_email.title.expired",
+    defaultText: "Verification link expired",
+    description: "Heading shown when the verification link is expired.",
+  },
+  {
+    key: "verify_email.message.expired",
+    defaultText:
+      "The verification link has expired. Please retry signup to receive a new email.",
+    description: "Message shown when the verification link is expired.",
+  },
+  {
+    key: "verify_email.title.invalid",
+    defaultText: "Invalid verification link",
+    description: "Heading shown when the verification link is invalid.",
+  },
+  {
+    key: "verify_email.message.invalid",
+    defaultText:
+      "The verification token is invalid or has already been used. Please request a new verification email.",
+    description: "Message shown when the verification link is invalid.",
+  },
+  {
+    key: "verify_email.continue_prompt",
+    defaultText: "Continue to sign in once your account is ready.",
+    description: "Prompt beneath the verification status message.",
+  },
+  {
+    key: "verify_email.sign_in_button",
+    defaultText: "Go to sign in",
+    description: "Button text linking to the sign-in page.",
+  },
+  {
+    key: "offline.title",
+    defaultText: "You're offline",
+    description: "Heading for the offline page.",
+  },
+  {
+    key: "offline.message",
+    defaultText:
+      "No internet connection detected. Once you're back online, you can keep chatting with KhasiGPT in the browser or installed app.",
+    description: "Message shown on the offline page.",
+  },
+  {
+    key: "offline.retry",
+    defaultText: "Retry connection",
+    description: "Button label to retry connection on the offline page.",
   },
   {
     key: "auth.email_label",
@@ -653,6 +800,41 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.subtitle",
     defaultText: "Update your account information and security preferences.",
     description: "Subheading on the profile page.",
+  },
+  {
+    key: "profile.name.title",
+    defaultText: "Personal details",
+    description: "Heading for the name section on the profile page.",
+  },
+  {
+    key: "profile.name.description",
+    defaultText: "Update how your name appears across the product.",
+    description: "Supporting copy for the name section on the profile page.",
+  },
+  {
+    key: "profile.name.first_label",
+    defaultText: "First name",
+    description: "Label for the first name field on the profile page.",
+  },
+  {
+    key: "profile.name.last_label",
+    defaultText: "Last name",
+    description: "Label for the last name field on the profile page.",
+  },
+  {
+    key: "profile.name.success",
+    defaultText: "Your name has been updated.",
+    description: "Toast message when the name update succeeds.",
+  },
+  {
+    key: "profile.name.saving",
+    defaultText: "Saving...",
+    description: "Button label while name update is saving.",
+  },
+  {
+    key: "profile.name.save_button",
+    defaultText: "Save changes",
+    description: "Button label to save profile name changes.",
   },
   {
     key: "profile.picture.title",

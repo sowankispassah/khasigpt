@@ -474,9 +474,7 @@ export default async function AdminAccountPage({
                 <th className="py-3 text-left">Date</th>
                 <th className="py-3 text-left">Chat ID</th>
                 <th className="py-3 text-left">User</th>
-                <th className="py-3 text-right">Input tokens</th>
-                <th className="py-3 text-right">Output tokens</th>
-                <th className="py-3 text-right">Credits</th>
+                <th className="py-3 text-right">Credits (in/out tokens)</th>
                 <th className="py-3 text-right">User charge</th>
                 <th className="py-3 text-right">Provider cost</th>
                 <th className="py-3 text-right">Profit (INR)</th>
@@ -487,7 +485,7 @@ export default async function AdminAccountPage({
                 <tr>
                   <td
                     className="py-6 text-center text-muted-foreground"
-                    colSpan={9}
+                    colSpan={7}
                   >
                     No chat usage found for the selected range.
                   </td>
@@ -508,13 +506,13 @@ export default async function AdminAccountPage({
                       </td>
                       <td className="py-2">{row.userEmail}</td>
                       <td className="py-2 text-right">
-                        {formatNumber(row.inputTokens)}
-                      </td>
-                      <td className="py-2 text-right">
-                        {formatNumber(row.outputTokens)}
-                      </td>
-                      <td className="py-2 text-right">
-                        {formatNumber(row.credits, 2)}
+                        <div className="flex flex-col items-end">
+                          <span>{formatNumber(row.credits, 2)}</span>
+                          <span className="text-muted-foreground text-xs">
+                            ({formatNumber(row.inputTokens)} in /{" "}
+                            {formatNumber(row.outputTokens)} out)
+                          </span>
+                        </div>
                       </td>
                       <td className="py-2 text-right">
                         {row.isFreeUsage ? (
