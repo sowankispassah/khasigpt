@@ -188,6 +188,9 @@ function TranslationSummary({
   totalEntries: number;
   searchQuery: string;
 }) {
+  const uniqueLanguages = Array.from(
+    new Map(languages.map((language) => [language.code, language])).values()
+  );
   const showingLabel =
     searchQuery.trim().length > 0 && totalEntries > 0
       ? `Showing ${visibleEntries} of ${totalEntries} string${
@@ -202,25 +205,31 @@ function TranslationSummary({
       <div className="flex flex-col">
         <span className="font-semibold text-base">{showingLabel}</span>
         <span className="text-muted-foreground">
-          {languages.length} active{" "}
-          {languages.length === 1 ? "language" : "languages"}
+          {uniqueLanguages.length} active{" "}
+          {uniqueLanguages.length === 1 ? "language" : "languages"}
         </span>
       </div>
       <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-        <div className="flex flex-wrap gap-2">
-          {languages.map((language) => (
-            <span
-              className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 font-medium text-xs tracking-wide"
-              key={language.id}
-            >
-              {language.name}
-              {language.isDefault ? (
-                <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-primary-foreground uppercase">
-                  Default
-                </span>
-              ) : null}
-            </span>
-          ))}
+        <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto">
+          {uniqueLanguages.map((language) => {
+            const label =
+              language.name?.trim().length > 0
+                ? language.name
+                : language.code.toUpperCase();
+            return (
+              <span
+                className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 font-medium text-xs tracking-wide"
+                key={language.id}
+              >
+                {label}
+                {language.isDefault ? (
+                  <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[10px] text-primary-foreground uppercase">
+                    Default
+                  </span>
+                ) : null}
+              </span>
+            );
+          })}
         </div>
         <form action={publishTranslationsAction}>
           <TranslationSubmitButton

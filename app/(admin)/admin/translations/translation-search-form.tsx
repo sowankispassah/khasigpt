@@ -37,9 +37,7 @@ export function TranslationSearchForm({
       const queryString = params.toString();
 
       startTransition(() => {
-        router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
-          scroll: false,
-        });
+        router.replace(queryString ? `${pathname}?${queryString}` : pathname);
       });
     },
     [pathname, router, searchParams]
