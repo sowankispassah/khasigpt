@@ -178,10 +178,7 @@ export async function registerTranslationKeys(
         return true;
       }
 
-      return (
-        current.defaultText !== definition.defaultText ||
-        current.description !== description
-      );
+      return current.description !== description;
     });
 
     if (!definitionsToSync.length) {
@@ -200,7 +197,6 @@ export async function registerTranslationKeys(
       .onConflictDoUpdate({
         target: translationKey.key,
         set: {
-          defaultText: sql`excluded."defaultText"`,
           description: sql`excluded."description"`,
           updatedAt: sql`now()`,
         },
