@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import Link from "next/link";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,19 @@ import {
   saveTranslationValueAction,
 } from "./translation-actions";
 import { TranslationSearchForm } from "./translation-search-form";
+
+const TRANSLATION_PENDING_TIMEOUT_MS = 12000;
+
+function TranslationSubmitButton(
+  props: ComponentProps<typeof ActionSubmitButton>
+) {
+  return (
+    <ActionSubmitButton
+      pendingTimeoutMs={TRANSLATION_PENDING_TIMEOUT_MS}
+      {...props}
+    />
+  );
+}
 
 const TRANSLATION_SECTION_DEFINITIONS: SectionDefinition[] = [
   {
@@ -209,7 +223,7 @@ function TranslationSummary({
           ))}
         </div>
         <form action={publishTranslationsAction}>
-          <ActionSubmitButton
+          <TranslationSubmitButton
             pendingLabel="Publishing..."
             size="sm"
             successMessage="Translations published"
@@ -217,7 +231,7 @@ function TranslationSummary({
             variant="default"
           >
             Publish translations
-          </ActionSubmitButton>
+          </TranslationSubmitButton>
         </form>
       </div>
     </div>
@@ -282,7 +296,7 @@ function TranslationTable({
                     placeholder="Optional description"
                   />
                   <div className="flex items-center gap-2">
-                    <ActionSubmitButton
+                    <TranslationSubmitButton
                       pendingLabel="Saving..."
                       size="sm"
                       successMessage="Default text saved"
@@ -290,7 +304,7 @@ function TranslationTable({
                       variant="outline"
                     >
                       Save
-                    </ActionSubmitButton>
+                    </TranslationSubmitButton>
                     <span className="text-muted-foreground text-xs">
                       Updated{" "}
                       {entry.updatedAt
@@ -324,7 +338,7 @@ function TranslationTable({
                         rows={3}
                       />
                       <div className="flex items-center gap-2">
-                        <ActionSubmitButton
+                        <TranslationSubmitButton
                           pendingLabel="Saving..."
                           size="sm"
                           successMessage={
@@ -336,7 +350,7 @@ function TranslationTable({
                           variant="outline"
                         >
                           {translation?.value ? "Update" : "Save"}
-                        </ActionSubmitButton>
+                        </TranslationSubmitButton>
                         <span className="text-muted-foreground text-xs">
                           {translation?.updatedAt
                             ? `Updated ${translation.updatedAt.toLocaleString()}`
