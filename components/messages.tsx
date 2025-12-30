@@ -170,12 +170,19 @@ function PureMessages({
           {isGeneratingImage && (
             <div className="flex w-full items-start justify-start gap-2 md:gap-3">
               <div className="flex flex-col gap-2">
-                <div className="h-60 w-60 animate-pulse rounded-xl border bg-muted/60" />
-                <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                  <span className="inline-flex size-4 animate-spin items-center justify-center">
-                    <LoaderIcon size={14} />
-                  </span>
-                  {translate("image.generate.loading", "Generating...")}
+                <div className="relative h-60 w-60 overflow-hidden rounded-xl border bg-muted/60">
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 animate-pulse bg-muted/70"
+                  />
+                  <div className="relative z-10 flex h-full w-full items-center justify-center">
+                    <div className="flex items-center gap-2 rounded-full bg-background/85 px-3 py-1 text-muted-foreground text-xs shadow-sm">
+                      <span className="inline-flex size-4 animate-spin items-center justify-center">
+                        <LoaderIcon size={14} />
+                      </span>
+                      {translate("image.generate.loading", "Generating...")}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
