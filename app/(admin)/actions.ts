@@ -984,8 +984,6 @@ export async function createImageModelConfigAction(formData: FormData) {
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
-
-  redirect("/admin/settings?notice=image-model-created");
 }
 
 export async function updateImageModelConfigAction(formData: FormData) {
@@ -1715,8 +1713,6 @@ export async function updateFreeMessageSettingsAction(formData: FormData) {
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
-
-  redirect("/admin/settings?notice=free-messages-updated");
 }
 
 function parseInteger(value: FormDataEntryValue | null | undefined) {

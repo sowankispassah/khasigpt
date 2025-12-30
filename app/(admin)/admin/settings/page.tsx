@@ -713,7 +713,11 @@ export default async function AdminSettingsPage({
               </p>
             </div>
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton pendingLabel="Saving...">
+              <ActionSubmitButton
+                pendingLabel="Saving..."
+                refreshOnSuccess={true}
+                successMessage="Free message policy updated."
+              >
                 Save policy
               </ActionSubmitButton>
             </div>
@@ -2332,7 +2336,11 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton pendingLabel="Creating...">
+              <ActionSubmitButton
+                pendingLabel="Creating..."
+                refreshOnSuccess={true}
+                successMessage="Image model configuration created."
+              >
                 Create image model
               </ActionSubmitButton>
             </div>

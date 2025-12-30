@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -12,6 +13,7 @@ type ActionSubmitButtonProps = {
   children: ReactNode;
   successMessage?: string;
   pendingLabel?: string;
+  refreshOnSuccess?: boolean;
 } & ButtonProps;
 
 export function ActionSubmitButton(props: ActionSubmitButtonProps) {
@@ -19,12 +21,14 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
     children,
     successMessage,
     pendingLabel = "Saving...",
+    refreshOnSuccess = false,
     className,
     disabled,
     ...buttonProps
   } = props;
   const { pending } = useFormStatus();
   const wasPendingRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (!successMessage) {
@@ -34,10 +38,13 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
 
     if (!pending && wasPendingRef.current) {
       toast({ type: "success", description: successMessage });
+      if (refreshOnSuccess) {
+        router.refresh();
+      }
     }
 
     wasPendingRef.current = pending;
-  }, [pending, successMessage]);
+  }, [pending, successMessage, refreshOnSuccess, router]);
 
   return (
     <Button
