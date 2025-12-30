@@ -1,6 +1,6 @@
 import { formatDistanceToNow } from "date-fns";
 import { unstable_cache } from "next/cache";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import {
   createImageModelConfigAction,
   createLanguageAction,
@@ -85,6 +85,18 @@ const ADMIN_SETTINGS_CACHE_TAGS = [
   PRICING_PLAN_CACHE_TAG,
   "languages",
 ];
+const SETTINGS_PENDING_TIMEOUT_MS = 12000;
+
+function SettingsSubmitButton(
+  props: ComponentProps<typeof ActionSubmitButton>
+) {
+  return (
+    <ActionSubmitButton
+      pendingTimeoutMs={SETTINGS_PENDING_TIMEOUT_MS}
+      {...props}
+    />
+  );
+}
 
 const loadAdminSettingsData = unstable_cache(
   async () => {
@@ -553,13 +565,13 @@ export default async function AdminSettingsPage({
                 type="hidden"
                 value={(!forumEnabled).toString()}
               />
-              <ActionSubmitButton
+              <SettingsSubmitButton
                 pendingLabel={forumEnabled ? "Disabling…" : "Enabling…"}
                 successMessage="Forum availability updated."
                 variant={forumEnabled ? "destructive" : "default"}
               >
                 {forumEnabled ? "Disable forum" : "Enable forum"}
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
               <p className="text-muted-foreground text-xs">
                 Changes take effect immediately for all users.
               </p>
@@ -593,7 +605,7 @@ export default async function AdminSettingsPage({
                 type="hidden"
                 value={(!imageGenerationEnabled).toString()}
               />
-              <ActionSubmitButton
+              <SettingsSubmitButton
                 pendingLabel={
                   imageGenerationEnabled ? "Disabling…" : "Enabling…"
                 }
@@ -603,7 +615,7 @@ export default async function AdminSettingsPage({
                 {imageGenerationEnabled
                   ? "Disable image generation"
                   : "Enable image generation"}
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
               <p className="text-muted-foreground text-xs">
                 Changes take effect immediately for all users.
               </p>
@@ -640,12 +652,12 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton
+              <SettingsSubmitButton
                 pendingLabel="Saving..."
                 successMessage="Image filename prefix updated."
               >
                 Save defaults
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </div>
           </form>
         </CollapsibleSection>
@@ -713,13 +725,13 @@ export default async function AdminSettingsPage({
               </p>
             </div>
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton
+              <SettingsSubmitButton
                 pendingLabel="Saving..."
                 refreshOnSuccess={true}
                 successMessage="Free message policy updated."
               >
                 Save policy
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </div>
           </form>
           {isGlobalFreeMessageMode ? (
@@ -775,9 +787,9 @@ export default async function AdminSettingsPage({
                 />
                 Active immediately
               </label>
-              <ActionSubmitButton pendingLabel="Adding..." type="submit">
+              <SettingsSubmitButton pendingLabel="Adding..." type="submit">
                 Add language
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </form>
             <div className="overflow-x-auto rounded-lg border bg-background">
               <table className="w-full min-w-[480px] border-collapse text-sm">
@@ -849,7 +861,7 @@ export default async function AdminSettingsPage({
                                   language.isActive ? "deactivate" : "activate"
                                 }
                               />
-                              <ActionSubmitButton
+                              <SettingsSubmitButton
                                 pendingLabel={
                                   language.isActive
                                     ? "Disabling..."
@@ -859,7 +871,7 @@ export default async function AdminSettingsPage({
                                 variant="outline"
                               >
                                 {language.isActive ? "Deactivate" : "Activate"}
-                              </ActionSubmitButton>
+                              </SettingsSubmitButton>
                             </form>
                           )}
                         </td>
@@ -1082,9 +1094,9 @@ export default async function AdminSettingsPage({
               </label>
             </div>
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton pendingLabel="Creating...">
+              <SettingsSubmitButton pendingLabel="Creating...">
                 Create plan
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </div>
           </form>
 
@@ -1201,12 +1213,12 @@ export default async function AdminSettingsPage({
                             </label>
                           </div>
                           <div className="flex justify-end gap-2">
-                            <ActionSubmitButton
+                            <SettingsSubmitButton
                               pendingLabel="Saving..."
                               successMessage="Plan updated"
                             >
                               Save changes
-                            </ActionSubmitButton>
+                            </SettingsSubmitButton>
                           </div>
                         </form>
 
@@ -1288,13 +1300,13 @@ export default async function AdminSettingsPage({
                                       </p>
                                     </div>
                                     <div className="flex justify-end">
-                                      <ActionSubmitButton
+                                      <SettingsSubmitButton
                                         pendingLabel="Saving..."
                                         size="sm"
                                         variant="outline"
                                       >
                                         {`Save ${language.name}`}
-                                      </ActionSubmitButton>
+                                      </SettingsSubmitButton>
                                     </div>
                                   </form>
                                 );
@@ -1315,12 +1327,12 @@ export default async function AdminSettingsPage({
                               {isRecommendedPlan ? (
                                 <form action={setRecommendedPricingPlanAction}>
                                   <input name="planId" type="hidden" value="" />
-                                  <ActionSubmitButton
+                                  <SettingsSubmitButton
                                     pendingLabel="Updating..."
                                     variant="outline"
                                   >
                                     Remove recommendation
-                                  </ActionSubmitButton>
+                                  </SettingsSubmitButton>
                                 </form>
                               ) : (
                                 <form action={setRecommendedPricingPlanAction}>
@@ -1329,12 +1341,12 @@ export default async function AdminSettingsPage({
                                     type="hidden"
                                     value={plan.id}
                                   />
-                                  <ActionSubmitButton
+                                  <SettingsSubmitButton
                                     disabled={!plan.isActive}
                                     pendingLabel="Updating..."
                                   >
                                     Set as recommended
-                                  </ActionSubmitButton>
+                                  </SettingsSubmitButton>
                                 </form>
                               )}
                             </div>
@@ -1387,13 +1399,13 @@ export default async function AdminSettingsPage({
                         <div className="flex flex-wrap gap-2">
                           <form action={deletePricingPlanAction}>
                             <input name="id" type="hidden" value={plan.id} />
-                            <ActionSubmitButton
+                            <SettingsSubmitButton
                               className="border border-destructive text-destructive hover:bg-destructive/10"
                               pendingLabel="Soft deleting..."
                               variant="outline"
                             >
                               Soft delete
-                            </ActionSubmitButton>
+                            </SettingsSubmitButton>
                           </form>
                         </div>
                       </div>
@@ -1428,13 +1440,13 @@ export default async function AdminSettingsPage({
                     </div>
                     <form action={hardDeletePricingPlanAction}>
                       <input name="id" type="hidden" value={plan.id} />
-                      <ActionSubmitButton
+                      <SettingsSubmitButton
                         pendingLabel="Hard deleting..."
                         size="sm"
                         variant="destructive"
                       >
                         Hard delete
-                      </ActionSubmitButton>
+                      </SettingsSubmitButton>
                     </form>
                   </div>
                 ))}
@@ -1692,9 +1704,9 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton pendingLabel="Creating...">
+              <SettingsSubmitButton pendingLabel="Creating...">
                 Create model
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </div>
           </form>
         </CollapsibleSection>
@@ -2055,12 +2067,12 @@ export default async function AdminSettingsPage({
                         </div>
 
                         <div className="flex justify-end md:col-span-2">
-                          <ActionSubmitButton
+                          <SettingsSubmitButton
                             pendingLabel="Saving..."
                             successMessage="Model updated."
                           >
                             Save changes
-                          </ActionSubmitButton>
+                          </SettingsSubmitButton>
                         </div>
                       </form>
 
@@ -2068,38 +2080,38 @@ export default async function AdminSettingsPage({
                         {!model.isDefault && (
                           <form action={setDefaultModelConfigAction}>
                             <input name="id" type="hidden" value={model.id} />
-                            <ActionSubmitButton
+                            <SettingsSubmitButton
                               pendingLabel="Updating..."
                               size="sm"
                               variant="outline"
                             >
                               Set as default
-                            </ActionSubmitButton>
+                            </SettingsSubmitButton>
                           </form>
                         )}
                         {!model.isMarginBaseline && (
                           <form action={setMarginBaselineModelAction}>
                             <input name="id" type="hidden" value={model.id} />
-                            <ActionSubmitButton
+                            <SettingsSubmitButton
                               pendingLabel="Updating..."
                               size="sm"
                               variant="outline"
                             >
                               Set as margin baseline
-                            </ActionSubmitButton>
+                            </SettingsSubmitButton>
                           </form>
                         )}
 
                         <form action={deleteModelConfigAction}>
                           <input name="id" type="hidden" value={model.id} />
-                          <ActionSubmitButton
+                          <SettingsSubmitButton
                             className="border border-destructive text-destructive hover:bg-destructive/10"
                             pendingLabel="Soft deleting..."
                             size="sm"
                             variant="outline"
                           >
                             Soft delete
-                          </ActionSubmitButton>
+                          </SettingsSubmitButton>
                         </form>
                       </div>
                     </div>
@@ -2133,13 +2145,13 @@ export default async function AdminSettingsPage({
                     </div>
                     <form action={hardDeleteModelConfigAction}>
                       <input name="id" type="hidden" value={model.id} />
-                      <ActionSubmitButton
+                      <SettingsSubmitButton
                         pendingLabel="Hard deleting..."
                         size="sm"
                         variant="destructive"
                       >
                         Hard delete
-                      </ActionSubmitButton>
+                      </SettingsSubmitButton>
                     </form>
                   </div>
                 ))}
@@ -2185,9 +2197,9 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton pendingLabel="Saving...">
+              <SettingsSubmitButton pendingLabel="Saving...">
                 Save translation model
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </div>
           </form>
 
@@ -2336,13 +2348,13 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex justify-end md:col-span-2">
-              <ActionSubmitButton
+              <SettingsSubmitButton
                 pendingLabel="Creating..."
                 refreshOnSuccess={true}
                 successMessage="Image model configuration created."
               >
                 Create image model
-              </ActionSubmitButton>
+              </SettingsSubmitButton>
             </div>
           </form>
         </CollapsibleSection>
@@ -2524,12 +2536,12 @@ export default async function AdminSettingsPage({
                         </div>
 
                         <div className="flex justify-end md:col-span-2">
-                          <ActionSubmitButton
+                          <SettingsSubmitButton
                             pendingLabel="Saving..."
                             successMessage="Image model updated."
                           >
                             Save changes
-                          </ActionSubmitButton>
+                          </SettingsSubmitButton>
                         </div>
                       </form>
 
@@ -2537,26 +2549,26 @@ export default async function AdminSettingsPage({
                         {!model.isActive && (
                           <form action={setActiveImageModelConfigAction}>
                             <input name="id" type="hidden" value={model.id} />
-                            <ActionSubmitButton
+                            <SettingsSubmitButton
                               pendingLabel="Updating..."
                               size="sm"
                               variant="outline"
                             >
                               Set as active
-                            </ActionSubmitButton>
+                            </SettingsSubmitButton>
                           </form>
                         )}
 
                         <form action={deleteImageModelConfigAction}>
                           <input name="id" type="hidden" value={model.id} />
-                          <ActionSubmitButton
+                          <SettingsSubmitButton
                             className="border border-destructive text-destructive hover:bg-destructive/10"
                             pendingLabel="Soft deleting..."
                             size="sm"
                             variant="outline"
                           >
                             Soft delete
-                          </ActionSubmitButton>
+                          </SettingsSubmitButton>
                         </form>
                       </div>
                     </div>
@@ -2590,13 +2602,13 @@ export default async function AdminSettingsPage({
                     </div>
                     <form action={hardDeleteImageModelConfigAction}>
                       <input name="id" type="hidden" value={model.id} />
-                      <ActionSubmitButton
+                      <SettingsSubmitButton
                         pendingLabel="Hard deleting..."
                         size="sm"
                         variant="destructive"
                       >
                         Hard delete
-                      </ActionSubmitButton>
+                      </SettingsSubmitButton>
                     </form>
                   </div>
                 ))}

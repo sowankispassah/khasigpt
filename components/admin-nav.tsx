@@ -93,6 +93,15 @@ export function AdminNav({ className }: { className?: string }) {
       event.preventDefault();
       startProgress();
       router.push(href);
+
+      const targetPath = new URL(href, window.location.origin).pathname;
+      timersRef.current.push(
+        setTimeout(() => {
+          if (window.location.pathname !== targetPath) {
+            window.location.assign(href);
+          }
+        }, 3000)
+      );
     },
     [pathname, router, startProgress]
   );

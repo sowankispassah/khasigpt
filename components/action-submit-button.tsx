@@ -14,6 +14,7 @@ type ActionSubmitButtonProps = {
   successMessage?: string;
   pendingLabel?: string;
   refreshOnSuccess?: boolean;
+  pendingTimeoutMs?: number;
 } & ButtonProps;
 
 export function ActionSubmitButton(props: ActionSubmitButtonProps) {
@@ -22,12 +23,14 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
     successMessage,
     pendingLabel = "Saving...",
     refreshOnSuccess = false,
+    pendingTimeoutMs,
     className,
     disabled,
     ...buttonProps
   } = props;
   const { pending } = useFormStatus();
   const wasPendingRef = useRef(false);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -45,6 +48,28 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
 
     wasPendingRef.current = pending;
   }, [pending, successMessage, refreshOnSuccess, router]);
+
+  useEffect(() => {
+    if (pendingTimeoutRef.current) {
+      clearTimeout(pendingTimeoutRef.current);
+      pendingTimeoutRef.current = null;
+    }
+
+    if (!pending || !pendingTimeoutMs || pendingTimeoutMs <= 0) {
+      return;
+    }
+
+    pendingTimeoutRef.current = setTimeout(() => {
+      router.refresh();
+    }, pendingTimeoutMs);
+
+    return () => {
+      if (pendingTimeoutRef.current) {
+        clearTimeout(pendingTimeoutRef.current);
+        pendingTimeoutRef.current = null;
+      }
+    };
+  }, [pending, pendingTimeoutMs, router]);
 
   return (
     <Button
