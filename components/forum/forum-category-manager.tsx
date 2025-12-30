@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { LoaderIcon, PlusIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +24,7 @@ type ForumCategoryManagerProps = {
 
 export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
   const router = useRouter();
+  const { translate } = useTranslation();
   const nameId = useId();
   const slugId = useId();
   const descriptionId = useId();
@@ -57,11 +59,21 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
     event.preventDefault();
     const normalizedName = name.trim();
     if (normalizedName.length < 3) {
-      toast.error("Category name must be at least 3 characters long.");
+      toast.error(
+        translate(
+          "forum.category_manager.error.name_short",
+          "Category name must be at least 3 characters long."
+        )
+      );
       return;
     }
     if (derivedSlug.length === 0) {
-      toast.error("Slug cannot be empty.");
+      toast.error(
+        translate(
+          "forum.category_manager.error.slug_required",
+          "Slug cannot be empty."
+        )
+      );
       return;
     }
 
@@ -79,7 +91,9 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
           isLocked,
         }),
       });
-      toast.success("Category created.");
+      toast.success(
+        translate("forum.category_manager.toast.created", "Category created.")
+      );
       setOpen(false);
       resetForm();
       router.refresh();
@@ -95,28 +109,36 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
       <SheetTrigger asChild>
         <Button className={className} variant="outline">
           <PlusIcon />
-          Add category
+          {translate("forum.category_manager.button", "Add category")}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
-          <SheetTitle>Add a new forum category</SheetTitle>
+          <SheetTitle>
+            {translate(
+              "forum.category_manager.sheet_title",
+              "Add a new forum category"
+            )}
+          </SheetTitle>
         </SheetHeader>
         <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label className="font-medium text-sm" htmlFor={nameId}>
-              Name
+              {translate("forum.category_manager.field.name.label", "Name")}
             </label>
             <Input
               id={nameId}
               onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Product Help"
+              placeholder={translate(
+                "forum.category_manager.field.name.placeholder",
+                "e.g. Product Help"
+              )}
               value={name}
             />
           </div>
           <div className="space-y-2">
             <label className="font-medium text-sm" htmlFor={slugId}>
-              Slug
+              {translate("forum.category_manager.field.slug.label", "Slug")}
             </label>
             <Input
               id={slugId}
@@ -125,26 +147,38 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
                 setIsSlugDirty(true);
                 setSlugInput(event.target.value);
               }}
-              placeholder="product-help"
+              placeholder={translate(
+                "forum.category_manager.field.slug.placeholder",
+                "product-help"
+              )}
               value={derivedSlug}
             />
           </div>
           <div className="space-y-2">
             <label className="font-medium text-sm" htmlFor={descriptionId}>
-              Description
+              {translate(
+                "forum.category_manager.field.description.label",
+                "Description"
+              )}
             </label>
             <Textarea
               id={descriptionId}
               maxLength={500}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Visible on the forum page to describe what belongs here."
+              placeholder={translate(
+                "forum.category_manager.field.description.placeholder",
+                "Visible on the forum page to describe what belongs here."
+              )}
               value={description}
             />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor={positionId}>
-                Position
+                {translate(
+                  "forum.category_manager.field.position.label",
+                  "Position"
+                )}
               </label>
               <Input
                 id={positionId}
@@ -156,7 +190,7 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
             </div>
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor={lockedId}>
-                Locked
+                {translate("forum.category_manager.field.locked.label", "Locked")}
               </label>
               <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
                 <input
@@ -167,7 +201,10 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
                   type="checkbox"
                 />
                 <span className="text-muted-foreground text-sm">
-                  Prevent new threads in this category
+                  {translate(
+                    "forum.category_manager.field.locked.helper",
+                    "Prevent new threads in this category"
+                  )}
                 </span>
               </div>
             </div>
@@ -176,10 +213,13 @@ export function ForumCategoryManager({ className }: ForumCategoryManagerProps) {
             {isSubmitting ? (
               <span className="inline-flex items-center gap-2">
                 <LoaderIcon className="animate-spin" size={16} />
-                Saving…
+                {translate(
+                  "forum.category_manager.submit_pending",
+                  "Saving…"
+                )}
               </span>
             ) : (
-              "Save category"
+              translate("forum.category_manager.submit", "Save category")
             )}
           </Button>
         </form>

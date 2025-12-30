@@ -2023,6 +2023,92 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Confirm button text in the login-required dialog.",
   },
   {
+    key: "forum.composer.toast.created",
+    defaultText: "Discussion created! Redirecting...",
+    description: "Toast shown after a new forum discussion is created.",
+  },
+  {
+    key: "forum.category_manager.button",
+    defaultText: "Add category",
+    description: "Button label that opens the forum category manager sheet.",
+  },
+  {
+    key: "forum.category_manager.sheet_title",
+    defaultText: "Add a new forum category",
+    description: "Heading for the forum category manager sheet.",
+  },
+  {
+    key: "forum.category_manager.field.name.label",
+    defaultText: "Name",
+    description: "Label for the forum category name field.",
+  },
+  {
+    key: "forum.category_manager.field.name.placeholder",
+    defaultText: "e.g. Product Help",
+    description: "Placeholder for the forum category name field.",
+  },
+  {
+    key: "forum.category_manager.field.slug.label",
+    defaultText: "Slug",
+    description: "Label for the forum category slug field.",
+  },
+  {
+    key: "forum.category_manager.field.slug.placeholder",
+    defaultText: "product-help",
+    description: "Placeholder for the forum category slug field.",
+  },
+  {
+    key: "forum.category_manager.field.description.label",
+    defaultText: "Description",
+    description: "Label for the forum category description field.",
+  },
+  {
+    key: "forum.category_manager.field.description.placeholder",
+    defaultText: "Visible on the forum page to describe what belongs here.",
+    description: "Placeholder for the forum category description field.",
+  },
+  {
+    key: "forum.category_manager.field.position.label",
+    defaultText: "Position",
+    description: "Label for the forum category position field.",
+  },
+  {
+    key: "forum.category_manager.field.locked.label",
+    defaultText: "Locked",
+    description: "Label for the forum category lock toggle.",
+  },
+  {
+    key: "forum.category_manager.field.locked.helper",
+    defaultText: "Prevent new threads in this category",
+    description: "Helper text for the forum category lock toggle.",
+  },
+  {
+    key: "forum.category_manager.submit",
+    defaultText: "Save category",
+    description: "Submit button label for the forum category manager form.",
+  },
+  {
+    key: "forum.category_manager.submit_pending",
+    defaultText: "Saving…",
+    description:
+      "Submit button label while the forum category manager form is saving.",
+  },
+  {
+    key: "forum.category_manager.error.name_short",
+    defaultText: "Category name must be at least 3 characters long.",
+    description: "Validation error for short forum category names.",
+  },
+  {
+    key: "forum.category_manager.error.slug_required",
+    defaultText: "Slug cannot be empty.",
+    description: "Validation error when the forum category slug is blank.",
+  },
+  {
+    key: "forum.category_manager.toast.created",
+    defaultText: "Category created.",
+    description: "Toast shown after creating a forum category.",
+  },
+  {
     key: "forum.thread.pinned",
     defaultText: "Pinned",
     description: "Badge shown on pinned forum threads.",
@@ -2091,6 +2177,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "forum.thread.toast.action_error",
     defaultText: "Unable to update the thread. Please try again.",
     description: "Generic error shown when a thread action fails.",
+  },
+  {
+    key: "forum.thread.toast.subscription_error",
+    defaultText: "Unable to update subscription right now.",
+    description: "Toast shown when following or unfollowing a thread fails.",
   },
   {
     key: "forum.thread.toast.reaction_error",

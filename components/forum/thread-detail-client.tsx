@@ -252,7 +252,12 @@ export function ThreadDetailClient({
       setIsSubscribed((prev) => !prev);
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update subscription right now.");
+      toast.error(
+        translate(
+          "forum.thread.toast.subscription_error",
+          "Unable to update subscription right now."
+        )
+      );
     }
   };
 

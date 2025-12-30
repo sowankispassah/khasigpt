@@ -163,7 +163,12 @@ export function ForumComposer({
     };
     try {
       const thread = await createThread(payload);
-      toast.success("Discussion created! Redirecting...");
+      toast.success(
+        translate(
+          "forum.composer.toast.created",
+          "Discussion created! Redirecting..."
+        )
+      );
       setOpen(false);
       resetForm();
       router.push(`/forum/${thread.slug}`);
