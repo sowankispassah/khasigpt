@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   type MouseEvent,
   useCallback,
@@ -28,6 +28,7 @@ const ADMIN_LINKS = [
 
 export function AdminNav({ className }: { className?: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -89,9 +90,11 @@ export function AdminNav({ className }: { className?: string }) {
         setProgress(0);
         return;
       }
+      event.preventDefault();
       startProgress();
+      router.push(href);
     },
-    [pathname, startProgress]
+    [pathname, router, startProgress]
   );
 
   return (
