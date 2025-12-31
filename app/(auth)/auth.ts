@@ -48,6 +48,8 @@ declare module "next-auth" {
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
 const AUTH_DB_TIMEOUT_MS = 1500;
+const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
+const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
 
 const providers: any[] = [
   Credentials({
@@ -328,10 +330,36 @@ export const {
         | null
         | undefined;
       let dbLookupTimedOut = false;
+      const needsDbFields =
+        Boolean(token.id) &&
+        (typeof token.dateOfBirth === "undefined" ||
+          token.dateOfBirth === null ||
+          typeof token.imageVersion === "undefined" ||
+          typeof token.firstName === "undefined" ||
+          token.firstName === null ||
+          typeof token.lastName === "undefined" ||
+          token.lastName === null);
+      const lastDbRefresh =
+        typeof token.dbRefreshedAt === "number" ? token.dbRefreshedAt : 0;
+      const lastDbFailure =
+        typeof token.dbRefreshFailedAt === "number"
+          ? token.dbRefreshFailedAt
+          : 0;
+      const isFailureCooldownActive =
+        lastDbFailure > 0 &&
+        Date.now() - lastDbFailure < AUTH_DB_FAILURE_COOLDOWN_MS;
+      const shouldRefreshDb =
+        needsDbFields ||
+        trigger === "update" ||
+        !lastDbRefresh ||
+        Date.now() - lastDbRefresh > AUTH_DB_REFRESH_MS;
       const ensureDbUser = async () => {
         if (!token.id) {
           cachedDbUser = null;
           return null;
+        }
+        if (!shouldRefreshDb || isFailureCooldownActive) {
+          return cachedDbUser;
         }
         if (dbLookupTimedOut) {
           return undefined;
@@ -353,10 +381,12 @@ export const {
           if (error instanceof Error && error.message === "timeout") {
             dbLookupTimedOut = true;
             cachedDbUser = undefined;
+            token.dbRefreshFailedAt = Date.now();
             return cachedDbUser;
           }
           console.error("[auth] Failed to load user for session refresh", error);
           cachedDbUser = null;
+          token.dbRefreshFailedAt = Date.now();
         }
         return cachedDbUser;
       };
@@ -381,16 +411,7 @@ export const {
         }
       }
 
-      if (
-        token.id &&
-        (typeof token.dateOfBirth === "undefined" ||
-          token.dateOfBirth === null ||
-          typeof token.imageVersion === "undefined" ||
-          typeof token.firstName === "undefined" ||
-          token.firstName === null ||
-          typeof token.lastName === "undefined" ||
-          token.lastName === null)
-      ) {
+      if (needsDbFields) {
         const record = await ensureDbUser();
         if (record) {
           if (
@@ -437,13 +458,15 @@ export const {
         token.allowPersonalKnowledge = record?.allowPersonalKnowledge ?? false;
       }
 
-      if (token.id) {
+      if (token.id && (trigger === "update" || shouldRefreshDb)) {
         const record = await ensureDbUser();
         if (record) {
           if (record.role) {
             token.role = record.role as UserRole;
           }
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+          token.dbRefreshedAt = Date.now();
+          token.dbRefreshFailedAt = undefined;
         } else if (!dbLookupTimedOut) {
           // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
           token = {} as typeof token;
