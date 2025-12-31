@@ -15,6 +15,7 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
+import { withTimeout } from "@/lib/utils/async";
 import { authConfig } from "./auth.config";
 
 export type UserRole = "regular" | "creator" | "admin";
@@ -46,6 +47,7 @@ declare module "next-auth" {
 }
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
+const AUTH_DB_TIMEOUT_MS = 1500;
 
 const providers: any[] = [
   Credentials({
@@ -325,15 +327,37 @@ export const {
         | Awaited<ReturnType<typeof getUserById>>
         | null
         | undefined;
+      let dbLookupTimedOut = false;
       const ensureDbUser = async () => {
         if (!token.id) {
           cachedDbUser = null;
           return null;
         }
+        if (dbLookupTimedOut) {
+          return undefined;
+        }
         if (typeof cachedDbUser !== "undefined") {
           return cachedDbUser;
         }
-        cachedDbUser = await getUserById(token.id as string);
+        try {
+          cachedDbUser = await withTimeout(
+            getUserById(token.id as string),
+            AUTH_DB_TIMEOUT_MS,
+            () => {
+              console.warn(
+                `[auth] getUserById timed out after ${AUTH_DB_TIMEOUT_MS}ms.`
+              );
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message === "timeout") {
+            dbLookupTimedOut = true;
+            cachedDbUser = undefined;
+            return cachedDbUser;
+          }
+          console.error("[auth] Failed to load user for session refresh", error);
+          cachedDbUser = null;
+        }
         return cachedDbUser;
       };
 
@@ -420,7 +444,7 @@ export const {
             token.role = record.role as UserRole;
           }
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
-        } else {
+        } else if (!dbLookupTimedOut) {
           // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
           token = {} as typeof token;
         }
