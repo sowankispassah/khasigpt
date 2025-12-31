@@ -104,12 +104,36 @@ const TRANSLATION_CACHE_TTL_MS =
     ? parsedCacheTtl
     : 1000 * 60 * 60 * 6;
 
+const parsedFailureCooldown = Number.parseInt(
+  process.env.TRANSLATION_FAILURE_COOLDOWN_MS ?? "30000",
+  10
+);
+const TRANSLATION_FAILURE_COOLDOWN_MS =
+  Number.isFinite(parsedFailureCooldown) && parsedFailureCooldown > 0
+    ? parsedFailureCooldown
+    : 30000;
+
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
 
 const SHOULD_LOG_TRANSLATION_TIMEOUTS =
   typeof process !== "undefined" && process.env.NODE_ENV === "development";
 const SHOULD_LOG_TRANSLATION_ERRORS =
   typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+
+let translationDbBlockedUntil = 0;
+
+function shouldSkipTranslationDb() {
+  return Date.now() < translationDbBlockedUntil;
+}
+
+function markTranslationDbFailure() {
+  translationDbBlockedUntil =
+    Date.now() + Math.max(TRANSLATION_FAILURE_COOLDOWN_MS, 0);
+}
+
+function clearTranslationDbFailure() {
+  translationDbBlockedUntil = 0;
+}
 
 function isTimeoutError(error: unknown): boolean {
   if (!error) {
@@ -266,14 +290,30 @@ const BUNDLE_CACHE = new Map<string, CachedBundle>();
 const buildFallbackBundle = (
   preferredCode?: string | null
 ): TranslationBundle => {
+  const normalizedCode = preferredCode?.trim().toLowerCase() ?? null;
+  const fallbackMatch = normalizedCode
+    ? FALLBACK_LANGUAGES.find((entry) => entry.code === normalizedCode)
+    : null;
   const activeLanguage =
-    FALLBACK_LANGUAGES.find((entry) => entry.code === preferredCode) ??
-    FALLBACK_LANGUAGE;
+    fallbackMatch ??
+    (normalizedCode
+      ? {
+          id: `fallback-${normalizedCode}`,
+          code: normalizedCode,
+          name: normalizedCode.toUpperCase(),
+          isDefault: false,
+          isActive: true,
+        }
+      : FALLBACK_LANGUAGE);
   const languageFallback =
     LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
 
   return {
-    languages: [...FALLBACK_LANGUAGES],
+    languages: fallbackMatch
+      ? [...FALLBACK_LANGUAGES]
+      : normalizedCode
+        ? [...FALLBACK_LANGUAGES, activeLanguage]
+        : [...FALLBACK_LANGUAGES],
     activeLanguage,
     dictionary: mergeWithStaticDictionary(languageFallback),
   };
@@ -323,6 +363,10 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     return;
   }
 
+  if (shouldSkipTranslationDb()) {
+    return;
+  }
+
   const fallbackBundle =
     typeof preferredCode === "string" && preferredCode.trim().length > 0
       ? buildFallbackBundle(preferredCode)
@@ -338,6 +382,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     }
   )
     .then((bundle) => {
+      clearTranslationDbFailure();
       BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
       void persistBundle(key, bundle).catch((error) => {
         logTranslationError(
@@ -347,6 +392,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
       });
     })
     .catch((error) => {
+      markTranslationDbFailure();
       logTranslationError(
         "[i18n] Falling back to static translations.",
         error
@@ -382,6 +428,15 @@ export async function getTranslationBundle(
     return cached.data;
   }
 
+  if (shouldSkipTranslationDb()) {
+    const fallbackBundle =
+      typeof preferredCode === "string" && preferredCode.trim().length > 0
+        ? buildFallbackBundle(preferredCode)
+        : FALLBACK_BUNDLE;
+    BUNDLE_CACHE.set(key, { data: fallbackBundle, cachedAt: Date.now() });
+    return fallbackBundle;
+  }
+
   let persistedTimedOut = false;
   const persisted = await withTimeout(
     readPersistedBundle(key),
@@ -389,15 +444,18 @@ export async function getTranslationBundle(
   ).catch((error) => {
     if (isTimeoutError(error)) {
       persistedTimedOut = true;
+      markTranslationDbFailure();
       return null;
     }
     logTranslationError(
       "[i18n] Failed to load persisted translation bundle.",
       error
     );
+    markTranslationDbFailure();
     return null;
   });
   if (persisted) {
+    clearTranslationDbFailure();
     const { cachedAt, ...bundle } = persisted;
     const parsedCachedAt = new Date(cachedAt).getTime();
     const resolvedCachedAt = Number.isNaN(parsedCachedAt)
@@ -430,6 +488,7 @@ export async function getTranslationBundle(
         );
       }
     );
+    clearTranslationDbFailure();
     BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
     void persistBundle(key, bundle).catch((error) => {
       logTranslationError(
@@ -439,6 +498,7 @@ export async function getTranslationBundle(
     });
     return bundle;
   } catch (error) {
+    markTranslationDbFailure();
     logTranslationError("[i18n] Falling back to static translations.", error);
     const fallbackBundle =
       typeof preferredCode === "string" && preferredCode.trim().length > 0
@@ -525,6 +585,10 @@ export async function getTranslationForKey(
   preferredCode: string | null | undefined,
   definition: TranslationDefinition
 ) {
+  if (shouldSkipTranslationDb()) {
+    return definition.defaultText;
+  }
+
   try {
     const { activeLanguage } = await withTimeout(
       resolveLanguage(preferredCode),
@@ -550,8 +614,10 @@ export async function getTranslationForKey(
       TRANSLATION_QUERY_TIMEOUT_MS
     );
 
+    clearTranslationDbFailure();
     return result?.value ?? result?.defaultText ?? definition.defaultText;
   } catch (error) {
+    markTranslationDbFailure();
     logTranslationError(
       `[i18n] Falling back to default text for translation key "${definition.key}".`,
       error
@@ -566,6 +632,16 @@ export async function getTranslationsForKeys(
 ) {
   if (!definitions.length) {
     return {};
+  }
+
+  if (shouldSkipTranslationDb()) {
+    return definitions.reduce<Record<string, string>>(
+      (accumulator, definition) => {
+        accumulator[definition.key] = definition.defaultText;
+        return accumulator;
+      },
+      {}
+    );
   }
 
   try {
@@ -594,6 +670,7 @@ export async function getTranslationsForKeys(
       TRANSLATION_QUERY_TIMEOUT_MS
     );
 
+    clearTranslationDbFailure();
     const result: Record<string, string> = {};
     for (const definition of definitions) {
       const row = rows.find((entry) => entry.key === definition.key);
@@ -603,6 +680,7 @@ export async function getTranslationsForKeys(
 
     return result;
   } catch (error) {
+    markTranslationDbFailure();
     logTranslationError(
       "[i18n] Falling back to default texts for bulk translations.",
       error
