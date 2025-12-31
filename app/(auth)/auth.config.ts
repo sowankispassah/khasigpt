@@ -1,6 +1,10 @@
 import type { NextAuthConfig } from "next-auth";
 
+// Default to trusting the host in production to avoid callback/CSRF issues unless explicitly disabled.
+const trustHost = process.env.AUTH_TRUST_HOST !== "false";
+
 export const authConfig = {
+  trustHost,
   pages: {
     signIn: "/login",
     error: "/login",

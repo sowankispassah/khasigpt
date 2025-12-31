@@ -1,11 +1,10 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
-import equal from "fast-deep-equal";
 import { ArrowDownIcon } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
+import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
-import { useDataStream } from "./data-stream-provider";
 import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
 import { LoaderIcon } from "./icons";
@@ -26,6 +25,7 @@ type MessagesProps = {
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   suggestedPrompts: string[];
   selectedVisibilityType: VisibilityType;
+  isGeneratingImage?: boolean;
 };
 
 function PureMessages({
@@ -36,10 +36,11 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
-  selectedModelId,
+  selectedModelId: _selectedModelId,
   sendMessage,
   suggestedPrompts,
   selectedVisibilityType,
+  isGeneratingImage = false,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
@@ -52,10 +53,11 @@ function PureMessages({
   } = useMessages({
     status,
   });
+  const { translate } = useTranslation();
   const mountedChatRef = useRef<string | null>(null);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
-      ? lastMessage.parts
+      ? (lastMessage.parts
           ?.map((part) => {
             if (part.type === "text") {
               return `text-${part.text?.length ?? 0}`;
@@ -65,10 +67,8 @@ function PureMessages({
             }
             return part.type;
           })
-          .join("|") ?? ""
+          .join("|") ?? "")
       : null;
-
-  useDataStream();
 
   useEffect(() => {
     if (status !== "ready" && status !== "streaming" && status !== "error") {
@@ -102,6 +102,15 @@ function PureMessages({
       });
     }
   }, [status, streamingSignature, isAtBottom, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isGeneratingImage) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      scrollToBottom("auto");
+    });
+  }, [isGeneratingImage, scrollToBottom]);
 
   if (messages.length === 0) {
     return (
@@ -158,23 +167,47 @@ function PureMessages({
             />
           ))}
 
-          {status !== "ready" &&
-            status !== "streaming" &&
-            status !== "error" &&
-            isLastUserMessage && (
-            <div className="flex w-full items-start gap-2 md:gap-3 justify-start">
-              <div className="min-w-[1.5rem]" />
+          {isGeneratingImage && (
+            <div className="flex w-full items-start justify-start gap-2 md:gap-3">
               <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex size-4 items-center justify-center animate-spin text-muted-foreground">
-                    <LoaderIcon size={14} />
-                  </span>
+                <div className="relative h-60 w-60 overflow-hidden rounded-xl border bg-muted/60">
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 animate-pulse bg-muted/70"
+                  />
+                  <div className="relative z-10 flex h-full w-full items-center justify-center">
+                    <div className="flex items-center gap-2 rounded-full bg-background/85 px-3 py-1 text-muted-foreground text-xs shadow-sm">
+                      <span className="inline-flex size-4 animate-spin items-center justify-center">
+                        <LoaderIcon size={14} />
+                      </span>
+                      {translate("image.generate.loading", "Generating...")}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="min-h-[24px] min-w-[24px] shrink-0" ref={messagesEndRef} />
+          {status !== "ready" &&
+            status !== "streaming" &&
+            status !== "error" &&
+            isLastUserMessage && (
+              <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+                <div className="min-w-[1.5rem]" />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
+                      <LoaderIcon size={14} />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          <div
+            className="min-h-[24px] min-w-[24px] shrink-0"
+            ref={messagesEndRef}
+          />
         </ConversationContent>
       </Conversation>
 
@@ -192,35 +225,4 @@ function PureMessages({
   );
 }
 
-export const Messages = memo(PureMessages, (prevProps, nextProps) => {
-  if (prevProps.isArtifactVisible && nextProps.isArtifactVisible) {
-    return true;
-  }
-
-  if (prevProps.status !== nextProps.status) {
-    return false;
-  }
-  if (prevProps.selectedModelId !== nextProps.selectedModelId) {
-    return false;
-  }
-  if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType) {
-    return false;
-  }
-  if (prevProps.messages.length !== nextProps.messages.length) {
-    return false;
-  }
-  if (!equal(prevProps.messages, nextProps.messages)) {
-    return false;
-  }
-  if (!equal(prevProps.votes, nextProps.votes)) {
-    return false;
-  }
-  if (
-    (prevProps.suggestedPrompts ?? []).join("||") !==
-    (nextProps.suggestedPrompts ?? []).join("||")
-  ) {
-    return false;
-  }
-
-  return true;
-});
+export const Messages = memo(PureMessages);

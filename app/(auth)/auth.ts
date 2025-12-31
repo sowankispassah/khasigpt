@@ -4,15 +4,21 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
 import { DUMMY_PASSWORD } from "@/lib/constants";
-import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
-import { ChatSDKError } from "@/lib/errors";
 import {
-  incrementRateLimit,
-  resetRateLimit,
-} from "@/lib/security/rate-limit";
+  consumeImpersonationToken,
+  createAuditLogEntry,
+  createGuestUser,
+  ensureOAuthUser,
+  getUser,
+  getUserById,
+} from "@/lib/db/queries";
+import { ChatSDKError } from "@/lib/errors";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
+import { withTimeout } from "@/lib/utils/async";
 import { authConfig } from "./auth.config";
 
-export type UserRole = "regular" | "admin";
+export type UserRole = "regular" | "creator" | "admin";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -23,10 +29,10 @@ declare module "next-auth" {
       imageVersion: string | null;
       firstName: string | null;
       lastName: string | null;
+      allowPersonalKnowledge: boolean;
     } & DefaultSession["user"];
   }
 
-  // biome-ignore lint/nursery/useConsistentTypeDefinitions: Required augmentation type
   interface User {
     id?: string;
     email?: string | null;
@@ -36,10 +42,14 @@ declare module "next-auth" {
     imageVersion?: string | null;
     firstName?: string | null;
     lastName?: string | null;
+    allowPersonalKnowledge?: boolean;
   }
 }
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
+const AUTH_DB_TIMEOUT_MS = 1500;
+const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
+const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
 
 const providers: any[] = [
   Credentials({
@@ -50,7 +60,7 @@ const providers: any[] = [
       const rateLimitKey = `login:${normalizedEmail || "unknown"}`;
       const passwordInput = typeof password === "string" ? password : "";
 
-      const { allowed } = incrementRateLimit(rateLimitKey, {
+      const { allowed } = await incrementRateLimit(rateLimitKey, {
         limit: 5,
         windowMs: 10 * 60 * 1000,
       });
@@ -102,10 +112,77 @@ const providers: any[] = [
         ...rest,
         role: user.role,
         imageVersion,
+        allowPersonalKnowledge: user.allowPersonalKnowledge ?? false,
       } as typeof rest & { role: UserRole; imageVersion: string | null };
     },
   }),
 ];
+
+providers.push(
+  Credentials({
+    id: "guest",
+    name: "Guest",
+    credentials: {},
+    async authorize() {
+      const [record] = await createGuestUser();
+
+      return {
+        ...record,
+        role: (record as any).role ?? "regular",
+        name: "Guest",
+        imageVersion: null,
+        allowPersonalKnowledge: false,
+        firstName: null,
+        lastName: null,
+      } as typeof record & {
+        role: UserRole;
+        imageVersion: string | null;
+        allowPersonalKnowledge: boolean;
+        firstName: string | null;
+        lastName: string | null;
+      };
+    },
+  })
+);
+
+providers.push(
+  Credentials({
+    id: "impersonate",
+    name: "Impersonate",
+    credentials: {},
+    async authorize({ token }: any) {
+      const tokenValue = typeof token === "string" ? token : "";
+      if (!tokenValue) {
+        return null;
+      }
+
+      const record = await consumeImpersonationToken(tokenValue);
+      if (!record) {
+        return null;
+      }
+
+      const targetUser = await getUserById(record.targetUserId);
+      if (!targetUser) {
+        return null;
+      }
+
+      const { image, ...rest } = targetUser;
+      const imageVersion =
+        image && targetUser.updatedAt instanceof Date
+          ? targetUser.updatedAt.toISOString()
+          : image
+            ? new Date().toISOString()
+            : null;
+
+      return {
+        ...rest,
+        role: targetUser.role as UserRole,
+        imageVersion,
+        allowPersonalKnowledge: targetUser.allowPersonalKnowledge ?? false,
+      } as typeof rest & { role: UserRole; imageVersion: string | null };
+    },
+  })
+);
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
@@ -127,6 +204,43 @@ export const {
 } = NextAuth({
   ...authConfig,
   providers,
+  events: {
+    async signIn({ user, account, isNewUser }) {
+      const actorId = typeof user?.id === "string" ? user.id : null;
+      if (!actorId) {
+        return;
+      }
+
+      const clientInfo = await getClientInfoFromHeaders();
+      const userWithFlag = user as { isNewUser?: boolean } | null | undefined;
+      const inferredIsNewUser =
+        typeof isNewUser === "boolean"
+          ? isNewUser
+          : typeof userWithFlag?.isNewUser === "boolean"
+            ? userWithFlag.isNewUser
+            : false;
+
+      try {
+        await createAuditLogEntry({
+          actorId,
+          action: inferredIsNewUser ? "user.signup" : "user.login",
+          target: {
+            userId: actorId,
+            email: typeof user?.email === "string" ? user.email : undefined,
+          },
+          metadata: {
+            provider: account?.provider,
+            type: account?.type,
+            isNewUser: inferredIsNewUser,
+          },
+          subjectUserId: actorId,
+          ...clientInfo,
+        });
+      } catch (error) {
+        console.error("Failed to record auth audit log", error);
+      }
+    },
+  },
   callbacks: {
     async signIn({ user, account }: { user: any; account?: any }) {
       if (account?.provider === "google") {
@@ -134,25 +248,26 @@ export const {
           return false;
         }
 
-        const profileImage =
-          typeof user.image === "string" ? user.image : null;
+        const profileImage = typeof user.image === "string" ? user.image : null;
         try {
           const fullName =
             typeof user.name === "string" ? user.name.trim() : "";
           const googleFirstName =
             typeof (user as Record<string, unknown>).given_name === "string"
               ? ((user as Record<string, string>).given_name ?? "").trim()
-              : fullName.split(" ")[0] ?? "";
+              : (fullName.split(" ")[0] ?? "");
           const googleLastName =
             typeof (user as Record<string, unknown>).family_name === "string"
               ? ((user as Record<string, string>).family_name ?? "").trim()
               : fullName.split(" ").slice(1).join(" ");
 
-          const dbUser = await ensureOAuthUser(user.email, {
-            image: profileImage,
-            firstName: googleFirstName || null,
-            lastName: googleLastName || null,
-          });
+          const { user: dbUser, isNewUser: isNewOAuthUser } =
+            await ensureOAuthUser(user.email, {
+              image: profileImage,
+              firstName: googleFirstName || null,
+              lastName: googleLastName || null,
+            });
+          (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
           user.role = dbUser.role as UserRole;
           user.image = null;
@@ -171,6 +286,7 @@ export const {
               .join(" ")
               .trim();
           }
+          user.allowPersonalKnowledge = dbUser.allowPersonalKnowledge ?? false;
         } catch (error) {
           if (error instanceof ChatSDKError) {
             if (error.cause === "account_inactive") {
@@ -204,11 +320,76 @@ export const {
         token.imageVersion = user.imageVersion ?? null;
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
-      } else {
-        if (!token.role) {
-          token.role = "regular";
-        }
+        token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
+      } else if (!token.role) {
+        token.role = "regular";
       }
+
+      let cachedDbUser:
+        | Awaited<ReturnType<typeof getUserById>>
+        | null
+        | undefined;
+      let dbLookupTimedOut = false;
+      const needsDbFields =
+        Boolean(token.id) &&
+        (typeof token.dateOfBirth === "undefined" ||
+          token.dateOfBirth === null ||
+          typeof token.imageVersion === "undefined" ||
+          typeof token.firstName === "undefined" ||
+          token.firstName === null ||
+          typeof token.lastName === "undefined" ||
+          token.lastName === null);
+      const lastDbRefresh =
+        typeof token.dbRefreshedAt === "number" ? token.dbRefreshedAt : 0;
+      const lastDbFailure =
+        typeof token.dbRefreshFailedAt === "number"
+          ? token.dbRefreshFailedAt
+          : 0;
+      const isFailureCooldownActive =
+        lastDbFailure > 0 &&
+        Date.now() - lastDbFailure < AUTH_DB_FAILURE_COOLDOWN_MS;
+      const shouldRefreshDb =
+        needsDbFields ||
+        trigger === "update" ||
+        !lastDbRefresh ||
+        Date.now() - lastDbRefresh > AUTH_DB_REFRESH_MS;
+      const ensureDbUser = async () => {
+        if (!token.id) {
+          cachedDbUser = null;
+          return null;
+        }
+        if (!shouldRefreshDb || isFailureCooldownActive) {
+          return cachedDbUser;
+        }
+        if (dbLookupTimedOut) {
+          return undefined;
+        }
+        if (typeof cachedDbUser !== "undefined") {
+          return cachedDbUser;
+        }
+        try {
+          cachedDbUser = await withTimeout(
+            getUserById(token.id as string),
+            AUTH_DB_TIMEOUT_MS,
+            () => {
+              console.warn(
+                `[auth] getUserById timed out after ${AUTH_DB_TIMEOUT_MS}ms.`
+              );
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message === "timeout") {
+            dbLookupTimedOut = true;
+            cachedDbUser = undefined;
+            token.dbRefreshFailedAt = Date.now();
+            return cachedDbUser;
+          }
+          console.error("[auth] Failed to load user for session refresh", error);
+          cachedDbUser = null;
+          token.dbRefreshFailedAt = Date.now();
+        }
+        return cachedDbUser;
+      };
 
       if (trigger === "update" && session) {
         if ("imageVersion" in session) {
@@ -223,21 +404,20 @@ export const {
         if ("lastName" in session) {
           token.lastName = (session.lastName as string | null) ?? null;
         }
+        if ("allowPersonalKnowledge" in session) {
+          token.allowPersonalKnowledge = Boolean(
+            session.allowPersonalKnowledge
+          );
+        }
       }
 
-      if (
-        token.id &&
-        (typeof token.dateOfBirth === "undefined" ||
-          token.dateOfBirth === null ||
-          typeof token.imageVersion === "undefined" ||
-          typeof token.firstName === "undefined" ||
-          token.firstName === null ||
-          typeof token.lastName === "undefined" ||
-          token.lastName === null)
-      ) {
-        const record = await getUserById(token.id as string);
+      if (needsDbFields) {
+        const record = await ensureDbUser();
         if (record) {
-          if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
+          if (
+            typeof token.dateOfBirth === "undefined" ||
+            token.dateOfBirth === null
+          ) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
           token.imageVersion =
@@ -246,11 +426,21 @@ export const {
               : record.image
                 ? new Date().toISOString()
                 : null;
-          if (typeof token.firstName === "undefined" || token.firstName === null) {
+          if (
+            typeof token.firstName === "undefined" ||
+            token.firstName === null
+          ) {
             token.firstName = record.firstName ?? null;
           }
-          if (typeof token.lastName === "undefined" || token.lastName === null) {
+          if (
+            typeof token.lastName === "undefined" ||
+            token.lastName === null
+          ) {
             token.lastName = record.lastName ?? null;
+          }
+          if (typeof token.allowPersonalKnowledge === "undefined") {
+            token.allowPersonalKnowledge =
+              record.allowPersonalKnowledge ?? false;
           }
         }
       } else if (typeof token.imageVersion === "undefined") {
@@ -263,17 +453,48 @@ export const {
       if (typeof token.lastName === "undefined") {
         token.lastName = null;
       }
+      if (typeof token.allowPersonalKnowledge === "undefined") {
+        const record = await ensureDbUser();
+        token.allowPersonalKnowledge = record?.allowPersonalKnowledge ?? false;
+      }
+
+      if (token.id && (trigger === "update" || shouldRefreshDb)) {
+        const record = await ensureDbUser();
+        if (record) {
+          if (record.role) {
+            token.role = record.role as UserRole;
+          }
+          token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+          token.dbRefreshedAt = Date.now();
+          token.dbRefreshFailedAt = undefined;
+        } else if (!dbLookupTimedOut) {
+          // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
+          token = {} as typeof token;
+        }
+      }
+
+      if (!token.role) {
+        token.role = "regular";
+      }
 
       return token;
     },
     session({ session, token }: { session: any; token: any }) {
+      if (!token.id) {
+        return null;
+      }
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
         session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
-        session.user.imageVersion = (token.imageVersion ?? null) as string | null;
+        session.user.imageVersion = (token.imageVersion ?? null) as
+          | string
+          | null;
         session.user.firstName = (token.firstName ?? null) as string | null;
         session.user.lastName = (token.lastName ?? null) as string | null;
+        session.user.allowPersonalKnowledge = Boolean(
+          token.allowPersonalKnowledge ?? false
+        );
         const computedName = [session.user.firstName, session.user.lastName]
           .filter(Boolean)
           .join(" ")
