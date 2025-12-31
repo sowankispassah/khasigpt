@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { fetchWithTimeout } from "@/lib/utils/async";
 
 export type ExchangeRateResult = {
   rate: number;
@@ -7,6 +8,7 @@ export type ExchangeRateResult = {
 
 const DEFAULT_RATE = 83.0;
 const EXCHANGE_RATE_TAG = "exchange-rate-usd-inr";
+const EXCHANGE_RATE_TIMEOUT_MS = 2500;
 let lastSuccessfulRate: ExchangeRateResult | null = null;
 
 type ExchangeProvider = {
@@ -93,9 +95,13 @@ async function fetchUsdToInr(): Promise<ExchangeRateResult> {
     }
 
     try {
-      const response = await fetch(url, {
-        next: { revalidate: 300, tags: [EXCHANGE_RATE_TAG] },
-      });
+      const response = await fetchWithTimeout(
+        url,
+        {
+          next: { revalidate: 300, tags: [EXCHANGE_RATE_TAG] },
+        },
+        EXCHANGE_RATE_TIMEOUT_MS
+      );
 
       if (!response.ok) {
         throw new Error(`${provider.name} responded with ${response.status}`);

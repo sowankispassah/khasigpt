@@ -1,5 +1,8 @@
+import { fetchWithTimeout } from "@/lib/utils/async";
+
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_LIMIT = 100;
+const KV_FETCH_TIMEOUT_MS = 1500;
 
 type RedisClientType = import("redis").RedisClientType;
 declare const EdgeRuntime: string | undefined;
@@ -129,18 +132,22 @@ async function incrementRestKv(
   }
 
   try {
-    const response = await fetch(`${kvRestUrl}/pipeline`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${kvRestToken}`,
-        "Content-Type": "application/json",
+    const response = await fetchWithTimeout(
+      `${kvRestUrl}/pipeline`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${kvRestToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify([
+          ["INCR", key],
+          ["PTTL", key],
+          ["PEXPIRE", key, windowMs.toString()],
+        ]),
       },
-      body: JSON.stringify([
-        ["INCR", key],
-        ["PTTL", key],
-        ["PEXPIRE", key, windowMs.toString()],
-      ]),
-    });
+      KV_FETCH_TIMEOUT_MS
+    );
 
     if (!response.ok) {
       return null;
