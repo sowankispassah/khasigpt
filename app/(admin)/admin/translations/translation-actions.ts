@@ -11,8 +11,9 @@ import {
 } from "@/lib/db/queries";
 import {
   invalidateTranslationBundleCache,
-  publishAllTranslations,
+  registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import { getLanguageByCode } from "@/lib/i18n/languages";
 
 const TRANSLATIONS_PATH = "/admin/translations";
@@ -131,7 +132,8 @@ export async function saveTranslationValueAction(formData: FormData) {
 export async function publishTranslationsAction() {
   const actor = await requireAdminUser();
 
-  await publishAllTranslations();
+  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
+  await invalidateTranslationBundleCache();
 
   await createAuditLogEntry({
     actorId: actor.id,
