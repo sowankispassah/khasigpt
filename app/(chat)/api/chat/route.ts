@@ -230,7 +230,7 @@ export async function POST(request: Request) {
       since: getStartOfTodayInIST(),
     });
 
-    if (maxMessagesPerDay !== null && messageCount > maxMessagesPerDay) {
+    if (maxMessagesPerDay !== null && messageCount >= maxMessagesPerDay) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
 

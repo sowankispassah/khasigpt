@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
@@ -44,6 +45,107 @@ const imageRequestSchema = z.object({
 });
 
 const DEFAULT_IMAGE_FILENAME_PREFIX = "khasigpt-image";
+const ALLOWED_IMAGE_HOST_SUFFIXES = [
+  "blob.vercel-storage.com",
+  "public.blob.vercel-storage.com",
+];
+
+function hostMatchesSuffix(hostname: string, suffix: string) {
+  return hostname === suffix || hostname.endsWith(`.${suffix}`);
+}
+
+function isPrivateIpv4(address: string) {
+  const parts = address.split(".");
+  if (parts.length !== 4) {
+    return false;
+  }
+  const octets = parts.map((part) => Number.parseInt(part, 10));
+  if (octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+
+  const [first, second, third] = octets;
+  if (first === 10) return true;
+  if (first === 127) return true;
+  if (first === 0) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 100 && second >= 64 && second <= 127) return true;
+  if (first === 192 && second === 0 && third === 0) return true;
+  if (first === 198 && (second === 18 || second === 19)) return true;
+  if (first >= 224) return true;
+  return false;
+}
+
+function isPrivateIpv6(address: string) {
+  const normalized = address.toLowerCase();
+  if (normalized === "::1" || normalized === "::") {
+    return true;
+  }
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
+    return true;
+  }
+  if (
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb")
+  ) {
+    return true;
+  }
+  if (
+    normalized.startsWith("fec") ||
+    normalized.startsWith("fed") ||
+    normalized.startsWith("fee") ||
+    normalized.startsWith("fef")
+  ) {
+    return true;
+  }
+  if (normalized.startsWith("2001:db8:")) {
+    return true;
+  }
+  if (normalized.startsWith("::ffff:")) {
+    return isPrivateIpv4(normalized.slice("::ffff:".length));
+  }
+  return false;
+}
+
+function isPrivateIp(address: string) {
+  const ipVersion = isIP(address);
+  if (ipVersion === 4) {
+    return isPrivateIpv4(address);
+  }
+  if (ipVersion === 6) {
+    return isPrivateIpv6(address);
+  }
+  return false;
+}
+
+function isAllowedImageUrl(value: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (!hostname) {
+    return false;
+  }
+  if (isPrivateIp(hostname)) {
+    return false;
+  }
+
+  return ALLOWED_IMAGE_HOST_SUFFIXES.some((suffix) =>
+    hostMatchesSuffix(hostname, suffix)
+  );
+}
 
 function normalizeImageFilenamePrefix(value: unknown) {
   if (typeof value !== "string") {
@@ -201,6 +303,18 @@ export async function POST(request: Request) {
   const resolvedImageUrls = Array.from(
     new Set([...(imageUrls ?? []), ...(imageUrl ? [imageUrl] : [])])
   ).filter(Boolean);
+  const invalidImageUrl = resolvedImageUrls.find(
+    (candidate) => !isAllowedImageUrl(candidate)
+  );
+  if (invalidImageUrl) {
+    return Response.json(
+      {
+        code: "bad_request:api",
+        message: "Reference images must be hosted on approved domains.",
+      },
+      { status: 400 }
+    );
+  }
 
   const sourceImages: Array<{ data: string; mediaType: string }> = [];
   const sourceImageParts: Array<{
