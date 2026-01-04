@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { verifyGoogleIdToken } from "@/lib/security/google-id-token";
 import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
 import { withTimeout } from "@/lib/utils/async";
 import { authConfig } from "./auth.config";
@@ -47,6 +48,7 @@ declare module "next-auth" {
 }
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
+const ACCOUNT_LINK_REQUIRED_ERROR = "AccountLinkRequired";
 const AUTH_DB_TIMEOUT_MS = 1500;
 const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
 const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
@@ -117,6 +119,88 @@ const providers: any[] = [
     },
   }),
 ];
+
+const googleNativeClientIds = [
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_ANDROID_CLIENT_ID,
+  process.env.GOOGLE_IOS_CLIENT_ID,
+  process.env.GOOGLE_EXPO_CLIENT_ID,
+  process.env.GOOGLE_MOBILE_CLIENT_ID,
+].filter((value): value is string => Boolean(value && value.trim().length > 0));
+
+if (googleNativeClientIds.length > 0) {
+  providers.push(
+    Credentials({
+      id: "google-native",
+      name: "Google (Native)",
+      credentials: {},
+      async authorize({ idToken }: any) {
+        const token = typeof idToken === "string" ? idToken.trim() : "";
+        if (!token) {
+          return null;
+        }
+
+        const payload = await verifyGoogleIdToken(token, googleNativeClientIds);
+        if (!payload) {
+          return null;
+        }
+
+        const fullName =
+          typeof payload.name === "string" ? payload.name.trim() : "";
+        const googleFirstName =
+          typeof payload.givenName === "string"
+            ? payload.givenName.trim()
+            : (fullName.split(" ")[0] ?? "");
+        const googleLastName =
+          typeof payload.familyName === "string"
+            ? payload.familyName.trim()
+            : fullName.split(" ").slice(1).join(" ");
+
+        try {
+          const { user: dbUser, isNewUser } = await ensureOAuthUser(
+            payload.email,
+            {
+              image: payload.picture ?? null,
+              firstName: googleFirstName || null,
+              lastName: googleLastName || null,
+            }
+          );
+
+          const { image, password: _password, ...rest } = dbUser as any;
+          const imageVersion =
+            image && dbUser.updatedAt instanceof Date
+              ? dbUser.updatedAt.toISOString()
+              : image
+                ? new Date().toISOString()
+                : null;
+
+          return {
+            ...rest,
+            role: dbUser.role as UserRole,
+            imageVersion,
+            allowPersonalKnowledge: dbUser.allowPersonalKnowledge ?? false,
+            isNewUser,
+          } as typeof rest & {
+            role: UserRole;
+            imageVersion: string | null;
+            allowPersonalKnowledge: boolean;
+            isNewUser: boolean;
+          };
+        } catch (error) {
+          if (error instanceof ChatSDKError) {
+            if (error.cause === "account_inactive") {
+              throw new Error(ACCOUNT_INACTIVE_ERROR);
+            }
+            if (error.cause === "account_link_required") {
+              throw new Error(ACCOUNT_LINK_REQUIRED_ERROR);
+            }
+          }
+          return null;
+        }
+      },
+    })
+  );
+}
 
 providers.push(
   Credentials({
