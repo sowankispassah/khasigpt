@@ -1,18 +1,26 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
-
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
-import { UserDropdownMenu, UserMenuTrigger } from "@/components/user-dropdown-menu";
 import { useTranslation } from "@/components/language-provider";
+import { Button } from "@/components/ui/button";
+import {
+  UserDropdownMenu,
+  UserMenuTrigger,
+} from "@/components/user-dropdown-menu";
 import { cn } from "@/lib/utils";
 
-export function PageUserMenu({ className }: { className?: string }) {
+export function PageUserMenu({
+  className,
+  forumEnabled = true,
+}: {
+  className?: string;
+  forumEnabled?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status } = useSession();
@@ -36,6 +44,13 @@ export function PageUserMenu({ className }: { className?: string }) {
 
   useEffect(() => {
     setIsActionPending(false);
+    if (typeof window !== "undefined") {
+      const pendingPath = window.localStorage.getItem("user-menu:pending-path");
+      if (pendingPath && pendingPath === pathname) {
+        window.localStorage.removeItem("user-menu:pending-path");
+        window.dispatchEvent(new CustomEvent("user-menu-close-request"));
+      }
+    }
   }, [pathname]);
 
   useEffect(() => {
@@ -46,32 +61,52 @@ export function PageUserMenu({ className }: { className?: string }) {
 
   useEffect(() => {
     hasPrefetchedRoutesRef.current = false;
-  }, [user?.id]);
+  }, []);
 
   const prefetchUserRoutes = useCallback(() => {
     if (!user || hasPrefetchedRoutesRef.current) {
       return;
     }
     hasPrefetchedRoutesRef.current = true;
-    void router.prefetch("/profile");
-    void router.prefetch("/subscriptions");
-    void router.prefetch("/recharge");
+    try {
+      router.prefetch("/profile");
+      router.prefetch("/subscriptions");
+      router.prefetch("/recharge");
+    } catch (error) {
+      console.warn("Prefetch failed", error);
+    }
     if (user.role === "admin") {
-      void router.prefetch("/admin");
+      try {
+        router.prefetch("/admin");
+      } catch (error) {
+        console.warn("Prefetch failed", error);
+      }
+    }
+    if (user.role === "creator") {
+      try {
+        router.prefetch("/creator-dashboard");
+      } catch (error) {
+        console.warn("Prefetch failed", error);
+      }
     }
   }, [router, user]);
 
   const beginAction = () => {
     setIsActionPending(true);
   };
-
   const handleNavigate = (path: string) => {
-    if (path === pathname) {
+    const isSameRoute = path === pathname;
+    if (isSameRoute) {
       setIsActionPending(false);
       return;
     }
     beginAction();
     router.push(path);
+    try {
+      window.localStorage.setItem("user-menu:pending-path", path);
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const handleToggleTheme = () => {
@@ -82,12 +117,12 @@ export function PageUserMenu({ className }: { className?: string }) {
 
   const handleSignOut = () => {
     beginAction();
-    void signOut({ redirectTo: "/login" });
+    signOut({ redirectTo: "/login" });
   };
 
-  const handleMenuClosed = () => {
+  const handleMenuClosed = useCallback(() => {
     setIsActionPending(false);
-  };
+  }, []);
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -98,17 +133,14 @@ export function PageUserMenu({ className }: { className?: string }) {
         handleMenuClosed();
       }
     },
-    [prefetchUserRoutes]
+    [prefetchUserRoutes, handleMenuClosed]
   );
 
   const isBusy = status === "loading" || isActionPending;
 
   return (
     <div
-      className={cn(
-        "fixed right-2 top-1.5 z-40 flex items-center",
-        className
-      )}
+      className={cn("fixed top-1.5 right-2 z-40 flex items-center", className)}
     >
       {status === "loading" ? (
         <Button className="h-8 w-8" disabled variant="outline">
@@ -122,19 +154,20 @@ export function PageUserMenu({ className }: { className?: string }) {
       ) : user ? (
         <UserDropdownMenu
           align="end"
+          currentPathname={pathname}
+          forumEnabled={forumEnabled}
           isAdmin={user.role === "admin"}
           isAuthenticated
           isBusy={isBusy}
-          onOpenChange={handleOpenChange}
+          isCreator={user.role === "creator"}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
+          onOpenChange={handleOpenChange}
           onSignOut={handleSignOut}
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
-          userDisplayName={displayName ?? undefined}
-          userEmail={user.email ?? undefined}
           trigger={
             <UserMenuTrigger
               isBusy={isBusy}
@@ -145,41 +178,42 @@ export function PageUserMenu({ className }: { className?: string }) {
               }}
             />
           }
+          userDisplayName={displayName ?? undefined}
+          userEmail={user.email ?? undefined}
         />
       ) : (
         <UserDropdownMenu
           align="end"
+          currentPathname={pathname}
+          forumEnabled={forumEnabled}
           isAdmin={false}
           isAuthenticated={false}
           isBusy={isBusy}
-          onOpenChange={handleOpenChange}
+          isCreator={false}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
           onNavigate={handleNavigate}
+          onOpenChange={handleOpenChange}
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
           side="bottom"
-          userDisplayName={undefined}
           trigger={
             <button
+              aria-busy={isBusy}
+              aria-disabled={isBusy}
               className={cn(
-                "relative flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 isBusy && "pointer-events-none opacity-70"
               )}
               type="button"
             >
-              {isBusy ? (
-                <span className="animate-spin">
-                  <LoaderIcon size={16} />
-                </span>
-              ) : (
-                <EllipsisVertical size={16} />
-              )}
+              <EllipsisVertical size={16} />
               <span className="sr-only">
                 {translate("user_menu.open_menu", "Open menu")}
               </span>
             </button>
           }
+          userDisplayName={undefined}
         />
       )}
     </div>

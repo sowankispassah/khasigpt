@@ -4,10 +4,11 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
+import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,10 +22,8 @@ import {
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Vote } from "@/lib/db/schema";
-import { ChatSDKError } from "@/lib/errors";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { useTranslation } from "@/components/language-provider";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -40,6 +39,8 @@ export function Chat({
   isReadonly,
   autoResume,
   suggestedPrompts,
+  imageGeneration,
+  customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -48,6 +49,12 @@ export function Chat({
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  imageGeneration: {
+    enabled: boolean;
+    canGenerate: boolean;
+    requiresPaidCredits: boolean;
+  };
+  customKnowledgeEnabled: boolean;
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -61,12 +68,67 @@ export function Chat({
   const [input, setInput] = useState<string>("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
+  const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
   const currentModelIdRef = useRef(currentModelId);
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [showActionProgress, setShowActionProgress] = useState(false);
+  const [actionProgress, setActionProgress] = useState(0);
+  const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const imageUpgradeTitle = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.title",
+        "Free credits can't be used for images"
+      )
+    : translate(
+        "image.actions.locked.title",
+        "Recharge credits to generate images"
+      );
+  const imageUpgradeDescription = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.description",
+        "You are using free credits. Recharge to generate images."
+      )
+    : translate(
+        "image.actions.locked.description",
+        "Image generation is available for paid plans or users with active credits."
+      );
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
+
+  useEffect(() => {
+    if (!imageGeneration.enabled) {
+      setIsImageMode(false);
+    }
+  }, [imageGeneration.enabled]);
+
+  const clearProgressTimers = useCallback(() => {
+    for (const timerId of progressTimersRef.current) {
+      clearTimeout(timerId);
+    }
+    progressTimersRef.current = [];
+  }, []);
+
+  const startActionProgress = useCallback(() => {
+    clearProgressTimers();
+    setShowActionProgress(true);
+    setActionProgress(12);
+    const timers = [
+      setTimeout(() => setActionProgress(40), 120),
+      setTimeout(() => setActionProgress(70), 260),
+      setTimeout(() => setActionProgress(90), 520),
+    ];
+    progressTimersRef.current = timers;
+  }, [clearProgressTimers]);
+
+  useEffect(() => {
+    return () => {
+      clearProgressTimers();
+    };
+  }, [clearProgressTimers]);
 
   const {
     messages,
@@ -99,7 +161,7 @@ export function Chat({
     onData: (dataPart) => {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
-    onFinish: async () => {
+    onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {
@@ -116,7 +178,7 @@ export function Chat({
             return prev;
           }
           const next = [...prev];
-          const last = next[next.length - 1];
+          const last = next.at(-1);
           if (last?.role === "user") {
             next.pop();
           }
@@ -177,8 +239,9 @@ export function Chat({
   }, [query, sendMessage, hasAppendedQuery, id]);
 
   useEffect(() => {
-    if (pathname === "/" && newChatNonce) {
-      router.replace("/", { scroll: false });
+    if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
+      const nextPath = pathname === "/chat" ? "/chat" : "/";
+      router.replace(nextPath, { scroll: false });
     }
   }, [pathname, newChatNonce, router]);
 
@@ -199,6 +262,17 @@ export function Chat({
 
   return (
     <>
+      {showActionProgress ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${actionProgress}%` }}
+          />
+        </div>
+      ) : null}
       <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
         <ChatHeader
           chatId={id}
@@ -209,11 +283,12 @@ export function Chat({
         <Messages
           chatId={id}
           isArtifactVisible={isArtifactVisible}
+          isGeneratingImage={isGeneratingImage}
           isReadonly={isReadonly}
           messages={messages}
           regenerate={regenerate}
-          selectedVisibilityType={visibilityType}
           selectedModelId={currentModelId}
+          selectedVisibilityType={visibilityType}
           sendMessage={sendMessage}
           setMessages={setMessages}
           status={status}
@@ -227,18 +302,162 @@ export function Chat({
               <MultimodalInput
                 attachments={attachments}
                 chatId={id}
+                imageGenerationCanGenerate={imageGeneration.canGenerate}
+                imageGenerationEnabled={imageGeneration.enabled}
+                imageGenerationRequiresPaidCredits={
+                  imageGeneration.requiresPaidCredits
+                }
+                imageGenerationSelected={isImageMode}
+                isGeneratingImage={isGeneratingImage}
                 input={input}
                 messages={messages}
                 onModelChange={setCurrentModelId}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
-              sendMessage={sendMessage}
-              setAttachments={setAttachments}
-              setInput={setInput}
-              setMessages={setMessages}
-              status={status}
-              stop={stop}
-            />
+                onGenerateImage={async () => {
+                  if (!imageGeneration.enabled) {
+                    toast({
+                      type: "error",
+                      description: translate(
+                        "image.disabled",
+                        "Image generation is currently unavailable."
+                      ),
+                    });
+                    return;
+                  }
+                  if (!imageGeneration.canGenerate) {
+                    setShowImageUpgradeDialog(true);
+                    return;
+                  }
+
+                  const trimmedPrompt = input.trim();
+                  if (!trimmedPrompt) {
+                    toast({
+                      type: "error",
+                      description: translate(
+                        "image.prompt.required",
+                        "Add a prompt before generating."
+                      ),
+                    });
+                    return;
+                  }
+
+                  const imageAttachments = attachments.filter((attachment) =>
+                    attachment.contentType?.startsWith("image/")
+                  );
+
+                  window.history.replaceState({}, "", `/chat/${id}`);
+
+                  const userMessageId = generateUUID();
+                  const userParts = [
+                    ...imageAttachments.map((attachment) => ({
+                      type: "file" as const,
+                      url: attachment.url,
+                      filename: attachment.name,
+                      mediaType: attachment.contentType,
+                    })),
+                    { type: "text" as const, text: trimmedPrompt },
+                  ];
+
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: userMessageId,
+                      role: "user",
+                      parts: userParts,
+                    },
+                  ]);
+
+                  setInput("");
+                  setAttachments([]);
+                  setIsGeneratingImage(true);
+
+                  try {
+                    const response = await fetch("/api/images", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chatId: id,
+                        visibility: visibilityType,
+                        prompt: trimmedPrompt,
+                        userMessageId,
+                        imageUrls: imageAttachments.map(
+                          (attachment) => attachment.url
+                        ),
+                      }),
+                    });
+
+                    const data = (await response.json().catch(() => null)) as
+                      | {
+                          assistantMessage?: ChatMessage;
+                          message?: string;
+                        }
+                      | null;
+
+                    if (!response.ok) {
+                      if (response.status === 402) {
+                        setMessages((prev) =>
+                          prev.filter((message) => message.id !== userMessageId)
+                        );
+                        setShowImageUpgradeDialog(true);
+                        return;
+                      }
+
+                      toast({
+                        type: "error",
+                        description:
+                          data?.message ??
+                          translate(
+                            "image.generate.failed",
+                            "Image generation failed. Please try again."
+                          ),
+                      });
+                      return;
+                    }
+
+                    const assistantMessage = data?.assistantMessage;
+                    if (!assistantMessage) {
+                      toast({
+                        type: "error",
+                        description: translate(
+                          "image.generate.empty",
+                          "No image was returned. Try a different prompt."
+                        ),
+                      });
+                      return;
+                    }
+
+                    setMessages((prev) => [...prev, assistantMessage]);
+                    mutate(unstable_serialize(getChatHistoryPaginationKey));
+                  } catch (_error) {
+                    toast({
+                      type: "error",
+                      description: translate(
+                        "image.generate.failed",
+                        "Image generation failed. Please try again."
+                      ),
+                    });
+                  } finally {
+                    setIsGeneratingImage(false);
+                  }
+                }}
+                sendMessage={sendMessage}
+                setAttachments={setAttachments}
+                setInput={setInput}
+                setMessages={setMessages}
+                status={status}
+                stop={stop}
+                onToggleImageMode={() => {
+                  if (!imageGeneration.enabled) {
+                    return;
+                  }
+                  if (!imageGeneration.canGenerate) {
+                    setShowImageUpgradeDialog(true);
+                    return;
+                  }
+                  setIsImageMode((prev) => !prev);
+                }}
+              />
               <p className="px-2 text-center text-muted-foreground text-xs">
                 {translate(
                   "chat.disclaimer.text",
@@ -263,10 +482,7 @@ export function Chat({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate(
-                "chat.recharge.alert.title",
-                "Credit top-up required"
-              )}
+              {translate("chat.recharge.alert.title", "Credit top-up required")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {translate(
@@ -285,10 +501,7 @@ export function Chat({
                 router.push("/recharge");
               }}
             >
-              {translate(
-                "chat.recharge.alert.confirm",
-                "Go to recharge"
-              )}
+              {translate("chat.recharge.alert.confirm", "Go to recharge")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -310,10 +523,7 @@ export function Chat({
               ).replace(
                 "{subject}",
                 process.env.NODE_ENV === "production"
-                  ? translate(
-                      "chat.gateway.alert.subject.owner",
-                      "the owner"
-                    )
+                  ? translate("chat.gateway.alert.subject.owner", "the owner")
                   : translate("chat.gateway.alert.subject.you", "you")
               )}
             </AlertDialogDescription>
@@ -332,6 +542,34 @@ export function Chat({
               }}
             >
               {translate("chat.gateway.alert.confirm", "Activate")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={setShowImageUpgradeDialog}
+        open={showImageUpgradeDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{imageUpgradeTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {imageUpgradeDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {translate("common.close", "Close")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowImageUpgradeDialog(false);
+                startActionProgress();
+                router.push("/recharge");
+              }}
+            >
+              {translate("image.actions.locked.cta", "Go to recharge")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
