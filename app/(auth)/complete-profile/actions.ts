@@ -86,9 +86,14 @@ export async function submitDateOfBirthAction(
   }
 
   await unstable_update({
-    dateOfBirth: parsed.data.dob,
-    firstName: parsed.data.firstName,
-    lastName: parsed.data.lastName,
+    user: {
+      dateOfBirth: parsed.data.dob,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      name: [parsed.data.firstName, parsed.data.lastName]
+        .filter(Boolean)
+        .join(" "),
+    },
   });
 
   return { status: "success" };
