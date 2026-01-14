@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { updateUserProfile } from "@/lib/db/queries";
-import { auth } from "../auth";
+import { auth, unstable_update } from "../auth";
 
 export type CompleteProfileState =
   | { status: "idle" }
@@ -71,8 +71,21 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  await updateUserProfile({
+  const updatedProfile = await updateUserProfile({
     id: session.user.id,
+    dateOfBirth: parsed.data.dob,
+    firstName: parsed.data.firstName,
+    lastName: parsed.data.lastName,
+  });
+
+  if (!updatedProfile) {
+    return {
+      status: "error",
+      message: "Unable to update your profile right now. Please try again.",
+    };
+  }
+
+  await unstable_update({
     dateOfBirth: parsed.data.dob,
     firstName: parsed.data.firstName,
     lastName: parsed.data.lastName,

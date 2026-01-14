@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPreloader } from "@/components/chat-preloader";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { auth } from "../(auth)/auth";
 
@@ -19,13 +20,22 @@ export default async function Layout({
 
   const profileUser = session?.user ?? null;
 
-  if (
-    profileUser &&
-    (!profileUser.dateOfBirth ||
+  if (profileUser) {
+    const needsProfileDetails =
+      !profileUser.dateOfBirth ||
       !profileUser.firstName ||
-      !profileUser.lastName)
-  ) {
-    redirect("/complete-profile");
+      !profileUser.lastName;
+    if (needsProfileDetails) {
+      const dbUser = await getUserById(profileUser.id);
+      const hasCompletedProfile = Boolean(
+        (dbUser?.dateOfBirth ?? profileUser.dateOfBirth) &&
+          (dbUser?.firstName ?? profileUser.firstName) &&
+          (dbUser?.lastName ?? profileUser.lastName)
+      );
+      if (!hasCompletedProfile) {
+        redirect("/complete-profile");
+      }
+    }
   }
 
   const sidebarState = cookieStore.get("sidebar_state")?.value;
