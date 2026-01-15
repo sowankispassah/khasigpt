@@ -331,15 +331,16 @@ export const {
         | null
         | undefined;
       let dbLookupTimedOut = false;
+      const isMissingField = (value: unknown) =>
+        value === null ||
+        typeof value === "undefined" ||
+        (typeof value === "string" && value.trim().length === 0);
       const needsDbFields =
         Boolean(token.id) &&
-        (typeof token.dateOfBirth === "undefined" ||
-          token.dateOfBirth === null ||
+        (isMissingField(token.dateOfBirth) ||
           typeof token.imageVersion === "undefined" ||
-          typeof token.firstName === "undefined" ||
-          token.firstName === null ||
-          typeof token.lastName === "undefined" ||
-          token.lastName === null);
+          isMissingField(token.firstName) ||
+          isMissingField(token.lastName));
       const lastDbRefresh =
         typeof token.dbRefreshedAt === "number" ? token.dbRefreshedAt : 0;
       const lastDbFailure =
@@ -393,32 +394,46 @@ export const {
       };
 
       if (trigger === "update" && session) {
-        if ("imageVersion" in session) {
-          token.imageVersion = (session.imageVersion as string | null) ?? null;
+        const sessionRecord = session as Record<string, unknown>;
+        const sessionUser =
+          sessionRecord.user && typeof sessionRecord.user === "object"
+            ? (sessionRecord.user as Record<string, unknown>)
+            : null;
+        const readSessionValue = (key: string) => {
+          if (key in sessionRecord) {
+            return sessionRecord[key];
+          }
+          if (sessionUser && key in sessionUser) {
+            return sessionUser[key];
+          }
+          return undefined;
+        };
+        const imageVersion = readSessionValue("imageVersion");
+        if (typeof imageVersion !== "undefined") {
+          token.imageVersion = (imageVersion as string | null) ?? null;
         }
-        if ("dateOfBirth" in session) {
-          token.dateOfBirth = (session.dateOfBirth as string | null) ?? null;
+        const dateOfBirth = readSessionValue("dateOfBirth");
+        if (typeof dateOfBirth !== "undefined") {
+          token.dateOfBirth = (dateOfBirth as string | null) ?? null;
         }
-        if ("firstName" in session) {
-          token.firstName = (session.firstName as string | null) ?? null;
+        const firstName = readSessionValue("firstName");
+        if (typeof firstName !== "undefined") {
+          token.firstName = (firstName as string | null) ?? null;
         }
-        if ("lastName" in session) {
-          token.lastName = (session.lastName as string | null) ?? null;
+        const lastName = readSessionValue("lastName");
+        if (typeof lastName !== "undefined") {
+          token.lastName = (lastName as string | null) ?? null;
         }
-        if ("allowPersonalKnowledge" in session) {
-          token.allowPersonalKnowledge = Boolean(
-            session.allowPersonalKnowledge
-          );
+        const allowPersonalKnowledge = readSessionValue("allowPersonalKnowledge");
+        if (typeof allowPersonalKnowledge !== "undefined") {
+          token.allowPersonalKnowledge = Boolean(allowPersonalKnowledge);
         }
       }
 
       if (needsDbFields) {
         const record = await ensureDbUser();
         if (record) {
-          if (
-            typeof token.dateOfBirth === "undefined" ||
-            token.dateOfBirth === null
-          ) {
+          if (isMissingField(token.dateOfBirth)) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
           token.imageVersion =
@@ -427,16 +442,10 @@ export const {
               : record.image
                 ? new Date().toISOString()
                 : null;
-          if (
-            typeof token.firstName === "undefined" ||
-            token.firstName === null
-          ) {
+          if (isMissingField(token.firstName)) {
             token.firstName = record.firstName ?? null;
           }
-          if (
-            typeof token.lastName === "undefined" ||
-            token.lastName === null
-          ) {
+          if (isMissingField(token.lastName)) {
             token.lastName = record.lastName ?? null;
           }
           if (typeof token.allowPersonalKnowledge === "undefined") {
