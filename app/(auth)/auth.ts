@@ -331,6 +331,7 @@ export const {
         | null
         | undefined;
       let dbLookupTimedOut = false;
+      let dbLookupFailed = false;
       const isMissingField = (value: unknown) =>
         value === null ||
         typeof value === "undefined" ||
@@ -379,6 +380,7 @@ export const {
               );
             }
           );
+          dbLookupFailed = false;
         } catch (error) {
           if (error instanceof Error && error.message === "timeout") {
             dbLookupTimedOut = true;
@@ -387,7 +389,8 @@ export const {
             return cachedDbUser;
           }
           console.error("[auth] Failed to load user for session refresh", error);
-          cachedDbUser = null;
+          dbLookupFailed = true;
+          cachedDbUser = undefined;
           token.dbRefreshFailedAt = Date.now();
         }
         return cachedDbUser;
@@ -477,7 +480,7 @@ export const {
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
           token.dbRefreshedAt = Date.now();
           token.dbRefreshFailedAt = undefined;
-        } else if (!dbLookupTimedOut) {
+        } else if (record === null && !dbLookupTimedOut && !dbLookupFailed) {
           // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
           token = {} as typeof token;
         }

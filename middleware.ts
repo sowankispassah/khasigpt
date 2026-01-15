@@ -180,11 +180,27 @@ export async function middleware(request: NextRequest) {
       request.cookies.get("authjs.session-token") ??
       request.cookies.get("__Secure-next-auth.session-token") ??
       request.cookies.get("next-auth.session-token");
+    const sessionCookiePrefixes = [
+      "__Secure-authjs.session-token",
+      "authjs.session-token",
+      "__Secure-next-auth.session-token",
+      "next-auth.session-token",
+    ];
+    const hasSessionCookie =
+      Boolean(sessionCookie) ||
+      request.cookies
+        .getAll()
+        .some((cookie) =>
+          sessionCookiePrefixes.some(
+            (prefix) =>
+              cookie.name === prefix || cookie.name.startsWith(`${prefix}.`)
+          )
+        );
     const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
     const token = authSecret
       ? await getToken({ req: request, secret: authSecret })
       : null;
-    if (token || sessionCookie) {
+    if (token || hasSessionCookie) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/chat";
       return NextResponse.rewrite(redirectUrl);
