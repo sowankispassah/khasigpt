@@ -47,6 +47,34 @@ const kvRestUrl =
 const kvRestToken =
   process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null;
 const hasRestKv = Boolean(kvRestUrl && kvRestToken);
+const kvRestTimeoutRaw = Number.parseInt(
+  process.env.KV_REST_TIMEOUT_MS ?? "800",
+  10
+);
+const KV_REST_TIMEOUT_MS =
+  Number.isFinite(kvRestTimeoutRaw) && kvRestTimeoutRaw > 0
+    ? kvRestTimeoutRaw
+    : 800;
+
+async function fetchWithTimeout(input: string, init: RequestInit) {
+  if (!Number.isFinite(KV_REST_TIMEOUT_MS) || KV_REST_TIMEOUT_MS <= 0) {
+    return fetch(input, init);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), KV_REST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return null;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function incrementRestKv(key: string) {
   if (!hasRestKv) {
@@ -54,7 +82,7 @@ async function incrementRestKv(key: string) {
   }
 
   try {
-    const response = await fetch(`${kvRestUrl}/pipeline`, {
+    const response = await fetchWithTimeout(`${kvRestUrl}/pipeline`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${kvRestToken}`,
@@ -67,7 +95,7 @@ async function incrementRestKv(key: string) {
       ]),
     });
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       return null;
     }
 

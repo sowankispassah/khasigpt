@@ -2,8 +2,18 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../auth";
 import { CompleteProfileForm } from "./complete-profile-form";
+
+const profileLookupTimeoutRaw = Number.parseInt(
+  process.env.PROFILE_LOOKUP_TIMEOUT_MS ?? "1200",
+  10
+);
+const PROFILE_LOOKUP_TIMEOUT_MS =
+  Number.isFinite(profileLookupTimeoutRaw) && profileLookupTimeoutRaw > 0
+    ? profileLookupTimeoutRaw
+    : 1200;
 
 export default async function CompleteProfilePage() {
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
@@ -12,7 +22,10 @@ export default async function CompleteProfilePage() {
     redirect("/login");
   }
 
-  const dbUser = await getUserById(session.user.id);
+  const dbUser = await withTimeout(
+    getUserById(session.user.id),
+    PROFILE_LOOKUP_TIMEOUT_MS
+  ).catch(() => null);
   const profileUser = dbUser ?? session.user;
 
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;

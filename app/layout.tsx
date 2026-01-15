@@ -19,7 +19,6 @@ import {
 } from "@/lib/seo/site";
 
 import "./globals.css";
-import { SessionProvider } from "next-auth/react";
 
 const siteUrl = getSiteUrl();
 const structuredData = buildStructuredData(siteUrl);
@@ -162,10 +161,8 @@ export default function RootLayout({
           disableTransitionOnChange
           enableSystem
         >
-          <SessionProvider>
-            <GlobalProgressBar />
-            {children}
-          </SessionProvider>
+          <GlobalProgressBar />
+          {children}
           <Toaster position="top-center" />
           <SpeedInsights />
           <PwaInstallBanner />

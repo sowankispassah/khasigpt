@@ -28,6 +28,7 @@ export default async function AdminLayout({
       activeLanguage={activeLanguage}
       dictionary={dictionary}
       languages={languages}
+      session={session ?? undefined}
     >
       <div className="flex min-h-screen flex-col">
         <header className="border-b bg-background px-6 py-4">
