@@ -29,7 +29,7 @@ export default async function AdminOverviewPage() {
   const QUERY_TIMEOUT_MS =
     Number.isFinite(queryTimeoutRaw) && queryTimeoutRaw > 0
       ? queryTimeoutRaw
-      : 4000;
+      : 6000;
 
   async function safeQuery<T>(
     label: string,
@@ -59,25 +59,23 @@ export default async function AdminOverviewPage() {
     }
   }
 
-  const [
-    userCount,
-    chatCount,
-    recentUsers,
-    recentChats,
-    recentAudits,
-    contactMessageCount,
-    recentContactMessages,
-  ] = await Promise.all([
+  const [userCount, chatCount, contactMessageCount] = await Promise.all([
     safeQuery("user count", getUserCount(), 0),
     safeQuery("chat count", getChatCount(), 0),
+    safeQuery("contact message count", getContactMessageCount(), 0),
+  ]);
+
+  const [recentUsers, recentChats] = await Promise.all([
     safeQuery("recent users", listUsers({ limit: 5 }), fallbackUsers),
     safeQuery("recent chats", listChats({ limit: 5 }), fallbackChats),
+  ]);
+
+  const [recentAudits, recentContactMessages] = await Promise.all([
     safeQuery(
       "recent audit log entries",
       listAuditLog({ limit: 5 }),
       fallbackAudits
     ),
-    safeQuery("contact message count", getContactMessageCount(), 0),
     safeQuery(
       "recent contact messages",
       listContactMessages({ limit: 5 }),
