@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   type PropsWithChildren,
@@ -53,9 +53,7 @@ export function LanguageProvider({
 }: LanguageProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
-  const search = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
   const languageCodeSet = useMemo(() => {
     const codes = new Set<string>();
     for (const language of languages) {
@@ -89,7 +87,9 @@ export function LanguageProvider({
             if (segments.length > 0 && languageCodeSet.has(segments[0])) {
               segments[0] = normalized;
               const nextPath = `/${segments.join("/")}`;
-              router.replace(search ? `${nextPath}?${search}` : nextPath);
+              const querySuffix =
+                typeof window !== "undefined" ? window.location.search ?? "" : "";
+              router.replace(`${nextPath}${querySuffix}`);
               return;
             }
           }
@@ -97,7 +97,7 @@ export function LanguageProvider({
         })();
       });
     },
-    [activeLanguage.code, languageCodeSet, pathname, router, search]
+    [activeLanguage.code, languageCodeSet, pathname, router]
   );
 
   const value = useMemo<TranslationContextValue>(
