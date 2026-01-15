@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createContext,
   type PropsWithChildren,
@@ -52,7 +52,20 @@ export function LanguageProvider({
   children,
 }: LanguageProviderProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const search = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
+  const languageCodeSet = useMemo(() => {
+    const codes = new Set<string>();
+    for (const language of languages) {
+      codes.add(language.code);
+    }
+    if (activeLanguage?.code) {
+      codes.add(activeLanguage.code);
+    }
+    return codes;
+  }, [languages, activeLanguage?.code]);
 
   const translate = useCallback(
     (key: string, defaultText: string) => {
@@ -63,18 +76,28 @@ export function LanguageProvider({
 
   const setLanguage = useCallback(
     (code: string) => {
-      if (code === activeLanguage.code) {
+      const normalized = typeof code === "string" ? code.trim().toLowerCase() : "";
+      if (!normalized || normalized === activeLanguage.code) {
         return;
       }
 
       startTransition(() => {
         (async () => {
-          await setPreferredLanguageAction(code);
+          await setPreferredLanguageAction(normalized);
+          if (pathname) {
+            const segments = pathname.split("/").filter(Boolean);
+            if (segments.length > 0 && languageCodeSet.has(segments[0])) {
+              segments[0] = normalized;
+              const nextPath = `/${segments.join("/")}`;
+              router.replace(search ? `${nextPath}?${search}` : nextPath);
+              return;
+            }
+          }
           router.refresh();
         })();
       });
     },
-    [activeLanguage.code, router]
+    [activeLanguage.code, languageCodeSet, pathname, router, search]
   );
 
   const value = useMemo<TranslationContextValue>(

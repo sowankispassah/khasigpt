@@ -87,7 +87,7 @@ const TRANSLATION_QUERY_TIMEOUT_MS =
   Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1200;
 
 const parsedInitialTimeout = Number.parseInt(
-  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "300",
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "1200",
   10
 );
 const TRANSLATION_INITIAL_TIMEOUT_MS =
@@ -444,7 +444,6 @@ export async function getTranslationBundle(
   ).catch((error) => {
     if (isTimeoutError(error)) {
       persistedTimedOut = true;
-      markTranslationDbFailure();
       return null;
     }
     logTranslationError(
@@ -469,13 +468,9 @@ export async function getTranslationBundle(
   }
 
   if (persistedTimedOut) {
-    const fallbackBundle =
-      typeof preferredCode === "string" && preferredCode.trim().length > 0
-        ? buildFallbackBundle(preferredCode)
-        : FALLBACK_BUNDLE;
-    BUNDLE_CACHE.set(key, { data: fallbackBundle, cachedAt: Date.now() });
-    scheduleBundleRefresh(key, preferredCode);
-    return fallbackBundle;
+    logTranslationTimeout(
+      `[i18n] Persisted bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
+    );
   }
 
   try {
