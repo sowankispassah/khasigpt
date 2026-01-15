@@ -84,6 +84,8 @@ export default async function Page() {
             }}
             initialChatModel={fallbackModelId}
             initialMessages={[]}
+            initialHasMoreHistory={false}
+            initialOldestMessageAt={null}
             initialVisibilityType="private"
             isReadonly={false}
             key={id}
@@ -117,6 +119,8 @@ export default async function Page() {
           }}
           initialChatModel={fallbackModelId}
           initialMessages={[]}
+          initialHasMoreHistory={false}
+          initialOldestMessageAt={null}
           initialVisibilityType="private"
           isReadonly={false}
           key={id}

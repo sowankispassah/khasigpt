@@ -22,10 +22,10 @@ export const metadata: Metadata = {
 export default async function TermsOfServicePage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const stored = await getAppSetting<string>("termsOfService");
+  const stored = await getAppSetting<string>("termsOfService").catch(() => null);
   const storedByLanguage = await getAppSetting<Record<string, string>>(
     "termsOfServiceByLanguage"
-  );
+  ).catch(() => null);
   const englishContent =
     stored && stored.trim().length > 0
       ? stored.trim()

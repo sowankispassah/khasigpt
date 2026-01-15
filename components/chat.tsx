@@ -23,6 +23,7 @@ import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Vote } from "@/lib/db/schema";
 import type { Attachment, ChatMessage } from "@/lib/types";
+import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
@@ -34,6 +35,8 @@ import type { VisibilityType } from "./visibility-selector";
 export function Chat({
   id,
   initialMessages,
+  initialHasMoreHistory,
+  initialOldestMessageAt,
   initialChatModel,
   initialVisibilityType,
   isReadonly,
@@ -44,6 +47,8 @@ export function Chat({
 }: {
   id: string;
   initialMessages: ChatMessage[];
+  initialHasMoreHistory: boolean;
+  initialOldestMessageAt: string | null;
   initialChatModel: string;
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
@@ -76,6 +81,13 @@ export function Chat({
   const [showActionProgress, setShowActionProgress] = useState(false);
   const [actionProgress, setActionProgress] = useState(0);
   const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(
+    initialHasMoreHistory
+  );
+  const [oldestMessageAt, setOldestMessageAt] = useState(
+    initialOldestMessageAt
+  );
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const imageUpgradeTitle = imageGeneration.requiresPaidCredits
     ? translate(
         "image.actions.locked.free.title",
@@ -98,6 +110,12 @@ export function Chat({
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
+
+  useEffect(() => {
+    setHasMoreHistory(initialHasMoreHistory);
+    setOldestMessageAt(initialOldestMessageAt);
+    setIsLoadingHistory(false);
+  }, [initialHasMoreHistory, initialOldestMessageAt, id]);
 
   useEffect(() => {
     if (!imageGeneration.enabled) {
@@ -253,6 +271,70 @@ export function Chat({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const isArtifactVisible = false;
 
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingHistory || !hasMoreHistory) {
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", String(CHAT_HISTORY_PAGE_SIZE));
+      if (oldestMessageAt) {
+        params.set("before", oldestMessageAt);
+      }
+
+      const response = await fetchWithErrorHandlers(
+        `/api/chat/${id}/messages?${params.toString()}`
+      );
+      const data = (await response.json()) as {
+        messages?: ChatMessage[];
+        hasMore?: boolean;
+        oldestMessageAt?: string | null;
+      };
+
+      const incomingMessages = Array.isArray(data.messages)
+        ? data.messages
+        : [];
+      if (incomingMessages.length > 0) {
+        setMessages((prev) => [...incomingMessages, ...prev]);
+      }
+
+      if (typeof data.hasMore === "boolean") {
+        setHasMoreHistory(data.hasMore);
+      } else {
+        setHasMoreHistory(false);
+      }
+
+      if (data && "oldestMessageAt" in data) {
+        setOldestMessageAt(
+          typeof data.oldestMessageAt === "string" ? data.oldestMessageAt : null
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      toast({
+        type: "error",
+        description:
+          message ||
+          translate(
+            "chat.history.load_failed",
+            "Unable to load earlier messages."
+          ),
+      });
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [
+    hasMoreHistory,
+    id,
+    isLoadingHistory,
+    oldestMessageAt,
+    setMessages,
+    translate,
+  ]);
+
   useAutoResume({
     autoResume,
     initialMessages,
@@ -282,10 +364,13 @@ export function Chat({
 
         <Messages
           chatId={id}
+          hasMoreHistory={hasMoreHistory}
           isArtifactVisible={isArtifactVisible}
           isGeneratingImage={isGeneratingImage}
+          isLoadingHistory={isLoadingHistory}
           isReadonly={isReadonly}
           messages={messages}
+          onLoadMoreHistory={loadOlderMessages}
           regenerate={regenerate}
           selectedModelId={currentModelId}
           selectedVisibilityType={visibilityType}

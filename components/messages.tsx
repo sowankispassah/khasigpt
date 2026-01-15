@@ -1,6 +1,6 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
@@ -26,7 +26,12 @@ type MessagesProps = {
   suggestedPrompts: string[];
   selectedVisibilityType: VisibilityType;
   isGeneratingImage?: boolean;
+  hasMoreHistory?: boolean;
+  isLoadingHistory?: boolean;
+  onLoadMoreHistory?: () => Promise<void>;
 };
+
+const MAX_RENDERED_MESSAGES = 200;
 
 function PureMessages({
   chatId,
@@ -41,9 +46,22 @@ function PureMessages({
   suggestedPrompts,
   selectedVisibilityType,
   isGeneratingImage = false,
+  hasMoreHistory = false,
+  isLoadingHistory = false,
+  onLoadMoreHistory,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
+  const votesByMessageId = useMemo(() => {
+    if (!votes) {
+      return null;
+    }
+    const map = new Map<string, Vote>();
+    for (const vote of votes) {
+      map.set(vote.messageId, vote);
+    }
+    return map;
+  }, [votes]);
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
@@ -54,7 +72,14 @@ function PureMessages({
     status,
   });
   const { translate } = useTranslation();
+  const [showAllLoaded, setShowAllLoaded] = useState(false);
   const mountedChatRef = useRef<string | null>(null);
+  const isFetchingHistoryRef = useRef(false);
+  const hiddenCount = showAllLoaded
+    ? 0
+    : Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
+  const baseIndex = showAllLoaded ? 0 : hiddenCount;
+  const visibleMessages = showAllLoaded ? messages : messages.slice(hiddenCount);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
       ? (lastMessage.parts
@@ -87,6 +112,7 @@ function PureMessages({
   useEffect(() => {
     if (mountedChatRef.current !== chatId) {
       mountedChatRef.current = chatId;
+      setShowAllLoaded(false);
       if (messages.length > 0) {
         requestAnimationFrame(() => {
           scrollToBottom("auto");
@@ -111,6 +137,29 @@ function PureMessages({
       scrollToBottom("auto");
     });
   }, [isGeneratingImage, scrollToBottom]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!onLoadMoreHistory || isLoadingHistory || isFetchingHistoryRef.current) {
+      return;
+    }
+    isFetchingHistoryRef.current = true;
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+    try {
+      await onLoadMoreHistory();
+      setShowAllLoaded(true);
+    } finally {
+      requestAnimationFrame(() => {
+        const nextScrollHeight = container?.scrollHeight ?? 0;
+        if (container) {
+          container.scrollTop =
+            prevScrollTop + (nextScrollHeight - prevScrollHeight);
+        }
+        isFetchingHistoryRef.current = false;
+      });
+    }
+  }, [isLoadingHistory, messagesContainerRef, onLoadMoreHistory]);
 
   if (messages.length === 0) {
     return (
@@ -145,27 +194,62 @@ function PureMessages({
     >
       <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
         <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
-          {messages.map((message, index) => (
+          {hasMoreHistory && onLoadMoreHistory ? (
+            <div className="flex justify-center">
+              <button
+                className="cursor-pointer rounded-full border border-border bg-background px-4 py-2 text-xs text-muted-foreground transition hover:bg-muted disabled:cursor-default disabled:opacity-60"
+                disabled={isLoadingHistory}
+                onClick={handleLoadMore}
+                type="button"
+              >
+                {isLoadingHistory
+                  ? translate(
+                      "chat.history.loading",
+                      "Loading earlier messages..."
+                    )
+                  : translate(
+                      "chat.history.load_more",
+                      "Load earlier messages"
+                    )}
+              </button>
+            </div>
+          ) : null}
+
+          {hiddenCount > 0 ? (
+            <div className="flex justify-center">
+              <button
+                className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition hover:underline"
+                onClick={() => setShowAllLoaded(true)}
+                type="button"
+              >
+                {translate(
+                  "chat.history.show_older",
+                  "Show {count} earlier messages"
+                ).replace("{count}", String(hiddenCount))}
+              </button>
+            </div>
+          ) : null}
+
+          {visibleMessages.map((message, index) => {
+            const originalIndex = baseIndex + index;
+            return (
             <PreviewMessage
               chatId={chatId}
               isLoading={
-                status === "streaming" && messages.length - 1 === index
+                status === "streaming" && messages.length - 1 === originalIndex
               }
               isReadonly={isReadonly}
               key={message.id}
               message={message}
               regenerate={regenerate}
               requiresScrollPadding={
-                hasSentMessage && index === messages.length - 1
+                hasSentMessage && originalIndex === messages.length - 1
               }
               setMessages={setMessages}
-              vote={
-                votes
-                  ? votes.find((vote) => vote.messageId === message.id)
-                  : undefined
-              }
+              vote={votesByMessageId?.get(message.id)}
             />
-          ))}
+            );
+          })}
 
           {isGeneratingImage && (
             <div className="flex w-full items-start justify-start gap-2 md:gap-3">

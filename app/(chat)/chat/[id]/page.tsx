@@ -8,11 +8,14 @@ import { DataStreamProvider } from "@/components/data-stream-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
-import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
+import {
+  CHAT_HISTORY_PAGE_SIZE,
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+} from "@/lib/constants";
 import {
   getAppSetting,
   getChatById,
-  getMessagesByChatId,
+  getMessagesByChatIdPage,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -75,11 +78,20 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     }
   }
 
-  const messagesFromDb = await getMessagesByChatId({
-    id,
-  });
+  const { messages: messagesFromDb, hasMore: hasMoreMessages } =
+    await getMessagesByChatIdPage({
+      id,
+      limit: CHAT_HISTORY_PAGE_SIZE,
+    });
 
   const uiMessages = convertToUIMessages(messagesFromDb);
+  const oldestMessageAt =
+    messagesFromDb[0]?.createdAt instanceof Date
+      ? messagesFromDb[0].createdAt.toISOString()
+      : messagesFromDb[0]?.createdAt
+        ? new Date(messagesFromDb[0].createdAt as unknown as string)
+            .toISOString()
+        : null;
 
   const chatModelFromCookie = cookieStore.get("chat-model");
   const cookieModelValue =
@@ -121,6 +133,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             }}
             initialChatModel={fallbackModelId}
             initialMessages={uiMessages}
+            initialHasMoreHistory={hasMoreMessages}
+            initialOldestMessageAt={oldestMessageAt}
             initialVisibilityType={chat.visibility}
             isReadonly={session?.user?.id !== chat.userId}
             suggestedPrompts={suggestedPrompts}
@@ -154,6 +168,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           }}
           initialChatModel={fallbackModelId}
           initialMessages={uiMessages}
+          initialHasMoreHistory={hasMoreMessages}
+          initialOldestMessageAt={oldestMessageAt}
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
           suggestedPrompts={suggestedPrompts}

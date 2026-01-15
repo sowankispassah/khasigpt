@@ -943,6 +943,44 @@ export async function getMessagesByChatId({ id }: { id: string }) {
   }
 }
 
+export async function getMessagesByChatIdPage({
+  id,
+  limit = 60,
+  before,
+}: {
+  id: string;
+  limit?: number;
+  before?: Date | null;
+}): Promise<{ messages: DBMessage[]; hasMore: boolean }> {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+
+  try {
+    const conditions: SQL<boolean>[] = [
+      eq(message.chatId, id) as SQL<boolean>,
+    ];
+    if (before instanceof Date && !Number.isNaN(before.getTime())) {
+      conditions.push(lt(message.createdAt, before) as SQL<boolean>);
+    }
+
+    const rows = await db
+      .select()
+      .from(message)
+      .where(and(...conditions))
+      .orderBy(desc(message.createdAt))
+      .limit(safeLimit + 1);
+
+    const hasMore = rows.length > safeLimit;
+    const trimmed = hasMore ? rows.slice(0, safeLimit) : rows;
+
+    return { messages: trimmed.reverse(), hasMore };
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load paged chat messages"
+    );
+  }
+}
+
 export async function voteMessage({
   chatId,
   messageId,
@@ -5428,10 +5466,20 @@ export async function getDailyTokenUsageForUser(
       Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000
     );
 
+    const istOffsetInterval = sql.raw(
+      `interval '${IST_OFFSET_MINUTES} minutes'`
+    );
+    const dayKey = sql<string>`to_char((${tokenUsage.createdAt} + ${istOffsetInterval})::date, 'YYYY-MM-DD')`.as(
+      "dayKey"
+    );
+    const totalTokens = sql<number>`sum(${tokenUsage.totalTokens})`.as(
+      "totalTokens"
+    );
+
     const rows = await db
       .select({
-        createdAt: tokenUsage.createdAt,
-        totalTokens: tokenUsage.totalTokens,
+        dayKey,
+        totalTokens,
       })
       .from(tokenUsage)
       .where(
@@ -5440,25 +5488,13 @@ export async function getDailyTokenUsageForUser(
           gte(tokenUsage.createdAt, windowStart)
         )
       )
-      .orderBy(desc(tokenUsage.createdAt));
+      .groupBy(dayKey)
+      .orderBy(asc(dayKey));
 
-    const buckets = new Map<string, number>();
-
-    for (const row of rows) {
-      const created =
-        row.createdAt instanceof Date
-          ? row.createdAt
-          : new Date(row.createdAt as unknown as string);
-      const key = dateToIstKey(created);
-      buckets.set(key, (buckets.get(key) ?? 0) + (row.totalTokens ?? 0));
-    }
-
-    return Array.from(buckets.entries())
-      .map(([dayKey, totalTokens]) => ({
-        day: istKeyToDate(dayKey),
-        totalTokens,
-      }))
-      .sort((a, b) => a.day.getTime() - b.day.getTime());
+    return rows.map((row) => ({
+      day: istKeyToDate(row.dayKey),
+      totalTokens: Number(row.totalTokens ?? 0),
+    }));
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -5483,92 +5519,50 @@ export async function getSessionTokenUsageForUser(
   }>
 > {
   try {
-    const rows = await db
+    const sortBy = options.sortBy === "usage" ? "usage" : "latest";
+
+    const totalTokens = sql<number>`sum(${tokenUsage.totalTokens})`.as(
+      "totalTokens"
+    );
+    const lastUsedAt = sql<Date>`max(${tokenUsage.createdAt})`.as("lastUsedAt");
+
+    const query = db
       .select({
         chatId: tokenUsage.chatId,
-        totalTokens: tokenUsage.totalTokens,
-        createdAt: tokenUsage.createdAt,
         chatTitle: chat.title,
         chatCreatedAt: chat.createdAt,
+        totalTokens,
+        lastUsedAt,
       })
       .from(tokenUsage)
       .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
-      .where(eq(tokenUsage.userId, userId));
+      .where(eq(tokenUsage.userId, userId))
+      .groupBy(tokenUsage.chatId, chat.title, chat.createdAt);
 
-    const aggregates = new Map<
-      string,
-      {
-        totalTokens: number;
-        lastUsedAt: Date | null;
-        chatTitle: string | null;
-        chatCreatedAt: Date | null;
-      }
-    >();
+    const orderedQuery =
+      sortBy === "usage"
+        ? query.orderBy(desc(totalTokens), desc(lastUsedAt))
+        : query.orderBy(desc(lastUsedAt));
 
-    for (const row of rows) {
-      if (!row.chatId) {
-        continue;
-      }
+    const rows = await orderedQuery;
 
-      const createdAtValue =
-        row.createdAt instanceof Date
-          ? row.createdAt
-          : row.createdAt
-            ? new Date(row.createdAt as unknown as string)
-            : null;
-
-      const existing = aggregates.get(row.chatId) ?? {
-        totalTokens: 0,
-        lastUsedAt: null,
-        chatTitle: null,
-        chatCreatedAt: null,
-      };
-
-      existing.totalTokens += row.totalTokens ?? 0;
-
-      if (
-        createdAtValue &&
-        (!existing.lastUsedAt ||
-          createdAtValue.getTime() > existing.lastUsedAt.getTime())
-      ) {
-        existing.lastUsedAt = createdAtValue;
-      }
-
-      if (!existing.chatTitle && row.chatTitle) {
-        existing.chatTitle = row.chatTitle;
-      }
-
-      if (!existing.chatCreatedAt && row.chatCreatedAt) {
-        existing.chatCreatedAt =
-          row.chatCreatedAt instanceof Date
-            ? row.chatCreatedAt
-            : new Date(row.chatCreatedAt as unknown as string);
-      }
-
-      aggregates.set(row.chatId, existing);
-    }
-
-    const sortBy = options.sortBy === "usage" ? "usage" : "latest";
-
-    return Array.from(aggregates.entries())
-      .map(([chatId, data]) => ({
-        chatId,
-        chatTitle: data.chatTitle,
-        chatCreatedAt: data.chatCreatedAt,
-        totalTokens: data.totalTokens,
-        lastUsedAt: data.lastUsedAt,
-      }))
-      .sort((a, b) => {
-        if (sortBy === "usage") {
-          if (b.totalTokens === a.totalTokens) {
-            return (
-              (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0)
-            );
-          }
-          return b.totalTokens - a.totalTokens;
-        }
-        return (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0);
-      });
+    return rows.map((row) => ({
+      chatId: row.chatId,
+      chatTitle: row.chatTitle,
+      chatCreatedAt:
+        row.chatCreatedAt instanceof Date
+          ? row.chatCreatedAt
+          : row.chatCreatedAt
+            ? new Date(row.chatCreatedAt as unknown as string)
+            : null,
+      totalTokens: Number(row.totalTokens ?? 0),
+      lastUsedAt:
+        row.lastUsedAt instanceof Date
+          ? row.lastUsedAt
+          : row.lastUsedAt
+            ? new Date(row.lastUsedAt as unknown as string)
+            : null,
+    }));
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];

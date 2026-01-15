@@ -936,6 +936,10 @@ export const tokenUsage = pgTable(
       table.userId,
       table.chatId
     ),
+    userCreatedIdx: index("token_usage_user_created_idx").on(
+      table.userId,
+      table.createdAt
+    ),
     subscriptionIdx: index("token_usage_subscription_idx").on(
       table.subscriptionId
     ),

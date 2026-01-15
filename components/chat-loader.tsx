@@ -23,6 +23,8 @@ const ChatSkeleton = () => (
 type ChatLoaderProps = {
   id: string;
   initialMessages: ChatMessage[];
+  initialHasMoreHistory: boolean;
+  initialOldestMessageAt: string | null;
   initialChatModel: string;
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;

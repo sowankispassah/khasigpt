@@ -1,7 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { DailyUsageChart } from "@/components/daily-usage-chart";
 import { Button } from "@/components/ui/button";
 
 type ChartVariant = "area" | "bar" | "line";
@@ -19,6 +19,21 @@ const chartOptions: Array<{ value: ChartVariant; label: string }> = [
 ];
 
 const STORAGE_KEY = "subscriptions.dailyUsage.chartVariant";
+
+const ChartSkeleton = () => (
+  <div className="h-64 w-full animate-pulse rounded-xl border bg-muted/40" />
+);
+
+const DailyUsageChart = dynamic(
+  () =>
+    import("@/components/daily-usage-chart").then(
+      (mod) => mod.DailyUsageChart
+    ),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton />,
+  }
+);
 
 export function DailyUsageChartSwitcher({
   data,

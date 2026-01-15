@@ -293,5 +293,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api/chat).*)"],
+  matcher: [
+    "/((?!api/chat|_next/static|_next/image|favicon.ico|favicon.png|manifest.webmanifest|icons/|images/|robots.txt|sitemap.xml|opengraph-image.png|twitter-image.png|sw.js).*)",
+  ],
 };

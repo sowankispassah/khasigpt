@@ -79,10 +79,10 @@ export default async function AboutPage({
 }) {
   const { lang } = await params;
   const preferredLanguage = lang?.trim().toLowerCase() ?? null;
-  const stored = await getAppSetting<string>("aboutUsContent");
+  const stored = await getAppSetting<string>("aboutUsContent").catch(() => null);
   const storedByLanguage = await getAppSetting<Record<string, string>>(
     "aboutUsContentByLanguage"
-  );
+  ).catch(() => null);
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_ABOUT_US;
 

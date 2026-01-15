@@ -570,6 +570,26 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Banner text shown to admins when viewing a deleted chat.",
   },
   {
+    key: "chat.history.load_more",
+    defaultText: "Load earlier messages",
+    description: "Button label to fetch older chat messages.",
+  },
+  {
+    key: "chat.history.loading",
+    defaultText: "Loading earlier messages...",
+    description: "Label shown while older messages are loading.",
+  },
+  {
+    key: "chat.history.show_older",
+    defaultText: "Show {count} earlier messages",
+    description: "Button label to reveal older messages already loaded.",
+  },
+  {
+    key: "chat.history.load_failed",
+    defaultText: "Unable to load earlier messages.",
+    description: "Toast message when loading chat history fails.",
+  },
+  {
     key: "chat.input.placeholder",
     defaultText: "Send a message...",
     description: "Placeholder text for the main chat input.",

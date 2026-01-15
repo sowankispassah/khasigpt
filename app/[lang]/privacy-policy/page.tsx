@@ -27,10 +27,10 @@ export default async function PrivacyPolicyPage({
 }) {
   const { lang } = await params;
   const preferredLanguage = lang?.trim().toLowerCase() ?? null;
-  const stored = await getAppSetting<string>("privacyPolicy");
+  const stored = await getAppSetting<string>("privacyPolicy").catch(() => null);
   const storedByLanguage = await getAppSetting<Record<string, string>>(
     "privacyPolicyByLanguage"
-  );
+  ).catch(() => null);
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
   const { activeLanguage, languages, dictionary } =
