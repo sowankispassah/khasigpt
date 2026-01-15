@@ -136,6 +136,7 @@ export function AdminNav({ className }: { className?: string }) {
               href={link.href}
               key={link.href}
               onClick={(event) => handleLinkClick(event, link.href)}
+              prefetch={false}
             >
               {link.label}
             </Link>

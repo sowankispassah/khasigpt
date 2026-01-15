@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import type { ChatMessage } from "@/lib/types";
 import type { VisibilityType } from "./visibility-selector";
+import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
 const ChatSkeleton = () => (
   <div className="flex h-dvh flex-col gap-4 px-3 py-6 md:px-6">
@@ -65,39 +66,16 @@ export function ChatLoader(props: ChatLoaderProps) {
     if (typeof window === "undefined") {
       return;
     }
+    if (!shouldPrefetch()) {
+      return;
+    }
 
-    let idleId: number | null = null;
-    let timeoutId: number | null = null;
-
-    const anyWindow = window as typeof window & {
-      requestIdleCallback?: (callback: () => void) => number;
-      cancelIdleCallback?: (handle: number) => void;
-    };
-
-    const schedulePreload = () => {
-      if (typeof anyWindow.requestIdleCallback === "function") {
-        idleId = anyWindow.requestIdleCallback(() => {
-          preloadChat();
-        });
-      } else {
-        timeoutId = window.setTimeout(() => {
-          preloadChat();
-        }, 200);
-      }
-    };
-
-    schedulePreload();
+    const idleHandle = runWhenIdle(() => {
+      preloadChat();
+    }, 400);
 
     return () => {
-      if (
-        idleId !== null &&
-        typeof anyWindow.cancelIdleCallback === "function"
-      ) {
-        anyWindow.cancelIdleCallback(idleId);
-      }
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
+      cancelIdle(idleHandle);
     };
   }, []);
 

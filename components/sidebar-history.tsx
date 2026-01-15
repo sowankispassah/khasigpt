@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { Chat } from "@/lib/db/schema";
 import { fetcher } from "@/lib/utils";
+import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import { preloadChat } from "./chat-loader";
 import { LoaderIcon } from "./icons";
 import { ChatItem } from "./sidebar-history-item";
@@ -140,17 +141,30 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     if (!paginatedChatHistories || paginatedChatHistories.length === 0) {
       return;
     }
-
-    const firstPage = paginatedChatHistories[0]?.chats ?? [];
-    for (const chat of firstPage.slice(0, 10)) {
-      try {
-        router.prefetch(`/chat/${chat.id}`);
-      } catch (error) {
-        console.warn("Prefetch chat failed", error);
-      }
+    if (!shouldPrefetch()) {
+      return;
     }
 
-    preloadChat();
+    const firstPage = paginatedChatHistories[0]?.chats ?? [];
+    const initialChats = firstPage.slice(0, 3);
+    if (initialChats.length === 0) {
+      return;
+    }
+
+    const idleHandle = runWhenIdle(() => {
+      for (const chat of initialChats) {
+        try {
+          router.prefetch(`/chat/${chat.id}`);
+        } catch (error) {
+          console.warn("Prefetch chat failed", error);
+        }
+      }
+      preloadChat();
+    });
+
+    return () => {
+      cancelIdle(idleHandle);
+    };
   }, [paginatedChatHistories, router]);
 
   useEffect(() => {

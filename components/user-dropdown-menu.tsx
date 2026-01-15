@@ -96,12 +96,13 @@ type BasicUser = {
 type UserMenuTriggerProps = React.ComponentPropsWithoutRef<"button"> & {
   user: BasicUser;
   isBusy?: boolean;
+  shouldFetchAvatar?: boolean;
 };
 
 export const UserMenuTrigger = React.forwardRef<
   HTMLButtonElement,
   UserMenuTriggerProps
->(({ user, className, isBusy = false, ...props }, ref) => {
+>(({ user, className, isBusy = false, shouldFetchAvatar = true, ...props }, ref) => {
   const initials = getInitials(user.name, user.email);
   const avatarColor = getAvatarColor(user.email ?? user.name ?? undefined);
   const [avatarOverride, setAvatarOverride] = React.useState<string | null>(
@@ -110,9 +111,11 @@ export const UserMenuTrigger = React.forwardRef<
   const [versionOverride, setVersionOverride] = React.useState<
     string | null
   >(null);
-  const avatarKey = `/api/profile/avatar?v=${encodeURIComponent(
-    versionOverride ?? user.imageVersion ?? "none"
-  )}`;
+  const avatarKey = shouldFetchAvatar
+    ? `/api/profile/avatar?v=${encodeURIComponent(
+        versionOverride ?? user.imageVersion ?? "none"
+      )}`
+    : null;
 
   React.useEffect(() => {
     const handler = (event: Event) => {

@@ -13,6 +13,7 @@ import {
   UserMenuTrigger,
 } from "@/components/user-dropdown-menu";
 import { cn } from "@/lib/utils";
+import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
 export function PageUserMenu({
   className,
@@ -27,8 +28,11 @@ export function PageUserMenu({
   const { setTheme, resolvedTheme } = useTheme();
   const { translate, isUpdating: isLanguageUpdating } = useTranslation();
   const [isActionPending, setIsActionPending] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
   const user = session?.user ?? null;
   const hasPrefetchedRoutesRef = useRef(false);
+  const prefetchIdleRef = useRef<ReturnType<typeof runWhenIdle> | null>(null);
   const displayName = (() => {
     const first = user?.firstName?.trim() ?? "";
     const last = user?.lastName?.trim() ?? "";
@@ -63,33 +67,53 @@ export function PageUserMenu({
     hasPrefetchedRoutesRef.current = false;
   }, []);
 
+  const clearPrefetchIdle = useCallback(() => {
+    cancelIdle(prefetchIdleRef.current);
+    prefetchIdleRef.current = null;
+  }, []);
+
   const prefetchUserRoutes = useCallback(() => {
-    if (!user || hasPrefetchedRoutesRef.current) {
+    if (!user || hasPrefetchedRoutesRef.current || !shouldPrefetch()) {
       return;
     }
     hasPrefetchedRoutesRef.current = true;
-    try {
-      router.prefetch("/profile");
-      router.prefetch("/subscriptions");
-      router.prefetch("/recharge");
-    } catch (error) {
-      console.warn("Prefetch failed", error);
-    }
-    if (user.role === "admin") {
+    clearPrefetchIdle();
+    prefetchIdleRef.current = runWhenIdle(() => {
       try {
-        router.prefetch("/admin");
+        router.prefetch("/profile");
+        router.prefetch("/subscriptions");
+        router.prefetch("/recharge");
       } catch (error) {
         console.warn("Prefetch failed", error);
       }
-    }
-    if (user.role === "creator") {
-      try {
-        router.prefetch("/creator-dashboard");
-      } catch (error) {
-        console.warn("Prefetch failed", error);
+      if (user.role === "admin") {
+        try {
+          router.prefetch("/admin");
+        } catch (error) {
+          console.warn("Prefetch failed", error);
+        }
       }
+      if (user.role === "creator") {
+        try {
+          router.prefetch("/creator-dashboard");
+        } catch (error) {
+          console.warn("Prefetch failed", error);
+        }
+      }
+    });
+  }, [clearPrefetchIdle, router, user]);
+
+  useEffect(() => {
+    return () => clearPrefetchIdle();
+  }, [clearPrefetchIdle]);
+
+  useEffect(() => {
+    if (isMenuOpen) {
+      setHasOpenedMenu(true);
     }
-  }, [router, user]);
+  }, [isMenuOpen]);
+
+  const shouldFetchAvatar = isMenuOpen || hasOpenedMenu;
 
   const beginAction = () => {
     setIsActionPending(true);
@@ -126,6 +150,7 @@ export function PageUserMenu({
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
+      setIsMenuOpen(open);
       if (open) {
         prefetchUserRoutes();
         setIsActionPending(false);
@@ -133,7 +158,7 @@ export function PageUserMenu({
         handleMenuClosed();
       }
     },
-    [prefetchUserRoutes, handleMenuClosed]
+    [handleMenuClosed, prefetchUserRoutes]
   );
 
   const isBusy = status === "loading" || isActionPending;
@@ -171,6 +196,7 @@ export function PageUserMenu({
           trigger={
             <UserMenuTrigger
               isBusy={isBusy}
+              shouldFetchAvatar={shouldFetchAvatar}
               user={{
                 name: user.name,
                 email: user.email,
