@@ -22,6 +22,10 @@ import {
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Vote } from "@/lib/db/schema";
+import type {
+  IconPromptAction,
+  IconPromptSuggestion,
+} from "@/lib/icon-prompts";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
@@ -42,6 +46,7 @@ export function Chat({
   isReadonly,
   autoResume,
   suggestedPrompts,
+  iconPromptActions = [],
   imageGeneration,
   customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
@@ -54,6 +59,7 @@ export function Chat({
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  iconPromptActions?: IconPromptAction[];
   imageGeneration: {
     enabled: boolean;
     canGenerate: boolean;
@@ -270,6 +276,249 @@ export function Chat({
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const isArtifactVisible = false;
+  const [iconPromptSuggestions, setIconPromptSuggestions] = useState<
+    IconPromptSuggestion[]
+  >([]);
+  const handleIconPromptSelect = useCallback(
+    (item: IconPromptAction) => {
+      const trimmedPrompt = item.prompt.trim();
+      if (item.showSuggestions && item.suggestions.length > 0) {
+        setIconPromptSuggestions(item.suggestions);
+      } else {
+        setIconPromptSuggestions([]);
+        if (trimmedPrompt) {
+          setInput((current) => {
+            const existing = current ?? "";
+            if (item.behavior === "append" && existing.trim().length > 0) {
+              const separator = existing.endsWith(" ") ? "" : " ";
+              return `${existing}${separator}${trimmedPrompt}`;
+            }
+            return trimmedPrompt;
+          });
+        }
+      }
+
+      if (item.selectImageMode) {
+        if (!imageGeneration.enabled) {
+          return;
+        }
+        if (!imageGeneration.canGenerate) {
+          setShowImageUpgradeDialog(true);
+          return;
+        }
+        setIsImageMode(true);
+      } else {
+        setIsImageMode(false);
+      }
+    },
+    [imageGeneration.canGenerate, imageGeneration.enabled]
+  );
+
+  const generateImageFromPrompt = useCallback(
+    async (prompt: string, displayPrompt?: string) => {
+      if (!imageGeneration.enabled) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.disabled",
+            "Image generation is currently unavailable."
+          ),
+        });
+        return;
+      }
+      if (!imageGeneration.canGenerate) {
+        setShowImageUpgradeDialog(true);
+        return;
+      }
+
+      const trimmedPrompt = prompt.trim();
+      if (!trimmedPrompt) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.prompt.required",
+            "Add a prompt before generating."
+          ),
+        });
+        return;
+      }
+
+      const displayText =
+        (displayPrompt ?? "").trim() || trimmedPrompt;
+      const imageAttachments = attachments.filter((attachment) =>
+        attachment.contentType?.startsWith("image/")
+      );
+
+      window.history.replaceState({}, "", `/chat/${id}`);
+
+      const userMessageId = generateUUID();
+      const userParts = [
+        ...imageAttachments.map((attachment) => ({
+          type: "file" as const,
+          url: attachment.url,
+          filename: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        { type: "text" as const, text: displayText },
+      ];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: userMessageId,
+          role: "user",
+          parts: userParts,
+        },
+      ]);
+
+      setInput("");
+      setAttachments([]);
+      setIsGeneratingImage(true);
+
+      try {
+        const response = await fetch("/api/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chatId: id,
+            visibility: visibilityType,
+            prompt: trimmedPrompt,
+            displayPrompt: displayText,
+            userMessageId,
+            imageUrls: imageAttachments.map((attachment) => attachment.url),
+          }),
+        });
+
+        const data = (await response.json().catch(() => null)) as
+          | {
+              assistantMessage?: ChatMessage;
+              message?: string;
+            }
+          | null;
+
+        if (!response.ok) {
+          if (response.status === 402) {
+            setMessages((prev) =>
+              prev.filter((message) => message.id !== userMessageId)
+            );
+            setShowImageUpgradeDialog(true);
+            return;
+          }
+
+          toast({
+            type: "error",
+            description:
+              data?.message ??
+              translate(
+                "image.generate.failed",
+                "Image generation failed. Please try again."
+              ),
+          });
+          return;
+        }
+
+        const assistantMessage = data?.assistantMessage;
+        if (!assistantMessage) {
+          toast({
+            type: "error",
+            description: translate(
+              "image.generate.empty",
+              "No image was returned. Try a different prompt."
+            ),
+          });
+          return;
+        }
+
+        setMessages((prev) => [...prev, assistantMessage]);
+        mutate(unstable_serialize(getChatHistoryPaginationKey));
+      } catch (_error) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.generate.failed",
+            "Image generation failed. Please try again."
+          ),
+        });
+      } finally {
+        setIsGeneratingImage(false);
+      }
+    },
+    [
+      attachments,
+      id,
+      imageGeneration.canGenerate,
+      imageGeneration.enabled,
+      mutate,
+      setMessages,
+      translate,
+      visibilityType,
+    ]
+  );
+
+  const handleIconPromptSuggestionSelect = useCallback(
+    (suggestion: IconPromptSuggestion) => {
+      const visibleText = suggestion.label.trim();
+      const trimmed = suggestion.prompt.trim();
+      const hiddenText = trimmed || visibleText;
+      if (!hiddenText) {
+        return;
+      }
+      if ((status !== "ready" && status !== "error") || isGeneratingImage) {
+        return;
+      }
+
+      setIconPromptSuggestions([]);
+
+      const displayedPrompt = visibleText || hiddenText;
+      if (suggestion.isEditable) {
+        setInput(displayedPrompt);
+        return;
+      }
+
+      if (isImageMode) {
+        void generateImageFromPrompt(hiddenText, visibleText);
+        return;
+      }
+
+      window.history.replaceState({}, "", `/chat/${id}`);
+
+      const messageParts = [
+        ...attachments.map((attachment) => ({
+          type: "file" as const,
+          url: attachment.url,
+          name: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        { type: "text" as const, text: displayedPrompt },
+      ];
+
+      sendMessage(
+        {
+          role: "user",
+          parts: messageParts,
+        },
+        hiddenText !== displayedPrompt
+          ? { body: { hiddenPrompt: hiddenText } }
+          : undefined
+      );
+
+      setInput("");
+      setAttachments([]);
+    },
+    [
+      attachments,
+      generateImageFromPrompt,
+      id,
+      isGeneratingImage,
+      isImageMode,
+      sendMessage,
+      status,
+    ]
+  );
+
+  useEffect(() => {
+    setIconPromptSuggestions([]);
+  }, [id]);
 
   const loadOlderMessages = useCallback(async () => {
     if (isLoadingHistory || !hasMoreHistory) {
@@ -378,12 +627,28 @@ export function Chat({
           setMessages={setMessages}
           status={status}
           suggestedPrompts={suggestedPrompts}
+          iconPromptActions={iconPromptActions}
+          onIconPromptSelect={handleIconPromptSelect}
           votes={votes}
         />
 
         <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
           {isReadonly ? null : (
             <div className="flex w-full flex-col gap-2">
+              {iconPromptSuggestions.length > 0 ? (
+                <div className="rounded-lg bg-background p-2">
+                  {iconPromptSuggestions.map((suggestion, index) => (
+                    <button
+                      className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                      key={`${suggestion.label}-${index}`}
+                      onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                      type="button"
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <MultimodalInput
                 attachments={attachments}
                 chatId={id}
@@ -399,132 +664,8 @@ export function Chat({
                 onModelChange={setCurrentModelId}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
-                onGenerateImage={async () => {
-                  if (!imageGeneration.enabled) {
-                    toast({
-                      type: "error",
-                      description: translate(
-                        "image.disabled",
-                        "Image generation is currently unavailable."
-                      ),
-                    });
-                    return;
-                  }
-                  if (!imageGeneration.canGenerate) {
-                    setShowImageUpgradeDialog(true);
-                    return;
-                  }
-
-                  const trimmedPrompt = input.trim();
-                  if (!trimmedPrompt) {
-                    toast({
-                      type: "error",
-                      description: translate(
-                        "image.prompt.required",
-                        "Add a prompt before generating."
-                      ),
-                    });
-                    return;
-                  }
-
-                  const imageAttachments = attachments.filter((attachment) =>
-                    attachment.contentType?.startsWith("image/")
-                  );
-
-                  window.history.replaceState({}, "", `/chat/${id}`);
-
-                  const userMessageId = generateUUID();
-                  const userParts = [
-                    ...imageAttachments.map((attachment) => ({
-                      type: "file" as const,
-                      url: attachment.url,
-                      filename: attachment.name,
-                      mediaType: attachment.contentType,
-                    })),
-                    { type: "text" as const, text: trimmedPrompt },
-                  ];
-
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: userMessageId,
-                      role: "user",
-                      parts: userParts,
-                    },
-                  ]);
-
-                  setInput("");
-                  setAttachments([]);
-                  setIsGeneratingImage(true);
-
-                  try {
-                    const response = await fetch("/api/images", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        chatId: id,
-                        visibility: visibilityType,
-                        prompt: trimmedPrompt,
-                        userMessageId,
-                        imageUrls: imageAttachments.map(
-                          (attachment) => attachment.url
-                        ),
-                      }),
-                    });
-
-                    const data = (await response.json().catch(() => null)) as
-                      | {
-                          assistantMessage?: ChatMessage;
-                          message?: string;
-                        }
-                      | null;
-
-                    if (!response.ok) {
-                      if (response.status === 402) {
-                        setMessages((prev) =>
-                          prev.filter((message) => message.id !== userMessageId)
-                        );
-                        setShowImageUpgradeDialog(true);
-                        return;
-                      }
-
-                      toast({
-                        type: "error",
-                        description:
-                          data?.message ??
-                          translate(
-                            "image.generate.failed",
-                            "Image generation failed. Please try again."
-                          ),
-                      });
-                      return;
-                    }
-
-                    const assistantMessage = data?.assistantMessage;
-                    if (!assistantMessage) {
-                      toast({
-                        type: "error",
-                        description: translate(
-                          "image.generate.empty",
-                          "No image was returned. Try a different prompt."
-                        ),
-                      });
-                      return;
-                    }
-
-                    setMessages((prev) => [...prev, assistantMessage]);
-                    mutate(unstable_serialize(getChatHistoryPaginationKey));
-                  } catch (_error) {
-                    toast({
-                      type: "error",
-                      description: translate(
-                        "image.generate.failed",
-                        "Image generation failed. Please try again."
-                      ),
-                    });
-                  } finally {
-                    setIsGeneratingImage(false);
-                  }
+                onGenerateImage={() => {
+                  void generateImageFromPrompt(input);
                 }}
                 sendMessage={sendMessage}
                 setAttachments={setAttachments}

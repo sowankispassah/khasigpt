@@ -146,7 +146,7 @@ export async function uploadFileResumable({
       "X-Goog-Upload-Command": "upload, finalize",
       "Content-Length": String(bytes.byteLength),
     },
-    body: bytes,
+    body: Buffer.from(bytes),
   });
 
   if (!uploadResponse.ok) {

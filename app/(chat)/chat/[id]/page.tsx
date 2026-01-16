@@ -18,6 +18,7 @@ import {
   getMessagesByChatIdPage,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { convertToUIMessages } from "@/lib/utils";
 
@@ -36,12 +37,14 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const [
     modelsResult,
     suggestedPrompts,
+    iconPromptActions,
     translationBundle,
     customKnowledgeSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
+    loadIconPromptActions(preferredLanguage),
     getTranslationBundle(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getImageGenerationAccess({
@@ -138,6 +141,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             initialVisibilityType={chat.visibility}
             isReadonly={session?.user?.id !== chat.userId}
             suggestedPrompts={suggestedPrompts}
+            iconPromptActions={iconPromptActions}
           />
           <DataStreamHandler />
         </DataStreamProvider>
@@ -173,6 +177,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
           suggestedPrompts={suggestedPrompts}
+          iconPromptActions={iconPromptActions}
         />
         <DataStreamHandler />
       </DataStreamProvider>

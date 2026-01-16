@@ -22,6 +22,8 @@ import {
   updateFreeMessageSettingsAction,
   updateImageFilenamePrefixAction,
   updateImageGenerationAvailabilityAction,
+  updateIconPromptAvailabilityAction,
+  updateIconPromptsAction,
   updateImageModelConfigAction,
   updateLanguageStatusAction,
   updateModelConfigAction,
@@ -42,6 +44,8 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
   FORUM_FEATURE_FLAG_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+  ICON_PROMPTS_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
@@ -60,9 +64,11 @@ import {
 import { parseForumEnabledSetting } from "@/lib/forum/config";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getAllLanguages } from "@/lib/i18n/languages";
+import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { cn } from "@/lib/utils";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
+import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { AdminSettingsNotice } from "./notice";
@@ -120,6 +126,8 @@ const loadAdminSettingsData = unstable_cache(
       imageGenerationEnabledSetting,
       imagePromptTranslationModelSetting,
       imageFilenamePrefixSetting,
+      iconPromptsSetting,
+      iconPromptsEnabledSetting,
     ] = await Promise.all([
       getUsdToInrRate(),
       listModelConfigs({
@@ -148,6 +156,8 @@ const loadAdminSettingsData = unstable_cache(
       getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
       getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
       getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
+      getAppSetting<unknown>(ICON_PROMPTS_SETTING_KEY),
+      getAppSetting<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY),
     ]);
 
     return {
@@ -170,6 +180,8 @@ const loadAdminSettingsData = unstable_cache(
       imageGenerationEnabledSetting,
       imagePromptTranslationModelSetting,
       imageFilenamePrefixSetting,
+      iconPromptsSetting,
+      iconPromptsEnabledSetting,
     };
   },
   [ADMIN_SETTINGS_CACHE_KEY],
@@ -287,6 +299,8 @@ export default async function AdminSettingsPage({
     imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
+    iconPromptsSetting,
+    iconPromptsEnabledSetting,
   } = await loadAdminSettingsData();
 
   const usdToInr = exchangeRate.rate;
@@ -308,6 +322,10 @@ export default async function AdminSettingsPage({
     ? activeModels.find((model) => model.id === imagePromptTranslationModelId) ??
       null
     : null;
+  const iconPromptSettings = normalizeIconPromptSettings(
+    iconPromptsSetting,
+    iconPromptsEnabledSetting
+  );
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -905,6 +923,63 @@ export default async function AdminSettingsPage({
               ))}
             </div>
           )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Manage icon-based quick prompts displayed on the home screen."
+          title="Icon pre-prompts"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">
+                      Icon pre-prompts
+                    </span>
+                    <EnabledBadge enabled={iconPromptSettings.enabled} />
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Toggle the icon-based prompt section shown on the home page.
+                  </p>
+                </div>
+                <form
+                  action={updateIconPromptAvailabilityAction}
+                  className="flex flex-col gap-3 text-sm"
+                >
+                  <input
+                    name="iconPromptsEnabled"
+                    type="hidden"
+                    value={(!iconPromptSettings.enabled).toString()}
+                  />
+                  <SettingsSubmitButton
+                    pendingLabel={
+                      iconPromptSettings.enabled ? "Disabling..." : "Enabling..."
+                    }
+                    successMessage="Icon pre-prompts updated."
+                    variant={iconPromptSettings.enabled ? "destructive" : "default"}
+                  >
+                    {iconPromptSettings.enabled
+                      ? "Disable icon pre-prompts"
+                      : "Enable icon pre-prompts"}
+                  </SettingsSubmitButton>
+                </form>
+              </div>
+            </div>
+
+            {activeLanguagesList.length === 0 ? (
+              <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+                No active languages are configured. Add a language before managing
+                icon prompts.
+              </div>
+            ) : (
+              <IconPromptSettingsForm
+                initialItems={iconPromptSettings.items}
+                languages={activeLanguagesList}
+                onSubmit={updateIconPromptsAction}
+              />
+            )}
+          </div>
         </CollapsibleSection>
 
         <CollapsibleSection

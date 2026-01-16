@@ -39,6 +39,7 @@ const imageRequestSchema = z.object({
   chatId: z.string().uuid(),
   visibility: z.enum(["public", "private"]),
   prompt: z.string().trim().min(1).max(2000),
+  displayPrompt: z.string().trim().min(1).max(2000).optional(),
   userMessageId: z.string().uuid().optional(),
   imageUrl: z.string().url().nullable().optional(),
   imageUrls: z.array(z.string().url()).optional(),
@@ -275,8 +276,16 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  const { chatId, visibility, prompt, imageUrl, imageUrls, userMessageId } =
-    payload;
+  const {
+    chatId,
+    visibility,
+    prompt,
+    displayPrompt,
+    imageUrl,
+    imageUrls,
+    userMessageId,
+  } = payload;
+  const displayText = displayPrompt?.trim() || prompt.trim();
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const imageFilenamePrefixSetting = await getAppSetting<string>(
@@ -295,7 +304,7 @@ export async function POST(request: Request) {
     await saveChat({
       id: chatId,
       userId: session.user.id,
-      title: buildFallbackTitle(prompt),
+      title: buildFallbackTitle(displayText),
       visibility: visibility as VisibilityType,
     });
   }
@@ -390,7 +399,7 @@ export async function POST(request: Request) {
     ...sourceImageParts,
     {
       type: "text" as const,
-      text: prompt,
+      text: displayText,
     },
   ];
 

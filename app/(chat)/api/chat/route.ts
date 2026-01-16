@@ -209,11 +209,13 @@ export async function POST(request: Request) {
       message,
       selectedChatModel,
       selectedVisibilityType,
+      hiddenPrompt,
     }: {
       id: string;
       message: ChatMessage;
       selectedChatModel: string;
       selectedVisibilityType: VisibilityType;
+      hiddenPrompt?: string;
     } = requestBody;
 
     const session = await auth();
@@ -333,6 +335,25 @@ export async function POST(request: Request) {
 
     const messagesFromDb = await getMessagesByChatId({ id });
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const normalizedHiddenPrompt =
+      typeof hiddenPrompt === "string" ? hiddenPrompt.trim() : "";
+    const modelMessage =
+      normalizedHiddenPrompt.length > 0
+        ? {
+            ...message,
+            parts: [
+              ...message.parts.filter((part) => part.type !== "text"),
+              {
+                type: "text" as const,
+                text: normalizedHiddenPrompt,
+              },
+            ],
+          }
+        : message;
+    const uiMessagesForModel =
+      normalizedHiddenPrompt.length > 0
+        ? [...convertToUIMessages(messagesFromDb), modelMessage]
+        : uiMessages;
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -423,7 +444,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const promptText = uiMessages
+    const promptText = uiMessagesForModel
       .map((entry) => getTextFromMessage(entry))
       .join(" ");
     const estimateTokensFromText = (text: string) => {
@@ -654,7 +675,7 @@ export async function POST(request: Request) {
       model: languageModel,
       ...(systemInstruction ? { system: systemInstruction } : {}),
       ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
-      messages: convertToModelMessages(uiMessages),
+      messages: convertToModelMessages(uiMessagesForModel),
       experimental_transform: smoothStream({ chunking: "word" }),
       experimental_telemetry: {
         isEnabled: isProductionEnvironment,

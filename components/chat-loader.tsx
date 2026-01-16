@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import type { ChatMessage } from "@/lib/types";
+import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { VisibilityType } from "./visibility-selector";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
@@ -30,6 +31,7 @@ type ChatLoaderProps = {
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  iconPromptActions?: IconPromptAction[];
   imageGeneration: {
     enabled: boolean;
     canGenerate: boolean;

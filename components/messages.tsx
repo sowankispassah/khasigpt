@@ -4,9 +4,11 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
+import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { ChatMessage } from "@/lib/types";
 import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
+import { IconPromptActions } from "./icon-prompt-actions";
 import { LoaderIcon } from "./icons";
 import { PreviewMessage } from "./message";
 import { SuggestedActions } from "./suggested-actions";
@@ -24,6 +26,8 @@ type MessagesProps = {
   selectedModelId: string;
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   suggestedPrompts: string[];
+  iconPromptActions?: IconPromptAction[];
+  onIconPromptSelect?: (item: IconPromptAction) => void;
   selectedVisibilityType: VisibilityType;
   isGeneratingImage?: boolean;
   hasMoreHistory?: boolean;
@@ -44,6 +48,8 @@ function PureMessages({
   selectedModelId: _selectedModelId,
   sendMessage,
   suggestedPrompts,
+  iconPromptActions = [],
+  onIconPromptSelect,
   selectedVisibilityType,
   isGeneratingImage = false,
   hasMoreHistory = false,
@@ -180,6 +186,14 @@ function PureMessages({
               sendMessage={sendMessage}
             />
           </div>
+          {iconPromptActions.length > 0 && onIconPromptSelect ? (
+            <div className="mt-6 w-full max-w-3xl self-center">
+              <IconPromptActions
+                items={iconPromptActions}
+                onSelect={onIconPromptSelect}
+              />
+            </div>
+          ) : null}
           <div className="h-0" ref={messagesEndRef} />
         </div>
       </div>

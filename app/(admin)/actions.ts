@@ -11,6 +11,8 @@ import {
   DEFAULT_FREE_MESSAGES_PER_DAY,
   FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+  ICON_PROMPTS_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
@@ -76,6 +78,7 @@ import {
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
+import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
 import {
   bulkUpdateRagStatus,
   createRagCategory,
@@ -255,6 +258,29 @@ export async function updateImageGenerationAvailabilityAction(
 
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
+}
+
+export async function updateIconPromptAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("iconPromptsEnabled"));
+
+  await setAppSetting({
+    key: ICON_PROMPTS_ENABLED_SETTING_KEY,
+    value: enabled,
+  });
+  revalidateAppSettingCache(ICON_PROMPTS_ENABLED_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.icon_prompts.toggle",
+    target: { setting: ICON_PROMPTS_ENABLED_SETTING_KEY },
+    metadata: { enabled },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/chat");
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {
@@ -1799,6 +1825,51 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
     success: true as const,
     languageCode: language.code,
     count: prompts.length,
+  };
+}
+
+export async function updateIconPromptsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const payload = formData.get("payload");
+
+  if (typeof payload !== "string") {
+    throw new Error("Missing icon prompt payload");
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (error) {
+    console.error("Failed to parse icon prompt payload", error);
+    throw new Error("Invalid icon prompt payload");
+  }
+
+  const normalized = normalizeIconPromptSettings(parsed, true);
+  const uniqueItems = normalized.items.filter((item, index, items) => {
+    return items.findIndex((entry) => entry.id === item.id) === index;
+  });
+
+  await setAppSetting({
+    key: ICON_PROMPTS_SETTING_KEY,
+    value: { items: uniqueItems },
+  });
+  revalidateAppSettingCache(ICON_PROMPTS_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "ui.icon_prompts.update",
+    target: { feature: "iconPrompts" },
+    metadata: { count: uniqueItems.length },
+  });
+
+  revalidatePath("/", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/admin/settings");
+
+  return {
+    success: true as const,
+    count: uniqueItems.length,
   };
 }
 

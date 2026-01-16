@@ -9,6 +9,7 @@ import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { generateUUID } from "@/lib/utils";
 
@@ -24,11 +25,13 @@ export default async function Page() {
   const [
     modelsResult,
     suggestedPrompts,
+    iconPromptActions,
     customKnowledgeSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
+    loadIconPromptActions(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getImageGenerationAccess({
       userId: session.user.id,
@@ -90,6 +93,7 @@ export default async function Page() {
             isReadonly={false}
             key={id}
             suggestedPrompts={suggestedPrompts}
+            iconPromptActions={iconPromptActions}
           />
           <DataStreamHandler />
         </DataStreamProvider>
@@ -125,6 +129,7 @@ export default async function Page() {
           isReadonly={false}
           key={id}
           suggestedPrompts={suggestedPrompts}
+          iconPromptActions={iconPromptActions}
         />
         <DataStreamHandler />
       </DataStreamProvider>
