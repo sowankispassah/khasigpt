@@ -1,0 +1,266 @@
+[33mcommit 06ea75492d293c40fcbfb270471e0d457a4e3490[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Jan 5 01:33:16 2026 +0530
+
+    mobile webview
+
+[33mcommit 924801548a1f6ca913591ad772f926c5ee4afc5f[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Jan 5 01:10:18 2026 +0530
+
+    fix daily free message
+
+[33mcommit 196ac2f9d1362c24070f7c5e3ab8a14a79c47680[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 31 20:33:45 2025 +0530
+
+    fix stuck loading
+
+[33mcommit fdcd3afe2b011b5854672349a2135fb1210fb818[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 31 18:59:15 2025 +0530
+
+    fix stuck loading
+
+[33mcommit 2b1699b45bd19885f919dcb0ad87714ca5d0ac9a[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 31 18:50:04 2025 +0530
+
+    fix stuck loading
+
+[33mcommit e787086f3965b52f2a1332b3df963fc2dece77e3[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 31 18:12:26 2025 +0530
+
+    fix stuck loading
+
+[33mcommit a37c8f09e8fde380ac48a37750d52b6dd8778c49[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 31 17:49:32 2025 +0530
+
+    fix stuck loading
+
+[33mcommit 0929452452090863ff59ece7cac13819dd3277a6[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 21:09:26 2025 +0530
+
+    fix translation
+
+[33mcommit b692467a9098245001b9bbce6d82507f6d6fb714[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 21:02:40 2025 +0530
+
+    fix translation
+
+[33mcommit 3e20f5b118b9a601560a9f73e9245a5f0a039cf7[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 20:26:52 2025 +0530
+
+    fix trans button
+
+[33mcommit cbb8cbf6915b63c6c784136ef8364a1d90bc54ab[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 20:07:18 2025 +0530
+
+    fix trans button
+
+[33mcommit 803c294a0d12d5df324d5a16df873b843718bd5c[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 19:44:21 2025 +0530
+
+    few admin/setting tab
+
+[33mcommit 41b7fb1b9e4f32bcb8ac2986ad25beddf7a46bc7[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 18:54:34 2025 +0530
+
+    few admin/setting tab
+
+[33mcommit e6c8f2f1f9456fdae1bfde9794086810cca0cc6a[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 18:50:57 2025 +0530
+
+    few bug fix
+
+[33mcommit 889567595e0fa722efd76a4de4de9e96391fa0fb[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 30 14:01:46 2025 +0530
+
+    image gen loading
+
+[33mcommit 244c4e2248d7c21db1535bab39099076a9db2f36[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Dec 29 19:45:49 2025 +0530
+
+    multi reference images
+
+[33mcommit 6e45c0e680f5bf2e7793cde6327ed6d03b779b7d[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Dec 29 01:27:26 2025 +0530
+
+    reference images
+
+[33mcommit d4d62366c3ba652b5dc1a53baada3a98cae1f5ed[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Sun Dec 28 23:12:02 2025 +0530
+
+    speed
+
+[33mcommit 889c7674c3e9c3f100c65d2d8dfd85e247760558[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Sat Dec 27 04:23:13 2025 +0530
+
+    speed
+
+[33mcommit 138b5e685145cec8b67e642e0159d66cfa270bdb[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Sat Dec 27 01:50:27 2025 +0530
+
+    speed
+
+[33mcommit 5c6d910b4188c97e3e13fbdb5bf26eb05e3d19ba[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Sat Dec 27 01:39:33 2025 +0530
+
+    speed
+
+[33mcommit 4cb4d0bc019b4b173b68c52d721d1c5cf679ac7a[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Fri Dec 26 04:49:43 2025 +0530
+
+    fix input edit
+
+[33mcommit fd17904dd6a1abf415b8b1bc45d95ef9d91362dc[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Fri Dec 26 04:28:22 2025 +0530
+
+    fix input edit
+
+[33mcommit 219e24dbece13db31bc0e89ac97a3f5e88c83ae0[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Fri Dec 26 04:21:18 2025 +0530
+
+    admin page speed
+
+[33mcommit 5c0596feec296080154326e0d639444af6049159[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Fri Dec 26 04:08:14 2025 +0530
+
+    few improvement
+
+[33mcommit 27a6307f53b3d7b6c304c7c776168dd8c2604284[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Fri Dec 26 03:46:32 2025 +0530
+
+    image gene credtits
+
+[33mcommit d6807aacb638da7c397b95b08b477ab9987d741e[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Fri Dec 26 00:13:25 2025 +0530
+
+    fix model confi disable
+
+[33mcommit f53e85d567dbdb1859f5f9494fbc7edeb075fe98[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 24 20:22:13 2025 +0530
+
+    image generation improved
+
+[33mcommit d57f0c5a8b83d5a729e3f08b934d5188e3bd637c[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 24 20:14:07 2025 +0530
+
+    image generation improved
+
+[33mcommit d88c75dada9669081bfbd216760295563d74f0d5[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Dec 22 20:21:21 2025 +0530
+
+    image generation
+
+[33mcommit c7e5dbe61ffe4257e5e2e1792e027aea34a4abf0[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Dec 22 14:24:40 2025 +0530
+
+    few improvement
+
+[33mcommit 1b5674442ece29b71ffcefe06f05183473bf86c8[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Sat Dec 20 12:43:05 2025 +0530
+
+    speed
+
+[33mcommit c7ac7d52eada50c6cbe4f470c787a1ef73106212[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Wed Dec 17 19:14:19 2025 +0530
+
+    model fallback
+
+[33mcommit e6be50b988873ee8511e917dbf6a9b8a0d3ea479[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 22:33:07 2025 +0530
+
+    speed
+
+[33mcommit c8495180432ce8cbb861aaaa41c938e670c32dc4[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 21:55:10 2025 +0530
+
+    speed
+
+[33mcommit 9af974b20e6396c1a0062f787b9f708e4f7fe453[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 21:22:47 2025 +0530
+
+    speed
+
+[33mcommit b1b07fc142a5a024ef4fa0e7704e49ec4c89e27d[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 20:53:58 2025 +0530
+
+    speed
+
+[33mcommit cb1c0e1b50cd0067d888a8017f653afbf4010532[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 19:12:55 2025 +0530
+
+    speed
+
+[33mcommit bd93e9216d9612dc6e8459c6874bfc22bd6396ae[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 17:22:29 2025 +0530
+
+    google rag fixes
+
+[33mcommit fe168c636dff61b9d7dfb13ba2bcde694ddd7de9[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 16:38:04 2025 +0530
+
+    google rag fixes
+
+[33mcommit 5957f5035e27ee162b5faa439a467681c9f122bc[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 11:50:25 2025 +0530
+
+    google rag fixes
+
+[33mcommit 53dd5bef9f0867a29e3a0341362e0be8cbcdec5e[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Tue Dec 16 08:44:22 2025 +0530
+
+    google rag fixes
+
+[33mcommit 21dab130eda1fae5e5b97958b21edee19d708c04[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Dec 15 20:14:52 2025 +0530
+
+    google rag
+
+[33mcommit f0e69bf0ad391af2e71c652cb406a5b5d7541ba4[m
+Author: sowankispassah <sowankispassah@users.noreply.github.com>
+Date:   Mon Dec 15 12:21:43 2025 +0530
+
+    google rag
+
+[33mcommit 5dbf67b533453bcee263de2d85cc7f68869f2daa[m
+Author: sowankispassah <sowankispassah@users.nor

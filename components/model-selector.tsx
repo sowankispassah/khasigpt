@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { CheckCircleFillIcon, ChevronDownIcon } from "./icons";
 
 export function ModelSelector({
-  session,
+  session: _session,
   selectedModelId,
   className,
 }: {

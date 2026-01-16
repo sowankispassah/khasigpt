@@ -1,9 +1,11 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 
 import {
   type VerifyEmailResult,
   verifyUserEmailByToken,
 } from "@/lib/db/queries";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 type VerifyEmailSearchParams = {
   token?: string | string[];
@@ -13,36 +15,54 @@ function resolveToken(param: string | string[] | undefined) {
   if (!param) {
     return null;
   }
-  return Array.isArray(param) ? param[0] ?? null : param;
+  return Array.isArray(param) ? (param[0] ?? null) : param;
 }
 
-function getVerificationCopy(status: string) {
+function getVerificationCopy(
+  status: string,
+  t: (key: string, fallback: string) => string
+) {
   switch (status) {
     case "verified":
       return {
-        title: "Email verified",
-        message:
-          "Your account is now active. You can sign in using your email and password.",
+        title: t("verify_email.title.verified", "Email verified"),
+        message: t(
+          "verify_email.message.verified",
+          "Your account is now active. You can sign in using your email and password."
+        ),
         variant: "success",
       } as const;
     case "already_verified":
       return {
-        title: "Email already verified",
-        message: "You can sign in right away using your credentials.",
+        title: t(
+          "verify_email.title.already_verified",
+          "Email already verified"
+        ),
+        message: t(
+          "verify_email.message.already_verified",
+          "You can sign in right away using your credentials."
+        ),
         variant: "success",
       } as const;
     case "expired":
       return {
-        title: "Verification link expired",
-        message:
-          "The verification link has expired. Please retry signup to receive a new email.",
+        title: t(
+          "verify_email.title.expired",
+          "Verification link expired"
+        ),
+        message: t(
+          "verify_email.message.expired",
+          "The verification link has expired. Please retry signup to receive a new email."
+        ),
         variant: "error",
       } as const;
     default:
       return {
-        title: "Invalid verification link",
-        message:
-          "The verification token is invalid or has already been used. Please request a new verification email.",
+        title: t("verify_email.title.invalid", "Invalid verification link"),
+        message: t(
+          "verify_email.message.invalid",
+          "The verification token is invalid or has already been used. Please request a new verification email."
+        ),
         variant: "error",
       } as const;
   }
@@ -53,6 +73,10 @@ export default async function VerifyEmailPage({
 }: {
   searchParams?: Promise<VerifyEmailSearchParams>;
 }) {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const { dictionary } = await getTranslationBundle(preferredLanguage);
+  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const resolvedParams = searchParams ? await searchParams : undefined;
   const token = resolveToken(resolvedParams?.token);
   let status: VerifyEmailResult["status"] = "not_found";
@@ -62,7 +86,7 @@ export default async function VerifyEmailPage({
     status = verificationResult.status;
   }
 
-  const { title, message, variant } = getVerificationCopy(status);
+  const { title, message, variant } = getVerificationCopy(status, t);
   const isSuccess = variant === "success";
 
   return (
@@ -74,14 +98,19 @@ export default async function VerifyEmailPage({
         >
           {message}
         </p>
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>Continue to sign in once your account is ready.</p>
+        <div className="flex flex-col gap-2 text-muted-foreground text-sm">
+          <p>
+            {t(
+              "verify_email.continue_prompt",
+              "Continue to sign in once your account is ready."
+            )}
+          </p>
           <div className="flex justify-center">
             <Link
               className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-primary-foreground transition hover:opacity-90"
               href="/login"
             >
-              Go to sign in
+              {t("verify_email.sign_in_button", "Go to sign in")}
             </Link>
           </div>
         </div>
