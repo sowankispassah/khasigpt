@@ -49,7 +49,12 @@ function useStreamdownComponent(enabled: boolean) {
 
     if (!streamdownPromise) {
       streamdownPromise = import("streamdown").then((mod) => {
-        const rehypePlugins = Object.entries(mod.defaultRehypePlugins || {})
+        const moduleWithPlugins = mod as typeof mod & {
+          defaultRehypePlugins?: Record<string, unknown>;
+        };
+        const rehypePlugins = Object.entries(
+          moduleWithPlugins.defaultRehypePlugins ?? {}
+        )
           .filter(([key]) => key !== "raw")
           .map(([, plugin]) => plugin);
         const Component = mod.Streamdown as unknown as StreamdownComponent;
