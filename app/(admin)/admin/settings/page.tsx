@@ -576,42 +576,43 @@ export default async function AdminSettingsPage({
 
       <div className="flex flex-col gap-6">
         <CollapsibleSection
-          defaultOpen
-          description="Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404."
-          title="Community forum"
-        >
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <EnabledBadge enabled={forumEnabled} />
-            </div>
-            <form
-              action={updateForumAvailabilityAction}
-              className="flex flex-col gap-3 text-sm"
-            >
-              <input
-                name="forumEnabled"
-                type="hidden"
-                value={(!forumEnabled).toString()}
-              />
-              <SettingsSubmitButton
-                pendingLabel={forumEnabled ? "Disabling…" : "Enabling…"}
-                successMessage="Forum availability updated."
-                variant={forumEnabled ? "destructive" : "default"}
-              >
-                {forumEnabled ? "Disable forum" : "Enable forum"}
-              </SettingsSubmitButton>
-              <p className="text-muted-foreground text-xs">
-                Changes take effect immediately for all users.
-              </p>
-            </form>
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection
           description="Control access to optional, user-facing experiences."
           title="Feature settings"
         >
           <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">Community forum</span>
+                  <EnabledBadge enabled={forumEnabled} />
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Toggle public access to the forum. When disabled, the forum
+                  link disappears and all routes return a 404.
+                </p>
+              </div>
+              <form
+                action={updateForumAvailabilityAction}
+                className="flex flex-col gap-3 text-sm"
+              >
+                <input
+                  name="forumEnabled"
+                  type="hidden"
+                  value={(!forumEnabled).toString()}
+                />
+                <SettingsSubmitButton
+                  pendingLabel={forumEnabled ? "Disabling…" : "Enabling…"}
+                  successMessage="Forum availability updated."
+                  variant={forumEnabled ? "destructive" : "default"}
+                >
+                  {forumEnabled ? "Disable forum" : "Enable forum"}
+                </SettingsSubmitButton>
+                <p className="text-muted-foreground text-xs">
+                  Changes take effect immediately for all users.
+                </p>
+              </form>
+            </div>
+
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -953,82 +954,94 @@ export default async function AdminSettingsPage({
         </CollapsibleSection>
 
         <CollapsibleSection
-          description="Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language."
-          title="Suggested prompts"
+          description="Control the quick-start prompts that appear on the home screen."
+          title="Home page pre-prompts"
         >
-          {languagePromptConfigs.length === 0 ? (
-            <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
-              No active languages are configured. Add a language before managing
-              prompts.
-            </div>
-          ) : (
-            <div className="grid gap-6 lg:grid-cols-2">
-              {languagePromptConfigs.map(({ language, prompts }) => (
-                <LanguagePromptsForm
-                  initialPrompts={prompts}
-                  key={language.id}
-                  language={language}
-                  onSubmit={updateSuggestedPromptsAction}
-                />
-              ))}
-            </div>
-          )}
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          description="Manage icon-based quick prompts displayed on the home screen."
-          title="Icon pre-prompts"
-        >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">
-                      Icon pre-prompts
-                    </span>
-                    <EnabledBadge enabled={iconPromptSettings.enabled} />
-                  </div>
-                  <p className="text-muted-foreground text-xs">
-                    Toggle the icon-based prompt section shown on the home page.
-                  </p>
+          <div className="space-y-6">
+            <CollapsibleSection
+              description="Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language."
+              title="Suggested prompts"
+            >
+              {languagePromptConfigs.length === 0 ? (
+                <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+                  No active languages are configured. Add a language before
+                  managing prompts.
                 </div>
-                <form
-                  action={updateIconPromptAvailabilityAction}
-                  className="flex flex-col gap-3 text-sm"
-                >
-                  <input
-                    name="iconPromptsEnabled"
-                    type="hidden"
-                    value={(!iconPromptSettings.enabled).toString()}
-                  />
-                  <SettingsSubmitButton
-                    pendingLabel={
-                      iconPromptSettings.enabled ? "Disabling..." : "Enabling..."
-                    }
-                    successMessage="Icon pre-prompts updated."
-                    variant={iconPromptSettings.enabled ? "destructive" : "default"}
-                  >
-                    {iconPromptSettings.enabled
-                      ? "Disable icon pre-prompts"
-                      : "Enable icon pre-prompts"}
-                  </SettingsSubmitButton>
-                </form>
-              </div>
-            </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {languagePromptConfigs.map(({ language, prompts }) => (
+                    <LanguagePromptsForm
+                      initialPrompts={prompts}
+                      key={language.id}
+                      language={language}
+                      onSubmit={updateSuggestedPromptsAction}
+                    />
+                  ))}
+                </div>
+              )}
+            </CollapsibleSection>
 
-            {activeLanguagesList.length === 0 ? (
-              <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
-                No active languages are configured. Add a language before managing
-                icon prompts.
+            <CollapsibleSection
+              description="Manage icon-based quick prompts displayed on the home screen."
+              title="Icon pre-prompts"
+            >
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">
+                          Icon pre-prompts
+                        </span>
+                        <EnabledBadge enabled={iconPromptSettings.enabled} />
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Toggle the icon-based prompt section shown on the home
+                        page.
+                      </p>
+                    </div>
+                    <form
+                      action={updateIconPromptAvailabilityAction}
+                      className="flex flex-col gap-3 text-sm"
+                    >
+                      <input
+                        name="iconPromptsEnabled"
+                        type="hidden"
+                        value={(!iconPromptSettings.enabled).toString()}
+                      />
+                      <SettingsSubmitButton
+                        pendingLabel={
+                          iconPromptSettings.enabled
+                            ? "Disabling..."
+                            : "Enabling..."
+                        }
+                        successMessage="Icon pre-prompts updated."
+                        variant={
+                          iconPromptSettings.enabled ? "destructive" : "default"
+                        }
+                      >
+                        {iconPromptSettings.enabled
+                          ? "Disable icon pre-prompts"
+                          : "Enable icon pre-prompts"}
+                      </SettingsSubmitButton>
+                    </form>
+                  </div>
+                </div>
+
+                {activeLanguagesList.length === 0 ? (
+                  <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+                    No active languages are configured. Add a language before
+                    managing icon prompts.
+                  </div>
+                ) : (
+                  <IconPromptSettingsForm
+                    initialItems={iconPromptSettings.items}
+                    languages={activeLanguagesList}
+                    onSubmit={updateIconPromptsAction}
+                  />
+                )}
               </div>
-            ) : (
-              <IconPromptSettingsForm
-                initialItems={iconPromptSettings.items}
-                languages={activeLanguagesList}
-                onSubmit={updateIconPromptsAction}
-              />
-            )}
+            </CollapsibleSection>
           </div>
         </CollapsibleSection>
 
@@ -1581,13 +1594,18 @@ export default async function AdminSettingsPage({
         </CollapsibleSection>
 
         <CollapsibleSection
-          description="Configure additional providers. Ensure the relevant API key is available in the environment."
-          title="Add new model"
+          description="Manage text and image model configurations in one place."
+          title="Models"
         >
-          <form
-            action={createModelConfigAction}
-            className="grid gap-4 md:grid-cols-2"
-          >
+          <div className="space-y-6">
+            <CollapsibleSection
+              description="Configure additional providers. Ensure the relevant API key is available in the environment."
+              title="Add new model"
+            >
+              <form
+                action={createModelConfigAction}
+                className="grid gap-4 md:grid-cols-2"
+              >
             <div className="flex flex-col gap-2">
               <label className="font-medium text-sm" htmlFor="key">
                 Model key
@@ -1833,17 +1851,17 @@ export default async function AdminSettingsPage({
                 Create model
               </SettingsSubmitButton>
             </div>
-          </form>
-        </CollapsibleSection>
+              </form>
+            </CollapsibleSection>
 
-        <CollapsibleSection title="Configured models">
-          <div className="space-y-6">
-            {activeModels.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No models configured yet.
-              </p>
-            ) : (
-              activeModels.map((model) => {
+            <CollapsibleSection title="Configured models">
+              <div className="space-y-6">
+                {activeModels.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    No models configured yet.
+                  </p>
+                ) : (
+                  activeModels.map((model) => {
                 const providerInputRate = Number(
                   model.inputProviderCostPerMillion ?? 0
                 );
@@ -2244,121 +2262,125 @@ export default async function AdminSettingsPage({
                 );
               })
             )}
-          </div>
+              </div>
 
-          {deletedModels.length > 0 && (
-            <div className="mt-8 space-y-3">
-              <h3 className="font-semibold text-muted-foreground text-sm">
-                Deleted models
-              </h3>
-              <div className="grid gap-2">
-                {deletedModels.map((model) => (
-                  <div
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
-                    key={model.id}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{model.displayName}</span>
-                      <span className="text-muted-foreground text-xs">
-                        Deleted{" "}
-                        {model.deletedAt
-                          ? formatDistanceToNow(new Date(model.deletedAt), {
-                              addSuffix: true,
-                            })
-                          : "recently"}
-                      </span>
-                    </div>
-                    <form action={hardDeleteModelConfigAction}>
-                      <input name="id" type="hidden" value={model.id} />
-                      <SettingsSubmitButton
-                        pendingLabel="Hard deleting..."
-                        size="sm"
-                        variant="destructive"
+              {deletedModels.length > 0 && (
+                <div className="mt-8 space-y-3">
+                  <h3 className="font-semibold text-muted-foreground text-sm">
+                    Deleted models
+                  </h3>
+                  <div className="grid gap-2">
+                    {deletedModels.map((model) => (
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
+                        key={model.id}
                       >
-                        Hard delete
-                      </SettingsSubmitButton>
-                    </form>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {model.displayName}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
+                            Deleted{" "}
+                            {model.deletedAt
+                              ? formatDistanceToNow(new Date(model.deletedAt), {
+                                  addSuffix: true,
+                                })
+                              : "recently"}
+                          </span>
+                        </div>
+                        <form action={hardDeleteModelConfigAction}>
+                          <input name="id" type="hidden" value={model.id} />
+                          <SettingsSubmitButton
+                            pendingLabel="Hard deleting..."
+                            size="sm"
+                            variant="destructive"
+                          >
+                            Hard delete
+                          </SettingsSubmitButton>
+                        </form>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </CollapsibleSection>
+                </div>
+              )}
+            </CollapsibleSection>
 
-        <CollapsibleSection
-          description="Choose which text model translates Khasi prompts to English during image generation."
-          title="Image prompt translation model"
-        >
-          <form
-            action={setImagePromptTranslationModelAction}
-            className="grid gap-4 md:grid-cols-2"
-          >
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="imagePromptTranslationModel"
+            <CollapsibleSection
+              description="Choose which text model translates Khasi prompts to English during image generation."
+              title="Image prompt translation model"
+            >
+              <form
+                action={setImagePromptTranslationModelAction}
+                className="grid gap-4 md:grid-cols-2"
               >
-                Translation model
-              </label>
-              <select
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={imagePromptTranslationModel?.id ?? ""}
-                id="imagePromptTranslationModel"
-                name="modelId"
-              >
-                <option value="">
-                  Use server default translation model
-                </option>
-                {enabledModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.displayName} ({model.provider})
-                  </option>
-                ))}
-              </select>
-              <p className="text-muted-foreground text-xs">
-                Only enabled models are available. Selecting a model here
-                overrides the default translation model.
-              </p>
-            </div>
+                <div className="flex flex-col gap-2 md:col-span-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="imagePromptTranslationModel"
+                  >
+                    Translation model
+                  </label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    defaultValue={imagePromptTranslationModel?.id ?? ""}
+                    id="imagePromptTranslationModel"
+                    name="modelId"
+                  >
+                    <option value="">
+                      Use server default translation model
+                    </option>
+                    {enabledModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.displayName} ({model.provider})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    Only enabled models are available. Selecting a model here
+                    overrides the default translation model.
+                  </p>
+                </div>
 
-            <div className="flex justify-end md:col-span-2">
-              <SettingsSubmitButton pendingLabel="Saving...">
-                Save translation model
-              </SettingsSubmitButton>
-            </div>
-          </form>
+                <div className="flex justify-end md:col-span-2">
+                  <SettingsSubmitButton pendingLabel="Saving...">
+                    Save translation model
+                  </SettingsSubmitButton>
+                </div>
+              </form>
 
-          <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
-            <h4 className="font-semibold text-foreground text-sm">
-              Current selection
-            </h4>
-            {imagePromptTranslationModel ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="font-medium">
-                  {imagePromptTranslationModel.displayName}
-                </span>
-                <ProviderBadge value={imagePromptTranslationModel.provider} />
-                <EnabledBadge enabled={imagePromptTranslationModel.isEnabled} />
-                <span className="font-mono text-muted-foreground text-xs">
-                  {imagePromptTranslationModel.providerModelId}
-                </span>
+              <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm">
+                <h4 className="font-semibold text-foreground text-sm">
+                  Current selection
+                </h4>
+                {imagePromptTranslationModel ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="font-medium">
+                      {imagePromptTranslationModel.displayName}
+                    </span>
+                    <ProviderBadge value={imagePromptTranslationModel.provider} />
+                    <EnabledBadge
+                      enabled={imagePromptTranslationModel.isEnabled}
+                    />
+                    <span className="font-mono text-muted-foreground text-xs">
+                      {imagePromptTranslationModel.providerModelId}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-muted-foreground">
+                    Using the server default translation model.
+                  </p>
+                )}
               </div>
-            ) : (
-              <p className="mt-2 text-muted-foreground">
-                Using the server default translation model.
-              </p>
-            )}
-          </div>
-        </CollapsibleSection>
+            </CollapsibleSection>
 
-        <CollapsibleSection
-          description="Add Google Nano Banana (or other image models) and define per-image pricing."
-          title="Add image generation model"
-        >
-          <form
-            action={createImageModelConfigAction}
-            className="grid gap-4 md:grid-cols-2"
-          >
+            <CollapsibleSection
+              description="Add Google Nano Banana (or other image models) and define per-image pricing."
+              title="Add image generation model"
+            >
+              <form
+                action={createImageModelConfigAction}
+                className="grid gap-4 md:grid-cols-2"
+              >
             <div className="flex flex-col gap-2">
               <label className="font-medium text-sm" htmlFor="imageModelKey">
                 Model key
@@ -2481,17 +2503,17 @@ export default async function AdminSettingsPage({
                 Create image model
               </SettingsSubmitButton>
             </div>
-          </form>
-        </CollapsibleSection>
+              </form>
+            </CollapsibleSection>
 
-        <CollapsibleSection title="Configured image models">
-          <div className="space-y-6">
-            {activeImageModels.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No image models configured yet.
-              </p>
-            ) : (
-              activeImageModels.map((model) => {
+            <CollapsibleSection title="Configured image models">
+              <div className="space-y-6">
+                {activeImageModels.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    No image models configured yet.
+                  </p>
+                ) : (
+                  activeImageModels.map((model) => {
                 const tokensPerImage = Number(
                   model.tokensPerImage ?? TOKENS_PER_CREDIT
                 );
@@ -2701,45 +2723,49 @@ export default async function AdminSettingsPage({
                 );
               })
             )}
-          </div>
-
-          {deletedImageModels.length > 0 && (
-            <div className="mt-8 space-y-3">
-              <h3 className="font-semibold text-muted-foreground text-sm">
-                Deleted image models
-              </h3>
-              <div className="grid gap-2">
-                {deletedImageModels.map((model) => (
-                  <div
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
-                    key={model.id}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{model.displayName}</span>
-                      <span className="text-muted-foreground text-xs">
-                        Deleted{" "}
-                        {model.deletedAt
-                          ? formatDistanceToNow(new Date(model.deletedAt), {
-                              addSuffix: true,
-                            })
-                          : "recently"}
-                      </span>
-                    </div>
-                    <form action={hardDeleteImageModelConfigAction}>
-                      <input name="id" type="hidden" value={model.id} />
-                      <SettingsSubmitButton
-                        pendingLabel="Hard deleting..."
-                        size="sm"
-                        variant="destructive"
-                      >
-                        Hard delete
-                      </SettingsSubmitButton>
-                    </form>
-                  </div>
-                ))}
               </div>
-            </div>
-          )}
+
+              {deletedImageModels.length > 0 && (
+                <div className="mt-8 space-y-3">
+                  <h3 className="font-semibold text-muted-foreground text-sm">
+                    Deleted image models
+                  </h3>
+                  <div className="grid gap-2">
+                    {deletedImageModels.map((model) => (
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
+                        key={model.id}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {model.displayName}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
+                            Deleted{" "}
+                            {model.deletedAt
+                              ? formatDistanceToNow(new Date(model.deletedAt), {
+                                  addSuffix: true,
+                                })
+                              : "recently"}
+                          </span>
+                        </div>
+                        <form action={hardDeleteImageModelConfigAction}>
+                          <input name="id" type="hidden" value={model.id} />
+                          <SettingsSubmitButton
+                            pendingLabel="Hard deleting..."
+                            size="sm"
+                            variant="destructive"
+                          >
+                            Hard delete
+                          </SettingsSubmitButton>
+                        </form>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CollapsibleSection>
+          </div>
         </CollapsibleSection>
       </div>
     </>
