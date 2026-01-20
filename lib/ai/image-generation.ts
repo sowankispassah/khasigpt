@@ -6,8 +6,8 @@ import {
   buildCharacterReference,
   type CharacterReferenceDeps,
 } from "@/lib/ai/character-reference";
-import type { ImageInput } from "@/lib/ai/image-types";
 import { getActiveImageModel } from "@/lib/ai/image-model-registry";
+import type { ImageInput } from "@/lib/ai/image-types";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,

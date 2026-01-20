@@ -3,6 +3,7 @@ import { auth, signIn } from "@/app/(auth)/auth";
 import { ChatSDKError } from "@/lib/errors";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
 
 const isProduction = process.env.NODE_ENV === "production";
 const GUEST_SIGNIN_RATE_LIMIT = {
@@ -12,7 +13,10 @@ const GUEST_SIGNIN_RATE_LIMIT = {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const redirectUrl = searchParams.get("redirectUrl") || "/";
+  const redirectUrl = sanitizeRedirectPath(
+    searchParams.get("redirectUrl"),
+    new URL(request.url).origin
+  );
 
   if (
     isProduction &&

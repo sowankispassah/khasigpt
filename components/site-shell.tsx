@@ -1,9 +1,9 @@
+import type { Session } from "next-auth";
 import { HtmlLangSync } from "@/components/html-lang-sync";
 import { LanguageProvider } from "@/components/language-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { SessionShell } from "@/components/session-shell";
 import type { LanguageOption } from "@/lib/i18n/languages";
-import type { Session } from "next-auth";
 
 type SiteShellProps = {
   activeLanguage: LanguageOption;

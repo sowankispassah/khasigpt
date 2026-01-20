@@ -45,17 +45,17 @@ import {
   type AuditLog,
   appSetting,
   auditLog,
+  type Character,
+  type CharacterAliasIndex,
+  type CharacterRefImage,
   type Chat,
   type ContactMessage,
   type ContactMessageStatus,
   type Coupon,
   type CouponRewardPayout,
-  type Character,
-  type CharacterAliasIndex,
-  type CharacterRefImage,
-  chat,
   character,
   characterAliasIndex,
+  chat,
   contactMessage,
   coupon,
   couponRedemption,
@@ -5430,7 +5430,7 @@ export async function getTokenUsageTotalsForUser(userId: string): Promise<{
   }
 }
 
-function dateToIstKey(date: Date): string {
+function _dateToIstKey(date: Date): string {
   const istMillis = date.getTime() + IST_OFFSET_MS;
   const istDate = new Date(istMillis);
   const year = istDate.getUTCFullYear();

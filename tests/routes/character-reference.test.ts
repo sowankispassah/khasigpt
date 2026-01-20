@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
+  buildCharacterReference,
   MAX_CHARACTER_REFS,
   MAX_TOTAL_CHARACTER_REFS,
-  buildCharacterReference,
 } from "@/lib/ai/character-reference";
 import type { CharacterRefImage } from "@/lib/db/schema";
 

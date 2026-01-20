@@ -31,8 +31,8 @@ import {
   createLanguageEntry,
   createModelConfig,
   createPricingPlan,
-  deleteChatById,
   deleteCharacterById,
+  deleteChatById,
   deleteImageModelConfig,
   deleteModelConfig,
   deletePricingPlan,
@@ -57,11 +57,11 @@ import {
   setCouponStatus,
   setDefaultModelConfig,
   setMarginBaselineModel,
+  updateCharacterWithAliases,
   updateImageModelConfig,
   updateLanguageActiveState,
   updateModelConfig,
   updatePricingPlan,
-  updateCharacterWithAliases,
   updateUserActiveState,
   updateUserPersonalKnowledgePermission,
   updateUserRole,
@@ -69,10 +69,10 @@ import {
   upsertTranslationValueEntry,
 } from "@/lib/db/queries";
 import type {
+  CharacterRefImage,
   RagEntryApprovalStatus,
   RagEntryStatus,
   UserRole,
-  CharacterRefImage,
 } from "@/lib/db/schema";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {

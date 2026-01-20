@@ -1,8 +1,9 @@
+import { pathToFileURL } from "node:url";
 import {
+  DOCUMENT_UPLOADS_MAX_BYTES,
   DOCUMENT_UPLOADS_MAX_TEXT_CHARS,
   isDocumentMimeType,
 } from "@/lib/uploads/document-uploads";
-import { pathToFileURL } from "node:url";
 
 type DocumentAttachment = {
   name: string | null | undefined;
@@ -31,13 +32,74 @@ const truncateText = (value: string) => {
   };
 };
 
-async function fetchFileBuffer(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download file (${response.status})`);
+async function fetchFileBuffer(
+  url: string,
+  {
+    maxBytes = DOCUMENT_UPLOADS_MAX_BYTES,
+    timeoutMs = 10_000,
+  }: { maxBytes?: number; timeoutMs?: number } = {}
+) {
+  const controller = new AbortController();
+  const timeoutId =
+    Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to download file (${response.status})`);
+    }
+
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) {
+      const length = Number(contentLength);
+      if (Number.isFinite(length) && length > maxBytes) {
+        throw new Error("Document is too large");
+      }
+    }
+
+    if (!response.body) {
+      throw new Error("Response body is empty");
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (!value) {
+          continue;
+        }
+        total += value.length;
+        if (total > maxBytes) {
+          throw new Error("Document is too large");
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return Buffer.concat(chunks);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Document download timed out");
+    }
+    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
 }
 
 async function ensurePdfWorkerReady() {

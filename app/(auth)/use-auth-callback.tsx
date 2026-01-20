@@ -11,6 +11,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
 
 const CALLBACK_STORAGE_KEY = "auth.callbackUrl";
 
@@ -51,15 +52,25 @@ function useAuthCallbackValue(defaultUrl = "/"): AuthCallbackValue {
 
     const paramValue = searchParams?.get("callbackUrl");
     if (paramValue) {
-      sessionStorage.setItem(CALLBACK_STORAGE_KEY, paramValue);
-      setCallbackUrl(paramValue);
+      const safeCallback = sanitizeRedirectPath(
+        paramValue,
+        window.location.origin,
+        defaultUrl
+      );
+      sessionStorage.setItem(CALLBACK_STORAGE_KEY, safeCallback);
+      setCallbackUrl(safeCallback);
       removeCallbackParamFromUrl();
       return;
     }
 
     const storedValue = sessionStorage.getItem(CALLBACK_STORAGE_KEY);
     if (storedValue) {
-      setCallbackUrl(storedValue);
+      const safeStored = sanitizeRedirectPath(
+        storedValue,
+        window.location.origin,
+        defaultUrl
+      );
+      setCallbackUrl(safeStored);
     } else {
       setCallbackUrl(defaultUrl);
     }
@@ -72,11 +83,15 @@ function useAuthCallbackValue(defaultUrl = "/"): AuthCallbackValue {
   }, []);
 
   const updateCallback = useCallback((value: string) => {
+    const safeValue =
+      typeof window !== "undefined"
+        ? sanitizeRedirectPath(value, window.location.origin, defaultUrl)
+        : value;
     if (typeof window !== "undefined") {
-      sessionStorage.setItem(CALLBACK_STORAGE_KEY, value);
+      sessionStorage.setItem(CALLBACK_STORAGE_KEY, safeValue);
     }
-    setCallbackUrl(value);
-  }, []);
+    setCallbackUrl(safeValue);
+  }, [defaultUrl]);
 
   return useMemo(
     () => ({

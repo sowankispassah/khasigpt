@@ -27,8 +27,8 @@ import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
-  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   isProductionEnvironment,
 } from "@/lib/constants";
 import {
@@ -52,12 +52,13 @@ import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
-import type { AppUsage } from "@/lib/usage";
+import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 import {
   isDocumentMimeType,
   parseDocumentUploadsEnabledSetting,
 } from "@/lib/uploads/document-uploads";
+import type { AppUsage } from "@/lib/usage";
 import {
   convertToUIMessages,
   generateUUID,
@@ -369,7 +370,6 @@ export async function POST(request: Request) {
     });
     const uiMessagesFromDb = convertToUIMessages(messagesFromDb);
     const baseUiMessages = uiMessagesFromDb.map(stripDocumentParts);
-    const uiMessages = [...baseUiMessages, message];
     const normalizedHiddenPrompt =
       typeof hiddenPrompt === "string" ? hiddenPrompt.trim() : "";
     const documentParts = message.parts.filter(
@@ -401,27 +401,70 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
+    const resolveDocumentPart = (
+      part: Extract<ChatMessage["parts"][number], { type: "file" }>
+    ) => {
+      const resolved = resolveDocumentBlobUrl({
+        sourceUrl: part.url ?? "",
+        userId: session.user.id,
+        baseUrl: request.url,
+        isAdmin: session.user.role === "admin",
+      });
+      if (!resolved) {
+        return null;
+      }
+
+      const partData = part as unknown as {
+        name?: unknown;
+        filename?: unknown;
+      };
+      const name =
+        typeof partData.name === "string"
+          ? partData.name
+          : typeof partData.filename === "string"
+            ? partData.filename
+            : null;
+
+      return {
+        name,
+        url: resolved.blobUrl,
+        mediaType: part.mediaType ?? "",
+      };
+    };
+
     let documentContextText = "";
     if (documentUploadsEnabled && recentDocumentParts.length > 0) {
+      const resolvedParts = [];
+      let invalidUpload = false;
+
+      for (const part of recentDocumentParts) {
+        const resolved = resolveDocumentPart(part);
+        if (!resolved) {
+          if (documentParts.length > 0) {
+            invalidUpload = true;
+            break;
+          }
+          continue;
+        }
+        resolvedParts.push(resolved);
+      }
+
+      if (invalidUpload) {
+        return new ChatSDKError(
+          "bad_request:api",
+          "Invalid document attachment."
+        ).toResponse();
+      }
+
       try {
         const parsedDocuments = await Promise.all(
-          recentDocumentParts.map((part) => {
-            const partData = part as unknown as {
-              name?: unknown;
-              filename?: unknown;
-            };
-            const name =
-              typeof partData.name === "string"
-                ? partData.name
-                : typeof partData.filename === "string"
-                  ? partData.filename
-                  : null;
-            return extractDocumentText({
-              name,
-              url: part.url ?? "",
-              mediaType: part.mediaType ?? "",
-            });
-          })
+          resolvedParts.map((part) =>
+            extractDocumentText({
+              name: part.name,
+              url: part.url,
+              mediaType: part.mediaType,
+            })
+          )
         );
 
         const blocks = parsedDocuments.map((doc) => {

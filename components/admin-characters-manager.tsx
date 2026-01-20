@@ -441,7 +441,6 @@ export function AdminCharactersManager({
       finishProgress,
       formState,
       refImages,
-      startTransition,
     ]
   );
 
@@ -468,7 +467,7 @@ export function AdminCharactersManager({
           .finally(() => finishProgress());
       });
     },
-    [beginProgress, finishProgress, startTransition]
+    [beginProgress, finishProgress]
   );
 
   const openGallery = useCallback((character: SerializedCharacter) => {

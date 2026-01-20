@@ -21,6 +21,7 @@ import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
 import { SelectItem } from "@/components/ui/select";
 import type { Attachment, ChatMessage } from "@/lib/types";
+import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import {
   PromptInput,
@@ -47,7 +48,6 @@ import {
   TooltipTrigger,
 } from "./ui/tooltip";
 import type { VisibilityType } from "./visibility-selector";
-import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 
 function PureMultimodalInput({
   chatId,

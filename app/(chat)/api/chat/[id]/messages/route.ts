@@ -3,6 +3,7 @@ import { auth } from "@/app/(auth)/auth";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,12 @@ export async function GET(
 
   return NextResponse.json(
     {
-      messages: convertToUIMessages(messages),
+      messages: rewriteDocumentUrlsForViewer({
+        messages: convertToUIMessages(messages),
+        viewerUserId: session.user.id,
+        isAdmin,
+        baseUrl: request.url,
+      }),
       hasMore,
       oldestMessageAt,
     },

@@ -21,10 +21,10 @@ import {
   updateDocumentUploadsAvailabilityAction,
   updateForumAvailabilityAction,
   updateFreeMessageSettingsAction,
-  updateImageFilenamePrefixAction,
-  updateImageGenerationAvailabilityAction,
   updateIconPromptAvailabilityAction,
   updateIconPromptsAction,
+  updateImageFilenamePrefixAction,
+  updateImageGenerationAvailabilityAction,
   updateImageModelConfigAction,
   updateLanguageStatusAction,
   updateModelConfigAction,
@@ -70,10 +70,10 @@ import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getAllLanguages } from "@/lib/i18n/languages";
 import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
-import { cn } from "@/lib/utils";
 import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
-import { ImageModelPricingFields } from "./image-model-pricing-fields";
+import { cn } from "@/lib/utils";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
+import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { AdminSettingsNotice } from "./notice";

@@ -1,16 +1,22 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { memo, type ReactNode, useEffect, useState } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { cn, sanitizeText } from "@/lib/utils";
 
 type StreamdownComponent = ComponentType<{
   children: string;
   className?: string;
+  rehypePlugins?: any[];
 }>;
 
-let cachedStreamdown: StreamdownComponent | null = null;
-let streamdownPromise: Promise<StreamdownComponent> | null = null;
+type LoadedStreamdown = {
+  Component: StreamdownComponent;
+  rehypePlugins: any[];
+};
+
+let cachedStreamdown: LoadedStreamdown | null = null;
+let streamdownPromise: Promise<LoadedStreamdown> | null = null;
 
 function shouldLoadStreamdown(content: string) {
   if (!content) {
@@ -31,9 +37,7 @@ function shouldLoadStreamdown(content: string) {
 }
 
 function useStreamdownComponent(enabled: boolean) {
-  const [component, setComponent] = useState<StreamdownComponent | null>(
-    cachedStreamdown
-  );
+  const [state, setState] = useState<LoadedStreamdown | null>(cachedStreamdown);
 
   useEffect(() => {
     if (!enabled) {
@@ -44,24 +48,27 @@ function useStreamdownComponent(enabled: boolean) {
     }
 
     if (!streamdownPromise) {
-      streamdownPromise = import("streamdown")
-        .then((mod) => mod.Streamdown as unknown as StreamdownComponent)
-        .then((loaded) => {
-          cachedStreamdown = loaded;
-          return loaded;
-        });
+      streamdownPromise = import("streamdown").then((mod) => {
+        const rehypePlugins = Object.entries(mod.defaultRehypePlugins || {})
+          .filter(([key]) => key !== "raw")
+          .map(([, plugin]) => plugin);
+        const Component = mod.Streamdown as unknown as StreamdownComponent;
+        const loaded = { Component, rehypePlugins };
+        cachedStreamdown = loaded;
+        return loaded;
+      });
     }
 
     streamdownPromise
       .then((loaded) => {
-        setComponent(() => loaded);
+        setState(loaded);
       })
       .catch(() => {
         // best-effort
       });
   }, [enabled]);
 
-  return component;
+  return state;
 }
 
 type ResponseProps = {
@@ -73,7 +80,12 @@ export const Response = memo(
   ({ className, children }: ResponseProps) => {
     const content = typeof children === "string" ? sanitizeText(children) : null;
     const wantsMarkdown = content !== null && shouldLoadStreamdown(content);
-    const Streamdown = useStreamdownComponent(wantsMarkdown);
+    const loadedStreamdown = useStreamdownComponent(wantsMarkdown);
+    const safeRehypePlugins = useMemo(
+      () => loadedStreamdown?.rehypePlugins ?? [],
+      [loadedStreamdown?.rehypePlugins]
+    );
+    const Streamdown = loadedStreamdown?.Component ?? null;
 
     return (
       <div
@@ -85,7 +97,7 @@ export const Response = memo(
         {content === null ? (
           children
         ) : Streamdown && wantsMarkdown ? (
-          <Streamdown>{content}</Streamdown>
+          <Streamdown rehypePlugins={safeRehypePlugins}>{content}</Streamdown>
         ) : (
           <div className="whitespace-pre-wrap break-words">{content}</div>
         )}

@@ -5,14 +5,16 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
   DOCUMENT_MIME_TYPES,
+  DOCUMENT_UPLOADS_MAX_BYTES,
   IMAGE_MIME_TYPES,
   parseDocumentUploadsEnabledSetting,
 } from "@/lib/uploads/document-uploads";
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
 const ALLOWED_IMAGE_MIME_TYPES = IMAGE_MIME_TYPES;
 
 function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
@@ -127,7 +129,25 @@ export async function POST(request: Request) {
         contentType: mimeType,
       });
 
-      return NextResponse.json(data);
+      if (isImage) {
+        return NextResponse.json(data);
+      }
+
+      const downloadUrl = buildDocumentDownloadUrl({
+        blobUrl: data.url,
+        userId: session.user.id,
+        baseUrl: request.url,
+      });
+
+      if (!downloadUrl) {
+        return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        url: downloadUrl,
+        pathname: data.pathname,
+        contentType: data.contentType ?? mimeType,
+      });
     } catch (_error) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }

@@ -7,11 +7,11 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import type { LanguageOption } from "@/lib/i18n/languages";
 import type {
   IconPromptBehavior,
   IconPromptItem,
 } from "@/lib/icon-prompts";
-import type { LanguageOption } from "@/lib/i18n/languages";
 
 type IconPromptSettingsFormProps = {
   initialItems: IconPromptItem[];
@@ -535,8 +535,14 @@ export function IconPromptSettingsForm({
 
               <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="space-y-2">
-                  <label className="font-medium text-sm">Default label</label>
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor={`icon-prompt-${item.id}-label`}
+                  >
+                    Default label
+                  </label>
                   <Input
+                    id={`icon-prompt-${item.id}-label`}
                     onChange={(event) =>
                       updateItem(item.id, { label: event.target.value })
                     }
@@ -545,11 +551,15 @@ export function IconPromptSettingsForm({
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="font-medium text-sm">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor={`icon-prompt-${item.id}-prompt`}
+                  >
                     Default prompt (optional)
                   </label>
                   <Textarea
                     className="min-h-[96px]"
+                    id={`icon-prompt-${item.id}-prompt`}
                     onChange={(event) =>
                       updateItem(item.id, { prompt: event.target.value })
                     }
@@ -564,7 +574,7 @@ export function IconPromptSettingsForm({
 
               <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="space-y-2">
-                  <label className="font-medium text-sm">Icon</label>
+                  <p className="font-medium text-sm">Icon</p>
                   <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-muted/30">
                       {isValidIconUrl(item.iconUrl) ? (
@@ -614,9 +624,15 @@ export function IconPromptSettingsForm({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="font-medium text-sm">Insert behavior</label>
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor={`icon-prompt-${item.id}-behavior`}
+                  >
+                    Insert behavior
+                  </label>
                   <select
                     className="w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-sm"
+                    id={`icon-prompt-${item.id}-behavior`}
                     onChange={(event) =>
                       updateItem(item.id, {
                         behavior: event.target.value as IconPromptBehavior,
@@ -651,9 +667,9 @@ export function IconPromptSettingsForm({
                 {item.showSuggestions ? (
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <p className="text-xs font-medium text-muted-foreground">
                         Visible suggestions
-                      </label>
+                      </p>
                       <div className="grid gap-2">
                         {item.suggestions.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
@@ -710,9 +726,9 @@ export function IconPromptSettingsForm({
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <p className="text-xs font-medium text-muted-foreground">
                         Hidden prompts (optional)
-                      </label>
+                      </p>
                       <div className="grid gap-2">
                         {item.suggestions.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
@@ -765,10 +781,14 @@ export function IconPromptSettingsForm({
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="space-y-2">
-                            <label className="text-xs font-medium">
+                            <label
+                              className="text-xs font-medium"
+                              htmlFor={`icon-prompt-${item.id}-${language.code}-label`}
+                            >
                               Label ({language.code})
                             </label>
                             <Input
+                              id={`icon-prompt-${item.id}-${language.code}-label`}
                               onChange={(event) =>
                                 updateItem(item.id, {
                                   labelByLanguage: {
@@ -782,11 +802,15 @@ export function IconPromptSettingsForm({
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-medium">
+                            <label
+                              className="text-xs font-medium"
+                              htmlFor={`icon-prompt-${item.id}-${language.code}-prompt`}
+                            >
                               Prompt ({language.code})
                             </label>
                             <Textarea
                               className="min-h-[80px]"
+                              id={`icon-prompt-${item.id}-${language.code}-prompt`}
                               onChange={(event) =>
                                 updateItem(item.id, {
                                   promptByLanguage: {
@@ -803,9 +827,9 @@ export function IconPromptSettingsForm({
                         {item.showSuggestions ? (
                           <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <div className="space-y-2">
-                              <label className="text-xs font-medium">
+                              <p className="text-xs font-medium">
                                 Suggestions ({language.code})
-                              </label>
+                              </p>
                               <div className="grid gap-2">
                                 {(item.suggestionsByLanguage[language.code] ??
                                   []).length === 0 ? (
@@ -883,9 +907,9 @@ export function IconPromptSettingsForm({
                               </div>
                             </div>
                             <div className="space-y-2">
-                              <label className="text-xs font-medium">
+                              <p className="text-xs font-medium">
                                 Hidden prompts ({language.code})
-                              </label>
+                              </p>
                               <div className="grid gap-2">
                                 {(item.suggestionsByLanguage[language.code] ??
                                   []).length === 0 ? (

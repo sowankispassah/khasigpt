@@ -20,7 +20,9 @@ import {
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { getSiteUrl } from "@/lib/seo/site";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
+import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
 import { convertToUIMessages } from "@/lib/utils";
 
@@ -94,7 +96,12 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       limit: CHAT_HISTORY_PAGE_SIZE,
     });
 
-  const uiMessages = convertToUIMessages(messagesFromDb);
+  const uiMessages = rewriteDocumentUrlsForViewer({
+    messages: convertToUIMessages(messagesFromDb),
+    viewerUserId: session?.user?.id ?? null,
+    isAdmin,
+    baseUrl: getSiteUrl(),
+  });
   const oldestMessageAt =
     messagesFromDb[0]?.createdAt instanceof Date
       ? messagesFromDb[0].createdAt.toISOString()

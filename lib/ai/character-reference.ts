@@ -1,18 +1,18 @@
 import "server-only";
 
 import { getDownloadUrl } from "@vercel/blob";
+import { normalizeCharacterText } from "@/lib/ai/character-normalize";
+import {
+  ALLOWED_IMAGE_MEDIA_TYPES,
+  MAX_IMAGE_UPLOAD_BYTES,
+} from "@/lib/ai/image-constants";
+import type { ImageInput } from "@/lib/ai/image-types";
 import {
   getCharacterForImageGeneration,
   getCharacterMatchCandidates,
   listCharacterAliasIndex,
 } from "@/lib/db/queries";
 import type { CharacterRefImage } from "@/lib/db/schema";
-import {
-  ALLOWED_IMAGE_MEDIA_TYPES,
-  MAX_IMAGE_UPLOAD_BYTES,
-} from "@/lib/ai/image-constants";
-import type { ImageInput } from "@/lib/ai/image-types";
-import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 
 export const MAX_CHARACTER_REFS = 3;
 export const MAX_MATCHED_CHARACTERS = 3;
@@ -624,7 +624,7 @@ export async function buildCharacterReference({
       ): entry is {
         match: CharacterMatch;
         character: CharacterForImageGeneration;
-      } => Boolean(entry.character && entry.character.enabled)
+      } => Boolean(entry.character?.enabled)
     );
 
   if (!matchedCharacters.length) {

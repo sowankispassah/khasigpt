@@ -7,9 +7,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
+import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
-import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,13 +22,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
+import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
 import type {
   IconPromptAction,
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
 import type { Attachment, ChatMessage } from "@/lib/types";
-import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
@@ -154,7 +154,7 @@ export function Chat({
     setHasMoreHistory(initialHasMoreHistory);
     setOldestMessageAt(initialOldestMessageAt);
     setIsLoadingHistory(false);
-  }, [initialHasMoreHistory, initialOldestMessageAt, id]);
+  }, [initialHasMoreHistory, initialOldestMessageAt]);
 
   useEffect(() => {
     if (!imageGeneration.enabled) {
@@ -551,7 +551,7 @@ export function Chat({
 
   useEffect(() => {
     setIconPromptSuggestions([]);
-  }, [id]);
+  }, []);
 
   const loadOlderMessages = useCallback(async () => {
     if (isLoadingHistory || !hasMoreHistory) {

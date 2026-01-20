@@ -13,8 +13,8 @@ import {
   invalidateTranslationBundleCache,
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
-import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import { getLanguageByCode } from "@/lib/i18n/languages";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 const TRANSLATIONS_PATH = "/admin/translations";
 

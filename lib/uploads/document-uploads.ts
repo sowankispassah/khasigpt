@@ -17,6 +17,7 @@ export const DOCUMENT_EXTENSION_BY_MIME: Record<
 };
 
 export const DOCUMENT_UPLOADS_MAX_TEXT_CHARS = 80_000;
+export const DOCUMENT_UPLOADS_MAX_BYTES = 5 * 1024 * 1024;
 
 export type DocumentMimeType = (typeof DOCUMENT_MIME_TYPES)[number];
 

@@ -2,10 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
-import type { ChatMessage } from "@/lib/types";
 import type { IconPromptAction } from "@/lib/icon-prompts";
-import type { VisibilityType } from "./visibility-selector";
+import type { ChatMessage } from "@/lib/types";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
+import type { VisibilityType } from "./visibility-selector";
 
 const ChatSkeleton = () => (
   <div className="flex h-dvh flex-col gap-4 px-3 py-6 md:px-6">
