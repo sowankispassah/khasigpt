@@ -1,5 +1,8 @@
 import { cache } from "react";
-import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
+import {
+  DEFAULT_SUGGESTED_PROMPTS,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+} from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
@@ -22,12 +25,37 @@ function isPromptsMap(value: unknown): value is SuggestedPromptsMap {
   );
 }
 
+function parseEnabledSetting(value: unknown, fallback: boolean) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return value.toLowerCase() === "true";
+  }
+  return fallback;
+}
+
 async function fetchSuggestedPrompts(
   preferredLanguageCode?: string | null
 ): Promise<string[]> {
   const { activeLanguage, languages } = await getTranslationBundle(
     preferredLanguageCode
   );
+
+  try {
+    const enabledSetting = await getAppSetting<unknown>(
+      SUGGESTED_PROMPTS_ENABLED_SETTING_KEY
+    );
+    const enabled = parseEnabledSetting(enabledSetting, true);
+    if (!enabled) {
+      return [];
+    }
+  } catch (error) {
+    console.warn(
+      "Failed to load suggested prompts availability; falling back.",
+      error
+    );
+  }
 
   try {
     const storedMap = await getAppSetting<unknown>(

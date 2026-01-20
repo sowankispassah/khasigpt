@@ -19,10 +19,14 @@ function PureSuggestedActions({
   sendMessage,
   prompts,
 }: SuggestedActionsProps) {
+  const hasPromptsProp = Array.isArray(prompts);
   const normalizedPrompts =
     prompts
       ?.map((prompt) => prompt.trim())
       .filter((prompt) => prompt.length > 0) ?? [];
+  if (hasPromptsProp && normalizedPrompts.length === 0) {
+    return null;
+  }
   const suggestedActions =
     normalizedPrompts.length > 0
       ? normalizedPrompts

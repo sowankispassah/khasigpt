@@ -19,6 +19,7 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
@@ -300,6 +301,31 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
     actorId: actor.id,
     action: "feature.icon_prompts.toggle",
     target: { setting: ICON_PROMPTS_ENABLED_SETTING_KEY },
+    metadata: { enabled },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/chat");
+}
+
+export async function updateSuggestedPromptsAvailabilityAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("suggestedPromptsEnabled"));
+
+  await setAppSetting({
+    key: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+    value: enabled,
+  });
+  revalidateAppSettingCache(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.suggested_prompts.toggle",
+    target: { setting: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY },
     metadata: { enabled },
   });
 

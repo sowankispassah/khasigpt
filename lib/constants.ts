@@ -34,6 +34,8 @@ export const CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY = "chat.customKnowledge";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
 export const ICON_PROMPTS_SETTING_KEY = "home.iconPrompts";
 export const ICON_PROMPTS_ENABLED_SETTING_KEY = "home.iconPrompts.enabled";
+export const SUGGESTED_PROMPTS_ENABLED_SETTING_KEY =
+  "home.suggestedPrompts.enabled";
 
 export const DEFAULT_PRIVACY_POLICY = `
 Khasigpt is committed to safeguarding your privacy. This Privacy Policy explains what information we collect, how we use it, and the choices you have regarding your personal data.

@@ -32,6 +32,7 @@ import {
   updatePricingPlanAction,
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
+  updateSuggestedPromptsAvailabilityAction,
   updateTermsOfServiceByLanguageAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
@@ -53,6 +54,7 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
@@ -122,6 +124,7 @@ const loadAdminSettingsData = unstable_cache(
       termsOfServiceByLanguageSetting,
       suggestedPromptsSetting,
       suggestedPromptsByLanguageSetting,
+      suggestedPromptsEnabledSetting,
       recommendedPlanSetting,
       languages,
       freeMessageSettings,
@@ -153,6 +156,7 @@ const loadAdminSettingsData = unstable_cache(
       getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
       getAppSetting<string[]>("suggestedPrompts"),
       getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
+      getAppSetting<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY),
       getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
       getAllLanguages(),
       loadFreeMessageSettings(),
@@ -178,6 +182,7 @@ const loadAdminSettingsData = unstable_cache(
       termsOfServiceByLanguageSetting,
       suggestedPromptsSetting,
       suggestedPromptsByLanguageSetting,
+      suggestedPromptsEnabledSetting,
       recommendedPlanSetting,
       languages,
       freeMessageSettings,
@@ -298,6 +303,7 @@ export default async function AdminSettingsPage({
     termsOfServiceByLanguageSetting,
     suggestedPromptsSetting,
     suggestedPromptsByLanguageSetting,
+    suggestedPromptsEnabledSetting,
     recommendedPlanSetting,
     languages,
     freeMessageSettings,
@@ -333,6 +339,12 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsEnabledSetting
   );
+  const suggestedPromptsEnabled =
+    typeof suggestedPromptsEnabledSetting === "boolean"
+      ? suggestedPromptsEnabledSetting
+      : typeof suggestedPromptsEnabledSetting === "string"
+        ? suggestedPromptsEnabledSetting.toLowerCase() === "true"
+        : true;
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -962,23 +974,67 @@ export default async function AdminSettingsPage({
               description="Customize the quick-start prompts that appear on the home screen. Enter one prompt per line for each language."
               title="Suggested prompts"
             >
-              {languagePromptConfigs.length === 0 ? (
-                <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
-                  No active languages are configured. Add a language before
-                  managing prompts.
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">
+                          Suggested prompts
+                        </span>
+                        <EnabledBadge enabled={suggestedPromptsEnabled} />
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Toggle the suggested prompt chips shown on the home
+                        page.
+                      </p>
+                    </div>
+                    <form
+                      action={updateSuggestedPromptsAvailabilityAction}
+                      className="flex flex-col gap-3 text-sm"
+                    >
+                      <input
+                        name="suggestedPromptsEnabled"
+                        type="hidden"
+                        value={(!suggestedPromptsEnabled).toString()}
+                      />
+                      <SettingsSubmitButton
+                        pendingLabel={
+                          suggestedPromptsEnabled
+                            ? "Disabling..."
+                            : "Enabling..."
+                        }
+                        successMessage="Suggested prompts updated."
+                        variant={
+                          suggestedPromptsEnabled ? "destructive" : "default"
+                        }
+                      >
+                        {suggestedPromptsEnabled
+                          ? "Disable suggested prompts"
+                          : "Enable suggested prompts"}
+                      </SettingsSubmitButton>
+                    </form>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  {languagePromptConfigs.map(({ language, prompts }) => (
-                    <LanguagePromptsForm
-                      initialPrompts={prompts}
-                      key={language.id}
-                      language={language}
-                      onSubmit={updateSuggestedPromptsAction}
-                    />
-                  ))}
-                </div>
-              )}
+
+                {languagePromptConfigs.length === 0 ? (
+                  <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 p-4 text-muted-foreground text-sm">
+                    No active languages are configured. Add a language before
+                    managing prompts.
+                  </div>
+                ) : (
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    {languagePromptConfigs.map(({ language, prompts }) => (
+                      <LanguagePromptsForm
+                        initialPrompts={prompts}
+                        key={language.id}
+                        language={language}
+                        onSubmit={updateSuggestedPromptsAction}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </CollapsibleSection>
 
             <CollapsibleSection
