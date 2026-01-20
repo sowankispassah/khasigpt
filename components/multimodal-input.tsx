@@ -516,8 +516,8 @@ function PureModelSelectorCompact({
 
   return (
     <PromptInputModelSelect
-      onValueChange={(modelName) => {
-        const model = models.find((m) => m.name === modelName);
+      onValueChange={(modelId) => {
+        const model = models.find((m) => m.id === modelId);
         if (model) {
           setOptimisticModelId(model.id);
           onModelChange?.(model.id);
@@ -526,7 +526,7 @@ function PureModelSelectorCompact({
           });
         }
       }}
-      value={selectedModel?.name}
+      value={optimisticModelId}
     >
       <Trigger
         className="flex h-8 cursor-pointer items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -538,7 +538,7 @@ function PureModelSelectorCompact({
       <PromptInputModelSelectContent className="min-w-[260px] p-0">
         <div className="flex flex-col gap-px">
           {models.map((model) => (
-            <SelectItem key={model.id} value={model.name}>
+            <SelectItem key={model.id} value={model.id}>
               <div className="truncate font-medium text-xs">{model.name}</div>
               <div className="mt-px truncate text-[10px] text-muted-foreground leading-tight">
                 {model.description}
