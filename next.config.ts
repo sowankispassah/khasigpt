@@ -125,6 +125,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  serverExternalPackages: ["@napi-rs/canvas", "pdf-parse"],
   async headers() {
     return [
       {

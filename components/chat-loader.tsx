@@ -37,6 +37,7 @@ type ChatLoaderProps = {
     canGenerate: boolean;
     requiresPaidCredits: boolean;
   };
+  documentUploadsEnabled: boolean;
   customKnowledgeEnabled: boolean;
 };
 

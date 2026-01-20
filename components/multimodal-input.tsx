@@ -49,6 +49,7 @@ import {
   TooltipTrigger,
 } from "./ui/tooltip";
 import type { VisibilityType } from "./visibility-selector";
+import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 
 function PureMultimodalInput({
   chatId,
@@ -72,6 +73,7 @@ function PureMultimodalInput({
   isGeneratingImage,
   onGenerateImage,
   onToggleImageMode,
+  documentUploadsEnabled,
 }: {
   chatId: string;
   input: string;
@@ -94,6 +96,7 @@ function PureMultimodalInput({
   isGeneratingImage: boolean;
   onGenerateImage: () => void;
   onToggleImageMode: () => void;
+  documentUploadsEnabled: boolean;
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -181,6 +184,10 @@ function PureMultimodalInput({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const acceptedFileTypes = useMemo(
+    () => getAttachmentAcceptValue(documentUploadsEnabled),
+    [documentUploadsEnabled]
+  );
 
   const submitForm = useCallback(() => {
     window.history.replaceState({}, "", `/chat/${chatId}`);
@@ -294,6 +301,7 @@ function PureMultimodalInput({
     <div className={cn("relative flex w-full flex-col gap-4", className)}>
       <input
         className="-top-4 -left-4 pointer-events-none fixed size-0.5 opacity-0"
+        accept={acceptedFileTypes}
         multiple
         onChange={handleFileChange}
         ref={fileInputRef}
@@ -441,6 +449,9 @@ export const MultimodalInput = memo(
       prevProps.imageGenerationRequiresPaidCredits !==
       nextProps.imageGenerationRequiresPaidCredits
     ) {
+      return false;
+    }
+    if (prevProps.documentUploadsEnabled !== nextProps.documentUploadsEnabled) {
       return false;
     }
     if (!equal(prevProps.attachments, nextProps.attachments)) {

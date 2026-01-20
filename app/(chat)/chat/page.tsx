@@ -7,10 +7,14 @@ import { DataStreamProvider } from "@/components/data-stream-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
-import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
+import {
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+} from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
+import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
 
 export default async function Page() {
@@ -27,12 +31,14 @@ export default async function Page() {
     suggestedPrompts,
     iconPromptActions,
     customKnowledgeSetting,
+    documentUploadsSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
     loadIconPromptActions(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+    getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
       userId: session.user.id,
       userRole: session.user.role,
@@ -62,6 +68,9 @@ export default async function Page() {
       : typeof customKnowledgeSetting === "string"
         ? customKnowledgeSetting.toLowerCase() === "true"
         : false;
+  const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+    documentUploadsSetting
+  );
 
   if (!modelIdFromCookie) {
     return (
@@ -85,6 +94,7 @@ export default async function Page() {
               requiresPaidCredits:
                 imageGenerationAccess.requiresPaidCredits ?? false,
             }}
+            documentUploadsEnabled={documentUploadsEnabled}
             initialChatModel={fallbackModelId}
             initialMessages={[]}
             initialHasMoreHistory={false}
@@ -121,6 +131,7 @@ export default async function Page() {
             canGenerate: imageGenerationAccess.canGenerate,
             requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
           }}
+          documentUploadsEnabled={documentUploadsEnabled}
           initialChatModel={fallbackModelId}
           initialMessages={[]}
           initialHasMoreHistory={false}

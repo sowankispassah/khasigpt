@@ -1,4 +1,13 @@
 import { z } from "zod";
+import {
+  DOCUMENT_MIME_TYPES,
+  IMAGE_MIME_TYPES,
+} from "@/lib/uploads/document-uploads";
+
+const ALLOWED_FILE_MIME_TYPES = [
+  ...IMAGE_MIME_TYPES,
+  ...DOCUMENT_MIME_TYPES,
+] as const;
 
 const textPartSchema = z.object({
   type: z.enum(["text"]),
@@ -7,7 +16,7 @@ const textPartSchema = z.object({
 
 const filePartSchema = z.object({
   type: z.enum(["file"]),
-  mediaType: z.enum(["image/jpeg", "image/png"]),
+  mediaType: z.enum(ALLOWED_FILE_MIME_TYPES),
   name: z.string().min(1).max(100),
   url: z.string().url(),
 });

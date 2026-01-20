@@ -48,6 +48,7 @@ export function Chat({
   suggestedPrompts,
   iconPromptActions = [],
   imageGeneration,
+  documentUploadsEnabled,
   customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
   id: string;
@@ -65,6 +66,7 @@ export function Chat({
     canGenerate: boolean;
     requiresPaidCredits: boolean;
   };
+  documentUploadsEnabled: boolean;
   customKnowledgeEnabled: boolean;
 }) {
   const { visibilityType } = useChatVisibility({
@@ -652,6 +654,7 @@ export function Chat({
               <MultimodalInput
                 attachments={attachments}
                 chatId={id}
+                documentUploadsEnabled={documentUploadsEnabled}
                 imageGenerationCanGenerate={imageGeneration.canGenerate}
                 imageGenerationEnabled={imageGeneration.enabled}
                 imageGenerationRequiresPaidCredits={

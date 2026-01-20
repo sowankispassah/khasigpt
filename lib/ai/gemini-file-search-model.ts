@@ -15,6 +15,8 @@ import { ChatSDKError } from "@/lib/errors";
 import { getGeminiApiKey } from "@/lib/rag/gemini-file-search";
 
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+const FILE_SEARCH_HEADERS_TIMEOUT_MS = 25_000;
+const FALLBACK_HEADERS_TIMEOUT_MS = 20_000;
 const FILE_SEARCH_SYSTEM_INSTRUCTION =
   "You have access to a File Search store containing optional custom knowledge. Use file_search only when it improves correctness (e.g., questions about our product, policies, internal docs, or other curated content). If retrieved content is irrelevant or does not contain the needed information, ignore it and answer normally. Never invent facts; if you are unsure, say you don't know.";
 
@@ -62,6 +64,62 @@ function toBase64(data: Uint8Array | string): string {
     return data;
   }
   return Buffer.from(data).toString("base64");
+}
+
+function isAbortError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const name = "name" in error ? String((error as { name?: unknown }).name) : "";
+  return name === "AbortError";
+}
+
+function isHeadersTimeoutError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code = "code" in error ? String((error as { code?: unknown }).code) : "";
+  return code === "UND_ERR_HEADERS_TIMEOUT";
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  abortSignal?: AbortSignal
+) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const handleAbort = () => controller.abort();
+  abortSignal?.addEventListener("abort", handleAbort, { once: true });
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut && !abortSignal?.aborted) {
+      const timeoutError = new Error("Fetch timeout");
+      (timeoutError as { code?: string }).code = "FETCH_TIMEOUT";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    abortSignal?.removeEventListener("abort", handleAbort);
+  }
+}
+
+function isFetchTimeoutError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code = "code" in error ? String((error as { code?: unknown }).code) : "";
+  return code === "FETCH_TIMEOUT";
 }
 
 function convertPromptToGemini({
@@ -398,29 +456,64 @@ export function createGeminiFileSearchLanguageModel({
       });
 
       const generationConfig = buildGenerationConfig(options);
-      const body: GeminiRequest = {
+      const fileSearchBody: GeminiRequest = {
         contents,
         systemInstruction: addFileSearchSystemInstruction(systemInstruction),
         ...(generationConfig ? { generationConfig } : {}),
         tools: buildFileSearchTools({ storeName, metadataFilter }),
       };
+      const fallbackBody: GeminiRequest = {
+        contents,
+        systemInstruction,
+        ...(generationConfig ? { generationConfig } : {}),
+      };
 
       // `streamGenerateContent` has inconsistent support for File Search grounding
       // across model/endpoint combinations. To ensure File Search is applied, we
       // call `generateContent` and emit a synthetic stream.
-      const response = await fetch(
-        `${GEMINI_API_BASE_URL}/${getModelPath(modelId)}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "x-goog-api-key": apiKey,
-            "Content-Type": "application/json",
-            ...normalizeHeaders(options.headers),
+      let response: Response;
+      let requestBody: GeminiRequest = fileSearchBody;
+      try {
+        response = await fetchWithTimeout(
+          `${GEMINI_API_BASE_URL}/${getModelPath(modelId)}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": apiKey,
+              "Content-Type": "application/json",
+              ...normalizeHeaders(options.headers),
+            },
+            body: JSON.stringify(fileSearchBody),
           },
-          body: JSON.stringify(body),
-          signal: options.abortSignal,
+          FILE_SEARCH_HEADERS_TIMEOUT_MS,
+          options.abortSignal
+        );
+      } catch (error) {
+        if (options.abortSignal?.aborted) {
+          throw error;
         }
-      );
+        if (!isHeadersTimeoutError(error) && !isFetchTimeoutError(error) && !isAbortError(error)) {
+          console.warn(
+            "Gemini file search fetch failed, retrying without file search.",
+            error
+          );
+        }
+        requestBody = fallbackBody;
+        response = await fetchWithTimeout(
+          `${GEMINI_API_BASE_URL}/${getModelPath(modelId)}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": apiKey,
+              "Content-Type": "application/json",
+              ...normalizeHeaders(options.headers),
+            },
+            body: JSON.stringify(fallbackBody),
+          },
+          FALLBACK_HEADERS_TIMEOUT_MS,
+          options.abortSignal
+        );
+      }
 
       if (!response.ok) {
         const text = await response.text().catch(() => response.statusText);
@@ -464,6 +557,13 @@ export function createGeminiFileSearchLanguageModel({
             text: part.text,
           });
         }
+      }
+      if (contentBlocks.length === 0) {
+        contentBlocks.push({
+          type: "text",
+          text:
+            "I couldn't generate a response for that request. Please try again or rephrase.",
+        });
       }
 
       let currentTextBlockId: string | null = null;
@@ -540,7 +640,7 @@ export function createGeminiFileSearchLanguageModel({
 
       return {
         stream,
-        request: { body },
+        request: { body: requestBody },
         response: {
           headers: Object.fromEntries(response.headers.entries()),
           body: rawResponse,

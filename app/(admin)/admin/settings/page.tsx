@@ -18,6 +18,7 @@ import {
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
+  updateDocumentUploadsAvailabilityAction,
   updateForumAvailabilityAction,
   updateFreeMessageSettingsAction,
   updateImageFilenamePrefixAction,
@@ -43,6 +44,7 @@ import {
   DEFAULT_PRIVACY_POLICY,
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
@@ -67,6 +69,7 @@ import { getAllLanguages } from "@/lib/i18n/languages";
 import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { cn } from "@/lib/utils";
+import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { LanguageContentForm } from "./language-content-form";
@@ -128,6 +131,7 @@ const loadAdminSettingsData = unstable_cache(
       imageFilenamePrefixSetting,
       iconPromptsSetting,
       iconPromptsEnabledSetting,
+      documentUploadsEnabledSetting,
     ] = await Promise.all([
       getUsdToInrRate(),
       listModelConfigs({
@@ -158,6 +162,7 @@ const loadAdminSettingsData = unstable_cache(
       getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
       getAppSetting<unknown>(ICON_PROMPTS_SETTING_KEY),
       getAppSetting<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY),
+      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     ]);
 
     return {
@@ -182,6 +187,7 @@ const loadAdminSettingsData = unstable_cache(
       imageFilenamePrefixSetting,
       iconPromptsSetting,
       iconPromptsEnabledSetting,
+      documentUploadsEnabledSetting,
     };
   },
   [ADMIN_SETTINGS_CACHE_KEY],
@@ -301,6 +307,7 @@ export default async function AdminSettingsPage({
     imageFilenamePrefixSetting,
     iconPromptsSetting,
     iconPromptsEnabledSetting,
+    documentUploadsEnabledSetting,
   } = await loadAdminSettingsData();
 
   const usdToInr = exchangeRate.rate;
@@ -454,6 +461,9 @@ export default async function AdminSettingsPage({
   const imageGenerationEnabled = parseImageGenerationEnabledSetting(
     imageGenerationEnabledSetting
   );
+  const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+    documentUploadsEnabledSetting
+  );
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -601,43 +611,83 @@ export default async function AdminSettingsPage({
           description="Control access to optional, user-facing experiences."
           title="Feature settings"
         >
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">
-                  AI image generation
-                </span>
-                <EnabledBadge enabled={imageGenerationEnabled} />
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">
+                    AI image generation
+                  </span>
+                  <EnabledBadge enabled={imageGenerationEnabled} />
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Show or hide the image generation entry points across the chat
+                  experience.
+                </p>
               </div>
-              <p className="text-muted-foreground text-xs">
-                Show or hide the image generation entry points across the chat
-                experience.
-              </p>
-            </div>
-            <form
-              action={updateImageGenerationAvailabilityAction}
-              className="flex flex-col gap-3 text-sm"
-            >
-              <input
-                name="imageGenerationEnabled"
-                type="hidden"
-                value={(!imageGenerationEnabled).toString()}
-              />
-              <SettingsSubmitButton
-                pendingLabel={
-                  imageGenerationEnabled ? "Disabling…" : "Enabling…"
-                }
-                successMessage="Image generation availability updated."
-                variant={imageGenerationEnabled ? "destructive" : "default"}
+              <form
+                action={updateImageGenerationAvailabilityAction}
+                className="flex flex-col gap-3 text-sm"
               >
-                {imageGenerationEnabled
-                  ? "Disable image generation"
-                  : "Enable image generation"}
-              </SettingsSubmitButton>
-              <p className="text-muted-foreground text-xs">
-                Changes take effect immediately for all users.
-              </p>
-            </form>
+                <input
+                  name="imageGenerationEnabled"
+                  type="hidden"
+                  value={(!imageGenerationEnabled).toString()}
+                />
+                <SettingsSubmitButton
+                  pendingLabel={
+                    imageGenerationEnabled ? "Disabling…" : "Enabling…"
+                  }
+                  successMessage="Image generation availability updated."
+                  variant={imageGenerationEnabled ? "destructive" : "default"}
+                >
+                  {imageGenerationEnabled
+                    ? "Disable image generation"
+                    : "Enable image generation"}
+                </SettingsSubmitButton>
+                <p className="text-muted-foreground text-xs">
+                  Changes take effect immediately for all users.
+                </p>
+              </form>
+            </div>
+
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">
+                    Document uploads
+                  </span>
+                  <EnabledBadge enabled={documentUploadsEnabled} />
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Allow users to upload PDFs, DOCX, and XLSX files in chat.
+                </p>
+              </div>
+              <form
+                action={updateDocumentUploadsAvailabilityAction}
+                className="flex flex-col gap-3 text-sm"
+              >
+                <input
+                  name="documentUploadsEnabled"
+                  type="hidden"
+                  value={(!documentUploadsEnabled).toString()}
+                />
+                <SettingsSubmitButton
+                  pendingLabel={
+                    documentUploadsEnabled ? "Disabling…" : "Enabling…"
+                  }
+                  successMessage="Document upload availability updated."
+                  variant={documentUploadsEnabled ? "destructive" : "default"}
+                >
+                  {documentUploadsEnabled
+                    ? "Disable document uploads"
+                    : "Enable document uploads"}
+                </SettingsSubmitButton>
+                <p className="text-muted-foreground text-xs">
+                  Changes take effect immediately for all users.
+                </p>
+              </form>
+            </div>
           </div>
         </CollapsibleSection>
 

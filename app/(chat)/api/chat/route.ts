@@ -27,6 +27,7 @@ import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   isProductionEnvironment,
 } from "@/lib/constants";
@@ -52,6 +53,11 @@ import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
 import type { AppUsage } from "@/lib/usage";
+import { extractDocumentText } from "@/lib/uploads/document-parser";
+import {
+  isDocumentMimeType,
+  parseDocumentUploadsEnabledSetting,
+} from "@/lib/uploads/document-uploads";
 import {
   convertToUIMessages,
   generateUUID,
@@ -66,6 +72,22 @@ export const runtime = "nodejs";
 
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
+
+const rawRedisUrl = process.env.REDIS_URL ?? process.env.KV_URL ?? null;
+const redisUrl = (() => {
+  if (!rawRedisUrl) {
+    return null;
+  }
+  try {
+    new URL(rawRedisUrl);
+    return rawRedisUrl;
+  } catch {
+    if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+      console.warn("[chat-stream] Ignoring invalid Redis URL");
+    }
+    return null;
+  }
+})();
 
 const DEFAULT_CHAT_TITLE = "New Chat";
 const STREAM_HEADERS: HeadersInit = {
@@ -100,7 +122,7 @@ const getTokenlensCatalog = cache(
 );
 
 function hasRedisConnection() {
-  return Boolean(process.env.REDIS_URL ?? process.env.KV_URL);
+  return Boolean(redisUrl);
 }
 
 export function getStreamContext() {
@@ -240,10 +262,12 @@ export async function POST(request: Request) {
       freeMessageSettings,
       registry,
       customKnowledgeSetting,
+      documentUploadsSetting,
     ] = await Promise.all([
       loadFreeMessageSettings(),
       getModelRegistry(),
       getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
@@ -296,6 +320,9 @@ export async function POST(request: Request) {
         : typeof customKnowledgeSetting === "string"
           ? customKnowledgeSetting.toLowerCase() === "true"
           : false;
+    const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+      documentUploadsSetting
+    );
 
     const chat = await getChatById({ id });
 
@@ -334,26 +361,111 @@ export async function POST(request: Request) {
     }
 
     const messagesFromDb = await getMessagesByChatId({ id });
-    const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const stripDocumentParts = (entry: ChatMessage) => ({
+      ...entry,
+      parts: entry.parts.filter(
+        (part) => !(part.type === "file" && isDocumentMimeType(part.mediaType ?? ""))
+      ),
+    });
+    const uiMessagesFromDb = convertToUIMessages(messagesFromDb);
+    const baseUiMessages = uiMessagesFromDb.map(stripDocumentParts);
+    const uiMessages = [...baseUiMessages, message];
     const normalizedHiddenPrompt =
       typeof hiddenPrompt === "string" ? hiddenPrompt.trim() : "";
-    const modelMessage =
+    const documentParts = message.parts.filter(
+      (part): part is Extract<ChatMessage["parts"][number], { type: "file" }> =>
+        part.type === "file" && isDocumentMimeType(part.mediaType ?? "")
+    );
+    const recentDocumentParts =
+      documentParts.length > 0
+        ? documentParts
+        : [...uiMessagesFromDb]
+            .reverse()
+            .flatMap((entry) =>
+              entry.parts.filter(
+                (
+                  part
+                ): part is Extract<
+                  ChatMessage["parts"][number],
+                  { type: "file" }
+                > =>
+                  part.type === "file" &&
+                  isDocumentMimeType(part.mediaType ?? "")
+              )
+            );
+
+    if (documentParts.length > 0 && !documentUploadsEnabled) {
+      return new ChatSDKError(
+        "bad_request:api",
+        "Document uploads are disabled."
+      ).toResponse();
+    }
+
+    let documentContextText = "";
+    if (documentUploadsEnabled && recentDocumentParts.length > 0) {
+      try {
+        const parsedDocuments = await Promise.all(
+          recentDocumentParts.map((part) => {
+            const partData = part as unknown as {
+              name?: unknown;
+              filename?: unknown;
+            };
+            const name =
+              typeof partData.name === "string"
+                ? partData.name
+                : typeof partData.filename === "string"
+                  ? partData.filename
+                  : null;
+            return extractDocumentText({
+              name,
+              url: part.url ?? "",
+              mediaType: part.mediaType ?? "",
+            });
+          })
+        );
+
+        const blocks = parsedDocuments.map((doc) => {
+          const suffix = doc.truncated ? "\n[Content truncated]" : "";
+          return `Document: ${doc.name}\n${doc.text}${suffix}`;
+        });
+        documentContextText = [
+          "The user uploaded document content. Use it to answer the question.",
+          ...blocks,
+        ].join("\n\n");
+      } catch (error) {
+        console.warn("Failed to extract document text", error);
+        return new ChatSDKError(
+          "bad_request:api",
+          "Unable to read the uploaded document."
+        ).toResponse();
+      }
+    }
+
+    const baseParts = message.parts.filter(
+      (part) =>
+        !(part.type === "file" && isDocumentMimeType(part.mediaType ?? ""))
+    );
+    let modelParts =
       normalizedHiddenPrompt.length > 0
-        ? {
-            ...message,
-            parts: [
-              ...message.parts.filter((part) => part.type !== "text"),
-              {
-                type: "text" as const,
-                text: normalizedHiddenPrompt,
-              },
-            ],
-          }
-        : message;
-    const uiMessagesForModel =
-      normalizedHiddenPrompt.length > 0
-        ? [...convertToUIMessages(messagesFromDb), modelMessage]
-        : uiMessages;
+        ? [
+            ...baseParts.filter((part) => part.type !== "text"),
+            {
+              type: "text" as const,
+              text: normalizedHiddenPrompt,
+            },
+          ]
+        : baseParts;
+    if (documentContextText) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: documentContextText,
+        },
+      ];
+    }
+    const modelMessage = { ...message, parts: modelParts };
+    const uiMessagesForModel = [...baseUiMessages, modelMessage];
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -369,9 +481,16 @@ export async function POST(request: Request) {
       requestHints,
       modelSystemPrompt: modelConfig.systemPrompt ?? null,
     });
+    const documentInstruction = documentContextText
+      ? "When the user asks for lists or tables from uploaded documents, return the full set of rows/items from the document. Do not summarize or truncate unless the user requests a subset. If the response would be too long, ask how to split it."
+      : null;
+    const systemInstructionParts = [
+      typeof baseInstruction === "string" ? baseInstruction.trim() : "",
+      documentInstruction ?? "",
+    ].filter(Boolean);
     const systemInstruction =
-      typeof baseInstruction === "string" && baseInstruction.trim().length > 0
-        ? baseInstruction
+      systemInstructionParts.length > 0
+        ? systemInstructionParts.join("\n\n")
         : null;
 
     const escapeFilterValue = (value: string) =>

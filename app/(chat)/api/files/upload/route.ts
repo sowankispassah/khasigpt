@@ -3,26 +3,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
+import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
+import { getAppSetting } from "@/lib/db/queries";
+import {
+  DOCUMENT_EXTENSION_BY_MIME,
+  DOCUMENT_MIME_TYPES,
+  IMAGE_MIME_TYPES,
+  parseDocumentUploadsEnabledSetting,
+} from "@/lib/uploads/document-uploads";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png"] as const;
-
-const FileSchema = z.object({
-  file: z
-    .instanceof(Blob)
-    .refine((file) => file.size <= MAX_FILE_SIZE_BYTES, {
-      message: "File size should be less than 5MB",
-    })
-    .refine(
-      (file) =>
-        ALLOWED_MIME_TYPES.includes(
-          file.type as (typeof ALLOWED_MIME_TYPES)[number]
-        ),
-      {
-        message: "File type should be JPEG or PNG",
-      }
-    ),
-});
+const ALLOWED_IMAGE_MIME_TYPES = IMAGE_MIME_TYPES;
 
 function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
   const bytes = new Uint8Array(buffer);
@@ -45,7 +36,9 @@ function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
   const detected = isPng ? "image/png" : isJpeg ? "image/jpeg" : null;
   const type =
     detected ??
-    (ALLOWED_MIME_TYPES.includes(declaredType as any) ? declaredType : null);
+    (ALLOWED_IMAGE_MIME_TYPES.includes(declaredType as any)
+      ? declaredType
+      : null);
 
   return type;
 }
@@ -62,6 +55,28 @@ export async function POST(request: Request) {
   }
 
   try {
+    const documentUploadsSetting = await getAppSetting<string | boolean>(
+      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+    );
+    const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+      documentUploadsSetting
+    );
+    const allowedMimeTypes = documentUploadsEnabled
+      ? [...ALLOWED_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]
+      : [...ALLOWED_IMAGE_MIME_TYPES];
+    const fileSchema = z.object({
+      file: z
+        .instanceof(Blob)
+        .refine((file) => file.size <= MAX_FILE_SIZE_BYTES, {
+          message: "File size should be less than 5MB",
+        })
+        .refine((file) => allowedMimeTypes.includes(file.type as any), {
+          message: documentUploadsEnabled
+            ? "File type should be PNG, JPG, PDF, DOCX, or XLSX"
+            : "File type should be PNG or JPG",
+        }),
+    });
+
     const formData = await request.formData();
     const fileField = formData.get("file");
 
@@ -71,7 +86,7 @@ export async function POST(request: Request) {
 
     const file = fileField;
 
-    const validatedFile = FileSchema.safeParse({ file });
+    const validatedFile = fileSchema.safeParse({ file });
 
     if (!validatedFile.success) {
       const errorMessage = validatedFile.error.errors
@@ -82,16 +97,28 @@ export async function POST(request: Request) {
     }
 
     const fileBuffer = await file.arrayBuffer();
-    const mimeType = detectImageMime(fileBuffer, file.type);
+    const isImage = ALLOWED_IMAGE_MIME_TYPES.includes(file.type as any);
+    const mimeType = isImage ? detectImageMime(fileBuffer, file.type) : file.type;
 
     if (!mimeType) {
       return NextResponse.json(
-        { error: "Only valid JPEG or PNG images are allowed" },
+        { error: "Only valid PNG or JPG images are allowed" },
         { status: 400 }
       );
     }
 
-    const extension = mimeType === "image/png" ? "png" : "jpg";
+    const extension = isImage
+      ? mimeType === "image/png"
+        ? "png"
+        : "jpg"
+      : DOCUMENT_EXTENSION_BY_MIME[mimeType as keyof typeof DOCUMENT_EXTENSION_BY_MIME];
+
+    if (!extension) {
+      return NextResponse.json(
+        { error: "Unsupported file type" },
+        { status: 400 }
+      );
+    }
     const objectKey = `uploads/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
     try {

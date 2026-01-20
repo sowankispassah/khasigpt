@@ -9,6 +9,7 @@ import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -258,6 +259,30 @@ export async function updateImageGenerationAvailabilityAction(
 
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
+}
+
+export async function updateDocumentUploadsAvailabilityAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("documentUploadsEnabled"));
+
+  await setAppSetting({
+    key: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+    value: enabled,
+  });
+  revalidateAppSettingCache(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.document_uploads.toggle",
+    target: { setting: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY },
+    metadata: { enabled },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/chat");
 }
 
 export async function updateIconPromptAvailabilityAction(formData: FormData) {

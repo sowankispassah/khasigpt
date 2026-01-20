@@ -11,6 +11,7 @@ import { loadChatModels } from "@/lib/ai/models";
 import {
   CHAT_HISTORY_PAGE_SIZE,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -20,6 +21,7 @@ import {
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
+import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
 import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
@@ -40,6 +42,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     iconPromptActions,
     translationBundle,
     customKnowledgeSetting,
+    documentUploadsSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
@@ -47,6 +50,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     loadIconPromptActions(preferredLanguage),
     getTranslationBundle(preferredLanguage),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+    getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
       userId: session?.user?.id ?? null,
       userRole: session?.user?.role ?? null,
@@ -59,6 +63,9 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       : typeof customKnowledgeSetting === "string"
         ? customKnowledgeSetting.toLowerCase() === "true"
         : false;
+  const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+    documentUploadsSetting
+  );
 
   if (!session) {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
@@ -134,6 +141,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
               requiresPaidCredits:
                 imageGenerationAccess.requiresPaidCredits ?? false,
             }}
+            documentUploadsEnabled={documentUploadsEnabled}
             initialChatModel={fallbackModelId}
             initialMessages={uiMessages}
             initialHasMoreHistory={hasMoreMessages}
@@ -170,6 +178,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             canGenerate: imageGenerationAccess.canGenerate,
             requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
           }}
+          documentUploadsEnabled={documentUploadsEnabled}
           initialChatModel={fallbackModelId}
           initialMessages={uiMessages}
           initialHasMoreHistory={hasMoreMessages}
