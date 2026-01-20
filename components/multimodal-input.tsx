@@ -9,7 +9,6 @@ import {
   type Dispatch,
   memo,
   type SetStateAction,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -18,7 +17,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useWindowSize } from "usehooks-ts";
-import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
 import { SelectItem } from "@/components/ui/select";
@@ -521,9 +519,6 @@ function PureModelSelectorCompact({
         if (model) {
           setOptimisticModelId(model.id);
           onModelChange?.(model.id);
-          startTransition(() => {
-            saveChatModelAsCookie(model.id);
-          });
         }
       }}
       value={optimisticModelId}

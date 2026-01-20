@@ -4,11 +4,12 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
+import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,8 @@ import { MultimodalInput } from "./multimodal-input";
 import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
+
+const MODEL_STORAGE_KEY = "chat-model-preference";
 
 export function Chat({
   id,
@@ -118,6 +121,34 @@ export function Chat({
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
+
+  const handleModelChange = useCallback((modelId: string) => {
+    setCurrentModelId(modelId);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+      } catch {
+        // Ignore storage errors (private mode, quotas).
+      }
+    }
+    startTransition(() => {
+      saveChatModelAsCookie(modelId);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storedModelId = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (storedModelId && storedModelId !== currentModelId) {
+        handleModelChange(storedModelId);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [currentModelId, handleModelChange]);
 
   useEffect(() => {
     setHasMoreHistory(initialHasMoreHistory);
@@ -664,7 +695,7 @@ export function Chat({
                 isGeneratingImage={isGeneratingImage}
                 input={input}
                 messages={messages}
-                onModelChange={setCurrentModelId}
+                onModelChange={handleModelChange}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
                 onGenerateImage={() => {

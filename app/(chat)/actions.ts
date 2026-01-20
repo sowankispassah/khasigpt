@@ -18,7 +18,11 @@ import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
-  cookieStore.set("chat-model", model);
+  cookieStore.set("chat-model", model, {
+    path: "/",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365,
+  });
 }
 
 export async function generateTitleFromUserMessage({
