@@ -37,6 +37,7 @@ import {
   getActiveSubscriptionForUser,
   getAppSetting,
   getChatById,
+  getLanguageByCodeRaw,
   getMessageCountByUserId,
   getMessagesByChatId,
   recordTokenUsage,
@@ -47,6 +48,7 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
+import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
@@ -163,6 +165,25 @@ function getStartOfTodayInIST() {
   return new Date(istStart.getTime() - IST_OFFSET_MINUTES * 60 * 1000);
 }
 
+async function resolveLanguageConfig(code?: string | null) {
+  const normalized = typeof code === "string" ? code.trim().toLowerCase() : "";
+  const languageConfig = normalized
+    ? await getLanguageByCodeRaw(normalized)
+    : null;
+
+  if (languageConfig?.isActive) {
+    return languageConfig;
+  }
+
+  const fallback = await getDefaultLanguage().catch(() => null);
+  if (!fallback?.code) {
+    return null;
+  }
+
+  const fallbackConfig = await getLanguageByCodeRaw(fallback.code);
+  return fallbackConfig?.isActive ? fallbackConfig : null;
+}
+
 function buildFallbackTitleFromMessage(message: ChatMessage) {
   const text = getTextFromMessage(message).trim();
   if (!text) {
@@ -231,12 +252,14 @@ export async function POST(request: Request) {
       id,
       message,
       selectedChatModel,
+      selectedLanguage,
       selectedVisibilityType,
       hiddenPrompt,
     }: {
       id: string;
       message: ChatMessage;
       selectedChatModel: string;
+      selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
     } = requestBody;
@@ -519,6 +542,13 @@ export async function POST(request: Request) {
       country,
     };
 
+    const languageConfig = await resolveLanguageConfig(selectedLanguage);
+    const languageSystemPrompt =
+      typeof languageConfig?.systemPrompt === "string" &&
+      languageConfig.systemPrompt.trim().length > 0
+        ? languageConfig.systemPrompt.trim()
+        : null;
+
     const baseInstruction = systemPrompt({
       selectedChatModel,
       requestHints,
@@ -529,6 +559,7 @@ export async function POST(request: Request) {
       : null;
     const systemInstructionParts = [
       typeof baseInstruction === "string" ? baseInstruction.trim() : "",
+      languageSystemPrompt ?? "",
       documentInstruction ?? "",
     ].filter(Boolean);
     const systemInstruction =

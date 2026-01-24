@@ -61,6 +61,11 @@ export default async function Page() {
         "");
   const fallbackModelId =
     resolvedCookieModelId || defaultModel?.id || models[0]?.id || "";
+  const chatLanguageFromCookie = cookieStore.get("chat-language");
+  const initialChatLanguage =
+    typeof chatLanguageFromCookie?.value === "string"
+      ? chatLanguageFromCookie.value
+      : preferredLanguage ?? "";
 
   const customKnowledgeEnabled =
     typeof customKnowledgeSetting === "boolean"
@@ -95,6 +100,7 @@ export default async function Page() {
                 imageGenerationAccess.requiresPaidCredits ?? false,
             }}
             documentUploadsEnabled={documentUploadsEnabled}
+            initialChatLanguage={initialChatLanguage}
             initialChatModel={fallbackModelId}
             initialMessages={[]}
             initialHasMoreHistory={false}
@@ -132,6 +138,7 @@ export default async function Page() {
             requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
           }}
           documentUploadsEnabled={documentUploadsEnabled}
+          initialChatLanguage={initialChatLanguage}
           initialChatModel={fallbackModelId}
           initialMessages={[]}
           initialHasMoreHistory={false}

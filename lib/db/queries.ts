@@ -6081,14 +6081,22 @@ export async function createLanguageEntry({
   name,
   isDefault = false,
   isActive = true,
+  systemPrompt,
+  syncUiLanguage = false,
 }: {
   code: string;
   name: string;
   isDefault?: boolean;
   isActive?: boolean;
+  systemPrompt?: string | null;
+  syncUiLanguage?: boolean;
 }): Promise<Language> {
   const normalizedCode = code.trim().toLowerCase();
   const normalizedName = name.trim();
+  const normalizedPrompt =
+    typeof systemPrompt === "string" && systemPrompt.trim().length > 0
+      ? systemPrompt.trim()
+      : null;
 
   if (!normalizedCode) {
     throw new Error("Language code is required");
@@ -6129,6 +6137,8 @@ export async function createLanguageEntry({
       name: normalizedName,
       isDefault,
       isActive,
+      systemPrompt: normalizedPrompt,
+      syncUiLanguage,
     })
     .returning();
 
@@ -6895,6 +6905,23 @@ export async function getLanguageByIdRaw(id: string): Promise<Language | null> {
   return row ?? null;
 }
 
+export async function getLanguageByCodeRaw(
+  code: string
+): Promise<Language | null> {
+  const normalizedCode = code.trim().toLowerCase();
+  if (!normalizedCode) {
+    return null;
+  }
+
+  const [row] = await db
+    .select()
+    .from(language)
+    .where(eq(language.code, normalizedCode))
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function updateLanguageActiveState({
   id,
   isActive,
@@ -6909,4 +6936,34 @@ export async function updateLanguageActiveState({
       updatedAt: sql`now()`,
     })
     .where(eq(language.id, id));
+}
+
+export async function listLanguagesWithSettings() {
+  return await db.select().from(language).orderBy(asc(language.name));
+}
+
+export async function updateLanguageDetails({
+  id,
+  name,
+  systemPrompt,
+  syncUiLanguage,
+}: {
+  id: string;
+  name: string;
+  systemPrompt: string | null;
+  syncUiLanguage: boolean;
+}) {
+  await db
+    .update(language)
+    .set({
+      name,
+      systemPrompt,
+      syncUiLanguage,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(language.id, id));
+}
+
+export async function deleteLanguageById({ id }: { id: string }) {
+  await db.delete(language).where(eq(language.id, id));
 }

@@ -10,6 +10,7 @@ export type LanguageOption = {
   name: string;
   isDefault: boolean;
   isActive: boolean;
+  syncUiLanguage: boolean;
 };
 
 const shouldBypassCache =
@@ -23,6 +24,7 @@ const serializeLanguage = (
   name: entry.name,
   isDefault: entry.isDefault,
   isActive: entry.isActive,
+  syncUiLanguage: entry.syncUiLanguage ?? false,
 });
 
 const getAllLanguagesCached = unstable_cache(

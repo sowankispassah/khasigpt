@@ -6,6 +6,7 @@ import {
   createLanguageAction,
   createModelConfigAction,
   createPricingPlanAction,
+  deleteLanguageAction,
   deleteImageModelConfigAction,
   deleteModelConfigAction,
   deletePricingPlanAction,
@@ -26,6 +27,7 @@ import {
   updateImageFilenamePrefixAction,
   updateImageGenerationAvailabilityAction,
   updateImageModelConfigAction,
+  updateLanguageSettingsAction,
   updateLanguageStatusAction,
   updateModelConfigAction,
   updatePlanTranslationAction,
@@ -62,12 +64,12 @@ import {
   getAppSetting,
   getTranslationValuesForKeys,
   listImageModelConfigs,
+  listLanguagesWithSettings,
   listModelConfigs,
   listPricingPlans,
 } from "@/lib/db/queries";
 import { parseForumEnabledSetting } from "@/lib/forum/config";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
-import { getAllLanguages } from "@/lib/i18n/languages";
 import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
@@ -158,7 +160,7 @@ const loadAdminSettingsData = unstable_cache(
       getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
       getAppSetting<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY),
       getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
-      getAllLanguages(),
+      listLanguagesWithSettings(),
       loadFreeMessageSettings(),
       getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
@@ -825,8 +827,8 @@ export default async function AdminSettingsPage({
         </CollapsibleSection>
 
         <CollapsibleSection
-          description="Add new languages or toggle their availability. Default language must stay active."
-          title="Languages"
+          description="Manage supported languages, per-language system prompts, and UI sync behavior. Default language must stay active."
+          title="Language settings"
         >
           <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
             <form
@@ -859,6 +861,32 @@ export default async function AdminSettingsPage({
                   required
                 />
               </div>
+              <div className="flex flex-col gap-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="language-system-prompt"
+                >
+                  Language system prompt
+                </label>
+                <textarea
+                  className="min-h-[120px] rounded-md border bg-background px-3 py-2 text-sm"
+                  id="language-system-prompt"
+                  name="systemPrompt"
+                  placeholder="e.g., Respond in French unless the user asks otherwise."
+                />
+                <p className="text-muted-foreground text-xs">
+                  Appended to the selected model prompt when this language is
+                  chosen.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 font-medium text-sm">
+                <input
+                  className="h-4 w-4 cursor-pointer"
+                  name="syncUiLanguage"
+                  type="checkbox"
+                />
+                Change UI language when selected
+              </label>
               <label className="flex items-center gap-2 font-medium text-sm">
                 <input
                   className="h-4 w-4 cursor-pointer"
@@ -872,64 +900,110 @@ export default async function AdminSettingsPage({
                 Add language
               </SettingsSubmitButton>
             </form>
-            <div className="overflow-x-auto rounded-lg border bg-background">
-              <table className="w-full min-w-[480px] border-collapse text-sm">
-                <thead className="border-b bg-muted/40 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Language</th>
-                    <th className="px-4 py-3 text-left">Code</th>
-                    <th className="px-4 py-3 text-left">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {languages.length === 0 ? (
-                    <tr>
-                      <td
-                        className="px-4 py-3 text-muted-foreground text-sm"
-                        colSpan={4}
-                      >
-                        No languages configured yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                  {languages.map((language) => {
-                    const statusBadge = language.isActive
-                      ? "text-emerald-600 bg-emerald-500/10"
-                      : "text-muted-foreground bg-muted/60";
+            <div className="space-y-4">
+              {languages.length === 0 ? (
+                <div className="rounded-lg border bg-background p-4 text-muted-foreground text-sm">
+                  No languages configured yet.
+                </div>
+              ) : null}
+              {languages.map((language) => {
+                const statusBadge = language.isActive
+                  ? "text-emerald-600 bg-emerald-500/10"
+                  : "text-muted-foreground bg-muted/60";
 
-                    return (
-                      <tr className="align-middle" key={language.id}>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-medium">{language.name}</span>
-                            {language.isDefault ? (
-                              <span className="inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-[11px] text-primary uppercase tracking-wide">
-                                Default
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {language.code}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs ${statusBadge}`}
-                          >
-                            {language.isActive ? "Active" : "Inactive"}
+                return (
+                  <details
+                    className="rounded-lg border bg-background p-4"
+                    key={language.id}
+                  >
+                    <summary className="flex cursor-pointer flex-col gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{language.name}</span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs ${statusBadge}`}
+                        >
+                          {language.isActive ? "Active" : "Inactive"}
+                        </span>
+                        {language.syncUiLanguage ? (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
+                            UI sync
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {language.isDefault ? (
-                            <span className="text-muted-foreground text-xs">
-                              Default language
-                            </span>
-                          ) : (
-                            <form
-                              action={updateLanguageStatusAction}
-                              className="inline-flex items-center justify-end"
-                            >
+                        ) : null}
+                        {language.isDefault ? (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-[11px] text-primary uppercase tracking-wide">
+                            Default
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="font-mono text-muted-foreground text-xs">
+                        {language.code}
+                      </span>
+                    </summary>
+                    <div className="mt-4 space-y-4">
+                      <form
+                        action={updateLanguageSettingsAction}
+                        className="grid gap-4 md:grid-cols-2"
+                      >
+                        <input
+                          name="languageId"
+                          type="hidden"
+                          value={language.id}
+                        />
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`language-name-${language.id}`}
+                          >
+                            Display name
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={language.name}
+                            id={`language-name-${language.id}`}
+                            name="name"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-2 md:col-span-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`language-prompt-${language.id}`}
+                          >
+                            System prompt
+                          </label>
+                          <textarea
+                            className="min-h-[140px] rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={language.systemPrompt ?? ""}
+                            id={`language-prompt-${language.id}`}
+                            name="systemPrompt"
+                            placeholder="e.g., Respond in this language unless the user requests another."
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            This prompt is appended to the selected model prompt.
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-2 font-medium text-sm md:col-span-2">
+                          <input
+                            className="h-4 w-4 cursor-pointer"
+                            defaultChecked={language.syncUiLanguage}
+                            name="syncUiLanguage"
+                            type="checkbox"
+                          />
+                          Change UI language when this language is selected
+                        </label>
+                        <div className="flex justify-end md:col-span-2">
+                          <SettingsSubmitButton pendingLabel="Saving...">
+                            Save settings
+                          </SettingsSubmitButton>
+                        </div>
+                      </form>
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                        {language.isDefault ? (
+                          <span className="text-muted-foreground text-xs">
+                            Default language cannot be deactivated or removed.
+                          </span>
+                        ) : (
+                          <>
+                            <form action={updateLanguageStatusAction}>
                               <input
                                 name="languageId"
                                 type="hidden"
@@ -954,13 +1028,27 @@ export default async function AdminSettingsPage({
                                 {language.isActive ? "Deactivate" : "Activate"}
                               </SettingsSubmitButton>
                             </form>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            <form action={deleteLanguageAction}>
+                              <input
+                                name="languageId"
+                                type="hidden"
+                                value={language.id}
+                              />
+                              <SettingsSubmitButton
+                                pendingLabel="Removing..."
+                                size="sm"
+                                variant="destructive"
+                              >
+                                Remove language
+                              </SettingsSubmitButton>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
             </div>
           </div>
         </CollapsibleSection>

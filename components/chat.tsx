@@ -7,7 +7,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import { saveChatModelAsCookie } from "@/app/(chat)/actions";
+import {
+  saveChatLanguageAsCookie,
+  saveChatModelAsCookie,
+} from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import {
@@ -38,6 +41,7 @@ import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
 const MODEL_STORAGE_KEY = "chat-model-preference";
+const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 
 export function Chat({
   id,
@@ -45,6 +49,7 @@ export function Chat({
   initialHasMoreHistory,
   initialOldestMessageAt,
   initialChatModel,
+  initialChatLanguage,
   initialVisibilityType,
   isReadonly,
   autoResume,
@@ -59,6 +64,7 @@ export function Chat({
   initialHasMoreHistory: boolean;
   initialOldestMessageAt: string | null;
   initialChatModel: string;
+  initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
   autoResume: boolean;
@@ -76,7 +82,12 @@ export function Chat({
     chatId: id,
     initialVisibilityType,
   });
-  const { translate } = useTranslation();
+  const {
+    translate,
+    languages,
+    activeLanguage,
+    setLanguage,
+  } = useTranslation();
 
   const { mutate } = useSWRConfig();
   const { setDataStream } = useDataStream();
@@ -87,6 +98,14 @@ export function Chat({
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
   const currentModelIdRef = useRef(currentModelId);
+  const [currentLanguageCode, setCurrentLanguageCode] = useState(
+    initialChatLanguage
+  );
+  const currentLanguageCodeRef = useRef(currentLanguageCode);
+  const [pendingUiLanguage, setPendingUiLanguage] = useState<{
+    code: string;
+    name: string;
+  } | null>(null);
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showActionProgress, setShowActionProgress] = useState(false);
@@ -122,6 +141,10 @@ export function Chat({
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
 
+  useEffect(() => {
+    currentLanguageCodeRef.current = currentLanguageCode;
+  }, [currentLanguageCode]);
+
   const handleModelChange = useCallback((modelId: string) => {
     setCurrentModelId(modelId);
     if (typeof window !== "undefined") {
@@ -135,6 +158,49 @@ export function Chat({
       saveChatModelAsCookie(modelId);
     });
   }, []);
+
+  const handleLanguageChange = useCallback(
+    (languageCode: string) => {
+      const normalized = languageCode.trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      const selectedLanguage = languages.find(
+        (language) => language.code === normalized
+      );
+      const shouldPromptUiChange =
+        Boolean(selectedLanguage?.syncUiLanguage) &&
+        activeLanguage.code !== normalized;
+      if (
+        normalized === currentLanguageCodeRef.current &&
+        !shouldPromptUiChange
+      ) {
+        return;
+      }
+      if (normalized !== currentLanguageCodeRef.current) {
+        setCurrentLanguageCode(normalized);
+      }
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
+        } catch {
+          // Ignore storage errors (private mode, quotas).
+        }
+      }
+      startTransition(() => {
+        saveChatLanguageAsCookie(normalized);
+      });
+      if (shouldPromptUiChange && selectedLanguage) {
+        setPendingUiLanguage({
+          code: selectedLanguage.code,
+          name: selectedLanguage.name,
+        });
+      } else {
+        setPendingUiLanguage(null);
+      }
+    },
+    [activeLanguage.code, languages]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -151,10 +217,48 @@ export function Chat({
   }, [currentModelId, handleModelChange]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storedLanguageCode = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (
+        storedLanguageCode &&
+        storedLanguageCode !== currentLanguageCode
+      ) {
+        handleLanguageChange(storedLanguageCode);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [currentLanguageCode, handleLanguageChange]);
+
+  useEffect(() => {
     setHasMoreHistory(initialHasMoreHistory);
     setOldestMessageAt(initialOldestMessageAt);
     setIsLoadingHistory(false);
   }, [initialHasMoreHistory, initialOldestMessageAt]);
+
+  useEffect(() => {
+    if (!languages.length) {
+      return;
+    }
+    const exists = languages.some(
+      (language) => language.code === currentLanguageCode
+    );
+    if (exists) {
+      return;
+    }
+    const fallbackCode = activeLanguage?.code ?? languages[0]?.code ?? null;
+    if (fallbackCode && fallbackCode !== currentLanguageCode) {
+      handleLanguageChange(fallbackCode);
+    }
+  }, [
+    activeLanguage?.code,
+    currentLanguageCode,
+    handleLanguageChange,
+    languages,
+  ]);
 
   useEffect(() => {
     if (!imageGeneration.enabled) {
@@ -209,6 +313,7 @@ export function Chat({
             id: request.id,
             message: request.messages.at(-1),
             selectedChatModel: currentModelIdRef.current,
+            selectedLanguage: currentLanguageCodeRef.current,
             selectedVisibilityType: visibilityType,
             ...request.body,
           },
@@ -695,7 +800,9 @@ export function Chat({
                 isGeneratingImage={isGeneratingImage}
                 input={input}
                 messages={messages}
+                onLanguageChange={handleLanguageChange}
                 onModelChange={handleModelChange}
+                selectedLanguageCode={currentLanguageCode}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
                 onGenerateImage={() => {
@@ -830,6 +937,59 @@ export function Chat({
               }}
             >
               {translate("image.actions.locked.cta", "Go to recharge")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingUiLanguage(null);
+          }
+        }}
+        open={Boolean(pendingUiLanguage)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {translate(
+                "chat.language.ui_prompt.title",
+                "Change interface language?"
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {translate(
+                "chat.language.ui_prompt.description",
+                "Do you also want the interface language to change to {language}?"
+              ).replace("{language}", pendingUiLanguage?.name ?? "")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setPendingUiLanguage(null);
+              }}
+            >
+              {translate(
+                "chat.language.ui_prompt.cancel",
+                "No, keep interface"
+              )}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingUiLanguage) {
+                  return;
+                }
+                const targetCode = pendingUiLanguage.code;
+                setPendingUiLanguage(null);
+                setLanguage(targetCode);
+              }}
+            >
+              {translate(
+                "chat.language.ui_prompt.confirm",
+                "Yes, change interface"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

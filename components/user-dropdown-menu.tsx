@@ -194,28 +194,17 @@ export function UserDropdownMenu({
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
-  const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
-  const [pendingLanguageCode, setPendingLanguageCode] = React.useState<
-    string | null
-  >(null);
   const [isMenuProgressVisible, setIsMenuProgressVisible] =
     React.useState(false);
   const [menuProgress, setMenuProgress] = React.useState(0);
   const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
-  const ignoreNextLanguageOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
   const progressTimersRef = React.useRef<ReturnType<typeof setTimeout>[]>([]);
-  const {
-    languages: translationLanguages,
-    activeLanguage,
-    translate,
-    setLanguage,
-    isUpdating: isLanguageUpdating,
-  } = useTranslation();
+  const { translate } = useTranslation();
 
   const resetPlanState = React.useCallback(() => {
     planRequestAbortRef.current?.abort();
@@ -332,21 +321,10 @@ export function UserDropdownMenu({
   }, [isBusy]);
 
   React.useEffect(() => {
-    if (
-      !isBusy &&
-      !isLanguageUpdating &&
-      !pendingAction &&
-      !pendingLanguageCode
-    ) {
+    if (!isBusy && !pendingAction) {
       hideMenuProgress();
     }
-  }, [
-    hideMenuProgress,
-    isBusy,
-    isLanguageUpdating,
-    pendingAction,
-    pendingLanguageCode,
-  ]);
+  }, [hideMenuProgress, isBusy, pendingAction]);
 
   React.useEffect(() => {
     return () => {
@@ -363,14 +341,14 @@ export function UserDropdownMenu({
         callback,
         skipProgress,
       }: {
-        actionType: "navigate" | "theme" | "signOut" | "language";
+        actionType: "navigate" | "theme" | "signOut";
         actionId: string | null;
         callback: () => void;
         skipProgress?: boolean;
       }
     ) => {
       event.preventDefault();
-      if (isBusy && actionType !== "language") {
+      if (isBusy) {
         return;
       }
       const shouldSkip = skipProgress ?? false;
@@ -381,9 +359,7 @@ export function UserDropdownMenu({
       }
       startMenuProgress();
       onActionStart?.();
-      if (actionType !== "language") {
-        setPendingAction(actionId ?? actionType);
-      }
+      setPendingAction(actionId ?? actionType);
       callback();
     },
     [isBusy, onActionStart, startMenuProgress]
@@ -406,11 +382,8 @@ export function UserDropdownMenu({
       onOpenChange?.(false);
       onMenuClose?.();
       ignoreNextResourcesOpenRef.current = false;
-      ignoreNextLanguageOpenRef.current = false;
       setIsResourcesOpen(false);
-      setIsLanguageOpen(false);
       setPendingAction(null);
-      setPendingLanguageCode(null);
       hideMenuProgress();
     },
     [fetchPlan, isAuthenticated, onMenuClose, onOpenChange, hideMenuProgress]
@@ -466,28 +439,6 @@ export function UserDropdownMenu({
     setIsResourcesOpen(false);
   }, []);
 
-  const handleLanguageSelect = React.useCallback(
-    (event: Event, code: string) => {
-      handleSelect(event, {
-        actionType: "language",
-        actionId: code,
-        callback: () => {
-          setPendingLanguageCode(code);
-          setLanguage(code);
-        },
-      });
-    },
-    [setLanguage, handleSelect]
-  );
-
-  React.useEffect(() => {
-    if (!isLanguageUpdating && pendingLanguageCode) {
-      setPendingLanguageCode(null);
-      setIsLanguageOpen(false);
-      ignoreNextLanguageOpenRef.current = false;
-    }
-  }, [isLanguageUpdating, pendingLanguageCode]);
-
   const showSignOut = Boolean(isAuthenticated && onSignOut);
 
   const infoLinks = [
@@ -542,11 +493,6 @@ export function UserDropdownMenu({
       </DropdownMenuItem>
     ));
 
-  const activeLanguageLabel = translate("user_menu.language.active", "Active");
-  const updatingLanguageLabel = translate(
-    "user_menu.language.updating",
-    "Updating…"
-  );
   const primaryLabel =
     (userDisplayName && userDisplayName.trim().length > 0
       ? userDisplayName.trim()
@@ -754,90 +700,8 @@ export function UserDropdownMenu({
             >
               {translate("user_menu.resources", "Resources")}
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
+          <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
               {renderInfoLinks()}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuSub
-            onOpenChange={(open) => {
-              if (open) {
-                if (ignoreNextLanguageOpenRef.current) {
-                  ignoreNextLanguageOpenRef.current = false;
-                  return;
-                }
-                setIsLanguageOpen(true);
-                return;
-              }
-              ignoreNextLanguageOpenRef.current = false;
-              setIsLanguageOpen(false);
-            }}
-            open={isLanguageOpen}
-          >
-            <DropdownMenuSubTrigger
-              className={cn(
-                "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start",
-                "[&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform",
-                "data-[state=open]:[&>svg]:-rotate-90 [&>svg]:rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
-              )}
-              data-testid="user-nav-item-language"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setIsLanguageOpen((prev) => {
-                    const next = !prev;
-                    ignoreNextLanguageOpenRef.current = !next;
-                    return next;
-                  });
-                }
-              }}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setIsLanguageOpen((prev) => {
-                  const next = !prev;
-                  ignoreNextLanguageOpenRef.current = !next;
-                  return next;
-                });
-              }}
-            >
-              <span className="flex items-center gap-2">
-                {translate("user_menu.language", "Language")}
-                <span className="text-muted-foreground text-xs">
-                  {activeLanguage.name}
-                </span>
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
-              {translationLanguages.map((language) => (
-                <DropdownMenuItem
-                  className={cn(
-                    "cursor-pointer justify-between",
-                    language.code === activeLanguage.code
-                      ? "font-medium text-primary"
-                      : undefined
-                  )}
-                  data-testid={`user-nav-language-${language.code}`}
-                  disabled={
-                    isLanguageUpdating && language.code !== activeLanguage.code
-                  }
-                  key={language.code}
-                  onSelect={(event) =>
-                    handleLanguageSelect(event, language.code)
-                  }
-                >
-                  {language.name}
-                  <span className="flex items-center gap-2 text-muted-foreground text-xs">
-                    {pendingLanguageCode === language.code
-                      ? updatingLanguageLabel
-                      : language.code === activeLanguage.code
-                        ? isLanguageUpdating
-                          ? updatingLanguageLabel
-                          : activeLanguageLabel
-                        : null}
-                  </span>
-                </DropdownMenuItem>
-              ))}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSeparator />

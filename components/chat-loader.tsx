@@ -27,6 +27,7 @@ type ChatLoaderProps = {
   initialHasMoreHistory: boolean;
   initialOldestMessageAt: string | null;
   initialChatModel: string;
+  initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
   autoResume: boolean;

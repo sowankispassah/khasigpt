@@ -584,6 +584,8 @@ export const language = pgTable(
     name: varchar("name", { length: 64 }).notNull(),
     isDefault: boolean("isDefault").notNull().default(false),
     isActive: boolean("isActive").notNull().default(true),
+    systemPrompt: text("systemPrompt"),
+    syncUiLanguage: boolean("syncUiLanguage").notNull().default(false),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },

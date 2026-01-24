@@ -63,7 +63,9 @@ function PureMultimodalInput({
   className,
   selectedVisibilityType: _selectedVisibilityType,
   selectedModelId,
+  selectedLanguageCode,
   onModelChange,
+  onLanguageChange,
   imageGenerationEnabled,
   imageGenerationSelected,
   imageGenerationCanGenerate,
@@ -86,7 +88,9 @@ function PureMultimodalInput({
   className?: string;
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
+  selectedLanguageCode: string;
   onModelChange?: (modelId: string) => void;
+  onLanguageChange?: (languageCode: string) => void;
   imageGenerationEnabled: boolean;
   imageGenerationSelected: boolean;
   imageGenerationCanGenerate: boolean;
@@ -396,6 +400,10 @@ function PureMultimodalInput({
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
             />
+            <LanguageSelectorCompact
+              onLanguageChange={onLanguageChange}
+              selectedLanguageCode={selectedLanguageCode}
+            />
           </PromptInputTools>
 
           {status === "streaming" ? (
@@ -459,6 +467,9 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.selectedModelId !== nextProps.selectedModelId) {
+      return false;
+    }
+    if (prevProps.selectedLanguageCode !== nextProps.selectedLanguageCode) {
       return false;
     }
 
@@ -547,6 +558,119 @@ function PureModelSelectorCompact({
 }
 
 const ModelSelectorCompact = memo(PureModelSelectorCompact);
+
+function PureLanguageSelectorCompact({
+  selectedLanguageCode,
+  onLanguageChange,
+}: {
+  selectedLanguageCode: string;
+  onLanguageChange?: (languageCode: string) => void;
+}) {
+  const {
+    languages,
+    activeLanguage,
+    translate,
+    isUpdating: isLanguageUpdating,
+  } = useTranslation();
+  const [optimisticLanguageCode, setOptimisticLanguageCode] = useState(
+    selectedLanguageCode
+  );
+
+  useEffect(() => {
+    setOptimisticLanguageCode(selectedLanguageCode);
+  }, [selectedLanguageCode]);
+
+  const effectiveLanguageCode = useMemo(() => {
+    if (languages.some((language) => language.code === optimisticLanguageCode)) {
+      return optimisticLanguageCode;
+    }
+    if (activeLanguage?.code) {
+      return activeLanguage.code;
+    }
+    return languages[0]?.code ?? optimisticLanguageCode;
+  }, [activeLanguage?.code, languages, optimisticLanguageCode]);
+
+  const selectedLanguage = useMemo(
+    () => languages.find((language) => language.code === effectiveLanguageCode),
+    [effectiveLanguageCode, languages]
+  );
+
+  const activeLabel = translate("user_menu.language.active", "Active");
+  const updatingLabel = translate("user_menu.language.updating", "Updating...");
+  const triggerLabel = translate("user_menu.language", "Language");
+
+  if (languages.length === 0) {
+    return null;
+  }
+
+  return (
+    <PromptInputModelSelect
+      onValueChange={(languageCode) => {
+        const language = languages.find(
+          (item) => item.code === languageCode
+        );
+        if (language) {
+          setOptimisticLanguageCode(language.code);
+          onLanguageChange?.(language.code);
+        }
+      }}
+      value={effectiveLanguageCode}
+    >
+      <Trigger
+        aria-label={triggerLabel}
+        className="flex h-8 cursor-pointer items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        data-testid="language-selector"
+        type="button"
+      >
+        <span className="font-medium text-xs">
+          {selectedLanguage?.name ?? triggerLabel}
+        </span>
+        <ChevronDownIcon size={16} />
+      </Trigger>
+      <PromptInputModelSelectContent className="min-w-[220px] p-0">
+        <div className="flex flex-col gap-px">
+          {languages.map((language) => {
+            const isSelected = language.code === effectiveLanguageCode;
+            const shouldPromptUiSync =
+              Boolean(language.syncUiLanguage) &&
+              activeLanguage.code !== language.code;
+
+            return (
+              <SelectItem
+                disabled={
+                  isLanguageUpdating && language.code !== effectiveLanguageCode
+                }
+                key={language.code}
+                onPointerDown={() => {
+                  if (!isSelected || !shouldPromptUiSync) {
+                    return;
+                  }
+                  onLanguageChange?.(language.code);
+                }}
+                value={language.code}
+              >
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="truncate font-medium text-xs">
+                    {language.name}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {language.code === effectiveLanguageCode
+                      ? isLanguageUpdating
+                        ? updatingLabel
+                        : activeLabel
+                      : null}
+                  </span>
+                </div>
+              </SelectItem>
+            );
+          })}
+        </div>
+      </PromptInputModelSelectContent>
+    </PromptInputModelSelect>
+  );
+}
+
+const LanguageSelectorCompact = memo(PureLanguageSelectorCompact);
 
 function ImageModeToggle({
   enabled,

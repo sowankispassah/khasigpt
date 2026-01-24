@@ -52,6 +52,7 @@ const FALLBACK_LANGUAGE: LanguageOption = {
   name: "English",
   isDefault: true,
   isActive: true,
+  syncUiLanguage: true,
 };
 
 const FALLBACK_LANGUAGES: LanguageOption[] = [
@@ -62,6 +63,7 @@ const FALLBACK_LANGUAGES: LanguageOption[] = [
     name: "Khasi",
     isDefault: false,
     isActive: true,
+    syncUiLanguage: true,
   },
 ];
 
@@ -303,6 +305,7 @@ const buildFallbackBundle = (
           name: normalizedCode.toUpperCase(),
           isDefault: false,
           isActive: true,
+          syncUiLanguage: false,
         }
       : FALLBACK_LANGUAGE);
   const languageFallback =

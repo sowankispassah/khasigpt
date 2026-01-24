@@ -34,6 +34,7 @@ import {
   deleteCharacterById,
   deleteChatById,
   deleteImageModelConfig,
+  deleteLanguageById,
   deleteModelConfig,
   deletePricingPlan,
   deleteTranslationValueEntry,
@@ -60,6 +61,7 @@ import {
   updateCharacterWithAliases,
   updateImageModelConfig,
   updateLanguageActiveState,
+  updateLanguageDetails,
   updateModelConfig,
   updatePricingPlan,
   updateUserActiveState,
@@ -1510,6 +1512,8 @@ export async function createLanguageAction(formData: FormData) {
   const code = formData.get("code")?.toString().trim() ?? "";
   const name = formData.get("name")?.toString().trim() ?? "";
   const isActive = parseBoolean(formData.get("isActive") ?? "on");
+  const syncUiLanguage = parseBoolean(formData.get("syncUiLanguage"));
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
 
   const normalizedCode = code.toLowerCase();
 
@@ -1527,6 +1531,8 @@ export async function createLanguageAction(formData: FormData) {
       name,
       isDefault: false,
       isActive,
+      syncUiLanguage,
+      systemPrompt,
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes("already exists")) {
@@ -1540,7 +1546,12 @@ export async function createLanguageAction(formData: FormData) {
     actorId: actor.id,
     action: "translation.language.create",
     target: { languageCode: normalizedCode },
-    metadata: { name, isActive },
+    metadata: {
+      name,
+      isActive,
+      syncUiLanguage,
+      systemPrompt: systemPrompt.trim() || null,
+    },
   });
 
   await invalidateTranslationBundleCache([normalizedCode]);
@@ -1603,6 +1614,95 @@ export async function updateLanguageStatusAction(formData: FormData) {
   revalidatePath("/admin/translations");
 
   redirect("/admin/settings?notice=language-updated");
+}
+
+export async function updateLanguageSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
+  const syncUiLanguage = parseBoolean(formData.get("syncUiLanguage"));
+
+  if (!languageId || !name) {
+    redirect("/admin/settings?notice=language-settings-error");
+  }
+
+  if (name.length > 64) {
+    redirect("/admin/settings?notice=language-settings-error");
+  }
+
+  const targetLanguage = await getLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=language-settings-error");
+  }
+
+  const normalizedPrompt =
+    systemPrompt.trim().length > 0 ? systemPrompt.trim() : null;
+
+  await updateLanguageDetails({
+    id: targetLanguage.id,
+    name,
+    systemPrompt: normalizedPrompt,
+    syncUiLanguage,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "translation.language.update",
+    target: { languageCode: targetLanguage.code },
+    metadata: {
+      name,
+      syncUiLanguage,
+      systemPrompt: normalizedPrompt,
+    },
+  });
+
+  await invalidateTranslationBundleCache([targetLanguage.code]);
+
+  revalidateTag("languages");
+  revalidatePath("/", "layout");
+  revalidatePath("/admin/settings");
+
+  redirect("/admin/settings?notice=language-settings-updated");
+}
+
+export async function deleteLanguageAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  if (!languageId) {
+    redirect("/admin/settings?notice=language-delete-error");
+  }
+
+  const targetLanguage = await getLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=language-delete-error");
+  }
+
+  if (targetLanguage.isDefault) {
+    redirect("/admin/settings?notice=language-default-delete");
+  }
+
+  await deleteLanguageById({ id: targetLanguage.id });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "translation.language.delete",
+    target: { languageCode: targetLanguage.code },
+    metadata: { name: targetLanguage.name },
+  });
+
+  await invalidateTranslationBundleCache([targetLanguage.code]);
+
+  revalidateTag("languages");
+  revalidatePath("/", "layout");
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/translations");
+
+  redirect("/admin/settings?notice=language-deleted");
 }
 
 export async function updatePlanTranslationAction(formData: FormData) {

@@ -122,6 +122,11 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         "");
   const fallbackModelId =
     resolvedCookieModelId || defaultModel?.id || models[0]?.id || "";
+  const chatLanguageFromCookie = cookieStore.get("chat-language");
+  const initialChatLanguage =
+    typeof chatLanguageFromCookie?.value === "string"
+      ? chatLanguageFromCookie.value
+      : preferredLanguage ?? "";
 
   const deletedBanner = chat.deletedAt && isAdmin;
 
@@ -149,6 +154,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
                 imageGenerationAccess.requiresPaidCredits ?? false,
             }}
             documentUploadsEnabled={documentUploadsEnabled}
+            initialChatLanguage={initialChatLanguage}
             initialChatModel={fallbackModelId}
             initialMessages={uiMessages}
             initialHasMoreHistory={hasMoreMessages}
@@ -186,6 +192,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
           }}
           documentUploadsEnabled={documentUploadsEnabled}
+          initialChatLanguage={initialChatLanguage}
           initialChatModel={fallbackModelId}
           initialMessages={uiMessages}
           initialHasMoreHistory={hasMoreMessages}

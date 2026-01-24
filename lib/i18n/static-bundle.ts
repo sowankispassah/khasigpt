@@ -8,6 +8,7 @@ export const STATIC_LANGUAGES: LanguageOption[] = [
     name: "English",
     isDefault: true,
     isActive: true,
+    syncUiLanguage: true,
   },
   {
     id: "static-kha",
@@ -15,6 +16,7 @@ export const STATIC_LANGUAGES: LanguageOption[] = [
     name: "Khasi",
     isDefault: false,
     isActive: true,
+    syncUiLanguage: true,
   },
 ];
 

@@ -29,6 +29,7 @@ const TranslationContext = createContext<TranslationContextValue>({
     name: "English",
     isDefault: true,
     isActive: true,
+    syncUiLanguage: false,
   },
   dictionary: {},
   translate: (_key, defaultText) => defaultText,

@@ -112,13 +112,33 @@ const NOTICE_MESSAGES: Record<
       "Language code must be 2-16 characters using lowercase letters, numbers, or hyphens.",
   },
   "language-updated": { type: "success", message: "Language status updated." },
+  "language-settings-updated": {
+    type: "success",
+    message: "Language settings updated.",
+  },
   "language-update-error": {
     type: "error",
     message: "Failed to update language status. Please try again.",
   },
+  "language-settings-error": {
+    type: "error",
+    message: "Failed to update language settings. Please try again.",
+  },
   "language-default-inactive": {
     type: "error",
     message: "The default language cannot be deactivated.",
+  },
+  "language-deleted": {
+    type: "success",
+    message: "Language removed.",
+  },
+  "language-delete-error": {
+    type: "error",
+    message: "Failed to remove language. Please try again.",
+  },
+  "language-default-delete": {
+    type: "error",
+    message: "The default language cannot be removed.",
   },
   "plan-translation-updated": {
     type: "success",

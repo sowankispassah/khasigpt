@@ -25,6 +25,15 @@ export async function saveChatModelAsCookie(model: string) {
   });
 }
 
+export async function saveChatLanguageAsCookie(languageCode: string) {
+  const cookieStore = await cookies();
+  cookieStore.set("chat-language", languageCode, {
+    path: "/",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
 export async function generateTitleFromUserMessage({
   message,
   modelConfig,
