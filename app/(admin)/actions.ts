@@ -1554,7 +1554,7 @@ export async function createLanguageAction(formData: FormData) {
     },
   });
 
-  await invalidateTranslationBundleCache([normalizedCode]);
+  await invalidateTranslationBundleCache();
 
   revalidateTag("languages");
   revalidatePath("/", "layout");
@@ -1659,7 +1659,7 @@ export async function updateLanguageSettingsAction(formData: FormData) {
     },
   });
 
-  await invalidateTranslationBundleCache([targetLanguage.code]);
+  await invalidateTranslationBundleCache();
 
   revalidateTag("languages");
   revalidatePath("/", "layout");
@@ -1695,7 +1695,7 @@ export async function deleteLanguageAction(formData: FormData) {
     metadata: { name: targetLanguage.name },
   });
 
-  await invalidateTranslationBundleCache([targetLanguage.code]);
+  await invalidateTranslationBundleCache();
 
   revalidateTag("languages");
   revalidatePath("/", "layout");
