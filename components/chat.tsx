@@ -90,6 +90,7 @@ export function Chat({
     languages,
     activeLanguage,
     setLanguage,
+    isUpdating: isUiLanguageUpdating,
   } = useTranslation();
 
   const { mutate } = useSWRConfig();
@@ -109,6 +110,9 @@ export function Chat({
     code: string;
     name: string;
   } | null>(null);
+  const [uiLanguageTarget, setUiLanguageTarget] = useState<string | null>(
+    null
+  );
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showActionProgress, setShowActionProgress] = useState(false);
@@ -297,6 +301,33 @@ export function Chat({
       clearProgressTimers();
     };
   }, [clearProgressTimers]);
+
+  useEffect(() => {
+    if (!uiLanguageTarget) {
+      return;
+    }
+    if (activeLanguage.code !== uiLanguageTarget) {
+      return;
+    }
+    if (isUiLanguageUpdating) {
+      return;
+    }
+
+    setActionProgress(100);
+    const timer = setTimeout(() => {
+      clearProgressTimers();
+      setShowActionProgress(false);
+      setActionProgress(0);
+      setUiLanguageTarget(null);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [
+    activeLanguage.code,
+    clearProgressTimers,
+    isUiLanguageUpdating,
+    uiLanguageTarget,
+  ]);
 
   const {
     messages,
@@ -957,23 +988,24 @@ export function Chat({
         }}
         open={Boolean(pendingUiLanguage)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[90vw] max-w-sm gap-3 p-4">
           <AlertDialogHeader>
-            <AlertDialogTitle>
+            <AlertDialogTitle className="text-base font-semibold">
               {translate(
                 "chat.language.ui_prompt.title",
                 "Change interface language?"
               )}
             </AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="text-xs text-muted-foreground">
               {translate(
                 "chat.language.ui_prompt.description",
                 "Do you also want the interface language to change to {language}?"
               ).replace("{language}", pendingUiLanguage?.name ?? "")}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="gap-2 sm:gap-2 sm:space-x-2">
             <AlertDialogCancel
+              className="h-8 px-3 text-xs"
               onClick={() => {
                 setPendingUiLanguage(null);
               }}
@@ -984,12 +1016,14 @@ export function Chat({
               )}
             </AlertDialogCancel>
             <AlertDialogAction
+              className="h-8 px-3 text-xs"
               onClick={() => {
                 if (!pendingUiLanguage) {
                   return;
                 }
                 const targetCode = pendingUiLanguage.code;
                 setPendingUiLanguage(null);
+                setUiLanguageTarget(targetCode);
                 setLanguage(targetCode);
               }}
             >
@@ -1001,6 +1035,23 @@ export function Chat({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {uiLanguageTarget ? (
+        <div
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
+          role="status"
+        >
+          <div className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm font-medium">
+              {translate(
+                "chat.language.ui_prompt.loading",
+                "Switching interface language..."
+              )}
+            </p>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
