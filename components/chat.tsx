@@ -784,6 +784,8 @@ export function Chat({
         <ChatHeader
           chatId={id}
           isReadonly={isReadonly}
+          onModelChange={handleModelChange}
+          selectedModelId={currentModelId}
           selectedVisibilityType={initialVisibilityType}
         />
 
