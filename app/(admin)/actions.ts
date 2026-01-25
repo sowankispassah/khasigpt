@@ -1599,7 +1599,7 @@ export async function updateLanguageStatusAction(formData: FormData) {
     isActive: shouldActivate,
   });
 
-  await invalidateTranslationBundleCache([targetLanguage.code]);
+  await invalidateTranslationBundleCache();
 
   await createAuditLogEntry({
     actorId: actor.id,

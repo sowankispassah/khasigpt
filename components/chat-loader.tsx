@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import type { IconPromptAction } from "@/lib/icon-prompts";
+import type { LanguageOption } from "@/lib/i18n/languages";
 import type { ChatMessage } from "@/lib/types";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import type { VisibilityType } from "./visibility-selector";
@@ -29,6 +30,7 @@ type ChatLoaderProps = {
   initialChatModel: string;
   initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
+  languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];

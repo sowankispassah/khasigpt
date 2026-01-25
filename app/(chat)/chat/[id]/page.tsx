@@ -19,6 +19,7 @@ import {
   getMessagesByChatIdPage,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { getSiteUrl } from "@/lib/seo/site";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -43,6 +44,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     suggestedPrompts,
     iconPromptActions,
     translationBundle,
+    languageSettings,
     customKnowledgeSetting,
     documentUploadsSetting,
     imageGenerationAccess,
@@ -51,6 +53,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     loadSuggestedPrompts(preferredLanguage),
     loadIconPromptActions(preferredLanguage),
     getTranslationBundle(preferredLanguage),
+    getActiveLanguages(),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
@@ -161,6 +164,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             initialOldestMessageAt={oldestMessageAt}
             initialVisibilityType={chat.visibility}
             isReadonly={session?.user?.id !== chat.userId}
+            languageSettings={languageSettings}
             suggestedPrompts={suggestedPrompts}
             iconPromptActions={iconPromptActions}
           />
@@ -199,6 +203,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           initialOldestMessageAt={oldestMessageAt}
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
+          languageSettings={languageSettings}
           suggestedPrompts={suggestedPrompts}
           iconPromptActions={iconPromptActions}
         />

@@ -13,6 +13,7 @@ import {
 } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
+import type { LanguageOption } from "@/lib/i18n/languages";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +52,7 @@ export function Chat({
   initialChatModel,
   initialChatLanguage,
   initialVisibilityType,
+  languageSettings,
   isReadonly,
   autoResume,
   suggestedPrompts,
@@ -66,6 +68,7 @@ export function Chat({
   initialChatModel: string;
   initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
+  languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
@@ -165,9 +168,13 @@ export function Chat({
       if (!normalized) {
         return;
       }
-      const selectedLanguage = languages.find(
-        (language) => language.code === normalized
-      );
+      const languageOptions =
+        languageSettings && languageSettings.length > 0
+          ? languageSettings
+          : languages;
+      const selectedLanguage =
+        languageOptions.find((language) => language.code === normalized) ??
+        languages.find((language) => language.code === normalized);
       const shouldPromptUiChange =
         Boolean(selectedLanguage?.syncUiLanguage) &&
         activeLanguage.code !== normalized;
@@ -199,7 +206,7 @@ export function Chat({
         setPendingUiLanguage(null);
       }
     },
-    [activeLanguage.code, languages]
+    [activeLanguage.code, languageSettings, languages]
   );
 
   useEffect(() => {

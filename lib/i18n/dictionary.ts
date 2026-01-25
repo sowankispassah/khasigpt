@@ -352,6 +352,21 @@ async function readPersistedBundle(
     return null;
   }
 
+  const hasSyncUiLanguageFlag = (value: unknown) => {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    return typeof (value as { syncUiLanguage?: unknown }).syncUiLanguage === "boolean";
+  };
+
+  if (
+    !hasSyncUiLanguageFlag(stored.activeLanguage) ||
+    !Array.isArray(stored.languages) ||
+    stored.languages.some((language) => !hasSyncUiLanguageFlag(language))
+  ) {
+    return null;
+  }
+
   return stored;
 }
 

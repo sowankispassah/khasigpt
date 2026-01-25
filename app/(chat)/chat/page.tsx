@@ -12,6 +12,7 @@ import {
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
@@ -30,6 +31,7 @@ export default async function Page() {
     modelsResult,
     suggestedPrompts,
     iconPromptActions,
+    languageSettings,
     customKnowledgeSetting,
     documentUploadsSetting,
     imageGenerationAccess,
@@ -37,6 +39,7 @@ export default async function Page() {
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
     loadIconPromptActions(preferredLanguage),
+    getActiveLanguages(),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
@@ -108,6 +111,7 @@ export default async function Page() {
             initialVisibilityType="private"
             isReadonly={false}
             key={id}
+            languageSettings={languageSettings}
             suggestedPrompts={suggestedPrompts}
             iconPromptActions={iconPromptActions}
           />
@@ -146,6 +150,7 @@ export default async function Page() {
           initialVisibilityType="private"
           isReadonly={false}
           key={id}
+          languageSettings={languageSettings}
           suggestedPrompts={suggestedPrompts}
           iconPromptActions={iconPromptActions}
         />
