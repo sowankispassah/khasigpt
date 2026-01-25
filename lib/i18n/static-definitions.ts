@@ -595,6 +595,32 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Placeholder text for the main chat input.",
   },
   {
+    key: "chat.language.ui_prompt.title",
+    defaultText: "Change interface language?",
+    description: "Title for the UI language change confirmation dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.description",
+    defaultText:
+      "Do you also want the interface language to change to {language}?",
+    description: "Body text for the UI language change confirmation dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.cancel",
+    defaultText: "No, keep interface",
+    description: "Cancel button label for the UI language change dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.confirm",
+    defaultText: "Yes, change interface",
+    description: "Confirm button label for the UI language change dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.loading",
+    defaultText: "Switching interface language...",
+    description: "Loading text shown while the UI language is changing.",
+  },
+  {
     key: "image.mode.toggle",
     defaultText: "Generate image",
     description: "Label for the image generation mode toggle.",
