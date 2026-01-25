@@ -35,6 +35,7 @@ import {
 import {
   ArrowUpIcon,
   ChevronDownIcon,
+  GlobeIcon,
   ImageIcon,
   PaperclipIcon,
   StopIcon,
@@ -563,6 +564,7 @@ function PureLanguageSelectorCompact({
         data-testid="language-selector"
         type="button"
       >
+        <GlobeIcon size={14} />
         <span className="font-medium text-xs">
           {selectedLanguage?.name ?? triggerLabel}
         </span>
