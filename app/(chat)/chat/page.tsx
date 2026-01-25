@@ -11,8 +11,7 @@ import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
-import { getActiveLanguages } from "@/lib/i18n/languages";
+import { getAppSetting, listLanguagesWithSettings } from "@/lib/db/queries";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
@@ -39,7 +38,7 @@ export default async function Page() {
     loadChatModels(),
     loadSuggestedPrompts(preferredLanguage),
     loadIconPromptActions(preferredLanguage),
-    getActiveLanguages(),
+    listLanguagesWithSettings(),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
@@ -79,6 +78,16 @@ export default async function Page() {
   const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
     documentUploadsSetting
   );
+  const activeLanguageSettings = languageSettings
+    .filter((language) => language.isActive)
+    .map((language) => ({
+      id: language.id,
+      code: language.code,
+      name: language.name,
+      isDefault: language.isDefault,
+      isActive: language.isActive,
+      syncUiLanguage: language.syncUiLanguage,
+    }));
 
   if (!modelIdFromCookie) {
     return (
@@ -111,7 +120,7 @@ export default async function Page() {
             initialVisibilityType="private"
             isReadonly={false}
             key={id}
-            languageSettings={languageSettings}
+            languageSettings={activeLanguageSettings}
             suggestedPrompts={suggestedPrompts}
             iconPromptActions={iconPromptActions}
           />
@@ -150,7 +159,7 @@ export default async function Page() {
           initialVisibilityType="private"
           isReadonly={false}
           key={id}
-          languageSettings={languageSettings}
+          languageSettings={activeLanguageSettings}
           suggestedPrompts={suggestedPrompts}
           iconPromptActions={iconPromptActions}
         />

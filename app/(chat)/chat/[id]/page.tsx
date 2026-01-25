@@ -17,9 +17,9 @@ import {
   getAppSetting,
   getChatById,
   getMessagesByChatIdPage,
+  listLanguagesWithSettings,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
-import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { getSiteUrl } from "@/lib/seo/site";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -53,7 +53,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     loadSuggestedPrompts(preferredLanguage),
     loadIconPromptActions(preferredLanguage),
     getTranslationBundle(preferredLanguage),
-    getActiveLanguages(),
+    listLanguagesWithSettings(),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
@@ -71,6 +71,16 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
     documentUploadsSetting
   );
+  const activeLanguageSettings = languageSettings
+    .filter((language) => language.isActive)
+    .map((language) => ({
+      id: language.id,
+      code: language.code,
+      name: language.name,
+      isDefault: language.isDefault,
+      isActive: language.isActive,
+      syncUiLanguage: language.syncUiLanguage,
+    }));
 
   if (!session) {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
@@ -164,7 +174,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             initialOldestMessageAt={oldestMessageAt}
             initialVisibilityType={chat.visibility}
             isReadonly={session?.user?.id !== chat.userId}
-            languageSettings={languageSettings}
+            languageSettings={activeLanguageSettings}
             suggestedPrompts={suggestedPrompts}
             iconPromptActions={iconPromptActions}
           />
@@ -203,7 +213,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           initialOldestMessageAt={oldestMessageAt}
           initialVisibilityType={chat.visibility}
           isReadonly={session?.user?.id !== chat.userId}
-          languageSettings={languageSettings}
+          languageSettings={activeLanguageSettings}
           suggestedPrompts={suggestedPrompts}
           iconPromptActions={iconPromptActions}
         />
