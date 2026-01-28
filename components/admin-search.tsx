@@ -49,6 +49,14 @@ const ADMIN_SEARCH_ENTRIES: AdminSearchEntry[] = [
     keywords: ["members", "roles", "accounts"],
   },
   {
+    id: "live-users",
+    title: "Live users",
+    description: "Monitor active sessions with location and device context.",
+    href: "/admin/live-users",
+    category: "People",
+    keywords: ["presence", "active", "online", "sessions"],
+  },
+  {
     id: "chats",
     title: "Chats",
     description: "Inspect chat activity across the system.",

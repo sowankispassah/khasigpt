@@ -91,6 +91,7 @@ import {
   type User,
   type UserSubscription,
   user,
+  userPresence,
   userProfileImage,
   userSubscription,
   vote,
@@ -1409,6 +1410,362 @@ export async function updateUserLocation({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update user location"
+    );
+  }
+}
+
+const PRESENCE_PATH_MAX_LENGTH = 160;
+const PRESENCE_VALUE_MAX_LENGTH = 128;
+
+function normalizePresenceValue(
+  value: string | null | undefined,
+  maxLength = PRESENCE_VALUE_MAX_LENGTH
+) {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+  const cleaned = value.replace(/[\r\n]/g, " ").trim();
+  if (!cleaned) {
+    return null;
+  }
+  return cleaned.slice(0, maxLength);
+}
+
+export type PresenceSummary = {
+  activeNow: number;
+  active15m: number;
+  active60m: number;
+};
+
+export type PresenceBreakdownRow = {
+  label: string;
+  count: number;
+};
+
+export type PresenceDetails = {
+  windowMinutes: number;
+  byCountry: PresenceBreakdownRow[];
+  byRegion: PresenceBreakdownRow[];
+  byCity: PresenceBreakdownRow[];
+  byDevice: PresenceBreakdownRow[];
+  byRole: PresenceBreakdownRow[];
+  topPaths: PresenceBreakdownRow[];
+};
+
+export async function upsertUserPresence({
+  userId,
+  lastPath,
+  device,
+  locale,
+  timezone,
+  city,
+  region,
+  country,
+}: {
+  userId: string;
+  lastPath?: string | null;
+  device?: string | null;
+  locale?: string | null;
+  timezone?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+}) {
+  const now = new Date();
+  const normalizedPath = normalizePresenceValue(
+    lastPath,
+    PRESENCE_PATH_MAX_LENGTH
+  );
+  const normalizedDevice = normalizePresenceValue(device, 32);
+  const normalizedLocale = normalizePresenceValue(locale, 32);
+  const normalizedTimezone = normalizePresenceValue(timezone, 64);
+  const normalizedCity = normalizePresenceValue(city, 128);
+  const normalizedRegion = normalizePresenceValue(region, 128);
+  const normalizedCountry = normalizePresenceValue(country, 32);
+
+  try {
+    await db
+      .insert(userPresence)
+      .values({
+        userId,
+        lastSeenAt: now,
+        lastPath: normalizedPath,
+        device: normalizedDevice,
+        locale: normalizedLocale,
+        timezone: normalizedTimezone,
+        city: normalizedCity,
+        region: normalizedRegion,
+        country: normalizedCountry,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: userPresence.userId,
+        set: {
+          lastSeenAt: now,
+          lastPath: normalizedPath,
+          device: normalizedDevice,
+          locale: normalizedLocale,
+          timezone: normalizedTimezone,
+          city: normalizedCity,
+          region: normalizedRegion,
+          country: normalizedCountry,
+          updatedAt: now,
+        },
+      });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update user presence"
+    );
+  }
+}
+
+export async function getPresenceSummary(): Promise<PresenceSummary> {
+  const now = Date.now();
+  const activeNowSince = new Date(now - 5 * 60 * 1000);
+  const active15mSince = new Date(now - 15 * 60 * 1000);
+  const active60mSince = new Date(now - 60 * 60 * 1000);
+
+  try {
+    const [nowRow, min15Row, min60Row] = await Promise.all([
+      db
+        .select({ total: count() })
+        .from(userPresence)
+        .where(gte(userPresence.lastSeenAt, activeNowSince)),
+      db
+        .select({ total: count() })
+        .from(userPresence)
+        .where(gte(userPresence.lastSeenAt, active15mSince)),
+      db
+        .select({ total: count() })
+        .from(userPresence)
+        .where(gte(userPresence.lastSeenAt, active60mSince)),
+    ]);
+
+    return {
+      activeNow: Number(nowRow?.[0]?.total ?? 0),
+      active15m: Number(min15Row?.[0]?.total ?? 0),
+      active60m: Number(min60Row?.[0]?.total ?? 0),
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        activeNow: 0,
+        active15m: 0,
+        active60m: 0,
+      };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load presence summary"
+    );
+  }
+}
+
+export async function getPresenceDetails({
+  windowMinutes,
+  limit = 6,
+}: {
+  windowMinutes: number;
+  limit?: number;
+}): Promise<PresenceDetails> {
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+  const countExpr = sql<number>`COUNT(*)`;
+
+  const normalizeRows = (
+    rows: { label: string | null; count: number | null }[]
+  ) =>
+    rows.map((row) => ({
+      label: row.label?.trim() || "Unknown",
+      count: Number(row.count ?? 0),
+    }));
+
+  try {
+    const [byCountry, byRegion, byCity, byDevice, byRole, topPaths] =
+      await Promise.all([
+        db
+          .select({
+            label: userPresence.country,
+            count: countExpr.as("count"),
+          })
+          .from(userPresence)
+          .where(gte(userPresence.lastSeenAt, since))
+          .groupBy(userPresence.country)
+          .orderBy(desc(countExpr))
+          .limit(limit),
+        db
+          .select({
+            label: userPresence.region,
+            count: countExpr.as("count"),
+          })
+          .from(userPresence)
+          .where(gte(userPresence.lastSeenAt, since))
+          .groupBy(userPresence.region)
+          .orderBy(desc(countExpr))
+          .limit(limit),
+        db
+          .select({
+            label: userPresence.city,
+            count: countExpr.as("count"),
+          })
+          .from(userPresence)
+          .where(gte(userPresence.lastSeenAt, since))
+          .groupBy(userPresence.city)
+          .orderBy(desc(countExpr))
+          .limit(limit),
+        db
+          .select({
+            label: userPresence.device,
+            count: countExpr.as("count"),
+          })
+          .from(userPresence)
+          .where(gte(userPresence.lastSeenAt, since))
+          .groupBy(userPresence.device)
+          .orderBy(desc(countExpr))
+          .limit(limit),
+        db
+          .select({
+            label: user.role,
+            count: countExpr.as("count"),
+          })
+          .from(userPresence)
+          .leftJoin(user, eq(userPresence.userId, user.id))
+          .where(gte(userPresence.lastSeenAt, since))
+          .groupBy(user.role)
+          .orderBy(desc(countExpr))
+          .limit(limit),
+        db
+          .select({
+            label: userPresence.lastPath,
+            count: countExpr.as("count"),
+          })
+          .from(userPresence)
+          .where(
+            and(
+              gte(userPresence.lastSeenAt, since),
+              isNotNull(userPresence.lastPath),
+              ne(userPresence.lastPath, "")
+            )
+          )
+          .groupBy(userPresence.lastPath)
+          .orderBy(desc(countExpr))
+          .limit(limit),
+      ]);
+
+    return {
+      windowMinutes,
+      byCountry: normalizeRows(byCountry),
+      byRegion: normalizeRows(byRegion),
+      byCity: normalizeRows(byCity),
+      byDevice: normalizeRows(byDevice),
+      byRole: normalizeRows(byRole),
+      topPaths: normalizeRows(topPaths),
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        windowMinutes,
+        byCountry: [],
+        byRegion: [],
+        byCity: [],
+        byDevice: [],
+        byRole: [],
+        topPaths: [],
+      };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load presence breakdowns"
+    );
+  }
+}
+
+export type LiveUserRow = {
+  userId: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  role: string | null;
+  lastSeenAt: Date;
+  lastPath: string | null;
+  device: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+};
+
+export type LiveUsersResult = {
+  windowMinutes: number;
+  total: number;
+  limit: number;
+  offset: number;
+  users: LiveUserRow[];
+};
+
+export async function listLiveUsers({
+  windowMinutes,
+  limit = 100,
+  offset = 0,
+}: {
+  windowMinutes: number;
+  limit?: number;
+  offset?: number;
+}): Promise<LiveUsersResult> {
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+  const resolvedLimit = Math.min(Math.max(limit, 1), 200);
+  const resolvedOffset = Math.max(offset, 0);
+
+  try {
+    const [countRow] = await db
+      .select({ total: count() })
+      .from(userPresence)
+      .where(gte(userPresence.lastSeenAt, since));
+
+    const rows = await db
+      .select({
+        userId: userPresence.userId,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        lastSeenAt: userPresence.lastSeenAt,
+        lastPath: userPresence.lastPath,
+        device: userPresence.device,
+        city: userPresence.city,
+        region: userPresence.region,
+        country: userPresence.country,
+      })
+      .from(userPresence)
+      .leftJoin(user, eq(userPresence.userId, user.id))
+      .where(gte(userPresence.lastSeenAt, since))
+      .orderBy(desc(userPresence.lastSeenAt))
+      .limit(resolvedLimit)
+      .offset(resolvedOffset);
+
+    return {
+      windowMinutes,
+      total: Number(countRow?.total ?? 0),
+      limit: resolvedLimit,
+      offset: resolvedOffset,
+      users: rows,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        windowMinutes,
+        total: 0,
+        limit: resolvedLimit,
+        offset: resolvedOffset,
+        users: [],
+      };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load live users"
     );
   }
 }

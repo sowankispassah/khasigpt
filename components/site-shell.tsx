@@ -3,6 +3,7 @@ import { HtmlLangSync } from "@/components/html-lang-sync";
 import { LanguageProvider } from "@/components/language-provider";
 import { PageUserMenu } from "@/components/page-user-menu";
 import { SessionShell } from "@/components/session-shell";
+import { UserPresenceTracker } from "@/components/user-presence-tracker";
 import type { LanguageOption } from "@/lib/i18n/languages";
 
 type SiteShellProps = {
@@ -31,6 +32,7 @@ export function SiteShell({
       >
         <HtmlLangSync />
         <PageUserMenu forumEnabled={forumEnabled} />
+        <UserPresenceTracker />
         {children}
       </LanguageProvider>
     </SessionShell>

@@ -1,6 +1,8 @@
 ﻿import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
+import { AdminDataPanel } from "@/components/admin-data-panel";
+import { AdminLiveActivityPanel } from "@/components/admin-live-activity-panel";
 import {
   getChatCount,
   getContactMessageCount,
@@ -105,8 +107,10 @@ export default async function AdminOverviewPage() {
         />
       </section>
 
+      <AdminLiveActivityPanel />
+
       <section className="grid items-stretch gap-8 xl:grid-cols-2">
-        <DataPanel title="Newest users">
+        <AdminDataPanel title="Newest users">
           <div className="hidden md:block">
             <table className="w-full min-w-[640px] table-fixed text-sm">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
@@ -197,9 +201,9 @@ export default async function AdminOverviewPage() {
               </div>
             ))}
           </div>
-        </DataPanel>
+        </AdminDataPanel>
 
-        <DataPanel title="Latest contact requests">
+        <AdminDataPanel title="Latest contact requests">
           <div className="hidden md:block">
             <table className="w-full min-w-[680px] table-fixed text-sm">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
@@ -297,10 +301,10 @@ export default async function AdminOverviewPage() {
               ))
             )}
           </div>
-        </DataPanel>
+        </AdminDataPanel>
       </section>
 
-      <DataPanel title="Latest chats">
+      <AdminDataPanel title="Latest chats">
         <div className="hidden md:block">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
@@ -378,9 +382,9 @@ export default async function AdminOverviewPage() {
             </Link>
           ))}
         </div>
-      </DataPanel>
+      </AdminDataPanel>
 
-      <DataPanel title="Recent audit activity">
+      <AdminDataPanel title="Recent audit activity">
         <div className="hidden md:block">
           <table className="w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
@@ -435,7 +439,7 @@ export default async function AdminOverviewPage() {
             </div>
           ))}
         </div>
-      </DataPanel>
+      </AdminDataPanel>
     </div>
   );
 }
@@ -457,28 +461,5 @@ function MetricCard({
         <p className="text-muted-foreground text-xs">{description}</p>
       ) : null}
     </div>
-  );
-}
-
-function DataPanel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="flex h-full flex-col rounded-xl border bg-card/80 p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
-          {title}
-        </h2>
-      </div>
-      <div className="relative mt-4 grow">
-        <div className="h-full overflow-x-auto rounded-lg border border-border/60 bg-background/60 px-1 py-1 md:px-0 md:py-0">
-          <div className="h-full">{children}</div>
-        </div>
-      </div>
-    </section>
   );
 }

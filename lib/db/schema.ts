@@ -69,6 +69,34 @@ export const user = pgTable(
 
 export type User = InferSelectModel<typeof user>;
 
+export const userPresence = pgTable(
+  "UserPresence",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" })
+      .primaryKey(),
+    lastSeenAt: timestamp("lastSeenAt").notNull().defaultNow(),
+    lastPath: varchar("lastPath", { length: 200 }),
+    device: varchar("device", { length: 32 }),
+    locale: varchar("locale", { length: 32 }),
+    timezone: varchar("timezone", { length: 64 }),
+    city: varchar("city", { length: 128 }),
+    region: varchar("region", { length: 128 }),
+    country: varchar("country", { length: 32 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    lastSeenIdx: index("UserPresence_lastSeenAt_idx").on(table.lastSeenAt),
+    countryIdx: index("UserPresence_country_idx").on(table.country),
+    regionIdx: index("UserPresence_region_idx").on(table.region),
+    cityIdx: index("UserPresence_city_idx").on(table.city),
+  })
+);
+
+export type UserPresence = InferSelectModel<typeof userPresence>;
+
 export const userProfileImage = pgTable(
   "UserProfileImage",
   {
