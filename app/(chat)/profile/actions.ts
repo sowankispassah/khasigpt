@@ -1,14 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { auth, signOut } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   updateUserActiveState,
+  updateUserLocation,
   updateUserName,
   updateUserPassword,
 } from "@/lib/db/queries";
-import { z } from "zod";
+import {
+  createPersonalKnowledgeEntry,
+  deletePersonalKnowledgeEntry,
+  updatePersonalKnowledgeEntry,
+} from "@/lib/rag/service";
+import type { SanitizedRagEntry } from "@/lib/rag/types";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 async function requireUser() {
   const session = await auth();
@@ -71,6 +79,7 @@ export async function updatePasswordAction(
     };
   }
 
+  const clientInfo = await getClientInfoFromHeaders();
   await updateUserPassword({
     id: user.id,
     password,
@@ -80,6 +89,8 @@ export async function updatePasswordAction(
     actorId: user.id,
     action: "user.profile.password.update",
     target: { userId: user.id },
+    subjectUserId: user.id,
+    ...clientInfo,
   });
 
   revalidatePath("/profile");
@@ -108,6 +119,7 @@ export async function updateNameAction(
     };
   }
 
+  const clientInfo = await getClientInfoFromHeaders();
   await updateUserName({
     id: user.id,
     firstName: parsed.data.firstName,
@@ -118,6 +130,8 @@ export async function updateNameAction(
     actorId: user.id,
     action: "user.profile.name.update",
     target: { userId: user.id },
+    subjectUserId: user.id,
+    ...clientInfo,
   });
 
   revalidatePath("/profile");
@@ -130,10 +144,9 @@ export async function updateNameAction(
 
 export async function deactivateAccountAction(
   _prevState: DeactivateAccountState,
-  formData: FormData
+  _formData: FormData
 ): Promise<DeactivateAccountState> {
   const user = await requireUser();
-  void formData;
 
   const updated = await updateUserActiveState({
     id: user.id,
@@ -147,10 +160,13 @@ export async function deactivateAccountAction(
     };
   }
 
+  const clientInfo = await getClientInfoFromHeaders();
   await createAuditLogEntry({
     actorId: user.id,
     action: "user.account.deactivate",
     target: { userId: user.id },
+    subjectUserId: user.id,
+    ...clientInfo,
   });
 
   await signOut({
@@ -161,4 +177,163 @@ export async function deactivateAccountAction(
     status: "success",
     message: "Account deactivated.",
   };
+}
+
+export type PersonalKnowledgeActionResult =
+  | { success: true; entry: SanitizedRagEntry }
+  | { success: false; error: string };
+
+export async function savePersonalKnowledgeAction(input: {
+  id?: string | null;
+  title: string;
+  content: string;
+}): Promise<PersonalKnowledgeActionResult> {
+  const user = await requireUser();
+
+  if (!user.allowPersonalKnowledge) {
+    return {
+      success: false,
+      error: "Personal knowledge is not enabled for your account.",
+    };
+  }
+
+  const clientInfo = await getClientInfoFromHeaders();
+  const title = input.title?.trim() ?? "";
+  const content = input.content?.trim() ?? "";
+
+  if (title.length < 3) {
+    return {
+      success: false,
+      error: "Title must be at least 3 characters long.",
+    };
+  }
+  if (content.length < 16) {
+    return {
+      success: false,
+      error: "Content must be at least 16 characters long.",
+    };
+  }
+
+  try {
+    const entry = input.id
+      ? await updatePersonalKnowledgeEntry({
+          userId: user.id,
+          entryId: input.id,
+          title,
+          content,
+        })
+      : await createPersonalKnowledgeEntry({
+          userId: user.id,
+          title,
+          content,
+        });
+
+    await createAuditLogEntry({
+      actorId: user.id,
+      action: input.id
+        ? "user.personal_knowledge.update"
+        : "user.personal_knowledge.create",
+      target: { entryId: entry.id },
+      subjectUserId: user.id,
+      ...clientInfo,
+    });
+
+    revalidatePath("/profile");
+
+    return { success: true, entry };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to save entry.";
+    return { success: false, error: message };
+  }
+}
+
+export type DeletePersonalKnowledgeResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function updateUserLocationAction(input: {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+}): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+  const clientInfo = await getClientInfoFromHeaders();
+
+  const lat = Number(input.latitude);
+  const lng = Number(input.longitude);
+  const accuracy = Number(input.accuracy);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { success: false, error: "Invalid coordinates" };
+  }
+
+  try {
+    await updateUserLocation({
+      id: user.id,
+      latitude: lat,
+      longitude: lng,
+      accuracy: Number.isFinite(accuracy) ? accuracy : null,
+      consent: true,
+    });
+
+    await createAuditLogEntry({
+      actorId: user.id,
+      action: "user.location.update",
+      target: { userId: user.id },
+      metadata: {
+        latitude: lat,
+        longitude: lng,
+        accuracy: Number.isFinite(accuracy) ? accuracy : undefined,
+      },
+      subjectUserId: user.id,
+      ...clientInfo,
+    });
+
+    revalidatePath("/profile");
+    return { success: true };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to save location";
+    return { success: false, error: message };
+  }
+}
+
+export async function deletePersonalKnowledgeAction({
+  entryId,
+}: {
+  entryId: string;
+}): Promise<DeletePersonalKnowledgeResult> {
+  const user = await requireUser();
+
+  if (!user.allowPersonalKnowledge) {
+    return {
+      success: false,
+      error: "Personal knowledge is not enabled for your account.",
+    };
+  }
+
+  const clientInfo = await getClientInfoFromHeaders();
+  try {
+    await deletePersonalKnowledgeEntry({
+      entryId,
+      actorId: user.id,
+    });
+
+    await createAuditLogEntry({
+      actorId: user.id,
+      action: "user.personal_knowledge.delete",
+      target: { entryId },
+      subjectUserId: user.id,
+      ...clientInfo,
+    });
+
+    revalidatePath("/profile");
+
+    return { success: true };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to delete entry.";
+    return { success: false, error: message };
+  }
 }

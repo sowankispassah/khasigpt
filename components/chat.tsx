@@ -4,10 +4,16 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
+import {
+  saveChatLanguageAsCookie,
+  saveChatModelAsCookie,
+} from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
+import { useTranslation } from "@/components/language-provider";
+import type { LanguageOption } from "@/lib/i18n/languages";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,11 +26,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
+import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
-import { ChatSDKError } from "@/lib/errors";
+import type {
+  IconPromptAction,
+  IconPromptSuggestion,
+} from "@/lib/icon-prompts";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { useTranslation } from "@/components/language-provider";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -32,28 +41,57 @@ import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
+const MODEL_STORAGE_KEY = "chat-model-preference";
+const LANGUAGE_STORAGE_KEY = "chat-language-preference";
+
 export function Chat({
   id,
   initialMessages,
+  initialHasMoreHistory,
+  initialOldestMessageAt,
   initialChatModel,
+  initialChatLanguage,
   initialVisibilityType,
+  languageSettings,
   isReadonly,
   autoResume,
   suggestedPrompts,
+  iconPromptActions = [],
+  imageGeneration,
+  documentUploadsEnabled,
+  customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
   id: string;
   initialMessages: ChatMessage[];
+  initialHasMoreHistory: boolean;
+  initialOldestMessageAt: string | null;
   initialChatModel: string;
+  initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
+  languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  iconPromptActions?: IconPromptAction[];
+  imageGeneration: {
+    enabled: boolean;
+    canGenerate: boolean;
+    requiresPaidCredits: boolean;
+  };
+  documentUploadsEnabled: boolean;
+  customKnowledgeEnabled: boolean;
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
     initialVisibilityType,
   });
-  const { translate } = useTranslation();
+  const {
+    translate,
+    languages,
+    activeLanguage,
+    setLanguage,
+    isUpdating: isUiLanguageUpdating,
+  } = useTranslation();
 
   const { mutate } = useSWRConfig();
   const { setDataStream } = useDataStream();
@@ -61,12 +99,235 @@ export function Chat({
   const [input, setInput] = useState<string>("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
+  const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
   const currentModelIdRef = useRef(currentModelId);
+  const [currentLanguageCode, setCurrentLanguageCode] = useState(
+    initialChatLanguage
+  );
+  const currentLanguageCodeRef = useRef(currentLanguageCode);
+  const [pendingUiLanguage, setPendingUiLanguage] = useState<{
+    code: string;
+    name: string;
+  } | null>(null);
+  const [uiLanguageTarget, setUiLanguageTarget] = useState<string | null>(
+    null
+  );
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [showActionProgress, setShowActionProgress] = useState(false);
+  const [actionProgress, setActionProgress] = useState(0);
+  const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(
+    initialHasMoreHistory
+  );
+  const [oldestMessageAt, setOldestMessageAt] = useState(
+    initialOldestMessageAt
+  );
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const imageUpgradeTitle = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.title",
+        "Free credits can't be used for images"
+      )
+    : translate(
+        "image.actions.locked.title",
+        "Recharge credits to generate images"
+      );
+  const imageUpgradeDescription = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.description",
+        "You are using free credits. Recharge to generate images."
+      )
+    : translate(
+        "image.actions.locked.description",
+        "Image generation is available for paid plans or users with active credits."
+      );
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
+
+  useEffect(() => {
+    currentLanguageCodeRef.current = currentLanguageCode;
+  }, [currentLanguageCode]);
+
+  const handleModelChange = useCallback((modelId: string) => {
+    setCurrentModelId(modelId);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+      } catch {
+        // Ignore storage errors (private mode, quotas).
+      }
+    }
+    startTransition(() => {
+      saveChatModelAsCookie(modelId);
+    });
+  }, []);
+
+  const handleLanguageChange = useCallback(
+    (languageCode: string) => {
+      const normalized = languageCode.trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      const languageOptions =
+        languageSettings && languageSettings.length > 0
+          ? languageSettings
+          : languages;
+      const selectedLanguage =
+        languageOptions.find((language) => language.code === normalized) ??
+        languages.find((language) => language.code === normalized);
+      const shouldPromptUiChange =
+        Boolean(selectedLanguage?.syncUiLanguage) &&
+        activeLanguage.code !== normalized;
+      if (
+        normalized === currentLanguageCodeRef.current &&
+        !shouldPromptUiChange
+      ) {
+        return;
+      }
+      if (normalized !== currentLanguageCodeRef.current) {
+        setCurrentLanguageCode(normalized);
+      }
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
+        } catch {
+          // Ignore storage errors (private mode, quotas).
+        }
+      }
+      startTransition(() => {
+        saveChatLanguageAsCookie(normalized);
+      });
+      if (shouldPromptUiChange && selectedLanguage) {
+        setPendingUiLanguage({
+          code: selectedLanguage.code,
+          name: selectedLanguage.name,
+        });
+      } else {
+        setPendingUiLanguage(null);
+      }
+    },
+    [activeLanguage.code, languageSettings, languages]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storedModelId = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (storedModelId && storedModelId !== currentModelId) {
+        handleModelChange(storedModelId);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [currentModelId, handleModelChange]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storedLanguageCode = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (
+        storedLanguageCode &&
+        storedLanguageCode !== currentLanguageCode
+      ) {
+        handleLanguageChange(storedLanguageCode);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [currentLanguageCode, handleLanguageChange]);
+
+  useEffect(() => {
+    setHasMoreHistory(initialHasMoreHistory);
+    setOldestMessageAt(initialOldestMessageAt);
+    setIsLoadingHistory(false);
+  }, [initialHasMoreHistory, initialOldestMessageAt]);
+
+  useEffect(() => {
+    if (!languages.length) {
+      return;
+    }
+    const exists = languages.some(
+      (language) => language.code === currentLanguageCode
+    );
+    if (exists) {
+      return;
+    }
+    const fallbackCode = activeLanguage?.code ?? languages[0]?.code ?? null;
+    if (fallbackCode && fallbackCode !== currentLanguageCode) {
+      handleLanguageChange(fallbackCode);
+    }
+  }, [
+    activeLanguage?.code,
+    currentLanguageCode,
+    handleLanguageChange,
+    languages,
+  ]);
+
+  useEffect(() => {
+    if (!imageGeneration.enabled) {
+      setIsImageMode(false);
+    }
+  }, [imageGeneration.enabled]);
+
+  const clearProgressTimers = useCallback(() => {
+    for (const timerId of progressTimersRef.current) {
+      clearTimeout(timerId);
+    }
+    progressTimersRef.current = [];
+  }, []);
+
+  const startActionProgress = useCallback(() => {
+    clearProgressTimers();
+    setShowActionProgress(true);
+    setActionProgress(12);
+    const timers = [
+      setTimeout(() => setActionProgress(40), 120),
+      setTimeout(() => setActionProgress(70), 260),
+      setTimeout(() => setActionProgress(90), 520),
+    ];
+    progressTimersRef.current = timers;
+  }, [clearProgressTimers]);
+
+  useEffect(() => {
+    return () => {
+      clearProgressTimers();
+    };
+  }, [clearProgressTimers]);
+
+  useEffect(() => {
+    if (!uiLanguageTarget) {
+      return;
+    }
+    if (activeLanguage.code !== uiLanguageTarget) {
+      return;
+    }
+    if (isUiLanguageUpdating) {
+      return;
+    }
+
+    setActionProgress(100);
+    const timer = setTimeout(() => {
+      clearProgressTimers();
+      setShowActionProgress(false);
+      setActionProgress(0);
+      setUiLanguageTarget(null);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [
+    activeLanguage.code,
+    clearProgressTimers,
+    isUiLanguageUpdating,
+    uiLanguageTarget,
+  ]);
 
   const {
     messages,
@@ -90,6 +351,7 @@ export function Chat({
             id: request.id,
             message: request.messages.at(-1),
             selectedChatModel: currentModelIdRef.current,
+            selectedLanguage: currentLanguageCodeRef.current,
             selectedVisibilityType: visibilityType,
             ...request.body,
           },
@@ -99,7 +361,7 @@ export function Chat({
     onData: (dataPart) => {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
-    onFinish: async () => {
+    onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {
@@ -116,7 +378,7 @@ export function Chat({
             return prev;
           }
           const next = [...prev];
-          const last = next[next.length - 1];
+          const last = next.at(-1);
           if (last?.role === "user") {
             next.pop();
           }
@@ -177,8 +439,9 @@ export function Chat({
   }, [query, sendMessage, hasAppendedQuery, id]);
 
   useEffect(() => {
-    if (pathname === "/" && newChatNonce) {
-      router.replace("/", { scroll: false });
+    if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
+      const nextPath = pathname === "/chat" ? "/chat" : "/";
+      router.replace(nextPath, { scroll: false });
     }
   }, [pathname, newChatNonce, router]);
 
@@ -189,6 +452,313 @@ export function Chat({
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const isArtifactVisible = false;
+  const [iconPromptSuggestions, setIconPromptSuggestions] = useState<
+    IconPromptSuggestion[]
+  >([]);
+  const handleIconPromptSelect = useCallback(
+    (item: IconPromptAction) => {
+      const trimmedPrompt = item.prompt.trim();
+      if (item.showSuggestions && item.suggestions.length > 0) {
+        setIconPromptSuggestions(item.suggestions);
+      } else {
+        setIconPromptSuggestions([]);
+        if (trimmedPrompt) {
+          setInput((current) => {
+            const existing = current ?? "";
+            if (item.behavior === "append" && existing.trim().length > 0) {
+              const separator = existing.endsWith(" ") ? "" : " ";
+              return `${existing}${separator}${trimmedPrompt}`;
+            }
+            return trimmedPrompt;
+          });
+        }
+      }
+
+      if (item.selectImageMode) {
+        if (!imageGeneration.enabled) {
+          return;
+        }
+        if (!imageGeneration.canGenerate) {
+          setShowImageUpgradeDialog(true);
+          return;
+        }
+        setIsImageMode(true);
+      } else {
+        setIsImageMode(false);
+      }
+    },
+    [imageGeneration.canGenerate, imageGeneration.enabled]
+  );
+
+  const generateImageFromPrompt = useCallback(
+    async (prompt: string, displayPrompt?: string) => {
+      if (!imageGeneration.enabled) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.disabled",
+            "Image generation is currently unavailable."
+          ),
+        });
+        return;
+      }
+      if (!imageGeneration.canGenerate) {
+        setShowImageUpgradeDialog(true);
+        return;
+      }
+
+      const trimmedPrompt = prompt.trim();
+      if (!trimmedPrompt) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.prompt.required",
+            "Add a prompt before generating."
+          ),
+        });
+        return;
+      }
+
+      const displayText =
+        (displayPrompt ?? "").trim() || trimmedPrompt;
+      const imageAttachments = attachments.filter((attachment) =>
+        attachment.contentType?.startsWith("image/")
+      );
+
+      window.history.replaceState({}, "", `/chat/${id}`);
+
+      const userMessageId = generateUUID();
+      const userParts = [
+        ...imageAttachments.map((attachment) => ({
+          type: "file" as const,
+          url: attachment.url,
+          filename: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        { type: "text" as const, text: displayText },
+      ];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: userMessageId,
+          role: "user",
+          parts: userParts,
+        },
+      ]);
+
+      setInput("");
+      setAttachments([]);
+      setIsGeneratingImage(true);
+
+      try {
+        const response = await fetch("/api/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chatId: id,
+            visibility: visibilityType,
+            prompt: trimmedPrompt,
+            displayPrompt: displayText,
+            userMessageId,
+            imageUrls: imageAttachments.map((attachment) => attachment.url),
+          }),
+        });
+
+        const data = (await response.json().catch(() => null)) as
+          | {
+              assistantMessage?: ChatMessage;
+              message?: string;
+            }
+          | null;
+
+        if (!response.ok) {
+          if (response.status === 402) {
+            setMessages((prev) =>
+              prev.filter((message) => message.id !== userMessageId)
+            );
+            setShowImageUpgradeDialog(true);
+            return;
+          }
+
+          toast({
+            type: "error",
+            description:
+              data?.message ??
+              translate(
+                "image.generate.failed",
+                "Image generation failed. Please try again."
+              ),
+          });
+          return;
+        }
+
+        const assistantMessage = data?.assistantMessage;
+        if (!assistantMessage) {
+          toast({
+            type: "error",
+            description: translate(
+              "image.generate.empty",
+              "No image was returned. Try a different prompt."
+            ),
+          });
+          return;
+        }
+
+        setMessages((prev) => [...prev, assistantMessage]);
+        mutate(unstable_serialize(getChatHistoryPaginationKey));
+      } catch (_error) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.generate.failed",
+            "Image generation failed. Please try again."
+          ),
+        });
+      } finally {
+        setIsGeneratingImage(false);
+      }
+    },
+    [
+      attachments,
+      id,
+      imageGeneration.canGenerate,
+      imageGeneration.enabled,
+      mutate,
+      setMessages,
+      translate,
+      visibilityType,
+    ]
+  );
+
+  const handleIconPromptSuggestionSelect = useCallback(
+    (suggestion: IconPromptSuggestion) => {
+      const visibleText = suggestion.label.trim();
+      const trimmed = suggestion.prompt.trim();
+      const hiddenText = trimmed || visibleText;
+      if (!hiddenText) {
+        return;
+      }
+      if ((status !== "ready" && status !== "error") || isGeneratingImage) {
+        return;
+      }
+
+      setIconPromptSuggestions([]);
+
+      const displayedPrompt = visibleText || hiddenText;
+      if (suggestion.isEditable) {
+        setInput(displayedPrompt);
+        return;
+      }
+
+      if (isImageMode) {
+        void generateImageFromPrompt(hiddenText, visibleText);
+        return;
+      }
+
+      window.history.replaceState({}, "", `/chat/${id}`);
+
+      const messageParts = [
+        ...attachments.map((attachment) => ({
+          type: "file" as const,
+          url: attachment.url,
+          name: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        { type: "text" as const, text: displayedPrompt },
+      ];
+
+      sendMessage(
+        {
+          role: "user",
+          parts: messageParts,
+        },
+        hiddenText !== displayedPrompt
+          ? { body: { hiddenPrompt: hiddenText } }
+          : undefined
+      );
+
+      setInput("");
+      setAttachments([]);
+    },
+    [
+      attachments,
+      generateImageFromPrompt,
+      id,
+      isGeneratingImage,
+      isImageMode,
+      sendMessage,
+      status,
+    ]
+  );
+
+  useEffect(() => {
+    setIconPromptSuggestions([]);
+  }, []);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingHistory || !hasMoreHistory) {
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", String(CHAT_HISTORY_PAGE_SIZE));
+      if (oldestMessageAt) {
+        params.set("before", oldestMessageAt);
+      }
+
+      const response = await fetchWithErrorHandlers(
+        `/api/chat/${id}/messages?${params.toString()}`
+      );
+      const data = (await response.json()) as {
+        messages?: ChatMessage[];
+        hasMore?: boolean;
+        oldestMessageAt?: string | null;
+      };
+
+      const incomingMessages = Array.isArray(data.messages)
+        ? data.messages
+        : [];
+      if (incomingMessages.length > 0) {
+        setMessages((prev) => [...incomingMessages, ...prev]);
+      }
+
+      if (typeof data.hasMore === "boolean") {
+        setHasMoreHistory(data.hasMore);
+      } else {
+        setHasMoreHistory(false);
+      }
+
+      if (data && "oldestMessageAt" in data) {
+        setOldestMessageAt(
+          typeof data.oldestMessageAt === "string" ? data.oldestMessageAt : null
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      toast({
+        type: "error",
+        description:
+          message ||
+          translate(
+            "chat.history.load_failed",
+            "Unable to load earlier messages."
+          ),
+      });
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [
+    hasMoreHistory,
+    id,
+    isLoadingHistory,
+    oldestMessageAt,
+    setMessages,
+    translate,
+  ]);
 
   useAutoResume({
     autoResume,
@@ -199,46 +769,102 @@ export function Chat({
 
   return (
     <>
+      {showActionProgress ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${actionProgress}%` }}
+          />
+        </div>
+      ) : null}
       <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
         <ChatHeader
           chatId={id}
           isReadonly={isReadonly}
+          onModelChange={handleModelChange}
+          selectedModelId={currentModelId}
           selectedVisibilityType={initialVisibilityType}
         />
 
         <Messages
           chatId={id}
+          hasMoreHistory={hasMoreHistory}
           isArtifactVisible={isArtifactVisible}
+          isGeneratingImage={isGeneratingImage}
+          isLoadingHistory={isLoadingHistory}
           isReadonly={isReadonly}
           messages={messages}
+          onLoadMoreHistory={loadOlderMessages}
           regenerate={regenerate}
-          selectedVisibilityType={visibilityType}
           selectedModelId={currentModelId}
+          selectedVisibilityType={visibilityType}
           sendMessage={sendMessage}
           setMessages={setMessages}
           status={status}
           suggestedPrompts={suggestedPrompts}
+          iconPromptActions={iconPromptActions}
+          onIconPromptSelect={handleIconPromptSelect}
           votes={votes}
         />
 
         <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
           {isReadonly ? null : (
             <div className="flex w-full flex-col gap-2">
+              {iconPromptSuggestions.length > 0 ? (
+                <div className="rounded-lg bg-background p-2">
+                  {iconPromptSuggestions.map((suggestion, index) => (
+                    <button
+                      className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                      key={`${suggestion.label}-${index}`}
+                      onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                      type="button"
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <MultimodalInput
                 attachments={attachments}
                 chatId={id}
+                documentUploadsEnabled={documentUploadsEnabled}
+                imageGenerationCanGenerate={imageGeneration.canGenerate}
+                imageGenerationEnabled={imageGeneration.enabled}
+                imageGenerationRequiresPaidCredits={
+                  imageGeneration.requiresPaidCredits
+                }
+                imageGenerationSelected={isImageMode}
+                isGeneratingImage={isGeneratingImage}
                 input={input}
                 messages={messages}
-                onModelChange={setCurrentModelId}
+                onLanguageChange={handleLanguageChange}
+                onModelChange={handleModelChange}
+                selectedLanguageCode={currentLanguageCode}
                 selectedModelId={currentModelId}
                 selectedVisibilityType={visibilityType}
-              sendMessage={sendMessage}
-              setAttachments={setAttachments}
-              setInput={setInput}
-              setMessages={setMessages}
-              status={status}
-              stop={stop}
-            />
+                onGenerateImage={() => {
+                  void generateImageFromPrompt(input);
+                }}
+                sendMessage={sendMessage}
+                setAttachments={setAttachments}
+                setInput={setInput}
+                setMessages={setMessages}
+                status={status}
+                stop={stop}
+                onToggleImageMode={() => {
+                  if (!imageGeneration.enabled) {
+                    return;
+                  }
+                  if (!imageGeneration.canGenerate) {
+                    setShowImageUpgradeDialog(true);
+                    return;
+                  }
+                  setIsImageMode((prev) => !prev);
+                }}
+              />
               <p className="px-2 text-center text-muted-foreground text-xs">
                 {translate(
                   "chat.disclaimer.text",
@@ -263,10 +889,7 @@ export function Chat({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate(
-                "chat.recharge.alert.title",
-                "Credit top-up required"
-              )}
+              {translate("chat.recharge.alert.title", "Credit top-up required")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {translate(
@@ -285,10 +908,7 @@ export function Chat({
                 router.push("/recharge");
               }}
             >
-              {translate(
-                "chat.recharge.alert.confirm",
-                "Go to recharge"
-              )}
+              {translate("chat.recharge.alert.confirm", "Go to recharge")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -310,10 +930,7 @@ export function Chat({
               ).replace(
                 "{subject}",
                 process.env.NODE_ENV === "production"
-                  ? translate(
-                      "chat.gateway.alert.subject.owner",
-                      "the owner"
-                    )
+                  ? translate("chat.gateway.alert.subject.owner", "the owner")
                   : translate("chat.gateway.alert.subject.you", "you")
               )}
             </AlertDialogDescription>
@@ -336,6 +953,107 @@ export function Chat({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={setShowImageUpgradeDialog}
+        open={showImageUpgradeDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{imageUpgradeTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {imageUpgradeDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {translate("common.close", "Close")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowImageUpgradeDialog(false);
+                startActionProgress();
+                router.push("/recharge");
+              }}
+            >
+              {translate("image.actions.locked.cta", "Go to recharge")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingUiLanguage(null);
+          }
+        }}
+        open={Boolean(pendingUiLanguage)}
+      >
+        <AlertDialogContent className="w-[90vw] max-w-sm gap-3 p-4">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">
+              {translate(
+                "chat.language.ui_prompt.title",
+                "Change interface language?"
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground">
+              {translate(
+                "chat.language.ui_prompt.description",
+                "Do you also want the interface language to change to {language}?"
+              ).replace("{language}", pendingUiLanguage?.name ?? "")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2 sm:space-x-2">
+            <AlertDialogCancel
+              className="h-8 px-3 text-xs"
+              onClick={() => {
+                setPendingUiLanguage(null);
+              }}
+            >
+              {translate(
+                "chat.language.ui_prompt.cancel",
+                "No, keep interface"
+              )}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="h-8 px-3 text-xs"
+              onClick={() => {
+                if (!pendingUiLanguage) {
+                  return;
+                }
+                const targetCode = pendingUiLanguage.code;
+                setPendingUiLanguage(null);
+                setUiLanguageTarget(targetCode);
+                setLanguage(targetCode);
+              }}
+            >
+              {translate(
+                "chat.language.ui_prompt.confirm",
+                "Yes, change interface"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {uiLanguageTarget ? (
+        <div
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
+          role="status"
+        >
+          <div className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm font-medium">
+              {translate(
+                "chat.language.ui_prompt.loading",
+                "Switching interface language..."
+              )}
+            </p>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
