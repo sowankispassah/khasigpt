@@ -1,7 +1,7 @@
 import { GET as authGET, POST as authPOST } from "@/app/(auth)/auth";
 import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 const CALLBACK_CODE_TTL_MS = 60 * 1000;
 const CALLBACK_CODE_COOKIE = "__auth_callback_code";
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL(safeCallback, url.origin));
     }
 
-    const response = await authGET(request);
+    const response = await authGET(request as NextRequest);
     recentCallbackCodes.set(code, now);
     const nextResponse = new NextResponse(response.body, response);
     nextResponse.cookies.set(CALLBACK_CODE_COOKIE, code, {
@@ -60,9 +60,9 @@ export async function GET(request: Request) {
     return nextResponse;
   }
 
-  return authGET(request);
+  return authGET(request as NextRequest);
 }
 
 export async function POST(request: Request) {
-  return authPOST(request);
+  return authPOST(request as NextRequest);
 }

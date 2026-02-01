@@ -353,7 +353,7 @@ export function UserDropdownMenu({
         callback,
         skipProgress,
       }: {
-        actionType: "navigate" | "theme" | "signOut";
+        actionType: "navigate" | "theme" | "signOut" | "language";
         actionId: string | null;
         callback: () => void;
         skipProgress?: boolean;
