@@ -60,7 +60,7 @@ function LoginContent() {
     }
   );
 
-  const { update: updateSession } = useSession();
+  const { data: session, status, update: updateSession } = useSession();
 
   const errorMessages = useMemo(
     () => ({
@@ -87,6 +87,11 @@ function LoginContent() {
   const errorMessage = errorKey ? errorMessages[errorKey] : null;
 
   useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      clearCallback();
+      router.replace(callbackUrl);
+      return;
+    }
     if (state.status === "failed") {
       setShowEmailFields(true);
       setErrorKey("invalid");
@@ -105,7 +110,15 @@ function LoginContent() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status, callbackUrl, clearCallback, router.replace, updateSession]);
+  }, [
+    callbackUrl,
+    clearCallback,
+    router,
+    session?.user,
+    state.status,
+    status,
+    updateSession,
+  ]);
 
   useEffect(() => {
     if (hasInactiveParam) {

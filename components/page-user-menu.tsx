@@ -7,6 +7,16 @@ import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   UserDropdownMenu,
@@ -26,7 +36,17 @@ export function PageUserMenu({
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
-  const { translate, isUpdating: isLanguageUpdating } = useTranslation();
+  const {
+    translate,
+    languages,
+    activeLanguage,
+    setLanguage,
+    isUpdating: isLanguageUpdating,
+  } = useTranslation();
+  const [pendingChatLanguage, setPendingChatLanguage] = useState<{
+    code: string;
+    name: string;
+  } | null>(null);
   const [isActionPending, setIsActionPending] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
@@ -162,6 +182,26 @@ export function PageUserMenu({
   );
 
   const isBusy = status === "loading" || isActionPending;
+  const handleChatLanguageConfirm = useCallback((code: string) => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("chat-language-preference", code);
+      } catch {
+        // Ignore storage errors.
+      }
+      try {
+        const encoded = encodeURIComponent(code);
+        document.cookie = `chat-language=${encoded}; path=/; max-age=${
+          60 * 60 * 24 * 365
+        }; samesite=lax`;
+      } catch {
+        // Ignore cookie errors.
+      }
+      window.dispatchEvent(
+        new CustomEvent("chat-language-change", { detail: { code } })
+      );
+    }
+  }, []);
 
   return (
     <div
@@ -184,6 +224,23 @@ export function PageUserMenu({
           isAdmin={user.role === "admin"}
           isAuthenticated
           isBusy={isBusy}
+          activeLanguageCode={activeLanguage?.code ?? null}
+          isLanguageUpdating={isLanguageUpdating}
+          languageOptions={languages.filter((language) => language.isActive)}
+          onLanguageChange={(code) => {
+            setIsActionPending(true);
+            setLanguage(code);
+            const selected =
+              languages.find((language) => language.code === code) ?? null;
+            if (selected) {
+              setPendingChatLanguage({
+                code: selected.code,
+                name: selected.name,
+              });
+            } else {
+              setPendingChatLanguage(null);
+            }
+          }}
           isCreator={user.role === "creator"}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -215,6 +272,23 @@ export function PageUserMenu({
           isAdmin={false}
           isAuthenticated={false}
           isBusy={isBusy}
+          activeLanguageCode={activeLanguage?.code ?? null}
+          isLanguageUpdating={isLanguageUpdating}
+          languageOptions={languages.filter((language) => language.isActive)}
+          onLanguageChange={(code) => {
+            setIsActionPending(true);
+            setLanguage(code);
+            const selected =
+              languages.find((language) => language.code === code) ?? null;
+            if (selected) {
+              setPendingChatLanguage({
+                code: selected.code,
+                name: selected.name,
+              });
+            } else {
+              setPendingChatLanguage(null);
+            }
+          }}
           isCreator={false}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -242,6 +316,58 @@ export function PageUserMenu({
           userDisplayName={undefined}
         />
       )}
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingChatLanguage(null);
+          }
+        }}
+        open={Boolean(pendingChatLanguage)}
+      >
+        <AlertDialogContent className="w-[90vw] max-w-sm gap-3 p-4">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">
+              {translate(
+                "user_menu.language.chat_prompt.title",
+                "Also change chat language?"
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground">
+              {translate(
+                "user_menu.language.chat_prompt.description",
+                "Update the chat language to {language} as well?"
+              ).replace("{language}", pendingChatLanguage?.name ?? "")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2 sm:space-x-2">
+            <AlertDialogCancel
+              className="h-8 px-3 text-xs"
+              onClick={() => setPendingChatLanguage(null)}
+            >
+              {translate(
+                "user_menu.language.chat_prompt.cancel",
+                "No, keep chat language"
+              )}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="h-8 px-3 text-xs"
+              onClick={() => {
+                if (!pendingChatLanguage) {
+                  return;
+                }
+                const code = pendingChatLanguage.code;
+                setPendingChatLanguage(null);
+                handleChatLanguageConfirm(code);
+              }}
+            >
+              {translate(
+                "user_menu.language.chat_prompt.confirm",
+                "Yes, update chat language"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

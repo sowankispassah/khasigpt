@@ -33,6 +33,26 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Helper text shown while a new language is being applied.",
   },
   {
+    key: "user_menu.language.chat_prompt.title",
+    defaultText: "Also change chat language?",
+    description: "Title for the chat language confirmation dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.description",
+    defaultText: "Update the chat language to {language} as well?",
+    description: "Body text for the chat language confirmation dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.cancel",
+    defaultText: "No, keep chat language",
+    description: "Cancel button label for the chat language dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.confirm",
+    defaultText: "Yes, update chat language",
+    description: "Confirm button label for the chat language dialog.",
+  },
+  {
     key: "user_menu.theme.light",
     defaultText: "Light mode",
     description: "Menu action to switch to light theme.",

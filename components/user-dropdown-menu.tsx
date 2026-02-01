@@ -25,6 +25,14 @@ type UserDropdownMenuProps = {
   resolvedTheme: string | undefined;
   onToggleTheme: () => void;
   onNavigate: (path: string) => void;
+  onLanguageChange?: (code: string) => void;
+  languageOptions?: Array<{
+    code: string;
+    name: string;
+    isActive: boolean;
+  }>;
+  activeLanguageCode?: string | null;
+  isLanguageUpdating?: boolean;
   onSignOut?: () => void;
   onActionStart?: () => void;
   onMenuClose?: () => void;
@@ -179,6 +187,10 @@ export function UserDropdownMenu({
   resolvedTheme,
   onToggleTheme,
   onNavigate,
+  onLanguageChange,
+  languageOptions = [],
+  activeLanguageCode,
+  isLanguageUpdating = false,
   onSignOut,
   onActionStart,
   onMenuClose,
@@ -683,6 +695,56 @@ export function UserDropdownMenu({
                 {translate("user_menu.community_forum", "Community Forum")}
               </span>
             </DropdownMenuItem>
+          ) : null}
+          {languageOptions.length > 0 ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start"
+                  data-testid="user-nav-item-language"
+                >
+                  {translate("user_menu.language", "Language")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
+                  {languageOptions.map((language) => (
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      data-testid={`user-nav-item-language-${language.code}`}
+                      disabled={
+                        isLanguageUpdating &&
+                        language.code !== activeLanguageCode
+                      }
+                      key={language.code}
+                      onSelect={(event) =>
+                        handleSelect(event, {
+                          actionType: "language",
+                          actionId: `language:${language.code}`,
+                          callback: () => onLanguageChange?.(language.code),
+                        })
+                      }
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="truncate">{language.name}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {language.code === activeLanguageCode
+                            ? isLanguageUpdating
+                              ? translate(
+                                  "user_menu.language.updating",
+                                  "Updating..."
+                                )
+                              : translate(
+                                  "user_menu.language.active",
+                                  "Active"
+                                )
+                            : null}
+                        </span>
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </>
           ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuSub

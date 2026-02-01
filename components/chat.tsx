@@ -7,10 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import {
-  saveChatLanguageAsCookie,
-  saveChatModelAsCookie,
-} from "@/app/(chat)/actions";
+import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import type { LanguageOption } from "@/lib/i18n/languages";
@@ -43,6 +40,7 @@ import type { VisibilityType } from "./visibility-selector";
 
 const MODEL_STORAGE_KEY = "chat-model-preference";
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
+const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export function Chat({
   id,
@@ -166,8 +164,16 @@ export function Chat({
     });
   }, []);
 
+  const setChatLanguageCookie = useCallback((languageCode: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const encoded = encodeURIComponent(languageCode);
+    document.cookie = `chat-language=${encoded}; path=/; max-age=${CHAT_LANGUAGE_COOKIE_MAX_AGE}; samesite=lax`;
+  }, []);
+
   const handleLanguageChange = useCallback(
-    (languageCode: string) => {
+    (languageCode: string, promptUiChange = false) => {
       const normalized = languageCode.trim().toLowerCase();
       if (!normalized) {
         return;
@@ -180,6 +186,7 @@ export function Chat({
         languageOptions.find((language) => language.code === normalized) ??
         languages.find((language) => language.code === normalized);
       const shouldPromptUiChange =
+        promptUiChange &&
         Boolean(selectedLanguage?.syncUiLanguage) &&
         activeLanguage.code !== normalized;
       if (
@@ -198,9 +205,7 @@ export function Chat({
           // Ignore storage errors (private mode, quotas).
         }
       }
-      startTransition(() => {
-        saveChatLanguageAsCookie(normalized);
-      });
+      setChatLanguageCookie(normalized);
       if (shouldPromptUiChange && selectedLanguage) {
         setPendingUiLanguage({
           code: selectedLanguage.code,
@@ -210,8 +215,30 @@ export function Chat({
         setPendingUiLanguage(null);
       }
     },
-    [activeLanguage.code, languageSettings, languages]
+    [activeLanguage.code, languageSettings, languages, setChatLanguageCookie]
   );
+
+  const handleLanguageChangeFromInput = useCallback(
+    (languageCode: string) => {
+      handleLanguageChange(languageCode, true);
+    },
+    [handleLanguageChange]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ code?: string }>).detail;
+      if (!detail?.code) {
+        return;
+      }
+      handleLanguageChange(detail.code, false);
+    };
+    window.addEventListener("chat-language-change", handler);
+    return () => window.removeEventListener("chat-language-change", handler);
+  }, [handleLanguageChange]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -237,7 +264,7 @@ export function Chat({
         storedLanguageCode &&
         storedLanguageCode !== currentLanguageCode
       ) {
-        handleLanguageChange(storedLanguageCode);
+        handleLanguageChange(storedLanguageCode, false);
       }
     } catch {
       // Ignore storage errors.
@@ -262,7 +289,7 @@ export function Chat({
     }
     const fallbackCode = activeLanguage?.code ?? languages[0]?.code ?? null;
     if (fallbackCode && fallbackCode !== currentLanguageCode) {
-      handleLanguageChange(fallbackCode);
+      handleLanguageChange(fallbackCode, false);
     }
   }, [
     activeLanguage?.code,
@@ -840,7 +867,7 @@ export function Chat({
                 isGeneratingImage={isGeneratingImage}
                 input={input}
                 messages={messages}
-                onLanguageChange={handleLanguageChange}
+                onLanguageChange={handleLanguageChangeFromInput}
                 onModelChange={handleModelChange}
                 selectedLanguageCode={currentLanguageCode}
                 selectedModelId={currentModelId}
