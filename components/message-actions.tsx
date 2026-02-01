@@ -48,10 +48,10 @@ export function PureMessageActions({
   if (message.role === "user") {
     return (
       <Actions className="-mr-0.5 justify-end">
-        <div className="relative">
+        <div className="relative flex items-center gap-1">
           {setMode && (
             <Action
-              className="-left-10 absolute top-0 opacity-0 transition-opacity group-hover/message:opacity-100"
+              className="static mr-1 opacity-100 sm:absolute sm:-left-10 sm:top-0 sm:mr-0 sm:opacity-0 sm:transition-opacity sm:group-hover/message:opacity-100"
               onClick={() => setMode("edit")}
               tooltip="Edit"
             >

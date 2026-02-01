@@ -1,4 +1,13 @@
 import { z } from "zod";
+import {
+  DOCUMENT_MIME_TYPES,
+  IMAGE_MIME_TYPES,
+} from "@/lib/uploads/document-uploads";
+
+const ALLOWED_FILE_MIME_TYPES = [
+  ...IMAGE_MIME_TYPES,
+  ...DOCUMENT_MIME_TYPES,
+] as const;
 
 const textPartSchema = z.object({
   type: z.enum(["text"]),
@@ -7,7 +16,7 @@ const textPartSchema = z.object({
 
 const filePartSchema = z.object({
   type: z.enum(["file"]),
-  mediaType: z.enum(["image/jpeg", "image/png"]),
+  mediaType: z.enum(ALLOWED_FILE_MIME_TYPES),
   name: z.string().min(1).max(100),
   url: z.string().url(),
 });
@@ -21,7 +30,11 @@ export const postRequestBodySchema = z.object({
     role: z.enum(["user"]),
     parts: z.array(partSchema),
   }),
-  selectedChatModel: z.string().uuid(),
+  hiddenPrompt: z.string().trim().min(1).max(2000).optional(),
+  // Historically this cookie stored a model `key` (not the UUID id).
+  // Accept both so older clients/cookies don't hard-fail requests.
+  selectedChatModel: z.string().min(1).max(128),
+  selectedLanguage: z.string().trim().min(1).max(16).optional(),
   selectedVisibilityType: z.enum(["public", "private"]),
 });
 
