@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabled } from "@/lib/forum/config";
+import { isForumEnabledForRole } from "@/lib/forum/config";
 import {
   recordForumThreadView,
   resolveForumThreadId,
@@ -21,7 +22,8 @@ export async function POST(
   _request: NextRequest,
   context: ThreadViewRouteContext
 ) {
-  if (!(await isForumEnabled())) {
+  const session = await auth();
+  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
   try {

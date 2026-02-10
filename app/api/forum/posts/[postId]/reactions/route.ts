@@ -7,7 +7,7 @@ import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabled } from "@/lib/forum/config";
+import { isForumEnabledForRole } from "@/lib/forum/config";
 import { toggleForumPostReaction } from "@/lib/forum/service";
 
 const reactionSchema = z.object({
@@ -21,10 +21,10 @@ type PostRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: PostRouteContext) {
-  if (!(await isForumEnabled())) {
+  const session = await auth();
+  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
-  const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json(
       {

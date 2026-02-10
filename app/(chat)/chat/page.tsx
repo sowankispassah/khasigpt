@@ -10,14 +10,24 @@ import { loadChatModels } from "@/lib/ai/models";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getAppSetting, listLanguagesWithSettings } from "@/lib/db/queries";
+import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
-import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
+import {
+  parseDocumentUploadsAccessModeSetting,
+} from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Promise<{ mode?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
@@ -33,14 +43,16 @@ export default async function Page() {
     languageSettings,
     customKnowledgeSetting,
     documentUploadsSetting,
+    studyModeSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
-    loadSuggestedPrompts(preferredLanguage),
-    loadIconPromptActions(preferredLanguage),
+    loadSuggestedPrompts(preferredLanguage, session.user.role),
+    loadIconPromptActions(preferredLanguage, session.user.role),
     listLanguagesWithSettings(),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+    getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
       userId: session.user.id,
       userRole: session.user.role,
@@ -75,9 +87,28 @@ export default async function Page() {
       : typeof customKnowledgeSetting === "string"
         ? customKnowledgeSetting.toLowerCase() === "true"
         : false;
-  const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+  const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
     documentUploadsSetting
   );
+  const documentUploadsEnabled = isFeatureEnabledForRole(
+    documentUploadsMode,
+    session.user.role
+  );
+  const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
+  const studyModeEnabled = isFeatureEnabledForRole(
+    studyModeMode,
+    session.user.role
+  );
+  const requestedMode =
+    typeof resolvedSearchParams?.mode === "string"
+      ? resolvedSearchParams.mode
+      : null;
+  const isStudyMode = requestedMode === "study";
+
+  if (isStudyMode && !studyModeEnabled) {
+    redirect("/chat");
+  }
+  const chatMode = isStudyMode ? "study" : "default";
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)
     .map((language) => ({
@@ -104,6 +135,7 @@ export default async function Page() {
           <ChatLoader
             autoResume={false}
             customKnowledgeEnabled={customKnowledgeEnabled}
+            chatMode={chatMode}
             id={id}
             imageGeneration={{
               enabled: imageGenerationAccess.enabled,
@@ -121,8 +153,8 @@ export default async function Page() {
             isReadonly={false}
             key={id}
             languageSettings={activeLanguageSettings}
-            suggestedPrompts={suggestedPrompts}
-            iconPromptActions={iconPromptActions}
+            suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
+            iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
           />
           <DataStreamHandler />
         </DataStreamProvider>
@@ -144,6 +176,7 @@ export default async function Page() {
         <ChatLoader
           autoResume={false}
           customKnowledgeEnabled={customKnowledgeEnabled}
+          chatMode={chatMode}
           id={id}
           imageGeneration={{
             enabled: imageGenerationAccess.enabled,
@@ -160,8 +193,8 @@ export default async function Page() {
           isReadonly={false}
           key={id}
           languageSettings={activeLanguageSettings}
-          suggestedPrompts={suggestedPrompts}
-          iconPromptActions={iconPromptActions}
+          suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
+          iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
         />
         <DataStreamHandler />
       </DataStreamProvider>

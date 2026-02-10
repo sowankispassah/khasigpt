@@ -4,8 +4,15 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPreloader } from "@/components/chat-preloader";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { getUserById } from "@/lib/db/queries";
+import {
+  FORUM_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+} from "@/lib/constants";
+import { getAppSetting, getUserById } from "@/lib/db/queries";
+import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../(auth)/auth";
 
@@ -55,18 +62,35 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
+  const [studyModeSetting, forumSetting] = session
+    ? await Promise.all([
+        getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+        getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+      ])
+    : [null, null];
+  const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
+  const studyModeEnabled = isFeatureEnabledForRole(
+    studyModeAccessMode,
+    session?.user?.role ?? null
+  );
+  const forumAccessMode = parseForumAccessModeSetting(forumSetting);
+  const forumEnabled = isFeatureEnabledForRole(
+    forumAccessMode,
+    session?.user?.role ?? null
+  );
 
   return (
     <SiteShell
       activeLanguage={activeLanguage}
       dictionary={dictionary}
+      forumEnabled={forumEnabled}
       languages={languages}
       session={session ?? undefined}
     >
       {session ? (
         <SidebarProvider defaultOpen={defaultSidebarOpen}>
           <ChatPreloader />
-          <AppSidebar user={session.user} />
+          <AppSidebar studyModeEnabled={studyModeEnabled} user={session.user} />
           <SidebarInset>{children}</SidebarInset>
         </SidebarProvider>
       ) : (

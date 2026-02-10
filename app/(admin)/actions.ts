@@ -2,6 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
+import { put } from "@vercel/blob";
 
 import { auth } from "@/app/(auth)/auth";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
@@ -19,6 +20,7 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -96,6 +98,21 @@ import {
   updateUserAddedKnowledgeApproval,
 } from "@/lib/rag/service";
 import type { UpsertRagEntryInput } from "@/lib/rag/types";
+import {
+  buildQuestionPaperMetadata,
+  extractStudyYear,
+  getQuestionPaperById,
+  listQuestionPaperEntries,
+  QUESTION_PAPER_MAX_TEXT_CHARS,
+} from "@/lib/study/service";
+import type { QuestionPaperRecord } from "@/lib/study/types";
+import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
+import {
+  DOCUMENT_EXTENSION_BY_MIME,
+  isDocumentMimeType,
+} from "@/lib/uploads/document-uploads";
+import { generateUUID } from "@/lib/utils";
+import { parseFeatureAccessMode } from "@/lib/feature-access";
 
 async function requireAdmin() {
   const session = await auth();
@@ -220,18 +237,21 @@ export async function restoreChatAction({ chatId }: { chatId: string }) {
 export async function updateForumAvailabilityAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
-  const enabled = parseBoolean(formData.get("forumEnabled"));
+  const accessMode = parseFeatureAccessMode(
+    formData.get("forumAccessMode"),
+    "enabled"
+  );
 
   await setAppSetting({
     key: FORUM_FEATURE_FLAG_KEY,
-    value: enabled,
+    value: accessMode,
   });
   revalidateAppSettingCache(FORUM_FEATURE_FLAG_KEY);
   await createAuditLogEntry({
     actorId: actor.id,
     action: "forum.toggle",
     target: { setting: FORUM_FEATURE_FLAG_KEY },
-    metadata: { enabled },
+    metadata: { accessMode },
   });
 
   revalidatePath("/admin/settings");
@@ -240,16 +260,46 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   revalidatePath("/forum/[slug]");
 }
 
+export async function updateStudyModeAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const accessMode = parseFeatureAccessMode(
+    formData.get("studyModeAccessMode"),
+    "disabled"
+  );
+
+  await setAppSetting({
+    key: STUDY_MODE_FEATURE_FLAG_KEY,
+    value: accessMode,
+  });
+  revalidateAppSettingCache(STUDY_MODE_FEATURE_FLAG_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.study_mode.toggle",
+    target: { setting: STUDY_MODE_FEATURE_FLAG_KEY },
+    metadata: { accessMode },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/chat");
+  revalidatePath("/chat/[id]");
+}
+
 export async function updateImageGenerationAvailabilityAction(
   formData: FormData
 ) {
   "use server";
   const actor = await requireAdmin();
-  const enabled = parseBoolean(formData.get("imageGenerationEnabled"));
+  const accessMode = parseFeatureAccessMode(
+    formData.get("imageGenerationAccessMode"),
+    "disabled"
+  );
 
   await setAppSetting({
     key: IMAGE_GENERATION_FEATURE_FLAG_KEY,
-    value: enabled,
+    value: accessMode,
   });
   revalidateAppSettingCache(IMAGE_GENERATION_FEATURE_FLAG_KEY);
 
@@ -257,7 +307,7 @@ export async function updateImageGenerationAvailabilityAction(
     actorId: actor.id,
     action: "feature.image_generation.toggle",
     target: { setting: IMAGE_GENERATION_FEATURE_FLAG_KEY },
-    metadata: { enabled },
+    metadata: { accessMode },
   });
 
   revalidatePath("/admin/settings");
@@ -269,11 +319,14 @@ export async function updateDocumentUploadsAvailabilityAction(
 ) {
   "use server";
   const actor = await requireAdmin();
-  const enabled = parseBoolean(formData.get("documentUploadsEnabled"));
+  const accessMode = parseFeatureAccessMode(
+    formData.get("documentUploadsAccessMode"),
+    "disabled"
+  );
 
   await setAppSetting({
     key: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-    value: enabled,
+    value: accessMode,
   });
   revalidateAppSettingCache(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY);
 
@@ -281,7 +334,7 @@ export async function updateDocumentUploadsAvailabilityAction(
     actorId: actor.id,
     action: "feature.document_uploads.toggle",
     target: { setting: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY },
-    metadata: { enabled },
+    metadata: { accessMode },
   });
 
   revalidatePath("/admin/settings");
@@ -291,11 +344,14 @@ export async function updateDocumentUploadsAvailabilityAction(
 export async function updateIconPromptAvailabilityAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
-  const enabled = parseBoolean(formData.get("iconPromptsEnabled"));
+  const accessMode = parseFeatureAccessMode(
+    formData.get("iconPromptsAccessMode"),
+    "disabled"
+  );
 
   await setAppSetting({
     key: ICON_PROMPTS_ENABLED_SETTING_KEY,
-    value: enabled,
+    value: accessMode,
   });
   revalidateAppSettingCache(ICON_PROMPTS_ENABLED_SETTING_KEY);
 
@@ -303,7 +359,7 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
     actorId: actor.id,
     action: "feature.icon_prompts.toggle",
     target: { setting: ICON_PROMPTS_ENABLED_SETTING_KEY },
-    metadata: { enabled },
+    metadata: { accessMode },
   });
 
   revalidatePath("/admin/settings");
@@ -316,11 +372,14 @@ export async function updateSuggestedPromptsAvailabilityAction(
 ) {
   "use server";
   const actor = await requireAdmin();
-  const enabled = parseBoolean(formData.get("suggestedPromptsEnabled"));
+  const accessMode = parseFeatureAccessMode(
+    formData.get("suggestedPromptsAccessMode"),
+    "enabled"
+  );
 
   await setAppSetting({
     key: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
-    value: enabled,
+    value: accessMode,
   });
   revalidateAppSettingCache(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY);
 
@@ -328,7 +387,7 @@ export async function updateSuggestedPromptsAvailabilityAction(
     actorId: actor.id,
     action: "feature.suggested_prompts.toggle",
     target: { setting: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY },
-    metadata: { enabled },
+    metadata: { accessMode },
   });
 
   revalidatePath("/admin/settings");
@@ -2370,6 +2429,416 @@ export async function updateRagEntryAction({
 
   revalidatePath("/admin/rag");
   return entry;
+}
+
+type SerializedQuestionPaper = {
+  id: string;
+  title: string;
+  exam: string;
+  role: string;
+  year: number;
+  language: string;
+  tags: string[];
+  sourceUrl: string | null;
+  status: RagEntryStatus;
+  parseError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const QUESTION_PAPER_FALLBACK_CONTENT =
+  "Question paper uploaded, but text extraction failed. Use the attached PDF.";
+const QUESTION_PAPER_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_QUESTION_PAPER_TITLE = "Question paper";
+const UNKNOWN_LABEL = "Unknown";
+
+const normalizeFilenameTitle = (filename: string) => {
+  const base = filename.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
+  return base || DEFAULT_QUESTION_PAPER_TITLE;
+};
+
+const resolveYearFromText = (value: string) => extractStudyYear(value) ?? null;
+
+const normalizePaperTitle = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+const normalizeQuestionPaperTags = (value: FormDataEntryValue | null | undefined) => {
+  const raw = value?.toString() ?? "";
+  const entries = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries));
+  return unique.map((tag) => tag.slice(0, 48)).slice(0, 24);
+};
+
+const resolveQuestionPaperStatus = (
+  value: FormDataEntryValue | null | undefined
+): RagEntryStatus => {
+  const normalized = value?.toString().trim().toLowerCase();
+  if (normalized === "inactive" || normalized === "archived") {
+    return normalized;
+  }
+  return "active";
+};
+
+const serializeQuestionPaper = (paper: QuestionPaperRecord): SerializedQuestionPaper => {
+  const serializeDate = (value: Date) =>
+    value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+  return {
+    id: paper.id,
+    title: paper.title,
+    exam: paper.exam,
+    role: paper.role,
+    year: paper.year,
+    language: paper.language,
+    tags: paper.tags,
+    sourceUrl: paper.sourceUrl ?? null,
+    status: paper.status,
+    parseError: paper.parseError ?? null,
+    createdAt: serializeDate(paper.createdAt),
+    updatedAt: serializeDate(paper.updatedAt),
+  };
+};
+
+async function processQuestionPaperFile({
+  file,
+  paperId,
+}: {
+  file: Blob;
+  paperId: string;
+}) {
+  const mimeType = file.type;
+  if (!isDocumentMimeType(mimeType)) {
+    throw new Error("Only PDF, DOCX, or XLSX files are supported.");
+  }
+  if (file.size > QUESTION_PAPER_MAX_BYTES) {
+    throw new Error("File size must be under 25MB.");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const filename =
+    "name" in file && typeof file.name === "string" ? file.name : "document";
+
+  let content = QUESTION_PAPER_FALLBACK_CONTENT;
+  let parseError: string | null = null;
+
+  try {
+    const parsed = await extractDocumentTextFromBuffer(
+      {
+        name: filename,
+        buffer,
+        mediaType: mimeType,
+      },
+      { maxTextChars: QUESTION_PAPER_MAX_TEXT_CHARS }
+    );
+    content = parsed.text;
+  } catch (error) {
+    parseError =
+      error instanceof Error ? error.message : "Unable to extract document text.";
+  }
+
+  const extension = DOCUMENT_EXTENSION_BY_MIME[mimeType];
+  if (!extension) {
+    throw new Error("Unsupported file type.");
+  }
+
+  const objectKey = `study/question-papers/${paperId}/${crypto.randomUUID()}.${extension}`;
+  const blob = await put(objectKey, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return {
+    sourceUrl: blob.url,
+    content,
+    parseError,
+    filename,
+  };
+}
+
+export async function createQuestionPaperAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const examInput = formData.get("exam")?.toString().trim() ?? "";
+  const roleInput = formData.get("role")?.toString().trim() ?? "";
+  const paperTitleInput = formData.get("paperTitle")?.toString().trim() ?? "";
+  const yearInput = parseInteger(formData.get("year"));
+  const languageInput = formData.get("language")?.toString().trim() || "English";
+  const tags = normalizeQuestionPaperTags(formData.get("tags"));
+  const status = resolveQuestionPaperStatus(formData.get("status"));
+
+  const fileField = formData.get("file");
+  if (!(fileField instanceof Blob)) {
+    throw new Error("Question paper file is required.");
+  }
+
+  const paperId = generateUUID();
+  const fileResult = await processQuestionPaperFile({
+    file: fileField,
+    paperId,
+  });
+  const derivedTitle = normalizeFilenameTitle(fileResult.filename);
+  const derivedYear =
+    resolveYearFromText(fileResult.content) ??
+    resolveYearFromText(fileResult.filename) ??
+    0;
+  const exam = examInput || UNKNOWN_LABEL;
+  const role = roleInput || UNKNOWN_LABEL;
+  const year = Number.isFinite(yearInput) && yearInput > 0 ? yearInput : derivedYear;
+  const paperTitle = paperTitleInput || derivedTitle || DEFAULT_QUESTION_PAPER_TITLE;
+  const language = languageInput || "English";
+  const normalizedTitle = normalizePaperTitle(paperTitle);
+  const existingEntries = await listQuestionPaperEntries({ includeInactive: true });
+  const duplicate = existingEntries.find((entry) => {
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+    const metaTitle =
+      typeof metadata.paper_title === "string" ? metadata.paper_title : "";
+    const titleToCheck = metaTitle || entry.title || "";
+    return normalizePaperTitle(titleToCheck) === normalizedTitle;
+  });
+  if (duplicate) {
+    throw new Error("A question paper with the same title already exists.");
+  }
+
+  const metadata = buildQuestionPaperMetadata({
+    exam,
+    role,
+    year,
+    paperId,
+    paperTitle,
+    language,
+    tags,
+    parseError: fileResult.parseError,
+  });
+
+  const createdEntry = await createRagEntry({
+    actorId: actor.id,
+    input: {
+      id: paperId,
+      title: paperTitle,
+      content: fileResult.content,
+      type: "document",
+      status,
+      tags,
+      models: [],
+      sourceUrl: fileResult.sourceUrl,
+      metadata,
+    },
+  });
+
+  const created = await getQuestionPaperById({
+    id: paperId,
+    includeInactive: true,
+  });
+  const resolvedCreated =
+    created ??
+    ({
+      id: createdEntry.id,
+      title: paperTitle,
+      exam,
+      role,
+      year,
+      language,
+      tags,
+      sourceUrl: createdEntry.sourceUrl ?? null,
+      status: createdEntry.status,
+      parseError: fileResult.parseError ?? null,
+      createdAt:
+        createdEntry.createdAt instanceof Date
+          ? createdEntry.createdAt
+          : new Date(createdEntry.createdAt),
+      updatedAt:
+        createdEntry.updatedAt instanceof Date
+          ? createdEntry.updatedAt
+          : new Date(createdEntry.updatedAt),
+    } as QuestionPaperRecord);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "study.question_paper.create",
+    target: { questionPaperId: paperId },
+    metadata: { exam, role, year, status },
+  });
+
+  revalidatePath("/admin/study/question-papers");
+  return serializeQuestionPaper(resolvedCreated);
+}
+
+export async function updateQuestionPaperAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString().trim() ?? "";
+  if (!id) {
+    throw new Error("Question paper id is required.");
+  }
+
+  const entries = await listQuestionPaperEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Question paper not found.");
+  }
+
+  const examInput = formData.get("exam")?.toString().trim() ?? "";
+  const roleInput = formData.get("role")?.toString().trim() ?? "";
+  const paperTitleInput = formData.get("paperTitle")?.toString().trim() ?? "";
+  const yearInput = parseInteger(formData.get("year"));
+  const languageInput = formData.get("language")?.toString().trim() || "";
+  const tagsInput = normalizeQuestionPaperTags(formData.get("tags"));
+  const status = resolveQuestionPaperStatus(formData.get("status"));
+
+  let sourceUrl = existing.sourceUrl ?? null;
+  let content = existing.content;
+  const existingMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
+  let parseError =
+    typeof existingMetadata.parse_error === "string"
+      ? existingMetadata.parse_error
+      : null;
+  const existingExam =
+    typeof existingMetadata.exam === "string" && existingMetadata.exam.trim()
+      ? existingMetadata.exam.trim()
+      : "";
+  const existingRole =
+    typeof existingMetadata.role === "string" && existingMetadata.role.trim()
+      ? existingMetadata.role.trim()
+      : "";
+  const existingYearRaw =
+    typeof existingMetadata.year === "number"
+      ? existingMetadata.year
+      : typeof existingMetadata.year === "string"
+        ? Number.parseInt(existingMetadata.year, 10)
+        : 0;
+  const existingYear =
+    Number.isFinite(existingYearRaw) && existingYearRaw > 0 ? existingYearRaw : 0;
+  const existingTitle =
+    typeof existingMetadata.paper_title === "string" && existingMetadata.paper_title.trim()
+      ? existingMetadata.paper_title.trim()
+      : existing.title?.trim() ?? "";
+  const existingLanguage =
+    typeof existingMetadata.language === "string" && existingMetadata.language.trim()
+      ? existingMetadata.language.trim()
+      : "English";
+  const existingTags = Array.isArray(existingMetadata.tags)
+    ? existingMetadata.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean)
+    : Array.isArray(existing.tags)
+      ? existing.tags
+      : [];
+
+  const fileField = formData.get("file");
+  let filename: string | null = null;
+  if (fileField instanceof Blob && fileField.size > 0) {
+    const fileResult = await processQuestionPaperFile({
+      file: fileField,
+      paperId: id,
+    });
+    sourceUrl = fileResult.sourceUrl;
+    content = fileResult.content;
+    parseError = fileResult.parseError;
+    filename = fileResult.filename;
+  }
+
+  const derivedTitle = filename ? normalizeFilenameTitle(filename) : "";
+  const derivedYear =
+    resolveYearFromText(content) ?? (filename ? resolveYearFromText(filename) : null) ?? 0;
+  const exam = examInput || existingExam || UNKNOWN_LABEL;
+  const role = roleInput || existingRole || UNKNOWN_LABEL;
+  const year =
+    Number.isFinite(yearInput) && yearInput > 0
+      ? yearInput
+      : derivedYear || existingYear || 0;
+  const paperTitle =
+    paperTitleInput || existingTitle || derivedTitle || DEFAULT_QUESTION_PAPER_TITLE;
+  const language = languageInput || existingLanguage || "English";
+  const tags = tagsInput.length > 0 ? tagsInput : existingTags;
+
+  const metadata = buildQuestionPaperMetadata({
+    exam,
+    role,
+    year,
+    paperId: id,
+    paperTitle,
+    language,
+    tags,
+    parseError,
+  });
+
+  const updatedEntry = await updateRagEntry({
+    id,
+    actorId: actor.id,
+    input: {
+      title: paperTitle,
+      content,
+      type: "document",
+      status,
+      tags,
+      models: Array.isArray(existing.models) ? existing.models : [],
+      sourceUrl,
+      metadata,
+      categoryId: existing.categoryId,
+    },
+  });
+
+  const updated = await getQuestionPaperById({ id, includeInactive: true });
+  const resolvedUpdated =
+    updated ??
+    ({
+      id: updatedEntry.id,
+      title: paperTitle,
+      exam,
+      role,
+      year,
+      language,
+      tags,
+      sourceUrl: updatedEntry.sourceUrl ?? null,
+      status: updatedEntry.status,
+      parseError,
+      createdAt:
+        updatedEntry.createdAt instanceof Date
+          ? updatedEntry.createdAt
+          : new Date(updatedEntry.createdAt),
+      updatedAt:
+        updatedEntry.updatedAt instanceof Date
+          ? updatedEntry.updatedAt
+          : new Date(updatedEntry.updatedAt),
+    } as QuestionPaperRecord);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "study.question_paper.update",
+    target: { questionPaperId: id },
+    metadata: { exam, role, year, status },
+  });
+
+  revalidatePath("/admin/study/question-papers");
+  return serializeQuestionPaper(resolvedUpdated);
+}
+
+export async function deleteQuestionPaperAction({ id }: { id: string }) {
+  "use server";
+  const actor = await requireAdmin();
+
+  if (!id) {
+    throw new Error("Question paper id is required.");
+  }
+
+  const entries = await listQuestionPaperEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Question paper not found.");
+  }
+
+  await deleteRagEntries({ ids: [id], actorId: actor.id });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "study.question_paper.delete",
+    target: { questionPaperId: id },
+  });
+
+  revalidatePath("/admin/study/question-papers");
 }
 
 function sanitizeAliasList(values: string[]) {

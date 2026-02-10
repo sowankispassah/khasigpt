@@ -49,6 +49,7 @@ import {
   type CharacterAliasIndex,
   type CharacterRefImage,
   type Chat,
+  type ChatMode,
   type ContactMessage,
   type ContactMessageStatus,
   type Coupon,
@@ -724,11 +725,13 @@ export async function saveChat({
   userId,
   title,
   visibility,
+  mode = "default",
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
+  mode?: ChatMode;
 }) {
   try {
     return await db.insert(chat).values({
@@ -737,6 +740,7 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      mode,
     });
   } catch (_error) {
     throw new ChatSDKError("bad_request:database", "Failed to save chat");
@@ -812,16 +816,24 @@ export async function getChatsByUserId({
   limit,
   startingAfter,
   endingBefore,
+  mode = "default",
 }: {
   id: string;
   limit: number;
   startingAfter: string | null;
   endingBefore: string | null;
+  mode?: ChatMode | null;
 }) {
   try {
     const extendedLimit = limit + 1;
-
-    const baseCondition = and(eq(chat.userId, id), isNull(chat.deletedAt));
+    const baseConditions: SQL[] = [
+      eq(chat.userId, id),
+      isNull(chat.deletedAt),
+    ];
+    if (mode) {
+      baseConditions.push(eq(chat.mode, mode));
+    }
+    const baseCondition = and(...baseConditions);
 
     const query = (whereCondition?: SQL<any>) =>
       db
@@ -879,6 +891,36 @@ export async function getChatsByUserId({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to get chats by user id"
+    );
+  }
+}
+
+export async function getChatByUserIdAndMode({
+  userId,
+  mode,
+}: {
+  userId: string;
+  mode: ChatMode;
+}) {
+  try {
+    const [selectedChat] = await db
+      .select()
+      .from(chat)
+      .where(
+        and(
+          eq(chat.userId, userId),
+          eq(chat.mode, mode),
+          isNull(chat.deletedAt)
+        )
+      )
+      .orderBy(desc(chat.createdAt))
+      .limit(1);
+
+    return selectedChat ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get chat by user and mode"
     );
   }
 }
@@ -2177,6 +2219,7 @@ export async function listChats({
         createdAt: chat.createdAt,
         title: chat.title,
         userId: chat.userId,
+        mode: chat.mode,
         visibility: chat.visibility,
         lastContext: chat.lastContext,
         deletedAt: chat.deletedAt,

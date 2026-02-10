@@ -7,7 +7,7 @@ import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabled } from "@/lib/forum/config";
+import { isForumEnabledForRole } from "@/lib/forum/config";
 import { createForumThread, getForumOverview } from "@/lib/forum/service";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +21,11 @@ const createThreadSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  if (!(await isForumEnabled())) {
+  const session = await auth();
+  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
   try {
-    const session = await auth();
     const url = new URL(request.url);
     const categorySlug = url.searchParams.get("category") ?? null;
     const tagSlug = url.searchParams.get("tag") ?? null;
@@ -56,10 +56,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await isForumEnabled())) {
+  const session = await auth();
+  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
-  const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json(
       {

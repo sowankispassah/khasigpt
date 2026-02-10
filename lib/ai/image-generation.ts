@@ -23,6 +23,11 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+  type FeatureAccessMode,
+} from "@/lib/feature-access";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";
 const NANO_BANANA_MODEL_ID =
@@ -60,25 +65,17 @@ const googleClient =
     ? createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
     : null;
 
-function coerceBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-      return fallback;
-    }
-    return ["true", "1", "yes", "enabled"].includes(normalized);
-  }
-  return fallback;
+export const IMAGE_GENERATION_ACCESS_MODE_FALLBACK: FeatureAccessMode =
+  "disabled";
+
+export function parseImageGenerationAccessModeSetting(
+  value: unknown
+): FeatureAccessMode {
+  return parseFeatureAccessMode(value, IMAGE_GENERATION_ACCESS_MODE_FALLBACK);
 }
 
 export function parseImageGenerationEnabledSetting(value: unknown): boolean {
-  return coerceBoolean(value, false);
+  return parseImageGenerationAccessModeSetting(value) !== "disabled";
 }
 
 export async function getImageGenerationAccess({
@@ -91,7 +88,12 @@ export async function getImageGenerationAccess({
   const rawSetting = await getAppSetting<string | boolean | number>(
     IMAGE_GENERATION_FEATURE_FLAG_KEY
   );
-  const featureEnabled = parseImageGenerationEnabledSetting(rawSetting);
+  const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
+  const resolvedRole =
+    userRole ??
+    (userId ? (await getUserById(userId))?.role ?? null : null);
+  const isAdmin = resolvedRole === "admin";
+  const featureEnabled = isFeatureEnabledForRole(featureMode, resolvedRole);
   const activeModel = await getActiveImageModel();
   const modelEnabled = Boolean(activeModel?.isEnabled);
   const enabled = featureEnabled && modelEnabled;
@@ -108,11 +110,6 @@ export async function getImageGenerationAccess({
         tokensPerImage,
       }
     : null;
-  const resolvedRole =
-    userRole ??
-    (userId ? (await getUserById(userId))?.role ?? null : null);
-  const isAdmin = resolvedRole === "admin";
-
   if (!enabled || !userId || !modelSummary) {
     return {
       enabled,

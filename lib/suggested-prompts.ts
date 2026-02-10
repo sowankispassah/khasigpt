@@ -3,7 +3,13 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
+import type { UserRole } from "@/lib/db/schema";
 import { getAppSetting } from "@/lib/db/queries";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+  type FeatureAccessMode,
+} from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 type SuggestedPromptsMap = Record<string, string[]>;
@@ -25,18 +31,18 @@ function isPromptsMap(value: unknown): value is SuggestedPromptsMap {
   );
 }
 
-function parseEnabledSetting(value: unknown, fallback: boolean) {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    return value.toLowerCase() === "true";
-  }
-  return fallback;
+export const SUGGESTED_PROMPTS_ACCESS_MODE_FALLBACK: FeatureAccessMode =
+  "enabled";
+
+export function parseSuggestedPromptsAccessModeSetting(
+  value: unknown
+): FeatureAccessMode {
+  return parseFeatureAccessMode(value, SUGGESTED_PROMPTS_ACCESS_MODE_FALLBACK);
 }
 
 async function fetchSuggestedPrompts(
-  preferredLanguageCode?: string | null
+  preferredLanguageCode?: string | null,
+  userRole?: UserRole | null
 ): Promise<string[]> {
   const { activeLanguage, languages } = await getTranslationBundle(
     preferredLanguageCode
@@ -46,7 +52,8 @@ async function fetchSuggestedPrompts(
     const enabledSetting = await getAppSetting<unknown>(
       SUGGESTED_PROMPTS_ENABLED_SETTING_KEY
     );
-    const enabled = parseEnabledSetting(enabledSetting, true);
+    const mode = parseSuggestedPromptsAccessModeSetting(enabledSetting);
+    const enabled = isFeatureEnabledForRole(mode, userRole ?? null);
     if (!enabled) {
       return [];
     }

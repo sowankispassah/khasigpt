@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ForumClient } from "@/components/forum/forum-client";
 import { ForumSidebar } from "@/components/forum/forum-sidebar";
-import { isForumEnabled } from "@/lib/forum/config";
+import { isForumEnabledForRole } from "@/lib/forum/config";
 import {
   type ForumThreadListItem,
   getForumOverview,
@@ -37,12 +37,12 @@ type ForumPageProps = {
 };
 
 export default async function ForumPage({ searchParams }: ForumPageProps) {
-  const forumEnabled = await isForumEnabled();
+  const session = await auth();
+  const forumEnabled = await isForumEnabledForRole(session?.user?.role ?? null);
   if (!forumEnabled) {
     notFound();
   }
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await auth();
   const categorySlug =
     typeof resolvedSearchParams?.category === "string"
       ? resolvedSearchParams.category

@@ -7,7 +7,7 @@ import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabled } from "@/lib/forum/config";
+import { isForumEnabledForRole } from "@/lib/forum/config";
 import {
   deleteForumThread,
   getForumThreadDetail,
@@ -20,11 +20,11 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  if (!(await isForumEnabled())) {
+  const session = await auth();
+  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
   try {
-    const session = await auth();
     const { slug } = await context.params;
     const detail = await getForumThreadDetail({
       slug,
@@ -55,11 +55,11 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  if (!(await isForumEnabled())) {
-    return forumDisabledResponse();
-  }
   try {
     const session = await auth();
+    if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
+      return forumDisabledResponse();
+    }
     if (!session?.user) {
       return NextResponse.json(
         {
@@ -92,11 +92,11 @@ export async function DELETE(
   _request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  if (!(await isForumEnabled())) {
-    return forumDisabledResponse();
-  }
   try {
     const session = await auth();
+    if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
+      return forumDisabledResponse();
+    }
     if (!session?.user) {
       return NextResponse.json(
         {

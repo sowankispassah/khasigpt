@@ -35,10 +35,11 @@ import {
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
   updateSuggestedPromptsAvailabilityAction,
+  updateStudyModeAvailabilityAction,
   updateTermsOfServiceByLanguageAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
-import { parseImageGenerationEnabledSetting } from "@/lib/ai/image-generation";
+import { parseImageGenerationAccessModeSetting } from "@/lib/ai/image-generation";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -56,6 +57,7 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -68,11 +70,19 @@ import {
   listModelConfigs,
   listPricingPlans,
 } from "@/lib/db/queries";
-import { parseForumEnabledSetting } from "@/lib/forum/config";
+import type { FeatureAccessMode } from "@/lib/feature-access";
+import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
-import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
+import {
+  normalizeIconPromptSettings,
+  parseIconPromptsAccessModeSetting,
+} from "@/lib/icon-prompts";
 import { getUsdToInrRate } from "@/lib/services/exchange-rate";
-import { parseDocumentUploadsEnabledSetting } from "@/lib/uploads/document-uploads";
+import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
+import {
+  parseSuggestedPromptsAccessModeSetting,
+} from "@/lib/suggested-prompts";
+import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
@@ -131,6 +141,7 @@ const loadAdminSettingsData = unstable_cache(
       languages,
       freeMessageSettings,
       forumEnabledSetting,
+      studyModeEnabledSetting,
       imageGenerationEnabledSetting,
       imagePromptTranslationModelSetting,
       imageFilenamePrefixSetting,
@@ -163,6 +174,7 @@ const loadAdminSettingsData = unstable_cache(
       listLanguagesWithSettings(),
       loadFreeMessageSettings(),
       getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
       getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
       getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
@@ -189,6 +201,7 @@ const loadAdminSettingsData = unstable_cache(
       languages,
       freeMessageSettings,
       forumEnabledSetting,
+      studyModeEnabledSetting,
       imageGenerationEnabledSetting,
       imagePromptTranslationModelSetting,
       imageFilenamePrefixSetting,
@@ -234,6 +247,95 @@ function EnabledBadge({ enabled }: { enabled: boolean }) {
     <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
       Disabled
     </span>
+  );
+}
+
+function AccessModeBadge({ mode }: { mode: FeatureAccessMode }) {
+  if (mode === "enabled") {
+    return (
+      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
+        Enabled for all
+      </span>
+    );
+  }
+
+  if (mode === "admin_only") {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700 text-xs">
+        Admin only
+      </span>
+    );
+  }
+
+  return (
+    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
+      Disabled for all
+    </span>
+  );
+}
+
+type FeatureAccessAction = (formData: FormData) => Promise<void>;
+
+function FeatureAccessModeButtons({
+  action,
+  currentMode,
+  fieldName,
+  successMessage,
+}: {
+  action: FeatureAccessAction;
+  currentMode: FeatureAccessMode;
+  fieldName: string;
+  successMessage: string;
+}) {
+  const currentModeSummary =
+    currentMode === "enabled"
+      ? "Current: everyone can access."
+      : currentMode === "admin_only"
+        ? "Current: only admin users can access."
+        : "Current: access is disabled for everyone.";
+
+  return (
+    <form action={action} className="flex flex-col gap-3 text-sm">
+      <div className="flex flex-wrap gap-2">
+        <SettingsSubmitButton
+          name={fieldName}
+          pendingLabel="Saving..."
+          successMessage={successMessage}
+          value="disabled"
+          variant={currentMode === "disabled" ? "destructive" : "outline"}
+        >
+          Disable for all
+        </SettingsSubmitButton>
+        <SettingsSubmitButton
+          name={fieldName}
+          pendingLabel="Saving..."
+          successMessage={successMessage}
+          value="admin_only"
+          variant={currentMode === "admin_only" ? "default" : "outline"}
+        >
+          Admin only
+        </SettingsSubmitButton>
+        <SettingsSubmitButton
+          name={fieldName}
+          pendingLabel="Saving..."
+          successMessage={successMessage}
+          value="enabled"
+          variant={currentMode === "enabled" ? "default" : "outline"}
+        >
+          Enable for all
+        </SettingsSubmitButton>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Disable for all: no users can access. Admin only: only admin users can
+        access. Enable for all: everyone can access.
+      </p>
+      <p className="text-muted-foreground text-xs">
+        {currentModeSummary}
+      </p>
+      <p className="text-muted-foreground text-xs">
+        Changes take effect immediately.
+      </p>
+    </form>
   );
 }
 
@@ -310,6 +412,7 @@ export default async function AdminSettingsPage({
     languages,
     freeMessageSettings,
     forumEnabledSetting,
+    studyModeEnabledSetting,
     imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
@@ -341,12 +444,12 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsEnabledSetting
   );
-  const suggestedPromptsEnabled =
-    typeof suggestedPromptsEnabledSetting === "boolean"
-      ? suggestedPromptsEnabledSetting
-      : typeof suggestedPromptsEnabledSetting === "string"
-        ? suggestedPromptsEnabledSetting.toLowerCase() === "true"
-        : true;
+  const suggestedPromptsAccessMode = parseSuggestedPromptsAccessModeSetting(
+    suggestedPromptsEnabledSetting
+  );
+  const iconPromptsAccessMode = parseIconPromptsAccessModeSetting(
+    iconPromptsEnabledSetting
+  );
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -471,11 +574,14 @@ export default async function AdminSettingsPage({
       }
     }
   }
-  const forumEnabled = parseForumEnabledSetting(forumEnabledSetting);
-  const imageGenerationEnabled = parseImageGenerationEnabledSetting(
+  const forumAccessMode = parseForumAccessModeSetting(forumEnabledSetting);
+  const studyModeAccessMode = parseStudyModeAccessModeSetting(
+    studyModeEnabledSetting
+  );
+  const imageGenerationAccessMode = parseImageGenerationAccessModeSetting(
     imageGenerationEnabledSetting
   );
-  const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+  const documentUploadsAccessMode = parseDocumentUploadsAccessModeSetting(
     documentUploadsEnabledSetting
   );
 
@@ -598,33 +704,38 @@ export default async function AdminSettingsPage({
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm">Community forum</span>
-                  <EnabledBadge enabled={forumEnabled} />
+                  <AccessModeBadge mode={forumAccessMode} />
                 </div>
                 <p className="text-muted-foreground text-xs">
                   Toggle public access to the forum. When disabled, the forum
                   link disappears and all routes return a 404.
                 </p>
               </div>
-              <form
+              <FeatureAccessModeButtons
                 action={updateForumAvailabilityAction}
-                className="flex flex-col gap-3 text-sm"
-              >
-                <input
-                  name="forumEnabled"
-                  type="hidden"
-                  value={(!forumEnabled).toString()}
-                />
-                <SettingsSubmitButton
-                  pendingLabel={forumEnabled ? "Disabling…" : "Enabling…"}
-                  successMessage="Forum availability updated."
-                  variant={forumEnabled ? "destructive" : "default"}
-                >
-                  {forumEnabled ? "Disable forum" : "Enable forum"}
-                </SettingsSubmitButton>
+                currentMode={forumAccessMode}
+                fieldName="forumAccessMode"
+                successMessage="Forum availability updated."
+              />
+            </div>
+
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">Study mode</span>
+                  <AccessModeBadge mode={studyModeAccessMode} />
+                </div>
                 <p className="text-muted-foreground text-xs">
-                  Changes take effect immediately for all users.
+                  Show or hide the guided Study chat experience for exam
+                  question papers.
                 </p>
-              </form>
+              </div>
+              <FeatureAccessModeButtons
+                action={updateStudyModeAvailabilityAction}
+                currentMode={studyModeAccessMode}
+                fieldName="studyModeAccessMode"
+                successMessage="Study mode availability updated."
+              />
             </div>
 
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -633,37 +744,19 @@ export default async function AdminSettingsPage({
                   <span className="font-medium text-sm">
                     AI image generation
                   </span>
-                  <EnabledBadge enabled={imageGenerationEnabled} />
+                  <AccessModeBadge mode={imageGenerationAccessMode} />
                 </div>
                 <p className="text-muted-foreground text-xs">
                   Show or hide the image generation entry points across the chat
                   experience.
                 </p>
               </div>
-              <form
+              <FeatureAccessModeButtons
                 action={updateImageGenerationAvailabilityAction}
-                className="flex flex-col gap-3 text-sm"
-              >
-                <input
-                  name="imageGenerationEnabled"
-                  type="hidden"
-                  value={(!imageGenerationEnabled).toString()}
-                />
-                <SettingsSubmitButton
-                  pendingLabel={
-                    imageGenerationEnabled ? "Disabling…" : "Enabling…"
-                  }
-                  successMessage="Image generation availability updated."
-                  variant={imageGenerationEnabled ? "destructive" : "default"}
-                >
-                  {imageGenerationEnabled
-                    ? "Disable image generation"
-                    : "Enable image generation"}
-                </SettingsSubmitButton>
-                <p className="text-muted-foreground text-xs">
-                  Changes take effect immediately for all users.
-                </p>
-              </form>
+                currentMode={imageGenerationAccessMode}
+                fieldName="imageGenerationAccessMode"
+                successMessage="Image generation availability updated."
+              />
             </div>
 
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -672,36 +765,18 @@ export default async function AdminSettingsPage({
                   <span className="font-medium text-sm">
                     Document uploads
                   </span>
-                  <EnabledBadge enabled={documentUploadsEnabled} />
+                  <AccessModeBadge mode={documentUploadsAccessMode} />
                 </div>
                 <p className="text-muted-foreground text-xs">
                   Allow users to upload PDFs, DOCX, and XLSX files in chat.
                 </p>
               </div>
-              <form
+              <FeatureAccessModeButtons
                 action={updateDocumentUploadsAvailabilityAction}
-                className="flex flex-col gap-3 text-sm"
-              >
-                <input
-                  name="documentUploadsEnabled"
-                  type="hidden"
-                  value={(!documentUploadsEnabled).toString()}
-                />
-                <SettingsSubmitButton
-                  pendingLabel={
-                    documentUploadsEnabled ? "Disabling…" : "Enabling…"
-                  }
-                  successMessage="Document upload availability updated."
-                  variant={documentUploadsEnabled ? "destructive" : "default"}
-                >
-                  {documentUploadsEnabled
-                    ? "Disable document uploads"
-                    : "Enable document uploads"}
-                </SettingsSubmitButton>
-                <p className="text-muted-foreground text-xs">
-                  Changes take effect immediately for all users.
-                </p>
-              </form>
+                currentMode={documentUploadsAccessMode}
+                fieldName="documentUploadsAccessMode"
+                successMessage="Document upload availability updated."
+              />
             </div>
           </div>
         </CollapsibleSection>
@@ -1070,38 +1145,19 @@ export default async function AdminSettingsPage({
                         <span className="font-medium text-sm">
                           Suggested prompts
                         </span>
-                        <EnabledBadge enabled={suggestedPromptsEnabled} />
+                        <AccessModeBadge mode={suggestedPromptsAccessMode} />
                       </div>
                       <p className="text-muted-foreground text-xs">
                         Toggle the suggested prompt chips shown on the home
                         page.
                       </p>
                     </div>
-                    <form
+                    <FeatureAccessModeButtons
                       action={updateSuggestedPromptsAvailabilityAction}
-                      className="flex flex-col gap-3 text-sm"
-                    >
-                      <input
-                        name="suggestedPromptsEnabled"
-                        type="hidden"
-                        value={(!suggestedPromptsEnabled).toString()}
-                      />
-                      <SettingsSubmitButton
-                        pendingLabel={
-                          suggestedPromptsEnabled
-                            ? "Disabling..."
-                            : "Enabling..."
-                        }
-                        successMessage="Suggested prompts updated."
-                        variant={
-                          suggestedPromptsEnabled ? "destructive" : "default"
-                        }
-                      >
-                        {suggestedPromptsEnabled
-                          ? "Disable suggested prompts"
-                          : "Enable suggested prompts"}
-                      </SettingsSubmitButton>
-                    </form>
+                      currentMode={suggestedPromptsAccessMode}
+                      fieldName="suggestedPromptsAccessMode"
+                      successMessage="Suggested prompts updated."
+                    />
                   </div>
                 </div>
 
@@ -1137,38 +1193,19 @@ export default async function AdminSettingsPage({
                         <span className="font-medium text-sm">
                           Icon pre-prompts
                         </span>
-                        <EnabledBadge enabled={iconPromptSettings.enabled} />
+                        <AccessModeBadge mode={iconPromptsAccessMode} />
                       </div>
                       <p className="text-muted-foreground text-xs">
                         Toggle the icon-based prompt section shown on the home
                         page.
                       </p>
                     </div>
-                    <form
+                    <FeatureAccessModeButtons
                       action={updateIconPromptAvailabilityAction}
-                      className="flex flex-col gap-3 text-sm"
-                    >
-                      <input
-                        name="iconPromptsEnabled"
-                        type="hidden"
-                        value={(!iconPromptSettings.enabled).toString()}
-                      />
-                      <SettingsSubmitButton
-                        pendingLabel={
-                          iconPromptSettings.enabled
-                            ? "Disabling..."
-                            : "Enabling..."
-                        }
-                        successMessage="Icon pre-prompts updated."
-                        variant={
-                          iconPromptSettings.enabled ? "destructive" : "default"
-                        }
-                      >
-                        {iconPromptSettings.enabled
-                          ? "Disable icon pre-prompts"
-                          : "Enable icon pre-prompts"}
-                      </SettingsSubmitButton>
-                    </form>
+                      currentMode={iconPromptsAccessMode}
+                      fieldName="iconPromptsAccessMode"
+                      successMessage="Icon pre-prompts updated."
+                    />
                   </div>
                 </div>
 

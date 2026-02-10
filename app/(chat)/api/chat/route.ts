@@ -1,6 +1,7 @@
 import { geolocation } from "@vercel/functions";
 import {
   convertToModelMessages,
+  createUIMessageStream,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
   type LanguageModelUsage,
@@ -30,6 +31,7 @@ import {
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   isProductionEnvironment,
+  STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   createStreamId,
@@ -47,18 +49,39 @@ import {
   updateChatTitleById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
+import {
+  getStudyQuestionIndexCached,
+  lookupStudyAnswerByNumber,
+  lookupStudyQuestionByNumber,
+  resolveQuestionNumberFromText,
+  resolveStudyNumberIntent,
+} from "@/lib/study/question-index";
+import {
+  STUDY_CHAT_MODE,
+  extractStudyYear,
+  QUESTION_PAPER_RUNTIME_CONTEXT_CHARS,
+  getQuestionPaperEntryById,
+  listActiveQuestionPaperIdsForModel,
+  listQuestionPaperChips,
+  listQuestionPaperFacets,
+  listQuestionPapers,
+  resolveStudyFilters,
+  toStudyCard,
+} from "@/lib/study/service";
 import type { ChatMessage } from "@/lib/types";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 import {
   isDocumentMimeType,
-  parseDocumentUploadsEnabledSetting,
+  parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import type { AppUsage } from "@/lib/usage";
 import {
@@ -104,6 +127,7 @@ const CHAT_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
+const STUDY_CONTEXT_MAX_CHARS = QUESTION_PAPER_RUNTIME_CONTEXT_CHARS;
 
 const getUsageNumber = (value: unknown): number =>
   typeof value === "number" ? value : 0;
@@ -198,6 +222,21 @@ function buildFallbackTitleFromMessage(message: ChatMessage) {
   return `${normalized.slice(0, 77).trim()}...`;
 }
 
+function findRecentReferencedQuestionNumber(messages: ChatMessage[]): number | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const entry = messages[index];
+    const text = getTextFromMessage(entry).trim();
+    if (!text) {
+      continue;
+    }
+    const number = resolveQuestionNumberFromText(text);
+    if (number) {
+      return number;
+    }
+  }
+  return null;
+}
+
 async function enforceChatRateLimit(
   request: Request
 ): Promise<Response | null> {
@@ -255,6 +294,9 @@ export async function POST(request: Request) {
       selectedLanguage,
       selectedVisibilityType,
       hiddenPrompt,
+      chatMode: chatModeInput,
+      studyPaperId,
+      studyQuizActive,
     }: {
       id: string;
       message: ChatMessage;
@@ -262,6 +304,9 @@ export async function POST(request: Request) {
       selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
+      chatMode?: "default" | "study";
+      studyPaperId?: string | null;
+      studyQuizActive?: boolean;
     } = requestBody;
 
     const session = await auth();
@@ -287,11 +332,13 @@ export async function POST(request: Request) {
       registry,
       customKnowledgeSetting,
       documentUploadsSetting,
+      studyModeSetting,
     ] = await Promise.all([
       loadFreeMessageSettings(),
       getModelRegistry(),
       getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
       getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
     ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
@@ -344,44 +391,382 @@ export async function POST(request: Request) {
         : typeof customKnowledgeSetting === "string"
           ? customKnowledgeSetting.toLowerCase() === "true"
           : false;
-    const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+    const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
       documentUploadsSetting
     );
+    const documentUploadsEnabled = isFeatureEnabledForRole(
+      documentUploadsMode,
+      session.user.role
+    );
+    const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
+    const studyModeEnabled = isFeatureEnabledForRole(
+      studyModeMode,
+      session.user.role
+    );
+    const requestedChatMode =
+      chatModeInput === STUDY_CHAT_MODE ? STUDY_CHAT_MODE : "default";
 
     const chat = await getChatById({ id });
+    const resolvedChatMode = chat?.mode ?? requestedChatMode;
+
+    if (resolvedChatMode === STUDY_CHAT_MODE && !studyModeEnabled) {
+      return new ChatSDKError(
+        "not_found:chat",
+        "Study mode is disabled"
+      ).toResponse();
+    }
 
     if (chat) {
       if (chat.userId !== session.user.id) {
         return new ChatSDKError("forbidden:chat").toResponse();
       }
     } else {
-      const fallbackTitle = buildFallbackTitleFromMessage(message);
+      const fallbackTitle =
+        resolvedChatMode === STUDY_CHAT_MODE
+          ? "Study"
+          : buildFallbackTitleFromMessage(message);
 
       await saveChat({
         id,
         userId: session.user.id,
         title: fallbackTitle,
         visibility: selectedVisibilityType,
+        mode: resolvedChatMode,
       });
 
-      (async () => {
-        try {
-          const generatedTitle = await generateTitleFromUserMessage({
-            message,
-            modelConfig,
-          });
-          const normalizedTitle = generatedTitle.trim();
+      if (resolvedChatMode !== STUDY_CHAT_MODE) {
+        (async () => {
+          try {
+            const generatedTitle = await generateTitleFromUserMessage({
+              message,
+              modelConfig,
+            });
+            const normalizedTitle = generatedTitle.trim();
 
-          if (normalizedTitle.length > 0 && normalizedTitle !== fallbackTitle) {
-            await updateChatTitleById({
-              chatId: id,
-              title: normalizedTitle,
+            if (normalizedTitle.length > 0 && normalizedTitle !== fallbackTitle) {
+              await updateChatTitleById({
+                chatId: id,
+                title: normalizedTitle,
+              });
+            }
+          } catch (error) {
+            console.warn("Failed to refresh chat title", { chatId: id }, error);
+          }
+        })();
+      }
+    }
+
+    const normalizedStudyPaperId =
+      typeof studyPaperId === "string" && studyPaperId.trim().length > 0
+        ? studyPaperId.trim()
+        : null;
+    const isStudyQuizActive = Boolean(studyQuizActive);
+
+    const buildStudyResponse = async ({
+      text,
+      cards,
+      assistChips,
+    }: {
+      text?: string;
+      cards?: ReturnType<typeof toStudyCard>[];
+      assistChips?: { question: string; chips: string[] } | null;
+    }) => {
+      const createdAt = new Date();
+      const assistantMessageId = generateUUID();
+      const assistantParts: ChatMessage["parts"] = [];
+
+      if (text) {
+        assistantParts.push({ type: "text", text });
+      }
+      if (cards && cards.length > 0) {
+        assistantParts.push({
+          type: "data-studyCards",
+          data: { papers: cards },
+        } as ChatMessage["parts"][number]);
+      }
+      if (assistChips && assistChips.chips.length > 0) {
+        assistantParts.push({
+          type: "data-studyAssistChips",
+          data: assistChips,
+        } as ChatMessage["parts"][number]);
+      }
+
+      await saveMessages({
+        messages: [
+          {
+            chatId: id,
+            id: message.id,
+            role: "user",
+            parts: message.parts,
+            attachments: [],
+            createdAt: new Date(),
+          },
+          {
+            chatId: id,
+            id: assistantMessageId,
+            role: "assistant",
+            parts: assistantParts,
+            attachments: [],
+            createdAt,
+          },
+        ],
+      });
+
+      const stream = createUIMessageStream<ChatMessage>({
+        execute: ({ writer }) => {
+          writer.write({
+            type: "start",
+            messageId: assistantMessageId,
+            messageMetadata: { createdAt: createdAt.toISOString() },
+          });
+          writer.write({ type: "start-step" });
+          let textIndex = 0;
+          for (const part of assistantParts) {
+            if (part.type === "text") {
+              const textId = `text-${textIndex}`;
+              textIndex += 1;
+              writer.write({ type: "text-start", id: textId });
+              writer.write({ type: "text-delta", id: textId, delta: part.text });
+              writer.write({ type: "text-end", id: textId });
+              continue;
+            }
+            if (part.type === "data-studyCards") {
+              writer.write({
+                type: "data-studyCards",
+                data: part.data,
+              });
+              continue;
+            }
+            if (part.type === "data-studyAssistChips") {
+              writer.write({
+                type: "data-studyAssistChips",
+                data: part.data,
+              });
+            }
+          }
+          writer.write({ type: "finish-step" });
+          writer.write({ type: "finish" });
+        },
+      });
+
+      return createUIMessageStreamResponse({
+        stream,
+        headers: STREAM_HEADERS,
+      });
+    };
+
+    const studyPaperIdsForModel =
+      resolvedChatMode === STUDY_CHAT_MODE
+        ? await listActiveQuestionPaperIdsForModel({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+          })
+        : null;
+    const implicitStudyPaperId =
+      !normalizedStudyPaperId &&
+      resolvedChatMode === STUDY_CHAT_MODE &&
+      studyPaperIdsForModel &&
+      studyPaperIdsForModel.length === 1
+        ? studyPaperIdsForModel[0]
+        : null;
+    const effectiveStudyPaperId =
+      normalizedStudyPaperId ?? implicitStudyPaperId;
+    const studyEntry =
+      resolvedChatMode === STUDY_CHAT_MODE && effectiveStudyPaperId
+        ? await getQuestionPaperEntryById({ id: effectiveStudyPaperId })
+        : null;
+    const studyContentRaw =
+      typeof studyEntry?.content === "string" ? studyEntry.content.trim() : "";
+    const hasPlaceholderContent =
+      studyContentRaw.startsWith("Question paper uploaded") ||
+      studyContentRaw.length === 0;
+    let resolvedStudyContent = studyContentRaw;
+
+    if (
+      hasPlaceholderContent &&
+      studyEntry?.sourceUrl &&
+      typeof studyEntry.sourceUrl === "string"
+    ) {
+      try {
+        const url = studyEntry.sourceUrl;
+        const lowerUrl = url.toLowerCase();
+        const mediaType = lowerUrl.endsWith(".docx")
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : lowerUrl.endsWith(".xlsx")
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "application/pdf";
+        const parsed = await extractDocumentText(
+          {
+            name: studyEntry.title ?? "question-paper",
+            url,
+            mediaType,
+          },
+          { maxTextChars: STUDY_CONTEXT_MAX_CHARS }
+        );
+        resolvedStudyContent = parsed.text.trim();
+      } catch (error) {
+        console.warn("Failed to extract study paper content", error);
+      }
+    }
+
+    const studyContextText =
+      resolvedStudyContent.length > 0
+        ? [
+            "Question paper content:",
+            resolvedStudyContent.length > STUDY_CONTEXT_MAX_CHARS
+              ? `${resolvedStudyContent.slice(0, STUDY_CONTEXT_MAX_CHARS)}\n[Content truncated]`
+              : resolvedStudyContent,
+          ].join("\n\n")
+        : "";
+
+    if (resolvedChatMode === STUDY_CHAT_MODE && !normalizedStudyPaperId) {
+      const studyText = getTextFromMessage(message).trim();
+      const normalizedStudyText = studyText.toLowerCase();
+      const wantsStudyResponse =
+        /\bpaper(s)?\b|previous year|past year|syllabus|quiz|practice|mock/.test(
+          normalizedStudyText
+        );
+      const facets = await listQuestionPaperFacets({ includeInactive: false });
+      const resolvedFilters = resolveStudyFilters({
+        text: studyText,
+        exams: facets.exams,
+        roles: facets.roles,
+      });
+      const resolvedYear = extractStudyYear(studyText);
+      const hasFilters = Boolean(
+        resolvedFilters.exam || resolvedFilters.role || resolvedYear
+      );
+
+      if (wantsStudyResponse || hasFilters) {
+        if (!hasFilters) {
+          const availablePapers = await listQuestionPapers({
+            includeInactive: false,
+          });
+          if (availablePapers.length === 1) {
+            return buildStudyResponse({
+              text: "Here is the available question paper.",
+              cards: availablePapers.map(toStudyCard),
             });
           }
-        } catch (error) {
-          console.warn("Failed to refresh chat title", { chatId: id }, error);
         }
-      })();
+
+        if (!resolvedFilters.exam) {
+          const chipGroups = await listQuestionPaperChips({});
+          const chips = chipGroups[0]?.chips ?? [];
+          return buildStudyResponse({
+            text: "Which exam are you preparing for?",
+            assistChips: chips.length
+              ? { question: "Choose an exam", chips }
+              : null,
+          });
+        }
+
+        if (!resolvedFilters.role) {
+          const chipGroups = await listQuestionPaperChips({
+            exam: resolvedFilters.exam,
+          });
+          const chips = chipGroups[0]?.chips ?? [];
+          return buildStudyResponse({
+            text: `Which post or role for ${resolvedFilters.exam}?`,
+            assistChips: chips.length
+              ? { question: "Choose a role", chips }
+              : null,
+          });
+        }
+
+        if (!resolvedYear) {
+          const chipGroups = await listQuestionPaperChips({
+            exam: resolvedFilters.exam,
+            role: resolvedFilters.role,
+          });
+          const chips = chipGroups[0]?.chips ?? [];
+          return buildStudyResponse({
+            text: "Which year are you looking for?",
+            assistChips: chips.length
+              ? { question: "Pick a year", chips }
+              : null,
+          });
+        }
+
+        const papers = await listQuestionPapers({
+          includeInactive: false,
+          exam: resolvedFilters.exam ?? undefined,
+          role: resolvedFilters.role ?? undefined,
+          year: resolvedYear ?? undefined,
+        });
+
+        if (papers.length === 0) {
+          if (!hasFilters) {
+            const availablePapers = await listQuestionPapers({
+              includeInactive: false,
+            });
+            if (availablePapers.length === 1) {
+              return buildStudyResponse({
+                text: "Here is the available question paper.",
+                cards: availablePapers.map(toStudyCard),
+              });
+            }
+          }
+          const chipGroups = await listQuestionPaperChips({
+            exam: resolvedFilters.exam ?? null,
+            role: resolvedFilters.role ?? null,
+          });
+          const chips = chipGroups[0]?.chips ?? [];
+          return buildStudyResponse({
+            text: "I couldn't find that paper. Try another year.",
+            assistChips: chips.length
+              ? { question: "Try one of these", chips }
+              : null,
+          });
+        }
+
+        const cards = papers.map(toStudyCard);
+        const introText =
+          cards.length === 1
+            ? "Here is the matching question paper."
+            : "Here are the matching question papers.";
+        return buildStudyResponse({ text: introText, cards });
+      }
+    }
+
+    if (resolvedChatMode === STUDY_CHAT_MODE && !effectiveStudyPaperId) {
+      const availableIds = studyPaperIdsForModel ?? [];
+      const papers = await listQuestionPapers({ includeInactive: false });
+      const visiblePapers =
+        availableIds.length > 0
+          ? papers.filter((paper) => availableIds.includes(paper.id))
+          : papers;
+
+      if (visiblePapers.length === 0) {
+        return buildStudyResponse({
+          text: "No question papers are available yet. Please upload one first.",
+        });
+      }
+
+      if (visiblePapers.length === 1) {
+        return buildStudyResponse({
+          text: "Here is the available question paper.",
+          cards: visiblePapers.map(toStudyCard),
+        });
+      }
+
+      const chipGroups = await listQuestionPaperChips({});
+      const chips = chipGroups[0]?.chips ?? [];
+      return buildStudyResponse({
+        text: "I found multiple question papers. Please select one paper first, then ask your question.",
+        cards: visiblePapers.slice(0, 12).map(toStudyCard),
+        assistChips: chips.length ? { question: "Choose an exam", chips } : null,
+      });
+    }
+
+    if (resolvedChatMode === STUDY_CHAT_MODE && effectiveStudyPaperId) {
+      const availableIds = studyPaperIdsForModel ?? [];
+      if (!availableIds.includes(effectiveStudyPaperId)) {
+        return new ChatSDKError(
+          "not_found:chat",
+          "Question paper not found or unavailable."
+        ).toResponse();
+      }
     }
 
     const messagesFromDb = await getMessagesByChatId({ id });
@@ -395,6 +780,103 @@ export async function POST(request: Request) {
     const baseUiMessages = uiMessagesFromDb.map(stripDocumentParts);
     const normalizedHiddenPrompt =
       typeof hiddenPrompt === "string" ? hiddenPrompt.trim() : "";
+    const studyUserText = getTextFromMessage(message).trim();
+    let studyAnswerLlmFallback:
+      | { questionNumber: number; questionText: string; reason: string }
+      | null = null;
+
+    if (resolvedChatMode === STUDY_CHAT_MODE && effectiveStudyPaperId) {
+      const intent = resolveStudyNumberIntent(studyUserText);
+      if (intent.type !== "other") {
+        const inferredQuestionNumber =
+          intent.questionNumber ??
+          (intent.type === "ask_answer_by_number"
+            ? findRecentReferencedQuestionNumber(uiMessagesFromDb)
+            : null);
+
+        if (!inferredQuestionNumber) {
+          return buildStudyResponse({
+            text: "Please specify the question number (for example, question 5).",
+          });
+        }
+
+        if (!resolvedStudyContent) {
+          return buildStudyResponse({
+            text: "I couldn't read enough content from the selected paper to identify question numbers.",
+          });
+        }
+
+        const paperVersion =
+          studyEntry?.updatedAt instanceof Date
+            ? studyEntry.updatedAt.toISOString()
+            : studyEntry?.updatedAt
+              ? new Date(studyEntry.updatedAt).toISOString()
+              : null;
+        const questionIndex = getStudyQuestionIndexCached({
+          paperId: effectiveStudyPaperId,
+          paperVersion,
+          content: resolvedStudyContent,
+        });
+
+        if (intent.type === "ask_question_by_number") {
+          const questionLookup = lookupStudyQuestionByNumber(
+            questionIndex,
+            inferredQuestionNumber
+          );
+
+          if (questionLookup.status === "found") {
+            return buildStudyResponse({
+              text: `Question ${inferredQuestionNumber}:\n${questionLookup.question}`,
+            });
+          }
+
+          if (questionLookup.status === "ambiguous") {
+            return buildStudyResponse({
+              text: `I found multiple entries for question ${inferredQuestionNumber} in this paper. Please share the exact section or paste the question text.`,
+            });
+          }
+
+          return buildStudyResponse({
+            text: `I couldn't find question ${inferredQuestionNumber} in the selected paper. Please verify the number.`,
+          });
+        }
+
+        const answerLookup = lookupStudyAnswerByNumber(
+          questionIndex,
+          inferredQuestionNumber
+        );
+
+        if (answerLookup.status === "found") {
+          return buildStudyResponse({
+            text: `Answer for question ${inferredQuestionNumber} (verified): ${answerLookup.answer}`,
+          });
+        }
+
+        if (answerLookup.status === "ambiguous") {
+          return buildStudyResponse({
+            text: `I found conflicting answers for question ${inferredQuestionNumber} in this paper, so I won't guess. Please share the exact answer-key section.`,
+          });
+        }
+        const questionLookup = lookupStudyQuestionByNumber(
+          questionIndex,
+          inferredQuestionNumber
+        );
+        if (questionLookup.status !== "found") {
+          return buildStudyResponse({
+            text: `I couldn't reliably identify question ${inferredQuestionNumber} in this paper. Please share the exact question text.`,
+          });
+        }
+
+        studyAnswerLlmFallback = {
+          questionNumber: inferredQuestionNumber,
+          questionText: questionLookup.question,
+          reason: answerLookup.hasAnyAnswerEvidence
+            ? "No verified answer was found for this number in the parsed key."
+            : "No clear answer key was found in this paper.",
+        };
+      }
+    }
+
     const documentParts = message.parts.filter(
       (part): part is Extract<ChatMessage["parts"][number], { type: "file" }> =>
         part.type === "file" && isDocumentMimeType(part.mediaType ?? "")
@@ -507,10 +989,36 @@ export async function POST(request: Request) {
       }
     }
 
-    const baseParts = message.parts.filter(
-      (part) =>
-        !(part.type === "file" && isDocumentMimeType(part.mediaType ?? ""))
+    const studyQuestionReferencePart = message.parts.find(
+      (
+        part
+      ): part is Extract<
+        ChatMessage["parts"][number],
+        { type: "data-studyQuestionReference" }
+      > => part.type === "data-studyQuestionReference"
     );
+    const studyQuestionReferenceData = studyQuestionReferencePart?.data;
+    const studyQuestionReferenceText =
+      resolvedChatMode === STUDY_CHAT_MODE &&
+      studyQuestionReferenceData &&
+      typeof studyQuestionReferenceData.title === "string" &&
+      typeof studyQuestionReferenceData.preview === "string"
+        ? [
+            "The user referenced a specific question from the selected paper.",
+            `Reference title: ${studyQuestionReferenceData.title}`,
+            `Reference preview: ${studyQuestionReferenceData.preview}`,
+          ].join("\n")
+        : "";
+
+    const baseParts = message.parts.filter((part) => {
+      if (part.type === "text") {
+        return true;
+      }
+      if (part.type === "file") {
+        return !isDocumentMimeType(part.mediaType ?? "");
+      }
+      return false;
+    });
     let modelParts =
       normalizedHiddenPrompt.length > 0
         ? [
@@ -530,9 +1038,30 @@ export async function POST(request: Request) {
         },
       ];
     }
-    const modelMessage = { ...message, parts: modelParts };
-    const uiMessagesForModel = [...baseUiMessages, modelMessage];
-
+    if (studyQuestionReferenceText) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: studyQuestionReferenceText,
+        },
+      ];
+    }
+    if (studyAnswerLlmFallback) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: [
+            "The user explicitly asked for an answer to a numbered question.",
+            `Question number: ${studyAnswerLlmFallback.questionNumber}`,
+            `Question text: ${studyAnswerLlmFallback.questionText}`,
+            `Verification status: ${studyAnswerLlmFallback.reason}`,
+            "Use model knowledge to answer only if you are confident. If not confident, say exactly: I don't know.",
+          ].join("\n"),
+        },
+      ];
+    }
     const { longitude, latitude, city, country } = geolocation(request);
 
     const requestHints: RequestHints = {
@@ -561,6 +1090,18 @@ export async function POST(request: Request) {
       typeof baseInstruction === "string" ? baseInstruction.trim() : "",
       languageSystemPrompt ?? "",
       documentInstruction ?? "",
+      resolvedChatMode === STUDY_CHAT_MODE
+        ? "You are in Study mode. Use the selected question paper as your primary source. If the user asks for the answer to a numbered question and no verified answer key is available, you may use model knowledge only when confident; otherwise respond exactly: I don't know."
+        : "",
+      resolvedChatMode === STUDY_CHAT_MODE && effectiveStudyPaperId
+        ? "Use the selected question paper to answer. For numbered question-answer requests, prefer explicit answer-key evidence when available. If no clear answer key exists and the user explicitly asks for the answer, you may answer from model knowledge only when confident; otherwise respond with: I don't know."
+        : "",
+      resolvedChatMode === STUDY_CHAT_MODE && studyAnswerLlmFallback
+        ? "The current response is an explicit fallback request for a numbered question answer with no verified key. Give a concise best answer from model knowledge if confident. If not confident, respond exactly: I don't know."
+        : "",
+      resolvedChatMode === STUDY_CHAT_MODE && isStudyQuizActive
+        ? "Quiz mode is active. Ask one question at a time from the selected paper, wait for the user's answer, then provide feedback and a brief explanation grounded in the paper. Keep score within this session."
+        : "",
     ].filter(Boolean);
     const systemInstruction =
       systemInstructionParts.length > 0
@@ -590,23 +1131,32 @@ export async function POST(request: Request) {
     };
 
     const fileSearchStoreName = getGeminiFileSearchStoreName();
+    const allowStudyFileSearch = resolvedChatMode === STUDY_CHAT_MODE;
     const canUseGeminiFileSearch =
-      customKnowledgeEnabled &&
+      (customKnowledgeEnabled || allowStudyFileSearch) &&
       modelConfig.provider === "google" &&
       typeof fileSearchStoreName === "string" &&
       supportsGeminiFileSearchModel(modelConfig.providerModelId);
 
     const activeEntryIds = canUseGeminiFileSearch
-      ? await listActiveRagEntryIdsForModel({
-          modelConfigId: modelConfig.id,
-          modelKey: modelConfig.key,
-        })
+      ? resolvedChatMode === STUDY_CHAT_MODE
+        ? studyPaperIdsForModel ?? []
+        : await listActiveRagEntryIdsForModel({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+          })
       : [];
+    const filteredEntryIds =
+      resolvedChatMode === STUDY_CHAT_MODE
+        ? effectiveStudyPaperId
+          ? [effectiveStudyPaperId]
+          : []
+        : activeEntryIds;
 
     const metadataFilter =
-      canUseGeminiFileSearch && activeEntryIds.length > 0
-        ? activeEntryIds
-            .map((id) => `rag_entry_id = "${escapeFilterValue(id)}"`)
+      canUseGeminiFileSearch && filteredEntryIds.length > 0
+        ? filteredEntryIds
+            .map((entryId) => `rag_entry_id = "${escapeFilterValue(entryId)}"`)
             .join(" OR ")
         : null;
 
@@ -636,6 +1186,23 @@ export async function POST(request: Request) {
         }),
       });
     }
+
+    const shouldAttachStudyContext =
+      studyContextText &&
+      (!useGeminiFileSearch || studyEntry?.embeddingStatus !== "ready");
+
+    if (shouldAttachStudyContext) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: studyContextText,
+        },
+      ];
+    }
+
+    const modelMessage = { ...message, parts: modelParts };
+    const uiMessagesForModel = [...baseUiMessages, modelMessage];
 
     const promptText = uiMessagesForModel
       .map((entry) => getTextFromMessage(entry))

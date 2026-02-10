@@ -5,13 +5,14 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
   DOCUMENT_MIME_TYPES,
   DOCUMENT_UPLOADS_MAX_BYTES,
   IMAGE_MIME_TYPES,
-  parseDocumentUploadsEnabledSetting,
+  parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 
 const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
@@ -60,8 +61,12 @@ export async function POST(request: Request) {
     const documentUploadsSetting = await getAppSetting<string | boolean>(
       DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
     );
-    const documentUploadsEnabled = parseDocumentUploadsEnabledSetting(
+    const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
       documentUploadsSetting
+    );
+    const documentUploadsEnabled = isFeatureEnabledForRole(
+      documentUploadsMode,
+      session.user.role
     );
     const allowedMimeTypes = documentUploadsEnabled
       ? [...ALLOWED_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]

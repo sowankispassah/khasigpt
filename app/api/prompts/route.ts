@@ -13,7 +13,10 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const prompts = await loadSuggestedPrompts(preferredLanguage);
+  const prompts = await loadSuggestedPrompts(
+    preferredLanguage,
+    session.user.role
+  );
 
   return NextResponse.json({ prompts });
 }
