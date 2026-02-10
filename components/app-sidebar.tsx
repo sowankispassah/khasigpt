@@ -14,16 +14,23 @@ import {
   useState,
   useTransition,
 } from "react";
+import { BookOpen } from "lucide-react";
 import { PlusIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const SidebarHistory = dynamic(
   () =>
@@ -51,7 +58,13 @@ const SidebarHistory = dynamic(
   }
 );
 
-export function AppSidebar({ user }: { user: User | undefined }) {
+export function AppSidebar({
+  user,
+  studyModeEnabled = false,
+}: {
+  user: User | undefined;
+  studyModeEnabled?: boolean;
+}) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const { data: sessionData } = useSession();
@@ -114,9 +127,28 @@ export function AppSidebar({ user }: { user: User | undefined }) {
     }
     const targetHref = createNewChatHref();
     startProgress();
-      startTransition(() => {
-        setOpenMobile(false);
-        router.push(targetHref);
+    startTransition(() => {
+      setOpenMobile(false);
+      router.push(targetHref);
+    });
+  };
+
+  const createNewStudyHref = () => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return `/chat?mode=study&new=${crypto.randomUUID()}`;
+    }
+    return `/chat?mode=study&new=${Date.now().toString(36)}`;
+  };
+
+  const handleNewStudy = () => {
+    if (isPending) {
+      return;
+    }
+    const targetHref = createNewStudyHref();
+    startProgress();
+    startTransition(() => {
+      setOpenMobile(false);
+      router.push(targetHref);
     });
   };
 
@@ -179,30 +211,66 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                   KhasiGPT
                 </span>
               </Link>
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-busy={isPending}
-                      className="h-8 px-2 md:h-fit md:px-2"
-                      data-testid="new-chat-button"
-                      disabled={isPending}
-                      onClick={handleNewChat}
-                      type="button"
-                      variant="outline"
-                    >
-                      <PlusIcon />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent align="end">New Chat</TooltipContent>
-                </Tooltip>
-
-                <div className="md:hidden" />
-              </div>
+              <div className="md:hidden" />
             </div>
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent>
+          <div className="mt-5 px-2">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  aria-busy={isPending}
+                  className="cursor-pointer text-[15px]"
+                  onClick={handleNewChat}
+                  type="button"
+                >
+                  <PlusIcon />
+                  <span>New chat</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {studyModeEnabled ? (
+                <SidebarMenuItem>
+                  <Collapsible defaultOpen={false}>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        aria-busy={isPending}
+                        className="cursor-pointer text-[15px]"
+                        type="button"
+                      >
+                        <BookOpen />
+                        <span>Study</span>
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-1">
+                      <div className="flex flex-col gap-1">
+                        <SidebarMenu>
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              aria-busy={isPending}
+                              className="cursor-pointer text-[15px]"
+                              onClick={handleNewStudy}
+                              type="button"
+                            >
+                              <PlusIcon />
+                              <span>New Study</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        </SidebarMenu>
+                        <div className="ml-[5px]">
+                          <SidebarHistory
+                            mode="study"
+                            user={user}
+                          />
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </SidebarMenuItem>
+              ) : null}
+            </SidebarMenu>
+          </div>
+          <SidebarSeparator />
           <SidebarHistory user={user} />
         </SidebarContent>
       </Sidebar>

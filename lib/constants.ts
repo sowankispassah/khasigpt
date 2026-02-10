@@ -32,6 +32,7 @@ export const DEFAULT_SUGGESTED_PROMPTS = [
 export const RECOMMENDED_PRICING_PLAN_SETTING_KEY = "billing.recommendedPlanId";
 export const CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY = "chat.customKnowledge";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
+export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
 export const ICON_PROMPTS_SETTING_KEY = "home.iconPrompts";
 export const ICON_PROMPTS_ENABLED_SETTING_KEY = "home.iconPrompts.enabled";
 export const SUGGESTED_PROMPTS_ENABLED_SETTING_KEY =

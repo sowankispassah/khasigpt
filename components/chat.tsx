@@ -4,12 +4,28 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { BookOpen } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import {
   AlertDialog,
@@ -29,18 +45,32 @@ import type {
   IconPromptAction,
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import {
+  getStudyContextForChat,
+  setStudyContextForChat,
+} from "@/lib/study/context-store";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
-import { getChatHistoryPaginationKey } from "./sidebar-history";
+import { StudyPromptChips } from "./study/study-prompt-chips";
+import { getChatHistoryPaginationKeyForMode } from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
 const MODEL_STORAGE_KEY = "chat-model-preference";
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+const buildStudyQuestionReference = (
+  paper: StudyPaperCard
+): StudyQuestionReference => ({
+  paperId: paper.id,
+  title: paper.title,
+  preview: `${paper.exam} / ${paper.role} / ${paper.year}`,
+});
 
 export function Chat({
   id,
@@ -50,6 +80,7 @@ export function Chat({
   initialChatModel,
   initialChatLanguage,
   initialVisibilityType,
+  chatMode,
   languageSettings,
   isReadonly,
   autoResume,
@@ -66,6 +97,7 @@ export function Chat({
   initialChatModel: string;
   initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
+  chatMode: "default" | "study";
   languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
@@ -79,9 +111,15 @@ export function Chat({
   documentUploadsEnabled: boolean;
   customKnowledgeEnabled: boolean;
 }) {
+  const historyMode = chatMode === "study" ? "study" : "default";
+  const historyPaginationKey = useMemo(
+    () => getChatHistoryPaginationKeyForMode(historyMode),
+    [historyMode]
+  );
   const { visibilityType } = useChatVisibility({
     chatId: id,
     initialVisibilityType,
+    historyMode,
   });
   const {
     translate,
@@ -94,6 +132,10 @@ export function Chat({
   const { mutate } = useSWRConfig();
   const { setDataStream } = useDataStream();
 
+  const isStudyMode = chatMode === "study";
+  const greetingSubtitle = isStudyMode
+    ? translate("greeting.study.subtitle", "What would you like to study today?")
+    : undefined;
   const [input, setInput] = useState<string>("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
@@ -104,6 +146,8 @@ export function Chat({
     initialChatLanguage
   );
   const currentLanguageCodeRef = useRef(currentLanguageCode);
+  const studyContextIdRef = useRef<string | null>(null);
+  const studyQuizActiveRef = useRef(false);
   const [pendingUiLanguage, setPendingUiLanguage] = useState<{
     code: string;
     name: string;
@@ -123,6 +167,12 @@ export function Chat({
     initialOldestMessageAt
   );
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [studyContext, setStudyContext] = useState<StudyPaperCard | null>(null);
+  const [studyQuizActive, setStudyQuizActive] = useState(false);
+  const [studyQuestionReference, setStudyQuestionReference] =
+    useState<StudyQuestionReference | null>(null);
+  const [studyViewerPaper, setStudyViewerPaper] =
+    useState<StudyPaperCard | null>(null);
   const imageUpgradeTitle = imageGeneration.requiresPaidCredits
     ? translate(
         "image.actions.locked.free.title",
@@ -149,6 +199,30 @@ export function Chat({
   useEffect(() => {
     currentLanguageCodeRef.current = currentLanguageCode;
   }, [currentLanguageCode]);
+
+  useEffect(() => {
+    studyContextIdRef.current = studyContext?.id ?? null;
+  }, [studyContext]);
+
+  useEffect(() => {
+    if (!isStudyMode) {
+      return;
+    }
+    if (!studyContext) {
+      setStudyContextForChat(id, null);
+      return;
+    }
+    setStudyContextForChat(id, {
+      exam: studyContext.exam,
+      role: studyContext.role,
+      year: studyContext.year,
+      title: studyContext.title,
+    });
+  }, [id, isStudyMode, studyContext]);
+
+  useEffect(() => {
+    studyQuizActiveRef.current = studyQuizActive;
+  }, [studyQuizActive]);
 
   const handleModelChange = useCallback((modelId: string) => {
     setCurrentModelId(modelId);
@@ -278,6 +352,19 @@ export function Chat({
   }, [initialHasMoreHistory, initialOldestMessageAt]);
 
   useEffect(() => {
+    if (!isStudyMode) {
+      setStudyContext(null);
+      setStudyQuizActive(false);
+      setStudyQuestionReference(null);
+      setStudyViewerPaper(null);
+      return;
+    }
+    setStudyContext(null);
+    setStudyQuizActive(false);
+    setStudyViewerPaper(null);
+  }, [id, isStudyMode]);
+
+  useEffect(() => {
     if (!languages.length) {
       return;
     }
@@ -299,10 +386,10 @@ export function Chat({
   ]);
 
   useEffect(() => {
-    if (!imageGeneration.enabled) {
+    if (!imageGeneration.enabled || isStudyMode) {
       setIsImageMode(false);
     }
-  }, [imageGeneration.enabled]);
+  }, [imageGeneration.enabled, isStudyMode]);
 
   const clearProgressTimers = useCallback(() => {
     for (const timerId of progressTimersRef.current) {
@@ -373,6 +460,13 @@ export function Chat({
       api: "/api/chat",
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
+        const studyPayload = isStudyMode
+          ? {
+              chatMode,
+              studyPaperId: studyContextIdRef.current,
+              studyQuizActive: studyQuizActiveRef.current,
+            }
+          : { chatMode: "default" };
         return {
           body: {
             id: request.id,
@@ -381,6 +475,7 @@ export function Chat({
             selectedLanguage: currentLanguageCodeRef.current,
             selectedVisibilityType: visibilityType,
             ...request.body,
+            ...studyPayload,
           },
         };
       },
@@ -389,7 +484,7 @@ export function Chat({
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onFinish: () => {
-      mutate(unstable_serialize(getChatHistoryPaginationKey));
+      mutate(unstable_serialize(historyPaginationKey));
     },
     onError: (error) => {
       const message =
@@ -445,6 +540,130 @@ export function Chat({
     },
   });
 
+  useEffect(() => {
+    if (!isStudyMode) {
+      return;
+    }
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    if (!lastUserMessage) {
+      return;
+    }
+    const text = (lastUserMessage.parts ?? [])
+      .filter(
+        (part): part is { type: "text"; text: string } => part.type === "text"
+      )
+      .map((part) => part.text)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) {
+      return;
+    }
+    const normalized =
+      text.length > 80 ? `${text.slice(0, 77).trim()}...` : text;
+    const existing = getStudyContextForChat(id);
+    if (existing?.title === normalized) {
+      return;
+    }
+    setStudyContextForChat(id, {
+      ...existing,
+      title: normalized,
+    });
+  }, [id, isStudyMode, messages]);
+
+  const studyAssistChips = useMemo(() => {
+    if (!isStudyMode) {
+      return null;
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const entry = messages[index];
+      if (entry.role !== "assistant") {
+        continue;
+      }
+      const dataPart = entry.parts.find(
+        (part) => part.type === "data-studyAssistChips"
+      ) as
+        | { data?: { question?: string; chips?: string[] } }
+        | undefined;
+      if (dataPart?.data?.question && dataPart.data.chips?.length) {
+        return {
+          question: dataPart.data.question,
+          chips: dataPart.data.chips,
+        };
+      }
+    }
+    return null;
+  }, [isStudyMode, messages]);
+
+  const handleStudyView = useCallback((paper: StudyPaperCard) => {
+    setStudyViewerPaper(paper);
+  }, []);
+
+  const handleStudyAsk = useCallback((paper: StudyPaperCard) => {
+    setStudyContext(paper);
+    setStudyQuizActive(false);
+    setStudyQuestionReference(buildStudyQuestionReference(paper));
+  }, []);
+
+  const handleStudyQuiz = useCallback(
+    (paper: StudyPaperCard) => {
+      if (status !== "ready") {
+        return;
+      }
+      const reference = buildStudyQuestionReference(paper);
+      setStudyContext(paper);
+      setStudyQuizActive(true);
+      setStudyQuestionReference(reference);
+      sendMessage({
+        role: "user",
+        parts: [
+          {
+            type: "data-studyQuestionReference",
+            data: reference,
+          },
+          { type: "text", text: "Start quiz" },
+        ],
+      });
+    },
+    [sendMessage, status]
+  );
+
+  const handleJumpToQuestionPaper = useCallback((paperId: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const escapedPaperId =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(paperId)
+        : paperId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+    const targetCard = document.querySelector<HTMLElement>(
+      `[data-study-paper-card-id="${escapedPaperId}"]`
+    );
+    const fallbackList =
+      document.querySelector<HTMLElement>('[data-study-papers-list="true"]');
+    const target = targetCard ?? fallbackList;
+
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.classList.add("ring-2", "ring-primary/40");
+    window.setTimeout(() => {
+      target.classList.remove("ring-2", "ring-primary/40");
+    }, 1200);
+  }, []);
+
+  const clearStudyContext = useCallback(() => {
+    setStudyContext(null);
+    setStudyQuizActive(false);
+    setStudyQuestionReference(null);
+  }, []);
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -468,9 +687,14 @@ export function Chat({
   useEffect(() => {
     if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
       const nextPath = pathname === "/chat" ? "/chat" : "/";
-      router.replace(nextPath, { scroll: false });
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("new");
+      const nextHref = nextParams.toString()
+        ? `${nextPath}?${nextParams.toString()}`
+        : nextPath;
+      router.replace(nextHref, { scroll: false });
     }
-  }, [pathname, newChatNonce, router]);
+  }, [newChatNonce, pathname, router, searchParams]);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
@@ -633,7 +857,7 @@ export function Chat({
         }
 
         setMessages((prev) => [...prev, assistantMessage]);
-        mutate(unstable_serialize(getChatHistoryPaginationKey));
+        mutate(unstable_serialize(historyPaginationKey));
       } catch (_error) {
         toast({
           type: "error",
@@ -648,6 +872,7 @@ export function Chat({
     },
     [
       attachments,
+      historyPaginationKey,
       id,
       imageGeneration.canGenerate,
       imageGeneration.enabled,
@@ -794,6 +1019,59 @@ export function Chat({
     setMessages,
   });
 
+  const studyHeader = isStudyMode ? (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
+          <BookOpen className="h-3.5 w-3.5" />
+          Study mode
+        </span>
+        {studyQuizActive ? (
+          <span className="rounded-full border border-border/60 bg-background px-2 py-1">
+            Quiz active
+          </span>
+        ) : null}
+      </div>
+      {studyContext ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-background px-3 py-2 text-xs">
+          <div className="min-w-0 space-y-0.5">
+            <div className="truncate font-semibold text-foreground">
+              {studyContext.title}
+            </div>
+            <div className="truncate text-muted-foreground">
+              {studyContext.exam} / {studyContext.role} / {studyContext.year}
+            </div>
+          </div>
+          <Button
+            className="cursor-pointer"
+            onClick={clearStudyContext}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
+      <StudyPromptChips
+        assistChips={studyAssistChips}
+        chatId={id}
+        sendMessage={sendMessage}
+      />
+    </div>
+  ) : null;
+
+  const studyActions = isStudyMode
+    ? {
+        activePaperId: studyContext?.id ?? null,
+        isQuizActive: studyQuizActive,
+        onView: handleStudyView,
+        onAsk: handleStudyAsk,
+        onQuiz: handleStudyQuiz,
+        onJumpToQuestionPaper: handleJumpToQuestionPaper,
+      }
+    : undefined;
+
   return (
     <>
       {showActionProgress ? (
@@ -818,7 +1096,9 @@ export function Chat({
 
         <Messages
           chatId={id}
+          greetingSubtitle={greetingSubtitle}
           hasMoreHistory={hasMoreHistory}
+          header={studyHeader}
           isArtifactVisible={isArtifactVisible}
           isGeneratingImage={isGeneratingImage}
           isLoadingHistory={isLoadingHistory}
@@ -834,6 +1114,7 @@ export function Chat({
           suggestedPrompts={suggestedPrompts}
           iconPromptActions={iconPromptActions}
           onIconPromptSelect={handleIconPromptSelect}
+          studyActions={studyActions}
           votes={votes}
         />
 
@@ -858,12 +1139,14 @@ export function Chat({
                 attachments={attachments}
                 chatId={id}
                 documentUploadsEnabled={documentUploadsEnabled}
-                imageGenerationCanGenerate={imageGeneration.canGenerate}
-                imageGenerationEnabled={imageGeneration.enabled}
+                imageGenerationCanGenerate={
+                  imageGeneration.canGenerate && !isStudyMode
+                }
+                imageGenerationEnabled={imageGeneration.enabled && !isStudyMode}
                 imageGenerationRequiresPaidCredits={
                   imageGeneration.requiresPaidCredits
                 }
-                imageGenerationSelected={isImageMode}
+                imageGenerationSelected={isImageMode && !isStudyMode}
                 isGeneratingImage={isGeneratingImage}
                 input={input}
                 messages={messages}
@@ -875,14 +1158,19 @@ export function Chat({
                 onGenerateImage={() => {
                   void generateImageFromPrompt(input);
                 }}
+                onClearStudyQuestionReference={() =>
+                  setStudyQuestionReference(null)
+                }
+                onJumpToQuestionPaper={handleJumpToQuestionPaper}
                 sendMessage={sendMessage}
                 setAttachments={setAttachments}
                 setInput={setInput}
                 setMessages={setMessages}
                 status={status}
                 stop={stop}
+                studyQuestionReference={studyQuestionReference}
                 onToggleImageMode={() => {
-                  if (!imageGeneration.enabled) {
+                  if (!imageGeneration.enabled || isStudyMode) {
                     return;
                   }
                   if (!imageGeneration.canGenerate) {
@@ -906,8 +1194,80 @@ export function Chat({
               </p>
             </div>
           )}
-        </div>
       </div>
+      </div>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setStudyViewerPaper(null);
+          }
+        }}
+        open={Boolean(studyViewerPaper)}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{studyViewerPaper?.title ?? "Question paper"}</DialogTitle>
+            <DialogDescription>
+              {studyViewerPaper
+                ? `${studyViewerPaper.exam} / ${studyViewerPaper.role} / ${studyViewerPaper.year}`
+                : "Review the selected question paper."}
+            </DialogDescription>
+          </DialogHeader>
+          {studyViewerPaper ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap gap-2 text-muted-foreground">
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {studyViewerPaper.language}
+                </span>
+                {studyViewerPaper.tags.map((tag) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${studyViewerPaper.id}-tag-${tag}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {studyViewerPaper.sourceUrl ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <iframe
+                    className="h-[60vh] w-full"
+                    src={studyViewerPaper.sourceUrl}
+                    title={studyViewerPaper.title}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center text-muted-foreground text-xs">
+                  No file was uploaded for this paper.
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {studyViewerPaper.sourceUrl ? (
+                  <Button asChild variant="outline">
+                    <a
+                      className="cursor-pointer"
+                      href={studyViewerPaper.sourceUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Download
+                    </a>
+                  </Button>
+                ) : null}
+                <Button
+                  className="cursor-pointer"
+                  onClick={() => setStudyViewerPaper(null)}
+                  type="button"
+                  variant="ghost"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         onOpenChange={setShowRechargeDialog}

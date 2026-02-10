@@ -1,10 +1,12 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
+import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
@@ -33,6 +35,17 @@ type MessagesProps = {
   hasMoreHistory?: boolean;
   isLoadingHistory?: boolean;
   onLoadMoreHistory?: () => Promise<void>;
+  studyActions?: {
+    onView: (paper: StudyPaperCard) => void;
+    onAsk: (paper: StudyPaperCard) => void;
+    onQuiz: (paper: StudyPaperCard) => void;
+    onJumpToQuestionPaper?: (paperId: string) => void;
+    activePaperId?: string | null;
+    isQuizActive?: boolean;
+  };
+  header?: ReactNode;
+  greetingTitle?: string;
+  greetingSubtitle?: string;
 };
 
 const MAX_RENDERED_MESSAGES = 200;
@@ -55,6 +68,10 @@ function PureMessages({
   hasMoreHistory = false,
   isLoadingHistory = false,
   onLoadMoreHistory,
+  studyActions,
+  header,
+  greetingTitle,
+  greetingSubtitle,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
@@ -175,8 +192,11 @@ function PureMessages({
         style={{ overflowAnchor: "none" }}
       >
         <div className="mx-auto flex min-h-full w-full max-w-4xl flex-1 flex-col px-2 py-6 md:px-4">
+          {header ? (
+            <div className="w-full max-w-3xl self-center">{header}</div>
+          ) : null}
           <div className="flex flex-1 items-center justify-center">
-            <Greeting />
+            <Greeting title={greetingTitle} subtitle={greetingSubtitle} />
           </div>
           <div className="mt-10 w-full max-w-3xl self-center">
             <SuggestedActions
@@ -208,6 +228,7 @@ function PureMessages({
     >
       <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
         <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
+          {header ? <div className="w-full">{header}</div> : null}
           {hasMoreHistory && onLoadMoreHistory ? (
             <div className="flex justify-center">
               <button
@@ -260,6 +281,7 @@ function PureMessages({
                 hasSentMessage && originalIndex === messages.length - 1
               }
               setMessages={setMessages}
+              studyActions={studyActions}
               vote={votesByMessageId?.get(message.id)}
             />
             );

@@ -30,6 +30,7 @@ type ChatLoaderProps = {
   initialChatModel: string;
   initialChatLanguage: string;
   initialVisibilityType: VisibilityType;
+  chatMode: "default" | "study";
   languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;

@@ -5,7 +5,13 @@ import { useEffect, useState } from "react";
 
 import { useTranslation } from "@/components/language-provider";
 
-export const Greeting = () => {
+export const Greeting = ({
+  title,
+  subtitle,
+}: {
+  title?: string;
+  subtitle?: string;
+}) => {
   const { translate } = useTranslation();
   const { data: session } = useSession();
   const [isVisible, setIsVisible] = useState(false);
@@ -32,13 +38,16 @@ export const Greeting = () => {
       : "";
 
   const greetingTemplate = translate("greeting.title", "Hi, {name}");
-  const greetingTitle = firstName
+  const defaultTitle = firstName
     ? greetingTemplate.replaceAll("{name}", firstName)
     : greetingTemplate
         .replaceAll("{name}", "")
         .replace(/\s{2,}/g, " ")
         .replace(/(^[,\s]+|[,\s]+$)/g, "")
         .trim();
+  const greetingTitle = title ?? defaultTitle;
+  const greetingSubtitle =
+    subtitle ?? translate("greeting.subtitle", "How can I help you today?");
 
   return (
     <div
@@ -53,7 +62,7 @@ export const Greeting = () => {
       <div
         className={`${baseClasses} text-muted-foreground text-xl delay-75 md:text-2xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
       >
-        {translate("greeting.subtitle", "How can I help you today?")}
+        {greetingSubtitle}
       </div>
     </div>
   );

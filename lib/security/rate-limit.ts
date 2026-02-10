@@ -39,6 +39,7 @@ const kvRestToken =
   process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null;
 let redisClient: RedisClientType | null = null;
 let redisReady = false;
+let redisConnectPromise: Promise<void> | null = null;
 const hasRestKv = Boolean(kvRestUrl && kvRestToken);
 
 async function getRedisClient(): Promise<RedisClientType | null> {
@@ -63,14 +64,28 @@ async function getRedisClient(): Promise<RedisClientType | null> {
     }
 
     if (!redisReady) {
-      await redisClient.connect();
-      redisReady = true;
+      if ((redisClient as { isOpen?: boolean }).isOpen) {
+        redisReady = true;
+      } else {
+        if (!redisConnectPromise) {
+          redisConnectPromise = redisClient
+            .connect()
+            .then(() => {
+              redisReady = true;
+            })
+            .finally(() => {
+              redisConnectPromise = null;
+            });
+        }
+        await redisConnectPromise;
+      }
     }
 
     return redisClient;
   } catch (error) {
     console.error("[rate-limit] Failed to connect to Redis", error);
     redisReady = false;
+    redisConnectPromise = null;
     return null;
   }
 }

@@ -665,6 +665,9 @@ export const translationValue = pgTable(
 
 export type TranslationValue = InferSelectModel<typeof translationValue>;
 
+export const chatModeEnum = ["default", "study"] as const;
+export type ChatMode = (typeof chatModeEnum)[number];
+
 export const chat = pgTable(
   "Chat",
   {
@@ -674,6 +677,7 @@ export const chat = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => user.id),
+    mode: varchar("mode", { enum: chatModeEnum }).notNull().default("default"),
     visibility: varchar("visibility", { enum: ["public", "private"] })
       .notNull()
       .default("private"),

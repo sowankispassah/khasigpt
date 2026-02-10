@@ -1,3 +1,8 @@
+import {
+  parseFeatureAccessMode,
+  type FeatureAccessMode,
+} from "@/lib/feature-access";
+
 export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png"] as const;
 
 export const DOCUMENT_MIME_TYPES = [
@@ -35,6 +40,15 @@ export function parseDocumentUploadsEnabledSetting(
     return value.toLowerCase() === "true";
   }
   return false;
+}
+
+export const DOCUMENT_UPLOADS_ACCESS_MODE_FALLBACK: FeatureAccessMode =
+  "disabled";
+
+export function parseDocumentUploadsAccessModeSetting(
+  value: string | boolean | null | undefined
+): FeatureAccessMode {
+  return parseFeatureAccessMode(value, DOCUMENT_UPLOADS_ACCESS_MODE_FALLBACK);
 }
 
 export function getAttachmentAcceptValue(

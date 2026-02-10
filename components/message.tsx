@@ -4,6 +4,7 @@ import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
 import { LoaderIcon } from "./icons";
@@ -11,6 +12,7 @@ import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
+import { StudyPaperCards } from "./study/study-paper-cards";
 
 const PurePreviewMessage = ({
   chatId,
@@ -21,6 +23,7 @@ const PurePreviewMessage = ({
   regenerate,
   isReadonly,
   requiresScrollPadding,
+  studyActions,
 }: {
   chatId: string;
   message: ChatMessage;
@@ -30,6 +33,14 @@ const PurePreviewMessage = ({
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
   isReadonly: boolean;
   requiresScrollPadding: boolean;
+  studyActions?: {
+    onView: (paper: StudyPaperCard) => void;
+    onAsk: (paper: StudyPaperCard) => void;
+    onQuiz: (paper: StudyPaperCard) => void;
+    onJumpToQuestionPaper?: (paperId: string) => void;
+    activePaperId?: string | null;
+    isQuizActive?: boolean;
+  };
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
 
@@ -134,6 +145,70 @@ const PurePreviewMessage = ({
                   key={key}
                   reasoning={part.text}
                 />
+              );
+            }
+
+            if (type === "data-studyCards") {
+              const data = (part as { data?: { papers?: StudyPaperCard[] } })
+                .data;
+              const papers = data?.papers ?? [];
+              if (!studyActions || papers.length === 0) {
+                return null;
+              }
+              return (
+                <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4" key={key}>
+                  <StudyPaperCards
+                    activePaperId={studyActions.activePaperId}
+                    isQuizActive={studyActions.isQuizActive}
+                    onAsk={studyActions.onAsk}
+                    onQuiz={studyActions.onQuiz}
+                    onView={studyActions.onView}
+                    papers={papers}
+                  />
+                </div>
+              );
+            }
+
+            if (type === "data-studyQuestionReference") {
+              const data = (part as { data?: StudyQuestionReference }).data;
+              if (!data?.title || !data?.preview) {
+                return null;
+              }
+              const referenceBody = (
+                <>
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Question reference
+                  </div>
+                  <div className="truncate font-medium text-foreground text-sm">
+                    {data.title}
+                  </div>
+                  <div className="truncate text-muted-foreground text-xs">
+                    {data.preview}
+                  </div>
+                </>
+              );
+              return (
+                <div
+                  className={cn(
+                    "max-w-full rounded-lg border px-3 py-2 text-left",
+                    message.role === "user"
+                      ? "border-border/60 bg-muted/60"
+                      : "border-border/50 bg-muted/40"
+                  )}
+                  key={key}
+                >
+                  {studyActions?.onJumpToQuestionPaper ? (
+                    <button
+                      className="w-full cursor-pointer text-left"
+                      onClick={() => studyActions.onJumpToQuestionPaper?.(data.paperId)}
+                      type="button"
+                    >
+                      {referenceBody}
+                    </button>
+                  ) : (
+                    referenceBody
+                  )}
+                </div>
               );
             }
 

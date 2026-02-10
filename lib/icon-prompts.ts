@@ -3,7 +3,13 @@ import {
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
 } from "@/lib/constants";
+import type { UserRole } from "@/lib/db/schema";
 import { getAppSetting } from "@/lib/db/queries";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+  type FeatureAccessMode,
+} from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 export type IconPromptBehavior = "append" | "replace";
@@ -75,6 +81,14 @@ function normalizeBoolean(value: unknown, fallback: boolean) {
     return value.toLowerCase() === "true";
   }
   return fallback;
+}
+
+export const ICON_PROMPTS_ACCESS_MODE_FALLBACK: FeatureAccessMode = "disabled";
+
+export function parseIconPromptsAccessModeSetting(
+  value: unknown
+): FeatureAccessMode {
+  return parseFeatureAccessMode(value, ICON_PROMPTS_ACCESS_MODE_FALLBACK);
 }
 
 function normalizeLanguageMap(value: unknown) {
@@ -328,7 +342,10 @@ function resolveLocalizedBooleanList(
   return fallback;
 }
 
-async function fetchIconPromptActions(preferredLanguage?: string | null) {
+async function fetchIconPromptActions(
+  preferredLanguage?: string | null,
+  userRole?: UserRole | null
+) {
   const { activeLanguage, languages } =
     await getTranslationBundle(preferredLanguage);
   let rawSettings: unknown = null;
@@ -348,7 +365,9 @@ async function fetchIconPromptActions(preferredLanguage?: string | null) {
     enabledSetting
   );
 
-  if (!enabled) {
+  const mode = parseIconPromptsAccessModeSetting(enabledSetting);
+  const enabledForRole = isFeatureEnabledForRole(mode, userRole ?? null);
+  if (!enabled || !enabledForRole) {
     return [];
   }
 

@@ -20,6 +20,7 @@ import { useWindowSize } from "usehooks-ts";
 import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
 import { SelectItem } from "@/components/ui/select";
+import type { StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
@@ -35,8 +36,10 @@ import {
 import {
   ArrowUpIcon,
   ChevronDownIcon,
+  CrossSmallIcon,
   GlobeIcon,
   ImageIcon,
+  MessageIcon,
   PaperclipIcon,
   StopIcon,
 } from "./icons";
@@ -72,6 +75,9 @@ function PureMultimodalInput({
   imageGenerationCanGenerate,
   imageGenerationRequiresPaidCredits,
   isGeneratingImage,
+  studyQuestionReference,
+  onClearStudyQuestionReference,
+  onJumpToQuestionPaper,
   onGenerateImage,
   onToggleImageMode,
   documentUploadsEnabled,
@@ -97,6 +103,9 @@ function PureMultimodalInput({
   imageGenerationCanGenerate: boolean;
   imageGenerationRequiresPaidCredits: boolean;
   isGeneratingImage: boolean;
+  studyQuestionReference?: StudyQuestionReference | null;
+  onClearStudyQuestionReference?: () => void;
+  onJumpToQuestionPaper?: (paperId: string) => void;
   onGenerateImage: () => void;
   onToggleImageMode: () => void;
   documentUploadsEnabled: boolean;
@@ -195,23 +204,34 @@ function PureMultimodalInput({
   const submitForm = useCallback(() => {
     window.history.replaceState({}, "", `/chat/${chatId}`);
 
+    const parts: ChatMessage["parts"] = [
+      ...attachments.map((attachment) => ({
+        type: "file" as const,
+        url: attachment.url,
+        name: attachment.name,
+        mediaType: attachment.contentType,
+      })),
+      ...(studyQuestionReference
+        ? [
+            {
+              type: "data-studyQuestionReference" as const,
+              data: studyQuestionReference,
+            },
+          ]
+        : []),
+      {
+        type: "text",
+        text: input,
+      },
+    ];
+
     sendMessage({
       role: "user",
-      parts: [
-        ...attachments.map((attachment) => ({
-          type: "file" as const,
-          url: attachment.url,
-          name: attachment.name,
-          mediaType: attachment.contentType,
-        })),
-        {
-          type: "text",
-          text: input,
-        },
-      ],
+      parts,
     });
 
     setAttachments([]);
+    onClearStudyQuestionReference?.();
     resetHeight();
     setInput("");
 
@@ -226,6 +246,8 @@ function PureMultimodalInput({
     setAttachments,
     width,
     chatId,
+    onClearStudyQuestionReference,
+    studyQuestionReference,
     resetHeight,
   ]);
 
@@ -365,6 +387,41 @@ function PureMultimodalInput({
             ))}
           </div>
         )}
+        {studyQuestionReference ? (
+          <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
+            <button
+              className="min-w-0 flex-1 cursor-pointer space-y-0.5 text-left"
+              onClick={(event) => {
+                event.preventDefault();
+                onJumpToQuestionPaper?.(studyQuestionReference.paperId);
+              }}
+              type="button"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <MessageIcon size={12} />
+                Question reference
+              </div>
+              <div className="truncate font-medium text-sm">
+                {studyQuestionReference.title}
+              </div>
+              <div className="truncate text-muted-foreground text-xs">
+                {studyQuestionReference.preview}
+              </div>
+            </button>
+            <Button
+              aria-label="Remove question reference"
+              className="h-7 w-7 shrink-0 rounded-md p-0"
+              onClick={(event) => {
+                event.preventDefault();
+                onClearStudyQuestionReference?.();
+              }}
+              type="button"
+              variant="ghost"
+            >
+              <CrossSmallIcon size={14} />
+            </Button>
+          </div>
+        ) : null}
         <div className="flex flex-row items-start gap-1 sm:gap-2">
           <PromptInputTextarea
             autoFocus
@@ -467,6 +524,14 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.selectedLanguageCode !== nextProps.selectedLanguageCode) {
+      return false;
+    }
+    if (
+      !equal(
+        prevProps.studyQuestionReference,
+        nextProps.studyQuestionReference
+      )
+    ) {
       return false;
     }
 

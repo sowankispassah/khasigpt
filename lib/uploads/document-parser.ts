@@ -17,17 +17,21 @@ type ParsedDocument = {
   truncated: boolean;
 };
 
+type ParseDocumentOptions = {
+  maxTextChars?: number;
+};
+
 let pdfWorkerReady = false;
 
 const normalizeText = (value: string) =>
   value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 
-const truncateText = (value: string) => {
-  if (value.length <= DOCUMENT_UPLOADS_MAX_TEXT_CHARS) {
+const truncateText = (value: string, maxTextChars: number) => {
+  if (value.length <= maxTextChars) {
     return { text: value, truncated: false };
   }
   return {
-    text: value.slice(0, DOCUMENT_UPLOADS_MAX_TEXT_CHARS),
+    text: value.slice(0, maxTextChars),
     truncated: true,
   };
 };
@@ -210,7 +214,8 @@ async function parseSpreadsheet(buffer: Buffer) {
 }
 
 export async function extractDocumentText(
-  attachment: DocumentAttachment
+  attachment: DocumentAttachment,
+  options: ParseDocumentOptions = {}
 ): Promise<ParsedDocument> {
   if (!isDocumentMimeType(attachment.mediaType)) {
     throw new Error("Unsupported document type");
@@ -238,7 +243,57 @@ export async function extractDocumentText(
     throw new Error("No extractable text found");
   }
 
-  const { text, truncated } = truncateText(normalized);
+  const maxTextChars =
+    typeof options.maxTextChars === "number" && options.maxTextChars > 0
+      ? Math.trunc(options.maxTextChars)
+      : DOCUMENT_UPLOADS_MAX_TEXT_CHARS;
+
+  const { text, truncated } = truncateText(normalized, maxTextChars);
+  return {
+    name: attachment.name?.trim() || "document",
+    text,
+    truncated,
+  };
+}
+
+export async function extractDocumentTextFromBuffer(
+  attachment: {
+    name: string | null | undefined;
+    buffer: Buffer;
+    mediaType: string;
+  },
+  options: ParseDocumentOptions = {}
+): Promise<ParsedDocument> {
+  if (!isDocumentMimeType(attachment.mediaType)) {
+    throw new Error("Unsupported document type");
+  }
+
+  let rawText = "";
+  switch (attachment.mediaType) {
+    case "application/pdf":
+      rawText = await parsePdf(attachment.buffer);
+      break;
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      rawText = await parseDocx(attachment.buffer);
+      break;
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      rawText = await parseSpreadsheet(attachment.buffer);
+      break;
+    default:
+      rawText = "";
+  }
+
+  const normalized = normalizeText(rawText);
+  if (!normalized) {
+    throw new Error("No extractable text found");
+  }
+
+  const maxTextChars =
+    typeof options.maxTextChars === "number" && options.maxTextChars > 0
+      ? Math.trunc(options.maxTextChars)
+      : DOCUMENT_UPLOADS_MAX_TEXT_CHARS;
+
+  const { text, truncated } = truncateText(normalized, maxTextChars);
   return {
     name: attachment.name?.trim() || "document",
     text,
