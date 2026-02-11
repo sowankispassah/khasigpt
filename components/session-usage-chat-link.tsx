@@ -6,11 +6,9 @@ import {
   type MouseEvent,
   type ReactNode,
   useCallback,
-  useEffect,
-  useRef,
-  useState,
   useTransition,
 } from "react";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 
 type SessionUsageChatLinkProps = {
   href: string;
@@ -25,46 +23,6 @@ export function SessionUsageChatLink({
 }: SessionUsageChatLinkProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [showProgress, setShowProgress] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const clearTimers = useCallback(() => {
-    for (const timerId of timersRef.current) {
-      clearTimeout(timerId);
-    }
-    timersRef.current = [];
-  }, []);
-
-  const startProgress = useCallback(() => {
-    clearTimers();
-    setShowProgress(true);
-    setProgress(15);
-    const timers = [
-      setTimeout(() => setProgress(40), 120),
-      setTimeout(() => setProgress(72), 280),
-      setTimeout(() => setProgress(92), 520),
-    ];
-    timersRef.current = timers;
-  }, [clearTimers]);
-
-  const resetProgress = useCallback(() => {
-    clearTimers();
-    setShowProgress(false);
-    setProgress(0);
-  }, [clearTimers]);
-
-  useEffect(() => {
-    if (!isPending) {
-      resetProgress();
-    }
-  }, [isPending, resetProgress]);
-
-  useEffect(() => {
-    return () => {
-      clearTimers();
-    };
-  }, [clearTimers]);
 
   const handleClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -84,30 +42,17 @@ export function SessionUsageChatLink({
         return;
       }
 
-      startProgress();
+      startGlobalProgress();
       startTransition(() => {
         router.push(href);
       });
     },
-    [href, isPending, router, startProgress]
+    [href, isPending, router]
   );
 
   return (
-    <>
-      {showProgress ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 top-0 z-50 h-1 bg-border/50"
-        >
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      ) : null}
-      <Link className={className} href={href} onClick={handleClick} prefetch>
-        {children}
-      </Link>
-    </>
+    <Link className={className} href={href} onClick={handleClick} prefetch>
+      {children}
+    </Link>
   );
 }

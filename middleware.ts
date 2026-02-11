@@ -40,6 +40,13 @@ const API_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
+const API_RATE_LIMIT_EXEMPT_PATHS = new Set(["/api/activity/heartbeat"]);
+const SESSION_COOKIE_PREFIXES = [
+  "__Secure-authjs.session-token",
+  "authjs.session-token",
+  "__Secure-next-auth.session-token",
+  "next-auth.session-token",
+];
 type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
 const kvRestUrl =
@@ -184,6 +191,10 @@ function applyCorsHeaders(response: NextResponse, corsHeaders: Headers | null) {
   return response;
 }
 
+function shouldSkipApiRateLimit(pathname: string) {
+  return API_RATE_LIMIT_EXEMPT_PATHS.has(pathname);
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
@@ -208,27 +219,27 @@ export async function middleware(request: NextRequest) {
       request.cookies.get("authjs.session-token") ??
       request.cookies.get("__Secure-next-auth.session-token") ??
       request.cookies.get("next-auth.session-token");
-    const sessionCookiePrefixes = [
-      "__Secure-authjs.session-token",
-      "authjs.session-token",
-      "__Secure-next-auth.session-token",
-      "next-auth.session-token",
-    ];
     const hasSessionCookie =
       Boolean(sessionCookie) ||
       request.cookies
         .getAll()
         .some((cookie) =>
-          sessionCookiePrefixes.some(
+          SESSION_COOKIE_PREFIXES.some(
             (prefix) =>
               cookie.name === prefix || cookie.name.startsWith(`${prefix}.`)
           )
         );
-    const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-    const token = authSecret
-      ? await getToken({ req: request, secret: authSecret })
-      : null;
-    if (token || hasSessionCookie) {
+
+    let hasAuthenticatedSession = hasSessionCookie;
+    if (!hasAuthenticatedSession) {
+      const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+      if (authSecret) {
+        const token = await getToken({ req: request, secret: authSecret });
+        hasAuthenticatedSession = Boolean(token);
+      }
+    }
+
+    if (hasAuthenticatedSession) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/chat";
       return NextResponse.rewrite(redirectUrl);
@@ -259,6 +270,11 @@ export async function middleware(request: NextRequest) {
         status: 204,
         headers: preflightHeaders,
       });
+    }
+
+    if (shouldSkipApiRateLimit(request.nextUrl.pathname)) {
+      const response = NextResponse.next();
+      return applyCorsHeaders(response, corsHeaders);
     }
 
     const key = `api:${getClientKeyFromHeaders(request.headers)}`;

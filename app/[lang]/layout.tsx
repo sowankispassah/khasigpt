@@ -54,7 +54,7 @@ export default async function LocaleLayout({
       dictionary={dictionary}
       forumEnabled={forumEnabled}
       languages={languages}
-      session={session ?? undefined}
+      session={session ?? null}
     >
       {children}
     </SiteShell>

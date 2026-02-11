@@ -4,8 +4,6 @@ import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
-import { DataStreamHandler } from "@/components/data-stream-handler";
-import { DataStreamProvider } from "@/components/data-stream-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -163,48 +161,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   const deletedBanner = chat.deletedAt && isAdmin;
 
-  if (!chatModelFromCookie) {
-    return (
-      <ModelConfigProvider
-        defaultModelId={defaultModel?.id ?? null}
-        models={models.map((model) => ({
-          id: model.id,
-          name: model.name,
-          description: model.description,
-          supportsReasoning: model.supportsReasoning,
-        }))}
-      >
-        <DataStreamProvider>
-          {deletedBanner && <DeletedNotice dictionary={dictionary} />}
-          <ChatLoader
-            autoResume={true}
-            customKnowledgeEnabled={customKnowledgeEnabled}
-            chatMode={chatMode}
-            id={chat.id}
-            imageGeneration={{
-              enabled: imageGenerationAccess.enabled,
-              canGenerate: imageGenerationAccess.canGenerate,
-              requiresPaidCredits:
-                imageGenerationAccess.requiresPaidCredits ?? false,
-            }}
-            documentUploadsEnabled={documentUploadsEnabled}
-            initialChatLanguage={initialChatLanguage}
-            initialChatModel={fallbackModelId}
-            initialMessages={uiMessages}
-            initialHasMoreHistory={hasMoreMessages}
-            initialOldestMessageAt={oldestMessageAt}
-            initialVisibilityType={chat.visibility}
-            isReadonly={session?.user?.id !== chat.userId}
-            languageSettings={activeLanguageSettings}
-            suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
-            iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
-          />
-          <DataStreamHandler />
-        </DataStreamProvider>
-      </ModelConfigProvider>
-    );
-  }
-
   return (
     <ModelConfigProvider
       defaultModelId={defaultModel?.id ?? null}
@@ -215,32 +171,29 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         supportsReasoning: model.supportsReasoning,
       }))}
     >
-      <DataStreamProvider>
-        {deletedBanner && <DeletedNotice dictionary={dictionary} />}
-        <ChatLoader
-          autoResume={true}
-          customKnowledgeEnabled={customKnowledgeEnabled}
-          chatMode={chatMode}
-          id={chat.id}
-          imageGeneration={{
-            enabled: imageGenerationAccess.enabled,
-            canGenerate: imageGenerationAccess.canGenerate,
-            requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
-          }}
-          documentUploadsEnabled={documentUploadsEnabled}
-          initialChatLanguage={initialChatLanguage}
-          initialChatModel={fallbackModelId}
-          initialMessages={uiMessages}
-          initialHasMoreHistory={hasMoreMessages}
-          initialOldestMessageAt={oldestMessageAt}
-          initialVisibilityType={chat.visibility}
-          isReadonly={session?.user?.id !== chat.userId}
-          languageSettings={activeLanguageSettings}
-          suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
-          iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
-        />
-        <DataStreamHandler />
-      </DataStreamProvider>
+      {deletedBanner && <DeletedNotice dictionary={dictionary} />}
+      <ChatLoader
+        autoResume={true}
+        customKnowledgeEnabled={customKnowledgeEnabled}
+        chatMode={chatMode}
+        id={chat.id}
+        imageGeneration={{
+          enabled: imageGenerationAccess.enabled,
+          canGenerate: imageGenerationAccess.canGenerate,
+          requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
+        }}
+        documentUploadsEnabled={documentUploadsEnabled}
+        initialChatLanguage={initialChatLanguage}
+        initialChatModel={fallbackModelId}
+        initialMessages={uiMessages}
+        initialHasMoreHistory={hasMoreMessages}
+        initialOldestMessageAt={oldestMessageAt}
+        initialVisibilityType={chat.visibility}
+        isReadonly={session?.user?.id !== chat.userId}
+        languageSettings={activeLanguageSettings}
+        suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
+        iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
+      />
     </ModelConfigProvider>
   );
 }

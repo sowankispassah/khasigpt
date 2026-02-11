@@ -4,15 +4,55 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useRef } from "react";
 
-const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 60_000;
+const HEARTBEAT_JITTER_MS = 5_000;
+const PRESENCE_TRACKED_PATH_SEGMENTS = new Set([
+  "chat",
+  "forum",
+  "profile",
+  "subscriptions",
+  "recharge",
+  "creator-dashboard",
+  "admin",
+]);
+
+function shouldTrackPresencePath(pathname: string | null) {
+  if (!pathname) {
+    return false;
+  }
+
+  const segments = pathname
+    .toLowerCase()
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return false;
+  }
+
+  if (PRESENCE_TRACKED_PATH_SEGMENTS.has(segments[0])) {
+    return true;
+  }
+
+  // Locale-prefixed routes: /en/chat, /hi/forum, etc.
+  if (
+    segments.length > 1 &&
+    segments[0].length <= 5 &&
+    PRESENCE_TRACKED_PATH_SEGMENTS.has(segments[1])
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 export function UserPresenceTracker() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const timerRef = useRef<number | null>(null);
+  const trackedPath = shouldTrackPresencePath(pathname);
 
   useEffect(() => {
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !trackedPath) {
       return undefined;
     }
 
@@ -50,12 +90,16 @@ export function UserPresenceTracker() {
       });
     };
 
-    sendHeartbeat();
+    const scheduleNextHeartbeat = () => {
+      const jitter = Math.floor(Math.random() * HEARTBEAT_JITTER_MS);
+      timerRef.current = window.setTimeout(() => {
+        sendHeartbeat();
+        scheduleNextHeartbeat();
+      }, HEARTBEAT_INTERVAL_MS + jitter);
+    };
 
-    timerRef.current = window.setInterval(
-      sendHeartbeat,
-      HEARTBEAT_INTERVAL_MS
-    );
+    sendHeartbeat();
+    scheduleNextHeartbeat();
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -67,12 +111,12 @@ export function UserPresenceTracker() {
 
     return () => {
       if (timerRef.current !== null) {
-        window.clearInterval(timerRef.current);
+        window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [pathname, session?.user?.id]);
+  }, [pathname, session?.user?.id, trackedPath]);
 
   return null;
 }

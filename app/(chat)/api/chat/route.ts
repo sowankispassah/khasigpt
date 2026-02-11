@@ -41,7 +41,7 @@ import {
   getChatById,
   getLanguageByCodeRaw,
   getMessageCountByUserId,
-  getMessagesByChatId,
+  getMessagesByChatIdPage,
   recordTokenUsage,
   saveChat,
   saveMessages,
@@ -128,6 +128,14 @@ const CHAT_RATE_LIMIT = {
   windowMs: ONE_MINUTE,
 };
 const STUDY_CONTEXT_MAX_CHARS = QUESTION_PAPER_RUNTIME_CONTEXT_CHARS;
+const rawContextMessageLimit = Number.parseInt(
+  process.env.CHAT_CONTEXT_MESSAGE_LIMIT ?? "120",
+  10
+);
+const CHAT_CONTEXT_MESSAGE_LIMIT =
+  Number.isFinite(rawContextMessageLimit) && rawContextMessageLimit > 0
+    ? Math.min(Math.max(rawContextMessageLimit, 20), 400)
+    : 120;
 
 const getUsageNumber = (value: unknown): number =>
   typeof value === "number" ? value : 0;
@@ -769,7 +777,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const messagesFromDb = await getMessagesByChatId({ id });
+    const { messages: messagesFromDb } = await getMessagesByChatIdPage({
+      id,
+      limit: CHAT_CONTEXT_MESSAGE_LIMIT,
+    });
     const stripDocumentParts = (entry: ChatMessage) => ({
       ...entry,
       parts: entry.parts.filter(

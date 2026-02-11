@@ -11,6 +11,7 @@ export default function PublicLayout({
       activeLanguage={STATIC_TRANSLATION_BUNDLE.activeLanguage}
       dictionary={STATIC_TRANSLATION_BUNDLE.dictionary}
       languages={STATIC_TRANSLATION_BUNDLE.languages}
+      session={null}
     >
       {children}
     </SiteShell>

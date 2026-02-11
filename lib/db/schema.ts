@@ -574,25 +574,39 @@ export const couponRewardPayout = pgTable(
 
 export type CouponRewardPayout = InferSelectModel<typeof couponRewardPayout>;
 
-export const userSubscription = pgTable("UserSubscription", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  userId: uuid("userId")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  planId: uuid("planId")
-    .notNull()
-    .references(() => pricingPlan.id, { onDelete: "restrict" }),
-  status: subscriptionStatusEnum("status").notNull().default("active"),
-  tokenAllowance: integer("tokenAllowance").notNull(),
-  tokenBalance: integer("tokenBalance").notNull(),
-  manualTokenBalance: integer("manualTokenBalance").notNull().default(0),
-  paidTokenBalance: integer("paidTokenBalance").notNull().default(0),
-  tokensUsed: integer("tokensUsed").notNull().default(0),
-  startedAt: timestamp("startedAt").notNull().defaultNow(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+export const userSubscription = pgTable(
+  "UserSubscription",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    planId: uuid("planId")
+      .notNull()
+      .references(() => pricingPlan.id, { onDelete: "restrict" }),
+    status: subscriptionStatusEnum("status").notNull().default("active"),
+    tokenAllowance: integer("tokenAllowance").notNull(),
+    tokenBalance: integer("tokenBalance").notNull(),
+    manualTokenBalance: integer("manualTokenBalance").notNull().default(0),
+    paidTokenBalance: integer("paidTokenBalance").notNull().default(0),
+    tokensUsed: integer("tokensUsed").notNull().default(0),
+    startedAt: timestamp("startedAt").notNull().defaultNow(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userStatusExpiresAtIdx: index("UserSubscription_user_status_expiresAt_idx").on(
+      table.userId,
+      table.status,
+      table.expiresAt
+    ),
+    userUpdatedAtIdx: index("UserSubscription_user_updatedAt_idx").on(
+      table.userId,
+      table.updatedAt
+    ),
+  })
+);
 
 export type UserSubscription = InferSelectModel<typeof userSubscription>;
 
@@ -686,6 +700,12 @@ export const chat = pgTable(
   },
   (table) => ({
     createdAtIdx: index("Chat_createdAt_idx").on(table.createdAt),
+    userCreatedAtActiveIdx: index("Chat_user_createdAt_active_idx")
+      .on(table.userId, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    userModeCreatedAtActiveIdx: index("Chat_user_mode_createdAt_active_idx")
+      .on(table.userId, table.mode, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
   })
 );
 
@@ -705,16 +725,30 @@ export const messageDeprecated = pgTable("Message", {
 
 export type MessageDeprecated = InferSelectModel<typeof messageDeprecated>;
 
-export const message = pgTable("Message_v2", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  chatId: uuid("chatId")
-    .notNull()
-    .references(() => chat.id),
-  role: varchar("role").notNull(),
-  parts: json("parts").notNull(),
-  attachments: json("attachments").notNull(),
-  createdAt: timestamp("createdAt").notNull(),
-});
+export const message = pgTable(
+  "Message_v2",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    chatId: uuid("chatId")
+      .notNull()
+      .references(() => chat.id),
+    role: varchar("role").notNull(),
+    parts: json("parts").notNull(),
+    attachments: json("attachments").notNull(),
+    createdAt: timestamp("createdAt").notNull(),
+  },
+  (table) => ({
+    chatCreatedAtIdx: index("Message_v2_chat_createdAt_idx").on(
+      table.chatId,
+      table.createdAt
+    ),
+    chatRoleCreatedAtIdx: index("Message_v2_chat_role_createdAt_idx").on(
+      table.chatId,
+      table.role,
+      table.createdAt
+    ),
+  })
+);
 
 export type DBMessage = InferSelectModel<typeof message>;
 
@@ -783,6 +817,7 @@ export const vote = pgTable(
   (table) => {
     return {
       pk: primaryKey({ columns: [table.chatId, table.messageId] }),
+      messageIdIdx: index("Vote_v2_messageId_idx").on(table.messageId),
     };
   }
 );
@@ -851,6 +886,10 @@ export const stream = pgTable(
       columns: [table.chatId],
       foreignColumns: [chat.id],
     }),
+    chatCreatedAtIdx: index("Stream_chat_createdAt_idx").on(
+      table.chatId,
+      table.createdAt
+    ),
   })
 );
 

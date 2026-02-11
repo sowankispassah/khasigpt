@@ -2,8 +2,6 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
-import { DataStreamHandler } from "@/components/data-stream-handler";
-import { DataStreamProvider } from "@/components/data-stream-provider";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -120,48 +118,6 @@ export default async function Page({
       syncUiLanguage: language.syncUiLanguage,
     }));
 
-  if (!modelIdFromCookie) {
-    return (
-      <ModelConfigProvider
-        defaultModelId={defaultModel?.id ?? null}
-        models={models.map((model) => ({
-          id: model.id,
-          name: model.name,
-          description: model.description,
-          supportsReasoning: model.supportsReasoning,
-        }))}
-      >
-        <DataStreamProvider>
-          <ChatLoader
-            autoResume={false}
-            customKnowledgeEnabled={customKnowledgeEnabled}
-            chatMode={chatMode}
-            id={id}
-            imageGeneration={{
-              enabled: imageGenerationAccess.enabled,
-              canGenerate: imageGenerationAccess.canGenerate,
-              requiresPaidCredits:
-                imageGenerationAccess.requiresPaidCredits ?? false,
-            }}
-            documentUploadsEnabled={documentUploadsEnabled}
-            initialChatLanguage={initialChatLanguage}
-            initialChatModel={fallbackModelId}
-            initialMessages={[]}
-            initialHasMoreHistory={false}
-            initialOldestMessageAt={null}
-            initialVisibilityType="private"
-            isReadonly={false}
-            key={id}
-            languageSettings={activeLanguageSettings}
-            suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
-            iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
-          />
-          <DataStreamHandler />
-        </DataStreamProvider>
-      </ModelConfigProvider>
-    );
-  }
-
   return (
     <ModelConfigProvider
       defaultModelId={defaultModel?.id ?? null}
@@ -172,32 +128,29 @@ export default async function Page({
         supportsReasoning: model.supportsReasoning,
       }))}
     >
-      <DataStreamProvider>
-        <ChatLoader
-          autoResume={false}
-          customKnowledgeEnabled={customKnowledgeEnabled}
-          chatMode={chatMode}
-          id={id}
-          imageGeneration={{
-            enabled: imageGenerationAccess.enabled,
-            canGenerate: imageGenerationAccess.canGenerate,
-            requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
-          }}
-          documentUploadsEnabled={documentUploadsEnabled}
-          initialChatLanguage={initialChatLanguage}
-          initialChatModel={fallbackModelId}
-          initialMessages={[]}
-          initialHasMoreHistory={false}
-          initialOldestMessageAt={null}
-          initialVisibilityType="private"
-          isReadonly={false}
-          key={id}
-          languageSettings={activeLanguageSettings}
-          suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
-          iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
-        />
-        <DataStreamHandler />
-      </DataStreamProvider>
+      <ChatLoader
+        autoResume={false}
+        customKnowledgeEnabled={customKnowledgeEnabled}
+        chatMode={chatMode}
+        id={id}
+        imageGeneration={{
+          enabled: imageGenerationAccess.enabled,
+          canGenerate: imageGenerationAccess.canGenerate,
+          requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
+        }}
+        documentUploadsEnabled={documentUploadsEnabled}
+        initialChatLanguage={initialChatLanguage}
+        initialChatModel={fallbackModelId}
+        initialMessages={[]}
+        initialHasMoreHistory={false}
+        initialOldestMessageAt={null}
+        initialVisibilityType="private"
+        isReadonly={false}
+        key={id}
+        languageSettings={activeLanguageSettings}
+        suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
+        iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
+      />
     </ModelConfigProvider>
   );
 }

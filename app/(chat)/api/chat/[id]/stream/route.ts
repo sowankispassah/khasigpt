@@ -3,7 +3,7 @@ import { differenceInSeconds } from "date-fns";
 import { auth } from "@/app/(auth)/auth";
 import {
   getChatById,
-  getMessagesByChatId,
+  getMessagesByChatIdPage,
   getStreamIdsByChatId,
 } from "@/lib/db/queries";
 import type { Chat } from "@/lib/db/schema";
@@ -130,7 +130,10 @@ export async function GET(
    * but the resumable stream has concluded at this point.
    */
   if (!stream) {
-    const messages = await getMessagesByChatId({ id: chatId });
+    const { messages } = await getMessagesByChatIdPage({
+      id: chatId,
+      limit: 1,
+    });
     const mostRecentMessage = messages.at(-1);
 
     if (!mostRecentMessage) {

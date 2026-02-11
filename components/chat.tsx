@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { type DataUIPart, DefaultChatTransport } from "ai";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -46,13 +46,12 @@ import type {
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
-import type { Attachment, ChatMessage } from "@/lib/types";
+import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import {
   getStudyContextForChat,
   setStudyContextForChat,
 } from "@/lib/study/context-store";
-import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import { StudyPromptChips } from "./study/study-prompt-chips";
@@ -130,7 +129,6 @@ export function Chat({
   } = useTranslation();
 
   const { mutate } = useSWRConfig();
-  const { setDataStream } = useDataStream();
 
   const isStudyMode = chatMode === "study";
   const greetingSubtitle = isStudyMode
@@ -171,6 +169,8 @@ export function Chat({
   const [studyQuizActive, setStudyQuizActive] = useState(false);
   const [studyQuestionReference, setStudyQuestionReference] =
     useState<StudyQuestionReference | null>(null);
+  const [resumeDataPart, setResumeDataPart] =
+    useState<DataUIPart<CustomUIDataTypes> | null>(null);
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
   const imageUpgradeTitle = imageGeneration.requiresPaidCredits
@@ -365,6 +365,10 @@ export function Chat({
   }, [id, isStudyMode]);
 
   useEffect(() => {
+    setResumeDataPart(null);
+  }, [id]);
+
+  useEffect(() => {
     if (!languages.length) {
       return;
     }
@@ -481,7 +485,9 @@ export function Chat({
       },
     }),
     onData: (dataPart) => {
-      setDataStream((ds) => (ds ? [...ds, dataPart] : []));
+      if (dataPart.type === "data-appendMessage") {
+        setResumeDataPart(dataPart);
+      }
     },
     onFinish: () => {
       mutate(unstable_serialize(historyPaginationKey));
@@ -1015,6 +1021,7 @@ export function Chat({
   useAutoResume({
     autoResume,
     initialMessages,
+    resumeDataPart,
     resumeStream,
     setMessages,
   });

@@ -85,7 +85,7 @@ export default async function Layout({
       dictionary={dictionary}
       forumEnabled={forumEnabled}
       languages={languages}
-      session={session ?? undefined}
+      session={session ?? null}
     >
       {session ? (
         <SidebarProvider defaultOpen={defaultSidebarOpen}>

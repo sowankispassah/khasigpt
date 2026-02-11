@@ -17,6 +17,7 @@ export default async function AuthLayout({
       activeLanguage={activeLanguage}
       dictionary={dictionary}
       languages={languages}
+      session={null}
     >
       {children}
     </SiteShell>

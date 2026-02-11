@@ -15,6 +15,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -207,15 +208,10 @@ export function UserDropdownMenu({
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
-  const [pendingAction, setPendingAction] = React.useState<string | null>(null);
-  const [isMenuProgressVisible, setIsMenuProgressVisible] =
-    React.useState(false);
-  const [menuProgress, setMenuProgress] = React.useState(0);
   const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
-  const progressTimersRef = React.useRef<ReturnType<typeof setTimeout>[]>([]);
   const { translate } = useTranslation();
 
   const resetPlanState = React.useCallback(() => {
@@ -301,60 +297,15 @@ export function UserDropdownMenu({
     };
   }, []);
 
-  const clearProgressTimers = React.useCallback(() => {
-    for (const timerId of progressTimersRef.current) {
-      clearTimeout(timerId);
-    }
-    progressTimersRef.current = [];
-  }, []);
-
-  const hideMenuProgress = React.useCallback(() => {
-    clearProgressTimers();
-    setIsMenuProgressVisible(false);
-    setMenuProgress(0);
-  }, [clearProgressTimers]);
-
-  const startMenuProgress = React.useCallback(() => {
-    clearProgressTimers();
-    setIsMenuProgressVisible(true);
-    setMenuProgress(12);
-    const timers = [
-      setTimeout(() => setMenuProgress(45), 120),
-      setTimeout(() => setMenuProgress(70), 260),
-      setTimeout(() => setMenuProgress(90), 520),
-    ];
-    progressTimersRef.current = timers;
-  }, [clearProgressTimers]);
-
-  React.useEffect(() => {
-    if (!isBusy) {
-      setPendingAction(null);
-    }
-  }, [isBusy]);
-
-  React.useEffect(() => {
-    if (!isBusy && !pendingAction) {
-      hideMenuProgress();
-    }
-  }, [hideMenuProgress, isBusy, pendingAction]);
-
-  React.useEffect(() => {
-    return () => {
-      clearProgressTimers();
-    };
-  }, [clearProgressTimers]);
-
   const handleSelect = React.useCallback(
     (
       event: Event,
       {
         actionType,
-        actionId,
         callback,
         skipProgress,
       }: {
         actionType: "navigate" | "theme" | "signOut" | "language";
-        actionId: string | null;
         callback: () => void;
         skipProgress?: boolean;
       }
@@ -365,16 +316,16 @@ export function UserDropdownMenu({
       }
       const shouldSkip = skipProgress ?? false;
       if (shouldSkip) {
-        setPendingAction(null);
         callback();
         return;
       }
-      startMenuProgress();
       onActionStart?.();
-      setPendingAction(actionId ?? actionType);
+      if (actionType === "navigate" || actionType === "signOut") {
+        startGlobalProgress();
+      }
       callback();
     },
-    [isBusy, onActionStart, startMenuProgress]
+    [isBusy, onActionStart]
   );
 
   const handleMenuOpenChange = React.useCallback(
@@ -395,10 +346,8 @@ export function UserDropdownMenu({
       onMenuClose?.();
       ignoreNextResourcesOpenRef.current = false;
       setIsResourcesOpen(false);
-      setPendingAction(null);
-      hideMenuProgress();
     },
-    [fetchPlan, isAuthenticated, onMenuClose, onOpenChange, hideMenuProgress]
+    [fetchPlan, isAuthenticated, onMenuClose, onOpenChange]
   );
 
   React.useEffect(() => {
@@ -489,7 +438,6 @@ export function UserDropdownMenu({
         onSelect={(event) =>
           handleSelect(event, {
             actionType: "navigate",
-            actionId: item.path,
             callback: () => {
               ignoreNextResourcesOpenRef.current = false;
               setIsResourcesOpen(false);
@@ -518,19 +466,7 @@ export function UserDropdownMenu({
   );
 
   return (
-    <>
-      {isMenuProgressVisible ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
-        >
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${menuProgress}%` }}
-          />
-        </div>
-      ) : null}
-      <DropdownMenu onOpenChange={handleMenuOpenChange} open={isMenuOpen}>
+    <DropdownMenu onOpenChange={handleMenuOpenChange} open={isMenuOpen}>
         <DropdownMenuTrigger
           asChild
           data-user-menu-trigger="1"
@@ -551,7 +487,6 @@ export function UserDropdownMenu({
               onSelect={(event) =>
                 handleSelect(event, {
                   actionType: "navigate",
-                  actionId: "navigate:profile-email",
                   callback: () => onNavigate("/profile"),
                   skipProgress: shouldSkipPathProgress("/profile"),
                 })
@@ -570,11 +505,10 @@ export function UserDropdownMenu({
                 data-testid="user-nav-item-profile"
                 onSelect={(event) =>
                   handleSelect(event, {
-                    actionType: "navigate",
-                    actionId: "navigate:profile",
-                    callback: () => onNavigate("/profile"),
-                    skipProgress: shouldSkipPathProgress("/profile"),
-                  })
+                  actionType: "navigate",
+                  callback: () => onNavigate("/profile"),
+                  skipProgress: shouldSkipPathProgress("/profile"),
+                })
                 }
               >
                 <span className="flex w-full items-center justify-between gap-2">
@@ -587,7 +521,6 @@ export function UserDropdownMenu({
                 onSelect={(event) =>
                   handleSelect(event, {
                     actionType: "navigate",
-                    actionId: "navigate:subscriptions",
                     callback: () => onNavigate("/subscriptions"),
                     skipProgress: shouldSkipPathProgress("/subscriptions"),
                   })
@@ -618,7 +551,6 @@ export function UserDropdownMenu({
                 onSelect={(event) =>
                   handleSelect(event, {
                     actionType: "navigate",
-                    actionId: "navigate:recharge",
                     callback: () => onNavigate("/recharge"),
                     skipProgress: shouldSkipPathProgress("/recharge"),
                   })
@@ -635,7 +567,6 @@ export function UserDropdownMenu({
                   onSelect={(event) =>
                     handleSelect(event, {
                       actionType: "navigate",
-                      actionId: "navigate:admin",
                       callback: () => {
                         window.open("/admin", "_blank", "noopener,noreferrer");
                         setIsMenuOpen(false);
@@ -659,7 +590,6 @@ export function UserDropdownMenu({
                   onSelect={(event) =>
                     handleSelect(event, {
                       actionType: "navigate",
-                      actionId: "navigate:creator",
                       callback: () => onNavigate("/creator-dashboard"),
                       skipProgress:
                         shouldSkipPathProgress("/creator-dashboard"),
@@ -685,7 +615,6 @@ export function UserDropdownMenu({
               onSelect={(event) =>
                 handleSelect(event, {
                   actionType: "navigate",
-                  actionId: "navigate:forum",
                   callback: () => onNavigate("/forum"),
                   skipProgress: shouldSkipPathProgress("/forum"),
                 })
@@ -719,14 +648,13 @@ export function UserDropdownMenu({
                       onSelect={(event) =>
                         handleSelect(event, {
                           actionType: "language",
-                          actionId: `language:${language.code}`,
                           callback: () => onLanguageChange?.(language.code),
                         })
                       }
                     >
                       <span className="flex w-full items-center justify-between gap-2">
                         <span className="truncate">{language.name}</span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {language.code === activeLanguageCode
                             ? isLanguageUpdating
                               ? translate(
@@ -773,7 +701,6 @@ export function UserDropdownMenu({
             onSelect={(event) =>
               handleSelect(event, {
                 actionType: "theme",
-                actionId: "theme",
                 callback: onToggleTheme,
               })
             }
@@ -794,7 +721,6 @@ export function UserDropdownMenu({
                   onSignOut &&
                   handleSelect(event, {
                     actionType: "signOut",
-                    actionId: "signOut",
                     callback: onSignOut,
                   })
                 }
@@ -807,6 +733,5 @@ export function UserDropdownMenu({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-    </>
   );
 }

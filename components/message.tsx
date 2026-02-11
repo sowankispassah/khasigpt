@@ -227,7 +227,7 @@ const PurePreviewMessage = ({
                   >
                     <MessageContent
                       className={cn({
-                        "w-fit break-words rounded-2xl bg-[#e9e9e980] px-3 py-2 text-right text-foreground dark:bg-[#323232d9] dark:text-white":
+                        "w-fit break-words rounded-2xl border border-border/50 bg-muted/70 px-3 py-2 text-right text-foreground":
                           message.role === "user",
                         "flex-1 bg-transparent py-0 pr-2 pl-3 text-left md:pr-3 md:pl-4":
                           isAssistantMessage,

@@ -9,13 +9,11 @@ import { useSession } from "next-auth/react";
 import {
   type MouseEvent,
   useCallback,
-  useEffect,
-  useRef,
-  useState,
   useTransition,
 } from "react";
 import { BookOpen } from "lucide-react";
 import { PlusIcon } from "@/components/icons";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import {
   Collapsible,
   CollapsibleContent,
@@ -69,46 +67,6 @@ export function AppSidebar({
   const { setOpenMobile } = useSidebar();
   const { data: sessionData } = useSession();
   const [isPending, startTransition] = useTransition();
-  const [showProgress, setShowProgress] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const clearTimers = useCallback(() => {
-    for (const timerId of timersRef.current) {
-      clearTimeout(timerId);
-    }
-    timersRef.current = [];
-  }, []);
-
-  const startProgress = useCallback(() => {
-    clearTimers();
-    setShowProgress(true);
-    setProgress(12);
-    const timers = [
-      setTimeout(() => setProgress(40), 120),
-      setTimeout(() => setProgress(70), 260),
-      setTimeout(() => setProgress(90), 520),
-    ];
-    timersRef.current = timers;
-  }, [clearTimers]);
-
-  const resetProgress = useCallback(() => {
-    clearTimers();
-    setShowProgress(false);
-    setProgress(0);
-  }, [clearTimers]);
-
-  useEffect(() => {
-    if (!isPending) {
-      resetProgress();
-    }
-  }, [isPending, resetProgress]);
-
-  useEffect(() => {
-    return () => {
-      clearTimers();
-    };
-  }, [clearTimers]);
 
   const activeUser = sessionData?.user ?? user;
   const _userEmail = activeUser?.email ?? "";
@@ -126,7 +84,7 @@ export function AppSidebar({
       return;
     }
     const targetHref = createNewChatHref();
-    startProgress();
+    startGlobalProgress();
     startTransition(() => {
       setOpenMobile(false);
       router.push(targetHref);
@@ -145,7 +103,7 @@ export function AppSidebar({
       return;
     }
     const targetHref = createNewStudyHref();
-    startProgress();
+    startGlobalProgress();
     startTransition(() => {
       setOpenMobile(false);
       router.push(targetHref);
@@ -168,112 +126,96 @@ export function AppSidebar({
       if (isPending) {
         return;
       }
-      startProgress();
+      startGlobalProgress();
       startTransition(() => {
         setOpenMobile(false);
         router.push("/");
       });
     },
-    [isPending, router, setOpenMobile, startProgress]
+    [isPending, router, setOpenMobile]
   );
 
   return (
-    <>
-      {showProgress ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
-        >
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      ) : null}
-      <Sidebar className="group-data-[side=left]:border-r-0">
-        <SidebarHeader>
-          <SidebarMenu>
-            <div className="flex flex-row items-center justify-between">
-              <Link
-                className="flex cursor-pointer flex-row items-center"
-                href="/"
-                onClick={handleLogoClick}
-              >
-                <Image
-                  alt="KhasiGPT logo"
-                  className="h-8 w-6 rounded-md object-contain dark:brightness-150 dark:invert"
-                  height={32}
-                  priority
-                  src="/images/khasigptlogo.png"
-                  width={24}
-                />
-                <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                  KhasiGPT
-                </span>
-              </Link>
-              <div className="md:hidden" />
-            </div>
-          </SidebarMenu>
-        </SidebarHeader>
-        <SidebarContent>
-          <div className="mt-5 px-2">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  aria-busy={isPending}
-                  className="cursor-pointer text-[15px]"
-                  onClick={handleNewChat}
-                  type="button"
-                >
-                  <PlusIcon />
-                  <span>New chat</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {studyModeEnabled ? (
-                <SidebarMenuItem>
-                  <Collapsible defaultOpen={false}>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        aria-busy={isPending}
-                        className="cursor-pointer text-[15px]"
-                        type="button"
-                      >
-                        <BookOpen />
-                        <span>Study</span>
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-1">
-                      <div className="flex flex-col gap-1">
-                        <SidebarMenu>
-                          <SidebarMenuItem>
-                            <SidebarMenuButton
-                              aria-busy={isPending}
-                              className="cursor-pointer text-[15px]"
-                              onClick={handleNewStudy}
-                              type="button"
-                            >
-                              <PlusIcon />
-                              <span>New Study</span>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        </SidebarMenu>
-                        <div className="ml-[5px]">
-                          <SidebarHistory
-                            mode="study"
-                            user={user}
-                          />
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </SidebarMenuItem>
-              ) : null}
-            </SidebarMenu>
+    <Sidebar className="group-data-[side=left]:border-r-0">
+      <SidebarHeader>
+        <SidebarMenu>
+          <div className="flex flex-row items-center justify-between">
+            <Link
+              className="flex cursor-pointer flex-row items-center"
+              href="/"
+              onClick={handleLogoClick}
+            >
+              <Image
+                alt="KhasiGPT logo"
+                className="h-8 w-6 rounded-md object-contain dark:brightness-150 dark:invert"
+                height={32}
+                priority
+                src="/images/khasigptlogo.png"
+                width={24}
+              />
+              <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
+                KhasiGPT
+              </span>
+            </Link>
+            <div className="md:hidden" />
           </div>
-          <SidebarSeparator />
-          <SidebarHistory user={user} />
-        </SidebarContent>
-      </Sidebar>
-    </>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <div className="mt-5 px-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                aria-busy={isPending}
+                className="cursor-pointer text-sm"
+                onClick={handleNewChat}
+                type="button"
+              >
+                <PlusIcon />
+                <span>New chat</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {studyModeEnabled ? (
+              <SidebarMenuItem>
+                <Collapsible defaultOpen={false}>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      aria-busy={isPending}
+                      className="cursor-pointer text-sm"
+                      type="button"
+                    >
+                      <BookOpen />
+                      <span>Study</span>
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <div className="flex flex-col gap-1">
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            aria-busy={isPending}
+                            className="cursor-pointer text-sm"
+                            onClick={handleNewStudy}
+                            type="button"
+                          >
+                            <PlusIcon />
+                            <span>New Study</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
+                      <div className="ml-[5px]">
+                        <SidebarHistory mode="study" user={user} />
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </SidebarMenuItem>
+            ) : null}
+          </SidebarMenu>
+        </div>
+        <SidebarSeparator />
+        <SidebarHistory user={user} />
+      </SidebarContent>
+    </Sidebar>
   );
 }

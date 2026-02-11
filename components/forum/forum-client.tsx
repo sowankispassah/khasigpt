@@ -12,6 +12,7 @@ import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import type {
   ForumOverviewPayload,
   ForumThreadListItemPayload,
@@ -79,8 +80,6 @@ export function ForumClient({
   const [subscribedSet, setSubscribedSet] = useState(
     new Set(subscribedThreadIds)
   );
-  const [isNavigatingToThread, setIsNavigatingToThread] = useState(false);
-  const [navProgress, setNavProgress] = useState(0);
 
   useEffect(() => {
     setThreads(initialThreads);
@@ -88,8 +87,6 @@ export function ForumClient({
     setHasMoreState(hasMore);
     setSubscribedSet(new Set(subscribedThreadIds));
     setSearchTerm(filters.search ?? "");
-    setIsNavigatingToThread(false);
-    setNavProgress(0);
   }, [
     initialThreads,
     nextCursor,
@@ -98,24 +95,8 @@ export function ForumClient({
     filters.search,
   ]);
 
-  useEffect(() => {
-    if (!isNavigatingToThread) {
-      setNavProgress(0);
-      return;
-    }
-    setNavProgress(8);
-    const step1 = window.setTimeout(() => setNavProgress(35), 120);
-    const step2 = window.setTimeout(() => setNavProgress(65), 260);
-    const step3 = window.setTimeout(() => setNavProgress(90), 520);
-    return () => {
-      window.clearTimeout(step1);
-      window.clearTimeout(step2);
-      window.clearTimeout(step3);
-    };
-  }, [isNavigatingToThread]);
-
   const handleThreadNavigateStart = () => {
-    setIsNavigatingToThread(true);
+    startGlobalProgress();
   };
 
   const activeFilters = useMemo(() => {
@@ -163,6 +144,7 @@ export function ForumClient({
       ? `${pathname}?${query.toString()}`
       : pathname;
     startSearching(() => {
+      startGlobalProgress();
       router.push(nextUrl);
     });
   };
@@ -223,19 +205,7 @@ export function ForumClient({
   const totalActiveThreads = threads.length;
 
   return (
-    <>
-      {isNavigatingToThread ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
-        >
-          <div
-            className="h-full bg-primary transition-[width] duration-200"
-            style={{ width: `${navProgress}%` }}
-          />
-        </div>
-      ) : null}
-      <div className="space-y-8">
+    <div className="space-y-8">
         <section className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-8 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-6">
             <div className="space-y-4">
@@ -385,7 +355,6 @@ export function ForumClient({
             </div>
           ) : null}
         </section>
-      </div>
-    </>
+    </div>
   );
 }

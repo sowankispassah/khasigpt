@@ -2,6 +2,11 @@
 
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  addGlobalProgressDoneListener,
+  addGlobalProgressStartListener,
+  startGlobalProgress,
+} from "@/lib/ui/global-progress";
 
 // A lightweight, nprogress-like bar tuned for App Router.
 // It advances smoothly toward 90% while work is in-flight,
@@ -15,8 +20,6 @@ export function GlobalProgressBar() {
   const [progress, setProgress] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const isVisibleRef = useRef(false);
-  const pendingFetchesRef = useRef(0);
-  const originalFetchRef = useRef<typeof fetch | null>(null);
   const intervalRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const failSafeTimerRef = useRef<number | null>(null);
@@ -56,20 +59,11 @@ export function GlobalProgressBar() {
 
   const tick = useCallback(() => {
     setProgress((current) => {
-      const hasPending = pendingFetchesRef.current > 0;
-      const target = hasPending ? MAX_PENDING_PROGRESS : 100;
-      const rate = hasPending ? 0.16 : 0.35;
-      const minStep = hasPending ? 0.6 : 2.5;
-      const delta = Math.max(minStep, (target - current) * rate);
-      const next = Math.min(target, current + delta);
-
-      if (!hasPending && next >= 99.5) {
-        scheduleHide();
-      }
-
+      const delta = Math.max(0.6, (MAX_PENDING_PROGRESS - current) * 0.16);
+      const next = Math.min(MAX_PENDING_PROGRESS, current + delta);
       return next;
     });
-  }, [scheduleHide]);
+  }, []);
 
   const ensureTicking = useCallback(() => {
     if (intervalRef.current !== null) {
@@ -88,11 +82,18 @@ export function GlobalProgressBar() {
     );
     ensureTicking();
     failSafeTimerRef.current = window.setTimeout(() => {
-      pendingFetchesRef.current = 0;
       setProgress(100);
       scheduleHide();
     }, 15000);
   }, [clearFailSafeTimer, clearHideTimer, ensureTicking, scheduleHide]);
+
+  const done = useCallback(() => {
+    if (!isVisibleRef.current) {
+      return;
+    }
+    setProgress(100);
+    scheduleHide();
+  }, [scheduleHide]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -111,84 +112,37 @@ export function GlobalProgressBar() {
         return;
       }
       const clickable = target.closest(
-        'button, a, summary, label[for], [role="button"], [role="tab"], [role="link"], [data-clickable], input[type="submit"], input[type="button"], [data-nav], .cursor-pointer'
+        'a[href], [data-nav], button[data-nav], input[type="submit"], input[type="button"]'
       );
       if (clickable) {
         start();
       }
     };
-    const handlePopState = () => start();
+    const handlePopState = () => startGlobalProgress();
 
     window.addEventListener("click", handleClick, { capture: true });
     window.addEventListener("popstate", handlePopState);
+    const removeStartListener = addGlobalProgressStartListener(start);
+    const removeDoneListener = addGlobalProgressDoneListener(done);
 
     return () => {
       window.removeEventListener("click", handleClick, { capture: true });
       window.removeEventListener("popstate", handlePopState);
+      removeStartListener();
+      removeDoneListener();
       clearHideTimer();
       clearFailSafeTimer();
       stopTicking();
     };
-  }, [clearFailSafeTimer, clearHideTimer, start, stopTicking]);
+  }, [clearFailSafeTimer, clearHideTimer, done, start, stopTicking]);
 
   useEffect(() => {
     const changed = prevPathRef.current !== null && prevPathRef.current !== pathname;
     if (changed) {
-      pendingFetchesRef.current = 0;
-      setProgress((current) => Math.max(current, 96));
-      scheduleHide();
+      done();
     }
     prevPathRef.current = pathname;
-  }, [pathname, scheduleHide]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const originalFetch = window.fetch;
-    originalFetchRef.current = originalFetch;
-
-    window.fetch = async (...args) => {
-      const shouldTrack = isVisibleRef.current;
-      if (shouldTrack) {
-        pendingFetchesRef.current += 1;
-        clearHideTimer();
-        ensureTicking();
-      }
-      try {
-        const response = await originalFetch(...args);
-        return response;
-      } finally {
-        if (shouldTrack) {
-          pendingFetchesRef.current = Math.max(
-            0,
-            pendingFetchesRef.current - 1
-          );
-          if (pendingFetchesRef.current === 0) {
-            setProgress((current) => Math.max(current, 96));
-            scheduleHide();
-          }
-        }
-      }
-    };
-
-    return () => {
-      pendingFetchesRef.current = 0;
-      stopTicking();
-      clearHideTimer();
-      clearFailSafeTimer();
-      if (originalFetchRef.current) {
-        window.fetch = originalFetchRef.current;
-      }
-    };
-  }, [
-    clearFailSafeTimer,
-    clearHideTimer,
-    ensureTicking,
-    scheduleHide,
-    stopTicking,
-  ]);
+  }, [done, pathname]);
 
   if (!isVisible) {
     return null;

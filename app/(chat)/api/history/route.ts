@@ -4,10 +4,20 @@ import { getChatsByUserId } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isStudyModeEnabledForRole } from "@/lib/study/config";
 
+const DEFAULT_HISTORY_LIMIT = 10;
+const MAX_HISTORY_LIMIT = 100;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
 
-  const limit = Number.parseInt(searchParams.get("limit") || "10", 10);
+  const parsedLimit = Number.parseInt(
+    searchParams.get("limit") || `${DEFAULT_HISTORY_LIMIT}`,
+    10
+  );
+  const limit =
+    Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, MAX_HISTORY_LIMIT)
+      : DEFAULT_HISTORY_LIMIT;
   const startingAfter = searchParams.get("starting_after");
   const endingBefore = searchParams.get("ending_before");
   const modeParam = searchParams.get("mode");
