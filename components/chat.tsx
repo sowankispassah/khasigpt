@@ -1103,6 +1103,7 @@ export function Chat({
 
         <Messages
           chatId={id}
+          key={id}
           greetingSubtitle={greetingSubtitle}
           hasMoreHistory={hasMoreHistory}
           header={studyHeader}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { memo } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
@@ -7,6 +8,7 @@ import { preloadChat } from "./chat-loader";
 import {
   CheckCircleFillIcon,
   GlobeIcon,
+  LoaderIcon,
   LockIcon,
   MoreHorizontalIcon,
   ShareIcon,
@@ -43,7 +45,10 @@ const PureChatItem = ({
   isActive: boolean;
   isNavigating: boolean;
   onDelete: (chatId: string) => void;
-  onOpen: (chatId: string) => void;
+  onOpen: (
+    chatId: string,
+    event: React.MouseEvent<HTMLAnchorElement, MouseEvent>
+  ) => void;
 }) => {
   const studyContextSummary = useStudyContextSummary(
     historyMode === "study" ? chat.id : null
@@ -69,19 +74,26 @@ const PureChatItem = ({
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
-        <button
+        <Link
           aria-busy={isNavigating}
+          aria-disabled={isNavigating}
           className="flex w-full items-center gap-2 truncate text-left"
-          onClick={() => {
-            onOpen(chat.id);
+          href={`/chat/${chat.id}`}
+          scroll={false}
+          onClick={(event) => {
+            onOpen(chat.id, event);
           }}
           onFocus={preloadChat}
           onMouseEnter={preloadChat}
           onTouchStart={preloadChat}
-          type="button"
         >
           <span className="flex-1 truncate">{displayTitle}</span>
-        </button>
+          {isNavigating ? (
+            <span className="inline-flex size-4 items-center justify-center text-sidebar-foreground/70">
+              <LoaderIcon className="animate-spin" size={12} />
+            </span>
+          ) : null}
+        </Link>
       </SidebarMenuButton>
 
       <DropdownMenu modal={true}>

@@ -8,7 +8,6 @@ import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
-import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
 import { IconPromptActions } from "./icon-prompt-actions";
 import { LoaderIcon } from "./icons";
@@ -97,6 +96,7 @@ function PureMessages({
   const { translate } = useTranslation();
   const [showAllLoaded, setShowAllLoaded] = useState(false);
   const mountedChatRef = useRef<string | null>(null);
+  const pendingInitialScrollChatIdRef = useRef<string | null>(null);
   const isFetchingHistoryRef = useRef(false);
   const hiddenCount = showAllLoaded
     ? 0
@@ -136,13 +136,54 @@ function PureMessages({
     if (mountedChatRef.current !== chatId) {
       mountedChatRef.current = chatId;
       setShowAllLoaded(false);
-      if (messages.length > 0) {
-        requestAnimationFrame(() => {
-          scrollToBottom("auto");
+      pendingInitialScrollChatIdRef.current = chatId;
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (pendingInitialScrollChatIdRef.current !== chatId) {
+      return;
+    }
+    if (messages.length === 0) {
+      return;
+    }
+
+    pendingInitialScrollChatIdRef.current = null;
+    let attempts = 0;
+    const maxAttempts = 10;
+    const forceScrollToBottom = () => {
+      const container = messagesContainerRef.current;
+      const end = messagesEndRef.current;
+
+      // Prefer scrolling to the bottom sentinel. This is more resilient for
+      // text-only chats where late layout (markdown/code, fonts) can change height
+      // after the first frame.
+      if (end) {
+        try {
+          end.scrollIntoView({ block: "end" });
+        } catch {
+          // ignore
+        }
+      } else if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "auto",
         });
       }
-    }
-  }, [chatId, messages.length, scrollToBottom]);
+
+      // Fallback: ensure the container is at max scroll position.
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+
+      if (attempts < maxAttempts) {
+        attempts += 1;
+        requestAnimationFrame(forceScrollToBottom);
+      }
+    };
+
+    requestAnimationFrame(forceScrollToBottom);
+  }, [chatId, messages.length, messagesContainerRef, messagesEndRef]);
 
   useEffect(() => {
     if (status === "streaming" && streamingSignature !== null && isAtBottom) {
@@ -187,7 +228,7 @@ function PureMessages({
   if (messages.length === 0) {
     return (
       <div
-        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch flex-1 touch-pan-y overflow-y-scroll"
+        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll"
         ref={messagesContainerRef}
         style={{ overflowAnchor: "none" }}
       >
@@ -222,12 +263,12 @@ function PureMessages({
 
   return (
     <div
-      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch flex-1 touch-pan-y overflow-y-scroll"
+      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll"
       ref={messagesContainerRef}
       style={{ overflowAnchor: "none" }}
     >
-      <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
-        <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
+      <div className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
+        <div className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
           {header ? <div className="w-full">{header}</div> : null}
           {hasMoreHistory && onLoadMoreHistory ? (
             <div className="flex justify-center">
@@ -328,8 +369,8 @@ function PureMessages({
             className="min-h-[24px] min-w-[24px] shrink-0"
             ref={messagesEndRef}
           />
-        </ConversationContent>
-      </Conversation>
+        </div>
+      </div>
 
       {!isAtBottom && (
         <button

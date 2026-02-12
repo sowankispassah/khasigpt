@@ -165,6 +165,8 @@ export function SidebarHistory({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { translate } = useTranslation();
   const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
+  const navigatingChatIdRef = useRef<string | null>(null);
+  const navigatingResetTimerRef = useRef<number | null>(null);
   const [showAllStudyHistory, setShowAllStudyHistory] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -240,14 +242,30 @@ export function SidebarHistory({
   }, [paginatedChatHistories, router]);
 
   useEffect(() => {
+    navigatingChatIdRef.current = navigatingChatId;
+  }, [navigatingChatId]);
+
+  useEffect(() => {
     if (!navigatingChatId) {
       return;
     }
     if (navigatingChatId === activeChatId) {
+      if (navigatingResetTimerRef.current !== null) {
+        window.clearTimeout(navigatingResetTimerRef.current);
+        navigatingResetTimerRef.current = null;
+      }
       setNavigatingChatId(null);
       setOpenMobile(false);
     }
   }, [activeChatId, navigatingChatId, setOpenMobile]);
+
+  useEffect(() => {
+    return () => {
+      if (navigatingResetTimerRef.current !== null) {
+        window.clearTimeout(navigatingResetTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!shouldObserveSentinel) {
@@ -277,11 +295,45 @@ export function SidebarHistory({
     };
   }, [hasReachedEnd, isValidating, setSize, shouldObserveSentinel]);
 
-  const handleOpenChat = (chatId: string) => {
+  const handleOpenChat = (
+    chatId: string,
+    event: React.MouseEvent<HTMLAnchorElement, MouseEvent>
+  ) => {
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    // Ignore duplicate clicks while a navigation is already in progress.
+    if (navigatingChatIdRef.current) {
+      event.preventDefault();
+      return;
+    }
+
+    if (chatId === activeChatId) {
+      event.preventDefault();
+      setOpenMobile(false);
+      return;
+    }
+
+    if (navigatingResetTimerRef.current !== null) {
+      window.clearTimeout(navigatingResetTimerRef.current);
+      navigatingResetTimerRef.current = null;
+    }
+
+    navigatingChatIdRef.current = chatId;
     setNavigatingChatId(chatId);
     startGlobalProgress();
     preloadChat();
-    router.push(`/chat/${chatId}`);
+    navigatingResetTimerRef.current = window.setTimeout(() => {
+      navigatingChatIdRef.current = null;
+      setNavigatingChatId(null);
+    }, 12000);
   };
 
   const handleDelete = () => {
