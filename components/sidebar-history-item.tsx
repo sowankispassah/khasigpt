@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { memo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
@@ -35,21 +37,40 @@ const PureChatItem = ({
   historyKey,
   historyMode,
   isActive,
-  isNavigating,
   onDelete,
   onOpen,
+  onPrefetch,
 }: {
   chat: Chat;
   historyKey?: string;
   historyMode?: ChatHistoryMode;
   isActive: boolean;
-  isNavigating: boolean;
   onDelete: (chatId: string) => void;
-  onOpen: (
-    chatId: string,
-    event: React.MouseEvent<HTMLAnchorElement, MouseEvent>
-  ) => void;
+  onOpen: (chatId: string) => boolean;
+  onPrefetch?: (chatId: string) => void;
 }) => {
+  const pathname = usePathname();
+  const href = `/chat/${chat.id}`;
+  const [isPending, setIsPending] = useState(false);
+  const hasPrefetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isPending) {
+      return;
+    }
+    if (pathname === href) {
+      setIsPending(false);
+    }
+  }, [href, isPending, pathname]);
+
+  const maybePrefetch = useCallback(() => {
+    if (hasPrefetchedRef.current) {
+      return;
+    }
+    hasPrefetchedRef.current = true;
+    onPrefetch?.(chat.id);
+  }, [onPrefetch, chat.id]);
+
   const studyContextSummary = useStudyContextSummary(
     historyMode === "study" ? chat.id : null
   );
@@ -75,20 +96,51 @@ const PureChatItem = ({
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
         <Link
-          aria-busy={isNavigating}
-          aria-disabled={isNavigating}
+          aria-busy={isPending}
+          aria-disabled={isPending}
           className="flex w-full items-center gap-2 truncate text-left"
-          href={`/chat/${chat.id}`}
+          href={href}
           scroll={false}
           onClick={(event) => {
-            onOpen(chat.id, event);
+            if (
+              event.defaultPrevented ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey ||
+              event.button !== 0
+            ) {
+              return;
+            }
+
+            if (isPending) {
+              event.preventDefault();
+              return;
+            }
+
+            const shouldNavigate = onOpen(chat.id);
+            if (!shouldNavigate) {
+              event.preventDefault();
+              return;
+            }
+
+            setIsPending(true);
           }}
-          onFocus={preloadChat}
-          onMouseEnter={preloadChat}
-          onTouchStart={preloadChat}
+          onFocus={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
+          onMouseEnter={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
+          onTouchStart={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
         >
           <span className="flex-1 truncate">{displayTitle}</span>
-          {isNavigating ? (
+          {isPending ? (
             <span className="inline-flex size-4 items-center justify-center text-sidebar-foreground/70">
               <LoaderIcon className="animate-spin" size={12} />
             </span>
@@ -160,9 +212,6 @@ const PureChatItem = ({
 
 export const ChatItem = memo(PureChatItem, (prevProps, nextProps) => {
   if (prevProps.isActive !== nextProps.isActive) {
-    return false;
-  }
-  if (prevProps.isNavigating !== nextProps.isNavigating) {
     return false;
   }
   return true;

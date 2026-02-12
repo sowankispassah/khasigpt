@@ -164,7 +164,6 @@ export function SidebarHistory({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { translate } = useTranslation();
-  const [navigatingChatId, setNavigatingChatId] = useState<string | null>(null);
   const navigatingChatIdRef = useRef<string | null>(null);
   const navigatingResetTimerRef = useRef<number | null>(null);
   const [showAllStudyHistory, setShowAllStudyHistory] = useState(false);
@@ -242,22 +241,18 @@ export function SidebarHistory({
   }, [paginatedChatHistories, router]);
 
   useEffect(() => {
-    navigatingChatIdRef.current = navigatingChatId;
-  }, [navigatingChatId]);
-
-  useEffect(() => {
-    if (!navigatingChatId) {
+    if (!activeChatId) {
       return;
     }
-    if (navigatingChatId === activeChatId) {
+    if (navigatingChatIdRef.current && navigatingChatIdRef.current === activeChatId) {
       if (navigatingResetTimerRef.current !== null) {
         window.clearTimeout(navigatingResetTimerRef.current);
         navigatingResetTimerRef.current = null;
       }
-      setNavigatingChatId(null);
+      navigatingChatIdRef.current = null;
       setOpenMobile(false);
     }
-  }, [activeChatId, navigatingChatId, setOpenMobile]);
+  }, [activeChatId, setOpenMobile]);
 
   useEffect(() => {
     return () => {
@@ -295,30 +290,15 @@ export function SidebarHistory({
     };
   }, [hasReachedEnd, isValidating, setSize, shouldObserveSentinel]);
 
-  const handleOpenChat = (
-    chatId: string,
-    event: React.MouseEvent<HTMLAnchorElement, MouseEvent>
-  ) => {
-    if (
-      event.defaultPrevented ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
+  const handleOpenChat = (chatId: string) => {
     // Ignore duplicate clicks while a navigation is already in progress.
     if (navigatingChatIdRef.current) {
-      event.preventDefault();
-      return;
+      return false;
     }
 
     if (chatId === activeChatId) {
-      event.preventDefault();
       setOpenMobile(false);
-      return;
+      return false;
     }
 
     if (navigatingResetTimerRef.current !== null) {
@@ -327,13 +307,25 @@ export function SidebarHistory({
     }
 
     navigatingChatIdRef.current = chatId;
-    setNavigatingChatId(chatId);
     startGlobalProgress();
     preloadChat();
     navigatingResetTimerRef.current = window.setTimeout(() => {
       navigatingChatIdRef.current = null;
-      setNavigatingChatId(null);
     }, 12000);
+
+    return true;
+  };
+
+  const handlePrefetchChat = (chatId: string) => {
+    // Avoid prefetching aggressively when user disables it (data saver etc).
+    if (!shouldPrefetch()) {
+      return;
+    }
+    try {
+      router.prefetch(`/chat/${chatId}`);
+    } catch (error) {
+      console.warn("Prefetch chat failed", error);
+    }
   };
 
   const handleDelete = () => {
@@ -464,13 +456,13 @@ export function SidebarHistory({
                       historyKey={resolvedHistoryKey}
                       historyMode={mode}
                       isActive={chat.id === activeChatId}
-                      isNavigating={navigatingChatId === chat.id}
                       key={chat.id}
                       onDelete={(chatId) => {
                         setDeleteId(chatId);
                         setShowDeleteDialog(true);
                       }}
                       onOpen={handleOpenChat}
+                      onPrefetch={handlePrefetchChat}
                     />
                   ))}
                 </div>
@@ -490,13 +482,13 @@ export function SidebarHistory({
                       historyKey={resolvedHistoryKey}
                       historyMode={mode}
                       isActive={chat.id === activeChatId}
-                      isNavigating={navigatingChatId === chat.id}
                       key={chat.id}
                       onDelete={(chatId) => {
                         setDeleteId(chatId);
                         setShowDeleteDialog(true);
                       }}
                       onOpen={handleOpenChat}
+                      onPrefetch={handlePrefetchChat}
                     />
                   ))}
                 </div>
@@ -516,13 +508,13 @@ export function SidebarHistory({
                       historyKey={resolvedHistoryKey}
                       historyMode={mode}
                       isActive={chat.id === activeChatId}
-                      isNavigating={navigatingChatId === chat.id}
                       key={chat.id}
                       onDelete={(chatId) => {
                         setDeleteId(chatId);
                         setShowDeleteDialog(true);
                       }}
                       onOpen={handleOpenChat}
+                      onPrefetch={handlePrefetchChat}
                     />
                   ))}
                 </div>
@@ -542,13 +534,13 @@ export function SidebarHistory({
                       historyKey={resolvedHistoryKey}
                       historyMode={mode}
                       isActive={chat.id === activeChatId}
-                      isNavigating={navigatingChatId === chat.id}
                       key={chat.id}
                       onDelete={(chatId) => {
                         setDeleteId(chatId);
                         setShowDeleteDialog(true);
                       }}
                       onOpen={handleOpenChat}
+                      onPrefetch={handlePrefetchChat}
                     />
                   ))}
                 </div>
@@ -568,13 +560,13 @@ export function SidebarHistory({
                       historyKey={resolvedHistoryKey}
                       historyMode={mode}
                       isActive={chat.id === activeChatId}
-                      isNavigating={navigatingChatId === chat.id}
                       key={chat.id}
                       onDelete={(chatId) => {
                         setDeleteId(chatId);
                         setShowDeleteDialog(true);
                       }}
                       onOpen={handleOpenChat}
+                      onPrefetch={handlePrefetchChat}
                     />
                   ))}
                 </div>
