@@ -1,6 +1,14 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
@@ -98,6 +106,8 @@ function PureMessages({
   const mountedChatRef = useRef<string | null>(null);
   const pendingInitialScrollChatIdRef = useRef<string | null>(null);
   const isFetchingHistoryRef = useRef(false);
+  const initialAutoScrollUntilRef = useRef(0);
+  const userInteractedRef = useRef(false);
   const hiddenCount = showAllLoaded
     ? 0
     : Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
@@ -137,10 +147,12 @@ function PureMessages({
       mountedChatRef.current = chatId;
       setShowAllLoaded(false);
       pendingInitialScrollChatIdRef.current = chatId;
+      initialAutoScrollUntilRef.current = Date.now() + 2500;
+      userInteractedRef.current = false;
     }
   }, [chatId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (pendingInitialScrollChatIdRef.current !== chatId) {
       return;
     }
@@ -148,10 +160,25 @@ function PureMessages({
       return;
     }
 
-    pendingInitialScrollChatIdRef.current = null;
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 30;
+    let rafId = 0;
+    const timeoutIds: number[] = [];
+    let resizeObserver: ResizeObserver | null = null;
+    let markUserInteracted: (() => void) | null = null;
+    let cancelled = false;
     const forceScrollToBottom = () => {
+      if (cancelled) {
+        return;
+      }
+      if (userInteractedRef.current) {
+        return;
+      }
+      if (Date.now() > initialAutoScrollUntilRef.current) {
+        // Stop forcing once we've given the page a chance to settle.
+        pendingInitialScrollChatIdRef.current = null;
+        return;
+      }
       const container = messagesContainerRef.current;
       const end = messagesEndRef.current;
 
@@ -176,13 +203,76 @@ function PureMessages({
         container.scrollTop = container.scrollHeight;
       }
 
-      if (attempts < maxAttempts) {
+      // If we're clearly at the bottom, mark the initial scroll as complete.
+      if (container) {
+        const atBottom =
+          container.scrollTop + container.clientHeight >=
+          container.scrollHeight - 8;
+        if (atBottom) {
+          pendingInitialScrollChatIdRef.current = null;
+        }
+      }
+
+      if (attempts < maxAttempts && pendingInitialScrollChatIdRef.current === chatId) {
         attempts += 1;
-        requestAnimationFrame(forceScrollToBottom);
+        rafId = requestAnimationFrame(forceScrollToBottom);
       }
     };
 
-    requestAnimationFrame(forceScrollToBottom);
+    // Keep scrolling for a short time to absorb late layout shifts (fonts,
+    // markdown/code rendering, etc).
+    rafId = requestAnimationFrame(forceScrollToBottom);
+
+    const container = messagesContainerRef.current;
+    if (container) {
+      markUserInteracted = () => {
+        userInteractedRef.current = true;
+        pendingInitialScrollChatIdRef.current = null;
+      };
+
+      resizeObserver = new ResizeObserver(() => {
+        // If content size changes while we're still settling, stick to bottom.
+        forceScrollToBottom();
+      });
+      resizeObserver.observe(container);
+
+      // If the user interacts (wheel/touch), stop forcing scroll.
+      container.addEventListener("wheel", markUserInteracted, { passive: true });
+      container.addEventListener("touchstart", markUserInteracted, {
+        passive: true,
+      });
+    }
+
+    if (typeof document !== "undefined") {
+      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+      fonts?.ready?.then(() => {
+        forceScrollToBottom();
+      });
+    }
+
+    timeoutIds.push(
+      window.setTimeout(forceScrollToBottom, 150),
+      window.setTimeout(forceScrollToBottom, 450),
+      window.setTimeout(forceScrollToBottom, 900)
+    );
+
+    return () => {
+      cancelled = true;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      for (const id of timeoutIds) {
+        if (id > 0) {
+          window.clearTimeout(id);
+        }
+      }
+      const currentContainer = messagesContainerRef.current;
+      if (currentContainer && markUserInteracted) {
+        currentContainer.removeEventListener("wheel", markUserInteracted);
+        currentContainer.removeEventListener("touchstart", markUserInteracted);
+      }
+      resizeObserver?.disconnect();
+    };
   }, [chatId, messages.length, messagesContainerRef, messagesEndRef]);
 
   useEffect(() => {

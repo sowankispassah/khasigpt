@@ -17,10 +17,10 @@ import {
   getAppSetting,
   getChatById,
   getMessagesByChatIdPage,
-  listLanguagesWithSettings,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { getSiteUrl } from "@/lib/seo/site";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
@@ -29,20 +29,50 @@ import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
+import { withTimeout } from "@/lib/utils/async";
 import { convertToUIMessages } from "@/lib/utils";
+
+const chatPageTimeoutRaw = Number.parseInt(
+  process.env.CHAT_PAGE_LOAD_TIMEOUT_MS ?? "",
+  10
+);
+const CHAT_PAGE_LOAD_TIMEOUT_MS =
+  Number.isFinite(chatPageTimeoutRaw) && chatPageTimeoutRaw > 0
+    ? chatPageTimeoutRaw
+    : 15000;
+
+const chatPageInitialLimitRaw = Number.parseInt(
+  process.env.CHAT_PAGE_INITIAL_MESSAGE_LIMIT ?? "",
+  10
+);
+const CHAT_PAGE_INITIAL_MESSAGE_LIMIT =
+  Number.isFinite(chatPageInitialLimitRaw) && chatPageInitialLimitRaw > 0
+    ? Math.max(10, Math.min(chatPageInitialLimitRaw, CHAT_HISTORY_PAGE_SIZE))
+    : CHAT_HISTORY_PAGE_SIZE;
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
-  const chat = await getChatById({ id, includeDeleted: true });
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const session = await auth();
+
+  // Avoid hitting the database at all for logged-out users.
+  if (!session) {
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
+  }
+
+  const chat = await withTimeout(
+    getChatById({ id, includeDeleted: true }),
+    CHAT_PAGE_LOAD_TIMEOUT_MS,
+    () => {
+      console.warn(`[chat] getChatById timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`);
+    }
+  );
 
   if (!chat) {
     notFound();
   }
-
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const session = await auth();
   const [
     modelsResult,
     translationBundle,
@@ -54,7 +84,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   ] = await Promise.all([
     loadChatModels(),
     getTranslationBundle(preferredLanguage),
-    listLanguagesWithSettings(),
+    // Cached via `unstable_cache` and avoids a per-request DB query.
+    getActiveLanguages(),
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
@@ -84,20 +115,14 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     loadSuggestedPrompts(preferredLanguage, userRole),
     loadIconPromptActions(preferredLanguage, userRole),
   ]);
-  const activeLanguageSettings = languageSettings
-    .filter((language) => language.isActive)
-    .map((language) => ({
-      id: language.id,
-      code: language.code,
-      name: language.name,
-      isDefault: language.isDefault,
-      isActive: language.isActive,
-      syncUiLanguage: language.syncUiLanguage,
-    }));
-
-  if (!session) {
-    redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
-  }
+  const activeLanguageSettings = languageSettings.map((language) => ({
+    id: language.id,
+    code: language.code,
+    name: language.name,
+    isDefault: language.isDefault,
+    isActive: language.isActive,
+    syncUiLanguage: language.syncUiLanguage,
+  }));
   const isAdmin = session.user?.role === "admin";
 
   if (chat.deletedAt && !isAdmin) {
@@ -122,10 +147,18 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }
 
   const { messages: messagesFromDb, hasMore: hasMoreMessages } =
-    await getMessagesByChatIdPage({
-      id,
-      limit: CHAT_HISTORY_PAGE_SIZE,
-    });
+    await withTimeout(
+      getMessagesByChatIdPage({
+        id,
+        limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
+      }),
+      CHAT_PAGE_LOAD_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[chat] getMessagesByChatIdPage timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms (limit=${CHAT_PAGE_INITIAL_MESSAGE_LIMIT})`
+        );
+      }
+    );
 
   const uiMessages = rewriteDocumentUrlsForViewer({
     messages: convertToUIMessages(messagesFromDb),

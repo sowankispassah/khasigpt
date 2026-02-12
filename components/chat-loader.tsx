@@ -1,7 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import type { ChatMessage } from "@/lib/types";
@@ -49,9 +50,18 @@ let chatModulePromise: Promise<typeof import("./chat")> | null = null;
 
 function loadChatModule() {
   if (!chatModulePromise) {
-    chatModulePromise = import("./chat");
+    // If a chunk fails to load (deploy mismatch / transient network), don't
+    // cache the rejected promise forever. Allow retries.
+    chatModulePromise = import("./chat").catch((error) => {
+      chatModulePromise = null;
+      throw error;
+    });
   }
   return chatModulePromise;
+}
+
+function resetChatModule() {
+  chatModulePromise = null;
 }
 
 export function preloadChat() {
@@ -63,14 +73,43 @@ export function preloadChat() {
   });
 }
 
-const ChatClient = dynamic<ChatLoaderProps>(
-  () => loadChatModule().then((module) => module.Chat),
-  {
-    loading: ChatSkeleton,
-  }
-);
-
 export function ChatLoader(props: ChatLoaderProps) {
+  const router = useRouter();
+  const [attempt, setAttempt] = useState(0);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [ChatClient, setChatClient] = useState<ComponentType<ChatLoaderProps> | null>(
+    null
+  );
+
+  // Start loading as early as possible (during render), then resolve in an effect.
+  useMemo(() => {
+    loadChatModule().catch(() => undefined);
+  }, [attempt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadError(null);
+
+    loadChatModule()
+      .then((module) => {
+        if (cancelled) {
+          return;
+        }
+        setChatClient(() => module.Chat);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        setChatClient(null);
+        setLoadError(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -87,6 +126,60 @@ export function ChatLoader(props: ChatLoaderProps) {
       cancelIdle(idleHandle);
     };
   }, []);
+
+  if (loadError) {
+    const message =
+      loadError instanceof Error ? loadError.message : "Failed to load chat UI";
+
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="max-w-md rounded-lg border bg-card p-5 shadow-sm">
+          <div className="font-medium text-base">Chat failed to load</div>
+          <div className="mt-2 text-muted-foreground text-sm">
+            {message.includes("chunk") || message.includes("ChunkLoadError")
+              ? "A new version may have been deployed. Reloading usually fixes this."
+              : "Please retry. If it keeps happening, reload the page."}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <button
+              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
+              onClick={() => {
+                resetChatModule();
+                setAttempt((v) => v + 1);
+              }}
+              type="button"
+            >
+              Retry
+            </button>
+            <button
+              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  window.location.reload();
+                }
+              }}
+              type="button"
+            >
+              Reload
+            </button>
+            <button
+              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
+              onClick={() => {
+                router.refresh();
+              }}
+              type="button"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ChatClient) {
+    return <ChatSkeleton />;
+  }
 
   return <ChatClient {...props} />;
 }

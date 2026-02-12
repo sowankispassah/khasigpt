@@ -275,6 +275,9 @@ export function SidebarHistory({
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && !isValidating && !hasReachedEnd) {
+            if (navigatingChatIdRef.current) {
+              return;
+            }
             setSize((size) => size + 1);
             break;
           }
@@ -292,7 +295,7 @@ export function SidebarHistory({
 
   const handleOpenChat = (chatId: string) => {
     // Ignore duplicate clicks while a navigation is already in progress.
-    if (navigatingChatIdRef.current) {
+    if (navigatingChatIdRef.current === chatId) {
       return false;
     }
 

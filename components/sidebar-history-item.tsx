@@ -60,6 +60,13 @@ const PureChatItem = ({
     }
     if (pathname === href) {
       setIsPending(false);
+      return;
+    }
+
+    // If the user clicked another chat while this item was pending, clear the
+    // pending state so the spinner doesn't get stuck.
+    if (pathname?.startsWith("/chat/") && pathname !== href) {
+      setIsPending(false);
     }
   }, [href, isPending, pathname]);
 
@@ -100,7 +107,12 @@ const PureChatItem = ({
           aria-disabled={isPending}
           className="flex w-full items-center gap-2 truncate text-left"
           href={href}
+          prefetch={false}
           scroll={false}
+          onPointerDown={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
           onClick={(event) => {
             if (
               event.defaultPrevented ||
