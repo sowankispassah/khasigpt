@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import { useTranslation } from "@/components/language-provider";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
 import {
   AlertDialog,
@@ -310,7 +309,6 @@ export function SidebarHistory({
     }
 
     navigatingChatIdRef.current = chatId;
-    startGlobalProgress();
     preloadChat();
     navigatingResetTimerRef.current = window.setTimeout(() => {
       navigatingChatIdRef.current = null;
@@ -359,7 +357,7 @@ export function SidebarHistory({
     setShowDeleteDialog(false);
 
     if (deleteId === activeChatId) {
-      router.push("/");
+      router.push("/chat");
     }
   };
 

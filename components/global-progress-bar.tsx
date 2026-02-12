@@ -23,6 +23,7 @@ export function GlobalProgressBar() {
   const intervalRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const failSafeTimerRef = useRef<number | null>(null);
+  const pendingStartTimerRef = useRef<number | null>(null);
   const prevPathRef = useRef<string | null>(pathname);
 
   const clearHideTimer = useCallback(() => {
@@ -36,6 +37,13 @@ export function GlobalProgressBar() {
     if (failSafeTimerRef.current !== null) {
       window.clearTimeout(failSafeTimerRef.current);
       failSafeTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingStartTimer = useCallback(() => {
+    if (pendingStartTimerRef.current !== null) {
+      window.clearTimeout(pendingStartTimerRef.current);
+      pendingStartTimerRef.current = null;
     }
   }, []);
 
@@ -73,6 +81,7 @@ export function GlobalProgressBar() {
   }, [tick]);
 
   const start = useCallback(() => {
+    clearPendingStartTimer();
     clearHideTimer();
     clearFailSafeTimer();
     isVisibleRef.current = true;
@@ -85,7 +94,13 @@ export function GlobalProgressBar() {
       setProgress(100);
       scheduleHide();
     }, 15000);
-  }, [clearFailSafeTimer, clearHideTimer, ensureTicking, scheduleHide]);
+  }, [
+    clearFailSafeTimer,
+    clearHideTimer,
+    clearPendingStartTimer,
+    ensureTicking,
+    scheduleHide,
+  ]);
 
   const done = useCallback(() => {
     if (!isVisibleRef.current) {
@@ -111,11 +126,15 @@ export function GlobalProgressBar() {
       if (!target) {
         return;
       }
-      const clickable = target.closest(
-        'a[href], [data-nav], button[data-nav], input[type="submit"], input[type="button"]'
-      );
+      // Avoid doing synchronous work inside the click handler (this can make
+      // navigation feel laggy on low-end devices). If the navigation is slow,
+      // we'll show the progress bar shortly after.
+      const clickable = target.closest('a[href], [data-nav]');
       if (clickable) {
-        start();
+        clearPendingStartTimer();
+        pendingStartTimerRef.current = window.setTimeout(() => {
+          start();
+        }, 120);
       }
     };
     const handlePopState = () => startGlobalProgress();
@@ -132,17 +151,26 @@ export function GlobalProgressBar() {
       removeDoneListener();
       clearHideTimer();
       clearFailSafeTimer();
+      clearPendingStartTimer();
       stopTicking();
     };
-  }, [clearFailSafeTimer, clearHideTimer, done, start, stopTicking]);
+  }, [
+    clearFailSafeTimer,
+    clearHideTimer,
+    clearPendingStartTimer,
+    done,
+    start,
+    stopTicking,
+  ]);
 
   useEffect(() => {
     const changed = prevPathRef.current !== null && prevPathRef.current !== pathname;
     if (changed) {
+      clearPendingStartTimer();
       done();
     }
     prevPathRef.current = pathname;
-  }, [done, pathname]);
+  }, [clearPendingStartTimer, done, pathname]);
 
   if (!isVisible) {
     return null;

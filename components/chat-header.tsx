@@ -1,10 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { memo, useTransition } from "react";
+import { memo } from "react";
 import { useWindowSize } from "usehooks-ts";
 
-import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
@@ -28,7 +27,6 @@ function PureChatHeader({
 }) {
   const router = useRouter();
   const { open } = useSidebar();
-  const [isPending, startTransition] = useTransition();
 
   const { width: windowWidth } = useWindowSize();
 
@@ -53,17 +51,9 @@ function PureChatHeader({
       <div className="-mr-2 order-2 ml-auto flex items-center gap-3 md:order-3">
         {(!open || windowWidth < 768) && (
           <Button
-            aria-busy={isPending}
             className="h-8 px-2 md:h-fit md:px-2"
-            disabled={isPending}
             onClick={() => {
-              if (isPending) {
-                return;
-              }
-              startGlobalProgress();
-              startTransition(() => {
-                router.push("/");
-              });
+              router.push("/chat?new=1");
             }}
             variant="outline"
           >

@@ -3,17 +3,11 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
-import {
-  type MouseEvent,
-  useCallback,
-  useTransition,
-} from "react";
 import { BookOpen } from "lucide-react";
 import { PlusIcon } from "@/components/icons";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
 import {
   Collapsible,
   CollapsibleContent,
@@ -29,6 +23,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useEffect } from "react";
 
 const SidebarHistory = dynamic(
   () =>
@@ -56,6 +51,12 @@ const SidebarHistory = dynamic(
   }
 );
 
+// These force a server rerender so `/chat` generates a fresh chat id, then the
+// Chat UI strips `new` back out via router.replace.
+const HOME_HREF = "/chat";
+const NEW_CHAT_HREF = "/chat?new=1";
+const NEW_STUDY_HREF = "/chat?mode=study&new=1";
+
 export function AppSidebar({
   user,
   studyModeEnabled = false,
@@ -63,77 +64,16 @@ export function AppSidebar({
   user: User | undefined;
   studyModeEnabled?: boolean;
 }) {
-  const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const { data: sessionData } = useSession();
-  const [isPending, startTransition] = useTransition();
+  const pathname = usePathname();
 
   const activeUser = sessionData?.user ?? user;
-  const _userEmail = activeUser?.email ?? "";
-  const _isAdmin = activeUser?.role === "admin";
 
-  const createNewChatHref = () => {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return `/?new=${crypto.randomUUID()}`;
-    }
-    return `/?new=${Date.now().toString(36)}`;
-  };
-
-  const handleNewChat = () => {
-    if (isPending) {
-      return;
-    }
-    const targetHref = createNewChatHref();
-    startGlobalProgress();
-    startTransition(() => {
-      setOpenMobile(false);
-      router.push(targetHref);
-    });
-  };
-
-  const createNewStudyHref = () => {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return `/chat?mode=study&new=${crypto.randomUUID()}`;
-    }
-    return `/chat?mode=study&new=${Date.now().toString(36)}`;
-  };
-
-  const handleNewStudy = () => {
-    if (isPending) {
-      return;
-    }
-    const targetHref = createNewStudyHref();
-    startGlobalProgress();
-    startTransition(() => {
-      setOpenMobile(false);
-      router.push(targetHref);
-    });
-  };
-
-  const handleLogoClick = useCallback(
-    (event: MouseEvent<HTMLAnchorElement>) => {
-      if (
-        event.defaultPrevented ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.shiftKey
-      ) {
-        return;
-      }
-      event.preventDefault();
-      if (isPending) {
-        return;
-      }
-      startGlobalProgress();
-      startTransition(() => {
-        setOpenMobile(false);
-        router.push("/");
-      });
-    },
-    [isPending, router, setOpenMobile]
-  );
+  useEffect(() => {
+    // Close the mobile sidebar after navigation completes (avoid delaying URL change).
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
@@ -142,8 +82,7 @@ export function AppSidebar({
           <div className="flex flex-row items-center justify-between">
             <Link
               className="flex cursor-pointer flex-row items-center"
-              href="/"
-              onClick={handleLogoClick}
+              href={HOME_HREF}
             >
               <Image
                 alt="KhasiGPT logo"
@@ -165,25 +104,19 @@ export function AppSidebar({
         <div className="mt-5 px-2">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton
-                aria-busy={isPending}
-                className="cursor-pointer text-sm"
-                onClick={handleNewChat}
-                type="button"
-              >
-                <PlusIcon />
-                <span>New chat</span>
+              <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                <Link href={NEW_CHAT_HREF}>
+                  <PlusIcon />
+                  <span>New chat</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
             {studyModeEnabled ? (
               <SidebarMenuItem>
                 <Collapsible defaultOpen={false}>
                   <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      aria-busy={isPending}
-                      className="cursor-pointer text-sm"
-                      type="button"
-                    >
+                    <SidebarMenuButton className="cursor-pointer text-sm" type="button">
                       <BookOpen />
                       <span>Study</span>
                     </SidebarMenuButton>
@@ -192,19 +125,19 @@ export function AppSidebar({
                     <div className="flex flex-col gap-1">
                       <SidebarMenu>
                         <SidebarMenuItem>
-                          <SidebarMenuButton
-                            aria-busy={isPending}
-                            className="cursor-pointer text-sm"
-                            onClick={handleNewStudy}
-                            type="button"
-                          >
-                            <PlusIcon />
-                            <span>New Study</span>
+                          <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                            <Link
+                              href={NEW_STUDY_HREF}
+                            >
+                              <PlusIcon />
+                              <span>New Study</span>
+                            </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       </SidebarMenu>
+
                       <div className="ml-[5px]">
-                        <SidebarHistory mode="study" user={user} />
+                        <SidebarHistory mode="study" user={activeUser ?? user} />
                       </div>
                     </div>
                   </CollapsibleContent>
@@ -213,8 +146,9 @@ export function AppSidebar({
             ) : null}
           </SidebarMenu>
         </div>
+
         <SidebarSeparator />
-        <SidebarHistory user={user} />
+        <SidebarHistory user={activeUser ?? user} />
       </SidebarContent>
     </Sidebar>
   );

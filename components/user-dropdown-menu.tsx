@@ -1,6 +1,7 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
+import Link from "next/link";
 import React from "react";
 import useSWR from "swr";
 import { useTranslation } from "@/components/language-provider";
@@ -15,7 +16,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn, fetcher } from "@/lib/utils";
 
 type UserDropdownMenuProps = {
@@ -25,7 +25,6 @@ type UserDropdownMenuProps = {
   isAuthenticated: boolean;
   resolvedTheme: string | undefined;
   onToggleTheme: () => void;
-  onNavigate: (path: string) => void;
   onLanguageChange?: (code: string) => void;
   languageOptions?: Array<{
     code: string;
@@ -187,7 +186,6 @@ export function UserDropdownMenu({
   isAuthenticated,
   resolvedTheme,
   onToggleTheme,
-  onNavigate,
   onLanguageChange,
   languageOptions = [],
   activeLanguageCode,
@@ -213,6 +211,14 @@ export function UserDropdownMenu({
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
   const { translate } = useTranslation();
+
+  const closeMenuImmediately = React.useCallback(() => {
+    setIsMenuOpen(false);
+    onOpenChange?.(false);
+    onMenuClose?.();
+    ignoreNextResourcesOpenRef.current = false;
+    setIsResourcesOpen(false);
+  }, [onMenuClose, onOpenChange]);
 
   const resetPlanState = React.useCallback(() => {
     planRequestAbortRef.current?.abort();
@@ -305,7 +311,7 @@ export function UserDropdownMenu({
         callback,
         skipProgress,
       }: {
-        actionType: "navigate" | "theme" | "signOut" | "language";
+        actionType: "theme" | "signOut" | "language" | "action";
         callback: () => void;
         skipProgress?: boolean;
       }
@@ -314,18 +320,18 @@ export function UserDropdownMenu({
       if (isBusy) {
         return;
       }
+      // Give immediate feedback: close the menu right away so the user doesn't
+      // keep clicking while the next route loads.
+      closeMenuImmediately();
       const shouldSkip = skipProgress ?? false;
       if (shouldSkip) {
         callback();
         return;
       }
       onActionStart?.();
-      if (actionType === "navigate" || actionType === "signOut") {
-        startGlobalProgress();
-      }
       callback();
     },
-    [isBusy, onActionStart]
+    [closeMenuImmediately, isBusy, onActionStart]
   );
 
   const handleMenuOpenChange = React.useCallback(
@@ -435,21 +441,13 @@ export function UserDropdownMenu({
         className={cn("cursor-pointer", className)}
         data-testid={item.testId}
         key={item.path}
-        onSelect={(event) =>
-          handleSelect(event, {
-            actionType: "navigate",
-            callback: () => {
-              ignoreNextResourcesOpenRef.current = false;
-              setIsResourcesOpen(false);
-              onNavigate(item.path);
-            },
-            skipProgress: currentPathname === item.path,
-          })
-        }
+        asChild
       >
-        <span className="flex w-full items-center justify-between gap-2">
-          {translate(item.labelKey, item.defaultLabel)}
-        </span>
+        <Link href={item.path}>
+          <span className="flex w-full items-center justify-between gap-2">
+            {translate(item.labelKey, item.defaultLabel)}
+          </span>
+        </Link>
       </DropdownMenuItem>
     ));
 
@@ -484,17 +482,13 @@ export function UserDropdownMenu({
             <DropdownMenuItem
               className="cursor-pointer font-medium text-foreground"
               data-testid="user-nav-item-email"
-              onSelect={(event) =>
-                handleSelect(event, {
-                  actionType: "navigate",
-                  callback: () => onNavigate("/profile"),
-                  skipProgress: shouldSkipPathProgress("/profile"),
-                })
-              }
+              asChild
             >
-              <span className="flex w-full items-center justify-between gap-2">
-                {primaryLabel}
-              </span>
+              <Link href="/profile">
+                <span className="flex w-full items-center justify-between gap-2">
+                  {primaryLabel}
+                </span>
+              </Link>
             </DropdownMenuItem>
           ) : null}
           {isAuthenticated && (
@@ -503,75 +497,63 @@ export function UserDropdownMenu({
               <DropdownMenuItem
                 className="cursor-pointer"
                 data-testid="user-nav-item-profile"
-                onSelect={(event) =>
-                  handleSelect(event, {
-                  actionType: "navigate",
-                  callback: () => onNavigate("/profile"),
-                  skipProgress: shouldSkipPathProgress("/profile"),
-                })
-                }
+                asChild
               >
-                <span className="flex w-full items-center justify-between gap-2">
-                  {translate("user_menu.profile", "Profile")}
-                </span>
+                <Link href="/profile">
+                  <span className="flex w-full items-center justify-between gap-2">
+                    {translate("user_menu.profile", "Profile")}
+                  </span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex cursor-pointer flex-col items-start gap-1"
                 data-testid="user-nav-item-manage-subscriptions"
-                onSelect={(event) =>
-                  handleSelect(event, {
-                    actionType: "navigate",
-                    callback: () => onNavigate("/subscriptions"),
-                    skipProgress: shouldSkipPathProgress("/subscriptions"),
-                  })
-                }
+                asChild
               >
-                <span className="flex w-full items-center justify-between gap-2">
-                  {translate(
-                    "user_menu.manage_subscriptions",
-                    "Manage Subscriptions"
-                  )}
-                </span>
-                <span className="text-muted-foreground text-xs opacity-80">
-                  {isPlanLoading
-                    ? translate(
-                        "user_menu.manage_subscriptions_status_checking",
-                        "Checking plan..."
-                      )
-                    : (planLabel ??
-                      translate(
-                        "user_menu.manage_subscriptions_status_fallback",
-                        "Free Plan"
-                      ))}
-                </span>
+                <Link href="/subscriptions">
+                  <span className="flex w-full items-center justify-between gap-2">
+                    {translate(
+                      "user_menu.manage_subscriptions",
+                      "Manage Subscriptions"
+                    )}
+                  </span>
+                  <span className="text-muted-foreground text-xs opacity-80">
+                    {isPlanLoading
+                      ? translate(
+                          "user_menu.manage_subscriptions_status_checking",
+                          "Checking plan..."
+                        )
+                      : (planLabel ??
+                        translate(
+                          "user_menu.manage_subscriptions_status_fallback",
+                          "Free Plan"
+                        ))}
+                  </span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer"
                 data-testid="user-nav-item-upgrade-plan"
-                onSelect={(event) =>
-                  handleSelect(event, {
-                    actionType: "navigate",
-                    callback: () => onNavigate("/recharge"),
-                    skipProgress: shouldSkipPathProgress("/recharge"),
-                  })
-                }
+                asChild
               >
-                <span className="flex w-full items-center justify-between gap-2">
-                  {translate("user_menu.upgrade_plan", "Upgrade plan")}
-                </span>
+                <Link href="/recharge">
+                  <span className="flex w-full items-center justify-between gap-2">
+                    {translate("user_menu.upgrade_plan", "Upgrade plan")}
+                  </span>
+                </Link>
               </DropdownMenuItem>
               {isAdmin ? (
                 <DropdownMenuItem
                   className="cursor-pointer"
                   data-testid="user-nav-item-admin"
-                  onSelect={(event) =>
-                    handleSelect(event, {
-                      actionType: "navigate",
-                      callback: () => {
-                        window.open("/admin", "_blank", "noopener,noreferrer");
-                        setIsMenuOpen(false);
-                      },
-                      skipProgress: true,
+	                  onSelect={(event) =>
+	                    handleSelect(event, {
+	                      actionType: "action",
+	                      callback: () => {
+	                        window.open("/admin", "_blank", "noopener,noreferrer");
+	                        setIsMenuOpen(false);
+	                      },
+	                      skipProgress: true,
                     })
                   }
                 >
@@ -587,21 +569,16 @@ export function UserDropdownMenu({
                 <DropdownMenuItem
                   className="cursor-pointer"
                   data-testid="user-nav-item-creator"
-                  onSelect={(event) =>
-                    handleSelect(event, {
-                      actionType: "navigate",
-                      callback: () => onNavigate("/creator-dashboard"),
-                      skipProgress:
-                        shouldSkipPathProgress("/creator-dashboard"),
-                    })
-                  }
+                  asChild
                 >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    {translate(
-                      "user_menu.creator_dashboard",
-                      "Creator dashboard"
-                    )}
-                  </span>
+                  <Link href="/creator-dashboard">
+                    <span className="flex w-full items-center justify-between gap-2">
+                      {translate(
+                        "user_menu.creator_dashboard",
+                        "Creator dashboard"
+                      )}
+                    </span>
+                  </Link>
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuSeparator />
@@ -612,17 +589,13 @@ export function UserDropdownMenu({
             <DropdownMenuItem
               className="cursor-pointer"
               data-testid="user-nav-item-forum"
-              onSelect={(event) =>
-                handleSelect(event, {
-                  actionType: "navigate",
-                  callback: () => onNavigate("/forum"),
-                  skipProgress: shouldSkipPathProgress("/forum"),
-                })
-              }
+              asChild
             >
-              <span className="flex w-full items-center justify-between gap-2">
-                {translate("user_menu.community_forum", "Community Forum")}
-              </span>
+              <Link href="/forum">
+                <span className="flex w-full items-center justify-between gap-2">
+                  {translate("user_menu.community_forum", "Community Forum")}
+                </span>
+              </Link>
             </DropdownMenuItem>
           ) : null}
           {languageOptions.length > 0 ? (

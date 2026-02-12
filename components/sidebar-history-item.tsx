@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { memo } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
@@ -10,7 +9,6 @@ import { preloadChat } from "./chat-loader";
 import {
   CheckCircleFillIcon,
   GlobeIcon,
-  LoaderIcon,
   LockIcon,
   MoreHorizontalIcon,
   ShareIcon,
@@ -49,26 +47,8 @@ const PureChatItem = ({
   onOpen: (chatId: string) => boolean;
   onPrefetch?: (chatId: string) => void;
 }) => {
-  const pathname = usePathname();
   const href = `/chat/${chat.id}`;
-  const [isPending, setIsPending] = useState(false);
   const hasPrefetchedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isPending) {
-      return;
-    }
-    if (pathname === href) {
-      setIsPending(false);
-      return;
-    }
-
-    // If the user clicked another chat while this item was pending, clear the
-    // pending state so the spinner doesn't get stuck.
-    if (pathname?.startsWith("/chat/") && pathname !== href) {
-      setIsPending(false);
-    }
-  }, [href, isPending, pathname]);
 
   const maybePrefetch = useCallback(() => {
     if (hasPrefetchedRef.current) {
@@ -100,11 +80,9 @@ const PureChatItem = ({
   });
 
   return (
-    <SidebarMenuItem>
+      <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
         <Link
-          aria-busy={isPending}
-          aria-disabled={isPending}
           className="flex w-full items-center gap-2 truncate text-left"
           href={href}
           prefetch={false}
@@ -125,18 +103,11 @@ const PureChatItem = ({
               return;
             }
 
-            if (isPending) {
-              event.preventDefault();
-              return;
-            }
-
             const shouldNavigate = onOpen(chat.id);
             if (!shouldNavigate) {
               event.preventDefault();
               return;
             }
-
-            setIsPending(true);
           }}
           onFocus={() => {
             preloadChat();
@@ -152,11 +123,6 @@ const PureChatItem = ({
           }}
         >
           <span className="flex-1 truncate">{displayTitle}</span>
-          {isPending ? (
-            <span className="inline-flex size-4 items-center justify-center text-sidebar-foreground/70">
-              <LoaderIcon className="animate-spin" size={12} />
-            </span>
-          ) : null}
         </Link>
       </SidebarMenuButton>
 

@@ -244,7 +244,6 @@ export function PageUserMenu({
           isCreator={user.role === "creator"}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
-          onNavigate={handleNavigate}
           onOpenChange={handleOpenChange}
           onSignOut={handleSignOut}
           onToggleTheme={handleToggleTheme}
@@ -292,7 +291,6 @@ export function PageUserMenu({
           isCreator={false}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
-          onNavigate={handleNavigate}
           onOpenChange={handleOpenChange}
           onToggleTheme={handleToggleTheme}
           resolvedTheme={resolvedTheme}
