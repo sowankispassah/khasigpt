@@ -105,9 +105,9 @@ function PureMessages({
   const [showAllLoaded, setShowAllLoaded] = useState(false);
   const mountedChatRef = useRef<string | null>(null);
   const pendingInitialScrollChatIdRef = useRef<string | null>(null);
+  const initialPinDeadlineRef = useRef(0);
+  const userInterruptedInitialPinRef = useRef(false);
   const isFetchingHistoryRef = useRef(false);
-  const initialAutoScrollUntilRef = useRef(0);
-  const userInteractedRef = useRef(false);
   const hiddenCount = showAllLoaded
     ? 0
     : Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
@@ -147,8 +147,8 @@ function PureMessages({
       mountedChatRef.current = chatId;
       setShowAllLoaded(false);
       pendingInitialScrollChatIdRef.current = chatId;
-      initialAutoScrollUntilRef.current = Date.now() + 2500;
-      userInteractedRef.current = false;
+      initialPinDeadlineRef.current = Date.now() + 3500;
+      userInterruptedInitialPinRef.current = false;
     }
   }, [chatId]);
 
@@ -160,27 +160,32 @@ function PureMessages({
       return;
     }
 
-    let attempts = 0;
-    const maxAttempts = 30;
     let rafId = 0;
     const timeoutIds: number[] = [];
     let resizeObserver: ResizeObserver | null = null;
-    let markUserInteracted: (() => void) | null = null;
+    let mutationObserver: MutationObserver | null = null;
     let cancelled = false;
+    const markUserInterrupt = () => {
+      userInterruptedInitialPinRef.current = true;
+      pendingInitialScrollChatIdRef.current = null;
+    };
+
     const forceScrollToBottom = () => {
       if (cancelled) {
         return;
       }
-      if (userInteractedRef.current) {
+      if (userInterruptedInitialPinRef.current) {
         return;
       }
-      if (Date.now() > initialAutoScrollUntilRef.current) {
-        // Stop forcing once we've given the page a chance to settle.
-        pendingInitialScrollChatIdRef.current = null;
+      if (pendingInitialScrollChatIdRef.current !== chatId) {
         return;
       }
+
       const container = messagesContainerRef.current;
       const end = messagesEndRef.current;
+      if (!container) {
+        return;
+      }
 
       // Prefer scrolling to the bottom sentinel. This is more resilient for
       // text-only chats where late layout (markdown/code, fonts) can change height
@@ -203,42 +208,42 @@ function PureMessages({
         container.scrollTop = container.scrollHeight;
       }
 
-      // If we're clearly at the bottom, mark the initial scroll as complete.
-      if (container) {
-        const atBottom =
-          container.scrollTop + container.clientHeight >=
-          container.scrollHeight - 8;
-        if (atBottom) {
-          pendingInitialScrollChatIdRef.current = null;
-        }
+      const isAtBottomNow =
+        container.scrollTop + container.clientHeight >=
+        container.scrollHeight - 6;
+
+      if (Date.now() >= initialPinDeadlineRef.current && isAtBottomNow) {
+        pendingInitialScrollChatIdRef.current = null;
+        return;
       }
 
-      if (attempts < maxAttempts && pendingInitialScrollChatIdRef.current === chatId) {
-        attempts += 1;
+      if (!isAtBottomNow) {
         rafId = requestAnimationFrame(forceScrollToBottom);
       }
     };
 
-    // Keep scrolling for a short time to absorb late layout shifts (fonts,
-    // markdown/code rendering, etc).
-    rafId = requestAnimationFrame(forceScrollToBottom);
+    // Run immediately in layout phase so first paint is already near bottom.
+    forceScrollToBottom();
 
     const container = messagesContainerRef.current;
     if (container) {
-      markUserInteracted = () => {
-        userInteractedRef.current = true;
-        pendingInitialScrollChatIdRef.current = null;
-      };
-
       resizeObserver = new ResizeObserver(() => {
-        // If content size changes while we're still settling, stick to bottom.
+        // Late layout shifts (markdown/code rendering) should keep us pinned.
         forceScrollToBottom();
       });
       resizeObserver.observe(container);
 
-      // If the user interacts (wheel/touch), stop forcing scroll.
-      container.addEventListener("wheel", markUserInteracted, { passive: true });
-      container.addEventListener("touchstart", markUserInteracted, {
+      mutationObserver = new MutationObserver(() => {
+        forceScrollToBottom();
+      });
+      mutationObserver.observe(container, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      container.addEventListener("wheel", markUserInterrupt, { passive: true });
+      container.addEventListener("touchstart", markUserInterrupt, {
         passive: true,
       });
     }
@@ -251,9 +256,14 @@ function PureMessages({
     }
 
     timeoutIds.push(
-      window.setTimeout(forceScrollToBottom, 150),
-      window.setTimeout(forceScrollToBottom, 450),
-      window.setTimeout(forceScrollToBottom, 900)
+      window.setTimeout(forceScrollToBottom, 120),
+      window.setTimeout(forceScrollToBottom, 360),
+      window.setTimeout(forceScrollToBottom, 800),
+      window.setTimeout(forceScrollToBottom, 1600),
+      window.setTimeout(
+        forceScrollToBottom,
+        Math.max(0, initialPinDeadlineRef.current - Date.now()) + 40
+      )
     );
 
     return () => {
@@ -262,16 +272,14 @@ function PureMessages({
         cancelAnimationFrame(rafId);
       }
       for (const id of timeoutIds) {
-        if (id > 0) {
-          window.clearTimeout(id);
-        }
+        window.clearTimeout(id);
       }
-      const currentContainer = messagesContainerRef.current;
-      if (currentContainer && markUserInteracted) {
-        currentContainer.removeEventListener("wheel", markUserInteracted);
-        currentContainer.removeEventListener("touchstart", markUserInteracted);
+      if (container) {
+        container.removeEventListener("wheel", markUserInterrupt);
+        container.removeEventListener("touchstart", markUserInterrupt);
       }
       resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
     };
   }, [chatId, messages.length, messagesContainerRef, messagesEndRef]);
 
