@@ -5,9 +5,11 @@ import { ChatPreloader } from "@/components/chat-preloader";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
+  CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
+import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import { getAppSetting, getUserById } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
@@ -62,12 +64,13 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
-  const [studyModeSetting, forumSetting] = session
+  const [studyModeSetting, forumSetting, calculatorSetting] = session
     ? await Promise.all([
         getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
         getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+        getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
       ])
-    : [null, null];
+    : [null, null, null];
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,
@@ -76,6 +79,12 @@ export default async function Layout({
   const forumAccessMode = parseForumAccessModeSetting(forumSetting);
   const forumEnabled = isFeatureEnabledForRole(
     forumAccessMode,
+    session?.user?.role ?? null
+  );
+  const calculatorAccessMode =
+    parseCalculatorAccessModeSetting(calculatorSetting);
+  const calculatorEnabled = isFeatureEnabledForRole(
+    calculatorAccessMode,
     session?.user?.role ?? null
   );
 
@@ -90,7 +99,11 @@ export default async function Layout({
       {session ? (
         <SidebarProvider defaultOpen={defaultSidebarOpen}>
           <ChatPreloader />
-          <AppSidebar studyModeEnabled={studyModeEnabled} user={session.user} />
+          <AppSidebar
+            calculatorEnabled={calculatorEnabled}
+            studyModeEnabled={studyModeEnabled}
+            user={session.user}
+          />
           <SidebarInset>{children}</SidebarInset>
         </SidebarProvider>
       ) : (

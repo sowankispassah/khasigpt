@@ -3,11 +3,13 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Calculator } from "lucide-react";
+import { type MouseEvent, useCallback, useEffect } from "react";
 import { PlusIcon } from "@/components/icons";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import {
   Collapsible,
   CollapsibleContent,
@@ -23,7 +25,6 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useEffect } from "react";
 
 const SidebarHistory = dynamic(
   () =>
@@ -58,15 +59,18 @@ const NEW_CHAT_HREF = "/chat?new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 
 export function AppSidebar({
+  calculatorEnabled = true,
   user,
   studyModeEnabled = false,
 }: {
+  calculatorEnabled?: boolean;
   user: User | undefined;
   studyModeEnabled?: boolean;
 }) {
   const { setOpenMobile } = useSidebar();
   const { data: sessionData } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
 
   const activeUser = sessionData?.user ?? user;
 
@@ -74,6 +78,29 @@ export function AppSidebar({
     // Close the mobile sidebar after navigation completes (avoid delaying URL change).
     setOpenMobile(false);
   }, [pathname, setOpenMobile]);
+  const handleCalculatorClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (pathname === "/calculator") {
+        setOpenMobile(false);
+        return;
+      }
+      startGlobalProgress();
+      setOpenMobile(false);
+      router.push("/calculator");
+    },
+    [pathname, router, setOpenMobile]
+  );
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
@@ -144,9 +171,18 @@ export function AppSidebar({
                 </Collapsible>
               </SidebarMenuItem>
             ) : null}
+            {calculatorEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link href="/calculator" onClick={handleCalculatorClick}>
+                    <Calculator />
+                    <span>Calculator</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
           </SidebarMenu>
         </div>
-
         <SidebarSeparator />
         <SidebarHistory user={activeUser ?? user} />
       </SidebarContent>

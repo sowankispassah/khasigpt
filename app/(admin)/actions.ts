@@ -8,6 +8,7 @@ import { auth } from "@/app/(auth)/auth";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
+  CALCULATOR_FEATURE_FLAG_KEY,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -258,6 +259,31 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   revalidatePath("/", "layout");
   revalidatePath("/forum");
   revalidatePath("/forum/[slug]");
+}
+
+export async function updateCalculatorAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const accessMode = parseFeatureAccessMode(
+    formData.get("calculatorAccessMode"),
+    "enabled"
+  );
+
+  await setAppSetting({
+    key: CALCULATOR_FEATURE_FLAG_KEY,
+    value: accessMode,
+  });
+  revalidateAppSettingCache(CALCULATOR_FEATURE_FLAG_KEY);
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.calculator.toggle",
+    target: { setting: CALCULATOR_FEATURE_FLAG_KEY },
+    metadata: { accessMode },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/calculator");
 }
 
 export async function updateStudyModeAvailabilityAction(formData: FormData) {

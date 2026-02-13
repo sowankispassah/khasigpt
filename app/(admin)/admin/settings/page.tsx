@@ -2,6 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
+  updateCalculatorAvailabilityAction,
   createImageModelConfigAction,
   createLanguageAction,
   createModelConfigAction,
@@ -42,7 +43,9 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import { parseImageGenerationAccessModeSetting } from "@/lib/ai/image-generation";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
+  CALCULATOR_FEATURE_FLAG_KEY,
   DEFAULT_ABOUT_US,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DEFAULT_PRIVACY_POLICY,
@@ -140,6 +143,7 @@ const loadAdminSettingsData = unstable_cache(
       recommendedPlanSetting,
       languages,
       freeMessageSettings,
+      calculatorEnabledSetting,
       forumEnabledSetting,
       studyModeEnabledSetting,
       imageGenerationEnabledSetting,
@@ -173,6 +177,7 @@ const loadAdminSettingsData = unstable_cache(
       getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
       listLanguagesWithSettings(),
       loadFreeMessageSettings(),
+      getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
@@ -200,6 +205,7 @@ const loadAdminSettingsData = unstable_cache(
       recommendedPlanSetting,
       languages,
       freeMessageSettings,
+      calculatorEnabledSetting,
       forumEnabledSetting,
       studyModeEnabledSetting,
       imageGenerationEnabledSetting,
@@ -411,6 +417,7 @@ export default async function AdminSettingsPage({
     recommendedPlanSetting,
     languages,
     freeMessageSettings,
+    calculatorEnabledSetting,
     forumEnabledSetting,
     studyModeEnabledSetting,
     imageGenerationEnabledSetting,
@@ -575,6 +582,9 @@ export default async function AdminSettingsPage({
     }
   }
   const forumAccessMode = parseForumAccessModeSetting(forumEnabledSetting);
+  const calculatorAccessMode = parseCalculatorAccessModeSetting(
+    calculatorEnabledSetting
+  );
   const studyModeAccessMode = parseStudyModeAccessModeSetting(
     studyModeEnabledSetting
   );
@@ -716,6 +726,25 @@ export default async function AdminSettingsPage({
                 currentMode={forumAccessMode}
                 fieldName="forumAccessMode"
                 successMessage="Forum availability updated."
+              />
+            </div>
+
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">Calculator</span>
+                  <AccessModeBadge mode={calculatorAccessMode} />
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Show or hide the calculator tool in sidebar navigation. When
+                  disabled, direct route access returns a 404.
+                </p>
+              </div>
+              <FeatureAccessModeButtons
+                action={updateCalculatorAvailabilityAction}
+                currentMode={calculatorAccessMode}
+                fieldName="calculatorAccessMode"
+                successMessage="Calculator availability updated."
               />
             </div>
 
