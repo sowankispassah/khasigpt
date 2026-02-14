@@ -291,7 +291,7 @@ export async function updateForumAvailabilityAction(formData: FormData) {
     value: accessMode,
   });
   revalidateAppSettingCache(FORUM_FEATURE_FLAG_KEY);
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "forum.toggle",
     target: { setting: FORUM_FEATURE_FLAG_KEY },
@@ -319,7 +319,7 @@ export async function updateCalculatorAvailabilityAction(formData: FormData) {
     value: accessMode,
   });
   revalidateAppSettingCache(CALCULATOR_FEATURE_FLAG_KEY);
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.calculator.toggle",
     target: { setting: CALCULATOR_FEATURE_FLAG_KEY },
@@ -347,7 +347,7 @@ export async function updateStudyModeAvailabilityAction(formData: FormData) {
   });
   revalidateAppSettingCache(STUDY_MODE_FEATURE_FLAG_KEY);
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.study_mode.toggle",
     target: { setting: STUDY_MODE_FEATURE_FLAG_KEY },
@@ -378,7 +378,7 @@ export async function updateImageGenerationAvailabilityAction(
   });
   revalidateAppSettingCache(IMAGE_GENERATION_FEATURE_FLAG_KEY);
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.image_generation.toggle",
     target: { setting: IMAGE_GENERATION_FEATURE_FLAG_KEY },
@@ -407,7 +407,7 @@ export async function updateDocumentUploadsAvailabilityAction(
   });
   revalidateAppSettingCache(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY);
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.document_uploads.toggle",
     target: { setting: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY },
@@ -434,7 +434,7 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
   });
   revalidateAppSettingCache(ICON_PROMPTS_ENABLED_SETTING_KEY);
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.icon_prompts.toggle",
     target: { setting: ICON_PROMPTS_ENABLED_SETTING_KEY },
@@ -464,7 +464,7 @@ export async function updateSuggestedPromptsAvailabilityAction(
   });
   revalidateAppSettingCache(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY);
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.suggested_prompts.toggle",
     target: { setting: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY },
