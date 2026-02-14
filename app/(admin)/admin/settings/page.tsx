@@ -87,6 +87,7 @@ import {
 } from "@/lib/suggested-prompts";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
@@ -112,6 +113,7 @@ const ADMIN_SETTINGS_CACHE_TAGS = [
   "languages",
 ];
 const SETTINGS_PENDING_TIMEOUT_MS = 12000;
+const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 8000;
 
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
@@ -674,7 +676,16 @@ export default async function AdminSettingsPage({
   );
   const planTranslationValuesByLanguage =
     planTranslationKeys.length > 0
-      ? await getTranslationValuesForKeys(planTranslationKeys)
+      ? await withTimeout(
+          getTranslationValuesForKeys(planTranslationKeys),
+          PLAN_TRANSLATION_QUERY_TIMEOUT_MS
+        ).catch((error) => {
+          console.error(
+            "[admin/settings] Translation query timed out or failed. Rendering settings without plan translations.",
+            error
+          );
+          return {} as Record<string, Record<string, string>>;
+        })
       : {};
 
   const planTranslationsByLanguage: Record<
