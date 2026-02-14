@@ -1,5 +1,4 @@
 import { formatDistanceToNow } from "date-fns";
-import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
   updateCalculatorAvailabilityAction,
@@ -41,8 +40,6 @@ import {
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { parseImageGenerationAccessModeSetting } from "@/lib/ai/image-generation";
-import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
-import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
@@ -58,14 +55,12 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
-  PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
-  APP_SETTING_CACHE_TAG,
   getAppSetting,
   getTranslationValuesForKeys,
   listImageModelConfigs,
@@ -107,17 +102,24 @@ const PROVIDER_OPTIONS = [
   { value: "custom", label: "Custom (configure in code)" },
 ];
 
-const ADMIN_SETTINGS_CACHE_KEY = "admin-settings-data-v1";
-const ADMIN_SETTINGS_CACHE_TAGS = [
-  APP_SETTING_CACHE_TAG,
-  MODEL_REGISTRY_CACHE_TAG,
-  IMAGE_MODEL_REGISTRY_CACHE_TAG,
-  PRICING_PLAN_CACHE_TAG,
-  "languages",
-];
 const SETTINGS_PENDING_TIMEOUT_MS = 12000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 8000;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 3000;
+const SETTINGS_DATA_QUERY_TIMEOUT_MS = 8000;
+
+function safeSettingsQuery<T>(
+  label: string,
+  promise: Promise<T>,
+  fallbackValue: T
+): Promise<T> {
+  return withTimeout(promise, SETTINGS_DATA_QUERY_TIMEOUT_MS).catch((error) => {
+    console.error(
+      `[admin/settings] ${label} query timed out or failed. Using fallback value.`,
+      error
+    );
+    return fallbackValue;
+  });
+}
 
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
@@ -130,8 +132,7 @@ function SettingsSubmitButton(
   );
 }
 
-const loadAdminSettingsData = unstable_cache(
-  async () => {
+async function loadAdminSettingsData() {
     const [
       exchangeRate,
       modelsRaw,
@@ -172,38 +173,137 @@ const loadAdminSettingsData = unstable_cache(
           fetchedAt: new Date(),
         };
       }),
-      listModelConfigs({
-        includeDisabled: true,
-        includeDeleted: true,
-        limit: 200,
-      }),
-      listImageModelConfigs({
-        includeDisabled: true,
-        includeDeleted: true,
-        limit: 200,
-      }),
-      listPricingPlans({ includeInactive: true, includeDeleted: true }),
-      getAppSetting<string>("privacyPolicy"),
-      getAppSetting<string>("termsOfService"),
-      getAppSetting<string>("aboutUsContent"),
-      getAppSetting<Record<string, string>>("aboutUsContentByLanguage"),
-      getAppSetting<Record<string, string>>("privacyPolicyByLanguage"),
-      getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
-      getAppSetting<string[]>("suggestedPrompts"),
-      getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
-      getAppSetting<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY),
-      getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
-      listLanguagesWithSettings(),
-      loadFreeMessageSettings(),
-      getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
-      getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
-      getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
-      getAppSetting<unknown>(ICON_PROMPTS_SETTING_KEY),
-      getAppSetting<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY),
-      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+      safeSettingsQuery(
+        "model configs",
+        listModelConfigs({
+          includeDisabled: true,
+          includeDeleted: true,
+          limit: 200,
+        }),
+        []
+      ),
+      safeSettingsQuery(
+        "image model configs",
+        listImageModelConfigs({
+          includeDisabled: true,
+          includeDeleted: true,
+          limit: 200,
+        }),
+        []
+      ),
+      safeSettingsQuery(
+        "pricing plans",
+        listPricingPlans({ includeInactive: true, includeDeleted: true }),
+        []
+      ),
+      safeSettingsQuery(
+        "privacy policy setting",
+        getAppSetting<string>("privacyPolicy"),
+        null
+      ),
+      safeSettingsQuery(
+        "terms of service setting",
+        getAppSetting<string>("termsOfService"),
+        null
+      ),
+      safeSettingsQuery(
+        "about content setting",
+        getAppSetting<string>("aboutUsContent"),
+        null
+      ),
+      safeSettingsQuery(
+        "about content by language setting",
+        getAppSetting<Record<string, string>>("aboutUsContentByLanguage"),
+        null
+      ),
+      safeSettingsQuery(
+        "privacy policy by language setting",
+        getAppSetting<Record<string, string>>("privacyPolicyByLanguage"),
+        null
+      ),
+      safeSettingsQuery(
+        "terms by language setting",
+        getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
+        null
+      ),
+      safeSettingsQuery(
+        "suggested prompts setting",
+        getAppSetting<string[]>("suggestedPrompts"),
+        null
+      ),
+      safeSettingsQuery(
+        "suggested prompts by language setting",
+        getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
+        null
+      ),
+      safeSettingsQuery(
+        "suggested prompts access mode setting",
+        getAppSetting<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "recommended plan setting",
+        getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "languages",
+        listLanguagesWithSettings(),
+        []
+      ),
+      safeSettingsQuery(
+        "free message settings",
+        loadFreeMessageSettings(),
+        {
+          mode: "per-model",
+          globalLimit: DEFAULT_FREE_MESSAGES_PER_DAY,
+        }
+      ),
+      safeSettingsQuery(
+        "calculator access setting",
+        getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "forum access setting",
+        getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "study mode access setting",
+        getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "image generation access setting",
+        getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "image translation model setting",
+        getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "image filename prefix setting",
+        getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "icon prompts setting",
+        getAppSetting<unknown>(ICON_PROMPTS_SETTING_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "icon prompts access setting",
+        getAppSetting<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY),
+        null
+      ),
+      safeSettingsQuery(
+        "document uploads access setting",
+        getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+        null
+      ),
     ]);
 
     return {
@@ -233,13 +333,7 @@ const loadAdminSettingsData = unstable_cache(
       iconPromptsEnabledSetting,
       documentUploadsEnabledSetting,
     };
-  },
-  [ADMIN_SETTINGS_CACHE_KEY],
-  {
-    tags: ADMIN_SETTINGS_CACHE_TAGS,
-    revalidate: 300,
-  }
-);
+}
 
 function _formatCurrency(value: number, currency: "USD" | "INR") {
   return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
