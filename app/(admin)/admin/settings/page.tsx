@@ -49,6 +49,7 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  FREE_MESSAGE_SETTINGS_KEY,
   FORUM_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
@@ -61,7 +62,7 @@ import {
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
-  getAppSetting,
+  getAppSettings,
   getTranslationValuesForKeys,
   listImageModelConfigs,
   listLanguagesWithSettings,
@@ -70,7 +71,7 @@ import {
 } from "@/lib/db/queries";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
-import { loadFreeMessageSettings } from "@/lib/free-messages";
+import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
   normalizeIconPromptSettings,
   parseIconPromptsAccessModeSetting,
@@ -105,7 +106,7 @@ const PROVIDER_OPTIONS = [
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
-const SETTINGS_DATA_QUERY_TIMEOUT_MS = 1500;
+const SETTINGS_DATA_QUERY_TIMEOUT_MS = 2500;
 
 function safeSettingsQuery<T>(
   label: string,
@@ -133,206 +134,141 @@ function SettingsSubmitButton(
 }
 
 async function loadAdminSettingsData() {
-    const [
-      exchangeRate,
-      modelsRaw,
-      imageModelConfigs,
-      plansRaw,
-      privacyPolicySetting,
-      termsOfServiceSetting,
-      aboutUsSetting,
-      aboutUsContentByLanguageSetting,
-      privacyPolicyByLanguageSetting,
-      termsOfServiceByLanguageSetting,
-      suggestedPromptsSetting,
-      suggestedPromptsByLanguageSetting,
-      suggestedPromptsEnabledSetting,
-      recommendedPlanSetting,
-      languages,
-      freeMessageSettings,
-      calculatorEnabledSetting,
-      forumEnabledSetting,
-      studyModeEnabledSetting,
-      imageGenerationEnabledSetting,
-      imagePromptTranslationModelSetting,
-      imageFilenamePrefixSetting,
-      iconPromptsSetting,
-      iconPromptsEnabledSetting,
-      documentUploadsEnabledSetting,
-    ] = await Promise.all([
-      withTimeout(
-        getUsdToInrRate(),
-        EXCHANGE_RATE_QUERY_TIMEOUT_MS
-      ).catch((error) => {
-        console.error(
-          "[admin/settings] Exchange rate query timed out or failed. Using fallback rate.",
-          error
-        );
-        return {
-          rate: getFallbackUsdToInrRate(),
-          fetchedAt: new Date(),
-        };
+  const [
+    exchangeRate,
+    modelsRaw,
+    imageModelConfigs,
+    plansRaw,
+    appSettings,
+    languages,
+  ] = await Promise.all([
+    withTimeout(
+      getUsdToInrRate(),
+      EXCHANGE_RATE_QUERY_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        "[admin/settings] Exchange rate query timed out or failed. Using fallback rate.",
+        error
+      );
+      return {
+        rate: getFallbackUsdToInrRate(),
+        fetchedAt: new Date(),
+      };
+    }),
+    safeSettingsQuery(
+      "model configs",
+      listModelConfigs({
+        includeDisabled: true,
+        includeDeleted: true,
+        limit: 200,
       }),
-      safeSettingsQuery(
-        "model configs",
-        listModelConfigs({
-          includeDisabled: true,
-          includeDeleted: true,
-          limit: 200,
-        }),
-        []
-      ),
-      safeSettingsQuery(
-        "image model configs",
-        listImageModelConfigs({
-          includeDisabled: true,
-          includeDeleted: true,
-          limit: 200,
-        }),
-        []
-      ),
-      safeSettingsQuery(
-        "pricing plans",
-        listPricingPlans({ includeInactive: true, includeDeleted: true }),
-        []
-      ),
-      safeSettingsQuery(
-        "privacy policy setting",
-        getAppSetting<string>("privacyPolicy"),
-        null
-      ),
-      safeSettingsQuery(
-        "terms of service setting",
-        getAppSetting<string>("termsOfService"),
-        null
-      ),
-      safeSettingsQuery(
-        "about content setting",
-        getAppSetting<string>("aboutUsContent"),
-        null
-      ),
-      safeSettingsQuery(
-        "about content by language setting",
-        getAppSetting<Record<string, string>>("aboutUsContentByLanguage"),
-        null
-      ),
-      safeSettingsQuery(
-        "privacy policy by language setting",
-        getAppSetting<Record<string, string>>("privacyPolicyByLanguage"),
-        null
-      ),
-      safeSettingsQuery(
-        "terms by language setting",
-        getAppSetting<Record<string, string>>("termsOfServiceByLanguage"),
-        null
-      ),
-      safeSettingsQuery(
-        "suggested prompts setting",
-        getAppSetting<string[]>("suggestedPrompts"),
-        null
-      ),
-      safeSettingsQuery(
-        "suggested prompts by language setting",
-        getAppSetting<Record<string, string[]>>("suggestedPromptsByLanguage"),
-        null
-      ),
-      safeSettingsQuery(
-        "suggested prompts access mode setting",
-        getAppSetting<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "recommended plan setting",
-        getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "languages",
-        listLanguagesWithSettings(),
-        []
-      ),
-      safeSettingsQuery(
-        "free message settings",
-        loadFreeMessageSettings(),
-        {
-          mode: "per-model",
-          globalLimit: DEFAULT_FREE_MESSAGES_PER_DAY,
-        }
-      ),
-      safeSettingsQuery(
-        "calculator access setting",
-        getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "forum access setting",
-        getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "study mode access setting",
-        getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "image generation access setting",
-        getAppSetting<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "image translation model setting",
-        getAppSetting<string | null>(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "image filename prefix setting",
-        getAppSetting<string>(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "icon prompts setting",
-        getAppSetting<unknown>(ICON_PROMPTS_SETTING_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "icon prompts access setting",
-        getAppSetting<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY),
-        null
-      ),
-      safeSettingsQuery(
-        "document uploads access setting",
-        getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
-        null
-      ),
-    ]);
+      []
+    ),
+    safeSettingsQuery(
+      "image model configs",
+      listImageModelConfigs({
+        includeDisabled: true,
+        includeDeleted: true,
+        limit: 200,
+      }),
+      []
+    ),
+    safeSettingsQuery(
+      "pricing plans",
+      listPricingPlans({ includeInactive: true, includeDeleted: true }),
+      []
+    ),
+    getAppSettings(),
+    safeSettingsQuery("languages", listLanguagesWithSettings(), []),
+  ]);
 
-    return {
-      exchangeRate,
-      modelsRaw,
-      imageModelConfigs,
-      plansRaw,
-      privacyPolicySetting,
-      termsOfServiceSetting,
-      aboutUsSetting,
-      aboutUsContentByLanguageSetting,
-      privacyPolicyByLanguageSetting,
-      termsOfServiceByLanguageSetting,
-      suggestedPromptsSetting,
-      suggestedPromptsByLanguageSetting,
-      suggestedPromptsEnabledSetting,
-      recommendedPlanSetting,
-      languages,
-      freeMessageSettings,
-      calculatorEnabledSetting,
-      forumEnabledSetting,
-      studyModeEnabledSetting,
-      imageGenerationEnabledSetting,
-      imagePromptTranslationModelSetting,
-      imageFilenamePrefixSetting,
-      iconPromptsSetting,
-      iconPromptsEnabledSetting,
-      documentUploadsEnabledSetting,
-    };
+  const appSettingValuesByKey = new Map(
+    appSettings.map((setting) => [setting.key, setting.value])
+  );
+  const getStoredSetting = <T,>(key: string): T | null => {
+    const value = appSettingValuesByKey.get(key);
+    return value === undefined ? null : (value as T);
+  };
+
+  const privacyPolicySetting = getStoredSetting<string>("privacyPolicy");
+  const termsOfServiceSetting = getStoredSetting<string>("termsOfService");
+  const aboutUsSetting = getStoredSetting<string>("aboutUsContent");
+  const aboutUsContentByLanguageSetting = getStoredSetting<
+    Record<string, string>
+  >("aboutUsContentByLanguage");
+  const privacyPolicyByLanguageSetting = getStoredSetting<
+    Record<string, string>
+  >("privacyPolicyByLanguage");
+  const termsOfServiceByLanguageSetting = getStoredSetting<
+    Record<string, string>
+  >("termsOfServiceByLanguage");
+  const suggestedPromptsSetting =
+    getStoredSetting<string[]>("suggestedPrompts");
+  const suggestedPromptsByLanguageSetting = getStoredSetting<
+    Record<string, string[]>
+  >("suggestedPromptsByLanguage");
+  const suggestedPromptsEnabledSetting = getStoredSetting<string | boolean>(
+    SUGGESTED_PROMPTS_ENABLED_SETTING_KEY
+  );
+  const recommendedPlanSetting = getStoredSetting<string | null>(
+    RECOMMENDED_PRICING_PLAN_SETTING_KEY
+  );
+  const calculatorEnabledSetting = getStoredSetting<string | boolean>(
+    CALCULATOR_FEATURE_FLAG_KEY
+  );
+  const forumEnabledSetting = getStoredSetting<string | boolean>(
+    FORUM_FEATURE_FLAG_KEY
+  );
+  const studyModeEnabledSetting = getStoredSetting<string | boolean>(
+    STUDY_MODE_FEATURE_FLAG_KEY
+  );
+  const imageGenerationEnabledSetting = getStoredSetting<string | boolean>(
+    IMAGE_GENERATION_FEATURE_FLAG_KEY
+  );
+  const imagePromptTranslationModelSetting = getStoredSetting<string | null>(
+    IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY
+  );
+  const imageFilenamePrefixSetting = getStoredSetting<string>(
+    IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY
+  );
+  const iconPromptsSetting = getStoredSetting<unknown>(ICON_PROMPTS_SETTING_KEY);
+  const iconPromptsEnabledSetting = getStoredSetting<string | boolean>(
+    ICON_PROMPTS_ENABLED_SETTING_KEY
+  );
+  const documentUploadsEnabledSetting = getStoredSetting<string | boolean>(
+    DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+  );
+  const freeMessageSettings = normalizeFreeMessageSettings(
+    getStoredSetting(FREE_MESSAGE_SETTINGS_KEY)
+  );
+
+  return {
+    exchangeRate,
+    modelsRaw,
+    imageModelConfigs,
+    plansRaw,
+    privacyPolicySetting,
+    termsOfServiceSetting,
+    aboutUsSetting,
+    aboutUsContentByLanguageSetting,
+    privacyPolicyByLanguageSetting,
+    termsOfServiceByLanguageSetting,
+    suggestedPromptsSetting,
+    suggestedPromptsByLanguageSetting,
+    suggestedPromptsEnabledSetting,
+    recommendedPlanSetting,
+    languages,
+    freeMessageSettings,
+    calculatorEnabledSetting,
+    forumEnabledSetting,
+    studyModeEnabledSetting,
+    imageGenerationEnabledSetting,
+    imagePromptTranslationModelSetting,
+    imageFilenamePrefixSetting,
+    iconPromptsSetting,
+    iconPromptsEnabledSetting,
+    documentUploadsEnabledSetting,
+  };
 }
 
 function _formatCurrency(value: number, currency: "USD" | "INR") {
@@ -419,6 +355,7 @@ function FeatureAccessModeButtons({
           <input name={fieldName} type="hidden" value="disabled" />
           <SettingsSubmitButton
             pendingLabel="Saving..."
+            refreshOnSuccess={true}
             successMessage={successMessage}
             variant={currentMode === "disabled" ? "destructive" : "outline"}
           >
@@ -429,6 +366,7 @@ function FeatureAccessModeButtons({
           <input name={fieldName} type="hidden" value="admin_only" />
           <SettingsSubmitButton
             pendingLabel="Saving..."
+            refreshOnSuccess={true}
             successMessage={successMessage}
             variant={currentMode === "admin_only" ? "default" : "outline"}
           >
@@ -439,6 +377,7 @@ function FeatureAccessModeButtons({
           <input name={fieldName} type="hidden" value="enabled" />
           <SettingsSubmitButton
             pendingLabel="Saving..."
+            refreshOnSuccess={true}
             successMessage={successMessage}
             variant={currentMode === "enabled" ? "default" : "outline"}
           >
