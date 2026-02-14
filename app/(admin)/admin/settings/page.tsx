@@ -62,6 +62,7 @@ import {
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
+  getAppSetting,
   getAppSettingsByKeysUncached,
   getTranslationValuesForKeys,
   listImageModelConfigs,
@@ -107,7 +108,7 @@ const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 2500;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 4000;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 10000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -145,6 +146,38 @@ function safeSettingsQuery<T>(
   });
 }
 
+async function loadAppSettingValuesByKey() {
+  try {
+    const settings = await withTimeout(
+      getAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
+      SETTINGS_SNAPSHOT_TIMEOUT_MS
+    );
+    return new Map(settings.map((setting) => [setting.key, setting.value]));
+  } catch (error) {
+    console.error(
+      "[admin/settings] App settings snapshot query timed out or failed. Falling back to per-key reads.",
+      error
+    );
+  }
+
+  const entries = await Promise.all(
+    SETTINGS_SNAPSHOT_KEYS.map(async (key) => {
+      try {
+        const value = await getAppSetting<unknown>(key);
+        return [key, value] as const;
+      } catch (fallbackError) {
+        console.error(
+          `[admin/settings] Fallback read failed for key "${key}".`,
+          fallbackError
+        );
+        return [key, null] as const;
+      }
+    })
+  );
+
+  return new Map(entries);
+}
+
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
 ) {
@@ -162,7 +195,7 @@ async function loadAdminSettingsData() {
     modelsRaw,
     imageModelConfigs,
     plansRaw,
-    appSettings,
+    appSettingValuesByKey,
     languages,
   ] = await Promise.all([
     withTimeout(
@@ -201,22 +234,9 @@ async function loadAdminSettingsData() {
       listPricingPlans({ includeInactive: true, includeDeleted: true }),
       []
     ),
-    withTimeout(
-      getAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
-      SETTINGS_SNAPSHOT_TIMEOUT_MS
-    ).catch((error) => {
-      console.error(
-        "[admin/settings] App settings snapshot query timed out or failed.",
-        error
-      );
-      throw new Error("admin_settings_snapshot_unavailable");
-    }),
+    loadAppSettingValuesByKey(),
     safeSettingsQuery("languages", listLanguagesWithSettings(), []),
   ]);
-
-  const appSettingValuesByKey = new Map(
-    appSettings.map((setting) => [setting.key, setting.value])
-  );
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
