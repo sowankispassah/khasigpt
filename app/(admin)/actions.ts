@@ -26,7 +26,6 @@ import {
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
-  APP_SETTING_CACHE_TAG,
   appSettingCacheTagForKey,
   createAuditLogEntry,
   createCharacterWithAliases,
@@ -130,7 +129,6 @@ async function requireAdmin() {
 }
 
 function revalidateAppSettingCache(key: string) {
-  revalidateTag(APP_SETTING_CACHE_TAG);
   revalidateTag(appSettingCacheTagForKey(key));
 }
 
@@ -297,8 +295,6 @@ export async function updateForumAvailabilityAction(formData: FormData) {
     target: { setting: FORUM_FEATURE_FLAG_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateCalculatorAvailabilityAction(formData: FormData) {
@@ -322,8 +318,6 @@ export async function updateCalculatorAvailabilityAction(formData: FormData) {
     target: { setting: CALCULATOR_FEATURE_FLAG_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateStudyModeAvailabilityAction(formData: FormData) {
@@ -348,8 +342,6 @@ export async function updateStudyModeAvailabilityAction(formData: FormData) {
     target: { setting: STUDY_MODE_FEATURE_FLAG_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateImageGenerationAvailabilityAction(
@@ -376,8 +368,6 @@ export async function updateImageGenerationAvailabilityAction(
     target: { setting: IMAGE_GENERATION_FEATURE_FLAG_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateDocumentUploadsAvailabilityAction(
@@ -404,8 +394,6 @@ export async function updateDocumentUploadsAvailabilityAction(
     target: { setting: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateIconPromptAvailabilityAction(formData: FormData) {
@@ -430,8 +418,6 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
     target: { setting: ICON_PROMPTS_ENABLED_SETTING_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateSuggestedPromptsAvailabilityAction(
@@ -458,8 +444,6 @@ export async function updateSuggestedPromptsAvailabilityAction(
     target: { setting: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY },
     metadata: { accessMode },
   });
-
-  revalidatePath("/admin/settings");
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {

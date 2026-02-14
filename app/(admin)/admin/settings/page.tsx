@@ -62,7 +62,6 @@ import {
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
-  getAppSetting,
   getAppSettingsByKeysUncached,
   getTranslationValuesForKeys,
   listImageModelConfigs,
@@ -108,7 +107,8 @@ const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 2500;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 10000;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3500;
+const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 6000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -155,27 +155,11 @@ async function loadAppSettingValuesByKey() {
     return new Map(settings.map((setting) => [setting.key, setting.value]));
   } catch (error) {
     console.error(
-      "[admin/settings] App settings snapshot query timed out or failed. Falling back to per-key reads.",
+      "[admin/settings] App settings snapshot query timed out or failed. Using defaults for missing values.",
       error
     );
   }
-
-  const entries = await Promise.all(
-    SETTINGS_SNAPSHOT_KEYS.map(async (key) => {
-      try {
-        const value = await getAppSetting<unknown>(key);
-        return [key, value] as const;
-      } catch (fallbackError) {
-        console.error(
-          `[admin/settings] Fallback read failed for key "${key}".`,
-          fallbackError
-        );
-        return [key, null] as const;
-      }
-    })
-  );
-
-  return new Map(entries);
+  return new Map<string, unknown>();
 }
 
 function SettingsSubmitButton(
@@ -190,53 +174,48 @@ function SettingsSubmitButton(
 }
 
 async function loadAdminSettingsData() {
-  const [
-    exchangeRate,
-    modelsRaw,
-    imageModelConfigs,
-    plansRaw,
-    appSettingValuesByKey,
-    languages,
-  ] = await Promise.all([
-    withTimeout(
-      getUsdToInrRate(),
-      EXCHANGE_RATE_QUERY_TIMEOUT_MS
-    ).catch((error) => {
-      console.error(
-        "[admin/settings] Exchange rate query timed out or failed. Using fallback rate.",
-        error
-      );
-      return {
-        rate: getFallbackUsdToInrRate(),
-        fetchedAt: new Date(),
-      };
+  const exchangeRate = await withTimeout(
+    getUsdToInrRate(),
+    EXCHANGE_RATE_QUERY_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      "[admin/settings] Exchange rate query timed out or failed. Using fallback rate.",
+      error
+    );
+    return {
+      rate: getFallbackUsdToInrRate(),
+      fetchedAt: new Date(),
+    };
+  });
+  const appSettingValuesByKey = await loadAppSettingValuesByKey();
+  const modelsRaw = await safeSettingsQuery(
+    "model configs",
+    listModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
     }),
-    safeSettingsQuery(
-      "model configs",
-      listModelConfigs({
-        includeDisabled: true,
-        includeDeleted: true,
-        limit: 200,
-      }),
-      []
-    ),
-    safeSettingsQuery(
-      "image model configs",
-      listImageModelConfigs({
-        includeDisabled: true,
-        includeDeleted: true,
-        limit: 200,
-      }),
-      []
-    ),
-    safeSettingsQuery(
-      "pricing plans",
-      listPricingPlans({ includeInactive: true, includeDeleted: true }),
-      []
-    ),
-    loadAppSettingValuesByKey(),
-    safeSettingsQuery("languages", listLanguagesWithSettings(), []),
-  ]);
+    []
+  );
+  const imageModelConfigs = await safeSettingsQuery(
+    "image model configs",
+    listImageModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
+    }),
+    []
+  );
+  const plansRaw = await safeSettingsQuery(
+    "pricing plans",
+    listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    []
+  );
+  const languages = await safeSettingsQuery(
+    "languages",
+    listLanguagesWithSettings(),
+    []
+  );
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -321,6 +300,39 @@ async function loadAdminSettingsData() {
     iconPromptsEnabledSetting,
     documentUploadsEnabledSetting,
   };
+}
+
+function buildFallbackAdminSettingsData() {
+  return {
+    exchangeRate: {
+      rate: getFallbackUsdToInrRate(),
+      fetchedAt: new Date(),
+    },
+    modelsRaw: [],
+    imageModelConfigs: [],
+    plansRaw: [],
+    privacyPolicySetting: null,
+    termsOfServiceSetting: null,
+    aboutUsSetting: null,
+    aboutUsContentByLanguageSetting: null,
+    privacyPolicyByLanguageSetting: null,
+    termsOfServiceByLanguageSetting: null,
+    suggestedPromptsSetting: null,
+    suggestedPromptsByLanguageSetting: null,
+    suggestedPromptsEnabledSetting: null,
+    recommendedPlanSetting: null,
+    languages: [],
+    freeMessageSettings: normalizeFreeMessageSettings(null),
+    calculatorEnabledSetting: null,
+    forumEnabledSetting: null,
+    studyModeEnabledSetting: null,
+    imageGenerationEnabledSetting: null,
+    imagePromptTranslationModelSetting: null,
+    imageFilenamePrefixSetting: null,
+    iconPromptsSetting: null,
+    iconPromptsEnabledSetting: null,
+    documentUploadsEnabledSetting: null,
+  } as Awaited<ReturnType<typeof loadAdminSettingsData>>;
 }
 
 function _formatCurrency(value: number, currency: "USD" | "INR") {
@@ -411,32 +423,20 @@ export default async function AdminSettingsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
 
+  let settingsLoadFailed = false;
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
-    settingsData = await loadAdminSettingsData();
+    settingsData = await withTimeout(
+      loadAdminSettingsData(),
+      SETTINGS_PAGE_RENDER_TIMEOUT_MS
+    );
   } catch (error) {
+    settingsLoadFailed = true;
     console.error(
-      "[admin/settings] Failed to load settings snapshot for render.",
+      "[admin/settings] Failed to load settings snapshot for render. Falling back to safe defaults.",
       error
     );
-    return (
-      <>
-        <AdminSettingsNotice notice={notice} />
-        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
-          <p className="font-medium text-destructive">
-            Unable to load settings right now.
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            This usually means a production database/cache read timed out.
-            Please refresh once. If it continues, check server logs for
-            <span className="mx-1 font-mono text-xs">
-              [admin/settings]
-            </span>
-            entries.
-          </p>
-        </div>
-      </>
-    );
+    settingsData = buildFallbackAdminSettingsData();
   }
 
   const {
@@ -751,6 +751,21 @@ export default async function AdminSettingsPage({
   return (
     <>
       <AdminSettingsNotice notice={notice} />
+
+      {settingsLoadFailed ? (
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <p className="font-medium text-amber-700">
+            Settings loaded in fallback mode.
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            A production settings query timed out, so default values are shown
+            for fields that could not be loaded. Retry in a few seconds and
+            check server logs for
+            <span className="mx-1 font-mono text-xs">[admin/settings]</span>
+            entries if this persists.
+          </p>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-6">
         <CollapsibleSection
