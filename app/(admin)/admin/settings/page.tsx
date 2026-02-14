@@ -80,7 +80,10 @@ import {
   normalizeIconPromptSettings,
   parseIconPromptsAccessModeSetting,
 } from "@/lib/icon-prompts";
-import { getUsdToInrRate } from "@/lib/services/exchange-rate";
+import {
+  getFallbackUsdToInrRate,
+  getUsdToInrRate,
+} from "@/lib/services/exchange-rate";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import {
   parseSuggestedPromptsAccessModeSetting,
@@ -114,6 +117,7 @@ const ADMIN_SETTINGS_CACHE_TAGS = [
 ];
 const SETTINGS_PENDING_TIMEOUT_MS = 12000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 8000;
+const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 3000;
 
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
@@ -155,7 +159,19 @@ const loadAdminSettingsData = unstable_cache(
       iconPromptsEnabledSetting,
       documentUploadsEnabledSetting,
     ] = await Promise.all([
-      getUsdToInrRate(),
+      withTimeout(
+        getUsdToInrRate(),
+        EXCHANGE_RATE_QUERY_TIMEOUT_MS
+      ).catch((error) => {
+        console.error(
+          "[admin/settings] Exchange rate query timed out or failed. Using fallback rate.",
+          error
+        );
+        return {
+          rate: getFallbackUsdToInrRate(),
+          fetchedAt: new Date(),
+        };
+      }),
       listModelConfigs({
         includeDisabled: true,
         includeDeleted: true,
