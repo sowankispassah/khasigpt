@@ -113,7 +113,11 @@ import {
   isDocumentMimeType,
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
-import { parseFeatureAccessMode } from "@/lib/feature-access";
+import { withTimeout } from "@/lib/utils/async";
+import {
+  parseFeatureAccessMode,
+  type FeatureAccessMode,
+} from "@/lib/feature-access";
 
 async function requireAdmin() {
   const session = await auth();
@@ -128,6 +132,43 @@ async function requireAdmin() {
 function revalidateAppSettingCache(key: string) {
   revalidateTag(APP_SETTING_CACHE_TAG);
   revalidateTag(appSettingCacheTagForKey(key));
+}
+
+const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
+
+async function createAuditLogEntrySafely(
+  entry: Parameters<typeof createAuditLogEntry>[0]
+) {
+  await withTimeout(
+    createAuditLogEntry(entry),
+    ADMIN_ACTION_AUDIT_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      `[admin/actions] Audit log write timed out or failed for action "${entry.action}".`,
+      error
+    );
+    return null;
+  });
+}
+
+async function resolveFeatureAccessModeFromForm({
+  formData,
+  fieldName,
+  settingKey,
+  fallbackMode,
+}: {
+  formData: FormData;
+  fieldName: string;
+  settingKey: string;
+  fallbackMode: FeatureAccessMode;
+}): Promise<FeatureAccessMode> {
+  const submittedValue = formData.get(fieldName);
+  if (typeof submittedValue === "string" && submittedValue.trim().length > 0) {
+    return parseFeatureAccessMode(submittedValue, fallbackMode);
+  }
+
+  const existingValue = await getAppSetting<string | boolean | number>(settingKey);
+  return parseFeatureAccessMode(existingValue, fallbackMode);
 }
 
 export async function setUserRoleAction({
@@ -238,17 +279,19 @@ export async function restoreChatAction({ chatId }: { chatId: string }) {
 export async function updateForumAvailabilityAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("forumAccessMode"),
-    "enabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "forumAccessMode",
+    settingKey: FORUM_FEATURE_FLAG_KEY,
+    fallbackMode: "enabled",
+  });
 
   await setAppSetting({
     key: FORUM_FEATURE_FLAG_KEY,
     value: accessMode,
   });
   revalidateAppSettingCache(FORUM_FEATURE_FLAG_KEY);
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "forum.toggle",
     target: { setting: FORUM_FEATURE_FLAG_KEY },
@@ -258,23 +301,25 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
   revalidatePath("/forum");
-  revalidatePath("/forum/[slug]");
+  revalidatePath("/forum/[slug]", "page");
 }
 
 export async function updateCalculatorAvailabilityAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("calculatorAccessMode"),
-    "enabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "calculatorAccessMode",
+    settingKey: CALCULATOR_FEATURE_FLAG_KEY,
+    fallbackMode: "enabled",
+  });
 
   await setAppSetting({
     key: CALCULATOR_FEATURE_FLAG_KEY,
     value: accessMode,
   });
   revalidateAppSettingCache(CALCULATOR_FEATURE_FLAG_KEY);
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.calculator.toggle",
     target: { setting: CALCULATOR_FEATURE_FLAG_KEY },
@@ -289,10 +334,12 @@ export async function updateCalculatorAvailabilityAction(formData: FormData) {
 export async function updateStudyModeAvailabilityAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("studyModeAccessMode"),
-    "disabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "studyModeAccessMode",
+    settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
+    fallbackMode: "disabled",
+  });
 
   await setAppSetting({
     key: STUDY_MODE_FEATURE_FLAG_KEY,
@@ -300,7 +347,7 @@ export async function updateStudyModeAvailabilityAction(formData: FormData) {
   });
   revalidateAppSettingCache(STUDY_MODE_FEATURE_FLAG_KEY);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.study_mode.toggle",
     target: { setting: STUDY_MODE_FEATURE_FLAG_KEY },
@@ -310,7 +357,7 @@ export async function updateStudyModeAvailabilityAction(formData: FormData) {
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
   revalidatePath("/chat");
-  revalidatePath("/chat/[id]");
+  revalidatePath("/chat/[id]", "page");
 }
 
 export async function updateImageGenerationAvailabilityAction(
@@ -318,10 +365,12 @@ export async function updateImageGenerationAvailabilityAction(
 ) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("imageGenerationAccessMode"),
-    "disabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "imageGenerationAccessMode",
+    settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
+    fallbackMode: "disabled",
+  });
 
   await setAppSetting({
     key: IMAGE_GENERATION_FEATURE_FLAG_KEY,
@@ -329,7 +378,7 @@ export async function updateImageGenerationAvailabilityAction(
   });
   revalidateAppSettingCache(IMAGE_GENERATION_FEATURE_FLAG_KEY);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.image_generation.toggle",
     target: { setting: IMAGE_GENERATION_FEATURE_FLAG_KEY },
@@ -345,10 +394,12 @@ export async function updateDocumentUploadsAvailabilityAction(
 ) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("documentUploadsAccessMode"),
-    "disabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "documentUploadsAccessMode",
+    settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+    fallbackMode: "disabled",
+  });
 
   await setAppSetting({
     key: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -356,7 +407,7 @@ export async function updateDocumentUploadsAvailabilityAction(
   });
   revalidateAppSettingCache(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.document_uploads.toggle",
     target: { setting: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY },
@@ -370,10 +421,12 @@ export async function updateDocumentUploadsAvailabilityAction(
 export async function updateIconPromptAvailabilityAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("iconPromptsAccessMode"),
-    "disabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "iconPromptsAccessMode",
+    settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
+    fallbackMode: "disabled",
+  });
 
   await setAppSetting({
     key: ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -381,7 +434,7 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
   });
   revalidateAppSettingCache(ICON_PROMPTS_ENABLED_SETTING_KEY);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.icon_prompts.toggle",
     target: { setting: ICON_PROMPTS_ENABLED_SETTING_KEY },
@@ -398,10 +451,12 @@ export async function updateSuggestedPromptsAvailabilityAction(
 ) {
   "use server";
   const actor = await requireAdmin();
-  const accessMode = parseFeatureAccessMode(
-    formData.get("suggestedPromptsAccessMode"),
-    "enabled"
-  );
+  const accessMode = await resolveFeatureAccessModeFromForm({
+    formData,
+    fieldName: "suggestedPromptsAccessMode",
+    settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+    fallbackMode: "enabled",
+  });
 
   await setAppSetting({
     key: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
@@ -409,7 +464,7 @@ export async function updateSuggestedPromptsAvailabilityAction(
   });
   revalidateAppSettingCache(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.suggested_prompts.toggle",
     target: { setting: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY },

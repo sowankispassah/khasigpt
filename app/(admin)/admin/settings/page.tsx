@@ -413,35 +413,38 @@ function FeatureAccessModeButtons({
         : "Current: access is disabled for everyone.";
 
   return (
-    <form action={action} className="flex flex-col gap-3 text-sm">
+    <div className="flex flex-col gap-3 text-sm">
       <div className="flex flex-wrap gap-2">
-        <SettingsSubmitButton
-          name={fieldName}
-          pendingLabel="Saving..."
-          successMessage={successMessage}
-          value="disabled"
-          variant={currentMode === "disabled" ? "destructive" : "outline"}
-        >
-          Disable for all
-        </SettingsSubmitButton>
-        <SettingsSubmitButton
-          name={fieldName}
-          pendingLabel="Saving..."
-          successMessage={successMessage}
-          value="admin_only"
-          variant={currentMode === "admin_only" ? "default" : "outline"}
-        >
-          Admin only
-        </SettingsSubmitButton>
-        <SettingsSubmitButton
-          name={fieldName}
-          pendingLabel="Saving..."
-          successMessage={successMessage}
-          value="enabled"
-          variant={currentMode === "enabled" ? "default" : "outline"}
-        >
-          Enable for all
-        </SettingsSubmitButton>
+        <form action={action}>
+          <input name={fieldName} type="hidden" value="disabled" />
+          <SettingsSubmitButton
+            pendingLabel="Saving..."
+            successMessage={successMessage}
+            variant={currentMode === "disabled" ? "destructive" : "outline"}
+          >
+            Disable for all
+          </SettingsSubmitButton>
+        </form>
+        <form action={action}>
+          <input name={fieldName} type="hidden" value="admin_only" />
+          <SettingsSubmitButton
+            pendingLabel="Saving..."
+            successMessage={successMessage}
+            variant={currentMode === "admin_only" ? "default" : "outline"}
+          >
+            Admin only
+          </SettingsSubmitButton>
+        </form>
+        <form action={action}>
+          <input name={fieldName} type="hidden" value="enabled" />
+          <SettingsSubmitButton
+            pendingLabel="Saving..."
+            successMessage={successMessage}
+            variant={currentMode === "enabled" ? "default" : "outline"}
+          >
+            Enable for all
+          </SettingsSubmitButton>
+        </form>
       </div>
       <p className="text-muted-foreground text-xs">
         Disable for all: no users can access. Admin only: only admin users can
@@ -453,7 +456,7 @@ function FeatureAccessModeButtons({
       <p className="text-muted-foreground text-xs">
         Changes take effect immediately.
       </p>
-    </form>
+    </div>
   );
 }
 
