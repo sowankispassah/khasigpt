@@ -1,7 +1,6 @@
 import { formatDistanceToNow } from "date-fns";
 import type { ComponentProps, ReactNode } from "react";
 import {
-  updateCalculatorAvailabilityAction,
   createImageModelConfigAction,
   createLanguageAction,
   createModelConfigAction,
@@ -19,13 +18,9 @@ import {
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
-  updateDocumentUploadsAvailabilityAction,
-  updateForumAvailabilityAction,
   updateFreeMessageSettingsAction,
-  updateIconPromptAvailabilityAction,
   updateIconPromptsAction,
   updateImageFilenamePrefixAction,
-  updateImageGenerationAvailabilityAction,
   updateImageModelConfigAction,
   updateLanguageSettingsAction,
   updateLanguageStatusAction,
@@ -34,8 +29,6 @@ import {
   updatePricingPlanAction,
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
-  updateSuggestedPromptsAvailabilityAction,
-  updateStudyModeAvailabilityAction,
   updateTermsOfServiceByLanguageAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
@@ -774,7 +767,6 @@ export default async function AdminSettingsPage({
         >
           <div className="flex flex-col gap-6">
             <FeatureAccessModeControl
-              action={updateForumAvailabilityAction}
               currentMode={forumAccessMode}
               description="Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404."
               fieldName="forumAccessMode"
@@ -783,7 +775,6 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
-              action={updateCalculatorAvailabilityAction}
               currentMode={calculatorAccessMode}
               description="Show or hide the calculator tool in sidebar navigation. When disabled, direct route access returns a 404."
               fieldName="calculatorAccessMode"
@@ -792,7 +783,6 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
-              action={updateStudyModeAvailabilityAction}
               currentMode={studyModeAccessMode}
               description="Show or hide the guided Study chat experience for exam question papers."
               fieldName="studyModeAccessMode"
@@ -801,7 +791,6 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
-              action={updateImageGenerationAvailabilityAction}
               currentMode={imageGenerationAccessMode}
               description="Show or hide the image generation entry points across the chat experience."
               fieldName="imageGenerationAccessMode"
@@ -810,7 +799,6 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
-              action={updateDocumentUploadsAvailabilityAction}
               currentMode={documentUploadsAccessMode}
               description="Allow users to upload PDFs, DOCX, and XLSX files in chat."
               fieldName="documentUploadsAccessMode"
@@ -1179,7 +1167,6 @@ export default async function AdminSettingsPage({
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
                   <FeatureAccessModeControl
-                    action={updateSuggestedPromptsAvailabilityAction}
                     currentMode={suggestedPromptsAccessMode}
                     description="Toggle the suggested prompt chips shown on the home page."
                     fieldName="suggestedPromptsAccessMode"
@@ -1215,7 +1202,6 @@ export default async function AdminSettingsPage({
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-4 rounded-lg border bg-background p-4">
                   <FeatureAccessModeControl
-                    action={updateIconPromptAvailabilityAction}
                     currentMode={iconPromptsAccessMode}
                     description="Toggle the icon-based prompt section shown on the home page."
                     fieldName="iconPromptsAccessMode"

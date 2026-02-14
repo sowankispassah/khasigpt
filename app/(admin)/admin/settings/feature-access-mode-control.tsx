@@ -6,9 +6,107 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 
-type FeatureAccessAction = (formData: FormData) => Promise<void>;
-const FEATURE_TOGGLE_SLOW_NOTICE_MS = 15000;
-const FEATURE_TOGGLE_REQUEST_TIMEOUT_MS = 35000;
+const FEATURE_ACCESS_API_ENDPOINT = "/api/admin/feature-access";
+const FEATURE_TOGGLE_SLOW_NOTICE_MS = 8000;
+const FEATURE_TOGGLE_ATTEMPT_TIMEOUT_MS = 12000;
+const FEATURE_TOGGLE_MAX_RETRIES = 1;
+
+function normalizeErrorMessage(value: unknown) {
+  if (value && typeof value === "object" && "message" in value) {
+    const message = (value as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message.trim();
+    }
+  }
+  return null;
+}
+
+async function postFeatureAccessMode({
+  attemptTimeoutMs,
+  fieldName,
+  mode,
+}: {
+  attemptTimeoutMs: number;
+  fieldName: string;
+  mode: FeatureAccessMode;
+}): Promise<FeatureAccessMode> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort("request_timeout");
+  }, attemptTimeoutMs);
+
+  try {
+    const response = await fetch(FEATURE_ACCESS_API_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+      body: JSON.stringify({ fieldName, mode }),
+    });
+
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      const serverMessage = normalizeErrorMessage(body);
+      throw new Error(serverMessage ?? "save_failed");
+    }
+
+    const resolvedMode =
+      body && typeof body === "object" && "mode" in body
+        ? (body as { mode?: unknown }).mode
+        : null;
+
+    if (
+      resolvedMode === "enabled" ||
+      resolvedMode === "admin_only" ||
+      resolvedMode === "disabled"
+    ) {
+      return resolvedMode;
+    }
+
+    return mode;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("request_timeout");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function saveFeatureAccessModeWithRetry({
+  fieldName,
+  mode,
+}: {
+  fieldName: string;
+  mode: FeatureAccessMode;
+}) {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= FEATURE_TOGGLE_MAX_RETRIES; attempt++) {
+    try {
+      return await postFeatureAccessMode({
+        attemptTimeoutMs: FEATURE_TOGGLE_ATTEMPT_TIMEOUT_MS,
+        fieldName,
+        mode,
+      });
+    } catch (error) {
+      lastError = error;
+      const timedOut =
+        error instanceof Error && error.message === "request_timeout";
+      const hasRetryRemaining = attempt < FEATURE_TOGGLE_MAX_RETRIES;
+
+      if (!(timedOut && hasRetryRemaining)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError ?? new Error("save_failed");
+}
 
 function AccessModeBadge({ mode }: { mode: FeatureAccessMode }) {
   if (mode === "enabled") {
@@ -45,14 +143,12 @@ const MODE_BUTTONS: Array<{
 ];
 
 export function FeatureAccessModeControl({
-  action,
   currentMode,
   description,
   fieldName,
   successMessage,
   title,
 }: {
-  action: FeatureAccessAction;
   currentMode: FeatureAccessMode;
   description: string;
   fieldName: string;
@@ -83,29 +179,24 @@ export function FeatureAccessModeControl({
     setIsSaving(true);
 
     let slowNoticeTimer: number | null = null;
-    let requestTimeoutTimer: number | null = null;
     let showedSlowNotice = false;
 
     try {
-      const formData = new FormData();
-      formData.set(fieldName, nextMode);
       slowNoticeTimer = window.setTimeout(() => {
         showedSlowNotice = true;
         toast({
           type: "error",
           description:
-            "Save is taking longer than expected. Still waiting for confirmation.",
+            "Save is taking longer than expected. Retrying automatically.",
         });
       }, FEATURE_TOGGLE_SLOW_NOTICE_MS);
 
-      await Promise.race([
-        action(formData),
-        new Promise<never>((_, reject) => {
-          requestTimeoutTimer = window.setTimeout(() => {
-            reject(new Error("request_timeout"));
-          }, FEATURE_TOGGLE_REQUEST_TIMEOUT_MS);
-        }),
-      ]);
+      const savedMode = await saveFeatureAccessModeWithRetry({
+        fieldName,
+        mode: nextMode,
+      });
+      setMode(savedMode);
+
       toast({
         type: "success",
         description: showedSlowNotice
@@ -116,13 +207,11 @@ export function FeatureAccessModeControl({
       const requestTimedOut =
         error instanceof Error && error.message === "request_timeout";
 
-      if (!requestTimedOut) {
-        setMode(previousMode);
-      }
+      setMode(previousMode);
       toast({
         type: "error",
         description: requestTimedOut
-          ? "Save timed out after 35 seconds. Please try again."
+          ? "Save timed out. Please try again."
           : "Failed to save this setting. Please try again.",
       });
       console.error(
@@ -132,9 +221,6 @@ export function FeatureAccessModeControl({
     } finally {
       if (slowNoticeTimer !== null) {
         window.clearTimeout(slowNoticeTimer);
-      }
-      if (requestTimeoutTimer !== null) {
-        window.clearTimeout(requestTimeoutTimer);
       }
       setPendingTarget(null);
       setIsSaving(false);
