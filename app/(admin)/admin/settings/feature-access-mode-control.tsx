@@ -8,6 +8,7 @@ import type { FeatureAccessMode } from "@/lib/feature-access";
 
 type FeatureAccessAction = (formData: FormData) => Promise<void>;
 const FEATURE_TOGGLE_SLOW_NOTICE_MS = 15000;
+const FEATURE_TOGGLE_REQUEST_TIMEOUT_MS = 35000;
 
 function AccessModeBadge({ mode }: { mode: FeatureAccessMode }) {
   if (mode === "enabled") {
@@ -82,6 +83,7 @@ export function FeatureAccessModeControl({
     setIsSaving(true);
 
     let slowNoticeTimer: number | null = null;
+    let requestTimeoutTimer: number | null = null;
     let showedSlowNotice = false;
 
     try {
@@ -96,7 +98,14 @@ export function FeatureAccessModeControl({
         });
       }, FEATURE_TOGGLE_SLOW_NOTICE_MS);
 
-      await action(formData);
+      await Promise.race([
+        action(formData),
+        new Promise<never>((_, reject) => {
+          requestTimeoutTimer = window.setTimeout(() => {
+            reject(new Error("request_timeout"));
+          }, FEATURE_TOGGLE_REQUEST_TIMEOUT_MS);
+        }),
+      ]);
       toast({
         type: "success",
         description: showedSlowNotice
@@ -104,10 +113,17 @@ export function FeatureAccessModeControl({
           : successMessage,
       });
     } catch (error) {
-      setMode(previousMode);
+      const requestTimedOut =
+        error instanceof Error && error.message === "request_timeout";
+
+      if (!requestTimedOut) {
+        setMode(previousMode);
+      }
       toast({
         type: "error",
-        description: "Failed to save this setting. Please try again.",
+        description: requestTimedOut
+          ? "Save timed out after 35 seconds. Please try again."
+          : "Failed to save this setting. Please try again.",
       });
       console.error(
         `[admin/settings] Failed to save feature access mode for "${fieldName}".`,
@@ -116,6 +132,9 @@ export function FeatureAccessModeControl({
     } finally {
       if (slowNoticeTimer !== null) {
         window.clearTimeout(slowNoticeTimer);
+      }
+      if (requestTimeoutTimer !== null) {
+        window.clearTimeout(requestTimeoutTimer);
       }
       setPendingTarget(null);
       setIsSaving(false);
