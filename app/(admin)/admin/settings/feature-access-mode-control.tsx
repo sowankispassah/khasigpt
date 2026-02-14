@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 
 type FeatureAccessAction = (formData: FormData) => Promise<void>;
+const FEATURE_TOGGLE_CLIENT_TIMEOUT_MS = 6000;
 
 function AccessModeBadge({ mode }: { mode: FeatureAccessMode }) {
   if (mode === "enabled") {
@@ -61,7 +62,7 @@ export function FeatureAccessModeControl({
   const [pendingTarget, setPendingTarget] = useState<FeatureAccessMode | null>(
     null
   );
-  const [isPending, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
 
   const currentModeSummary =
     mode === "enabled"
@@ -70,35 +71,55 @@ export function FeatureAccessModeControl({
         ? "Current: only admin users can access."
         : "Current: access is disabled for everyone.";
 
-  const submitMode = (nextMode: FeatureAccessMode) => {
-    if (isPending || nextMode === mode) {
+  const submitMode = async (nextMode: FeatureAccessMode) => {
+    if (isSaving || nextMode === mode) {
       return;
     }
 
     const previousMode = mode;
     setMode(nextMode);
     setPendingTarget(nextMode);
+    setIsSaving(true);
 
-    startTransition(async () => {
-      try {
-        const formData = new FormData();
-        formData.set(fieldName, nextMode);
-        await action(formData);
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      setPendingTarget(null);
+      setIsSaving(false);
+      toast({
+        type: "error",
+        description:
+          "Save is taking longer than expected. Your change may still be processing.",
+      });
+    }, FEATURE_TOGGLE_CLIENT_TIMEOUT_MS);
+
+    try {
+      const formData = new FormData();
+      formData.set(fieldName, nextMode);
+      await action(formData);
+      if (!timedOut) {
         toast({ type: "success", description: successMessage });
-      } catch (error) {
-        setMode(previousMode);
+      } else {
         toast({
-          type: "error",
-          description: "Failed to save this setting. Please try again.",
+          type: "success",
+          description: `${successMessage} (completed after a delay)`,
         });
-        console.error(
-          `[admin/settings] Failed to save feature access mode for "${fieldName}".`,
-          error
-        );
-      } finally {
-        setPendingTarget(null);
       }
-    });
+    } catch (error) {
+      setMode(previousMode);
+      toast({
+        type: "error",
+        description: "Failed to save this setting. Please try again.",
+      });
+      console.error(
+        `[admin/settings] Failed to save feature access mode for "${fieldName}".`,
+        error
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+      setPendingTarget(null);
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -119,9 +140,11 @@ export function FeatureAccessModeControl({
 
             return (
               <Button
-                disabled={isPending}
+                disabled={isSaving}
                 key={button.mode}
-                onClick={() => submitMode(button.mode)}
+                onClick={() => {
+                  void submitMode(button.mode);
+                }}
                 type="button"
                 variant={
                   isActive ? button.activeVariant : "outline"

@@ -299,9 +299,6 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/", "layout");
-  revalidatePath("/forum");
-  revalidatePath("/forum/[slug]", "page");
 }
 
 export async function updateCalculatorAvailabilityAction(formData: FormData) {
@@ -327,8 +324,6 @@ export async function updateCalculatorAvailabilityAction(formData: FormData) {
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/", "layout");
-  revalidatePath("/calculator");
 }
 
 export async function updateStudyModeAvailabilityAction(formData: FormData) {
@@ -355,9 +350,6 @@ export async function updateStudyModeAvailabilityAction(formData: FormData) {
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/chat/[id]", "page");
 }
 
 export async function updateImageGenerationAvailabilityAction(
@@ -386,7 +378,6 @@ export async function updateImageGenerationAvailabilityAction(
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/", "layout");
 }
 
 export async function updateDocumentUploadsAvailabilityAction(
@@ -415,7 +406,6 @@ export async function updateDocumentUploadsAvailabilityAction(
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/chat");
 }
 
 export async function updateIconPromptAvailabilityAction(formData: FormData) {
@@ -442,8 +432,6 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
 }
 
 export async function updateSuggestedPromptsAvailabilityAction(
@@ -472,8 +460,6 @@ export async function updateSuggestedPromptsAvailabilityAction(
   });
 
   revalidatePath("/admin/settings");
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {
