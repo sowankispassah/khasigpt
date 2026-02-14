@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   type MouseEvent,
   useCallback,
+  useEffect,
 } from "react";
 
 import { startGlobalProgress } from "@/lib/ui/global-progress";
@@ -27,6 +28,12 @@ const ADMIN_LINKS = [
 export function AdminNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    for (const link of ADMIN_LINKS) {
+      router.prefetch(link.href);
+    }
+  }, [router]);
 
   const handleLinkClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -69,7 +76,7 @@ export function AdminNav({ className }: { className?: string }) {
             href={link.href}
             key={link.href}
             onClick={(event) => handleLinkClick(event, link.href)}
-            prefetch={false}
+            prefetch
           >
             {link.label}
           </Link>
