@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { FeatureAccessMode } from "@/lib/feature-access";
 
 type FeatureAccessAction = (formData: FormData) => Promise<void>;
-const FEATURE_TOGGLE_REQUEST_TIMEOUT_MS = 15000;
+const FEATURE_TOGGLE_SLOW_NOTICE_MS = 15000;
 
 function AccessModeBadge({ mode }: { mode: FeatureAccessMode }) {
   if (mode === "enabled") {
@@ -81,37 +81,41 @@ export function FeatureAccessModeControl({
     setPendingTarget(nextMode);
     setIsSaving(true);
 
-    let timeoutId: number | null = null;
+    let slowNoticeTimer: number | null = null;
+    let showedSlowNotice = false;
 
     try {
       const formData = new FormData();
       formData.set(fieldName, nextMode);
-      await Promise.race([
-        action(formData),
-        new Promise<never>((_, reject) => {
-          timeoutId = window.setTimeout(() => {
-            reject(new Error("request_timeout"));
-          }, FEATURE_TOGGLE_REQUEST_TIMEOUT_MS);
-        }),
-      ]);
-      toast({ type: "success", description: successMessage });
+      slowNoticeTimer = window.setTimeout(() => {
+        showedSlowNotice = true;
+        toast({
+          type: "error",
+          description:
+            "Save is taking longer than expected. Still waiting for confirmation.",
+        });
+      }, FEATURE_TOGGLE_SLOW_NOTICE_MS);
+
+      await action(formData);
+      toast({
+        type: "success",
+        description: showedSlowNotice
+          ? `${successMessage} (completed after a delay)`
+          : successMessage,
+      });
     } catch (error) {
       setMode(previousMode);
-      const timedOut =
-        error instanceof Error && error.message === "request_timeout";
       toast({
         type: "error",
-        description: timedOut
-          ? "Save timed out after 15 seconds. Please try again."
-          : "Failed to save this setting. Please try again.",
+        description: "Failed to save this setting. Please try again.",
       });
       console.error(
         `[admin/settings] Failed to save feature access mode for "${fieldName}".`,
         error
       );
     } finally {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
+      if (slowNoticeTimer !== null) {
+        window.clearTimeout(slowNoticeTimer);
       }
       setPendingTarget(null);
       setIsSaving(false);
