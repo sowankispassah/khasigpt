@@ -2353,6 +2353,10 @@ export async function getAppSettings(): Promise<AppSetting[]> {
   return cached();
 }
 
+export async function getAppSettingsUncached(): Promise<AppSetting[]> {
+  return getAppSettingsRaw();
+}
+
 export async function getAppSetting<T>(key: string): Promise<T | null> {
   if (!shouldUseAppSettingCache(key)) {
     return getAppSettingRaw(key);
@@ -2367,6 +2371,10 @@ export async function getAppSetting<T>(key: string): Promise<T | null> {
   );
 
   return cached();
+}
+
+export async function getAppSettingUncached<T>(key: string): Promise<T | null> {
+  return getAppSettingRaw<T>(key);
 }
 
 export async function setAppSetting<T>({

@@ -62,7 +62,7 @@ import {
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import {
-  getAppSettings,
+  getAppSettingsUncached,
   getTranslationValuesForKeys,
   listImageModelConfigs,
   listLanguagesWithSettings,
@@ -107,6 +107,7 @@ const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 2500;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 2500;
 
 function safeSettingsQuery<T>(
   label: string,
@@ -178,7 +179,16 @@ async function loadAdminSettingsData() {
       listPricingPlans({ includeInactive: true, includeDeleted: true }),
       []
     ),
-    getAppSettings(),
+    withTimeout(
+      getAppSettingsUncached(),
+      SETTINGS_SNAPSHOT_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        "[admin/settings] App settings snapshot query timed out or failed.",
+        error
+      );
+      throw new Error("admin_settings_snapshot_unavailable");
+    }),
     safeSettingsQuery("languages", listLanguagesWithSettings(), []),
   ]);
 
@@ -454,6 +464,34 @@ export default async function AdminSettingsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
 
+  let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
+  try {
+    settingsData = await loadAdminSettingsData();
+  } catch (error) {
+    console.error(
+      "[admin/settings] Failed to load settings snapshot for render.",
+      error
+    );
+    return (
+      <>
+        <AdminSettingsNotice notice={notice} />
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium text-destructive">
+            Unable to load settings right now.
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            This usually means a production database/cache read timed out.
+            Please refresh once. If it continues, check server logs for
+            <span className="mx-1 font-mono text-xs">
+              [admin/settings]
+            </span>
+            entries.
+          </p>
+        </div>
+      </>
+    );
+  }
+
   const {
     exchangeRate,
     modelsRaw,
@@ -480,7 +518,7 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsEnabledSetting,
     documentUploadsEnabledSetting,
-  } = await loadAdminSettingsData();
+  } = settingsData;
 
   const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
