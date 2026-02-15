@@ -834,24 +834,43 @@ export async function getChatsByUserId({
       baseConditions.push(eq(chat.mode, mode));
     }
     const baseCondition = and(...baseConditions);
+    const chatActivityAt = sql<Date>`greatest(
+      coalesce(
+        (select max(${message.createdAt}) from ${message} where ${message.chatId} = ${chat.id}),
+        ${chat.createdAt}
+      ),
+      ${chat.createdAt}
+    )`;
 
     const query = (whereCondition?: SQL<any>) =>
       db
-        .select()
+        .select({
+          id: chat.id,
+          createdAt: chatActivityAt,
+          title: chat.title,
+          userId: chat.userId,
+          mode: chat.mode,
+          visibility: chat.visibility,
+          lastContext: chat.lastContext,
+          deletedAt: chat.deletedAt,
+        })
         .from(chat)
         .where(
           whereCondition ? and(whereCondition, baseCondition) : baseCondition
         )
-        .orderBy(desc(chat.createdAt))
+        .orderBy(desc(chatActivityAt), desc(chat.id))
         .limit(extendedLimit);
 
     let filteredChats: Chat[] = [];
 
     if (startingAfter) {
       const [selectedChat] = await db
-        .select()
+        .select({
+          id: chat.id,
+          activityAt: chatActivityAt,
+        })
         .from(chat)
-        .where(and(eq(chat.id, startingAfter), isNull(chat.deletedAt)))
+        .where(and(eq(chat.id, startingAfter), baseCondition))
         .limit(1);
 
       if (!selectedChat) {
@@ -861,12 +880,23 @@ export async function getChatsByUserId({
         );
       }
 
-      filteredChats = await query(gt(chat.createdAt, selectedChat.createdAt));
+      filteredChats = await query(
+        or(
+          gt(chatActivityAt, selectedChat.activityAt),
+          and(
+            eq(chatActivityAt, selectedChat.activityAt),
+            gt(chat.id, selectedChat.id)
+          )
+        )
+      );
     } else if (endingBefore) {
       const [selectedChat] = await db
-        .select()
+        .select({
+          id: chat.id,
+          activityAt: chatActivityAt,
+        })
         .from(chat)
-        .where(and(eq(chat.id, endingBefore), isNull(chat.deletedAt)))
+        .where(and(eq(chat.id, endingBefore), baseCondition))
         .limit(1);
 
       if (!selectedChat) {
@@ -876,7 +906,15 @@ export async function getChatsByUserId({
         );
       }
 
-      filteredChats = await query(lt(chat.createdAt, selectedChat.createdAt));
+      filteredChats = await query(
+        or(
+          lt(chatActivityAt, selectedChat.activityAt),
+          and(
+            eq(chatActivityAt, selectedChat.activityAt),
+            lt(chat.id, selectedChat.id)
+          )
+        )
+      );
     } else {
       filteredChats = await query();
     }
@@ -891,6 +929,26 @@ export async function getChatsByUserId({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to get chats by user id"
+    );
+  }
+}
+
+export async function touchChatActivityById({
+  chatId,
+  at = new Date(),
+}: {
+  chatId: string;
+  at?: Date;
+}) {
+  try {
+    return await db
+      .update(chat)
+      .set({ createdAt: at })
+      .where(and(eq(chat.id, chatId), isNull(chat.deletedAt)));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update chat activity timestamp"
     );
   }
 }
@@ -5373,9 +5431,9 @@ export async function getUserBalanceSummary(
   }
 
   try {
-    const subscription = await getActiveSubscriptionForUser(userId);
+    const activeSubscription = await getActiveSubscriptionForUser(userId);
     const latestSubscription =
-      subscription ?? (await getLatestSubscriptionForUser(db, userId));
+      activeSubscription ?? (await getLatestSubscriptionForUser(db, userId));
 
     if (!latestSubscription) {
       return EMPTY_BALANCE;
@@ -5392,18 +5450,30 @@ export async function getUserBalanceSummary(
       )
       .limit(1);
 
-    const tokensRemaining = Math.max(0, latestSubscription.tokenBalance);
-    const tokensTotal = Math.max(0, latestSubscription.tokenAllowance);
+    if (!activeSubscription) {
+      return {
+        subscription: null,
+        plan: plan ?? null,
+        tokensRemaining: 0,
+        tokensTotal: 0,
+        creditsRemaining: 0,
+        creditsTotal: 0,
+        allocatedCredits: 0,
+        rechargedCredits: 0,
+        expiresAt: latestSubscription.expiresAt,
+        startedAt: latestSubscription.startedAt,
+      };
+    }
+
+    const tokensRemaining = Math.max(0, activeSubscription.tokenBalance);
+    const tokensTotal = Math.max(0, activeSubscription.tokenAllowance);
     const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
     const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
-    const manualTokens = Math.max(
-      0,
-      latestSubscription.manualTokenBalance ?? 0
-    );
-    const paidTokens = Math.max(0, latestSubscription.paidTokenBalance ?? 0);
+    const manualTokens = Math.max(0, activeSubscription.manualTokenBalance ?? 0);
+    const paidTokens = Math.max(0, activeSubscription.paidTokenBalance ?? 0);
 
     return {
-      subscription: latestSubscription,
+      subscription: activeSubscription,
       plan: plan ?? null,
       tokensRemaining,
       tokensTotal,
@@ -5411,8 +5481,8 @@ export async function getUserBalanceSummary(
       creditsTotal,
       allocatedCredits: manualTokens / TOKENS_PER_CREDIT,
       rechargedCredits: paidTokens / TOKENS_PER_CREDIT,
-      expiresAt: latestSubscription.expiresAt,
-      startedAt: latestSubscription.startedAt,
+      expiresAt: activeSubscription.expiresAt,
+      startedAt: activeSubscription.startedAt,
     };
   } catch (_error) {
     if (isTableMissingError(_error)) {

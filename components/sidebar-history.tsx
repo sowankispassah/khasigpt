@@ -176,12 +176,37 @@ export function SidebarHistory({
     ? paginatedChatHistories.every((page) => page.chats.length === 0)
     : false;
   const chatsFromHistory = useMemo(
-    () =>
-      paginatedChatHistories
-        ? paginatedChatHistories.flatMap(
-            (paginatedChatHistory) => paginatedChatHistory.chats
-          )
-        : [],
+    () => {
+      if (!paginatedChatHistories) {
+        return [];
+      }
+
+      const dedupedChats: Chat[] = [];
+      const seenChatIds = new Set<string>();
+
+      for (const paginatedChatHistory of paginatedChatHistories) {
+        for (const chat of paginatedChatHistory.chats) {
+          if (seenChatIds.has(chat.id)) {
+            continue;
+          }
+          seenChatIds.add(chat.id);
+          dedupedChats.push(chat);
+        }
+      }
+
+      dedupedChats.sort((a, b) => {
+        const aTime = new Date(a.createdAt).getTime();
+        const bTime = new Date(b.createdAt).getTime();
+
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+
+        return b.id.localeCompare(a.id);
+      });
+
+      return dedupedChats;
+    },
     [paginatedChatHistories]
   );
   const visibleChatsFromHistory = useMemo(

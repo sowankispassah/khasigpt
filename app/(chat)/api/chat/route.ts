@@ -45,6 +45,7 @@ import {
   recordTokenUsage,
   saveChat,
   saveMessages,
+  touchChatActivityById,
   updateChatLastContextById,
   updateChatTitleById,
 } from "@/lib/db/queries";
@@ -428,6 +429,8 @@ export async function POST(request: Request) {
       if (chat.userId !== session.user.id) {
         return new ChatSDKError("forbidden:chat").toResponse();
       }
+
+      await touchChatActivityById({ chatId: chat.id });
     } else {
       const fallbackTitle =
         resolvedChatMode === STUDY_CHAT_MODE

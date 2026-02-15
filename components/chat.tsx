@@ -55,7 +55,10 @@ import {
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import { StudyPromptChips } from "./study/study-prompt-chips";
-import { getChatHistoryPaginationKeyForMode } from "./sidebar-history";
+import {
+  getChatHistoryPaginationKeyForMode,
+  type ChatHistory,
+} from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -173,6 +176,9 @@ export function Chat({
     useState<DataUIPart<CustomUIDataTypes> | null>(null);
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
+  const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const imageUpgradeTitle = imageGeneration.requiresPaidCredits
     ? translate(
         "image.actions.locked.free.title",
@@ -191,6 +197,75 @@ export function Chat({
         "image.actions.locked.description",
         "Image generation is available for paid plans or users with active credits."
       );
+
+  const refreshAndPromoteHistory = useCallback(() => {
+    const historyCacheKey = unstable_serialize(historyPaginationKey);
+    const now = new Date();
+
+    mutate(
+      historyCacheKey,
+      (currentPages: ChatHistory[] | undefined) => {
+        if (!currentPages || currentPages.length === 0) {
+          return currentPages;
+        }
+
+        let promotedChat: ChatHistory["chats"][number] | null = null;
+
+        const pagesWithoutCurrentChat = currentPages.map((page) => ({
+          ...page,
+          chats: page.chats.filter((chat) => {
+            if (chat.id !== id) {
+              return true;
+            }
+
+            promotedChat = {
+              ...chat,
+              createdAt:
+                now as unknown as ChatHistory["chats"][number]["createdAt"],
+            };
+            return false;
+          }),
+        }));
+
+        if (!promotedChat) {
+          return currentPages;
+        }
+
+        const [firstPage, ...remainingPages] = pagesWithoutCurrentChat;
+        if (!firstPage) {
+          return currentPages;
+        }
+
+        return [
+          {
+            ...firstPage,
+            chats: [promotedChat, ...firstPage.chats],
+          },
+          ...remainingPages,
+        ];
+      },
+      { revalidate: false }
+    );
+
+    if (historyRevalidateTimerRef.current) {
+      clearTimeout(historyRevalidateTimerRef.current);
+      historyRevalidateTimerRef.current = null;
+    }
+
+    historyRevalidateTimerRef.current = setTimeout(() => {
+      mutate(historyCacheKey);
+      historyRevalidateTimerRef.current = null;
+    }, 1500);
+  }, [historyPaginationKey, id, mutate]);
+
+  useEffect(() => {
+    return () => {
+      if (historyRevalidateTimerRef.current) {
+        clearTimeout(historyRevalidateTimerRef.current);
+        historyRevalidateTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
@@ -490,7 +565,7 @@ export function Chat({
       }
     },
     onFinish: () => {
-      mutate(unstable_serialize(historyPaginationKey));
+      refreshAndPromoteHistory();
     },
     onError: (error) => {
       const message =
@@ -863,7 +938,7 @@ export function Chat({
         }
 
         setMessages((prev) => [...prev, assistantMessage]);
-        mutate(unstable_serialize(historyPaginationKey));
+        refreshAndPromoteHistory();
       } catch (_error) {
         toast({
           type: "error",
@@ -878,11 +953,10 @@ export function Chat({
     },
     [
       attachments,
-      historyPaginationKey,
       id,
       imageGeneration.canGenerate,
       imageGeneration.enabled,
-      mutate,
+      refreshAndPromoteHistory,
       setMessages,
       translate,
       visibilityType,

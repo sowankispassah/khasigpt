@@ -164,16 +164,33 @@ export default async function SubscriptionsPage({
     return t("subscriptions.recharge_history.status.failed", "Failed");
   };
 
+  const now = new Date();
+  const isExpiredBalance =
+    balance.expiresAt instanceof Date &&
+    balance.expiresAt.getTime() <= now.getTime();
+  const effectiveTokensRemaining = isExpiredBalance ? 0 : balance.tokensRemaining;
+  const effectiveTokensTotal = isExpiredBalance ? 0 : balance.tokensTotal;
+  const effectiveCreditsRemaining = isExpiredBalance
+    ? 0
+    : balance.creditsRemaining;
+  const effectiveCreditsTotal = isExpiredBalance ? 0 : balance.creditsTotal;
+  const effectiveAllocatedCredits = isExpiredBalance
+    ? 0
+    : balance.allocatedCredits;
+  const effectiveRechargedCredits = isExpiredBalance
+    ? 0
+    : balance.rechargedCredits;
+
   const billedTokensUsed = Math.max(
     0,
-    balance.tokensTotal - balance.tokensRemaining
+    effectiveTokensTotal - effectiveTokensRemaining
   );
 
-  const plan = balance.plan;
+  const plan = isExpiredBalance ? null : balance.plan;
   const isManualPlan = plan?.id === MANUAL_TOP_UP_PLAN_ID;
   const hasPaidPlan = Boolean(plan && !isManualPlan);
-  const allocatedCredits = balance.allocatedCredits;
-  const rechargedCredits = balance.rechargedCredits;
+  const allocatedCredits = effectiveAllocatedCredits;
+  const rechargedCredits = effectiveRechargedCredits;
   const rechargeHistoryRows = rechargeHistory.map((entry) => {
     const planLabel =
       entry.planName ??
@@ -242,13 +259,16 @@ export default async function SubscriptionsPage({
     : t("subscriptions.plan_overview.no_plan", "No plan yet");
 
   const freeCreditsRemaining = isManualPlan
-    ? balance.creditsRemaining
-    : !plan && balance.creditsRemaining > 0
-      ? balance.creditsRemaining
+    ? effectiveCreditsRemaining
+    : !plan && effectiveCreditsRemaining > 0
+      ? effectiveCreditsRemaining
       : 0;
   const showFreeCredits = freeCreditsRemaining > 0;
 
-  const expiresAt = balance.expiresAt ? new Date(balance.expiresAt) : null;
+  const expiresAt =
+    !isExpiredBalance && balance.expiresAt
+      ? new Date(balance.expiresAt)
+      : null;
   const daysRemaining =
     expiresAt !== null
       ? Math.max(
@@ -321,11 +341,11 @@ export default async function SubscriptionsPage({
         />
         <MetricCard
           label={t("subscriptions.metric.remaining", "Credits remaining")}
-          value={formatCreditValue(balance.creditsRemaining)}
+          value={formatCreditValue(effectiveCreditsRemaining)}
         />
         <MetricCard
           label={t("subscriptions.metric.allocated", "Credits allocated")}
-          value={formatCreditValue(balance.creditsTotal)}
+          value={formatCreditValue(effectiveCreditsTotal)}
         />
         <MetricCard
           label={t("subscriptions.metric.plan_expires", "Plan expires")}
@@ -379,7 +399,7 @@ export default async function SubscriptionsPage({
                   "Credits remaining"
                 )}
               </dt>
-              <dd>{formatCreditValue(balance.creditsRemaining)}</dd>
+              <dd>{formatCreditValue(effectiveCreditsRemaining)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
