@@ -3,14 +3,13 @@ import "server-only";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import {
   extractReasoningMiddleware,
   wrapLanguageModel,
-  type LanguageModel,
 } from "ai";
-
-import { ChatSDKError } from "@/lib/errors";
 import type { ModelConfig } from "@/lib/db/schema";
+import { ChatSDKError } from "@/lib/errors";
 
 const openaiClient =
   process.env.OPENAI_API_KEY !== undefined
@@ -40,7 +39,7 @@ function ensureClient<T>(client: T | null, name: string): T {
   return client;
 }
 
-export function resolveLanguageModel(config: ModelConfig): LanguageModel {
+export function resolveLanguageModel(config: ModelConfig): LanguageModelV2 {
   const baseModel = (() => {
     switch (config.provider) {
       case "openai": {
@@ -55,7 +54,6 @@ export function resolveLanguageModel(config: ModelConfig): LanguageModel {
         const client = ensureClient(googleClient, "Google Gemini");
         return client.languageModel(config.providerModelId);
       }
-      case "custom":
       default:
         throw new ChatSDKError(
           "bad_request:api",
@@ -76,12 +74,29 @@ export function resolveLanguageModel(config: ModelConfig): LanguageModel {
   return baseModel;
 }
 
-export function getTitleLanguageModel(): LanguageModel {
+export function getTitleLanguageModel(
+  preferredModel?: ModelConfig | null
+): LanguageModelV2 {
+  if (preferredModel) {
+    try {
+      return resolveLanguageModel(preferredModel);
+    } catch (error) {
+      console.warn(
+        "Preferred title model unavailable, falling back to default",
+        {
+          provider: preferredModel.provider,
+          modelId: preferredModel.providerModelId,
+        },
+        error
+      );
+    }
+  }
+
   const client = ensureClient(openaiClient, "OpenAI");
   return client.languageModel(DEFAULT_TITLE_MODEL);
 }
 
-export function getArtifactLanguageModel(): LanguageModel {
+export function getArtifactLanguageModel(): LanguageModelV2 {
   const client = ensureClient(openaiClient, "OpenAI");
   return client.languageModel(DEFAULT_TITLE_MODEL);
 }

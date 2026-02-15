@@ -9,7 +9,6 @@ import {
   type Dispatch,
   memo,
   type SetStateAction,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -17,11 +16,13 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { useLocalStorage, useWindowSize } from "usehooks-ts";
-import { saveChatModelAsCookie } from "@/app/(chat)/actions";
-import { SelectItem } from "@/components/ui/select";
+import { useWindowSize } from "usehooks-ts";
+import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
+import { SelectItem } from "@/components/ui/select";
+import type { StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
+import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import {
   PromptInput,
@@ -35,14 +36,22 @@ import {
 import {
   ArrowUpIcon,
   ChevronDownIcon,
-  CpuIcon,
+  CrossSmallIcon,
+  GlobeIcon,
+  ImageIcon,
+  MessageIcon,
   PaperclipIcon,
   StopIcon,
 } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
 import { Button } from "./ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 import type { VisibilityType } from "./visibility-selector";
-import { useTranslation } from "@/components/language-provider";
 
 function PureMultimodalInput({
   chatId,
@@ -52,13 +61,26 @@ function PureMultimodalInput({
   stop,
   attachments,
   setAttachments,
-  messages,
+  messages: _messages,
   setMessages,
   sendMessage,
   className,
-  selectedVisibilityType,
+  selectedVisibilityType: _selectedVisibilityType,
   selectedModelId,
+  selectedLanguageCode,
   onModelChange,
+  onLanguageChange,
+  imageGenerationEnabled,
+  imageGenerationSelected,
+  imageGenerationCanGenerate,
+  imageGenerationRequiresPaidCredits,
+  isGeneratingImage,
+  studyQuestionReference,
+  onClearStudyQuestionReference,
+  onJumpToQuestionPaper,
+  onGenerateImage,
+  onToggleImageMode,
+  documentUploadsEnabled,
 }: {
   chatId: string;
   input: string;
@@ -73,7 +95,20 @@ function PureMultimodalInput({
   className?: string;
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
+  selectedLanguageCode: string;
   onModelChange?: (modelId: string) => void;
+  onLanguageChange?: (languageCode: string) => void;
+  imageGenerationEnabled: boolean;
+  imageGenerationSelected: boolean;
+  imageGenerationCanGenerate: boolean;
+  imageGenerationRequiresPaidCredits: boolean;
+  isGeneratingImage: boolean;
+  studyQuestionReference?: StudyQuestionReference | null;
+  onClearStudyQuestionReference?: () => void;
+  onJumpToQuestionPaper?: (paperId: string) => void;
+  onGenerateImage: () => void;
+  onToggleImageMode: () => void;
+  documentUploadsEnabled: boolean;
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -82,6 +117,31 @@ function PureMultimodalInput({
   const inputPlaceholder = useMemo(
     () => translate("chat.input.placeholder", "Send a message..."),
     [translate]
+  );
+  const imagePlaceholder = useMemo(
+    () =>
+      translate(
+        "image.input.placeholder",
+        "Describe the image you want to generate..."
+      ),
+    [translate]
+  );
+  const imageToggleLabel = useMemo(
+    () => translate("image.mode.toggle", "Generate image"),
+    [translate]
+  );
+  const imageToggleTooltip = useMemo(
+    () =>
+      imageGenerationRequiresPaidCredits
+        ? translate(
+            "image.actions.locked.free.tooltip",
+            "Free credits can't be used for images."
+          )
+        : translate(
+            "image.actions.locked.tooltip",
+            "Recharge credits to generate images."
+          ),
+    [translate, imageGenerationRequiresPaidCredits]
   );
 
   const fallbackModelId = useMemo(() => {
@@ -130,55 +190,48 @@ function PureMultimodalInput({
     }
   }, []);
 
-  const [localStorageInput, setLocalStorageInput] = useLocalStorage(
-    "input",
-    ""
-  );
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      const domValue = textareaRef.current.value;
-      // Prefer DOM value over localStorage to handle hydration
-      const finalValue = domValue || localStorageInput || "";
-      setInput(finalValue);
-      adjustHeight();
-    }
-    // Only run once after hydration
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adjustHeight, localStorageInput, setInput]);
-
-  useEffect(() => {
-    setLocalStorageInput(input);
-  }, [input, setLocalStorageInput]);
-
   const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(event.target.value);
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const acceptedFileTypes = useMemo(
+    () => getAttachmentAcceptValue(documentUploadsEnabled),
+    [documentUploadsEnabled]
+  );
 
   const submitForm = useCallback(() => {
     window.history.replaceState({}, "", `/chat/${chatId}`);
 
+    const parts: ChatMessage["parts"] = [
+      ...attachments.map((attachment) => ({
+        type: "file" as const,
+        url: attachment.url,
+        name: attachment.name,
+        mediaType: attachment.contentType,
+      })),
+      ...(studyQuestionReference
+        ? [
+            {
+              type: "data-studyQuestionReference" as const,
+              data: studyQuestionReference,
+            },
+          ]
+        : []),
+      {
+        type: "text",
+        text: input,
+      },
+    ];
+
     sendMessage({
       role: "user",
-      parts: [
-        ...attachments.map((attachment) => ({
-          type: "file" as const,
-          url: attachment.url,
-          name: attachment.name,
-          mediaType: attachment.contentType,
-        })),
-        {
-          type: "text",
-          text: input,
-        },
-      ],
+      parts,
     });
 
     setAttachments([]);
-    setLocalStorageInput("");
+    onClearStudyQuestionReference?.();
     resetHeight();
     setInput("");
 
@@ -191,51 +244,57 @@ function PureMultimodalInput({
     attachments,
     sendMessage,
     setAttachments,
-    setLocalStorageInput,
     width,
     chatId,
+    onClearStudyQuestionReference,
+    studyQuestionReference,
     resetHeight,
   ]);
 
-  const uploadFile = useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
+  const isBusy = (status !== "ready" && status !== "error") || isGeneratingImage;
 
-    try {
-      const response = await fetch("/api/files/upload", {
-        method: "POST",
-        body: formData,
-      });
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
+      try {
+        const response = await fetch("/api/files/upload", {
+          method: "POST",
+          body: formData,
+        });
 
-        return {
-          url,
-          name: pathname,
-          contentType,
-        };
-      }
-      const { error } = await response.json();
-      const fallbackError = translate(
-        "chat.upload.error_generic",
-        "Failed to upload file, please try again!"
-      );
-      const errorMessage =
-        typeof error === "string" && error.trim().length > 0
-          ? error
-          : fallbackError;
-      toast.error(errorMessage);
-    } catch (_error) {
-      toast.error(
-        translate(
+        if (response.ok) {
+          const data = await response.json();
+          const { url, pathname, contentType } = data;
+
+          return {
+            url,
+            name: pathname,
+            contentType,
+          };
+        }
+        const { error } = await response.json();
+        const fallbackError = translate(
           "chat.upload.error_generic",
           "Failed to upload file, please try again!"
-        )
-      );
-    }
-  }, [translate]);
+        );
+        const errorMessage =
+          typeof error === "string" && error.trim().length > 0
+            ? error
+            : fallbackError;
+        toast.error(errorMessage);
+      } catch (_error) {
+        toast.error(
+          translate(
+            "chat.upload.error_generic",
+            "Failed to upload file, please try again!"
+          )
+        );
+      }
+    },
+    [translate]
+  );
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -267,6 +326,7 @@ function PureMultimodalInput({
     <div className={cn("relative flex w-full flex-col gap-4", className)}>
       <input
         className="-top-4 -left-4 pointer-events-none fixed size-0.5 opacity-0"
+        accept={acceptedFileTypes}
         multiple
         onChange={handleFileChange}
         ref={fileInputRef}
@@ -278,7 +338,7 @@ function PureMultimodalInput({
         className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
         onSubmit={(event) => {
           event.preventDefault();
-          if (status !== "ready" && status !== "error") {
+          if (isBusy) {
             toast.error(
               translate(
                 "chat.input.wait_for_response",
@@ -286,7 +346,11 @@ function PureMultimodalInput({
               )
             );
           } else {
-            submitForm();
+            if (imageGenerationSelected) {
+              onGenerateImage();
+            } else {
+              submitForm();
+            }
           }
         }}
       >
@@ -323,6 +387,41 @@ function PureMultimodalInput({
             ))}
           </div>
         )}
+        {studyQuestionReference ? (
+          <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
+            <button
+              className="min-w-0 flex-1 cursor-pointer space-y-0.5 text-left"
+              onClick={(event) => {
+                event.preventDefault();
+                onJumpToQuestionPaper?.(studyQuestionReference.paperId);
+              }}
+              type="button"
+            >
+              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                <MessageIcon size={12} />
+                Question reference
+              </div>
+              <div className="truncate font-medium text-sm">
+                {studyQuestionReference.title}
+              </div>
+              <div className="truncate text-muted-foreground text-xs">
+                {studyQuestionReference.preview}
+              </div>
+            </button>
+            <Button
+              aria-label="Remove question reference"
+              className="h-7 w-7 shrink-0 rounded-md p-0"
+              onClick={(event) => {
+                event.preventDefault();
+                onClearStudyQuestionReference?.();
+              }}
+              type="button"
+              variant="ghost"
+            >
+              <CrossSmallIcon size={14} />
+            </Button>
+          </div>
+        ) : null}
         <div className="flex flex-row items-start gap-1 sm:gap-2">
           <PromptInputTextarea
             autoFocus
@@ -332,7 +431,9 @@ function PureMultimodalInput({
             maxHeight={200}
             minHeight={44}
             onChange={handleInput}
-            placeholder={inputPlaceholder}
+            placeholder={
+              imageGenerationSelected ? imagePlaceholder : inputPlaceholder
+            }
             ref={textareaRef}
             rows={1}
             value={input}
@@ -343,11 +444,19 @@ function PureMultimodalInput({
             <AttachmentsButton
               fileInputRef={fileInputRef}
               isReasoningModel={isReasoningModel}
-              status={status}
+              isBusy={isBusy}
             />
-            <ModelSelectorCompact
-              onModelChange={onModelChange}
-              selectedModelId={selectedModelId}
+            <ImageModeToggle
+              canGenerate={imageGenerationCanGenerate}
+              enabled={imageGenerationEnabled}
+              isActive={imageGenerationSelected}
+              label={imageToggleLabel}
+              tooltip={imageToggleTooltip}
+              onToggle={onToggleImageMode}
+            />
+            <LanguageSelectorCompact
+              onLanguageChange={onLanguageChange}
+              selectedLanguageCode={selectedLanguageCode}
             />
           </PromptInputTools>
 
@@ -359,7 +468,7 @@ function PureMultimodalInput({
               disabled={
                 !input.trim() ||
                 uploadQueue.length > 0 ||
-                (status !== "ready" && status !== "error")
+                isBusy
               }
               status={status}
             >
@@ -381,6 +490,30 @@ export const MultimodalInput = memo(
     if (prevProps.status !== nextProps.status) {
       return false;
     }
+    if (prevProps.isGeneratingImage !== nextProps.isGeneratingImage) {
+      return false;
+    }
+    if (
+      prevProps.imageGenerationSelected !== nextProps.imageGenerationSelected
+    ) {
+      return false;
+    }
+    if (
+      prevProps.imageGenerationEnabled !== nextProps.imageGenerationEnabled ||
+      prevProps.imageGenerationCanGenerate !==
+        nextProps.imageGenerationCanGenerate
+    ) {
+      return false;
+    }
+    if (
+      prevProps.imageGenerationRequiresPaidCredits !==
+      nextProps.imageGenerationRequiresPaidCredits
+    ) {
+      return false;
+    }
+    if (prevProps.documentUploadsEnabled !== nextProps.documentUploadsEnabled) {
+      return false;
+    }
     if (!equal(prevProps.attachments, nextProps.attachments)) {
       return false;
     }
@@ -390,6 +523,17 @@ export const MultimodalInput = memo(
     if (prevProps.selectedModelId !== nextProps.selectedModelId) {
       return false;
     }
+    if (prevProps.selectedLanguageCode !== nextProps.selectedLanguageCode) {
+      return false;
+    }
+    if (
+      !equal(
+        prevProps.studyQuestionReference,
+        nextProps.studyQuestionReference
+      )
+    ) {
+      return false;
+    }
 
     return true;
   }
@@ -397,18 +541,18 @@ export const MultimodalInput = memo(
 
 function PureAttachmentsButton({
   fileInputRef,
-  status,
+  isBusy,
   isReasoningModel,
 }: {
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
-  status: UseChatHelpers<ChatMessage>["status"];
+  isBusy: boolean;
   isReasoningModel: boolean;
 }) {
   return (
     <Button
       className="aspect-square h-8 rounded-lg p-1 transition-colors hover:bg-accent"
       data-testid="attachments-button"
-      disabled={(status !== "ready" && status !== "error") || isReasoningModel}
+      disabled={isBusy || isReasoningModel}
       onClick={(event) => {
         event.preventDefault();
         fileInputRef.current?.click();
@@ -422,65 +566,175 @@ function PureAttachmentsButton({
 
 const AttachmentsButton = memo(PureAttachmentsButton);
 
-function PureModelSelectorCompact({
-  selectedModelId,
-  onModelChange,
+function PureLanguageSelectorCompact({
+  selectedLanguageCode,
+  onLanguageChange,
 }: {
-  selectedModelId: string;
-  onModelChange?: (modelId: string) => void;
+  selectedLanguageCode: string;
+  onLanguageChange?: (languageCode: string) => void;
 }) {
-  const { models } = useModelConfig();
-  const [optimisticModelId, setOptimisticModelId] = useState(selectedModelId);
+  const {
+    languages,
+    activeLanguage,
+    translate,
+    isUpdating: isLanguageUpdating,
+  } = useTranslation();
+  const [optimisticLanguageCode, setOptimisticLanguageCode] = useState(
+    selectedLanguageCode
+  );
 
   useEffect(() => {
-    setOptimisticModelId(selectedModelId);
-  }, [selectedModelId]);
+    setOptimisticLanguageCode(selectedLanguageCode);
+  }, [selectedLanguageCode]);
 
-  const selectedModel = useMemo(
-    () => models.find((model) => model.id === optimisticModelId),
-    [models, optimisticModelId]
+  const effectiveLanguageCode = useMemo(() => {
+    if (languages.some((language) => language.code === optimisticLanguageCode)) {
+      return optimisticLanguageCode;
+    }
+    if (activeLanguage?.code) {
+      return activeLanguage.code;
+    }
+    return languages[0]?.code ?? optimisticLanguageCode;
+  }, [activeLanguage?.code, languages, optimisticLanguageCode]);
+
+  const selectedLanguage = useMemo(
+    () => languages.find((language) => language.code === effectiveLanguageCode),
+    [effectiveLanguageCode, languages]
   );
+
+  const activeLabel = translate("user_menu.language.active", "Active");
+  const updatingLabel = translate("user_menu.language.updating", "Updating...");
+  const triggerLabel = translate("user_menu.language", "Language");
+
+  if (languages.length === 0) {
+    return null;
+  }
 
   return (
     <PromptInputModelSelect
-      onValueChange={(modelName) => {
-        const model = models.find((m) => m.name === modelName);
-        if (model) {
-          setOptimisticModelId(model.id);
-          onModelChange?.(model.id);
-          startTransition(() => {
-            saveChatModelAsCookie(model.id);
-          });
+      onValueChange={(languageCode) => {
+        const language = languages.find(
+          (item) => item.code === languageCode
+        );
+        if (language) {
+          setOptimisticLanguageCode(language.code);
+          onLanguageChange?.(language.code);
         }
       }}
-      value={selectedModel?.name}
+      value={effectiveLanguageCode}
     >
       <Trigger
-        className="flex h-8 items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        aria-label={triggerLabel}
+        className="flex h-8 cursor-pointer items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none transition-colors hover:bg-accent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        data-testid="language-selector"
         type="button"
       >
+        <GlobeIcon size={14} />
         <span className="font-medium text-xs">
-          {selectedModel?.name}
+          {selectedLanguage?.name ?? triggerLabel}
         </span>
         <ChevronDownIcon size={16} />
       </Trigger>
-      <PromptInputModelSelectContent className="min-w-[260px] p-0">
+      <PromptInputModelSelectContent className="min-w-[220px] p-0">
         <div className="flex flex-col gap-px">
-          {models.map((model) => (
-            <SelectItem key={model.id} value={model.name}>
-              <div className="truncate font-medium text-xs">{model.name}</div>
-              <div className="mt-px truncate text-[10px] text-muted-foreground leading-tight">
-                {model.description}
-              </div>
-            </SelectItem>
-          ))}
+          {languages.map((language) => {
+            const isSelected = language.code === effectiveLanguageCode;
+            const shouldPromptUiSync =
+              Boolean(language.syncUiLanguage) &&
+              activeLanguage.code !== language.code;
+
+            return (
+              <SelectItem
+                disabled={
+                  isLanguageUpdating && language.code !== effectiveLanguageCode
+                }
+                key={language.code}
+                onPointerDown={() => {
+                  if (!isSelected || !shouldPromptUiSync) {
+                    return;
+                  }
+                  onLanguageChange?.(language.code);
+                }}
+                value={language.code}
+              >
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="truncate font-medium text-xs">
+                    {language.name}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {language.code === effectiveLanguageCode
+                      ? isLanguageUpdating
+                        ? updatingLabel
+                        : activeLabel
+                      : null}
+                  </span>
+                </div>
+              </SelectItem>
+            );
+          })}
         </div>
       </PromptInputModelSelectContent>
     </PromptInputModelSelect>
   );
 }
 
-const ModelSelectorCompact = memo(PureModelSelectorCompact);
+const LanguageSelectorCompact = memo(PureLanguageSelectorCompact);
+
+function ImageModeToggle({
+  enabled,
+  isActive,
+  canGenerate,
+  label,
+  tooltip,
+  onToggle,
+}: {
+  enabled: boolean;
+  isActive: boolean;
+  canGenerate: boolean;
+  label: string;
+  tooltip: string;
+  onToggle: () => void;
+}) {
+  if (!enabled) {
+    return null;
+  }
+
+  const button = (
+    <Button
+      aria-label={label}
+      aria-pressed={isActive}
+      className={cn(
+        "h-8 gap-1 rounded-lg border-0 px-2 text-xs transition-colors",
+        isActive
+          ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+          : "bg-background hover:bg-accent"
+      )}
+      onClick={(event) => {
+        event.preventDefault();
+        onToggle();
+      }}
+      size="sm"
+      type="button"
+      variant="ghost"
+    >
+      <ImageIcon size={14} />
+      <span className="inline">{label}</span>
+    </Button>
+  );
+
+  if (canGenerate) {
+    return button;
+  }
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function PureStopButton({
   stop,
@@ -505,8 +759,3 @@ function PureStopButton({
 }
 
 const StopButton = memo(PureStopButton);
-
-
-
-
-

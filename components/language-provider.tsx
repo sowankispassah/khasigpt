@@ -1,17 +1,16 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
+  type PropsWithChildren,
   useCallback,
   useContext,
   useMemo,
   useTransition,
-  type PropsWithChildren,
 } from "react";
-import { useRouter } from "next/navigation";
-
-import type { LanguageOption } from "@/lib/i18n/languages";
 import { setPreferredLanguageAction } from "@/app/actions/language";
+import type { LanguageOption } from "@/lib/i18n/languages";
 
 type TranslationContextValue = {
   languages: LanguageOption[];
@@ -30,11 +29,14 @@ const TranslationContext = createContext<TranslationContextValue>({
     name: "English",
     isDefault: true,
     isActive: true,
+    syncUiLanguage: false,
   },
   dictionary: {},
   translate: (_key, defaultText) => defaultText,
-  // eslint-disable-next-line @typescript-eslint/no-empty-function -- default noop
-  setLanguage: () => {},
+  setLanguage: () => {
+    // default noop
+    return;
+  }, // default noop
   isUpdating: false,
 });
 
@@ -51,7 +53,18 @@ export function LanguageProvider({
   children,
 }: LanguageProviderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
+  const languageCodeSet = useMemo(() => {
+    const codes = new Set<string>();
+    for (const language of languages) {
+      codes.add(language.code);
+    }
+    if (activeLanguage?.code) {
+      codes.add(activeLanguage.code);
+    }
+    return codes;
+  }, [languages, activeLanguage?.code]);
 
   const translate = useCallback(
     (key: string, defaultText: string) => {
@@ -62,18 +75,30 @@ export function LanguageProvider({
 
   const setLanguage = useCallback(
     (code: string) => {
-      if (code === activeLanguage.code) {
+      const normalized = typeof code === "string" ? code.trim().toLowerCase() : "";
+      if (!normalized || normalized === activeLanguage.code) {
         return;
       }
 
       startTransition(() => {
-        void (async () => {
-          await setPreferredLanguageAction(code);
+        (async () => {
+          await setPreferredLanguageAction(normalized);
+          if (pathname) {
+            const segments = pathname.split("/").filter(Boolean);
+            if (segments.length > 0 && languageCodeSet.has(segments[0])) {
+              segments[0] = normalized;
+              const nextPath = `/${segments.join("/")}`;
+              const querySuffix =
+                typeof window !== "undefined" ? window.location.search ?? "" : "";
+              router.replace(`${nextPath}${querySuffix}`);
+              return;
+            }
+          }
           router.refresh();
         })();
       });
     },
-    [activeLanguage.code, router]
+    [activeLanguage.code, languageCodeSet, pathname, router]
   );
 
   const value = useMemo<TranslationContextValue>(

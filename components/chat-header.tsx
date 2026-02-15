@@ -1,30 +1,32 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { memo, useTransition } from "react";
+import { memo } from "react";
 import { useWindowSize } from "usehooks-ts";
 
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
+import { ModelSelectorCompact } from "@/components/model-selector-compact";
 
-import { LoaderIcon, PlusIcon } from "./icons";
+import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
 import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
-
-
 
 function PureChatHeader({
   chatId,
   selectedVisibilityType,
+  selectedModelId,
+  onModelChange,
   isReadonly,
 }: {
   chatId: string;
   selectedVisibilityType: VisibilityType;
+  selectedModelId: string;
+  onModelChange?: (modelId: string) => void;
   isReadonly: boolean;
 }) {
   const router = useRouter();
   const { open } = useSidebar();
-  const [isPending, startTransition] = useTransition();
 
   const { width: windowWidth } = useWindowSize();
 
@@ -33,43 +35,30 @@ function PureChatHeader({
       <SidebarToggle />
 
       {!isReadonly && (
-        <VisibilitySelector
-          chatId={chatId}
-          className="order-1 md:order-2"
-          selectedVisibilityType={selectedVisibilityType}
-        />
+        <div className="flex items-center gap-2">
+          <VisibilitySelector
+            chatId={chatId}
+            selectedVisibilityType={selectedVisibilityType}
+          />
+          <ModelSelectorCompact
+            className="shrink-0"
+            onModelChange={onModelChange}
+            selectedModelId={selectedModelId}
+          />
+        </div>
       )}
 
-      <div className="order-2 ml-auto -mr-2 flex items-center gap-3 md:order-3">
+      <div className="-mr-2 order-2 ml-auto flex items-center gap-3 md:order-3">
         {(!open || windowWidth < 768) && (
           <Button
-            aria-busy={isPending}
             className="h-8 px-2 md:h-fit md:px-2"
-            disabled={isPending}
             onClick={() => {
-              if (isPending) {
-                return;
-              }
-              startTransition(() => {
-                router.push("/");
-                router.refresh();
-              });
+              router.push("/chat?new=1");
             }}
             variant="outline"
           >
-            {isPending ? (
-              <span className="flex items-center gap-1">
-                <span className="flex h-4 w-4 items-center justify-center animate-spin">
-                  <LoaderIcon size={14} />
-                </span>
-                <span className="md:sr-only">Loading</span>
-              </span>
-            ) : (
-              <>
-                <PlusIcon />
-                <span className="md:sr-only">New Chat</span>
-              </>
-            )}
+            <PlusIcon />
+            <span className="md:sr-only">New Chat</span>
           </Button>
         )}
       </div>
@@ -81,6 +70,7 @@ export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
     prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
+    prevProps.selectedModelId === nextProps.selectedModelId &&
     prevProps.isReadonly === nextProps.isReadonly
   );
 });

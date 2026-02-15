@@ -2,6 +2,8 @@ import type { UIMessage } from "ai";
 import { z } from "zod";
 import type { ArtifactKind } from "@/components/artifact";
 import type { Suggestion } from "./db/schema";
+import type { StudyPaperCard } from "@/lib/study/types";
+import type { StudyQuestionReference } from "@/lib/study/types";
 import type { AppUsage } from "./usage";
 
 export type DataPart = { type: "append-message"; message: string };
@@ -27,6 +29,27 @@ export type CustomUIDataTypes = {
   clear: null;
   finish: null;
   usage: AppUsage;
+  ragUsage: {
+    chatId: string;
+    modelId: string;
+    modelName: string;
+    entries: Array<{
+      id: string;
+      title: string;
+      status: string;
+      tags: string[];
+      score: number;
+      sourceUrl: string | null;
+    }>;
+  };
+  studyCards: {
+    papers: StudyPaperCard[];
+  };
+  studyAssistChips: {
+    question: string;
+    chips: string[];
+  };
+  studyQuestionReference: StudyQuestionReference;
 };
 
 export type ChatMessage = UIMessage<
