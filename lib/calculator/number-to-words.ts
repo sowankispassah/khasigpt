@@ -448,7 +448,7 @@ export function convertNumberToWords(
 
   if (Math.abs(integerValue) > CALCULATOR_MAX_SUPPORTED_ABSOLUTE) {
     throw new Error(
-      "Result is out of supported range. Limit is 99,99,99,999."
+      "Result is out of supported range. Limit is 9,99,99,99,999."
     );
   }
 

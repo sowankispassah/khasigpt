@@ -43,13 +43,13 @@ function CalculatorKey({
   return (
     <button
       className={cn(
-        "flex h-[clamp(3.45rem,8.3dvh,4.6rem)] cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98] sm:h-16",
+        "flex w-full aspect-[5/4] cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98]",
         className
       )}
       onClick={onClick}
       type="button"
     >
-      <span className={cn("font-medium text-xl sm:text-2xl", valueClassName)}>
+      <span className={cn("font-medium text-[2rem]", valueClassName)}>
         {label}
       </span>
     </button>
@@ -100,6 +100,8 @@ export function CalculatorWorkbench() {
     while (fallback.length > 0) {
       if (fallback.endsWith("sqrt(")) {
         fallback = fallback.slice(0, -5).trim();
+      } else if (fallback.endsWith("sqrt")) {
+        fallback = fallback.slice(0, -4).trim();
       } else if (/[+\-*/%^.(]$/.test(fallback)) {
         fallback = fallback.slice(0, -1).trim();
       } else {
@@ -187,7 +189,7 @@ export function CalculatorWorkbench() {
       return null;
     }
     if (Math.abs(evaluated.result) > CALCULATOR_MAX_SUPPORTED_ABSOLUTE) {
-      setError("Result exceeds supported range (up to 99,99,99,999).");
+      setError("Result exceeds supported range (up to 9,99,99,99,999).");
       return null;
     }
     setResult(evaluated.result);
@@ -223,7 +225,7 @@ export function CalculatorWorkbench() {
         return;
       }
       if (Math.abs(gstPreview) > CALCULATOR_MAX_SUPPORTED_ABSOLUTE) {
-        setError("Result exceeds supported range (up to 99,99,99,999).");
+        setError("Result exceeds supported range (up to 9,99,99,99,999).");
         return;
       }
       setExpression(toExpressionValue(gstPreview));
@@ -247,17 +249,15 @@ export function CalculatorWorkbench() {
       return;
     }
     const baseValue = resolveCurrentValue();
-    if (baseValue === null) {
-      setError("Enter an expression before applying GST.");
-      return;
-    }
     setGstSnapshot({
       expression,
       result,
       error,
     });
     setGstBaseValue(baseValue);
-    setGstPreview(calculateGstResult(baseValue, gstRate, gstMode));
+    setGstPreview(
+      baseValue === null ? null : calculateGstResult(baseValue, gstRate, gstMode)
+    );
     setIsGstPanelOpen(true);
     setError(null);
   };
@@ -312,6 +312,9 @@ export function CalculatorWorkbench() {
       if (current.endsWith("sqrt(")) {
         return current.slice(0, -5);
       }
+      if (current.endsWith("sqrt")) {
+        return current.slice(0, -4);
+      }
       if (current.endsWith("pi")) {
         return current.slice(0, -2);
       }
@@ -333,9 +336,85 @@ export function CalculatorWorkbench() {
     });
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tagName = target.tagName;
+        if (
+          target.isContentEditable ||
+          tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          tagName === "SELECT"
+        ) {
+          return;
+        }
+      }
+
+      const key = event.key;
+
+      if (/^[0-9]$/.test(key)) {
+        event.preventDefault();
+        appendToExpression(key);
+        return;
+      }
+
+      if (key === "." || key === ",") {
+        event.preventDefault();
+        appendToExpression(".");
+        return;
+      }
+
+      if (
+        key === "+" ||
+        key === "-" ||
+        key === "*" ||
+        key === "/" ||
+        key === "%" ||
+        key === "^" ||
+        key === "(" ||
+        key === ")" ||
+        key === "!" ||
+        key === "x" ||
+        key === "X"
+      ) {
+        event.preventDefault();
+        appendToExpression(key === "x" || key === "X" ? "*" : key);
+        return;
+      }
+
+      if (key === "Enter" || key === "=") {
+        event.preventDefault();
+        handleEvaluate();
+        return;
+      }
+
+      if (key === "Backspace") {
+        event.preventDefault();
+        handleBackspace();
+        return;
+      }
+
+      if (key === "Escape") {
+        event.preventDefault();
+        handleClear();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [appendToExpression, handleBackspace, handleClear, handleEvaluate]);
+
   return (
-    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
-      <div className="relative h-[clamp(14rem,30dvh,20rem)] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:p-4">
+    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-1.5 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
+      <div className="relative h-[clamp(10rem,24dvh,16rem)] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:p-4">
         <div className="min-h-9 break-words text-right font-medium text-3xl sm:min-h-10 sm:text-4xl">
           {displayExpression}
         </div>
@@ -350,7 +429,7 @@ export function CalculatorWorkbench() {
           </p>
         ) : null}
 
-        <div className="mt-[clamp(2rem,6dvh,5rem)] min-h-[clamp(3rem,8dvh,6rem)] sm:mt-20 sm:min-h-24">
+        <div className="mt-[clamp(1rem,3dvh,2.5rem)] min-h-[clamp(1.5rem,3.5dvh,2.8rem)] sm:mt-20 sm:min-h-24">
           {shouldShowInWords ? (
             isInWordsOpen ? (
               <>
@@ -403,92 +482,75 @@ export function CalculatorWorkbench() {
         </p>
       ) : null}
 
-      {isGstPanelOpen ? (
-        <div className="space-y-1 sm:space-y-2">
-          <div className="flex items-center gap-2">
-            <button
-              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-              onClick={handleCloseGstPanel}
-              type="button"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
-            <button
-              className={cn(
-                "cursor-pointer rounded-full px-2 py-1 text-sm transition",
-                gstMode === "include"
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "bg-zinc-100 text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
-              )}
-              onClick={() =>
-                handleGstModeChange(gstMode === "include" ? "exclude" : "include")
-              }
-              type="button"
-            >
-              {gstMode === "include" ? "+" : "-"}
-            </button>
-            {GST_RATE_OPTIONS.map((rate) => (
+      <div className="h-[3.9rem]">
+        {isGstPanelOpen ? (
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                onClick={handleCloseGstPanel}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
               <button
                 className={cn(
                   "cursor-pointer rounded-full px-2 py-1 text-sm transition",
-                  gstRate === rate
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  gstMode === "include"
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
                     : "bg-zinc-100 text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
                 )}
-                key={rate}
-                onClick={() => handleGstRateChange(rate)}
+                onClick={() =>
+                  handleGstModeChange(
+                    gstMode === "include" ? "exclude" : "include"
+                  )
+                }
                 type="button"
               >
-                {rate}%
+                {gstMode === "include" ? "+" : "-"}
               </button>
-            ))}
+              {GST_RATE_OPTIONS.map((rate) => (
+                <button
+                  className={cn(
+                    "cursor-pointer rounded-full px-2 py-1 text-sm transition",
+                    gstRate === rate
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "bg-zinc-100 text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  )}
+                  key={rate}
+                  onClick={() => handleGstRateChange(rate)}
+                  type="button"
+                >
+                  {rate}%
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-          <CalculatorKey
-            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-            label="GST"
-            onClick={handleGst}
-            valueClassName="text-base"
-          />
-          <CalculatorKey
-            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-            label="√"
-            onClick={() => appendToExpression("sqrt(")}
-          />
-          <CalculatorKey
-            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-            label="π"
-            onClick={() => appendToExpression("pi")}
-          />
-          <CalculatorKey
-            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-            label="^"
-            onClick={() => appendToExpression("^")}
-          />
-          <CalculatorKey
-            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-            label="!"
-            onClick={() => appendToExpression("!")}
-          />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full items-end">
+            <button
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-[#ff940f] font-medium text-[11px] text-white transition hover:bg-[#e6860d]"
+              onClick={handleGst}
+              type="button"
+            >
+              GST
+            </button>
+          </div>
+        )}
+      </div>
 
-      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-4 justify-items-center gap-1 sm:gap-1.5">
         <CalculatorKey
           className="bg-violet-200 hover:bg-violet-300 dark:bg-violet-950 dark:hover:bg-violet-900"
           label="AC"
           onClick={handleClear}
-          valueClassName="text-xl"
         />
         <CalculatorKey
           className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-950 dark:hover:bg-blue-900"
           label="()"
           onClick={handleParentheses}
-          valueClassName="text-xl"
         />
         <CalculatorKey
           className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-950 dark:hover:bg-blue-900"
