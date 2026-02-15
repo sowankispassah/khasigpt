@@ -1,7 +1,14 @@
 "use client";
 
 import { DeleteIcon, X } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { CALCULATOR_MAX_SUPPORTED_ABSOLUTE } from "@/lib/calculator/constants";
 import {
   evaluateExpression,
@@ -46,6 +53,8 @@ function CalculatorKey({
         "flex w-full aspect-[10/9] cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98]",
         className
       )}
+      onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.preventDefault()}
       onClick={onClick}
       type="button"
     >
@@ -59,6 +68,9 @@ function CalculatorKey({
 export function CalculatorWorkbench() {
   const [expression, setExpression] = useState("");
   const [result, setResult] = useState<number | null>(null);
+  const expressionInputRef = useRef<HTMLInputElement>(null);
+  const [, setCaretRange] = useState({ start: 0, end: 0 });
+  const caretRangeRef = useRef({ start: 0, end: 0 });
   const [hasEnteredData, setHasEnteredData] = useState(false);
   const [language, setLanguage] = useState<NumberWordLanguage>("khasi");
   const [isInWordsOpen, setIsInWordsOpen] = useState(false);
@@ -143,43 +155,125 @@ export function CalculatorWorkbench() {
     }
   }, [inWordsSource, language]);
 
-  const displayExpression = expression
-    ? expression
-        .replaceAll("pi", "π")
-        .replaceAll("*", "×")
-        .replaceAll("/", "÷")
-    : "0";
-
   useEffect(() => {
     if (!hasEnteredData && (expression.trim().length > 0 || result !== null)) {
       setHasEnteredData(true);
     }
   }, [expression, hasEnteredData, result]);
 
-  const appendToExpression = (value: string) => {
-    if (isGstPanelOpen) {
+  const updateCaretRange = (nextRange: { start: number; end: number }) => {
+    caretRangeRef.current = nextRange;
+    setCaretRange(nextRange);
+  };
+
+  const getCaretRange = (length: number) => {
+    const input = expressionInputRef.current;
+    if (input && document.activeElement === input) {
+      return {
+        start: Math.max(0, Math.min(input.selectionStart ?? length, length)),
+        end: Math.max(0, Math.min(input.selectionEnd ?? length, length)),
+      };
+    }
+    return {
+      start: Math.max(0, Math.min(caretRangeRef.current.start, length)),
+      end: Math.max(0, Math.min(caretRangeRef.current.end, length)),
+    };
+  };
+
+  const setInputCaret = (position: number) => {
+    const safePosition = Math.max(0, position);
+    updateCaretRange({ start: safePosition, end: safePosition });
+    requestAnimationFrame(() => {
+      const input = expressionInputRef.current;
+      if (!input) {
+        return;
+      }
+      const boundedPosition = Math.max(0, Math.min(safePosition, input.value.length));
+      input.focus();
+      input.setSelectionRange(boundedPosition, boundedPosition);
+    });
+  };
+
+  const syncCaretFromInput = () => {
+    const input = expressionInputRef.current;
+    if (!input) {
       return;
     }
+    const length = input.value.length;
+    const start = Math.max(0, Math.min(input.selectionStart ?? length, length));
+    const end = Math.max(0, Math.min(input.selectionEnd ?? length, length));
+    updateCaretRange({ start, end });
+  };
+
+  const closeGstModeForInput = () => {
+    setIsGstPanelOpen(false);
+    setGstBaseValue(null);
+    setGstPreview(null);
+    setGstSnapshot(null);
+  };
+
+  const handleExpressionInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (isGstPanelOpen) {
+      closeGstModeForInput();
+    }
     setError(null);
+    const normalized = event.target.value
+      .replaceAll(/\s+/g, "")
+      .replaceAll("×", "*")
+      .replaceAll("÷", "/")
+      .replaceAll("−", "-")
+      .replaceAll(",", ".")
+      .replaceAll("π", "pi")
+      .replaceAll("X", "x");
+    const sanitized = normalized.replaceAll(/[^0-9+\-*/%^().!a-z]/gi, "");
+    setExpression(sanitized);
+
+    const position = event.target.selectionStart ?? sanitized.length;
+    const safePosition = Math.max(0, Math.min(position, sanitized.length));
+    updateCaretRange({ start: safePosition, end: safePosition });
+  };
+
+  const appendToExpression = (value: string) => {
+    if (isGstPanelOpen) {
+      closeGstModeForInput();
+    }
+    setError(null);
+    let nextCaretPosition: number | null = null;
     setExpression((current) => {
+      const { start, end } = getCaretRange(current.length);
+      let working = current;
+      let localStart = start;
+      let localEnd = end;
       const startsWithOperator = /^[+*/%^]/.test(value);
-      if (!current && startsWithOperator) {
+      if (!working && startsWithOperator) {
         if (result === null) {
-          return current;
+          return working;
         }
-        return `${toExpressionValue(result)}${value}`;
+        working = toExpressionValue(result);
+        localStart = working.length;
+        localEnd = working.length;
       }
 
-      if (value === "." && /\.\d*$/.test(current)) {
-        return current;
+      let before = working.slice(0, localStart);
+      const after = working.slice(localEnd);
+
+      if (value === "." && /\.\d*$/.test(before)) {
+        nextCaretPosition = localStart;
+        return working;
       }
 
-      if (/^[+\-*/%^]$/.test(value) && /[+\-*/%^]$/.test(current)) {
-        return `${current.slice(0, -1)}${value}`;
+      if (/^[+\-*/%^]$/.test(value) && localStart === localEnd && /[+\-*/%^]$/.test(before)) {
+        before = before.slice(0, -1);
+        localStart -= 1;
       }
 
-      return `${current}${value}`;
+      const nextValue = `${before}${value}${after}`;
+      nextCaretPosition = localStart + value.length;
+      return nextValue;
     });
+    if (nextCaretPosition !== null) {
+      setInputCaret(nextCaretPosition);
+    }
   };
 
   const evaluateAndStore = (input: string) => {
@@ -298,42 +392,65 @@ export function CalculatorWorkbench() {
     setGstBaseValue(null);
     setGstPreview(null);
     setGstSnapshot(null);
+    updateCaretRange({ start: 0, end: 0 });
+    setInputCaret(0);
   };
 
   const handleBackspace = () => {
     if (isGstPanelOpen) {
-      return;
+      closeGstModeForInput();
     }
     setError(null);
+    let nextCaretPosition: number | null = null;
     setExpression((current) => {
-      if (!current) {
+      const { start, end } = getCaretRange(current.length);
+      if (start !== end) {
+        nextCaretPosition = start;
+        return `${current.slice(0, start)}${current.slice(end)}`;
+      }
+      if (start === 0) {
+        nextCaretPosition = 0;
         return current;
       }
-      if (current.endsWith("sqrt(")) {
-        return current.slice(0, -5);
+      const beforeCursor = current.slice(0, start);
+      let removeLength = 1;
+      if (beforeCursor.endsWith("sqrt(")) {
+        removeLength = 5;
+      } else if (beforeCursor.endsWith("sqrt")) {
+        removeLength = 4;
+      } else if (beforeCursor.endsWith("pi")) {
+        removeLength = 2;
       }
-      if (current.endsWith("sqrt")) {
-        return current.slice(0, -4);
-      }
-      if (current.endsWith("pi")) {
-        return current.slice(0, -2);
-      }
-      return current.slice(0, -1);
+      const nextStart = Math.max(0, start - removeLength);
+      nextCaretPosition = nextStart;
+      return `${current.slice(0, nextStart)}${current.slice(start)}`;
     });
+    if (nextCaretPosition !== null) {
+      setInputCaret(nextCaretPosition);
+    }
   };
 
   const handleParentheses = () => {
     if (isGstPanelOpen) {
-      return;
+      closeGstModeForInput();
     }
     setError(null);
+    let nextCaretPosition: number | null = null;
     setExpression((current) => {
-      const openCount = (current.match(/\(/g) ?? []).length;
-      const closeCount = (current.match(/\)/g) ?? []).length;
+      const { start, end } = getCaretRange(current.length);
+      const before = current.slice(0, start);
+      const after = current.slice(end);
+      const openCount = (before.match(/\(/g) ?? []).length;
+      const closeCount = (before.match(/\)/g) ?? []).length;
       const shouldClose =
-        openCount > closeCount && /(?:[0-9)!]|pi)$/.test(current.trim());
-      return shouldClose ? `${current})` : `${current}(`;
+        openCount > closeCount && /(?:[0-9)!]|pi)$/.test(before.trim());
+      const insertion = shouldClose ? ")" : "(";
+      nextCaretPosition = start + 1;
+      return `${before}${insertion}${after}`;
     });
+    if (nextCaretPosition !== null) {
+      setInputCaret(nextCaretPosition);
+    }
   };
 
   useEffect(() => {
@@ -413,17 +530,39 @@ export function CalculatorWorkbench() {
   }, [appendToExpression, handleBackspace, handleClear, handleEvaluate]);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-1 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
-      <div className="relative min-h-[clamp(10rem,22dvh,14rem)] flex-[1.35] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
-        <div className="min-h-9 break-words text-right font-medium text-3xl sm:min-h-10 sm:text-4xl">
-          {displayExpression}
-        </div>
+    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-0.5 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
+      <div className="relative min-h-[clamp(11rem,25dvh,16rem)] flex-[1.55] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
+        <input
+          className="min-h-9 w-full bg-transparent text-right font-medium text-3xl outline-none placeholder:text-foreground/70 sm:min-h-10 sm:text-4xl"
+          inputMode="decimal"
+          onChange={handleExpressionInputChange}
+          onClick={syncCaretFromInput}
+          onFocus={syncCaretFromInput}
+          onKeyUp={syncCaretFromInput}
+          onSelect={syncCaretFromInput}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === "=") {
+              event.preventDefault();
+              handleEvaluate();
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              handleClear();
+            }
+          }}
+          placeholder="0"
+          ref={expressionInputRef}
+          spellCheck={false}
+          type="text"
+          value={expression}
+        />
         <div className="mt-1 min-h-7 text-right text-3xl text-muted-foreground sm:mt-2 sm:min-h-8 sm:text-4xl">
           = {displayedResult === null ? "0" : formatNumericResult(displayedResult)}
         </div>
 
         {!hasEnteredData ? (
-          <p className="pointer-events-none absolute inset-x-4 top-1/2 -translate-y-1/2 text-center text-muted-foreground text-sm leading-relaxed">
+          <p className="pointer-events-none absolute inset-x-4 bottom-3 text-center text-muted-foreground text-sm leading-relaxed">
             Calculator that converts numbers into words in Khasi and other
             languages.
           </p>
