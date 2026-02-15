@@ -371,7 +371,7 @@ export function CalculatorWorkbench() {
       ) : null}
 
       {isGstPanelOpen ? (
-        <div className="space-y-2 rounded-xl border bg-muted/30 p-2">
+        <div className="space-y-2">
           <div className="flex items-center gap-2">
             <button
               className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
@@ -413,36 +413,36 @@ export function CalculatorWorkbench() {
             ))}
           </div>
         </div>
-      ) : null}
-
-      <div className="grid grid-cols-5 gap-2">
-        <CalculatorKey
-          className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          label="GST"
-          onClick={handleGst}
-          valueClassName="text-base"
-        />
-        <CalculatorKey
-          className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          label="√"
-          onClick={() => appendToExpression("sqrt(")}
-        />
-        <CalculatorKey
-          className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          label="π"
-          onClick={() => appendToExpression("pi")}
-        />
-        <CalculatorKey
-          className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          label="^"
-          onClick={() => appendToExpression("^")}
-        />
-        <CalculatorKey
-          className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          label="!"
-          onClick={() => appendToExpression("!")}
-        />
-      </div>
+      ) : (
+        <div className="grid grid-cols-5 gap-2">
+          <CalculatorKey
+            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            label="GST"
+            onClick={handleGst}
+            valueClassName="text-base"
+          />
+          <CalculatorKey
+            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            label="√"
+            onClick={() => appendToExpression("sqrt(")}
+          />
+          <CalculatorKey
+            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            label="π"
+            onClick={() => appendToExpression("pi")}
+          />
+          <CalculatorKey
+            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            label="^"
+            onClick={() => appendToExpression("^")}
+          />
+          <CalculatorKey
+            className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            label="!"
+            onClick={() => appendToExpression("!")}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-3">
         <CalculatorKey

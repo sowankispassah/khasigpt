@@ -27,7 +27,7 @@ export default async function CalculatorPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 px-3 pt-1 pb-3 sm:gap-4 sm:px-4 sm:py-6 md:gap-6 md:py-10">
       <div className="relative flex min-h-8 items-center">
         <BackToHomeButton label="Back to home" />
         <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-semibold text-[15px]">

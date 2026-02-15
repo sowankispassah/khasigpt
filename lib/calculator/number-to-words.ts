@@ -312,7 +312,11 @@ function convertBelow1000(value: number, config: NumberWordConfig): string {
 
   const hundredsPart = Math.floor(value / 100);
   const remainder = value % 100;
-  const hundredPhrase = `${config.digits[hundredsPart]} ${config.hundred}`;
+  const hundredPrefix =
+    config === KHASI_CONFIG && hundredsPart === 1
+      ? "shi"
+      : config.digits[hundredsPart];
+  const hundredPhrase = `${hundredPrefix} ${config.hundred}`;
 
   if (remainder === 0) {
     return hundredPhrase;
@@ -331,20 +335,32 @@ function convertIntegerToIndianWords(value: number, config: NumberWordConfig) {
   const crorePart = Math.floor(remaining / 10_000_000);
   remaining %= 10_000_000;
   if (crorePart > 0) {
-    segments.push(`${convertBelow1000(crorePart, config)} ${config.crore}`);
+    const crorePrefix =
+      config === KHASI_CONFIG && crorePart === 1
+        ? "shi"
+        : convertBelow1000(crorePart, config);
+    segments.push(`${crorePrefix} ${config.crore}`);
   }
 
   const lakhPart = Math.floor(remaining / 100_000);
   remaining %= 100_000;
   if (lakhPart > 0) {
-    segments.push(`${convertBelow1000(lakhPart, config)} ${config.lakh}`);
+    const lakhPrefix =
+      config === KHASI_CONFIG && lakhPart === 1
+        ? "shi"
+        : convertBelow1000(lakhPart, config);
+    segments.push(`${lakhPrefix} ${config.lakh}`);
   }
 
   const thousandPart = Math.floor(remaining / 1_000);
   remaining %= 1_000;
   if (thousandPart > 0) {
+    const thousandPrefix =
+      config === KHASI_CONFIG && thousandPart === 1
+        ? "shi"
+        : convertBelow1000(thousandPart, config);
     segments.push(
-      `${convertBelow1000(thousandPart, config)} ${config.thousand}`
+      `${thousandPrefix} ${config.thousand}`
     );
   }
 
