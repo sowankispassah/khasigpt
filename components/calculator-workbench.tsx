@@ -43,13 +43,15 @@ function CalculatorKey({
   return (
     <button
       className={cn(
-        "flex h-16 cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98]",
+        "flex h-12 cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98] sm:h-16",
         className
       )}
       onClick={onClick}
       type="button"
     >
-      <span className={cn("font-medium text-2xl", valueClassName)}>{label}</span>
+      <span className={cn("font-medium text-xl sm:text-2xl", valueClassName)}>
+        {label}
+      </span>
     </button>
   );
 }
@@ -73,17 +75,48 @@ export function CalculatorWorkbench() {
   } | null>(null);
 
   const previewResult = useMemo(() => {
-    if (!expression.trim()) {
+    const normalizedExpression = expression.trim();
+    if (!normalizedExpression) {
       return null;
     }
-    const evaluated = evaluateExpression(expression);
-    if (!evaluated.ok) {
-      return null;
+
+    const evaluateWithinRange = (input: string) => {
+      const evaluated = evaluateExpression(input);
+      if (!evaluated.ok) {
+        return null;
+      }
+      if (Math.abs(evaluated.result) > CALCULATOR_MAX_SUPPORTED_ABSOLUTE) {
+        return null;
+      }
+      return evaluated.result;
+    };
+
+    const directResult = evaluateWithinRange(normalizedExpression);
+    if (directResult !== null) {
+      return directResult;
     }
-    if (Math.abs(evaluated.result) > CALCULATOR_MAX_SUPPORTED_ABSOLUTE) {
-      return null;
+
+    let fallback = normalizedExpression;
+    while (fallback.length > 0) {
+      if (fallback.endsWith("sqrt(")) {
+        fallback = fallback.slice(0, -5).trim();
+      } else if (/[+\-*/%^.(]$/.test(fallback)) {
+        fallback = fallback.slice(0, -1).trim();
+      } else {
+        break;
+      }
+
+      if (!fallback) {
+        return null;
+      }
+
+      const fallbackResult = evaluateWithinRange(fallback);
+      if (fallbackResult !== null) {
+        return fallbackResult;
+      }
     }
-    return evaluated.result;
+
+    return null;
   }, [expression]);
 
   const displayedResult = isGstPanelOpen
@@ -301,12 +334,12 @@ export function CalculatorWorkbench() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-4 rounded-3xl border bg-card p-4 shadow-sm">
-      <div className="relative rounded-2xl bg-muted/40 p-4">
-        <div className="min-h-10 break-words text-right font-medium text-4xl">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-2 rounded-3xl border bg-card p-3 shadow-sm sm:gap-4 sm:p-4">
+      <div className="relative rounded-2xl bg-muted/40 p-3 sm:p-4">
+        <div className="min-h-9 break-words text-right font-medium text-3xl sm:min-h-10 sm:text-4xl">
           {displayExpression}
         </div>
-        <div className="mt-2 min-h-8 text-right text-4xl text-muted-foreground">
+        <div className="mt-1 min-h-7 text-right text-3xl text-muted-foreground sm:mt-2 sm:min-h-8 sm:text-4xl">
           = {displayedResult === null ? "0" : formatNumericResult(displayedResult)}
         </div>
 
@@ -317,7 +350,7 @@ export function CalculatorWorkbench() {
           </p>
         ) : null}
 
-        <div className="mt-20 min-h-24">
+        <div className="mt-8 min-h-12 sm:mt-20 sm:min-h-24">
           {shouldShowInWords ? (
             isInWordsOpen ? (
               <>
@@ -371,7 +404,7 @@ export function CalculatorWorkbench() {
       ) : null}
 
       {isGstPanelOpen ? (
-        <div className="space-y-2">
+        <div className="space-y-1 sm:space-y-2">
           <div className="flex items-center gap-2">
             <button
               className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
@@ -381,7 +414,7 @@ export function CalculatorWorkbench() {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="grid grid-cols-6 gap-2">
+          <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
             <button
               className={cn(
                 "cursor-pointer rounded-full px-2 py-1 text-sm transition",
@@ -414,7 +447,7 @@ export function CalculatorWorkbench() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
           <CalculatorKey
             className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
             label="GST"
@@ -444,7 +477,7 @@ export function CalculatorWorkbench() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3">
         <CalculatorKey
           className="bg-violet-200 hover:bg-violet-300 dark:bg-violet-950 dark:hover:bg-violet-900"
           label="AC"
@@ -543,7 +576,7 @@ export function CalculatorWorkbench() {
         />
         <CalculatorKey
           className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          label={<DeleteIcon className="h-6 w-6" />}
+          label={<DeleteIcon className="h-5 w-5 sm:h-6 sm:w-6" />}
           onClick={handleBackspace}
           valueClassName=""
         />

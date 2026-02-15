@@ -39,6 +39,24 @@ function normalizeExpression(expression: string) {
     .replaceAll("π", "pi");
 }
 
+function endsWithValueToken(token: RawToken | undefined) {
+  if (!token) {
+    return false;
+  }
+  if (token.kind === "number" || token.kind === "rightParen") {
+    return true;
+  }
+  return token.kind === "operator" && token.value === "!";
+}
+
+function startsValueToken(token: RawToken) {
+  return (
+    token.kind === "number" ||
+    token.kind === "leftParen" ||
+    token.kind === "function"
+  );
+}
+
 function tokenize(expression: string): RawToken[] {
   const normalized = normalizeExpression(expression);
   if (!normalized) {
@@ -46,6 +64,13 @@ function tokenize(expression: string): RawToken[] {
   }
 
   const tokens: RawToken[] = [];
+  const pushToken = (token: RawToken) => {
+    const previous = tokens[tokens.length - 1];
+    if (endsWithValueToken(previous) && startsValueToken(token)) {
+      tokens.push({ kind: "operator", value: "*" });
+    }
+    tokens.push(token);
+  };
   let index = 0;
 
   while (index < normalized.length) {
@@ -78,18 +103,18 @@ function tokenize(expression: string): RawToken[] {
       if (!Number.isFinite(numericValue)) {
         throw new Error("Invalid numeric value.");
       }
-      tokens.push({ kind: "number", value: numericValue });
+      pushToken({ kind: "number", value: numericValue });
       continue;
     }
 
     if (char === "(") {
-      tokens.push({ kind: "leftParen" });
+      pushToken({ kind: "leftParen" });
       index += 1;
       continue;
     }
 
     if (char === ")") {
-      tokens.push({ kind: "rightParen" });
+      pushToken({ kind: "rightParen" });
       index += 1;
       continue;
     }
@@ -110,13 +135,13 @@ function tokenize(expression: string): RawToken[] {
     }
 
     if (normalized.startsWith("sqrt", index)) {
-      tokens.push({ kind: "function", value: "sqrt" });
+      pushToken({ kind: "function", value: "sqrt" });
       index += 4;
       continue;
     }
 
     if (normalized.startsWith("pi", index)) {
-      tokens.push({ kind: "number", value: Math.PI });
+      pushToken({ kind: "number", value: Math.PI });
       index += 2;
       continue;
     }
