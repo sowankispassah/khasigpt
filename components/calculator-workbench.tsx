@@ -43,7 +43,7 @@ function CalculatorKey({
   return (
     <button
       className={cn(
-        "flex h-12 cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98] sm:h-16",
+        "flex h-[clamp(3rem,7.2dvh,4rem)] cursor-pointer items-center justify-center rounded-full transition active:scale-[0.98] sm:h-16",
         className
       )}
       onClick={onClick}
@@ -334,8 +334,8 @@ export function CalculatorWorkbench() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-2 rounded-3xl border bg-card p-3 shadow-sm sm:gap-4 sm:p-4">
-      <div className="relative rounded-2xl bg-muted/40 p-3 sm:p-4">
+    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
+      <div className="relative flex flex-1 flex-col rounded-2xl bg-muted/40 p-3 sm:flex-none sm:p-4">
         <div className="min-h-9 break-words text-right font-medium text-3xl sm:min-h-10 sm:text-4xl">
           {displayExpression}
         </div>
@@ -350,7 +350,7 @@ export function CalculatorWorkbench() {
           </p>
         ) : null}
 
-        <div className="mt-8 min-h-12 sm:mt-20 sm:min-h-24">
+        <div className="mt-[clamp(2rem,6dvh,5rem)] min-h-[clamp(3rem,8dvh,6rem)] sm:mt-20 sm:min-h-24">
           {shouldShowInWords ? (
             isInWordsOpen ? (
               <>
