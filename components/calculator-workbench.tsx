@@ -413,8 +413,8 @@ export function CalculatorWorkbench() {
   }, [appendToExpression, handleBackspace, handleClear, handleEvaluate]);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-1.5 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
-      <div className="relative h-[clamp(8rem,19dvh,12rem)] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:p-4">
+    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-1 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
+      <div className="relative min-h-[clamp(10rem,22dvh,14rem)] flex-[1.35] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
         <div className="min-h-9 break-words text-right font-medium text-3xl sm:min-h-10 sm:text-4xl">
           {displayExpression}
         </div>
@@ -429,7 +429,7 @@ export function CalculatorWorkbench() {
           </p>
         ) : null}
 
-        <div className="mt-[clamp(0.75rem,2.2dvh,1.6rem)] min-h-[clamp(1.2rem,2.6dvh,2rem)] sm:mt-20 sm:min-h-24">
+        <div className="mt-[clamp(1.2rem,3dvh,2.4rem)] min-h-[clamp(2rem,4.5dvh,3.8rem)] sm:mt-20 sm:min-h-24">
           {shouldShowInWords ? (
             isInWordsOpen ? (
               <>
@@ -482,10 +482,10 @@ export function CalculatorWorkbench() {
         </p>
       ) : null}
 
-      <div className="h-[3.4rem]">
+      <div className="h-[3.8rem]">
         {isGstPanelOpen ? (
-          <div className="space-y-0.5 sm:space-y-2">
-            <div className="flex items-center gap-1">
+          <div className="space-y-1 sm:space-y-2">
+            <div className="flex items-center gap-2">
               <button
                 className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                 onClick={handleCloseGstPanel}
