@@ -626,10 +626,10 @@ export function CalculatorWorkbench() {
                     }
                     value={language}
                   >
-                    <SelectTrigger className="h-8 w-[150px] rounded-lg border-muted/60 bg-background/90 px-3 py-1 text-xs shadow-none sm:w-[165px] sm:text-sm">
+                    <SelectTrigger className="h-8 w-[180px] rounded-lg border-muted/60 bg-background/90 px-3 py-1 text-xs shadow-none sm:w-[190px] sm:text-sm">
                       <SelectValue placeholder="Select Language" />
                     </SelectTrigger>
-                    <SelectContent className="w-[150px] rounded-lg border-muted/60 sm:w-[165px]">
+                    <SelectContent className="w-[180px] rounded-lg border-muted/60 sm:w-[190px]">
                       <SelectItem value={LANGUAGE_SELECT_PLACEHOLDER_VALUE}>
                         Select Language
                       </SelectItem>
