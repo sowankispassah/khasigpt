@@ -189,7 +189,6 @@ export function CalculatorWorkbench() {
         return;
       }
       const boundedPosition = Math.max(0, Math.min(safePosition, input.value.length));
-      input.focus();
       input.setSelectionRange(boundedPosition, boundedPosition);
     });
   };
@@ -234,6 +233,7 @@ export function CalculatorWorkbench() {
   };
 
   const appendToExpression = (value: string) => {
+    expressionInputRef.current?.blur();
     if (isGstPanelOpen) {
       closeGstModeForInput();
     }
@@ -397,6 +397,7 @@ export function CalculatorWorkbench() {
   };
 
   const handleBackspace = () => {
+    expressionInputRef.current?.blur();
     if (isGstPanelOpen) {
       closeGstModeForInput();
     }
@@ -431,6 +432,7 @@ export function CalculatorWorkbench() {
   };
 
   const handleParentheses = () => {
+    expressionInputRef.current?.blur();
     if (isGstPanelOpen) {
       closeGstModeForInput();
     }
