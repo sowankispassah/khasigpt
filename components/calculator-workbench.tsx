@@ -30,6 +30,7 @@ const LANGUAGE_OPTIONS: Array<{
   { label: "English", value: "english" },
   { label: "Hindi", value: "hindi" },
 ];
+const CALCULATOR_LANGUAGE_STORAGE_KEY = "calculator.selectedLanguage";
 const GST_RATE_OPTIONS = [3, 5, 12, 18, 28] as const;
 
 function toExpressionValue(value: number) {
@@ -72,7 +73,7 @@ export function CalculatorWorkbench() {
   const [, setCaretRange] = useState({ start: 0, end: 0 });
   const caretRangeRef = useRef({ start: 0, end: 0 });
   const [hasEnteredData, setHasEnteredData] = useState(false);
-  const [language, setLanguage] = useState<NumberWordLanguage>("khasi");
+  const [language, setLanguage] = useState<NumberWordLanguage | "">("");
   const [isInWordsOpen, setIsInWordsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGstPanelOpen, setIsGstPanelOpen] = useState(false);
@@ -146,6 +147,9 @@ export function CalculatorWorkbench() {
     if (inWordsSource === null) {
       return null;
     }
+    if (language === "") {
+      return "Select Language";
+    }
     try {
       return convertNumberToWords(inWordsSource, language);
     } catch (conversionError) {
@@ -160,6 +164,26 @@ export function CalculatorWorkbench() {
       setHasEnteredData(true);
     }
   }, [expression, hasEnteredData, result]);
+
+  useEffect(() => {
+    const savedLanguage = window.localStorage.getItem(
+      CALCULATOR_LANGUAGE_STORAGE_KEY
+    );
+    if (
+      savedLanguage &&
+      LANGUAGE_OPTIONS.some((option) => option.value === savedLanguage)
+    ) {
+      setLanguage(savedLanguage as NumberWordLanguage);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (language === "") {
+      window.localStorage.removeItem(CALCULATOR_LANGUAGE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(CALCULATOR_LANGUAGE_STORAGE_KEY, language);
+  }, [language]);
 
   const updateCaretRange = (nextRange: { start: number; end: number }) => {
     caretRangeRef.current = nextRange;
@@ -186,6 +210,9 @@ export function CalculatorWorkbench() {
     requestAnimationFrame(() => {
       const input = expressionInputRef.current;
       if (!input) {
+        return;
+      }
+      if (document.activeElement !== input) {
         return;
       }
       const boundedPosition = Math.max(0, Math.min(safePosition, input.value.length));
@@ -582,10 +609,11 @@ export function CalculatorWorkbench() {
                   <select
                     className="cursor-pointer rounded-md border bg-background px-2 py-1 text-sm"
                     onChange={(event) =>
-                      setLanguage(event.target.value as NumberWordLanguage)
+                      setLanguage(event.target.value as NumberWordLanguage | "")
                     }
                     value={language}
                   >
+                    <option value="">Select Language</option>
                     {LANGUAGE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
