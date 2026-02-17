@@ -19,6 +19,13 @@ import {
   formatNumericResult,
   type NumberWordLanguage,
 } from "@/lib/calculator/number-to-words";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const LANGUAGE_OPTIONS: Array<{
@@ -30,6 +37,7 @@ const LANGUAGE_OPTIONS: Array<{
   { label: "English", value: "english" },
   { label: "Hindi", value: "hindi" },
 ];
+const LANGUAGE_SELECT_PLACEHOLDER_VALUE = "__select_language__" as const;
 const CALCULATOR_LANGUAGE_STORAGE_KEY = "calculator.selectedLanguage";
 const GST_RATE_OPTIONS = [3, 5, 12, 18, 28] as const;
 
@@ -73,7 +81,9 @@ export function CalculatorWorkbench() {
   const [, setCaretRange] = useState({ start: 0, end: 0 });
   const caretRangeRef = useRef({ start: 0, end: 0 });
   const [hasEnteredData, setHasEnteredData] = useState(false);
-  const [language, setLanguage] = useState<NumberWordLanguage | "">("");
+  const [language, setLanguage] = useState<
+    NumberWordLanguage | typeof LANGUAGE_SELECT_PLACEHOLDER_VALUE
+  >(LANGUAGE_SELECT_PLACEHOLDER_VALUE);
   const [isInWordsOpen, setIsInWordsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGstPanelOpen, setIsGstPanelOpen] = useState(false);
@@ -147,7 +157,7 @@ export function CalculatorWorkbench() {
     if (inWordsSource === null) {
       return null;
     }
-    if (language === "") {
+    if (language === LANGUAGE_SELECT_PLACEHOLDER_VALUE) {
       return "Select Language";
     }
     try {
@@ -178,7 +188,7 @@ export function CalculatorWorkbench() {
   }, []);
 
   useEffect(() => {
-    if (language === "") {
+    if (language === LANGUAGE_SELECT_PLACEHOLDER_VALUE) {
       window.localStorage.removeItem(CALCULATOR_LANGUAGE_STORAGE_KEY);
       return;
     }
@@ -606,20 +616,30 @@ export function CalculatorWorkbench() {
                 </p>
 
                 <div className="mt-0 flex items-center justify-end gap-2">
-                  <select
-                    className="cursor-pointer rounded-md border bg-background px-2 py-1 text-sm"
-                    onChange={(event) =>
-                      setLanguage(event.target.value as NumberWordLanguage | "")
+                  <Select
+                    onValueChange={(value) =>
+                      setLanguage(
+                        value as
+                          | NumberWordLanguage
+                          | typeof LANGUAGE_SELECT_PLACEHOLDER_VALUE
+                      )
                     }
                     value={language}
                   >
-                    <option value="">Select Language</option>
-                    {LANGUAGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="h-8 w-[150px] rounded-lg border-muted/60 bg-background/90 px-3 py-1 text-xs shadow-none sm:w-[165px] sm:text-sm">
+                      <SelectValue placeholder="Select Language" />
+                    </SelectTrigger>
+                    <SelectContent className="w-[150px] rounded-lg border-muted/60 sm:w-[165px]">
+                      <SelectItem value={LANGUAGE_SELECT_PLACEHOLDER_VALUE}>
+                        Select Language
+                      </SelectItem>
+                      {LANGUAGE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <button
                     aria-label="Close language selector"
                     className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border bg-background hover:bg-muted/70"
