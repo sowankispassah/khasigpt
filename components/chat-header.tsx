@@ -1,12 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { memo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useWindowSize } from "usehooks-ts";
 
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 
 import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
@@ -26,9 +27,25 @@ function PureChatHeader({
   isReadonly: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { open } = useSidebar();
+  const [isOpeningNewChat, setIsOpeningNewChat] = useState(false);
 
   const { width: windowWidth } = useWindowSize();
+
+  useEffect(() => {
+    setIsOpeningNewChat(false);
+  }, [pathname, searchParams]);
+
+  const handleNewChatClick = useCallback(() => {
+    if (isOpeningNewChat) {
+      return;
+    }
+    setIsOpeningNewChat(true);
+    startGlobalProgress();
+    router.push(`/chat?new=1&nonce=${Date.now()}`, { scroll: false });
+  }, [isOpeningNewChat, router]);
 
   return (
     <header className="sticky top-0 flex items-center gap-2 bg-background px-2 py-1.5 pr-[5rem] md:px-2 md:pr-[5rem]">
@@ -52,13 +69,14 @@ function PureChatHeader({
         {(!open || windowWidth < 768) && (
           <Button
             className="h-8 px-2 md:h-fit md:px-2"
-            onClick={() => {
-              router.push("/chat?new=1");
-            }}
+            disabled={isOpeningNewChat}
+            onClick={handleNewChatClick}
             variant="outline"
           >
             <PlusIcon />
-            <span className="md:sr-only">New Chat</span>
+            <span className="md:sr-only">
+              {isOpeningNewChat ? "Opening..." : "New Chat"}
+            </span>
           </Button>
         )}
       </div>

@@ -3,11 +3,11 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
 import { BookOpen, Calculator } from "lucide-react";
-import { type MouseEvent, useCallback, useEffect } from "react";
+import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { PlusIcon } from "@/components/icons";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
 import {
@@ -70,24 +70,92 @@ export function AppSidebar({
   const { setOpenMobile } = useSidebar();
   const { data: sessionData } = useSession();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
+  const [pendingNavigation, setPendingNavigation] = useState<
+    "home" | "chat" | "study" | "calculator" | null
+  >(null);
 
   const activeUser = sessionData?.user ?? user;
 
   useEffect(() => {
     // Close the mobile sidebar after navigation completes (avoid delaying URL change).
     setOpenMobile(false);
-  }, [pathname, setOpenMobile]);
-  const handleCalculatorClick = useCallback(
-    (event: MouseEvent<HTMLAnchorElement>) => {
-      if (
+    setPendingNavigation(null);
+  }, [pathname, searchParams, setOpenMobile]);
+
+  const shouldHandleClientNavigation = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) =>
+      !(
         event.defaultPrevented ||
         event.button !== 0 ||
         event.metaKey ||
         event.altKey ||
         event.ctrlKey ||
         event.shiftKey
-      ) {
+      ),
+    []
+  );
+
+  const navigateWithFeedback = useCallback(
+    (target: "home" | "chat" | "study" | "calculator", href: string) => {
+      if (pendingNavigation) {
+        return;
+      }
+
+      setPendingNavigation(target);
+      startGlobalProgress();
+      setOpenMobile(false);
+      router.push(href, { scroll: false });
+    },
+    [pendingNavigation, router, setOpenMobile]
+  );
+
+  const handleHomeClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const href = `${HOME_HREF}?new=1&nonce=${Date.now()}`;
+      navigateWithFeedback("home", href);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleNewChatClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const href = `${NEW_CHAT_HREF}&nonce=${Date.now()}`;
+      navigateWithFeedback("chat", href);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleNewStudyClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const href = `${NEW_STUDY_HREF}&nonce=${Date.now()}`;
+      navigateWithFeedback("study", href);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleCalculatorClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
         return;
       }
       event.preventDefault();
@@ -95,11 +163,9 @@ export function AppSidebar({
         setOpenMobile(false);
         return;
       }
-      startGlobalProgress();
-      setOpenMobile(false);
-      router.push("/calculator");
+      navigateWithFeedback("calculator", "/calculator");
     },
-    [pathname, router, setOpenMobile]
+    [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
   );
 
   return (
@@ -110,6 +176,7 @@ export function AppSidebar({
             <Link
               className="flex cursor-pointer flex-row items-center"
               href={HOME_HREF}
+              onClick={handleHomeClick}
             >
               <Image
                 alt="KhasiGPT logo"
@@ -120,7 +187,7 @@ export function AppSidebar({
                 width={24}
               />
               <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                KhasiGPT
+                {pendingNavigation === "home" ? "Opening..." : "KhasiGPT"}
               </span>
             </Link>
             <div className="md:hidden" />
@@ -132,9 +199,15 @@ export function AppSidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                <Link href={NEW_CHAT_HREF}>
+                <Link
+                  aria-disabled={pendingNavigation !== null}
+                  href={NEW_CHAT_HREF}
+                  onClick={handleNewChatClick}
+                >
                   <PlusIcon />
-                  <span>New chat</span>
+                  <span>
+                    {pendingNavigation === "chat" ? "Opening..." : "New chat"}
+                  </span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -154,10 +227,16 @@ export function AppSidebar({
                         <SidebarMenuItem>
                           <SidebarMenuButton asChild className="cursor-pointer text-sm">
                             <Link
+                              aria-disabled={pendingNavigation !== null}
                               href={NEW_STUDY_HREF}
+                              onClick={handleNewStudyClick}
                             >
                               <PlusIcon />
-                              <span>New Study</span>
+                              <span>
+                                {pendingNavigation === "study"
+                                  ? "Opening..."
+                                  : "New Study"}
+                              </span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -174,9 +253,17 @@ export function AppSidebar({
             {calculatorEnabled ? (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link href="/calculator" onClick={handleCalculatorClick}>
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href="/calculator"
+                    onClick={handleCalculatorClick}
+                  >
                     <Calculator />
-                    <span>Calculator</span>
+                    <span>
+                      {pendingNavigation === "calculator"
+                        ? "Opening..."
+                        : "Calculator"}
+                    </span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
