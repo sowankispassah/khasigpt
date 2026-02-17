@@ -142,7 +142,7 @@ function PureMessages({
     }
   }, [status, messagesContainerRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (mountedChatRef.current !== chatId) {
       mountedChatRef.current = chatId;
       setShowAllLoaded(false);
