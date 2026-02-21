@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
-
+import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,8 +18,6 @@ import {
   type DeactivateAccountState,
   deactivateAccountAction,
 } from "./actions";
-import { useTranslation } from "@/components/language-provider";
-import { LoaderIcon } from "@/components/icons";
 
 const initialState: DeactivateAccountState = { status: "idle" };
 
@@ -67,49 +66,49 @@ export function DeactivateAccountForm() {
           </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {translate("profile.deactivate.confirm_title", "Are you sure?")}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {translate(
-                  "profile.deactivate.confirm_description",
-                  "Your account will be disabled and you will be signed out."
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isPending}>
-                {translate("profile.deactivate.confirm_cancel", "Cancel")}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
-                disabled={isPending}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setOpen(false);
-                  formRef.current?.requestSubmit();
-                }}
-              >
-                {isPending ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin">
-                      <LoaderIcon size={16} />
-                    </span>
-                    <span>
-                      {translate(
-                        "profile.deactivate.confirm_action_pending",
-                        "Deactivating..."
-                      )}
-                    </span>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {translate("profile.deactivate.confirm_title", "Are you sure?")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {translate(
+                "profile.deactivate.confirm_description",
+                "Your account will be disabled and you will be signed out."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>
+              {translate("profile.deactivate.confirm_cancel", "Cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
+              disabled={isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                setOpen(false);
+                formRef.current?.requestSubmit();
+              }}
+            >
+              {isPending ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin">
+                    <LoaderIcon size={16} />
                   </span>
-                ) : (
-                  translate("profile.deactivate.confirm_action", "Deactivate")
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+                  <span>
+                    {translate(
+                      "profile.deactivate.confirm_action_pending",
+                      "Deactivating..."
+                    )}
+                  </span>
+                </span>
+              ) : (
+                translate("profile.deactivate.confirm_action", "Deactivate")
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

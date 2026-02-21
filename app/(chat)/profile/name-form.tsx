@@ -1,13 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useActionState, useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
-import {
-  type UpdateProfileNameState,
-  updateNameAction,
-} from "./actions";
+import { type UpdateProfileNameState, updateNameAction } from "./actions";
 
 const initialState: UpdateProfileNameState = { status: "idle" };
 
@@ -52,10 +49,10 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
   return (
     <form
       action={formAction}
-      className="rounded-lg border bg-card p-6 shadow-sm space-y-4"
+      className="space-y-4 rounded-lg border bg-card p-6 shadow-sm"
     >
       <div>
-        <h2 className="text-lg font-semibold">
+        <h2 className="font-semibold text-lg">
           {translate("profile.name.title", "Personal details")}
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -67,31 +64,31 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="profile-first-name">
+          <label className="font-medium text-sm" htmlFor="profile-first-name">
             {translate("profile.name.first_label", "First name")}
           </label>
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             id="profile-first-name"
             name="firstName"
+            onChange={(event) => setFirstName(event.target.value)}
             required
             type="text"
             value={firstName}
-            onChange={(event) => setFirstName(event.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="profile-last-name">
+          <label className="font-medium text-sm" htmlFor="profile-last-name">
             {translate("profile.name.last_label", "Last name")}
           </label>
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             id="profile-last-name"
             name="lastName"
+            onChange={(event) => setLastName(event.target.value)}
             required
             type="text"
             value={lastName}
-            onChange={(event) => setLastName(event.target.value)}
           />
         </div>
       </div>
@@ -108,7 +105,7 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
         ) : null}
       </div>
       <button
-        className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex cursor-pointer items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isPending}
         type="submit"
       >
@@ -117,9 +114,7 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
             <span className="h-4 w-4 animate-spin">
               <LoaderIcon size={16} />
             </span>
-            <span>
-              {translate("profile.name.saving", "Saving...")}
-            </span>
+            <span>{translate("profile.name.saving", "Saving...")}</span>
           </span>
         ) : (
           translate("profile.name.save_button", "Save changes")

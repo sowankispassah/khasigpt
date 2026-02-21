@@ -6,7 +6,7 @@ import postgres from "postgres";
 
 try {
   setDefaultResultOrder("ipv4first");
-} catch (error) {
+} catch (_error) {
   // setDefaultResultOrder isn't available on older Node versions; ignore in that case.
 }
 
@@ -38,6 +38,7 @@ const runMigrate = async () => {
   const connection = postgres(process.env.POSTGRES_URL, {
     max: 1,
     ssl: process.env.POSTGRES_URL.includes("sslmode") ? "require" : undefined,
+    onnotice: () => {},
   });
   const db = drizzle(connection);
 

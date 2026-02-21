@@ -11,6 +11,17 @@ export const DUMMY_PASSWORD =
   "$2b$10$CwTycUXWue0Thq9StjUM0uJ8/fy2s9kuNJP1s6FHX5eNUsiV6iKa2";
 
 export const TOKENS_PER_CREDIT = 100;
+export const DEFAULT_FREE_MESSAGES_PER_DAY = 3;
+export const CHAT_HISTORY_PAGE_SIZE = 60;
+export const FREE_MESSAGE_SETTINGS_KEY = "chat.freeMessages";
+export const FORUM_FEATURE_FLAG_KEY = "forum.enabled";
+export const CALCULATOR_FEATURE_FLAG_KEY = "calculator.enabled";
+export const IMAGE_GENERATION_FEATURE_FLAG_KEY = "image.generation.enabled";
+export const IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY =
+  "image.generation.filenamePrefix";
+export const IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY =
+  "image.prompt.translation.modelId";
+export const PRICING_PLAN_CACHE_TAG = "pricing-plans";
 
 export const DEFAULT_SUGGESTED_PROMPTS = [
   "What are the advantages of using Next.js?",
@@ -20,6 +31,22 @@ export const DEFAULT_SUGGESTED_PROMPTS = [
 ];
 
 export const RECOMMENDED_PRICING_PLAN_SETTING_KEY = "billing.recommendedPlanId";
+export const CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY = "chat.customKnowledge";
+export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
+export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
+export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";
+export const SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY =
+  "site.prelaunch.inviteOnly";
+export const SITE_COMING_SOON_CONTENT_SETTING_KEY = "site.comingSoon.content";
+export const SITE_COMING_SOON_TIMER_SETTING_KEY = "site.comingSoon.timer";
+export const PRELAUNCH_INVITE_COOKIE_NAME = "__prelaunch_invite_token";
+export const PRELAUNCH_INVITE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
+export const JOBS_FEATURE_FLAG_KEY = "chat.jobs.enabled";
+export const ICON_PROMPTS_SETTING_KEY = "home.iconPrompts";
+export const ICON_PROMPTS_ENABLED_SETTING_KEY = "home.iconPrompts.enabled";
+export const SUGGESTED_PROMPTS_ENABLED_SETTING_KEY =
+  "home.suggestedPrompts.enabled";
 
 export const DEFAULT_PRIVACY_POLICY = `
 Khasigpt is committed to safeguarding your privacy. This Privacy Policy explains what information we collect, how we use it, and the choices you have regarding your personal data.

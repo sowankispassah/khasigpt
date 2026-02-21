@@ -1,13 +1,24 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
-import equal from "fast-deep-equal";
 import { ArrowDownIcon } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
+import type { IconPromptAction } from "@/lib/icon-prompts";
+import type { JobCard } from "@/lib/jobs/types";
+import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
-import { useDataStream } from "./data-stream-provider";
-import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
+import { IconPromptActions } from "./icon-prompt-actions";
 import { LoaderIcon } from "./icons";
 import { PreviewMessage } from "./message";
 import { SuggestedActions } from "./suggested-actions";
@@ -25,8 +36,32 @@ type MessagesProps = {
   selectedModelId: string;
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   suggestedPrompts: string[];
+  iconPromptActions?: IconPromptAction[];
+  onIconPromptSelect?: (item: IconPromptAction) => void;
   selectedVisibilityType: VisibilityType;
+  isGeneratingImage?: boolean;
+  hasMoreHistory?: boolean;
+  isLoadingHistory?: boolean;
+  onLoadMoreHistory?: () => Promise<void>;
+  studyActions?: {
+    onView: (paper: StudyPaperCard) => void;
+    onAsk: (paper: StudyPaperCard) => void;
+    onQuiz: (paper: StudyPaperCard) => void;
+    onJumpToQuestionPaper?: (paperId: string) => void;
+    activePaperId?: string | null;
+    isQuizActive?: boolean;
+  };
+  jobActions?: {
+    onView: (job: JobCard) => void;
+    onAsk: (job: JobCard) => void;
+    activeJobId?: string | null;
+  };
+  header?: ReactNode;
+  greetingTitle?: string;
+  greetingSubtitle?: string;
 };
+
+const MAX_RENDERED_MESSAGES = 200;
 
 function PureMessages({
   chatId,
@@ -36,13 +71,34 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
-  selectedModelId,
+  selectedModelId: _selectedModelId,
   sendMessage,
   suggestedPrompts,
+  iconPromptActions = [],
+  onIconPromptSelect,
   selectedVisibilityType,
+  isGeneratingImage = false,
+  hasMoreHistory = false,
+  isLoadingHistory = false,
+  onLoadMoreHistory,
+  studyActions,
+  jobActions,
+  header,
+  greetingTitle,
+  greetingSubtitle,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
+  const votesByMessageId = useMemo(() => {
+    if (!votes) {
+      return null;
+    }
+    const map = new Map<string, Vote>();
+    for (const vote of votes) {
+      map.set(vote.messageId, vote);
+    }
+    return map;
+  }, [votes]);
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
@@ -52,10 +108,21 @@ function PureMessages({
   } = useMessages({
     status,
   });
+  const { translate } = useTranslation();
+  const [showAllLoaded, setShowAllLoaded] = useState(false);
   const mountedChatRef = useRef<string | null>(null);
+  const pendingInitialScrollChatIdRef = useRef<string | null>(null);
+  const initialPinDeadlineRef = useRef(0);
+  const userInterruptedInitialPinRef = useRef(false);
+  const isFetchingHistoryRef = useRef(false);
+  const hiddenCount = showAllLoaded
+    ? 0
+    : Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
+  const baseIndex = showAllLoaded ? 0 : hiddenCount;
+  const visibleMessages = showAllLoaded ? messages : messages.slice(hiddenCount);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
-      ? lastMessage.parts
+      ? (lastMessage.parts
           ?.map((part) => {
             if (part.type === "text") {
               return `text-${part.text?.length ?? 0}`;
@@ -65,10 +132,8 @@ function PureMessages({
             }
             return part.type;
           })
-          .join("|") ?? ""
+          .join("|") ?? "")
       : null;
-
-  useDataStream();
 
   useEffect(() => {
     if (status !== "ready" && status !== "streaming" && status !== "error") {
@@ -84,16 +149,146 @@ function PureMessages({
     }
   }, [status, messagesContainerRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (mountedChatRef.current !== chatId) {
       mountedChatRef.current = chatId;
-      if (messages.length > 0) {
-        requestAnimationFrame(() => {
-          scrollToBottom("auto");
+      setShowAllLoaded(false);
+      pendingInitialScrollChatIdRef.current = chatId;
+      initialPinDeadlineRef.current = Date.now() + 3500;
+      userInterruptedInitialPinRef.current = false;
+    }
+  }, [chatId]);
+
+  useLayoutEffect(() => {
+    if (pendingInitialScrollChatIdRef.current !== chatId) {
+      return;
+    }
+    if (messages.length === 0) {
+      return;
+    }
+
+    let rafId = 0;
+    const timeoutIds: number[] = [];
+    let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    let cancelled = false;
+    const markUserInterrupt = () => {
+      userInterruptedInitialPinRef.current = true;
+      pendingInitialScrollChatIdRef.current = null;
+    };
+
+    const forceScrollToBottom = () => {
+      if (cancelled) {
+        return;
+      }
+      if (userInterruptedInitialPinRef.current) {
+        return;
+      }
+      if (pendingInitialScrollChatIdRef.current !== chatId) {
+        return;
+      }
+
+      const container = messagesContainerRef.current;
+      const end = messagesEndRef.current;
+      if (!container) {
+        return;
+      }
+
+      // Prefer scrolling to the bottom sentinel. This is more resilient for
+      // text-only chats where late layout (markdown/code, fonts) can change height
+      // after the first frame.
+      if (end) {
+        try {
+          end.scrollIntoView({ block: "end" });
+        } catch {
+          // ignore
+        }
+      } else if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "auto",
         });
       }
+
+      // Fallback: ensure the container is at max scroll position.
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+
+      const isAtBottomNow =
+        container.scrollTop + container.clientHeight >=
+        container.scrollHeight - 6;
+
+      if (Date.now() >= initialPinDeadlineRef.current && isAtBottomNow) {
+        pendingInitialScrollChatIdRef.current = null;
+        return;
+      }
+
+      if (!isAtBottomNow) {
+        rafId = requestAnimationFrame(forceScrollToBottom);
+      }
+    };
+
+    // Run immediately in layout phase so first paint is already near bottom.
+    forceScrollToBottom();
+
+    const container = messagesContainerRef.current;
+    if (container) {
+      resizeObserver = new ResizeObserver(() => {
+        // Late layout shifts (markdown/code rendering) should keep us pinned.
+        forceScrollToBottom();
+      });
+      resizeObserver.observe(container);
+
+      mutationObserver = new MutationObserver(() => {
+        forceScrollToBottom();
+      });
+      mutationObserver.observe(container, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      container.addEventListener("wheel", markUserInterrupt, { passive: true });
+      container.addEventListener("touchstart", markUserInterrupt, {
+        passive: true,
+      });
     }
-  }, [chatId, messages.length, scrollToBottom]);
+
+    if (typeof document !== "undefined") {
+      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+      fonts?.ready?.then(() => {
+        forceScrollToBottom();
+      });
+    }
+
+    timeoutIds.push(
+      window.setTimeout(forceScrollToBottom, 120),
+      window.setTimeout(forceScrollToBottom, 360),
+      window.setTimeout(forceScrollToBottom, 800),
+      window.setTimeout(forceScrollToBottom, 1600),
+      window.setTimeout(
+        forceScrollToBottom,
+        Math.max(0, initialPinDeadlineRef.current - Date.now()) + 40
+      )
+    );
+
+    return () => {
+      cancelled = true;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      for (const id of timeoutIds) {
+        window.clearTimeout(id);
+      }
+      if (container) {
+        container.removeEventListener("wheel", markUserInterrupt);
+        container.removeEventListener("touchstart", markUserInterrupt);
+      }
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [chatId, messages.length, messagesContainerRef, messagesEndRef]);
 
   useEffect(() => {
     if (status === "streaming" && streamingSignature !== null && isAtBottom) {
@@ -103,16 +298,51 @@ function PureMessages({
     }
   }, [status, streamingSignature, isAtBottom, scrollToBottom]);
 
+  useEffect(() => {
+    if (!isGeneratingImage) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      scrollToBottom("auto");
+    });
+  }, [isGeneratingImage, scrollToBottom]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!onLoadMoreHistory || isLoadingHistory || isFetchingHistoryRef.current) {
+      return;
+    }
+    isFetchingHistoryRef.current = true;
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+    try {
+      await onLoadMoreHistory();
+      setShowAllLoaded(true);
+    } finally {
+      requestAnimationFrame(() => {
+        const nextScrollHeight = container?.scrollHeight ?? 0;
+        if (container) {
+          container.scrollTop =
+            prevScrollTop + (nextScrollHeight - prevScrollHeight);
+        }
+        isFetchingHistoryRef.current = false;
+      });
+    }
+  }, [isLoadingHistory, messagesContainerRef, onLoadMoreHistory]);
+
   if (messages.length === 0) {
     return (
       <div
-        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch flex-1 touch-pan-y overflow-y-scroll"
+        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll"
         ref={messagesContainerRef}
         style={{ overflowAnchor: "none" }}
       >
         <div className="mx-auto flex min-h-full w-full max-w-4xl flex-1 flex-col px-2 py-6 md:px-4">
+          {header ? (
+            <div className="w-full max-w-3xl self-center">{header}</div>
+          ) : null}
           <div className="flex flex-1 items-center justify-center">
-            <Greeting />
+            <Greeting title={greetingTitle} subtitle={greetingSubtitle} />
           </div>
           <div className="mt-10 w-full max-w-3xl self-center">
             <SuggestedActions
@@ -122,6 +352,14 @@ function PureMessages({
               sendMessage={sendMessage}
             />
           </div>
+          {iconPromptActions.length > 0 && onIconPromptSelect ? (
+            <div className="mt-6 w-full max-w-3xl self-center">
+              <IconPromptActions
+                items={iconPromptActions}
+                onSelect={onIconPromptSelect}
+              />
+            </div>
+          ) : null}
           <div className="h-0" ref={messagesEndRef} />
         </div>
       </div>
@@ -130,53 +368,115 @@ function PureMessages({
 
   return (
     <div
-      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch flex-1 touch-pan-y overflow-y-scroll"
+      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll"
       ref={messagesContainerRef}
       style={{ overflowAnchor: "none" }}
     >
-      <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
-        <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
-          {messages.map((message, index) => (
+      <div className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
+        <div className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
+          {header ? <div className="w-full">{header}</div> : null}
+          {hasMoreHistory && onLoadMoreHistory ? (
+            <div className="flex justify-center">
+              <button
+                className="cursor-pointer rounded-full border border-border bg-background px-4 py-2 text-xs text-muted-foreground transition hover:bg-muted disabled:cursor-default disabled:opacity-60"
+                disabled={isLoadingHistory}
+                onClick={handleLoadMore}
+                type="button"
+              >
+                {isLoadingHistory
+                  ? translate(
+                      "chat.history.loading",
+                      "Loading earlier messages..."
+                    )
+                  : translate(
+                      "chat.history.load_more",
+                      "Load earlier messages"
+                    )}
+              </button>
+            </div>
+          ) : null}
+
+          {hiddenCount > 0 ? (
+            <div className="flex justify-center">
+              <button
+                className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition hover:underline"
+                onClick={() => setShowAllLoaded(true)}
+                type="button"
+              >
+                {translate(
+                  "chat.history.show_older",
+                  "Show {count} earlier messages"
+                ).replace("{count}", String(hiddenCount))}
+              </button>
+            </div>
+          ) : null}
+
+          {visibleMessages.map((message, index) => {
+            const originalIndex = baseIndex + index;
+            return (
             <PreviewMessage
               chatId={chatId}
               isLoading={
-                status === "streaming" && messages.length - 1 === index
+                status === "streaming" && messages.length - 1 === originalIndex
               }
               isReadonly={isReadonly}
               key={message.id}
               message={message}
               regenerate={regenerate}
               requiresScrollPadding={
-                hasSentMessage && index === messages.length - 1
+                hasSentMessage && originalIndex === messages.length - 1
               }
               setMessages={setMessages}
-              vote={
-                votes
-                  ? votes.find((vote) => vote.messageId === message.id)
-                  : undefined
-              }
+              studyActions={studyActions}
+              jobActions={jobActions}
+              vote={votesByMessageId?.get(message.id)}
             />
-          ))}
+            );
+          })}
 
-          {status !== "ready" &&
-            status !== "streaming" &&
-            status !== "error" &&
-            isLastUserMessage && (
-            <div className="flex w-full items-start gap-2 md:gap-3 justify-start">
-              <div className="min-w-[1.5rem]" />
+          {isGeneratingImage && (
+            <div className="flex w-full items-start justify-start gap-2 md:gap-3">
               <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex size-4 items-center justify-center animate-spin text-muted-foreground">
-                    <LoaderIcon size={14} />
-                  </span>
+                <div className="relative h-60 w-60 overflow-hidden rounded-xl border bg-muted/60">
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 animate-pulse bg-muted/70"
+                  />
+                  <div className="relative z-10 flex h-full w-full items-center justify-center">
+                    <div className="flex items-center gap-2 rounded-full bg-background/85 px-3 py-1 text-muted-foreground text-xs shadow-sm">
+                      <span className="inline-flex size-4 animate-spin items-center justify-center">
+                        <LoaderIcon size={14} />
+                      </span>
+                      {translate("image.generate.loading", "Generating...")}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="min-h-[24px] min-w-[24px] shrink-0" ref={messagesEndRef} />
-        </ConversationContent>
-      </Conversation>
+          {status !== "ready" &&
+            status !== "streaming" &&
+            status !== "error" &&
+            isLastUserMessage && (
+              <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+                <div className="min-w-[1.5rem]" />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
+                      <LoaderIcon size={14} />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          <div
+            className="min-h-[24px] min-w-[24px] shrink-0"
+            ref={messagesEndRef}
+          />
+        </div>
+      </div>
 
       {!isAtBottom && (
         <button
@@ -192,35 +492,4 @@ function PureMessages({
   );
 }
 
-export const Messages = memo(PureMessages, (prevProps, nextProps) => {
-  if (prevProps.isArtifactVisible && nextProps.isArtifactVisible) {
-    return true;
-  }
-
-  if (prevProps.status !== nextProps.status) {
-    return false;
-  }
-  if (prevProps.selectedModelId !== nextProps.selectedModelId) {
-    return false;
-  }
-  if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType) {
-    return false;
-  }
-  if (prevProps.messages.length !== nextProps.messages.length) {
-    return false;
-  }
-  if (!equal(prevProps.messages, nextProps.messages)) {
-    return false;
-  }
-  if (!equal(prevProps.votes, nextProps.votes)) {
-    return false;
-  }
-  if (
-    (prevProps.suggestedPrompts ?? []).join("||") !==
-    (nextProps.suggestedPrompts ?? []).join("||")
-  ) {
-    return false;
-  }
-
-  return true;
-});
+export const Messages = memo(PureMessages);
