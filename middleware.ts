@@ -43,6 +43,7 @@ const API_RATE_LIMIT = {
 const API_RATE_LIMIT_EXEMPT_PATHS = new Set([
   "/api/activity/heartbeat",
   "/api/public/site-launch",
+  "/api/public/session-role",
 ]);
 const SESSION_COOKIE_PREFIXES = [
   "__Secure-authjs.session-token",
@@ -51,6 +52,7 @@ const SESSION_COOKIE_PREFIXES = [
   "next-auth.session-token",
 ];
 const SITE_STATUS_API_PATH = "/api/public/site-launch";
+const SITE_SESSION_ROLE_API_PATH = "/api/public/session-role";
 const SITE_COMING_SOON_PATH = "/coming-soon";
 const SITE_MAINTENANCE_PATH = "/maintenance";
 const SITE_STATUS_CACHE_WINDOW_MS = 15 * 1000;
@@ -207,6 +209,25 @@ function shouldSkipApiRateLimit(pathname: string) {
   return API_RATE_LIMIT_EXEMPT_PATHS.has(pathname);
 }
 
+function hasSessionCookie(request: NextRequest) {
+  const directSessionCookie =
+    request.cookies.get("__Secure-authjs.session-token") ??
+    request.cookies.get("authjs.session-token") ??
+    request.cookies.get("__Secure-next-auth.session-token") ??
+    request.cookies.get("next-auth.session-token");
+
+  if (directSessionCookie) {
+    return true;
+  }
+
+  return request.cookies.getAll().some((cookie) =>
+    SESSION_COOKIE_PREFIXES.some(
+      (prefix) =>
+        cookie.name === prefix || cookie.name.startsWith(`${prefix}.`)
+    )
+  );
+}
+
 function isPageNavigationRequest(request: NextRequest) {
   return (
     (request.method === "GET" || request.method === "HEAD") &&
@@ -284,6 +305,52 @@ async function resolveSiteStatus(
   }
 }
 
+async function resolveIsAdmin(request: NextRequest) {
+  const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+  if (authSecret) {
+    const token = await getToken({ req: request, secret: authSecret }).catch(
+      () => null
+    );
+
+    if (token?.role === "admin") {
+      return true;
+    }
+
+    if (token?.role && token.role !== "admin") {
+      return false;
+    }
+  }
+
+  if (!hasSessionCookie(request)) {
+    return false;
+  }
+
+  const roleUrl = request.nextUrl.clone();
+  roleUrl.pathname = SITE_SESSION_ROLE_API_PATH;
+  roleUrl.search = "";
+
+  try {
+    const response = await fetchWithTimeout(roleUrl.toString(), {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        cookie: request.headers.get("cookie") ?? "",
+      },
+      cache: "no-store",
+    });
+
+    if (!response || !response.ok) {
+      return false;
+    }
+
+    const body = (await response.json()) as { role?: unknown } | null;
+    return body?.role === "admin";
+  } catch {
+    return false;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
@@ -305,11 +372,7 @@ export async function middleware(request: NextRequest) {
   ) {
     const pathname = request.nextUrl.pathname;
     const siteStatus = await resolveSiteStatus(request);
-    const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-    const token = authSecret
-      ? await getToken({ req: request, secret: authSecret })
-      : null;
-    const isAdmin = token?.role === "admin";
+    const isAdmin = await resolveIsAdmin(request);
 
     if (!isAdmin && siteStatus.underMaintenance && pathname !== SITE_MAINTENANCE_PATH) {
       const landingUrl = request.nextUrl.clone();
