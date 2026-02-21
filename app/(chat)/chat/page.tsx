@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
 import { ModelConfigProvider } from "@/components/model-config-provider";
@@ -8,11 +8,14 @@ import { loadChatModels } from "@/lib/ai/models";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getAppSetting, listLanguagesWithSettings } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -23,7 +26,7 @@ import { generateUUID } from "@/lib/utils";
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: Promise<{ mode?: string }>;
+  searchParams?: Promise<{ mode?: string; jobId?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const cookieStore = await cookies();
@@ -42,6 +45,7 @@ export default async function Page({
     customKnowledgeSetting,
     documentUploadsSetting,
     studyModeSetting,
+    jobsModeSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
@@ -51,6 +55,7 @@ export default async function Page({
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+    getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
       userId: session.user.id,
       userRole: session.user.role,
@@ -97,16 +102,35 @@ export default async function Page({
     studyModeMode,
     session.user.role
   );
+  const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
+  const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
   const requestedMode =
     typeof resolvedSearchParams?.mode === "string"
       ? resolvedSearchParams.mode
       : null;
+  const requestedJobId =
+    typeof resolvedSearchParams?.jobId === "string" &&
+    resolvedSearchParams.jobId.trim().length > 0
+      ? resolvedSearchParams.jobId.trim()
+      : null;
   const isStudyMode = requestedMode === "study";
+  const isJobsMode = requestedMode === "jobs";
 
   if (isStudyMode && !studyModeEnabled) {
     redirect("/chat");
   }
-  const chatMode = isStudyMode ? "study" : "default";
+  if (isJobsMode && !jobsModeEnabled) {
+    notFound();
+  }
+  const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
+  const initialJobEntry =
+    chatMode === "jobs" && requestedJobId
+      ? await getJobPostingById({
+          id: requestedJobId,
+          includeInactive: false,
+        })
+      : null;
+  const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)
     .map((language) => ({
@@ -141,6 +165,7 @@ export default async function Page({
         documentUploadsEnabled={documentUploadsEnabled}
         initialChatLanguage={initialChatLanguage}
         initialChatModel={fallbackModelId}
+        initialJobContext={initialJobContext}
         initialMessages={[]}
         initialHasMoreHistory={false}
         initialOldestMessageAt={null}
@@ -148,8 +173,8 @@ export default async function Page({
         isReadonly={false}
         key={id}
         languageSettings={activeLanguageSettings}
-        suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
-        iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
+        suggestedPrompts={chatMode === "default" ? suggestedPrompts : []}
+        iconPromptActions={chatMode === "default" ? iconPromptActions : []}
       />
     </ModelConfigProvider>
   );

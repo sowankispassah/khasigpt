@@ -31,6 +31,7 @@ import {
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   isProductionEnvironment,
+  JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
@@ -53,6 +54,17 @@ import { ChatSDKError } from "@/lib/errors";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
+import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import {
+  JOBS_CHAT_MODE,
+  JOB_POSTING_RUNTIME_CONTEXT_CHARS,
+  getJobPostingEntryById,
+  listActiveJobPostingIdsForModel,
+  listJobPostings,
+  listStudyPapersForJob,
+  toJobCard,
+} from "@/lib/jobs/service";
+import type { JobCard } from "@/lib/jobs/types";
 import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
@@ -77,6 +89,7 @@ import {
   resolveStudyFilters,
   toStudyCard,
 } from "@/lib/study/service";
+import type { QuestionPaperRecord } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
@@ -129,6 +142,8 @@ const CHAT_RATE_LIMIT = {
   windowMs: ONE_MINUTE,
 };
 const STUDY_CONTEXT_MAX_CHARS = QUESTION_PAPER_RUNTIME_CONTEXT_CHARS;
+const JOBS_CONTEXT_MAX_CHARS = JOB_POSTING_RUNTIME_CONTEXT_CHARS;
+const JOBS_STUDY_CONTEXT_MAX_CHARS = 60_000;
 const rawContextMessageLimit = Number.parseInt(
   process.env.CHAT_CONTEXT_MESSAGE_LIMIT ?? "120",
   10
@@ -246,6 +261,90 @@ function findRecentReferencedQuestionNumber(messages: ChatMessage[]): number | n
   return null;
 }
 
+type JobsIntent = "job_detail" | "exam_prep" | "answer_help";
+
+function detectJobsIntent(text: string): JobsIntent {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return "job_detail";
+  }
+
+  const answerHelpPattern =
+    /\b(answer|solution|solve|explain( this| why)?|doubt|correct option|which option|just answer|final answer)\b/;
+  if (answerHelpPattern.test(normalized)) {
+    return "answer_help";
+  }
+
+  const examPrepPattern =
+    /\b(exam|syllabus|pattern|expected question|what type of question|mock|practice|topic|preparation|previous year|past year)\b/;
+  if (examPrepPattern.test(normalized)) {
+    return "exam_prep";
+  }
+
+  return "job_detail";
+}
+
+function wantsDirectExamAnswer(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return /\b(just answer|only answer|direct answer|final answer)\b/.test(
+    normalized
+  );
+}
+
+async function resolveStudyPaperContextText({
+  paper,
+  maxChars,
+}: {
+  paper: QuestionPaperRecord;
+  maxChars: number;
+}) {
+  const paperContentRaw =
+    typeof paper.content === "string" ? paper.content.trim() : "";
+  const hasPlaceholderContent =
+    paperContentRaw.startsWith("Question paper uploaded") ||
+    paperContentRaw.length === 0;
+  let resolvedPaperContent = paperContentRaw;
+
+  if (
+    hasPlaceholderContent &&
+    paper.sourceUrl &&
+    typeof paper.sourceUrl === "string"
+  ) {
+    try {
+      const url = paper.sourceUrl;
+      const lowerUrl = url.toLowerCase();
+      const mediaType = lowerUrl.endsWith(".docx")
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : lowerUrl.endsWith(".xlsx")
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "application/pdf";
+      const parsed = await extractDocumentText(
+        {
+          name: paper.title ?? "question-paper",
+          url,
+          mediaType,
+        },
+        { maxTextChars: maxChars }
+      );
+      resolvedPaperContent = parsed.text.trim();
+    } catch (error) {
+      console.warn("Failed to extract linked study paper content", error);
+    }
+  }
+
+  if (!resolvedPaperContent.length) {
+    return "";
+  }
+
+  return resolvedPaperContent.length > maxChars
+    ? `${resolvedPaperContent.slice(0, maxChars)}\n[Content truncated]`
+    : resolvedPaperContent;
+}
+
 async function enforceChatRateLimit(
   request: Request
 ): Promise<Response | null> {
@@ -306,6 +405,7 @@ export async function POST(request: Request) {
       chatMode: chatModeInput,
       studyPaperId,
       studyQuizActive,
+      jobPostingId,
     }: {
       id: string;
       message: ChatMessage;
@@ -313,9 +413,10 @@ export async function POST(request: Request) {
       selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
-      chatMode?: "default" | "study";
+      chatMode?: "default" | "study" | "jobs";
       studyPaperId?: string | null;
       studyQuizActive?: boolean;
+      jobPostingId?: string | null;
     } = requestBody;
 
     const session = await auth();
@@ -342,12 +443,14 @@ export async function POST(request: Request) {
       customKnowledgeSetting,
       documentUploadsSetting,
       studyModeSetting,
+      jobsModeSetting,
     ] = await Promise.all([
       loadFreeMessageSettings(),
       getModelRegistry(),
       getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
       getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
     ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
@@ -412,8 +515,14 @@ export async function POST(request: Request) {
       studyModeMode,
       session.user.role
     );
+    const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
+    const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
     const requestedChatMode =
-      chatModeInput === STUDY_CHAT_MODE ? STUDY_CHAT_MODE : "default";
+      chatModeInput === STUDY_CHAT_MODE
+        ? STUDY_CHAT_MODE
+        : chatModeInput === JOBS_CHAT_MODE
+          ? JOBS_CHAT_MODE
+          : "default";
 
     const chat = await getChatById({ id });
     const resolvedChatMode = chat?.mode ?? requestedChatMode;
@@ -422,6 +531,12 @@ export async function POST(request: Request) {
       return new ChatSDKError(
         "not_found:chat",
         "Study mode is disabled"
+      ).toResponse();
+    }
+    if (resolvedChatMode === JOBS_CHAT_MODE && !jobsModeEnabled) {
+      return new ChatSDKError(
+        "not_found:chat",
+        "Jobs mode is disabled"
       ).toResponse();
     }
 
@@ -467,11 +582,93 @@ export async function POST(request: Request) {
       }
     }
 
+    const normalizedJobPostingId =
+      typeof jobPostingId === "string" && jobPostingId.trim().length > 0
+        ? jobPostingId.trim()
+        : null;
     const normalizedStudyPaperId =
       typeof studyPaperId === "string" && studyPaperId.trim().length > 0
         ? studyPaperId.trim()
         : null;
     const isStudyQuizActive = Boolean(studyQuizActive);
+
+    const buildJobsResponse = async ({
+      text,
+      cards,
+    }: {
+      text?: string;
+      cards?: JobCard[];
+    }) => {
+      const createdAt = new Date();
+      const assistantMessageId = generateUUID();
+      const assistantParts: ChatMessage["parts"] = [];
+
+      if (text) {
+        assistantParts.push({ type: "text", text });
+      }
+      if (cards && cards.length > 0) {
+        assistantParts.push({
+          type: "data-jobCards",
+          data: { jobs: cards },
+        } as ChatMessage["parts"][number]);
+      }
+
+      await saveMessages({
+        messages: [
+          {
+            chatId: id,
+            id: message.id,
+            role: "user",
+            parts: message.parts,
+            attachments: [],
+            createdAt: new Date(),
+          },
+          {
+            chatId: id,
+            id: assistantMessageId,
+            role: "assistant",
+            parts: assistantParts,
+            attachments: [],
+            createdAt,
+          },
+        ],
+      });
+
+      const stream = createUIMessageStream<ChatMessage>({
+        execute: ({ writer }) => {
+          writer.write({
+            type: "start",
+            messageId: assistantMessageId,
+            messageMetadata: { createdAt: createdAt.toISOString() },
+          });
+          writer.write({ type: "start-step" });
+          let textIndex = 0;
+          for (const part of assistantParts) {
+            if (part.type === "text") {
+              const textId = `text-${textIndex}`;
+              textIndex += 1;
+              writer.write({ type: "text-start", id: textId });
+              writer.write({ type: "text-delta", id: textId, delta: part.text });
+              writer.write({ type: "text-end", id: textId });
+              continue;
+            }
+            if (part.type === "data-jobCards") {
+              writer.write({
+                type: "data-jobCards",
+                data: part.data,
+              });
+            }
+          }
+          writer.write({ type: "finish-step" });
+          writer.write({ type: "finish" });
+        },
+      });
+
+      return createUIMessageStreamResponse({
+        stream,
+        headers: STREAM_HEADERS,
+      });
+    };
 
     const buildStudyResponse = async ({
       text,
@@ -566,8 +763,76 @@ export async function POST(request: Request) {
       });
     };
 
+    const jobPostingIdsForModel =
+      resolvedChatMode === JOBS_CHAT_MODE
+        ? await listActiveJobPostingIdsForModel({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+          })
+        : null;
+    const implicitJobPostingId =
+      !normalizedJobPostingId &&
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      jobPostingIdsForModel &&
+      jobPostingIdsForModel.length === 1
+        ? jobPostingIdsForModel[0]
+        : null;
+    const effectiveJobPostingId =
+      normalizedJobPostingId ?? implicitJobPostingId;
+    const jobEntry =
+      resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
+        ? await getJobPostingEntryById({ id: effectiveJobPostingId })
+        : null;
+    const jobContentRaw =
+      typeof jobEntry?.content === "string" ? jobEntry.content.trim() : "";
+    const hasJobPlaceholderContent =
+      jobContentRaw.startsWith("Job posting uploaded") || jobContentRaw.length === 0;
+    let resolvedJobContent = jobContentRaw;
+
+    if (
+      hasJobPlaceholderContent &&
+      jobEntry?.sourceUrl &&
+      typeof jobEntry.sourceUrl === "string"
+    ) {
+      try {
+        const url = jobEntry.sourceUrl;
+        const lowerUrl = url.toLowerCase();
+        const isDocx = lowerUrl.endsWith(".docx");
+        const isXlsx = lowerUrl.endsWith(".xlsx");
+        const isPdf = lowerUrl.endsWith(".pdf");
+        if (isDocx || isXlsx || isPdf) {
+          const mediaType = isDocx
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : isXlsx
+              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : "application/pdf";
+          const parsed = await extractDocumentText(
+            {
+              name: jobEntry.title ?? "job-posting",
+              url,
+              mediaType,
+            },
+            { maxTextChars: JOBS_CONTEXT_MAX_CHARS }
+          );
+          resolvedJobContent = parsed.text.trim();
+        }
+      } catch (error) {
+        console.warn("Failed to extract job posting content", error);
+      }
+    }
+
+    const jobsContextText =
+      resolvedJobContent.length > 0
+        ? [
+            "Job posting content:",
+            resolvedJobContent.length > JOBS_CONTEXT_MAX_CHARS
+              ? `${resolvedJobContent.slice(0, JOBS_CONTEXT_MAX_CHARS)}\n[Content truncated]`
+              : resolvedJobContent,
+          ].join("\n\n")
+        : "";
+
     const studyPaperIdsForModel =
-      resolvedChatMode === STUDY_CHAT_MODE
+      resolvedChatMode === STUDY_CHAT_MODE || resolvedChatMode === JOBS_CHAT_MODE
         ? await listActiveQuestionPaperIdsForModel({
             modelConfigId: modelConfig.id,
             modelKey: modelConfig.key,
@@ -629,6 +894,129 @@ export async function POST(request: Request) {
               : resolvedStudyContent,
           ].join("\n\n")
         : "";
+
+    const jobsUserText =
+      resolvedChatMode === JOBS_CHAT_MODE ? getTextFromMessage(message).trim() : "";
+    const jobsIntent: JobsIntent | null =
+      resolvedChatMode === JOBS_CHAT_MODE ? detectJobsIntent(jobsUserText) : null;
+    const jobsDirectAnswerRequested =
+      resolvedChatMode === JOBS_CHAT_MODE && jobsIntent === "answer_help"
+        ? wantsDirectExamAnswer(jobsUserText)
+        : false;
+    const canUseSelectedJobPosting =
+      resolvedChatMode !== JOBS_CHAT_MODE ||
+      !effectiveJobPostingId ||
+      (jobPostingIdsForModel ?? []).includes(effectiveJobPostingId);
+
+    let jobsLinkedStudyPapers: QuestionPaperRecord[] = [];
+    let jobsLinkedStudySource: "exact" | "exam_role" | "tags" | "none" = "none";
+    let jobsLinkedStudyContextText = "";
+
+    const shouldResolveJobStudyLinking =
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      canUseSelectedJobPosting &&
+      Boolean(effectiveJobPostingId) &&
+      (jobsIntent === "exam_prep" || jobsIntent === "answer_help");
+
+    if (shouldResolveJobStudyLinking && effectiveJobPostingId) {
+      const linkResult = await listStudyPapersForJob({
+        jobPostingId: effectiveJobPostingId,
+        limit: 6,
+      });
+      const allowedStudyIds = new Set(studyPaperIdsForModel ?? []);
+      const papersForModel =
+        allowedStudyIds.size > 0
+          ? linkResult.papers.filter((paper) => allowedStudyIds.has(paper.id))
+          : linkResult.papers;
+
+      jobsLinkedStudyPapers = papersForModel.slice(0, 4);
+      jobsLinkedStudySource =
+        jobsLinkedStudyPapers.length > 0 ? linkResult.source : "none";
+
+      if (jobsLinkedStudyPapers.length > 0) {
+        const maxPapers = Math.min(jobsLinkedStudyPapers.length, 3);
+        const perPaperLimit = Math.max(
+          Math.floor(JOBS_STUDY_CONTEXT_MAX_CHARS / Math.max(maxPapers, 1)),
+          8_000
+        );
+
+        const blocks: string[] = [];
+        for (const paper of jobsLinkedStudyPapers.slice(0, 3)) {
+          const excerpt = await resolveStudyPaperContextText({
+            paper,
+            maxChars: perPaperLimit,
+          });
+          if (!excerpt) {
+            continue;
+          }
+
+          blocks.push(
+            [
+              `Paper: ${paper.title}`,
+              `Exam/Role/Year: ${paper.exam} / ${paper.role} / ${
+                paper.year > 0 ? paper.year : "Unknown"
+              }`,
+              excerpt,
+            ].join("\n")
+          );
+        }
+
+        if (blocks.length > 0) {
+          const mappedPapersSummary = jobsLinkedStudyPapers
+            .slice(0, 4)
+            .map((paper) =>
+              `${paper.title} (${paper.exam} / ${paper.role}${
+                paper.year > 0 ? ` / ${paper.year}` : ""
+              })`
+            )
+            .join("\n- ");
+
+          jobsLinkedStudyContextText = [
+            "Matched study papers for the selected job:",
+            `- ${mappedPapersSummary}`,
+            "Use the following excerpts for exam-prep and answer-help requests:",
+            blocks.join("\n\n---\n\n"),
+          ].join("\n\n");
+        }
+      }
+    }
+
+    if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
+      const availableIds = jobPostingIdsForModel ?? [];
+      const jobs = await listJobPostings({ includeInactive: false });
+      const visibleJobs =
+        availableIds.length > 0
+          ? jobs.filter((job) => availableIds.includes(job.id))
+          : jobs;
+
+      if (visibleJobs.length === 0) {
+        return buildJobsResponse({
+          text: "No job postings are available yet. Please ask an admin to upload jobs.",
+        });
+      }
+
+      if (visibleJobs.length === 1) {
+        return buildJobsResponse({
+          text: "Here is the available job posting.",
+          cards: visibleJobs.map(toJobCard),
+        });
+      }
+
+      return buildJobsResponse({
+        text: "I found multiple job postings. Select one first, then ask your question.",
+        cards: visibleJobs.slice(0, 12).map(toJobCard),
+      });
+    }
+
+    if (resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId) {
+      const availableIds = jobPostingIdsForModel ?? [];
+      if (!availableIds.includes(effectiveJobPostingId)) {
+        return new ChatSDKError(
+          "not_found:chat",
+          "Job posting not found or unavailable."
+        ).toResponse();
+      }
+    }
 
     if (resolvedChatMode === STUDY_CHAT_MODE && !normalizedStudyPaperId) {
       const studyText = getTextFromMessage(message).trim();
@@ -1076,6 +1464,40 @@ export async function POST(request: Request) {
         },
       ];
     }
+    if (resolvedChatMode === JOBS_CHAT_MODE && jobsIntent === "exam_prep") {
+      if (jobsLinkedStudyPapers.length > 0) {
+        const linkedTitles = jobsLinkedStudyPapers
+          .slice(0, 4)
+          .map(
+            (paper) =>
+              `${paper.title} (${paper.exam} / ${paper.role}${
+                paper.year > 0 ? ` / ${paper.year}` : ""
+              })`
+          )
+          .join("\n- ");
+        modelParts = [
+          ...modelParts,
+          {
+            type: "text" as const,
+            text: [
+              "Use these matched study papers while answering exam-prep requests:",
+              `- ${linkedTitles}`,
+            ].join("\n"),
+          },
+        ];
+      } else {
+        modelParts = [
+          ...modelParts,
+          {
+            type: "text" as const,
+            text: [
+              "No matched study paper was found for this selected job.",
+              "Provide model-generated expected exam questions and clearly label the output as model-generated guidance.",
+            ].join("\n"),
+          },
+        ];
+      }
+    }
     const { longitude, latitude, city, country } = geolocation(request);
 
     const requestHints: RequestHints = {
@@ -1116,6 +1538,33 @@ export async function POST(request: Request) {
       resolvedChatMode === STUDY_CHAT_MODE && isStudyQuizActive
         ? "Quiz mode is active. Ask one question at a time from the selected paper, wait for the user's answer, then provide feedback and a brief explanation grounded in the paper. Keep score within this session."
         : "",
+      resolvedChatMode === JOBS_CHAT_MODE
+        ? "You are in Jobs mode. Use only the uploaded job posting documents as the primary source for eligibility, responsibilities, requirements, and role details."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
+        ? "Answer using the selected job posting. If a detail is not present in the posting, say you don't know instead of guessing."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE && jobsIntent === "exam_prep"
+        ? "The user is asking exam-prep questions for the selected job. Prefer matched study papers as the source for expected question types, preparation topics, and exam strategy."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      jobsIntent === "exam_prep" &&
+      jobsLinkedStudySource === "none"
+        ? "No matched study papers were found for this job. Provide model-generated exam guidance and clearly state that the suggestions are model-generated."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE && jobsIntent === "answer_help"
+        ? "The user is asking for answer help. Use a cautious tutoring style: explain reasoning first, then provide a direct final answer only when explicitly requested and confidence is high."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      jobsIntent === "answer_help" &&
+      jobsDirectAnswerRequested
+        ? "The user explicitly asked for a direct answer. Provide the answer first only if confidence is high, then add a short explanation."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      jobsIntent === "answer_help" &&
+      !jobsDirectAnswerRequested
+        ? "Do not jump straight to final answers. Start with explanation, steps, and checks."
+        : "",
     ].filter(Boolean);
     const systemInstruction =
       systemInstructionParts.length > 0
@@ -1145,9 +1594,10 @@ export async function POST(request: Request) {
     };
 
     const fileSearchStoreName = getGeminiFileSearchStoreName();
-    const allowStudyFileSearch = resolvedChatMode === STUDY_CHAT_MODE;
+    const allowModeSpecificFileSearch =
+      resolvedChatMode === STUDY_CHAT_MODE || resolvedChatMode === JOBS_CHAT_MODE;
     const canUseGeminiFileSearch =
-      (customKnowledgeEnabled || allowStudyFileSearch) &&
+      (customKnowledgeEnabled || allowModeSpecificFileSearch) &&
       modelConfig.provider === "google" &&
       typeof fileSearchStoreName === "string" &&
       supportsGeminiFileSearchModel(modelConfig.providerModelId);
@@ -1155,16 +1605,34 @@ export async function POST(request: Request) {
     const activeEntryIds = canUseGeminiFileSearch
       ? resolvedChatMode === STUDY_CHAT_MODE
         ? studyPaperIdsForModel ?? []
+        : resolvedChatMode === JOBS_CHAT_MODE
+          ? Array.from(
+              new Set([
+                ...(jobPostingIdsForModel ?? []),
+                ...(studyPaperIdsForModel ?? []),
+              ])
+            )
         : await listActiveRagEntryIdsForModel({
             modelConfigId: modelConfig.id,
             modelKey: modelConfig.key,
           })
       : [];
+    const jobsLinkedStudyPaperIds =
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      (jobsIntent === "exam_prep" || jobsIntent === "answer_help")
+        ? jobsLinkedStudyPapers.map((paper) => paper.id)
+        : [];
     const filteredEntryIds =
       resolvedChatMode === STUDY_CHAT_MODE
         ? effectiveStudyPaperId
           ? [effectiveStudyPaperId]
           : []
+        : resolvedChatMode === JOBS_CHAT_MODE
+          ? effectiveJobPostingId
+            ? Array.from(
+                new Set([effectiveJobPostingId, ...jobsLinkedStudyPaperIds])
+              )
+            : []
         : activeEntryIds;
 
     const metadataFilter =
@@ -1204,6 +1672,15 @@ export async function POST(request: Request) {
     const shouldAttachStudyContext =
       studyContextText &&
       (!useGeminiFileSearch || studyEntry?.embeddingStatus !== "ready");
+    const shouldAttachJobsContext =
+      jobsContextText &&
+      (!useGeminiFileSearch || jobEntry?.embeddingStatus !== "ready");
+    const jobsLinkedStudyEmbeddingsReady =
+      jobsLinkedStudyPapers.length > 0 &&
+      jobsLinkedStudyPapers.every((paper) => paper.embeddingStatus === "ready");
+    const shouldAttachJobsLinkedStudyContext =
+      jobsLinkedStudyContextText &&
+      (!useGeminiFileSearch || !jobsLinkedStudyEmbeddingsReady);
 
     if (shouldAttachStudyContext) {
       modelParts = [
@@ -1211,6 +1688,24 @@ export async function POST(request: Request) {
         {
           type: "text" as const,
           text: studyContextText,
+        },
+      ];
+    }
+    if (shouldAttachJobsContext) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: jobsContextText,
+        },
+      ];
+    }
+    if (shouldAttachJobsLinkedStudyContext) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: jobsLinkedStudyContextText,
         },
       ];
     }

@@ -193,6 +193,16 @@ function isValidUUID(value: string): boolean {
   return UUID_REGEX.test(value);
 }
 
+function getErrorCause(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    if (message.length > 0) {
+      return message;
+    }
+  }
+  return fallback;
+}
+
 function maskUserIdentifier(identifier: string | null | undefined): string {
   const raw = identifier?.trim() ?? "";
   const base = raw.includes("@")
@@ -742,8 +752,11 @@ export async function saveChat({
       visibility,
       mode,
     });
-  } catch (_error) {
-    throw new ChatSDKError("bad_request:database", "Failed to save chat");
+  } catch (error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      getErrorCause(error, "Failed to save chat")
+    );
   }
 }
 
@@ -925,10 +938,10 @@ export async function getChatsByUserId({
       chats: hasMore ? filteredChats.slice(0, limit) : filteredChats,
       hasMore,
     };
-  } catch (_error) {
+  } catch (error) {
     throw new ChatSDKError(
       "bad_request:database",
-      "Failed to get chats by user id"
+      getErrorCause(error, "Failed to get chats by user id")
     );
   }
 }
@@ -975,10 +988,10 @@ export async function getChatByUserIdAndMode({
       .limit(1);
 
     return selectedChat ?? null;
-  } catch (_error) {
+  } catch (error) {
     throw new ChatSDKError(
       "bad_request:database",
-      "Failed to get chat by user and mode"
+      getErrorCause(error, "Failed to get chat by user and mode")
     );
   }
 }

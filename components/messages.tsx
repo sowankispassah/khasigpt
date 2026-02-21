@@ -1,5 +1,6 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import {
   memo,
   useCallback,
@@ -9,11 +10,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactNode } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
+import type { JobCard } from "@/lib/jobs/types";
 import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { Greeting } from "./greeting";
@@ -50,6 +51,11 @@ type MessagesProps = {
     activePaperId?: string | null;
     isQuizActive?: boolean;
   };
+  jobActions?: {
+    onView: (job: JobCard) => void;
+    onAsk: (job: JobCard) => void;
+    activeJobId?: string | null;
+  };
   header?: ReactNode;
   greetingTitle?: string;
   greetingSubtitle?: string;
@@ -76,6 +82,7 @@ function PureMessages({
   isLoadingHistory = false,
   onLoadMoreHistory,
   studyActions,
+  jobActions,
   header,
   greetingTitle,
   greetingSubtitle,
@@ -421,6 +428,7 @@ function PureMessages({
               }
               setMessages={setMessages}
               studyActions={studyActions}
+              jobActions={jobActions}
               vote={votesByMessageId?.get(message.id)}
             />
             );

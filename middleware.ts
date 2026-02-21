@@ -40,15 +40,27 @@ const API_RATE_LIMIT = {
   limit: 120,
   windowMs: ONE_MINUTE,
 };
-const API_RATE_LIMIT_EXEMPT_PATHS = new Set(["/api/activity/heartbeat"]);
+const API_RATE_LIMIT_EXEMPT_PATHS = new Set([
+  "/api/activity/heartbeat",
+  "/api/public/site-launch",
+]);
 const SESSION_COOKIE_PREFIXES = [
   "__Secure-authjs.session-token",
   "authjs.session-token",
   "__Secure-next-auth.session-token",
   "next-auth.session-token",
 ];
+const SITE_STATUS_API_PATH = "/api/public/site-launch";
+const SITE_COMING_SOON_PATH = "/coming-soon";
+const SITE_MAINTENANCE_PATH = "/maintenance";
+const SITE_STATUS_CACHE_WINDOW_MS = 15 * 1000;
 type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
+let siteStatusCache: {
+  fetchedAt: number;
+  publicLaunched: boolean;
+  underMaintenance: boolean;
+} | null = null;
 const kvRestUrl =
   process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
 const kvRestToken =
@@ -195,6 +207,83 @@ function shouldSkipApiRateLimit(pathname: string) {
   return API_RATE_LIMIT_EXEMPT_PATHS.has(pathname);
 }
 
+function isPageNavigationRequest(request: NextRequest) {
+  return (
+    (request.method === "GET" || request.method === "HEAD") &&
+    !request.nextUrl.pathname.startsWith("/api/")
+  );
+}
+
+function shouldBypassSiteStatusGate(pathname: string) {
+  if (pathname.startsWith("/_next/")) {
+    return true;
+  }
+
+  return false;
+}
+
+async function resolveSiteStatus(
+  request: NextRequest
+): Promise<{ publicLaunched: boolean; underMaintenance: boolean }> {
+  const now = Date.now();
+  if (siteStatusCache && now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS) {
+    return {
+      publicLaunched: siteStatusCache.publicLaunched,
+      underMaintenance: siteStatusCache.underMaintenance,
+    };
+  }
+
+  const fallbackStatus = siteStatusCache ?? {
+    fetchedAt: now,
+    publicLaunched: true,
+    underMaintenance: false,
+  };
+  const statusUrl = request.nextUrl.clone();
+  statusUrl.pathname = SITE_STATUS_API_PATH;
+  statusUrl.search = "";
+
+  try {
+    const response = await fetchWithTimeout(statusUrl.toString(), {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response || !response.ok) {
+      siteStatusCache = {
+        fetchedAt: now,
+        publicLaunched: fallbackStatus.publicLaunched,
+        underMaintenance: fallbackStatus.underMaintenance,
+      };
+      return {
+        publicLaunched: fallbackStatus.publicLaunched,
+        underMaintenance: fallbackStatus.underMaintenance,
+      };
+    }
+
+    const body = (await response.json()) as
+      | { publicLaunched?: unknown; underMaintenance?: unknown }
+      | null;
+    const publicLaunched = body?.publicLaunched === false ? false : true;
+    const underMaintenance = body?.underMaintenance === true;
+
+    siteStatusCache = { fetchedAt: now, publicLaunched, underMaintenance };
+    return { publicLaunched, underMaintenance };
+  } catch {
+    siteStatusCache = {
+      fetchedAt: now,
+      publicLaunched: fallbackStatus.publicLaunched,
+      underMaintenance: fallbackStatus.underMaintenance,
+    };
+    return {
+      publicLaunched: fallbackStatus.publicLaunched,
+      underMaintenance: fallbackStatus.underMaintenance,
+    };
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
@@ -208,6 +297,38 @@ export async function middleware(request: NextRequest) {
     redirectUrl.host = CANONICAL_HOST;
     redirectUrl.protocol = "https:";
     return NextResponse.redirect(redirectUrl, 308);
+  }
+
+  if (
+    isPageNavigationRequest(request) &&
+    !shouldBypassSiteStatusGate(request.nextUrl.pathname)
+  ) {
+    const pathname = request.nextUrl.pathname;
+    const siteStatus = await resolveSiteStatus(request);
+    const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+    const token = authSecret
+      ? await getToken({ req: request, secret: authSecret })
+      : null;
+    const isAdmin = token?.role === "admin";
+
+    if (!isAdmin && siteStatus.underMaintenance && pathname !== SITE_MAINTENANCE_PATH) {
+      const landingUrl = request.nextUrl.clone();
+      landingUrl.pathname = SITE_MAINTENANCE_PATH;
+      landingUrl.search = "";
+      return NextResponse.redirect(landingUrl);
+    }
+
+    if (
+      !isAdmin &&
+      !siteStatus.underMaintenance &&
+      !siteStatus.publicLaunched &&
+      pathname !== SITE_COMING_SOON_PATH
+    ) {
+      const landingUrl = request.nextUrl.clone();
+      landingUrl.pathname = SITE_COMING_SOON_PATH;
+      landingUrl.search = "";
+      return NextResponse.redirect(landingUrl);
+    }
   }
 
   if (

@@ -18,6 +18,8 @@ import {
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
+  updateComingSoonContentAction,
+  updateComingSoonTimerAction,
   updateFreeMessageSettingsAction,
   updateIconPromptsAction,
   updateImageFilenamePrefixAction,
@@ -49,7 +51,12 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  JOBS_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SITE_COMING_SOON_CONTENT_SETTING_KEY,
+  SITE_COMING_SOON_TIMER_SETTING_KEY,
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
@@ -72,6 +79,12 @@ import {
   getFallbackUsdToInrRate,
   getUsdToInrRate,
 } from "@/lib/services/exchange-rate";
+import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
+import {
+  normalizeComingSoonContentSetting,
+  normalizeComingSoonTimerSetting,
+} from "@/lib/settings/coming-soon";
+import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import {
   parseSuggestedPromptsAccessModeSetting,
@@ -84,6 +97,7 @@ import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
+import { MaintenanceToggleControl } from "./maintenance-toggle-control";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 
@@ -113,9 +127,14 @@ const SETTINGS_SNAPSHOT_KEYS = [
   "suggestedPromptsByLanguage",
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SITE_COMING_SOON_CONTENT_SETTING_KEY,
+  SITE_COMING_SOON_TIMER_SETTING_KEY,
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
@@ -240,11 +259,26 @@ async function loadAdminSettingsData() {
   const calculatorEnabledSetting = getStoredSetting<string | boolean>(
     CALCULATOR_FEATURE_FLAG_KEY
   );
+  const sitePublicLaunchedSetting = getStoredSetting<string | boolean>(
+    SITE_PUBLIC_LAUNCHED_SETTING_KEY
+  );
+  const siteUnderMaintenanceSetting = getStoredSetting<string | boolean>(
+    SITE_UNDER_MAINTENANCE_SETTING_KEY
+  );
+  const comingSoonContentSetting = getStoredSetting<unknown>(
+    SITE_COMING_SOON_CONTENT_SETTING_KEY
+  );
+  const comingSoonTimerSetting = getStoredSetting<unknown>(
+    SITE_COMING_SOON_TIMER_SETTING_KEY
+  );
   const forumEnabledSetting = getStoredSetting<string | boolean>(
     FORUM_FEATURE_FLAG_KEY
   );
   const studyModeEnabledSetting = getStoredSetting<string | boolean>(
     STUDY_MODE_FEATURE_FLAG_KEY
+  );
+  const jobsEnabledSetting = getStoredSetting<string | boolean>(
+    JOBS_FEATURE_FLAG_KEY
   );
   const imageGenerationEnabledSetting = getStoredSetting<string | boolean>(
     IMAGE_GENERATION_FEATURE_FLAG_KEY
@@ -284,8 +318,13 @@ async function loadAdminSettingsData() {
     languages,
     freeMessageSettings,
     calculatorEnabledSetting,
+    sitePublicLaunchedSetting,
+    siteUnderMaintenanceSetting,
+    comingSoonContentSetting,
+    comingSoonTimerSetting,
     forumEnabledSetting,
     studyModeEnabledSetting,
+    jobsEnabledSetting,
     imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
@@ -317,8 +356,13 @@ function buildFallbackAdminSettingsData() {
     languages: [],
     freeMessageSettings: normalizeFreeMessageSettings(null),
     calculatorEnabledSetting: null,
+    sitePublicLaunchedSetting: null,
+    siteUnderMaintenanceSetting: null,
+    comingSoonContentSetting: null,
+    comingSoonTimerSetting: null,
     forumEnabledSetting: null,
     studyModeEnabledSetting: null,
+    jobsEnabledSetting: null,
     imageGenerationEnabledSetting: null,
     imagePromptTranslationModelSetting: null,
     imageFilenamePrefixSetting: null,
@@ -335,6 +379,18 @@ function _formatCurrency(value: number, currency: "USD" | "INR") {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function toDateTimeLocalInputValue(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - timezoneOffsetMs)
+    .toISOString()
+    .slice(0, 16);
 }
 
 function ProviderBadge({ value }: { value: string }) {
@@ -450,8 +506,13 @@ export default async function AdminSettingsPage({
     languages,
     freeMessageSettings,
     calculatorEnabledSetting,
+    sitePublicLaunchedSetting,
+    siteUnderMaintenanceSetting,
+    comingSoonContentSetting,
+    comingSoonTimerSetting,
     forumEnabledSetting,
     studyModeEnabledSetting,
+    jobsEnabledSetting,
     imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
@@ -614,12 +675,24 @@ export default async function AdminSettingsPage({
     }
   }
   const forumAccessMode = parseForumAccessModeSetting(forumEnabledSetting);
+  const sitePublicLaunched = parseBooleanSetting(
+    sitePublicLaunchedSetting,
+    true
+  );
+  const siteUnderMaintenance = parseBooleanSetting(
+    siteUnderMaintenanceSetting,
+    false
+  );
+  const comingSoonContent =
+    normalizeComingSoonContentSetting(comingSoonContentSetting);
+  const comingSoonTimer = normalizeComingSoonTimerSetting(comingSoonTimerSetting);
   const calculatorAccessMode = parseCalculatorAccessModeSetting(
     calculatorEnabledSetting
   );
   const studyModeAccessMode = parseStudyModeAccessModeSetting(
     studyModeEnabledSetting
   );
+  const jobsAccessMode = parseJobsAccessModeSetting(jobsEnabledSetting);
   const imageGenerationAccessMode = parseImageGenerationAccessModeSetting(
     imageGenerationEnabledSetting
   );
@@ -762,6 +835,141 @@ export default async function AdminSettingsPage({
 
       <div className="flex flex-col gap-6">
         <CollapsibleSection
+          description="Control whether the site is publicly available or temporarily under maintenance."
+          title="Maintenance"
+        >
+          <div className="flex flex-col gap-6">
+            <MaintenanceToggleControl
+              currentValue={sitePublicLaunched}
+              description="When off, non-admin visitors can only access the coming-soon page."
+              fieldName="publicLaunched"
+              title="Public launched"
+            />
+
+            <MaintenanceToggleControl
+              currentValue={siteUnderMaintenance}
+              description="When on, non-admin visitors can only access the maintenance page."
+              fieldName="underMaintenance"
+              title="Under maintenance"
+            />
+
+            <form
+              action={updateComingSoonContentAction}
+              className="grid gap-4 md:grid-cols-2"
+            >
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label className="font-medium text-sm" htmlFor="comingSoonTitle">
+                  Coming soon title
+                </label>
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={comingSoonContent.title}
+                  id="comingSoonTitle"
+                  name="comingSoonTitle"
+                  placeholder="Coming Soon"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="comingSoonEyebrow"
+                >
+                  Supporting text
+                </label>
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={comingSoonContent.eyebrow}
+                  id="comingSoonEyebrow"
+                  name="comingSoonEyebrow"
+                  placeholder="There Will Be Something Very Awesome"
+                />
+                <p className="text-muted-foreground text-xs">
+                  Controls the centered text shown on the coming-soon page.
+                </p>
+              </div>
+
+              <div className="flex justify-end md:col-span-2">
+                <SettingsSubmitButton
+                  pendingLabel="Saving..."
+                  successMessage="Coming soon content updated."
+                >
+                  Save content
+                </SettingsSubmitButton>
+              </div>
+            </form>
+
+            <form
+              action={updateComingSoonTimerAction}
+              className="grid gap-4 md:grid-cols-2"
+            >
+              <div className="flex flex-col gap-2">
+                <label className="font-medium text-sm" htmlFor="comingSoonTimerMode">
+                  Timer mode
+                </label>
+                <select
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={comingSoonTimer.mode}
+                  id="comingSoonTimerMode"
+                  name="comingSoonTimerMode"
+                >
+                  <option value="countdown">Countdown to date (future)</option>
+                  <option value="countup">Count up since date (timeline)</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="comingSoonTimerReferenceAt"
+                >
+                  Reference date/time
+                </label>
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={toDateTimeLocalInputValue(
+                    comingSoonTimer.referenceIso
+                  )}
+                  id="comingSoonTimerReferenceAt"
+                  name="comingSoonTimerReferenceAt"
+                  required
+                  type="datetime-local"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="comingSoonTimerLabel"
+                >
+                  Timer label
+                </label>
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={comingSoonTimer.label}
+                  id="comingSoonTimerLabel"
+                  name="comingSoonTimerLabel"
+                  placeholder="Has been building for"
+                />
+                <p className="text-muted-foreground text-xs">
+                  Example: &quot;Launching in&quot; for countdown, or
+                  &quot;Has been building for&quot; for timeline mode.
+                </p>
+              </div>
+
+              <div className="flex justify-end md:col-span-2">
+                <SettingsSubmitButton
+                  pendingLabel="Saving..."
+                  successMessage="Coming soon timer updated."
+                >
+                  Save timer
+                </SettingsSubmitButton>
+              </div>
+            </form>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
           description="Control access to optional, user-facing experiences."
           title="Feature settings"
         >
@@ -788,6 +996,14 @@ export default async function AdminSettingsPage({
               fieldName="studyModeAccessMode"
               successMessage="Study mode availability updated."
               title="Study mode"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={jobsAccessMode}
+              description="Show or hide the Jobs experience for browsing uploaded job postings."
+              fieldName="jobsAccessMode"
+              successMessage="Jobs mode availability updated."
+              title="Jobs mode"
             />
 
             <FeatureAccessModeControl

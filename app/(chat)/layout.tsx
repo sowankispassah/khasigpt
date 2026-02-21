@@ -7,6 +7,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
@@ -14,6 +15,7 @@ import { getAppSetting, getUserById } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../(auth)/auth";
@@ -64,13 +66,14 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
-  const [studyModeSetting, forumSetting, calculatorSetting] = session
+  const [studyModeSetting, forumSetting, calculatorSetting, jobsSetting] = session
     ? await Promise.all([
         getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
         getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
         getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
+        getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
       ])
-    : [null, null, null];
+    : [null, null, null, null];
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,
@@ -87,6 +90,11 @@ export default async function Layout({
     calculatorAccessMode,
     session?.user?.role ?? null
   );
+  const jobsAccessMode = parseJobsAccessModeSetting(jobsSetting);
+  const jobsModeEnabled = isFeatureEnabledForRole(
+    jobsAccessMode,
+    session?.user?.role ?? null
+  );
 
   return (
     <SiteShell
@@ -101,6 +109,7 @@ export default async function Layout({
           <ChatPreloader />
           <AppSidebar
             calculatorEnabled={calculatorEnabled}
+            jobsModeEnabled={jobsModeEnabled}
             studyModeEnabled={studyModeEnabled}
             user={session.user}
           />

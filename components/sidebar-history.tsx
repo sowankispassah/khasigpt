@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import { useTranslation } from "@/components/language-provider";
-import { useStudyContextSummary } from "@/hooks/use-study-context";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +23,7 @@ import {
   SidebarMenu,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
 import { fetcher } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
@@ -44,7 +44,7 @@ export type ChatHistory = {
   hasMore: boolean;
 };
 
-export type ChatHistoryMode = "default" | "study";
+export type ChatHistoryMode = "default" | "study" | "jobs";
 
 const PAGE_SIZE = 20;
 const STUDY_INITIAL_HISTORY_LIMIT = 5;
@@ -83,7 +83,8 @@ const groupChatsByDate = (chats: Chat[]): GroupedChats => {
 };
 
 export function getChatHistoryBaseKey(mode: ChatHistoryMode = "default") {
-  const modeParam = mode === "study" ? "mode=study&" : "";
+  const modeParam =
+    mode === "study" ? "mode=study&" : mode === "jobs" ? "mode=jobs&" : "";
   return `/api/history?${modeParam}limit=${PAGE_SIZE}`;
 }
 
@@ -105,7 +106,8 @@ export function getChatHistoryPaginationKeyForMode(
       return null;
     }
 
-    const modeParam = mode === "study" ? "mode=study&" : "";
+    const modeParam =
+      mode === "study" ? "mode=study&" : mode === "jobs" ? "mode=jobs&" : "";
     return `/api/history?${modeParam}ending_before=${firstChatFromPage.id}&limit=${PAGE_SIZE}`;
   };
 }
@@ -140,8 +142,9 @@ export function SidebarHistory({
       : Array.isArray(idParam)
         ? (idParam[0] ?? null)
         : null;
-  const studyContextSummary =
-    mode === "study" ? useStudyContextSummary(activeChatId) : null;
+  const studyContextSummary = useStudyContextSummary(
+    mode === "study" ? activeChatId : null
+  );
 
   const resolvedHistoryKey = historyKey ?? getChatHistoryBaseKey(mode);
   const historyPaginationKey = useMemo(
@@ -232,7 +235,7 @@ export function SidebarHistory({
       return;
     }
     setShowAllStudyHistory(false);
-  }, [mode, resolvedHistoryKey]);
+  }, [mode]);
 
   useEffect(() => {
     if (!paginatedChatHistories || paginatedChatHistories.length === 0) {

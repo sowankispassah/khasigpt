@@ -44,9 +44,10 @@ export const postRequestBodySchema = z.object({
     parts: z.array(partSchema),
   }),
   hiddenPrompt: z.string().trim().min(1).max(2000).optional(),
-  chatMode: z.enum(["default", "study"]).optional(),
+  chatMode: z.enum(["default", "study", "jobs"]).optional(),
   studyPaperId: z.string().uuid().optional().nullable(),
   studyQuizActive: z.boolean().optional(),
+  jobPostingId: z.string().uuid().optional().nullable(),
   // Historically this cookie stored a model `key` (not the UUID id).
   // Accept both so older clients/cookies don't hard-fail requests.
   selectedChatModel: z.string().min(1).max(128),

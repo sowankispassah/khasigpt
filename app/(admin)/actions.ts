@@ -21,6 +21,8 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SITE_COMING_SOON_CONTENT_SETTING_KEY,
+  SITE_COMING_SOON_TIMER_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
@@ -86,6 +88,10 @@ import {
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
 import {
+  sanitizeComingSoonContentInput,
+  sanitizeComingSoonTimerInput,
+} from "@/lib/settings/coming-soon";
+import {
   bulkUpdateRagStatus,
   createRagCategory,
   createRagEntry,
@@ -99,6 +105,13 @@ import {
 } from "@/lib/rag/service";
 import type { UpsertRagEntryInput } from "@/lib/rag/types";
 import {
+  JOB_POSTING_MAX_TEXT_CHARS,
+  buildJobPostingMetadata,
+  getJobPostingById,
+  listJobPostingEntries,
+} from "@/lib/jobs/service";
+import type { JobPostingRecord } from "@/lib/jobs/types";
+import {
   buildQuestionPaperMetadata,
   extractStudyYear,
   getQuestionPaperById,
@@ -109,6 +122,7 @@ import type { QuestionPaperRecord } from "@/lib/study/types";
 import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
+  IMAGE_MIME_TYPES,
   isDocumentMimeType,
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
@@ -450,6 +464,57 @@ export async function updateSuggestedPromptsAvailabilityAction(
     formData,
     settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   });
+}
+
+export async function updateComingSoonContentAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const content = sanitizeComingSoonContentInput({
+    eyebrow: formData.get("comingSoonEyebrow"),
+    title: formData.get("comingSoonTitle"),
+  });
+
+  await setAppSetting({
+    key: SITE_COMING_SOON_CONTENT_SETTING_KEY,
+    value: content,
+  });
+  revalidateAppSettingCache(SITE_COMING_SOON_CONTENT_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "site.coming_soon_content.update",
+    target: { setting: SITE_COMING_SOON_CONTENT_SETTING_KEY },
+    metadata: content,
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/coming-soon");
+}
+
+export async function updateComingSoonTimerAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const timerSetting = sanitizeComingSoonTimerInput({
+    label: formData.get("comingSoonTimerLabel"),
+    mode: formData.get("comingSoonTimerMode"),
+    referenceAt: formData.get("comingSoonTimerReferenceAt"),
+  });
+
+  await setAppSetting({
+    key: SITE_COMING_SOON_TIMER_SETTING_KEY,
+    value: timerSetting,
+  });
+  revalidateAppSettingCache(SITE_COMING_SOON_TIMER_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "site.coming_soon_timer.update",
+    target: { setting: SITE_COMING_SOON_TIMER_SETTING_KEY },
+    metadata: timerSetting,
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/coming-soon");
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {
@@ -2896,6 +2961,541 @@ export async function deleteQuestionPaperAction({ id }: { id: string }) {
   });
 
   revalidatePath("/admin/study/question-papers");
+}
+
+type SerializedJobPosting = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  employmentType: string;
+  studyExam: string;
+  studyRole: string;
+  studyYears: number[];
+  studyTags: string[];
+  tags: string[];
+  sourceUrl: string | null;
+  status: RagEntryStatus;
+  parseError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const JOB_POSTING_FALLBACK_CONTENT =
+  "Job posting uploaded, but text extraction failed. Use the attached file.";
+const JOB_POSTING_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_JOB_POSTING_TITLE = "Job posting";
+const IMAGE_EXTENSION_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+};
+
+const normalizeJobPostingTags = (value: FormDataEntryValue | null | undefined) => {
+  const raw = value?.toString() ?? "";
+  const entries = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries));
+  return unique.map((tag) => tag.slice(0, 48)).slice(0, 24);
+};
+
+const normalizeJobPostingStudyTags = (
+  value: FormDataEntryValue | null | undefined
+) => {
+  const raw = value?.toString() ?? "";
+  const entries = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries));
+  return unique.map((tag) => tag.slice(0, 48)).slice(0, 24);
+};
+
+const normalizeJobPostingStudyYears = (
+  value: FormDataEntryValue | null | undefined
+) => {
+  const raw = value?.toString() ?? "";
+  if (!raw.trim()) {
+    return [];
+  }
+
+  const parts = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const parsed = parts
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .map((item) => Math.trunc(item));
+
+  return Array.from(new Set(parsed)).slice(0, 12);
+};
+
+const resolveJobPostingStatus = (
+  value: FormDataEntryValue | null | undefined
+): RagEntryStatus => {
+  const normalized = value?.toString().trim().toLowerCase();
+  if (normalized === "inactive" || normalized === "archived") {
+    return normalized;
+  }
+  return "active";
+};
+
+const serializeJobPosting = (job: JobPostingRecord): SerializedJobPosting => {
+  const serializeDate = (value: Date) =>
+    value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    employmentType: job.employmentType,
+    studyExam: job.studyExam,
+    studyRole: job.studyRole,
+    studyYears: job.studyYears,
+    studyTags: job.studyTags,
+    tags: job.tags,
+    sourceUrl: job.sourceUrl ?? null,
+    status: job.status,
+    parseError: job.parseError ?? null,
+    createdAt: serializeDate(job.createdAt),
+    updatedAt: serializeDate(job.updatedAt),
+  };
+};
+
+async function processJobPostingFile({
+  file,
+  jobId,
+}: {
+  file: Blob;
+  jobId: string;
+}) {
+  const mimeType = file.type;
+  const isDocument = isDocumentMimeType(mimeType);
+  const isImage = (IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
+  if (!isDocument && !isImage) {
+    throw new Error("Only PDF, DOCX, XLSX, JPEG, or PNG files are supported.");
+  }
+  if (file.size > JOB_POSTING_MAX_BYTES) {
+    throw new Error("File size must be under 25MB.");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const filename =
+    "name" in file && typeof file.name === "string" ? file.name : "document";
+
+  let content = JOB_POSTING_FALLBACK_CONTENT;
+  let parseError: string | null = null;
+
+  if (isDocument) {
+    try {
+      const parsed = await extractDocumentTextFromBuffer(
+        {
+          name: filename,
+          buffer,
+          mediaType: mimeType,
+        },
+        { maxTextChars: JOB_POSTING_MAX_TEXT_CHARS }
+      );
+      content = parsed.text;
+    } catch (error) {
+      parseError =
+        error instanceof Error ? error.message : "Unable to extract document text.";
+    }
+  } else {
+    parseError = "Image uploaded without OCR extraction.";
+  }
+
+  const extension = isDocument
+    ? DOCUMENT_EXTENSION_BY_MIME[mimeType]
+    : IMAGE_EXTENSION_BY_MIME[mimeType];
+  if (!extension) {
+    throw new Error("Unsupported file type.");
+  }
+
+  const objectKey = `jobs/postings/${jobId}/${crypto.randomUUID()}.${extension}`;
+  const blob = await put(objectKey, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return {
+    sourceUrl: blob.url,
+    content,
+    parseError,
+    filename,
+  };
+}
+
+export async function createJobPostingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const companyInput = formData.get("company")?.toString().trim() ?? "";
+  const locationInput = formData.get("location")?.toString().trim() ?? "";
+  const employmentTypeInput =
+    formData.get("employmentType")?.toString().trim() ?? "";
+  const studyExamInput = formData.get("studyExam")?.toString().trim() ?? "";
+  const studyRoleInput = formData.get("studyRole")?.toString().trim() ?? "";
+  const studyYears = normalizeJobPostingStudyYears(formData.get("studyYears"));
+  const studyTags = normalizeJobPostingStudyTags(formData.get("studyTags"));
+  const jobTitleInput = formData.get("jobTitle")?.toString().trim() ?? "";
+  const tags = normalizeJobPostingTags(formData.get("tags"));
+  const status = resolveJobPostingStatus(formData.get("status"));
+
+  const fileField = formData.get("file");
+  if (!(fileField instanceof Blob)) {
+    throw new Error("Job posting file is required.");
+  }
+  if (!studyExamInput || !studyRoleInput) {
+    throw new Error("Study exam and Study role are required for job-study integration.");
+  }
+
+  const jobId = generateUUID();
+  const fileResult = await processJobPostingFile({
+    file: fileField,
+    jobId,
+  });
+  const derivedTitle = normalizeFilenameTitle(fileResult.filename);
+  const company = companyInput || UNKNOWN_LABEL;
+  const location = locationInput || UNKNOWN_LABEL;
+  const employmentType = employmentTypeInput || UNKNOWN_LABEL;
+  const studyExam = studyExamInput || UNKNOWN_LABEL;
+  const studyRole = studyRoleInput || UNKNOWN_LABEL;
+  const jobTitle = jobTitleInput || derivedTitle || DEFAULT_JOB_POSTING_TITLE;
+  const normalizedTitle = normalizePaperTitle(jobTitle);
+  const normalizedCompany = normalizePaperTitle(company);
+  const existingEntries = await listJobPostingEntries({ includeInactive: true });
+  const duplicate = existingEntries.find((entry) => {
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+    const metaTitle = typeof metadata.job_title === "string" ? metadata.job_title : "";
+    const metaCompany = typeof metadata.company === "string" ? metadata.company : "";
+    const titleToCheck = metaTitle || entry.title || "";
+    const companyToCheck = metaCompany || entry.company || "";
+    return (
+      normalizePaperTitle(titleToCheck) === normalizedTitle &&
+      normalizePaperTitle(companyToCheck) === normalizedCompany
+    );
+  });
+  if (duplicate) {
+    throw new Error("A job posting with the same title already exists for this company.");
+  }
+
+  const metadata = buildJobPostingMetadata({
+    jobId,
+    jobTitle,
+    company,
+    location,
+    employmentType,
+    studyExam,
+    studyRole,
+    studyYears,
+    studyTags,
+    tags,
+    parseError: fileResult.parseError,
+  });
+
+  const createdEntry = await createRagEntry({
+    actorId: actor.id,
+    input: {
+      id: jobId,
+      title: jobTitle,
+      content: fileResult.content,
+      type: "document",
+      status,
+      tags,
+      models: [],
+      sourceUrl: fileResult.sourceUrl,
+      metadata,
+    },
+  });
+
+  const created = await getJobPostingById({
+    id: jobId,
+    includeInactive: true,
+  });
+  const resolvedCreated =
+    created ??
+    ({
+      id: createdEntry.id,
+      title: jobTitle,
+      company,
+      location,
+      employmentType,
+      studyExam,
+      studyRole,
+      studyYears,
+      studyTags,
+      tags,
+      sourceUrl: createdEntry.sourceUrl ?? null,
+      status: createdEntry.status,
+      parseError: fileResult.parseError ?? null,
+      createdAt:
+        createdEntry.createdAt instanceof Date
+          ? createdEntry.createdAt
+          : new Date(createdEntry.createdAt),
+      updatedAt:
+        createdEntry.updatedAt instanceof Date
+          ? createdEntry.updatedAt
+          : new Date(createdEntry.updatedAt),
+    } as JobPostingRecord);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "jobs.posting.create",
+    target: { jobPostingId: jobId },
+    metadata: {
+      company,
+      location,
+      employmentType,
+      studyExam,
+      studyRole,
+      studyYears,
+      status,
+    },
+  });
+
+  revalidatePath("/admin/jobs");
+  return serializeJobPosting(resolvedCreated);
+}
+
+export async function updateJobPostingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString().trim() ?? "";
+  if (!id) {
+    throw new Error("Job posting id is required.");
+  }
+
+  const entries = await listJobPostingEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Job posting not found.");
+  }
+
+  const companyInput = formData.get("company")?.toString().trim() ?? "";
+  const locationInput = formData.get("location")?.toString().trim() ?? "";
+  const employmentTypeInput =
+    formData.get("employmentType")?.toString().trim() ?? "";
+  const studyExamInput = formData.get("studyExam")?.toString().trim() ?? "";
+  const studyRoleInput = formData.get("studyRole")?.toString().trim() ?? "";
+  const studyYearsInput = normalizeJobPostingStudyYears(formData.get("studyYears"));
+  const studyTagsInput = normalizeJobPostingStudyTags(formData.get("studyTags"));
+  const jobTitleInput = formData.get("jobTitle")?.toString().trim() ?? "";
+  const tagsInput = normalizeJobPostingTags(formData.get("tags"));
+  const status = resolveJobPostingStatus(formData.get("status"));
+
+  let sourceUrl = existing.sourceUrl ?? null;
+  let content = existing.content;
+  const existingMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
+  let parseError =
+    typeof existingMetadata.parse_error === "string"
+      ? existingMetadata.parse_error
+      : null;
+  const existingCompany =
+    typeof existingMetadata.company === "string" && existingMetadata.company.trim()
+      ? existingMetadata.company.trim()
+      : "";
+  const existingLocation =
+    typeof existingMetadata.location === "string" && existingMetadata.location.trim()
+      ? existingMetadata.location.trim()
+      : "";
+  const existingEmploymentType =
+    typeof existingMetadata.employment_type === "string" &&
+    existingMetadata.employment_type.trim()
+      ? existingMetadata.employment_type.trim()
+      : "";
+  const existingStudyExam =
+    typeof existingMetadata.study_exam === "string" &&
+    existingMetadata.study_exam.trim()
+      ? existingMetadata.study_exam.trim()
+      : typeof existingMetadata.exam === "string" && existingMetadata.exam.trim()
+        ? existingMetadata.exam.trim()
+        : "";
+  const existingStudyRole =
+    typeof existingMetadata.study_role === "string" &&
+    existingMetadata.study_role.trim()
+      ? existingMetadata.study_role.trim()
+      : typeof existingMetadata.role === "string" && existingMetadata.role.trim()
+        ? existingMetadata.role.trim()
+        : "";
+  const existingStudyYearsRaw = Array.isArray(existingMetadata.study_years)
+    ? existingMetadata.study_years
+    : Array.isArray(existingMetadata.years)
+      ? existingMetadata.years
+      : [];
+  const existingStudyYears = Array.from(
+    new Set(
+      existingStudyYearsRaw
+        .map((value) => {
+          if (typeof value === "number" && Number.isFinite(value)) {
+            return Math.trunc(value);
+          }
+          if (typeof value === "string") {
+            const parsed = Number.parseInt(value.trim(), 10);
+            return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+          }
+          return null;
+        })
+        .filter((value): value is number => Boolean(value && value > 0))
+    )
+  );
+  const existingStudyTags = Array.isArray(existingMetadata.study_tags)
+    ? existingMetadata.study_tags
+        .filter((tag) => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    : [];
+  const existingTitle =
+    typeof existingMetadata.job_title === "string" && existingMetadata.job_title.trim()
+      ? existingMetadata.job_title.trim()
+      : existing.title?.trim() ?? "";
+  const existingTags = Array.isArray(existingMetadata.tags)
+    ? existingMetadata.tags
+        .filter((tag) => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    : Array.isArray(existing.tags)
+      ? existing.tags
+      : [];
+
+  const fileField = formData.get("file");
+  let filename: string | null = null;
+  if (fileField instanceof Blob && fileField.size > 0) {
+    const fileResult = await processJobPostingFile({
+      file: fileField,
+      jobId: id,
+    });
+    sourceUrl = fileResult.sourceUrl;
+    content = fileResult.content;
+    parseError = fileResult.parseError;
+    filename = fileResult.filename;
+  }
+
+  const derivedTitle = filename ? normalizeFilenameTitle(filename) : "";
+  const company = companyInput || existingCompany || UNKNOWN_LABEL;
+  const location = locationInput || existingLocation || UNKNOWN_LABEL;
+  const employmentType =
+    employmentTypeInput || existingEmploymentType || UNKNOWN_LABEL;
+  const studyExam = studyExamInput || existingStudyExam || UNKNOWN_LABEL;
+  const studyRole = studyRoleInput || existingStudyRole || UNKNOWN_LABEL;
+  if (
+    !studyExam.trim() ||
+    !studyRole.trim() ||
+    studyExam.trim().toLowerCase() === "unknown" ||
+    studyRole.trim().toLowerCase() === "unknown"
+  ) {
+    throw new Error("Study exam and Study role are required for job-study integration.");
+  }
+  const studyYears =
+    studyYearsInput.length > 0 ? studyYearsInput : existingStudyYears;
+  const studyTags = studyTagsInput.length > 0 ? studyTagsInput : existingStudyTags;
+  const jobTitle = jobTitleInput || existingTitle || derivedTitle || DEFAULT_JOB_POSTING_TITLE;
+  const tags = tagsInput.length > 0 ? tagsInput : existingTags;
+
+  const metadata = buildJobPostingMetadata({
+    jobId: id,
+    jobTitle,
+    company,
+    location,
+    employmentType,
+    studyExam,
+    studyRole,
+    studyYears,
+    studyTags,
+    tags,
+    parseError,
+  });
+
+  const updatedEntry = await updateRagEntry({
+    id,
+    actorId: actor.id,
+    input: {
+      title: jobTitle,
+      content,
+      type: "document",
+      status,
+      tags,
+      models: Array.isArray(existing.models) ? existing.models : [],
+      sourceUrl,
+      metadata,
+      categoryId: existing.categoryId,
+    },
+  });
+
+  const updated = await getJobPostingById({ id, includeInactive: true });
+  const resolvedUpdated =
+    updated ??
+    ({
+      id: updatedEntry.id,
+      title: jobTitle,
+      company,
+      location,
+      employmentType,
+      studyExam,
+      studyRole,
+      studyYears,
+      studyTags,
+      tags,
+      sourceUrl: updatedEntry.sourceUrl ?? null,
+      status: updatedEntry.status,
+      parseError,
+      createdAt:
+        updatedEntry.createdAt instanceof Date
+          ? updatedEntry.createdAt
+          : new Date(updatedEntry.createdAt),
+      updatedAt:
+        updatedEntry.updatedAt instanceof Date
+          ? updatedEntry.updatedAt
+          : new Date(updatedEntry.updatedAt),
+    } as JobPostingRecord);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "jobs.posting.update",
+    target: { jobPostingId: id },
+    metadata: {
+      company,
+      location,
+      employmentType,
+      studyExam,
+      studyRole,
+      studyYears,
+      status,
+    },
+  });
+
+  revalidatePath("/admin/jobs");
+  return serializeJobPosting(resolvedUpdated);
+}
+
+export async function deleteJobPostingAction({ id }: { id: string }) {
+  "use server";
+  const actor = await requireAdmin();
+
+  if (!id) {
+    throw new Error("Job posting id is required.");
+  }
+
+  const entries = await listJobPostingEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Job posting not found.");
+  }
+
+  await deleteRagEntries({ ids: [id], actorId: actor.id });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "jobs.posting.delete",
+    target: { jobPostingId: id },
+  });
+
+  revalidatePath("/admin/jobs");
 }
 
 function sanitizeAliasList(values: string[]) {

@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { type DataUIPart, DefaultChatTransport } from "ai";
+import { BookOpen, BriefcaseBusiness } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -12,21 +13,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { BookOpen } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import type { LanguageOption } from "@/lib/i18n/languages";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,28 +28,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
+import type { LanguageOption } from "@/lib/i18n/languages";
 import type {
   IconPromptAction,
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
-import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
-import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
-import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import type { JobCard } from "@/lib/jobs/types";
 import {
   getStudyContextForChat,
   setStudyContextForChat,
 } from "@/lib/study/context-store";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
+import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
+import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
-import { StudyPromptChips } from "./study/study-prompt-chips";
 import {
-  getChatHistoryPaginationKeyForMode,
   type ChatHistory,
+  getChatHistoryPaginationKeyForMode,
 } from "./sidebar-history";
+import { StudyPromptChips } from "./study/study-prompt-chips";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -81,6 +82,7 @@ export function Chat({
   initialOldestMessageAt,
   initialChatModel,
   initialChatLanguage,
+  initialJobContext = null,
   initialVisibilityType,
   chatMode,
   languageSettings,
@@ -98,8 +100,9 @@ export function Chat({
   initialOldestMessageAt: string | null;
   initialChatModel: string;
   initialChatLanguage: string;
+  initialJobContext?: JobCard | null;
   initialVisibilityType: VisibilityType;
-  chatMode: "default" | "study";
+  chatMode: "default" | "study" | "jobs";
   languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
@@ -113,7 +116,8 @@ export function Chat({
   documentUploadsEnabled: boolean;
   customKnowledgeEnabled: boolean;
 }) {
-  const historyMode = chatMode === "study" ? "study" : "default";
+  const historyMode =
+    chatMode === "study" ? "study" : chatMode === "jobs" ? "jobs" : "default";
   const historyPaginationKey = useMemo(
     () => getChatHistoryPaginationKeyForMode(historyMode),
     [historyMode]
@@ -134,9 +138,12 @@ export function Chat({
   const { mutate } = useSWRConfig();
 
   const isStudyMode = chatMode === "study";
+  const isJobsMode = chatMode === "jobs";
   const greetingSubtitle = isStudyMode
     ? translate("greeting.study.subtitle", "What would you like to study today?")
-    : undefined;
+    : isJobsMode
+      ? "Which job would you like to review today?"
+      : undefined;
   const [input, setInput] = useState<string>("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
@@ -148,6 +155,7 @@ export function Chat({
   );
   const currentLanguageCodeRef = useRef(currentLanguageCode);
   const studyContextIdRef = useRef<string | null>(null);
+  const jobContextIdRef = useRef<string | null>(null);
   const studyQuizActiveRef = useRef(false);
   const [pendingUiLanguage, setPendingUiLanguage] = useState<{
     code: string;
@@ -169,6 +177,9 @@ export function Chat({
   );
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [studyContext, setStudyContext] = useState<StudyPaperCard | null>(null);
+  const [jobContext, setJobContext] = useState<JobCard | null>(
+    initialJobContext
+  );
   const [studyQuizActive, setStudyQuizActive] = useState(false);
   const [studyQuestionReference, setStudyQuestionReference] =
     useState<StudyQuestionReference | null>(null);
@@ -176,6 +187,7 @@ export function Chat({
     useState<DataUIPart<CustomUIDataTypes> | null>(null);
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
+  const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
   const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -278,6 +290,10 @@ export function Chat({
   useEffect(() => {
     studyContextIdRef.current = studyContext?.id ?? null;
   }, [studyContext]);
+
+  useEffect(() => {
+    jobContextIdRef.current = jobContext?.id ?? null;
+  }, [jobContext]);
 
   useEffect(() => {
     if (!isStudyMode) {
@@ -427,19 +443,29 @@ export function Chat({
   }, [initialHasMoreHistory, initialOldestMessageAt]);
 
   useEffect(() => {
+    void id;
     if (!isStudyMode) {
       setStudyContext(null);
       setStudyQuizActive(false);
       setStudyQuestionReference(null);
       setStudyViewerPaper(null);
+    } else {
+      setStudyContext(null);
+      setStudyQuizActive(false);
+      setStudyViewerPaper(null);
+    }
+
+    if (!isJobsMode) {
+      setJobContext(null);
+      setJobViewerPosting(null);
       return;
     }
-    setStudyContext(null);
-    setStudyQuizActive(false);
-    setStudyViewerPaper(null);
-  }, [id, isStudyMode]);
+    setJobContext(initialJobContext ?? null);
+    setJobViewerPosting(null);
+  }, [id, initialJobContext, isStudyMode, isJobsMode]);
 
   useEffect(() => {
+    void id;
     setResumeDataPart(null);
   }, [id]);
 
@@ -539,12 +565,17 @@ export function Chat({
       api: "/api/chat",
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
-        const studyPayload = isStudyMode
+        const modePayload = isStudyMode
           ? {
               chatMode,
               studyPaperId: studyContextIdRef.current,
               studyQuizActive: studyQuizActiveRef.current,
             }
+          : isJobsMode
+            ? {
+                chatMode,
+                jobPostingId: jobContextIdRef.current,
+              }
           : { chatMode: "default" };
         return {
           body: {
@@ -554,7 +585,7 @@ export function Chat({
             selectedLanguage: currentLanguageCodeRef.current,
             selectedVisibilityType: visibilityType,
             ...request.body,
-            ...studyPayload,
+            ...modePayload,
           },
         };
       },
@@ -564,6 +595,7 @@ export function Chat({
         setResumeDataPart(dataPart);
       }
     },
+    
     onFinish: () => {
       refreshAndPromoteHistory();
     },
@@ -743,6 +775,18 @@ export function Chat({
     setStudyContext(null);
     setStudyQuizActive(false);
     setStudyQuestionReference(null);
+  }, []);
+
+  const handleJobView = useCallback((job: JobCard) => {
+    setJobViewerPosting(job);
+  }, []);
+
+  const handleJobAsk = useCallback((job: JobCard) => {
+    setJobContext(job);
+  }, []);
+
+  const clearJobContext = useCallback(() => {
+    setJobContext(null);
   }, []);
 
   const router = useRouter();
@@ -1141,6 +1185,44 @@ export function Chat({
       />
     </div>
   ) : null;
+  const jobsHeader = isJobsMode ? (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
+          <BriefcaseBusiness className="h-3.5 w-3.5" />
+          Jobs mode
+        </span>
+      </div>
+      {jobContext ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-background px-3 py-2 text-xs">
+          <div className="min-w-0 space-y-0.5">
+            <div className="truncate font-semibold text-foreground">
+              {jobContext.title}
+            </div>
+            <div className="truncate text-muted-foreground">
+              {jobContext.company} / {jobContext.location}
+            </div>
+            <div className="truncate text-muted-foreground">
+              {jobContext.studyExam} / {jobContext.studyRole}
+              {jobContext.studyYears.length > 0
+                ? ` / ${jobContext.studyYears.join(", ")}`
+                : ""}
+            </div>
+          </div>
+          <Button
+            className="cursor-pointer"
+            onClick={clearJobContext}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+  const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
 
   const studyActions = isStudyMode
     ? {
@@ -1150,6 +1232,13 @@ export function Chat({
         onAsk: handleStudyAsk,
         onQuiz: handleStudyQuiz,
         onJumpToQuestionPaper: handleJumpToQuestionPaper,
+      }
+    : undefined;
+  const jobActions = isJobsMode
+    ? {
+        activeJobId: jobContext?.id ?? null,
+        onView: handleJobView,
+        onAsk: handleJobAsk,
       }
     : undefined;
 
@@ -1180,7 +1269,7 @@ export function Chat({
           key={id}
           greetingSubtitle={greetingSubtitle}
           hasMoreHistory={hasMoreHistory}
-          header={studyHeader}
+          header={modeHeader}
           isArtifactVisible={isArtifactVisible}
           isGeneratingImage={isGeneratingImage}
           isLoadingHistory={isLoadingHistory}
@@ -1196,6 +1285,7 @@ export function Chat({
           suggestedPrompts={suggestedPrompts}
           iconPromptActions={iconPromptActions}
           onIconPromptSelect={handleIconPromptSelect}
+          jobActions={jobActions}
           studyActions={studyActions}
           votes={votes}
         />
@@ -1340,6 +1430,100 @@ export function Chat({
                 <Button
                   className="cursor-pointer"
                   onClick={() => setStudyViewerPaper(null)}
+                  type="button"
+                  variant="ghost"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setJobViewerPosting(null);
+          }
+        }}
+        open={Boolean(jobViewerPosting)}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{jobViewerPosting?.title ?? "Job posting"}</DialogTitle>
+            <DialogDescription>
+              {jobViewerPosting
+                ? `${jobViewerPosting.company} / ${jobViewerPosting.location}`
+                : "Review the selected job posting."}
+            </DialogDescription>
+          </DialogHeader>
+          {jobViewerPosting ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap gap-2 text-muted-foreground">
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {jobViewerPosting.employmentType}
+                </span>
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {jobViewerPosting.studyExam}
+                </span>
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {jobViewerPosting.studyRole}
+                </span>
+                {jobViewerPosting.studyYears.map((year) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${jobViewerPosting.id}-year-${year}`}
+                  >
+                    {year}
+                  </span>
+                ))}
+                {jobViewerPosting.studyTags.map((tag) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${jobViewerPosting.id}-study-tag-${tag}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {jobViewerPosting.tags.map((tag) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${jobViewerPosting.id}-tag-${tag}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {jobViewerPosting.sourceUrl ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <iframe
+                    className="h-[60vh] w-full"
+                    src={jobViewerPosting.sourceUrl}
+                    title={jobViewerPosting.title}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center text-muted-foreground text-xs">
+                  No file was uploaded for this job posting.
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {jobViewerPosting.sourceUrl ? (
+                  <Button asChild variant="outline">
+                    <a
+                      className="cursor-pointer"
+                      href={jobViewerPosting.sourceUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Download
+                    </a>
+                  </Button>
+                ) : null}
+                <Button
+                  className="cursor-pointer"
+                  onClick={() => setJobViewerPosting(null)}
                   type="button"
                   variant="ghost"
                 >

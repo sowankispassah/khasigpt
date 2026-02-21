@@ -1,15 +1,14 @@
 "use client";
 
+import { BookOpen, BriefcaseBusiness, Calculator } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
-import { BookOpen, Calculator } from "lucide-react";
 import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { PlusIcon } from "@/components/icons";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
 import {
   Collapsible,
   CollapsibleContent,
@@ -25,6 +24,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 
 const SidebarHistory = dynamic(
   () =>
@@ -55,15 +55,19 @@ const SidebarHistory = dynamic(
 // These force a server rerender so `/chat` generates a fresh chat id, then the
 // Chat UI strips `new` back out via router.replace.
 const HOME_HREF = "/chat";
+const JOBS_HREF = "/jobs";
 const NEW_CHAT_HREF = "/chat?new=1";
+const NEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 
 export function AppSidebar({
   calculatorEnabled = true,
+  jobsModeEnabled = false,
   user,
   studyModeEnabled = false,
 }: {
   calculatorEnabled?: boolean;
+  jobsModeEnabled?: boolean;
   user: User | undefined;
   studyModeEnabled?: boolean;
 }) {
@@ -71,18 +75,20 @@ export function AppSidebar({
   const { data: sessionData } = useSession();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const navigationFingerprint = `${pathname}?${searchParams.toString()}`;
   const router = useRouter();
   const [pendingNavigation, setPendingNavigation] = useState<
-    "home" | "chat" | "study" | "calculator" | null
+    "home" | "chat" | "study" | "jobs" | "calculator" | null
   >(null);
 
   const activeUser = sessionData?.user ?? user;
 
   useEffect(() => {
+    void navigationFingerprint;
     // Close the mobile sidebar after navigation completes (avoid delaying URL change).
     setOpenMobile(false);
     setPendingNavigation(null);
-  }, [pathname, searchParams, setOpenMobile]);
+  }, [navigationFingerprint, setOpenMobile]);
 
   const shouldHandleClientNavigation = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) =>
@@ -98,7 +104,7 @@ export function AppSidebar({
   );
 
   const navigateWithFeedback = useCallback(
-    (target: "home" | "chat" | "study" | "calculator", href: string) => {
+    (target: "home" | "chat" | "study" | "jobs" | "calculator", href: string) => {
       if (pendingNavigation) {
         return;
       }
@@ -166,6 +172,40 @@ export function AppSidebar({
       navigateWithFeedback("calculator", "/calculator");
     },
     [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
+  );
+
+  const handleJobsClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+      event.preventDefault();
+      if (pathname === "/jobs" || pathname.startsWith("/jobs/")) {
+        setOpenMobile(false);
+        return;
+      }
+      navigateWithFeedback("jobs", JOBS_HREF);
+    },
+    [
+      navigateWithFeedback,
+      pathname,
+      setOpenMobile,
+      shouldHandleClientNavigation,
+    ]
+  );
+
+  const handleNewJobsClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const href = `${NEW_JOBS_HREF}&nonce=${Date.now()}`;
+      navigateWithFeedback("jobs", href);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
   );
 
   return (
@@ -248,6 +288,44 @@ export function AppSidebar({
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
+              </SidebarMenuItem>
+            ) : null}
+            {jobsModeEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={JOBS_HREF}
+                    onClick={handleJobsClick}
+                  >
+                    <BriefcaseBusiness />
+                    <span>
+                      {pendingNavigation === "jobs" ? "Opening..." : "Jobs"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+                <div className="mt-1 ml-[5px] flex flex-col gap-1">
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                        <Link
+                          aria-disabled={pendingNavigation !== null}
+                          href={NEW_JOBS_HREF}
+                          onClick={handleNewJobsClick}
+                        >
+                          <PlusIcon />
+                          <span>
+                            {pendingNavigation === "jobs" ? "Opening..." : "New Jobs"}
+                          </span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+
+                  <div className="ml-[5px]">
+                    <SidebarHistory mode="jobs" user={activeUser ?? user} />
+                  </div>
+                </div>
               </SidebarMenuItem>
             ) : null}
             {calculatorEnabled ? (

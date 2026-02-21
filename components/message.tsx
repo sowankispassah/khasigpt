@@ -2,12 +2,14 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
+import type { JobCard } from "@/lib/jobs/types";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
 import { LoaderIcon } from "./icons";
+import { JobCards } from "./jobs/job-cards";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
@@ -24,6 +26,7 @@ const PurePreviewMessage = ({
   isReadonly,
   requiresScrollPadding,
   studyActions,
+  jobActions,
 }: {
   chatId: string;
   message: ChatMessage;
@@ -40,6 +43,11 @@ const PurePreviewMessage = ({
     onJumpToQuestionPaper?: (paperId: string) => void;
     activePaperId?: string | null;
     isQuizActive?: boolean;
+  };
+  jobActions?: {
+    onView: (job: JobCard) => void;
+    onAsk: (job: JobCard) => void;
+    activeJobId?: string | null;
   };
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
@@ -164,6 +172,24 @@ const PurePreviewMessage = ({
                     onQuiz={studyActions.onQuiz}
                     onView={studyActions.onView}
                     papers={papers}
+                  />
+                </div>
+              );
+            }
+
+            if (type === "data-jobCards") {
+              const data = (part as { data?: { jobs?: JobCard[] } }).data;
+              const jobs = data?.jobs ?? [];
+              if (!jobActions || jobs.length === 0) {
+                return null;
+              }
+              return (
+                <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4" key={key}>
+                  <JobCards
+                    activeJobId={jobActions.activeJobId}
+                    jobs={jobs}
+                    onAsk={jobActions.onAsk}
+                    onView={jobActions.onView}
                   />
                 </div>
               );

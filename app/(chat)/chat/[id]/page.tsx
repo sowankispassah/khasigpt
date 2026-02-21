@@ -11,6 +11,7 @@ import {
   CHAT_HISTORY_PAGE_SIZE,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
@@ -22,6 +23,7 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getSiteUrl } from "@/lib/seo/site";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -80,6 +82,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     customKnowledgeSetting,
     documentUploadsSetting,
     studyModeSetting,
+    jobsModeSetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
@@ -89,6 +92,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+    getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
     getImageGenerationAccess({
       userId: session?.user?.id ?? null,
       userRole: session?.user?.role ?? null,
@@ -111,6 +115,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   );
   const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(studyModeMode, userRole);
+  const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
+  const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, userRole);
   const [suggestedPrompts, iconPromptActions] = await Promise.all([
     loadSuggestedPrompts(preferredLanguage, userRole),
     loadIconPromptActions(preferredLanguage, userRole),
@@ -144,6 +150,9 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const chatMode = chat.mode ?? "default";
   if (chatMode === "study" && !studyModeEnabled) {
     return <StudyModeDisabledNotice />;
+  }
+  if (chatMode === "jobs" && !jobsModeEnabled) {
+    return notFound();
   }
 
   const { messages: messagesFromDb, hasMore: hasMoreMessages } =
@@ -224,8 +233,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         initialVisibilityType={chat.visibility}
         isReadonly={session?.user?.id !== chat.userId}
         languageSettings={activeLanguageSettings}
-        suggestedPrompts={chatMode === "study" ? [] : suggestedPrompts}
-        iconPromptActions={chatMode === "study" ? [] : iconPromptActions}
+        suggestedPrompts={chatMode === "default" ? suggestedPrompts : []}
+        iconPromptActions={chatMode === "default" ? iconPromptActions : []}
       />
     </ModelConfigProvider>
   );

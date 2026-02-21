@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
-import type { IconPromptAction } from "@/lib/icon-prompts";
+import { useEffect, useMemo, useState } from "react";
 import type { LanguageOption } from "@/lib/i18n/languages";
+import type { IconPromptAction } from "@/lib/icon-prompts";
+import type { JobCard } from "@/lib/jobs/types";
 import type { ChatMessage } from "@/lib/types";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import type { VisibilityType } from "./visibility-selector";
@@ -30,8 +31,9 @@ type ChatLoaderProps = {
   initialOldestMessageAt: string | null;
   initialChatModel: string;
   initialChatLanguage: string;
+  initialJobContext?: JobCard | null;
   initialVisibilityType: VisibilityType;
-  chatMode: "default" | "study";
+  chatMode: "default" | "study" | "jobs";
   languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;

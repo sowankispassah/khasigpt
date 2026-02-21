@@ -7,6 +7,7 @@ import {
   FORUM_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
@@ -15,7 +16,7 @@ import {
   createAuditLogEntry,
   setAppSetting,
 } from "@/lib/db/queries";
-import { parseFeatureAccessMode, type FeatureAccessMode } from "@/lib/feature-access";
+import { type FeatureAccessMode, parseFeatureAccessMode } from "@/lib/feature-access";
 import { withTimeout } from "@/lib/utils/async";
 
 type FeatureAccessFieldConfig = {
@@ -42,6 +43,11 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
     settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
     fallbackMode: "disabled",
     auditAction: "feature.study_mode.toggle",
+  },
+  jobsAccessMode: {
+    settingKey: JOBS_FEATURE_FLAG_KEY,
+    fallbackMode: "disabled",
+    auditAction: "feature.jobs_mode.toggle",
   },
   imageGenerationAccessMode: {
     settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
