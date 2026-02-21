@@ -35,8 +35,12 @@ export const CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY = "chat.customKnowledge";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
 export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";
+export const SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY =
+  "site.prelaunch.inviteOnly";
 export const SITE_COMING_SOON_CONTENT_SETTING_KEY = "site.comingSoon.content";
 export const SITE_COMING_SOON_TIMER_SETTING_KEY = "site.comingSoon.timer";
+export const PRELAUNCH_INVITE_COOKIE_NAME = "__prelaunch_invite_token";
+export const PRELAUNCH_INVITE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
 export const JOBS_FEATURE_FLAG_KEY = "chat.jobs.enabled";
 export const ICON_PROMPTS_SETTING_KEY = "home.iconPrompts";

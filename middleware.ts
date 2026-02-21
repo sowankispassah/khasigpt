@@ -43,6 +43,7 @@ const API_RATE_LIMIT = {
 const API_RATE_LIMIT_EXEMPT_PATHS = new Set([
   "/api/activity/heartbeat",
   "/api/public/site-launch",
+  "/api/public/invite-access",
   "/api/public/session-role",
 ]);
 const SESSION_COOKIE_PREFIXES = [
@@ -52,9 +53,11 @@ const SESSION_COOKIE_PREFIXES = [
   "next-auth.session-token",
 ];
 const SITE_STATUS_API_PATH = "/api/public/site-launch";
+const SITE_INVITE_ACCESS_API_PATH = "/api/public/invite-access";
 const SITE_SESSION_ROLE_API_PATH = "/api/public/session-role";
 const SITE_COMING_SOON_PATH = "/coming-soon";
 const SITE_MAINTENANCE_PATH = "/maintenance";
+const SITE_INVITE_PATH_PREFIX = "/invite/";
 const SITE_STATUS_CACHE_WINDOW_MS = 15 * 1000;
 type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
@@ -62,6 +65,7 @@ let siteStatusCache: {
   fetchedAt: number;
   publicLaunched: boolean;
   underMaintenance: boolean;
+  inviteOnlyPrelaunch: boolean;
 } | null = null;
 const kvRestUrl =
   process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
@@ -245,12 +249,17 @@ function shouldBypassSiteStatusGate(pathname: string) {
 
 async function resolveSiteStatus(
   request: NextRequest
-): Promise<{ publicLaunched: boolean; underMaintenance: boolean }> {
+): Promise<{
+  publicLaunched: boolean;
+  underMaintenance: boolean;
+  inviteOnlyPrelaunch: boolean;
+}> {
   const now = Date.now();
   if (siteStatusCache && now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS) {
     return {
       publicLaunched: siteStatusCache.publicLaunched,
       underMaintenance: siteStatusCache.underMaintenance,
+      inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
     };
   }
 
@@ -258,6 +267,7 @@ async function resolveSiteStatus(
     fetchedAt: now,
     publicLaunched: true,
     underMaintenance: false,
+    inviteOnlyPrelaunch: false,
   };
   const statusUrl = request.nextUrl.clone();
   statusUrl.pathname = SITE_STATUS_API_PATH;
@@ -277,30 +287,44 @@ async function resolveSiteStatus(
         fetchedAt: now,
         publicLaunched: fallbackStatus.publicLaunched,
         underMaintenance: fallbackStatus.underMaintenance,
+        inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
       };
       return {
         publicLaunched: fallbackStatus.publicLaunched,
         underMaintenance: fallbackStatus.underMaintenance,
+        inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
       };
     }
 
     const body = (await response.json()) as
-      | { publicLaunched?: unknown; underMaintenance?: unknown }
+      | {
+          publicLaunched?: unknown;
+          underMaintenance?: unknown;
+          inviteOnlyPrelaunch?: unknown;
+        }
       | null;
     const publicLaunched = body?.publicLaunched === false ? false : true;
     const underMaintenance = body?.underMaintenance === true;
+    const inviteOnlyPrelaunch = body?.inviteOnlyPrelaunch === true;
 
-    siteStatusCache = { fetchedAt: now, publicLaunched, underMaintenance };
-    return { publicLaunched, underMaintenance };
+    siteStatusCache = {
+      fetchedAt: now,
+      publicLaunched,
+      underMaintenance,
+      inviteOnlyPrelaunch,
+    };
+    return { publicLaunched, underMaintenance, inviteOnlyPrelaunch };
   } catch {
     siteStatusCache = {
       fetchedAt: now,
       publicLaunched: fallbackStatus.publicLaunched,
       underMaintenance: fallbackStatus.underMaintenance,
+      inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
     };
     return {
       publicLaunched: fallbackStatus.publicLaunched,
       underMaintenance: fallbackStatus.underMaintenance,
+      inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
     };
   }
 }
@@ -351,6 +375,49 @@ async function resolveIsAdmin(request: NextRequest) {
   }
 }
 
+async function resolveHasInviteAccess(request: NextRequest) {
+  if (!hasSessionCookie(request)) {
+    return false;
+  }
+
+  const inviteAccessUrl = request.nextUrl.clone();
+  inviteAccessUrl.pathname = SITE_INVITE_ACCESS_API_PATH;
+  inviteAccessUrl.search = "";
+
+  try {
+    const response = await fetchWithTimeout(inviteAccessUrl.toString(), {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        cookie: request.headers.get("cookie") ?? "",
+      },
+      cache: "no-store",
+    });
+
+    if (!response || !response.ok) {
+      return false;
+    }
+
+    const body = (await response.json()) as { hasAccess?: unknown } | null;
+    return body?.hasAccess === true;
+  } catch {
+    return false;
+  }
+}
+
+function isAuthRoutePath(pathname: string) {
+  return (
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password" ||
+    pathname === "/password-reset" ||
+    pathname === "/verify-email" ||
+    pathname === "/complete-profile" ||
+    pathname === "/impersonate"
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
@@ -387,10 +454,27 @@ export async function middleware(request: NextRequest) {
       !siteStatus.publicLaunched &&
       pathname !== SITE_COMING_SOON_PATH
     ) {
-      const landingUrl = request.nextUrl.clone();
-      landingUrl.pathname = SITE_COMING_SOON_PATH;
-      landingUrl.search = "";
-      return NextResponse.redirect(landingUrl);
+      const shouldAllowPrelaunchInviteFlow =
+        pathname.startsWith(SITE_INVITE_PATH_PREFIX) || isAuthRoutePath(pathname);
+
+      if (siteStatus.inviteOnlyPrelaunch) {
+        const allowRequest =
+          shouldAllowPrelaunchInviteFlow ||
+          (await resolveHasInviteAccess(request));
+
+        if (!allowRequest) {
+          const landingUrl = request.nextUrl.clone();
+          landingUrl.pathname = SITE_COMING_SOON_PATH;
+          landingUrl.search = "";
+          return NextResponse.redirect(landingUrl);
+        }
+      }
+      if (!siteStatus.inviteOnlyPrelaunch) {
+        const landingUrl = request.nextUrl.clone();
+        landingUrl.pathname = SITE_COMING_SOON_PATH;
+        landingUrl.search = "";
+        return NextResponse.redirect(landingUrl);
+      }
     }
   }
 

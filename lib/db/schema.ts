@@ -921,6 +921,84 @@ export const impersonationToken = pgTable(
 
 export type ImpersonationToken = InferSelectModel<typeof impersonationToken>;
 
+export const inviteToken = pgTable(
+  "InviteToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    label: varchar("label", { length: 160 }),
+    createdByAdminId: uuid("createdByAdminId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    maxRedemptions: integer("maxRedemptions").notNull().default(1),
+    expiresAt: timestamp("expiresAt"),
+    revokedAt: timestamp("revokedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("InviteToken_token_idx").on(table.token),
+    createdByIdx: index("InviteToken_createdBy_idx").on(table.createdByAdminId),
+    createdAtIdx: index("InviteToken_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type InviteToken = InferSelectModel<typeof inviteToken>;
+
+export const inviteRedemption = pgTable(
+  "InviteRedemption",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inviteId: uuid("inviteId")
+      .notNull()
+      .references(() => inviteToken.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    redeemedAt: timestamp("redeemedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    inviteIdx: index("InviteRedemption_invite_idx").on(table.inviteId),
+    userIdx: index("InviteRedemption_user_idx").on(table.userId),
+    uniqueInviteIdx: uniqueIndex("InviteRedemption_invite_idx_unique").on(
+      table.inviteId
+    ),
+    uniqueInviteUserIdx: uniqueIndex("InviteRedemption_invite_user_idx").on(
+      table.inviteId,
+      table.userId
+    ),
+  })
+);
+
+export type InviteRedemption = InferSelectModel<typeof inviteRedemption>;
+
+export const userInviteAccess = pgTable(
+  "UserInviteAccess",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" })
+      .primaryKey(),
+    inviteId: uuid("inviteId")
+      .notNull()
+      .references(() => inviteToken.id, { onDelete: "cascade" }),
+    grantedAt: timestamp("grantedAt").notNull().defaultNow(),
+    revokedAt: timestamp("revokedAt"),
+    revokedByAdminId: uuid("revokedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    inviteIdx: index("UserInviteAccess_invite_idx").on(table.inviteId),
+    activeIdx: index("UserInviteAccess_active_idx")
+      .on(table.userId, table.inviteId)
+      .where(sql`${table.revokedAt} IS NULL`),
+  })
+);
+
+export type UserInviteAccess = InferSelectModel<typeof userInviteAccess>;
+
 export const auditLog = pgTable(
   "AuditLog",
   {

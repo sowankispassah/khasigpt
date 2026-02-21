@@ -67,8 +67,13 @@ import {
   emailVerificationToken,
   type ImageModelConfig,
   type ImpersonationToken,
+  type InviteRedemption,
+  type InviteToken,
+  type UserInviteAccess,
   imageModelConfig,
   impersonationToken,
+  inviteRedemption,
+  inviteToken,
   type Language,
   language,
   type ModelConfig,
@@ -92,6 +97,7 @@ import {
   type User,
   type UserSubscription,
   user,
+  userInviteAccess,
   userPresence,
   userProfileImage,
   userSubscription,
@@ -1966,6 +1972,559 @@ export async function consumeImpersonationToken(
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to consume impersonation token"
+    );
+  }
+}
+
+const PRELAUNCH_INVITE_TOKEN_BYTES = 24;
+const PRELAUNCH_INVITE_MAX_CREATE_ATTEMPTS = 5;
+const PRELAUNCH_INVITE_LABEL_MAX_LENGTH = 160;
+
+function normalizeInviteLabel(label: string | null | undefined): string | null {
+  if (typeof label !== "string") {
+    return null;
+  }
+  const trimmed = label.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.slice(0, PRELAUNCH_INVITE_LABEL_MAX_LENGTH);
+}
+
+function isUniqueViolationError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code =
+    "code" in error && typeof error.code === "string" ? error.code : null;
+  return code === "23505";
+}
+
+export type PrelaunchInviteTokenStatus =
+  | { status: "invalid" }
+  | { status: "revoked"; inviteId: string }
+  | { status: "expired"; inviteId: string }
+  | { status: "exhausted"; inviteId: string }
+  | { status: "valid"; inviteId: string };
+
+export type RedeemPrelaunchInviteResult =
+  | { status: "invalid_user" }
+  | { status: "invalid_token" }
+  | { status: "revoked" }
+  | { status: "expired" }
+  | { status: "exhausted" }
+  | { status: "already_granted"; inviteId: string }
+  | { status: "redeemed"; inviteId: string };
+
+export type PrelaunchInviteTokenListItem = InviteToken & {
+  redemptionCount: number;
+  activeAccessCount: number;
+};
+
+export type ActivePrelaunchInviteAccessItem = {
+  userId: string;
+  userEmail: string | null;
+  inviteId: string;
+  inviteToken: string;
+  inviteLabel: string | null;
+  grantedAt: Date;
+};
+
+export async function createPrelaunchInviteToken({
+  createdByAdminId,
+  label,
+}: {
+  createdByAdminId: string;
+  label?: string | null;
+}): Promise<InviteToken> {
+  if (!isValidUUID(createdByAdminId)) {
+    throw new ChatSDKError("bad_request:api", "Invalid admin id");
+  }
+
+  const normalizedLabel = normalizeInviteLabel(label);
+  const now = new Date();
+
+  for (let attempt = 0; attempt < PRELAUNCH_INVITE_MAX_CREATE_ATTEMPTS; attempt++) {
+    const token = randomBytes(PRELAUNCH_INVITE_TOKEN_BYTES).toString("hex");
+
+    try {
+      const [record] = await db
+        .insert(inviteToken)
+        .values({
+          token,
+          label: normalizedLabel,
+          createdByAdminId,
+          maxRedemptions: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      if (!record) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Failed to create invite token"
+        );
+      }
+
+      return record;
+    } catch (error) {
+      if (isTableMissingError(error)) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Invite tables are missing. Run the latest migrations and try again."
+        );
+      }
+
+      if (isUniqueViolationError(error)) {
+        continue;
+      }
+
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to create invite token"
+      );
+    }
+  }
+
+  throw new ChatSDKError(
+    "bad_request:database",
+    "Failed to create invite token after multiple attempts"
+  );
+}
+
+export async function listPrelaunchInviteTokens({
+  limit = 50,
+}: {
+  limit?: number;
+} = {}): Promise<PrelaunchInviteTokenListItem[]> {
+  const normalizedLimit = Math.min(Math.max(Math.floor(limit), 1), 200);
+
+  try {
+    const invites = await db
+      .select()
+      .from(inviteToken)
+      .orderBy(desc(inviteToken.createdAt))
+      .limit(normalizedLimit);
+
+    if (invites.length === 0) {
+      return [];
+    }
+
+    const inviteIds = invites.map((item) => item.id);
+
+    const [redemptionRows, accessRows] = await Promise.all([
+      db
+        .select({
+          inviteId: inviteRedemption.inviteId,
+          total: count(),
+        })
+        .from(inviteRedemption)
+        .where(inArray(inviteRedemption.inviteId, inviteIds))
+        .groupBy(inviteRedemption.inviteId),
+      db
+        .select({
+          inviteId: userInviteAccess.inviteId,
+          total: count(),
+        })
+        .from(userInviteAccess)
+        .where(
+          and(
+            inArray(userInviteAccess.inviteId, inviteIds),
+            isNull(userInviteAccess.revokedAt)
+          )
+        )
+        .groupBy(userInviteAccess.inviteId),
+    ]);
+
+    const redemptionCountByInviteId = new Map(
+      redemptionRows.map((row) => [row.inviteId, Number(row.total ?? 0)])
+    );
+    const accessCountByInviteId = new Map(
+      accessRows.map((row) => [row.inviteId, Number(row.total ?? 0)])
+    );
+
+    return invites.map((invite) => ({
+      ...invite,
+      redemptionCount: redemptionCountByInviteId.get(invite.id) ?? 0,
+      activeAccessCount: accessCountByInviteId.get(invite.id) ?? 0,
+    }));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list prelaunch invites"
+    );
+  }
+}
+
+export async function listActivePrelaunchInviteAccess({
+  limit = 100,
+}: {
+  limit?: number;
+} = {}): Promise<ActivePrelaunchInviteAccessItem[]> {
+  const normalizedLimit = Math.min(Math.max(Math.floor(limit), 1), 500);
+
+  try {
+    const rows = await db
+      .select({
+        userId: userInviteAccess.userId,
+        userEmail: user.email,
+        inviteId: userInviteAccess.inviteId,
+        inviteToken: inviteToken.token,
+        inviteLabel: inviteToken.label,
+        grantedAt: userInviteAccess.grantedAt,
+      })
+      .from(userInviteAccess)
+      .innerJoin(user, eq(userInviteAccess.userId, user.id))
+      .innerJoin(inviteToken, eq(userInviteAccess.inviteId, inviteToken.id))
+      .where(isNull(userInviteAccess.revokedAt))
+      .orderBy(desc(userInviteAccess.grantedAt))
+      .limit(normalizedLimit);
+
+    return rows;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list invite access grants"
+    );
+  }
+}
+
+export async function getPrelaunchInviteTokenStatus(
+  tokenValue: string
+): Promise<PrelaunchInviteTokenStatus> {
+  const normalizedToken = tokenValue.trim();
+  if (!normalizedToken) {
+    return { status: "invalid" };
+  }
+
+  try {
+    const [invite] = await db
+      .select()
+      .from(inviteToken)
+      .where(eq(inviteToken.token, normalizedToken))
+      .limit(1);
+
+    if (!invite) {
+      return { status: "invalid" };
+    }
+
+    if (invite.revokedAt) {
+      return { status: "revoked", inviteId: invite.id };
+    }
+
+    if (invite.expiresAt && invite.expiresAt <= new Date()) {
+      return { status: "expired", inviteId: invite.id };
+    }
+
+    const maxRedemptions = Math.max(1, Number(invite.maxRedemptions ?? 1));
+    const [redemptionCountRow] = await db
+      .select({ total: count() })
+      .from(inviteRedemption)
+      .where(eq(inviteRedemption.inviteId, invite.id))
+      .limit(1);
+
+    const redemptionCount = Number(redemptionCountRow?.total ?? 0);
+    if (redemptionCount >= maxRedemptions) {
+      return { status: "exhausted", inviteId: invite.id };
+    }
+
+    return { status: "valid", inviteId: invite.id };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return { status: "invalid" };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to validate invite token"
+    );
+  }
+}
+
+export async function redeemPrelaunchInviteTokenForUser({
+  token,
+  userId,
+}: {
+  token: string;
+  userId: string;
+}): Promise<RedeemPrelaunchInviteResult> {
+  if (!isValidUUID(userId)) {
+    return { status: "invalid_user" };
+  }
+
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return { status: "invalid_token" };
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [invite] = await tx
+        .select()
+        .from(inviteToken)
+        .where(eq(inviteToken.token, normalizedToken))
+        .limit(1);
+
+      if (!invite) {
+        return { status: "invalid_token" };
+      }
+
+      if (invite.revokedAt) {
+        return { status: "revoked" };
+      }
+
+      const now = new Date();
+      if (invite.expiresAt && invite.expiresAt <= now) {
+        return { status: "expired" };
+      }
+
+      const [existingActiveAccess] = await tx
+        .select({ inviteId: userInviteAccess.inviteId })
+        .from(userInviteAccess)
+        .where(
+          and(
+            eq(userInviteAccess.userId, userId),
+            isNull(userInviteAccess.revokedAt)
+          )
+        )
+        .limit(1);
+
+      if (existingActiveAccess) {
+        return {
+          status: "already_granted",
+          inviteId: existingActiveAccess.inviteId,
+        };
+      }
+
+      const [existingRedemption] = await tx
+        .select({ id: inviteRedemption.id })
+        .from(inviteRedemption)
+        .where(
+          and(
+            eq(inviteRedemption.inviteId, invite.id),
+            eq(inviteRedemption.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (!existingRedemption) {
+        const maxRedemptions = Math.max(1, Number(invite.maxRedemptions ?? 1));
+        const [redemptionCountRow] = await tx
+          .select({ total: count() })
+          .from(inviteRedemption)
+          .where(eq(inviteRedemption.inviteId, invite.id))
+          .limit(1);
+        const redemptionCount = Number(redemptionCountRow?.total ?? 0);
+
+        if (redemptionCount >= maxRedemptions) {
+          return { status: "exhausted" };
+        }
+
+        try {
+          await tx.insert(inviteRedemption).values({
+            inviteId: invite.id,
+            userId,
+            redeemedAt: now,
+          });
+        } catch (error) {
+          if (!isUniqueViolationError(error)) {
+            throw error;
+          }
+
+          const [sameUserRedemption] = await tx
+            .select({ id: inviteRedemption.id })
+            .from(inviteRedemption)
+            .where(
+              and(
+                eq(inviteRedemption.inviteId, invite.id),
+                eq(inviteRedemption.userId, userId)
+              )
+            )
+            .limit(1);
+
+          if (!sameUserRedemption) {
+            return { status: "exhausted" };
+          }
+        }
+      }
+
+      await tx
+        .insert(userInviteAccess)
+        .values({
+          userId,
+          inviteId: invite.id,
+          grantedAt: now,
+          revokedAt: null,
+          revokedByAdminId: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: userInviteAccess.userId,
+          set: {
+            inviteId: invite.id,
+            grantedAt: now,
+            revokedAt: null,
+            revokedByAdminId: null,
+            updatedAt: now,
+          },
+        });
+
+      return {
+        status: existingRedemption ? "already_granted" : "redeemed",
+        inviteId: invite.id,
+      };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return { status: "invalid_token" };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to redeem invite token"
+    );
+  }
+}
+
+export async function hasActivePrelaunchInviteAccessForUser(
+  userId: string
+): Promise<boolean> {
+  if (!isValidUUID(userId)) {
+    return false;
+  }
+
+  try {
+    const [record] = await db
+      .select({ userId: userInviteAccess.userId })
+      .from(userInviteAccess)
+      .where(
+        and(
+          eq(userInviteAccess.userId, userId),
+          isNull(userInviteAccess.revokedAt)
+        )
+      )
+      .limit(1);
+
+    return Boolean(record?.userId);
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to check prelaunch invite access"
+    );
+  }
+}
+
+export async function revokePrelaunchInviteToken({
+  inviteId,
+  revokedByAdminId,
+}: {
+  inviteId: string;
+  revokedByAdminId?: string | null;
+}): Promise<boolean> {
+  if (!isValidUUID(inviteId)) {
+    return false;
+  }
+
+  const validRevokerId =
+    revokedByAdminId && isValidUUID(revokedByAdminId) ? revokedByAdminId : null;
+
+  try {
+    return await db.transaction(async (tx) => {
+      const now = new Date();
+      const [revokedInvite] = await tx
+        .update(inviteToken)
+        .set({
+          revokedAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(inviteToken.id, inviteId), isNull(inviteToken.revokedAt)))
+        .returning({ id: inviteToken.id });
+
+      if (!revokedInvite) {
+        return false;
+      }
+
+      await tx
+        .update(userInviteAccess)
+        .set({
+          revokedAt: now,
+          revokedByAdminId: validRevokerId,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(userInviteAccess.inviteId, inviteId),
+            isNull(userInviteAccess.revokedAt)
+          )
+        );
+
+      return true;
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to revoke invite token"
+    );
+  }
+}
+
+export async function revokePrelaunchInviteAccessForUser({
+  userId,
+  revokedByAdminId,
+  inviteId,
+}: {
+  userId: string;
+  revokedByAdminId?: string | null;
+  inviteId?: string | null;
+}): Promise<boolean> {
+  if (!isValidUUID(userId)) {
+    return false;
+  }
+
+  const validInviteId = inviteId && isValidUUID(inviteId) ? inviteId : null;
+  const validRevokerId =
+    revokedByAdminId && isValidUUID(revokedByAdminId) ? revokedByAdminId : null;
+  const now = new Date();
+
+  try {
+    const conditions: SQL<boolean>[] = [
+      eq(userInviteAccess.userId, userId) as SQL<boolean>,
+      isNull(userInviteAccess.revokedAt) as SQL<boolean>,
+    ];
+
+    if (validInviteId) {
+      conditions.push(eq(userInviteAccess.inviteId, validInviteId) as SQL<boolean>);
+    }
+
+    const revoked = await db
+      .update(userInviteAccess)
+      .set({
+        revokedAt: now,
+        revokedByAdminId: validRevokerId,
+        updatedAt: now,
+      })
+      .where(and(...conditions))
+      .returning({ userId: userInviteAccess.userId });
+
+    return revoked.length > 0;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to revoke invite access"
     );
   }
 }

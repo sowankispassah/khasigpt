@@ -2,6 +2,7 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import {
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
@@ -28,6 +29,10 @@ const MAINTENANCE_FIELD_CONFIG: Record<string, MaintenanceFieldConfig> = {
   underMaintenance: {
     settingKey: SITE_UNDER_MAINTENANCE_SETTING_KEY,
     auditAction: "site.maintenance.toggle",
+  },
+  inviteOnlyPrelaunch: {
+    settingKey: SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
+    auditAction: "site.prelaunch_invite_only.toggle",
   },
 };
 

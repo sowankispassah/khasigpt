@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
@@ -10,17 +11,28 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const [publicLaunchedSetting, underMaintenanceSetting] = await Promise.all([
+    const [
+      publicLaunchedSetting,
+      underMaintenanceSetting,
+      inviteOnlyPrelaunchSetting,
+    ] = await Promise.all([
       getAppSetting<string | boolean | number>(SITE_PUBLIC_LAUNCHED_SETTING_KEY),
       getAppSetting<string | boolean | number>(
         SITE_UNDER_MAINTENANCE_SETTING_KEY
       ),
+      getAppSetting<string | boolean | number>(
+        SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY
+      ),
     ]);
     const publicLaunched = parseBooleanSetting(publicLaunchedSetting, true);
     const underMaintenance = parseBooleanSetting(underMaintenanceSetting, false);
+    const inviteOnlyPrelaunch = parseBooleanSetting(
+      inviteOnlyPrelaunchSetting,
+      false
+    );
 
     return NextResponse.json(
-      { publicLaunched, underMaintenance },
+      { publicLaunched, underMaintenance, inviteOnlyPrelaunch },
       {
         headers: {
           "Cache-Control": "no-store",
@@ -34,7 +46,11 @@ export async function GET() {
     );
 
     return NextResponse.json(
-      { publicLaunched: true, underMaintenance: false },
+      {
+        publicLaunched: true,
+        underMaintenance: false,
+        inviteOnlyPrelaunch: false,
+      },
       {
         headers: {
           "Cache-Control": "no-store",

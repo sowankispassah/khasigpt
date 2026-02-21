@@ -32,6 +32,7 @@ import {
   createAuditLogEntry,
   createCharacterWithAliases,
   createImageModelConfig,
+  createPrelaunchInviteToken,
   createLanguageEntry,
   createModelConfig,
   createPricingPlan,
@@ -56,6 +57,8 @@ import {
   hardDeletePricingPlan,
   recordCouponRewardPayout,
   restoreChatById,
+  revokePrelaunchInviteAccessForUser,
+  revokePrelaunchInviteToken,
   setActiveImageModelConfig,
   setAppSetting,
   setCouponRewardStatus,
@@ -515,6 +518,91 @@ export async function updateComingSoonTimerAction(formData: FormData) {
 
   revalidatePath("/admin/settings");
   revalidatePath("/coming-soon");
+}
+
+export async function createPrelaunchInviteAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const inviteLabel = formData.get("inviteLabel");
+  const label =
+    typeof inviteLabel === "string" && inviteLabel.trim().length > 0
+      ? inviteLabel
+      : null;
+
+  const invite = await createPrelaunchInviteToken({
+    createdByAdminId: actor.id,
+    label,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "site.prelaunch_invite.create",
+    target: { inviteId: invite.id },
+    metadata: {
+      inviteLabel: invite.label,
+    },
+  });
+
+  revalidatePath("/admin/settings");
+}
+
+export async function revokePrelaunchInviteAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const inviteId = formData.get("inviteId");
+  const normalizedInviteId =
+    typeof inviteId === "string" ? inviteId.trim() : "";
+
+  if (!normalizedInviteId) {
+    throw new Error("Invite id is required");
+  }
+
+  const revoked = await revokePrelaunchInviteToken({
+    inviteId: normalizedInviteId,
+    revokedByAdminId: actor.id,
+  });
+
+  if (revoked) {
+    await createAuditLogEntry({
+      actorId: actor.id,
+      action: "site.prelaunch_invite.revoke",
+      target: { inviteId: normalizedInviteId },
+    });
+  }
+
+  revalidatePath("/admin/settings");
+}
+
+export async function revokePrelaunchInviteAccessAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const userId = formData.get("userId");
+  const inviteId = formData.get("inviteId");
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  const normalizedInviteId = typeof inviteId === "string" ? inviteId.trim() : "";
+
+  if (!normalizedUserId) {
+    throw new Error("User id is required");
+  }
+
+  const revoked = await revokePrelaunchInviteAccessForUser({
+    userId: normalizedUserId,
+    inviteId: normalizedInviteId || null,
+    revokedByAdminId: actor.id,
+  });
+
+  if (revoked) {
+    await createAuditLogEntry({
+      actorId: actor.id,
+      action: "site.prelaunch_invite_access.revoke",
+      target: {
+        userId: normalizedUserId,
+        inviteId: normalizedInviteId || null,
+      },
+    });
+  }
+
+  revalidatePath("/admin/settings");
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {

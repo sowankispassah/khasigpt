@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from "date-fns";
 import type { ComponentProps, ReactNode } from "react";
 import {
+  createPrelaunchInviteAction,
   createImageModelConfigAction,
   createLanguageAction,
   createModelConfigAction,
@@ -12,6 +13,8 @@ import {
   hardDeleteImageModelConfigAction,
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
+  revokePrelaunchInviteAccessAction,
+  revokePrelaunchInviteAction,
   setActiveImageModelConfigAction,
   setDefaultModelConfigAction,
   setImagePromptTranslationModelAction,
@@ -55,6 +58,7 @@ import {
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
@@ -64,9 +68,11 @@ import {
 import {
   getAppSettingsByKeysUncached,
   getTranslationValuesForKeys,
+  listActivePrelaunchInviteAccess,
   listImageModelConfigs,
   listLanguagesWithSettings,
   listModelConfigs,
+  listPrelaunchInviteTokens,
   listPricingPlans,
 } from "@/lib/db/queries";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
@@ -131,6 +137,7 @@ const SETTINGS_SNAPSHOT_KEYS = [
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
@@ -265,6 +272,9 @@ async function loadAdminSettingsData() {
   const siteUnderMaintenanceSetting = getStoredSetting<string | boolean>(
     SITE_UNDER_MAINTENANCE_SETTING_KEY
   );
+  const sitePrelaunchInviteOnlySetting = getStoredSetting<string | boolean>(
+    SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY
+  );
   const comingSoonContentSetting = getStoredSetting<unknown>(
     SITE_COMING_SOON_CONTENT_SETTING_KEY
   );
@@ -299,6 +309,16 @@ async function loadAdminSettingsData() {
   const freeMessageSettings = normalizeFreeMessageSettings(
     getStoredSetting(FREE_MESSAGE_SETTINGS_KEY)
   );
+  const prelaunchInvites = await safeSettingsQuery(
+    "prelaunch invites",
+    listPrelaunchInviteTokens({ limit: 100 }),
+    []
+  );
+  const prelaunchInviteAccess = await safeSettingsQuery(
+    "prelaunch invite access",
+    listActivePrelaunchInviteAccess({ limit: 200 }),
+    []
+  );
 
   return {
     exchangeRate,
@@ -320,8 +340,11 @@ async function loadAdminSettingsData() {
     calculatorEnabledSetting,
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
+    sitePrelaunchInviteOnlySetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
+    prelaunchInvites,
+    prelaunchInviteAccess,
     forumEnabledSetting,
     studyModeEnabledSetting,
     jobsEnabledSetting,
@@ -358,8 +381,11 @@ function buildFallbackAdminSettingsData() {
     calculatorEnabledSetting: null,
     sitePublicLaunchedSetting: null,
     siteUnderMaintenanceSetting: null,
+    sitePrelaunchInviteOnlySetting: null,
     comingSoonContentSetting: null,
     comingSoonTimerSetting: null,
+    prelaunchInvites: [],
+    prelaunchInviteAccess: [],
     forumEnabledSetting: null,
     studyModeEnabledSetting: null,
     jobsEnabledSetting: null,
@@ -508,8 +534,11 @@ export default async function AdminSettingsPage({
     calculatorEnabledSetting,
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
+    sitePrelaunchInviteOnlySetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
+    prelaunchInvites,
+    prelaunchInviteAccess,
     forumEnabledSetting,
     studyModeEnabledSetting,
     jobsEnabledSetting,
@@ -683,6 +712,10 @@ export default async function AdminSettingsPage({
     siteUnderMaintenanceSetting,
     false
   );
+  const sitePrelaunchInviteOnly = parseBooleanSetting(
+    sitePrelaunchInviteOnlySetting,
+    false
+  );
   const comingSoonContent =
     normalizeComingSoonContentSetting(comingSoonContentSetting);
   const comingSoonTimer = normalizeComingSoonTimerSetting(comingSoonTimerSetting);
@@ -814,6 +847,16 @@ export default async function AdminSettingsPage({
     planTranslationsByLanguage[language.code] = planMap;
   }
 
+  const appBaseUrlRaw =
+    process.env.APP_BASE_URL ??
+    process.env.NEXTAUTH_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    null;
+  const appBaseUrl =
+    typeof appBaseUrlRaw === "string" && /^https?:\/\//i.test(appBaseUrlRaw)
+      ? appBaseUrlRaw.replace(/\/+$/, "")
+      : null;
+
   return (
     <>
       <AdminSettingsNotice notice={notice} />
@@ -852,6 +895,152 @@ export default async function AdminSettingsPage({
               fieldName="underMaintenance"
               title="Under maintenance"
             />
+
+            <MaintenanceToggleControl
+              currentValue={sitePrelaunchInviteOnly}
+              description="When enabled and Public launched is off, only invited users can access the app after redeeming an invite link."
+              fieldName="inviteOnlyPrelaunch"
+              title="Invite-only prelaunch"
+            />
+
+            <div className="space-y-4 rounded-lg border bg-background p-4">
+              <div className="space-y-1">
+                <h3 className="font-semibold text-sm">Prelaunch invites</h3>
+                <p className="text-muted-foreground text-xs">
+                  Generate one-time invite links for prelaunch access. Invite-only
+                  prelaunch only applies when Public launched is off and Under
+                  maintenance is off.
+                </p>
+              </div>
+
+              <form
+                action={createPrelaunchInviteAction}
+                className="grid gap-3 md:grid-cols-[1fr_auto]"
+              >
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  id="inviteLabel"
+                  name="inviteLabel"
+                  placeholder="Invite label (optional)"
+                />
+                <SettingsSubmitButton
+                  pendingLabel="Creating..."
+                  successMessage="Invite link created."
+                >
+                  Create invite link
+                </SettingsSubmitButton>
+              </form>
+
+              {prelaunchInvites.length > 0 ? (
+                <div className="space-y-3">
+                  {prelaunchInvites.map((invite) => {
+                    const invitePath = `/invite/${invite.token}`;
+                    const inviteUrl = appBaseUrl ? `${appBaseUrl}${invitePath}` : invitePath;
+                    const isRevoked = Boolean(invite.revokedAt);
+                    const statusLabel = isRevoked
+                      ? "Revoked"
+                      : invite.redemptionCount > 0
+                        ? "Used"
+                        : "Active";
+
+                    return (
+                      <div
+                        className="space-y-2 rounded-md border bg-card p-3"
+                        key={invite.id}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex min-w-0 flex-col">
+                            <span className="font-medium text-sm">
+                              {invite.label?.trim() || "Untitled invite"}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              Created{" "}
+                              {formatDistanceToNow(new Date(invite.createdAt), {
+                                addSuffix: true,
+                              })}
+                            </span>
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 font-medium text-xs",
+                              isRevoked
+                                ? "bg-rose-100 text-rose-700"
+                                : invite.redemptionCount > 0
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-emerald-100 text-emerald-700"
+                            )}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+
+                        <input
+                          className="w-full rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs"
+                          readOnly
+                          value={inviteUrl}
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground text-xs">
+                          <span>
+                            Redemptions: {invite.redemptionCount} | Active access:{" "}
+                            {invite.activeAccessCount}
+                          </span>
+                          {!isRevoked ? (
+                            <form action={revokePrelaunchInviteAction}>
+                              <input name="inviteId" type="hidden" value={invite.id} />
+                              <button
+                                className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                                type="submit"
+                              >
+                                Revoke invite
+                              </button>
+                            </form>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  No prelaunch invites created yet.
+                </p>
+              )}
+
+              {prelaunchInviteAccess.length > 0 ? (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Active invited users</h4>
+                  {prelaunchInviteAccess.map((access) => (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card p-3"
+                      key={`${access.userId}-${access.inviteId}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm">
+                          {access.userEmail ?? access.userId}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          Granted{" "}
+                          {formatDistanceToNow(new Date(access.grantedAt), {
+                            addSuffix: true,
+                          })}
+                        </p>
+                      </div>
+                      <form action={revokePrelaunchInviteAccessAction}>
+                        <input name="inviteId" type="hidden" value={access.inviteId} />
+                        <input name="userId" type="hidden" value={access.userId} />
+                        <button
+                          className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                          type="submit"
+                        >
+                          Revoke access
+                        </button>
+                      </form>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
             <form
               action={updateComingSoonContentAction}

@@ -2,8 +2,12 @@ import { compare } from "bcrypt-ts";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
+import { cookies } from "next/headers";
 
-import { DUMMY_PASSWORD } from "@/lib/constants";
+import {
+  DUMMY_PASSWORD,
+  PRELAUNCH_INVITE_COOKIE_NAME,
+} from "@/lib/constants";
 import {
   consumeImpersonationToken,
   createAuditLogEntry,
@@ -11,6 +15,7 @@ import {
   ensureOAuthUser,
   getUser,
   getUserById,
+  redeemPrelaunchInviteTokenForUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
@@ -50,6 +55,7 @@ const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
 const AUTH_DB_TIMEOUT_MS = 1500;
 const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
 const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
+const INVITE_REDEMPTION_TIMEOUT_MS = 2500;
 
 const providers: any[] = [
   Credentials({
@@ -196,6 +202,42 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 const ACCOUNT_INACTIVE_REDIRECT = "/login?error=AccountInactive";
 const ACCOUNT_LINK_REQUIRED_REDIRECT = "/login?error=AccountLinkRequired";
 
+async function applyPendingInviteAccess(userId: string) {
+  try {
+    const cookieStore = await cookies();
+    const pendingToken = cookieStore.get(PRELAUNCH_INVITE_COOKIE_NAME)?.value;
+    const token = typeof pendingToken === "string" ? pendingToken.trim() : "";
+
+    if (!token) {
+      return;
+    }
+
+    await withTimeout(
+      redeemPrelaunchInviteTokenForUser({
+        token,
+        userId,
+      }),
+      INVITE_REDEMPTION_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        "[auth] Failed to redeem pending prelaunch invite token during sign-in.",
+        error
+      );
+      return null;
+    });
+
+    cookieStore.set(PRELAUNCH_INVITE_COOKIE_NAME, "", {
+      httpOnly: true,
+      maxAge: 0,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+  } catch (error) {
+    console.error("[auth] Failed to resolve pending invite cookie.", error);
+  }
+}
+
 export const {
   handlers: { GET, POST },
   auth,
@@ -299,6 +341,10 @@ export const {
           }
           throw error;
         }
+      }
+
+      if (typeof user?.id === "string" && user.role !== "admin") {
+        await applyPendingInviteAccess(user.id);
       }
 
       return true;

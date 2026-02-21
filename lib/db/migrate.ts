@@ -38,6 +38,7 @@ const runMigrate = async () => {
   const connection = postgres(process.env.POSTGRES_URL, {
     max: 1,
     ssl: process.env.POSTGRES_URL.includes("sslmode") ? "require" : undefined,
+    onnotice: () => {},
   });
   const db = drizzle(connection);
 
