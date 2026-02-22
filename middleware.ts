@@ -71,8 +71,10 @@ const SITE_ADMIN_ENTRY_PATH = "/admin-entry";
 const SITE_INVITE_PATH_PREFIX = "/invite/";
 const SITE_STATUS_CACHE_WINDOW_MS =
   process.env.NODE_ENV === "development" ? 1000 : 15 * 1000;
+const SITE_STATUS_STALE_GRACE_MS =
+  process.env.NODE_ENV === "development" ? 10 * 1000 : 60 * 1000;
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
-  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "3000",
+  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "6000",
   10
 );
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS =
@@ -299,14 +301,9 @@ async function resolveSiteStatus(
     };
   }
 
-  const fallbackStatus = siteStatusCache ?? {
-    fetchedAt: now,
-    publicLaunched: true,
-    underMaintenance: false,
-    inviteOnlyPrelaunch: false,
-    adminAccessEnabled: false,
-    adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
-  };
+  const staleStatusAllowed =
+    siteStatusCache !== null &&
+    now - siteStatusCache.fetchedAt < SITE_STATUS_STALE_GRACE_MS;
   const statusUrl = request.nextUrl.clone();
   statusUrl.pathname = SITE_STATUS_API_PATH;
   statusUrl.search = "";
@@ -328,20 +325,40 @@ async function resolveSiteStatus(
     );
 
     if (!response || !response.ok) {
+      if (staleStatusAllowed && siteStatusCache) {
+        return {
+          publicLaunched: siteStatusCache.publicLaunched,
+          underMaintenance: siteStatusCache.underMaintenance,
+          inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
+          adminAccessEnabled: siteStatusCache.adminAccessEnabled,
+          adminEntryPath: siteStatusCache.adminEntryPath,
+        };
+      }
+
+      if (response?.ok === false) {
+        console.error(
+          `[middleware] Failed to fetch site status. Status=${response.status}. Falling back to permissive defaults.`
+        );
+      } else {
+        console.error(
+          "[middleware] Site status internal fetch timed out. Falling back to permissive defaults."
+        );
+      }
+
       siteStatusCache = {
         fetchedAt: now,
-        publicLaunched: fallbackStatus.publicLaunched,
-        underMaintenance: fallbackStatus.underMaintenance,
-        inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
-        adminAccessEnabled: fallbackStatus.adminAccessEnabled,
-        adminEntryPath: fallbackStatus.adminEntryPath,
+        publicLaunched: true,
+        underMaintenance: false,
+        inviteOnlyPrelaunch: false,
+        adminAccessEnabled: false,
+        adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
       };
       return {
-        publicLaunched: fallbackStatus.publicLaunched,
-        underMaintenance: fallbackStatus.underMaintenance,
-        inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
-        adminAccessEnabled: fallbackStatus.adminAccessEnabled,
-        adminEntryPath: fallbackStatus.adminEntryPath,
+        publicLaunched: true,
+        underMaintenance: false,
+        inviteOnlyPrelaunch: false,
+        adminAccessEnabled: false,
+        adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
       };
     }
 
@@ -375,21 +392,36 @@ async function resolveSiteStatus(
       adminAccessEnabled,
       adminEntryPath,
     };
-  } catch {
+  } catch (error) {
+    if (staleStatusAllowed && siteStatusCache) {
+      return {
+        publicLaunched: siteStatusCache.publicLaunched,
+        underMaintenance: siteStatusCache.underMaintenance,
+        inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
+        adminAccessEnabled: siteStatusCache.adminAccessEnabled,
+        adminEntryPath: siteStatusCache.adminEntryPath,
+      };
+    }
+
+    console.error(
+      "[middleware] Site status internal fetch failed. Falling back to permissive defaults.",
+      error
+    );
+
     siteStatusCache = {
       fetchedAt: now,
-      publicLaunched: fallbackStatus.publicLaunched,
-      underMaintenance: fallbackStatus.underMaintenance,
-      inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
-      adminAccessEnabled: fallbackStatus.adminAccessEnabled,
-      adminEntryPath: fallbackStatus.adminEntryPath,
+      publicLaunched: true,
+      underMaintenance: false,
+      inviteOnlyPrelaunch: false,
+      adminAccessEnabled: false,
+      adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
     };
     return {
-      publicLaunched: fallbackStatus.publicLaunched,
-      underMaintenance: fallbackStatus.underMaintenance,
-      inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
-      adminAccessEnabled: fallbackStatus.adminAccessEnabled,
-      adminEntryPath: fallbackStatus.adminEntryPath,
+      publicLaunched: true,
+      underMaintenance: false,
+      inviteOnlyPrelaunch: false,
+      adminAccessEnabled: false,
+      adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
     };
   }
 }

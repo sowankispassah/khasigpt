@@ -47,6 +47,7 @@ import {
   deletePricingPlan,
   deleteTranslationValueEntry,
   getAppSetting,
+  getAppSettingUncached,
   getImageModelConfigByKey,
   getLanguageByIdRaw,
   getModelConfigById,
@@ -144,7 +145,12 @@ import {
 } from "@/lib/feature-access";
 
 async function requireAdmin() {
-  const session = await auth();
+  const session = await withTimeout(auth(), ADMIN_ACTION_AUTH_TIMEOUT_MS).catch(
+    (error) => {
+      console.error("[admin/actions] Admin session lookup timed out.", error);
+      return null;
+    }
+  );
 
   if (!session?.user || session.user.role !== "admin") {
     throw new Error("forbidden");
@@ -158,6 +164,9 @@ function revalidateAppSettingCache(key: string) {
 }
 
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
+const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
+const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
+const ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS = 6000;
 const FEATURE_ACCESS_SETTING_TIMEOUT_MS = 12000;
 
 async function createAuditLogEntrySafely(
@@ -537,10 +546,27 @@ export async function updateAdminEntryCodeAction(formData: FormData) {
     throw new Error("Admin access code must be 6 to 128 characters.");
   }
 
-  await setAppSetting({
-    key: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
-    value: generateHashedPassword(code),
-  });
+  const hashedCode = generateHashedPassword(code);
+
+  await withTimeout(
+    setAppSetting({
+      key: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+      value: hashedCode,
+    }),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Admin entry code save timed out for "${SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY}".`
+      );
+    }
+  );
+  const persistedHash = await withTimeout(
+    getAppSettingUncached<string>(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY),
+    ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS
+  );
+  if (persistedHash !== hashedCode) {
+    throw new Error("Failed to verify saved admin entry code.");
+  }
   revalidateAppSettingCache(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY);
 
   await createAuditLogEntry({
@@ -563,10 +589,25 @@ export async function updateAdminEntryPathAction(formData: FormData) {
     );
   }
 
-  await setAppSetting({
-    key: SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
-    value: path,
-  });
+  await withTimeout(
+    setAppSetting({
+      key: SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+      value: path,
+    }),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Admin entry path save timed out for "${SITE_ADMIN_ENTRY_PATH_SETTING_KEY}".`
+      );
+    }
+  );
+  const persistedPath = await withTimeout(
+    getAppSettingUncached<string>(SITE_ADMIN_ENTRY_PATH_SETTING_KEY),
+    ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS
+  );
+  if (persistedPath !== path) {
+    throw new Error("Failed to verify saved admin entry path.");
+  }
   revalidateAppSettingCache(SITE_ADMIN_ENTRY_PATH_SETTING_KEY);
 
   await createAuditLogEntry({

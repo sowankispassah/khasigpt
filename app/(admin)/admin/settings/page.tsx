@@ -73,7 +73,6 @@ import {
 } from "@/lib/constants";
 import {
   getAppSettingsByKeysUncached,
-  getAppSettingUncached,
   getTranslationValuesForKeys,
   listActivePrelaunchInviteAccess,
   listImageModelConfigs,
@@ -130,10 +129,10 @@ const PROVIDER_OPTIONS = [
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
-const SETTINGS_DATA_QUERY_TIMEOUT_MS = 5000;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 10000;
-const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 15000;
-const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
+const SETTINGS_DATA_QUERY_TIMEOUT_MS = 8000;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 15000;
+const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 30000;
+const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 4000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -199,22 +198,15 @@ function safeSettingsQuery<T>(
 }
 
 async function loadEssentialFallbackSettingMap() {
-  const entries = await Promise.allSettled(
-    ESSENTIAL_FALLBACK_SETTING_KEYS.map(async (key) => {
-      const value = await withTimeout(
-        getAppSettingUncached<unknown>(key),
-        SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS
-      );
-      return [key, value] as const;
-    })
+  const settings = await withTimeout(
+    getAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS
   );
 
   const map = new Map<string, unknown>();
-  for (const entry of entries) {
-    if (entry.status !== "fulfilled") {
-      continue;
-    }
-    const [key, value] = entry.value;
+  for (const setting of settings) {
+    const key = setting.key;
+    const value = setting.value;
     if (value !== null && value !== undefined) {
       map.set(key, value);
     }
@@ -260,7 +252,7 @@ function SettingsSubmitButton(
 }
 
 async function loadAdminSettingsData() {
-  const exchangeRate = await withTimeout(
+  const exchangeRatePromise = withTimeout(
     getUsdToInrRate(),
     EXCHANGE_RATE_QUERY_TIMEOUT_MS
   ).catch((error) => {
@@ -273,8 +265,8 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
-  const appSettingValuesByKey = await loadAppSettingValuesByKey();
-  const modelsRaw = await safeSettingsQuery(
+  const appSettingValuesByKeyPromise = loadAppSettingValuesByKey();
+  const modelsRawPromise = safeSettingsQuery(
     "model configs",
     listModelConfigs({
       includeDisabled: true,
@@ -283,7 +275,7 @@ async function loadAdminSettingsData() {
     }),
     []
   );
-  const imageModelConfigs = await safeSettingsQuery(
+  const imageModelConfigsPromise = safeSettingsQuery(
     "image model configs",
     listImageModelConfigs({
       includeDisabled: true,
@@ -292,16 +284,46 @@ async function loadAdminSettingsData() {
     }),
     []
   );
-  const plansRaw = await safeSettingsQuery(
+  const plansRawPromise = safeSettingsQuery(
     "pricing plans",
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
     []
   );
-  const languages = await safeSettingsQuery(
+  const languagesPromise = safeSettingsQuery(
     "languages",
     listLanguagesWithSettings(),
     []
   );
+  const prelaunchInvitesPromise = safeSettingsQuery(
+    "prelaunch invites",
+    listPrelaunchInviteTokens({ limit: 100 }),
+    []
+  );
+  const prelaunchInviteAccessPromise = safeSettingsQuery(
+    "prelaunch invite access",
+    listActivePrelaunchInviteAccess({ limit: 200 }),
+    []
+  );
+
+  const [
+    exchangeRate,
+    appSettingValuesByKey,
+    modelsRaw,
+    imageModelConfigs,
+    plansRaw,
+    languages,
+    prelaunchInvites,
+    prelaunchInviteAccess,
+  ] = await Promise.all([
+    exchangeRatePromise,
+    appSettingValuesByKeyPromise,
+    modelsRawPromise,
+    imageModelConfigsPromise,
+    plansRawPromise,
+    languagesPromise,
+    prelaunchInvitesPromise,
+    prelaunchInviteAccessPromise,
+  ]);
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -385,17 +407,6 @@ async function loadAdminSettingsData() {
   const freeMessageSettings = normalizeFreeMessageSettings(
     getStoredSetting(FREE_MESSAGE_SETTINGS_KEY)
   );
-  const prelaunchInvites = await safeSettingsQuery(
-    "prelaunch invites",
-    listPrelaunchInviteTokens({ limit: 100 }),
-    []
-  );
-  const prelaunchInviteAccess = await safeSettingsQuery(
-    "prelaunch invite access",
-    listActivePrelaunchInviteAccess({ limit: 200 }),
-    []
-  );
-
   return {
     exchangeRate,
     modelsRaw,
