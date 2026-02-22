@@ -72,6 +72,7 @@ import {
   listImageModelConfigs,
   listLanguagesWithSettings,
   listModelConfigs,
+  listPrelaunchInviteJoinedUsers,
   listPrelaunchInviteTokens,
   listPricingPlans,
 } from "@/lib/db/queries";
@@ -109,11 +110,7 @@ import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
-import {
-  mapInviteAccessForClient,
-  mapInviteForClient,
-  PrelaunchInvitesPanel,
-} from "./prelaunch-invites-panel";
+import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
 import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
 
 export const dynamic = "force-dynamic";
@@ -323,6 +320,16 @@ async function loadAdminSettingsData() {
     prelaunchInvitesPromise,
     prelaunchInviteAccessPromise,
   ]);
+  const prelaunchInviteJoinedUsers = prelaunchInvites.length
+    ? await safeSettingsQuery(
+        "prelaunch invite joined users",
+        listPrelaunchInviteJoinedUsers({
+          inviteIds: prelaunchInvites.map((invite) => invite.id),
+          limit: 500,
+        }),
+        []
+      )
+    : [];
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -434,6 +441,7 @@ async function loadAdminSettingsData() {
     comingSoonTimerSetting,
     prelaunchInvites,
     prelaunchInviteAccess,
+    prelaunchInviteJoinedUsers,
     forumEnabledSetting,
     studyModeEnabledSetting,
     jobsEnabledSetting,
@@ -478,6 +486,7 @@ function buildFallbackAdminSettingsData() {
     comingSoonTimerSetting: null,
     prelaunchInvites: [],
     prelaunchInviteAccess: [],
+    prelaunchInviteJoinedUsers: [],
     forumEnabledSetting: null,
     studyModeEnabledSetting: null,
     jobsEnabledSetting: null,
@@ -509,6 +518,25 @@ function toDateTimeLocalInputValue(iso: string) {
   return new Date(date.getTime() - timezoneOffsetMs)
     .toISOString()
     .slice(0, 16);
+}
+
+function toIsoDateString(value: Date | string | null | undefined): string {
+  if (!value) {
+    return new Date(0).toISOString();
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? new Date(0).toISOString()
+      : value.toISOString();
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date(0).toISOString();
+  }
+
+  return parsed.toISOString();
 }
 
 function ProviderBadge({ value }: { value: string }) {
@@ -698,6 +726,7 @@ export default async function AdminSettingsPage({
     comingSoonTimerSetting,
     prelaunchInvites,
     prelaunchInviteAccess,
+    prelaunchInviteJoinedUsers,
     forumEnabledSetting,
     studyModeEnabledSetting,
     jobsEnabledSetting,
@@ -1025,6 +1054,35 @@ export default async function AdminSettingsPage({
     typeof appBaseUrlRaw === "string" && /^https?:\/\//i.test(appBaseUrlRaw)
       ? appBaseUrlRaw.replace(/\/+$/, "")
       : null;
+  const prelaunchInvitesForClient = prelaunchInvites.map((invite) => ({
+    id: invite.id,
+    token: invite.token,
+    label: invite.label,
+    assignedToEmail: invite.assignedToEmail,
+    createdByAdminEmail: invite.createdByAdminEmail,
+    maxRedemptions: invite.maxRedemptions,
+    redemptionCount: invite.redemptionCount,
+    activeAccessCount: invite.activeAccessCount,
+    createdAt: toIsoDateString(invite.createdAt),
+    revokedAt: invite.revokedAt ? toIsoDateString(invite.revokedAt) : null,
+  }));
+  const prelaunchInviteAccessForClient = prelaunchInviteAccess.map((entry) => ({
+    userId: entry.userId,
+    userEmail: entry.userEmail,
+    inviteId: entry.inviteId,
+    inviteToken: entry.inviteToken,
+    inviteLabel: entry.inviteLabel,
+    grantedAt: toIsoDateString(entry.grantedAt),
+  }));
+  const prelaunchInviteJoinedUsersForClient = prelaunchInviteJoinedUsers.map(
+    (entry) => ({
+      inviteId: entry.inviteId,
+      userId: entry.userId,
+      userEmail: entry.userEmail,
+      redeemedAt: toIsoDateString(entry.redeemedAt),
+      hasActiveAccess: entry.hasActiveAccess,
+    })
+  );
 
   return (
     <>
@@ -1064,8 +1122,9 @@ export default async function AdminSettingsPage({
 
             <PrelaunchInvitesPanel
               appBaseUrl={appBaseUrl}
-              initialAccess={prelaunchInviteAccess.map(mapInviteAccessForClient)}
-              initialInvites={prelaunchInvites.map(mapInviteForClient)}
+              initialAccess={prelaunchInviteAccessForClient}
+              initialJoinedUsers={prelaunchInviteJoinedUsersForClient}
+              initialInvites={prelaunchInvitesForClient}
             />
 
             <form

@@ -927,6 +927,7 @@ export const inviteToken = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     token: varchar("token", { length: 128 }).notNull().unique(),
     label: varchar("label", { length: 160 }),
+    assignedToEmail: varchar("assignedToEmail", { length: 320 }),
     createdByAdminId: uuid("createdByAdminId")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -939,6 +940,9 @@ export const inviteToken = pgTable(
   (table) => ({
     tokenIdx: uniqueIndex("InviteToken_token_idx").on(table.token),
     createdByIdx: index("InviteToken_createdBy_idx").on(table.createdByAdminId),
+    assignedToEmailIdx: index("InviteToken_assignedToEmail_idx").on(
+      table.assignedToEmail
+    ),
     createdAtIdx: index("InviteToken_createdAt_idx").on(table.createdAt),
   })
 );

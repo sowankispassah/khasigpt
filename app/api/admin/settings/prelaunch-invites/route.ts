@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import {
+  activatePrelaunchInviteToken,
   createAuditLogEntry,
   createPrelaunchInviteToken,
   deletePrelaunchInviteToken,
   listActivePrelaunchInviteAccess,
+  listPrelaunchInviteJoinedUsers,
   listPrelaunchInviteTokens,
   revokePrelaunchInviteAccessForUser,
   revokePrelaunchInviteToken,
+  updatePrelaunchInviteAssignedEmail,
 } from "@/lib/db/queries";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -16,10 +19,12 @@ export const runtime = "nodejs";
 const API_TIMEOUT_MS = 12_000;
 const READ_TIMEOUT_MS = 8_000;
 const AUDIT_TIMEOUT_MS = 3_000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type InviteState = {
   invites: Awaited<ReturnType<typeof listPrelaunchInviteTokens>>;
   access: Awaited<ReturnType<typeof listActivePrelaunchInviteAccess>>;
+  joinedUsers: Awaited<ReturnType<typeof listPrelaunchInviteJoinedUsers>>;
 };
 
 function normalizeString(value: unknown): string {
@@ -27,9 +32,30 @@ function normalizeString(value: unknown): string {
 }
 
 function parseMaxRedemptions(value: unknown): number {
-  const rawValue = typeof value === "string" ? Number.parseInt(value, 10) : Number.NaN;
+  const rawValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
   const maxRedemptions = Number.isFinite(rawValue) ? Math.floor(rawValue) : 1;
   return Math.min(Math.max(maxRedemptions, 1), 10000);
+}
+
+function parseAssignedToEmail(value: unknown): {
+  isValid: boolean;
+  normalized: string | null;
+} {
+  const normalized = normalizeString(value).toLowerCase();
+  if (!normalized) {
+    return { isValid: true, normalized: null };
+  }
+
+  if (!EMAIL_PATTERN.test(normalized)) {
+    return { isValid: false, normalized: null };
+  }
+
+  return { isValid: true, normalized };
 }
 
 async function requireAdminUser() {
@@ -50,7 +76,19 @@ async function loadInviteState(): Promise<InviteState> {
     withTimeout(listActivePrelaunchInviteAccess({ limit: 200 }), READ_TIMEOUT_MS),
   ]);
 
-  return { invites, access };
+  const inviteIds = invites.map((invite) => invite.id);
+  const joinedUsers =
+    inviteIds.length > 0
+      ? await withTimeout(
+          listPrelaunchInviteJoinedUsers({
+            inviteIds,
+            limit: 500,
+          }),
+          READ_TIMEOUT_MS
+        )
+      : [];
+
+  return { invites, access, joinedUsers };
 }
 
 export async function GET() {
@@ -86,6 +124,7 @@ export async function POST(request: Request) {
         userId?: unknown;
         label?: unknown;
         maxRedemptions?: unknown;
+        assignedToEmail?: unknown;
       }
     | null;
 
@@ -102,10 +141,18 @@ export async function POST(request: Request) {
     if (action === "create") {
       const labelRaw = normalizeString(body.label);
       const maxRedemptions = parseMaxRedemptions(body.maxRedemptions);
+      const assignedToEmail = parseAssignedToEmail(body.assignedToEmail);
+      if (!assignedToEmail.isValid) {
+        return NextResponse.json(
+          { error: "invalid_assigned_to_email" },
+          { status: 400 }
+        );
+      }
       const invite = await withTimeout(
         createPrelaunchInviteToken({
           createdByAdminId: user.id,
           label: labelRaw || null,
+          assignedToEmail: assignedToEmail.normalized,
           maxRedemptions,
         }),
         API_TIMEOUT_MS
@@ -117,6 +164,7 @@ export async function POST(request: Request) {
         target: { inviteId: invite.id },
         metadata: {
           inviteLabel: invite.label,
+          assignedToEmail: invite.assignedToEmail,
           maxRedemptions: invite.maxRedemptions,
         },
       });
@@ -139,6 +187,53 @@ export async function POST(request: Request) {
         actorId: user.id,
         action: "site.prelaunch_invite.revoke",
         target: { inviteId },
+      });
+    } else if (action === "activateInvite") {
+      const inviteId = normalizeString(body.inviteId);
+      if (!inviteId) {
+        return NextResponse.json({ error: "invalid_invite_id" }, { status: 400 });
+      }
+      const activated = await withTimeout(
+        activatePrelaunchInviteToken({ inviteId }),
+        API_TIMEOUT_MS
+      );
+      if (!activated) {
+        return NextResponse.json({ error: "invite_not_found" }, { status: 404 });
+      }
+      void auditSafely({
+        actorId: user.id,
+        action: "site.prelaunch_invite.activate",
+        target: { inviteId },
+      });
+    } else if (action === "updateAssignedTo") {
+      const inviteId = normalizeString(body.inviteId);
+      if (!inviteId) {
+        return NextResponse.json({ error: "invalid_invite_id" }, { status: 400 });
+      }
+      const assignedToEmail = parseAssignedToEmail(body.assignedToEmail);
+      if (!assignedToEmail.isValid) {
+        return NextResponse.json(
+          { error: "invalid_assigned_to_email" },
+          { status: 400 }
+        );
+      }
+      const updated = await withTimeout(
+        updatePrelaunchInviteAssignedEmail({
+          inviteId,
+          assignedToEmail: assignedToEmail.normalized,
+        }),
+        API_TIMEOUT_MS
+      );
+      if (!updated) {
+        return NextResponse.json({ error: "invite_not_found" }, { status: 404 });
+      }
+      void auditSafely({
+        actorId: user.id,
+        action: "site.prelaunch_invite.assign",
+        target: { inviteId },
+        metadata: {
+          assignedToEmail: assignedToEmail.normalized,
+        },
       });
     } else if (action === "deleteInvite") {
       const inviteId = normalizeString(body.inviteId);

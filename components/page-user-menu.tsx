@@ -47,6 +47,9 @@ export function PageUserMenu({
     code: string;
     name: string;
   } | null>(null);
+  const [menuLanguageChangeStarted, setMenuLanguageChangeStarted] =
+    useState(false);
+  const [chatLanguageSwitching, setChatLanguageSwitching] = useState(false);
   const [isActionPending, setIsActionPending] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
@@ -80,6 +83,7 @@ export function PageUserMenu({
   useEffect(() => {
     if (!isLanguageUpdating) {
       setIsActionPending(false);
+      setMenuLanguageChangeStarted(false);
     }
   }, [isLanguageUpdating]);
 
@@ -182,7 +186,38 @@ export function PageUserMenu({
   );
 
   const isBusy = status === "loading" || isActionPending;
+  const interfaceLanguageSwitchingVisible =
+    menuLanguageChangeStarted && isLanguageUpdating && !pendingChatLanguage;
+  const overlayVisible = interfaceLanguageSwitchingVisible || chatLanguageSwitching;
+  const overlayMessage = chatLanguageSwitching
+    ? translate(
+        "user_menu.language.chat_prompt.loading",
+        "Switching chat language..."
+      )
+    : translate(
+        "chat.language.ui_prompt.loading",
+        "Switching interface language..."
+      );
+  const handleLanguageChange = useCallback(
+    (code: string) => {
+      setIsActionPending(true);
+      setMenuLanguageChangeStarted(true);
+      setLanguage(code);
+      const selected =
+        languages.find((language) => language.code === code) ?? null;
+      if (selected) {
+        setPendingChatLanguage({
+          code: selected.code,
+          name: selected.name,
+        });
+      } else {
+        setPendingChatLanguage(null);
+      }
+    },
+    [languages, setLanguage]
+  );
   const handleChatLanguageConfirm = useCallback((code: string) => {
+    setChatLanguageSwitching(true);
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem("chat-language-preference", code);
@@ -200,13 +235,19 @@ export function PageUserMenu({
       window.dispatchEvent(
         new CustomEvent("chat-language-change", { detail: { code } })
       );
+      window.setTimeout(() => {
+        setChatLanguageSwitching(false);
+      }, 900);
+      return;
     }
+    setChatLanguageSwitching(false);
   }, []);
 
   return (
-    <div
-      className={cn("fixed top-1.5 right-2 z-40 flex items-center", className)}
-    >
+    <>
+      <div
+        className={cn("fixed top-1.5 right-2 z-40 flex items-center", className)}
+      >
       {status === "loading" ? (
         <Button className="h-8 w-8" disabled variant="outline">
           <span className="sr-only">
@@ -227,20 +268,7 @@ export function PageUserMenu({
           activeLanguageCode={activeLanguage?.code ?? null}
           isLanguageUpdating={isLanguageUpdating}
           languageOptions={languages.filter((language) => language.isActive)}
-          onLanguageChange={(code) => {
-            setIsActionPending(true);
-            setLanguage(code);
-            const selected =
-              languages.find((language) => language.code === code) ?? null;
-            if (selected) {
-              setPendingChatLanguage({
-                code: selected.code,
-                name: selected.name,
-              });
-            } else {
-              setPendingChatLanguage(null);
-            }
-          }}
+          onLanguageChange={handleLanguageChange}
           isCreator={user.role === "creator"}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -274,20 +302,7 @@ export function PageUserMenu({
           activeLanguageCode={activeLanguage?.code ?? null}
           isLanguageUpdating={isLanguageUpdating}
           languageOptions={languages.filter((language) => language.isActive)}
-          onLanguageChange={(code) => {
-            setIsActionPending(true);
-            setLanguage(code);
-            const selected =
-              languages.find((language) => language.code === code) ?? null;
-            if (selected) {
-              setPendingChatLanguage({
-                code: selected.code,
-                name: selected.name,
-              });
-            } else {
-              setPendingChatLanguage(null);
-            }
-          }}
+          onLanguageChange={handleLanguageChange}
           isCreator={false}
           onActionStart={beginAction}
           onMenuClose={handleMenuClosed}
@@ -340,7 +355,9 @@ export function PageUserMenu({
           <AlertDialogFooter className="gap-2 sm:gap-2 sm:space-x-2">
             <AlertDialogCancel
               className="h-8 px-3 text-xs"
-              onClick={() => setPendingChatLanguage(null)}
+              onClick={() => {
+                setPendingChatLanguage(null);
+              }}
             >
               {translate(
                 "user_menu.language.chat_prompt.cancel",
@@ -366,6 +383,19 @@ export function PageUserMenu({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+      {overlayVisible ? (
+        <div
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
+          role="status"
+        >
+          <div className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm font-medium">{overlayMessage}</p>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

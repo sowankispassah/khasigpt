@@ -53,6 +53,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Confirm button label for the chat language dialog.",
   },
   {
+    key: "user_menu.language.chat_prompt.loading",
+    defaultText: "Switching chat language...",
+    description: "Loading message shown while chat language preference is being applied.",
+  },
+  {
     key: "user_menu.theme.light",
     defaultText: "Light mode",
     description: "Menu action to switch to light theme.",

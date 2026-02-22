@@ -1979,6 +1979,7 @@ export async function consumeImpersonationToken(
 const PRELAUNCH_INVITE_TOKEN_BYTES = 24;
 const PRELAUNCH_INVITE_MAX_CREATE_ATTEMPTS = 5;
 const PRELAUNCH_INVITE_LABEL_MAX_LENGTH = 160;
+const PRELAUNCH_INVITE_ASSIGNED_EMAIL_MAX_LENGTH = 320;
 
 function normalizeInviteLabel(label: string | null | undefined): string | null {
   if (typeof label !== "string") {
@@ -1989,6 +1990,21 @@ function normalizeInviteLabel(label: string | null | undefined): string | null {
     return null;
   }
   return trimmed.slice(0, PRELAUNCH_INVITE_LABEL_MAX_LENGTH);
+}
+
+function normalizeInviteAssignedEmail(
+  assignedToEmail: string | null | undefined
+): string | null {
+  if (typeof assignedToEmail !== "string") {
+    return null;
+  }
+
+  const trimmed = assignedToEmail.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.slice(0, PRELAUNCH_INVITE_ASSIGNED_EMAIL_MAX_LENGTH);
 }
 
 function isUniqueViolationError(error: unknown): boolean {
@@ -2017,6 +2033,7 @@ export type RedeemPrelaunchInviteResult =
   | { status: "redeemed"; inviteId: string };
 
 export type PrelaunchInviteTokenListItem = InviteToken & {
+  createdByAdminEmail: string | null;
   redemptionCount: number;
   activeAccessCount: number;
 };
@@ -2030,13 +2047,23 @@ export type ActivePrelaunchInviteAccessItem = {
   grantedAt: Date;
 };
 
+export type PrelaunchInviteJoinedUserItem = {
+  inviteId: string;
+  userId: string;
+  userEmail: string | null;
+  redeemedAt: Date;
+  hasActiveAccess: boolean;
+};
+
 export async function createPrelaunchInviteToken({
   createdByAdminId,
   label,
+  assignedToEmail,
   maxRedemptions,
 }: {
   createdByAdminId: string;
   label?: string | null;
+  assignedToEmail?: string | null;
   maxRedemptions?: number;
 }): Promise<InviteToken> {
   if (!isValidUUID(createdByAdminId)) {
@@ -2044,6 +2071,7 @@ export async function createPrelaunchInviteToken({
   }
 
   const normalizedLabel = normalizeInviteLabel(label);
+  const normalizedAssignedToEmail = normalizeInviteAssignedEmail(assignedToEmail);
   const normalizedMaxRedemptions = Number.isFinite(maxRedemptions)
     ? Math.min(Math.max(Math.floor(maxRedemptions as number), 1), 10000)
     : 1;
@@ -2058,6 +2086,7 @@ export async function createPrelaunchInviteToken({
         .values({
           token,
           label: normalizedLabel,
+          assignedToEmail: normalizedAssignedToEmail,
           createdByAdminId,
           maxRedemptions: normalizedMaxRedemptions,
           createdAt: now,
@@ -2106,17 +2135,21 @@ export async function listPrelaunchInviteTokens({
   const normalizedLimit = Math.min(Math.max(Math.floor(limit), 1), 200);
 
   try {
-    const invites = await db
-      .select()
+    const inviteRows = await db
+      .select({
+        invite: inviteToken,
+        createdByAdminEmail: user.email,
+      })
       .from(inviteToken)
+      .leftJoin(user, eq(inviteToken.createdByAdminId, user.id))
       .orderBy(desc(inviteToken.createdAt))
       .limit(normalizedLimit);
 
-    if (invites.length === 0) {
+    if (inviteRows.length === 0) {
       return [];
     }
 
-    const inviteIds = invites.map((item) => item.id);
+    const inviteIds = inviteRows.map((row) => row.invite.id);
 
     const [redemptionRows, accessRows] = await Promise.all([
       db
@@ -2149,10 +2182,11 @@ export async function listPrelaunchInviteTokens({
       accessRows.map((row) => [row.inviteId, Number(row.total ?? 0)])
     );
 
-    return invites.map((invite) => ({
-      ...invite,
-      redemptionCount: redemptionCountByInviteId.get(invite.id) ?? 0,
-      activeAccessCount: accessCountByInviteId.get(invite.id) ?? 0,
+    return inviteRows.map((row) => ({
+      ...row.invite,
+      createdByAdminEmail: row.createdByAdminEmail,
+      redemptionCount: redemptionCountByInviteId.get(row.invite.id) ?? 0,
+      activeAccessCount: accessCountByInviteId.get(row.invite.id) ?? 0,
     }));
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -2197,6 +2231,70 @@ export async function listActivePrelaunchInviteAccess({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to list invite access grants"
+    );
+  }
+}
+
+export async function listPrelaunchInviteJoinedUsers({
+  inviteIds,
+  limit = 500,
+}: {
+  inviteIds: string[];
+  limit?: number;
+}): Promise<PrelaunchInviteJoinedUserItem[]> {
+  const validInviteIds = inviteIds.filter((id) => isValidUUID(id));
+  if (validInviteIds.length === 0) {
+    return [];
+  }
+
+  const normalizedLimit = Math.min(Math.max(Math.floor(limit), 1), 5000);
+
+  try {
+    const [rows, activeAccessRows] = await Promise.all([
+      db
+        .select({
+          inviteId: inviteRedemption.inviteId,
+          userId: user.id,
+          userEmail: user.email,
+          redeemedAt: inviteRedemption.redeemedAt,
+        })
+        .from(inviteRedemption)
+        .innerJoin(user, eq(inviteRedemption.userId, user.id))
+        .where(inArray(inviteRedemption.inviteId, validInviteIds))
+        .orderBy(desc(inviteRedemption.redeemedAt))
+        .limit(normalizedLimit),
+      db
+        .select({
+          inviteId: userInviteAccess.inviteId,
+          userId: userInviteAccess.userId,
+        })
+        .from(userInviteAccess)
+        .where(
+          and(
+            inArray(userInviteAccess.inviteId, validInviteIds),
+            isNull(userInviteAccess.revokedAt)
+          )
+        ),
+    ]);
+
+    const activeAccessSet = new Set(
+      activeAccessRows.map((row) => `${row.inviteId}:${row.userId}`)
+    );
+
+    return rows.map((row) => ({
+      inviteId: row.inviteId,
+      userId: row.userId,
+      userEmail: row.userEmail,
+      redeemedAt: row.redeemedAt,
+      hasActiveAccess: activeAccessSet.has(`${row.inviteId}:${row.userId}`),
+    }));
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list invite joined users"
     );
   }
 }
@@ -2480,6 +2578,74 @@ export async function revokePrelaunchInviteToken({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to revoke invite token"
+    );
+  }
+}
+
+export async function activatePrelaunchInviteToken({
+  inviteId,
+}: {
+  inviteId: string;
+}): Promise<boolean> {
+  if (!isValidUUID(inviteId)) {
+    return false;
+  }
+
+  try {
+    const now = new Date();
+    const activated = await db
+      .update(inviteToken)
+      .set({
+        revokedAt: null,
+        updatedAt: now,
+      })
+      .where(and(eq(inviteToken.id, inviteId), isNotNull(inviteToken.revokedAt)))
+      .returning({ id: inviteToken.id });
+
+    return activated.length > 0;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to activate invite token"
+    );
+  }
+}
+
+export async function updatePrelaunchInviteAssignedEmail({
+  inviteId,
+  assignedToEmail,
+}: {
+  inviteId: string;
+  assignedToEmail: string | null;
+}): Promise<InviteToken | null> {
+  if (!isValidUUID(inviteId)) {
+    return null;
+  }
+
+  const normalizedAssignedToEmail = normalizeInviteAssignedEmail(assignedToEmail);
+
+  try {
+    const now = new Date();
+    const [updated] = await db
+      .update(inviteToken)
+      .set({
+        assignedToEmail: normalizedAssignedToEmail,
+        updatedAt: now,
+      })
+      .where(eq(inviteToken.id, inviteId))
+      .returning();
+
+    return updated ?? null;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update invite assignment"
     );
   }
 }
