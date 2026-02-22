@@ -167,6 +167,7 @@ const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
 const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
 const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
 const ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS = 6000;
+const ADMIN_ACTION_INVITE_TIMEOUT_MS = 12000;
 const FEATURE_ACCESS_SETTING_TIMEOUT_MS = 12000;
 
 async function createAuditLogEntrySafely(
@@ -641,13 +642,21 @@ export async function createPrelaunchInviteAction(formData: FormData) {
     throw new Error("Invite redemption limit must be between 1 and 10000.");
   }
 
-  const invite = await createPrelaunchInviteToken({
-    createdByAdminId: actor.id,
-    label,
-    maxRedemptions,
-  });
+  const invite = await withTimeout(
+    createPrelaunchInviteToken({
+      createdByAdminId: actor.id,
+      label,
+      maxRedemptions,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite creation timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
 
-  await createAuditLogEntry({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "site.prelaunch_invite.create",
     target: { inviteId: invite.id },
@@ -671,13 +680,21 @@ export async function revokePrelaunchInviteAction(formData: FormData) {
     throw new Error("Invite id is required");
   }
 
-  const revoked = await revokePrelaunchInviteToken({
-    inviteId: normalizedInviteId,
-    revokedByAdminId: actor.id,
-  });
+  const revoked = await withTimeout(
+    revokePrelaunchInviteToken({
+      inviteId: normalizedInviteId,
+      revokedByAdminId: actor.id,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite revoke timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
 
   if (revoked) {
-    await createAuditLogEntry({
+    void createAuditLogEntrySafely({
       actorId: actor.id,
       action: "site.prelaunch_invite.revoke",
       target: { inviteId: normalizedInviteId },
@@ -698,12 +715,20 @@ export async function deletePrelaunchInviteAction(formData: FormData) {
     throw new Error("Invite id is required");
   }
 
-  const deleted = await deletePrelaunchInviteToken({
-    inviteId: normalizedInviteId,
-  });
+  const deleted = await withTimeout(
+    deletePrelaunchInviteToken({
+      inviteId: normalizedInviteId,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite delete timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
 
   if (deleted) {
-    await createAuditLogEntry({
+    void createAuditLogEntrySafely({
       actorId: actor.id,
       action: "site.prelaunch_invite.delete",
       target: { inviteId: normalizedInviteId },
@@ -725,14 +750,22 @@ export async function revokePrelaunchInviteAccessAction(formData: FormData) {
     throw new Error("User id is required");
   }
 
-  const revoked = await revokePrelaunchInviteAccessForUser({
-    userId: normalizedUserId,
-    inviteId: normalizedInviteId || null,
-    revokedByAdminId: actor.id,
-  });
+  const revoked = await withTimeout(
+    revokePrelaunchInviteAccessForUser({
+      userId: normalizedUserId,
+      inviteId: normalizedInviteId || null,
+      revokedByAdminId: actor.id,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite access revoke timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
 
   if (revoked) {
-    await createAuditLogEntry({
+    void createAuditLogEntrySafely({
       actorId: actor.id,
       action: "site.prelaunch_invite_access.revoke",
       target: {
