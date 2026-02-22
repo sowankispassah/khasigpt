@@ -1,12 +1,10 @@
 import { formatDistanceToNow } from "date-fns";
 import type { ComponentProps, ReactNode } from "react";
 import {
-  createPrelaunchInviteAction,
   createImageModelConfigAction,
   createLanguageAction,
   createModelConfigAction,
   createPricingPlanAction,
-  deletePrelaunchInviteAction,
   deleteLanguageAction,
   deleteImageModelConfigAction,
   deleteModelConfigAction,
@@ -14,8 +12,6 @@ import {
   hardDeleteImageModelConfigAction,
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
-  revokePrelaunchInviteAccessAction,
-  revokePrelaunchInviteAction,
   setActiveImageModelConfigAction,
   setDefaultModelConfigAction,
   setImagePromptTranslationModelAction,
@@ -113,6 +109,11 @@ import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
+import {
+  mapInviteAccessForClient,
+  mapInviteForClient,
+  PrelaunchInvitesPanel,
+} from "./prelaunch-invites-panel";
 import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
 
 export const dynamic = "force-dynamic";
@@ -1061,169 +1062,11 @@ export default async function AdminSettingsPage({
               }}
             />
 
-            <div className="space-y-4 rounded-lg border bg-background p-4">
-              <div className="space-y-1">
-                <h3 className="font-semibold text-sm">Prelaunch invites</h3>
-                <p className="text-muted-foreground text-xs">
-                  Generate invite links for prelaunch access with a custom
-                  redemption limit. Invite-only prelaunch only applies when
-                  Public launched is off and Under maintenance is off.
-                </p>
-              </div>
-
-              <form
-                action={createPrelaunchInviteAction}
-                className="grid gap-3 md:grid-cols-[1fr_180px_auto]"
-              >
-                <input
-                  className="rounded-md border bg-background px-3 py-2 text-sm"
-                  id="inviteLabel"
-                  name="inviteLabel"
-                  placeholder="Invite label (optional)"
-                />
-                <input
-                  className="rounded-md border bg-background px-3 py-2 text-sm"
-                  defaultValue="1"
-                  id="inviteMaxRedemptions"
-                  max={10000}
-                  min={1}
-                  name="inviteMaxRedemptions"
-                  placeholder="Redeem limit"
-                  required
-                  step={1}
-                  type="number"
-                />
-                <SettingsSubmitButton
-                  pendingLabel="Creating..."
-                  successMessage="Invite link created."
-                >
-                  Create invite link
-                </SettingsSubmitButton>
-              </form>
-
-              {prelaunchInvites.length > 0 ? (
-                <div className="space-y-3">
-                  {prelaunchInvites.map((invite) => {
-                    const invitePath = `/invite/${invite.token}`;
-                    const inviteUrl = appBaseUrl ? `${appBaseUrl}${invitePath}` : invitePath;
-                    const isRevoked = Boolean(invite.revokedAt);
-                    const inviteLimit = Math.max(1, Number(invite.maxRedemptions ?? 1));
-                    const isExhausted = invite.redemptionCount >= inviteLimit;
-                    const statusLabel = isRevoked
-                      ? "Inactive"
-                      : isExhausted
-                        ? "Exhausted"
-                        : "Active";
-
-                    return (
-                      <div
-                        className="space-y-2 rounded-md border bg-card p-3"
-                        key={invite.id}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex min-w-0 flex-col">
-                            <span className="font-medium text-sm">
-                              {invite.label?.trim() || "Untitled invite"}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              Created{" "}
-                              {formatDistanceToNow(new Date(invite.createdAt), {
-                                addSuffix: true,
-                              })}
-                            </span>
-                          </div>
-                          <span
-                            className={cn(
-                              "rounded-full px-2 py-0.5 font-medium text-xs",
-                              isRevoked
-                                ? "bg-rose-100 text-rose-700"
-                                : isExhausted
-                                  ? "bg-amber-100 text-amber-700"
-                                : "bg-emerald-100 text-emerald-700"
-                            )}
-                          >
-                            {statusLabel}
-                          </span>
-                        </div>
-
-                        <input
-                          className="w-full rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs"
-                          readOnly
-                          value={inviteUrl}
-                        />
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground text-xs">
-                          <span>
-                            Redemptions: {invite.redemptionCount} / {inviteLimit} |
-                            Active access: {invite.activeAccessCount}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {!isRevoked ? (
-                              <form action={revokePrelaunchInviteAction}>
-                                <input name="inviteId" type="hidden" value={invite.id} />
-                                <button
-                                  className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                                  type="submit"
-                                >
-                                  Make inactive
-                                </button>
-                              </form>
-                            ) : null}
-                            <form action={deletePrelaunchInviteAction}>
-                              <input name="inviteId" type="hidden" value={invite.id} />
-                              <button
-                                className="rounded-md border border-rose-300 px-2 py-1 text-rose-700 text-xs hover:bg-rose-50"
-                                type="submit"
-                              >
-                                Delete invite
-                              </button>
-                            </form>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  No prelaunch invites created yet.
-                </p>
-              )}
-
-              {prelaunchInviteAccess.length > 0 ? (
-                <div className="space-y-2">
-                  <h4 className="font-medium text-sm">Active invited users</h4>
-                  {prelaunchInviteAccess.map((access) => (
-                    <div
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card p-3"
-                      key={`${access.userId}-${access.inviteId}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm">
-                          {access.userEmail ?? access.userId}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          Granted{" "}
-                          {formatDistanceToNow(new Date(access.grantedAt), {
-                            addSuffix: true,
-                          })}
-                        </p>
-                      </div>
-                      <form action={revokePrelaunchInviteAccessAction}>
-                        <input name="inviteId" type="hidden" value={access.inviteId} />
-                        <input name="userId" type="hidden" value={access.userId} />
-                        <button
-                          className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                          type="submit"
-                        >
-                          Revoke access
-                        </button>
-                      </form>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <PrelaunchInvitesPanel
+              appBaseUrl={appBaseUrl}
+              initialAccess={prelaunchInviteAccess.map(mapInviteAccessForClient)}
+              initialInvites={prelaunchInvites.map(mapInviteForClient)}
+            />
 
             <form
               action={updateComingSoonContentAction}
