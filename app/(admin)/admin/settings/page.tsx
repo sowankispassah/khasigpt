@@ -22,8 +22,6 @@ import {
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
-  updateAdminEntryCodeAction,
-  updateAdminEntryPathAction,
   updateComingSoonContentAction,
   updateComingSoonTimerAction,
   updateFreeMessageSettingsAction,
@@ -113,9 +111,9 @@ import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
-import { MaintenanceToggleControl } from "./maintenance-toggle-control";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
+import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -1026,9 +1024,6 @@ export default async function AdminSettingsPage({
     typeof appBaseUrlRaw === "string" && /^https?:\/\//i.test(appBaseUrlRaw)
       ? appBaseUrlRaw.replace(/\/+$/, "")
       : null;
-  const siteAdminEntryFullUrl = appBaseUrl
-    ? `${appBaseUrl}${siteAdminEntryPath}`
-    : siteAdminEntryPath;
 
   return (
     <>
@@ -1055,98 +1050,15 @@ export default async function AdminSettingsPage({
           title="Maintenance"
         >
           <div className="flex flex-col gap-6">
-            <MaintenanceToggleControl
-              currentValue={sitePublicLaunched}
-              description="When off, non-admin visitors can only access the coming-soon page."
-              fieldName="publicLaunched"
-              title="Public launched"
-            />
-
-            <MaintenanceToggleControl
-              currentValue={siteUnderMaintenance}
-              description="When on, non-admin visitors can only access the maintenance page."
-              fieldName="underMaintenance"
-              title="Under maintenance"
-            />
-
-            <MaintenanceToggleControl
-              currentValue={siteAdminEntryEnabled}
-              description="When on and site access is restricted, admins can unlock /login from your custom hidden admin-entry path using a code."
-              fieldName="adminAccessEnabled"
-              title="Admin entry code"
-            />
-
-            <form
-              action={updateAdminEntryPathAction}
-              className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[1fr_auto]"
-            >
-              <div className="space-y-1">
-                <label className="font-medium text-sm" htmlFor="adminEntryPath">
-                  Admin entry path
-                </label>
-                <input
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  defaultValue={siteAdminEntryPath}
-                  id="adminEntryPath"
-                  name="adminEntryPath"
-                  placeholder="/your-secret-entry-path"
-                  required
-                  type="text"
-                />
-                <p className="text-muted-foreground text-xs">
-                  Current URL:{" "}
-                  <span className="font-mono">{siteAdminEntryFullUrl}</span>
-                </p>
-              </div>
-              <div className="flex items-end">
-                <SettingsSubmitButton
-                  pendingLabel="Saving..."
-                  successMessage="Admin entry path updated."
-                >
-                  Save path
-                </SettingsSubmitButton>
-              </div>
-            </form>
-
-            <form
-              action={updateAdminEntryCodeAction}
-              className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[1fr_auto]"
-            >
-              <div className="space-y-1">
-                <label className="font-medium text-sm" htmlFor="adminEntryCode">
-                  Admin access code
-                </label>
-                <input
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  id="adminEntryCode"
-                  name="adminEntryCode"
-                  placeholder="Set a new admin code (6+ chars)"
-                  required
-                  type="password"
-                />
-                <p className="text-muted-foreground text-xs">
-                  Entry path: <span className="font-mono">{siteAdminEntryPath}</span>{" "}
-                  | Status:{" "}
-                  {siteAdminEntryCodeConfigured
-                    ? "Code configured"
-                    : "Code not configured yet"}
-                </p>
-              </div>
-              <div className="flex items-end">
-                <SettingsSubmitButton
-                  pendingLabel="Saving..."
-                  successMessage="Admin access code updated."
-                >
-                  Save code
-                </SettingsSubmitButton>
-              </div>
-            </form>
-
-            <MaintenanceToggleControl
-              currentValue={sitePrelaunchInviteOnly}
-              description="When enabled and Public launched is off, only invited users can access the app after redeeming an invite link."
-              fieldName="inviteOnlyPrelaunch"
-              title="Invite-only prelaunch"
+            <SiteAccessSettingsPanel
+              initialState={{
+                publicLaunched: sitePublicLaunched,
+                underMaintenance: siteUnderMaintenance,
+                inviteOnlyPrelaunch: sitePrelaunchInviteOnly,
+                adminAccessEnabled: siteAdminEntryEnabled,
+                adminEntryPath: siteAdminEntryPath,
+                adminEntryCodeConfigured: siteAdminEntryCodeConfigured,
+              }}
             />
 
             <div className="space-y-4 rounded-lg border bg-background p-4">
