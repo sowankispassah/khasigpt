@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ADMIN_ENTRY_PASS_COOKIE_MAX_AGE_SECONDS } from "@/lib/constants";
 import styles from "./admin-entry.module.css";
@@ -20,7 +20,7 @@ function normalizeNextPath(rawPath: string | null) {
   return trimmed;
 }
 
-export default function AdminEntryPage() {
+function AdminEntryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [code, setCode] = useState("");
@@ -108,5 +108,13 @@ export default function AdminEntryPage() {
         </form>
       </section>
     </main>
+  );
+}
+
+export default function AdminEntryPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminEntryContent />
+    </Suspense>
   );
 }
