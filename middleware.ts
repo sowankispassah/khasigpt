@@ -1,6 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import {
+  ADMIN_ENTRY_PASS_COOKIE_NAME,
+  PRELAUNCH_INVITE_COOKIE_NAME,
+} from "@/lib/constants";
+import { verifyAdminEntryPassToken } from "@/lib/security/admin-entry-pass";
+import {
+  DEFAULT_ADMIN_ENTRY_PATH,
+  normalizeAdminEntryPathSetting,
+} from "@/lib/settings/admin-entry";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -45,6 +54,7 @@ const API_RATE_LIMIT_EXEMPT_PATHS = new Set([
   "/api/public/site-launch",
   "/api/public/invite-access",
   "/api/public/session-role",
+  "/api/public/admin-entry/verify",
 ]);
 const SESSION_COOKIE_PREFIXES = [
   "__Secure-authjs.session-token",
@@ -57,8 +67,19 @@ const SITE_INVITE_ACCESS_API_PATH = "/api/public/invite-access";
 const SITE_SESSION_ROLE_API_PATH = "/api/public/session-role";
 const SITE_COMING_SOON_PATH = "/coming-soon";
 const SITE_MAINTENANCE_PATH = "/maintenance";
+const SITE_ADMIN_ENTRY_PATH = "/admin-entry";
 const SITE_INVITE_PATH_PREFIX = "/invite/";
-const SITE_STATUS_CACHE_WINDOW_MS = 15 * 1000;
+const SITE_STATUS_CACHE_WINDOW_MS =
+  process.env.NODE_ENV === "development" ? 1000 : 15 * 1000;
+const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
+  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "3000",
+  10
+);
+const INTERNAL_STATUS_FETCH_TIMEOUT_MS =
+  Number.isFinite(INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW) &&
+  INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW > 0
+    ? INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW
+    : 3000;
 type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
 let siteStatusCache: {
@@ -66,7 +87,14 @@ let siteStatusCache: {
   publicLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
+  adminAccessEnabled: boolean;
+  adminEntryPath: string;
 } | null = null;
+const SITE_STATUS_INTERNAL_SECRET = (
+  process.env.AUTH_SECRET ??
+  process.env.NEXTAUTH_SECRET ??
+  ""
+).trim();
 const kvRestUrl =
   process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
 const kvRestToken =
@@ -81,13 +109,17 @@ const KV_REST_TIMEOUT_MS =
     ? kvRestTimeoutRaw
     : 800;
 
-async function fetchWithTimeout(input: string, init: RequestInit) {
-  if (!Number.isFinite(KV_REST_TIMEOUT_MS) || KV_REST_TIMEOUT_MS <= 0) {
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs = KV_REST_TIMEOUT_MS
+) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return fetch(input, init);
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), KV_REST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(input, { ...init, signal: controller.signal });
@@ -253,6 +285,8 @@ async function resolveSiteStatus(
   publicLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
+  adminAccessEnabled: boolean;
+  adminEntryPath: string;
 }> {
   const now = Date.now();
   if (siteStatusCache && now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS) {
@@ -260,6 +294,8 @@ async function resolveSiteStatus(
       publicLaunched: siteStatusCache.publicLaunched,
       underMaintenance: siteStatusCache.underMaintenance,
       inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
+      adminAccessEnabled: siteStatusCache.adminAccessEnabled,
+      adminEntryPath: siteStatusCache.adminEntryPath,
     };
   }
 
@@ -268,19 +304,28 @@ async function resolveSiteStatus(
     publicLaunched: true,
     underMaintenance: false,
     inviteOnlyPrelaunch: false,
+    adminAccessEnabled: false,
+    adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
   };
   const statusUrl = request.nextUrl.clone();
   statusUrl.pathname = SITE_STATUS_API_PATH;
   statusUrl.search = "";
 
   try {
-    const response = await fetchWithTimeout(statusUrl.toString(), {
-      method: "GET",
-      headers: {
-        accept: "application/json",
+    const response = await fetchWithTimeout(
+      statusUrl.toString(),
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          ...(SITE_STATUS_INTERNAL_SECRET
+            ? { "x-site-gate-secret": SITE_STATUS_INTERNAL_SECRET }
+            : {}),
+        },
+        cache: "no-store",
       },
-      cache: "no-store",
-    });
+      INTERNAL_STATUS_FETCH_TIMEOUT_MS
+    );
 
     if (!response || !response.ok) {
       siteStatusCache = {
@@ -288,11 +333,15 @@ async function resolveSiteStatus(
         publicLaunched: fallbackStatus.publicLaunched,
         underMaintenance: fallbackStatus.underMaintenance,
         inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
+        adminAccessEnabled: fallbackStatus.adminAccessEnabled,
+        adminEntryPath: fallbackStatus.adminEntryPath,
       };
       return {
         publicLaunched: fallbackStatus.publicLaunched,
         underMaintenance: fallbackStatus.underMaintenance,
         inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
+        adminAccessEnabled: fallbackStatus.adminAccessEnabled,
+        adminEntryPath: fallbackStatus.adminEntryPath,
       };
     }
 
@@ -301,30 +350,46 @@ async function resolveSiteStatus(
           publicLaunched?: unknown;
           underMaintenance?: unknown;
           inviteOnlyPrelaunch?: unknown;
+          adminAccessEnabled?: unknown;
+          adminEntryPath?: unknown;
         }
       | null;
     const publicLaunched = body?.publicLaunched === false ? false : true;
     const underMaintenance = body?.underMaintenance === true;
     const inviteOnlyPrelaunch = body?.inviteOnlyPrelaunch === true;
+    const adminAccessEnabled = body?.adminAccessEnabled === true;
+    const adminEntryPath = normalizeAdminEntryPathSetting(body?.adminEntryPath);
 
     siteStatusCache = {
       fetchedAt: now,
       publicLaunched,
       underMaintenance,
       inviteOnlyPrelaunch,
+      adminAccessEnabled,
+      adminEntryPath,
     };
-    return { publicLaunched, underMaintenance, inviteOnlyPrelaunch };
+    return {
+      publicLaunched,
+      underMaintenance,
+      inviteOnlyPrelaunch,
+      adminAccessEnabled,
+      adminEntryPath,
+    };
   } catch {
     siteStatusCache = {
       fetchedAt: now,
       publicLaunched: fallbackStatus.publicLaunched,
       underMaintenance: fallbackStatus.underMaintenance,
       inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
+      adminAccessEnabled: fallbackStatus.adminAccessEnabled,
+      adminEntryPath: fallbackStatus.adminEntryPath,
     };
     return {
       publicLaunched: fallbackStatus.publicLaunched,
       underMaintenance: fallbackStatus.underMaintenance,
       inviteOnlyPrelaunch: fallbackStatus.inviteOnlyPrelaunch,
+      adminAccessEnabled: fallbackStatus.adminAccessEnabled,
+      adminEntryPath: fallbackStatus.adminEntryPath,
     };
   }
 }
@@ -362,7 +427,7 @@ async function resolveIsAdmin(request: NextRequest) {
         cookie: request.headers.get("cookie") ?? "",
       },
       cache: "no-store",
-    });
+    }, INTERNAL_STATUS_FETCH_TIMEOUT_MS);
 
     if (!response || !response.ok) {
       return false;
@@ -392,7 +457,7 @@ async function resolveHasInviteAccess(request: NextRequest) {
         cookie: request.headers.get("cookie") ?? "",
       },
       cache: "no-store",
-    });
+    }, INTERNAL_STATUS_FETCH_TIMEOUT_MS);
 
     if (!response || !response.ok) {
       return false;
@@ -403,6 +468,17 @@ async function resolveHasInviteAccess(request: NextRequest) {
   } catch {
     return false;
   }
+}
+
+function hasPendingPrelaunchInviteToken(request: NextRequest) {
+  const token = request.cookies.get(PRELAUNCH_INVITE_COOKIE_NAME)?.value;
+  return typeof token === "string" && token.trim().length > 0;
+}
+
+async function resolveHasValidAdminEntryPass(request: NextRequest) {
+  const token = request.cookies.get(ADMIN_ENTRY_PASS_COOKIE_NAME)?.value;
+  const payload = await verifyAdminEntryPassToken(token);
+  return payload !== null;
 }
 
 function isAuthRoutePath(pathname: string) {
@@ -416,6 +492,10 @@ function isAuthRoutePath(pathname: string) {
     pathname === "/complete-profile" ||
     pathname === "/impersonate"
   );
+}
+
+function isAdminSignInRoutePath(pathname: string) {
+  return pathname === "/login";
 }
 
 export async function middleware(request: NextRequest) {
@@ -441,39 +521,70 @@ export async function middleware(request: NextRequest) {
     const siteStatus = await resolveSiteStatus(request);
     const isAdmin = await resolveIsAdmin(request);
 
-    if (!isAdmin && siteStatus.underMaintenance && pathname !== SITE_MAINTENANCE_PATH) {
-      const landingUrl = request.nextUrl.clone();
-      landingUrl.pathname = SITE_MAINTENANCE_PATH;
-      landingUrl.search = "";
-      return NextResponse.redirect(landingUrl);
-    }
+    if (!isAdmin) {
+      const isAuthRoute = isAuthRoutePath(pathname);
+      const configuredAdminEntryPath = siteStatus.adminEntryPath;
+      const isConfiguredAdminEntryRoute = pathname === configuredAdminEntryPath;
+      const allowAdminReentry =
+        siteStatus.adminAccessEnabled &&
+        (isConfiguredAdminEntryRoute ||
+          (isAdminSignInRoutePath(pathname) &&
+            (await resolveHasValidAdminEntryPass(request))));
 
-    if (
-      !isAdmin &&
-      !siteStatus.underMaintenance &&
-      !siteStatus.publicLaunched &&
-      pathname !== SITE_COMING_SOON_PATH
-    ) {
-      const shouldAllowPrelaunchInviteFlow =
-        pathname.startsWith(SITE_INVITE_PATH_PREFIX) || isAuthRoutePath(pathname);
+      if (
+        siteStatus.adminAccessEnabled &&
+        isConfiguredAdminEntryRoute &&
+        configuredAdminEntryPath !== SITE_ADMIN_ENTRY_PATH
+      ) {
+        const rewriteUrl = request.nextUrl.clone();
+        rewriteUrl.pathname = SITE_ADMIN_ENTRY_PATH;
+        return NextResponse.rewrite(rewriteUrl);
+      }
 
-      if (siteStatus.inviteOnlyPrelaunch) {
-        const allowRequest =
-          shouldAllowPrelaunchInviteFlow ||
-          (await resolveHasInviteAccess(request));
-
-        if (!allowRequest) {
+      if (siteStatus.underMaintenance) {
+        if (!allowAdminReentry && pathname !== SITE_MAINTENANCE_PATH) {
           const landingUrl = request.nextUrl.clone();
-          landingUrl.pathname = SITE_COMING_SOON_PATH;
+          landingUrl.pathname = SITE_MAINTENANCE_PATH;
           landingUrl.search = "";
           return NextResponse.redirect(landingUrl);
         }
-      }
-      if (!siteStatus.inviteOnlyPrelaunch) {
-        const landingUrl = request.nextUrl.clone();
-        landingUrl.pathname = SITE_COMING_SOON_PATH;
-        landingUrl.search = "";
-        return NextResponse.redirect(landingUrl);
+      } else if (!siteStatus.publicLaunched) {
+        if (!allowAdminReentry && pathname !== SITE_COMING_SOON_PATH) {
+          if (!siteStatus.inviteOnlyPrelaunch) {
+            const landingUrl = request.nextUrl.clone();
+            landingUrl.pathname = SITE_COMING_SOON_PATH;
+            landingUrl.search = "";
+            return NextResponse.redirect(landingUrl);
+          }
+
+          if (pathname.startsWith(SITE_INVITE_PATH_PREFIX)) {
+            return NextResponse.next();
+          }
+
+          let hasInviteAccess: boolean | null = null;
+
+          if (isAuthRoute) {
+            if (hasPendingPrelaunchInviteToken(request)) {
+              return NextResponse.next();
+            }
+
+            hasInviteAccess = await resolveHasInviteAccess(request);
+            if (hasInviteAccess) {
+              return NextResponse.next();
+            }
+          }
+
+          if (hasInviteAccess === null) {
+            hasInviteAccess = await resolveHasInviteAccess(request);
+          }
+
+          if (!hasInviteAccess) {
+            const landingUrl = request.nextUrl.clone();
+            landingUrl.pathname = SITE_COMING_SOON_PATH;
+            landingUrl.search = "";
+            return NextResponse.redirect(landingUrl);
+          }
+        }
       }
     }
   }

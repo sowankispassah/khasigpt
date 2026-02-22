@@ -37,10 +37,15 @@ export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";
 export const SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY =
   "site.prelaunch.inviteOnly";
+export const SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY = "site.adminEntry.enabled";
+export const SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY = "site.adminEntry.codeHash";
+export const SITE_ADMIN_ENTRY_PATH_SETTING_KEY = "site.adminEntry.path";
 export const SITE_COMING_SOON_CONTENT_SETTING_KEY = "site.comingSoon.content";
 export const SITE_COMING_SOON_TIMER_SETTING_KEY = "site.comingSoon.timer";
 export const PRELAUNCH_INVITE_COOKIE_NAME = "__prelaunch_invite_token";
 export const PRELAUNCH_INVITE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+export const ADMIN_ENTRY_PASS_COOKIE_NAME = "__admin_entry_pass";
+export const ADMIN_ENTRY_PASS_COOKIE_MAX_AGE_SECONDS = 60 * 15;
 export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
 export const JOBS_FEATURE_FLAG_KEY = "chat.jobs.enabled";
 export const ICON_PROMPTS_SETTING_KEY = "home.iconPrompts";

@@ -21,6 +21,8 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+  SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
@@ -36,6 +38,7 @@ import {
   createLanguageEntry,
   createModelConfig,
   createPricingPlan,
+  deletePrelaunchInviteToken,
   deleteCharacterById,
   deleteChatById,
   deleteImageModelConfig,
@@ -77,6 +80,7 @@ import {
   upsertCoupon,
   upsertTranslationValueEntry,
 } from "@/lib/db/queries";
+import { generateHashedPassword } from "@/lib/db/utils";
 import type {
   CharacterRefImage,
   RagEntryApprovalStatus,
@@ -90,6 +94,10 @@ import {
 } from "@/lib/i18n/dictionary";
 import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
 import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
+import {
+  normalizeAdminEntryCodeInput,
+} from "@/lib/security/admin-entry-pass";
+import { sanitizeAdminEntryPathInput } from "@/lib/settings/admin-entry";
 import {
   sanitizeComingSoonContentInput,
   sanitizeComingSoonTimerInput,
@@ -520,18 +528,82 @@ export async function updateComingSoonTimerAction(formData: FormData) {
   revalidatePath("/coming-soon");
 }
 
+export async function updateAdminEntryCodeAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const code = normalizeAdminEntryCodeInput(formData.get("adminEntryCode"));
+
+  if (!code) {
+    throw new Error("Admin access code must be 6 to 128 characters.");
+  }
+
+  await setAppSetting({
+    key: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+    value: generateHashedPassword(code),
+  });
+  revalidateAppSettingCache(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "site.admin_entry_code.update",
+    target: { setting: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY },
+    metadata: { updated: true, length: code.length },
+  });
+
+  revalidatePath("/admin/settings");
+}
+
+export async function updateAdminEntryPathAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const path = sanitizeAdminEntryPathInput(formData.get("adminEntryPath"));
+  if (!path) {
+    throw new Error(
+      "Invalid admin entry path. Use only letters, numbers, /, - and _. Reserved paths are not allowed."
+    );
+  }
+
+  await setAppSetting({
+    key: SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+    value: path,
+  });
+  revalidateAppSettingCache(SITE_ADMIN_ENTRY_PATH_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "site.admin_entry_path.update",
+    target: { setting: SITE_ADMIN_ENTRY_PATH_SETTING_KEY },
+    metadata: { path },
+  });
+
+  revalidatePath("/admin/settings");
+}
+
 export async function createPrelaunchInviteAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
   const inviteLabel = formData.get("inviteLabel");
+  const inviteMaxRedemptions = formData.get("inviteMaxRedemptions");
   const label =
     typeof inviteLabel === "string" && inviteLabel.trim().length > 0
       ? inviteLabel
       : null;
+  const parsedMaxRedemptions =
+    typeof inviteMaxRedemptions === "string"
+      ? Number.parseInt(inviteMaxRedemptions, 10)
+      : Number.NaN;
+  const maxRedemptions = Number.isFinite(parsedMaxRedemptions)
+    ? Math.floor(parsedMaxRedemptions)
+    : 1;
+
+  if (maxRedemptions < 1 || maxRedemptions > 10000) {
+    throw new Error("Invite redemption limit must be between 1 and 10000.");
+  }
 
   const invite = await createPrelaunchInviteToken({
     createdByAdminId: actor.id,
     label,
+    maxRedemptions,
   });
 
   await createAuditLogEntry({
@@ -540,6 +612,7 @@ export async function createPrelaunchInviteAction(formData: FormData) {
     target: { inviteId: invite.id },
     metadata: {
       inviteLabel: invite.label,
+      maxRedemptions: invite.maxRedemptions,
     },
   });
 
@@ -566,6 +639,32 @@ export async function revokePrelaunchInviteAction(formData: FormData) {
     await createAuditLogEntry({
       actorId: actor.id,
       action: "site.prelaunch_invite.revoke",
+      target: { inviteId: normalizedInviteId },
+    });
+  }
+
+  revalidatePath("/admin/settings");
+}
+
+export async function deletePrelaunchInviteAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const inviteId = formData.get("inviteId");
+  const normalizedInviteId =
+    typeof inviteId === "string" ? inviteId.trim() : "";
+
+  if (!normalizedInviteId) {
+    throw new Error("Invite id is required");
+  }
+
+  const deleted = await deletePrelaunchInviteToken({
+    inviteId: normalizedInviteId,
+  });
+
+  if (deleted) {
+    await createAuditLogEntry({
+      actorId: actor.id,
+      action: "site.prelaunch_invite.delete",
       target: { inviteId: normalizedInviteId },
     });
   }

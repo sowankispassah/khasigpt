@@ -2033,15 +2033,20 @@ export type ActivePrelaunchInviteAccessItem = {
 export async function createPrelaunchInviteToken({
   createdByAdminId,
   label,
+  maxRedemptions,
 }: {
   createdByAdminId: string;
   label?: string | null;
+  maxRedemptions?: number;
 }): Promise<InviteToken> {
   if (!isValidUUID(createdByAdminId)) {
     throw new ChatSDKError("bad_request:api", "Invalid admin id");
   }
 
   const normalizedLabel = normalizeInviteLabel(label);
+  const normalizedMaxRedemptions = Number.isFinite(maxRedemptions)
+    ? Math.min(Math.max(Math.floor(maxRedemptions as number), 1), 10000)
+    : 1;
   const now = new Date();
 
   for (let attempt = 0; attempt < PRELAUNCH_INVITE_MAX_CREATE_ATTEMPTS; attempt++) {
@@ -2054,7 +2059,7 @@ export async function createPrelaunchInviteToken({
           token,
           label: normalizedLabel,
           createdByAdminId,
-          maxRedemptions: 1,
+          maxRedemptions: normalizedMaxRedemptions,
           createdAt: now,
           updatedAt: now,
         })
@@ -2475,6 +2480,33 @@ export async function revokePrelaunchInviteToken({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to revoke invite token"
+    );
+  }
+}
+
+export async function deletePrelaunchInviteToken({
+  inviteId,
+}: {
+  inviteId: string;
+}): Promise<boolean> {
+  if (!isValidUUID(inviteId)) {
+    return false;
+  }
+
+  try {
+    const deleted = await db
+      .delete(inviteToken)
+      .where(eq(inviteToken.id, inviteId))
+      .returning({ id: inviteToken.id });
+
+    return deleted.length > 0;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to delete invite token"
     );
   }
 }

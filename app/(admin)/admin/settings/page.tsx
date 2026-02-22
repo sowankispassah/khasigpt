@@ -6,6 +6,7 @@ import {
   createLanguageAction,
   createModelConfigAction,
   createPricingPlanAction,
+  deletePrelaunchInviteAction,
   deleteLanguageAction,
   deleteImageModelConfigAction,
   deleteModelConfigAction,
@@ -21,6 +22,8 @@ import {
   setMarginBaselineModelAction,
   setRecommendedPricingPlanAction,
   updateAboutContentAction,
+  updateAdminEntryCodeAction,
+  updateAdminEntryPathAction,
   updateComingSoonContentAction,
   updateComingSoonTimerAction,
   updateFreeMessageSettingsAction,
@@ -56,6 +59,9 @@ import {
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+  SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
@@ -86,6 +92,10 @@ import {
   getUsdToInrRate,
 } from "@/lib/services/exchange-rate";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
+import {
+  DEFAULT_ADMIN_ENTRY_PATH,
+  normalizeAdminEntryPathSetting,
+} from "@/lib/settings/admin-entry";
 import {
   normalizeComingSoonContentSetting,
   normalizeComingSoonTimerSetting,
@@ -138,6 +148,9 @@ const SETTINGS_SNAPSHOT_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
+  SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+  SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
@@ -275,6 +288,15 @@ async function loadAdminSettingsData() {
   const sitePrelaunchInviteOnlySetting = getStoredSetting<string | boolean>(
     SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY
   );
+  const siteAdminEntryEnabledSetting = getStoredSetting<string | boolean>(
+    SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY
+  );
+  const siteAdminEntryCodeHashSetting = getStoredSetting<string>(
+    SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY
+  );
+  const siteAdminEntryPathSetting = getStoredSetting<string>(
+    SITE_ADMIN_ENTRY_PATH_SETTING_KEY
+  );
   const comingSoonContentSetting = getStoredSetting<unknown>(
     SITE_COMING_SOON_CONTENT_SETTING_KEY
   );
@@ -341,6 +363,9 @@ async function loadAdminSettingsData() {
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
     sitePrelaunchInviteOnlySetting,
+    siteAdminEntryEnabledSetting,
+    siteAdminEntryCodeHashSetting,
+    siteAdminEntryPathSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
     prelaunchInvites,
@@ -382,6 +407,9 @@ function buildFallbackAdminSettingsData() {
     sitePublicLaunchedSetting: null,
     siteUnderMaintenanceSetting: null,
     sitePrelaunchInviteOnlySetting: null,
+    siteAdminEntryEnabledSetting: null,
+    siteAdminEntryCodeHashSetting: null,
+    siteAdminEntryPathSetting: null,
     comingSoonContentSetting: null,
     comingSoonTimerSetting: null,
     prelaunchInvites: [],
@@ -535,6 +563,9 @@ export default async function AdminSettingsPage({
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
     sitePrelaunchInviteOnlySetting,
+    siteAdminEntryEnabledSetting,
+    siteAdminEntryCodeHashSetting,
+    siteAdminEntryPathSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
     prelaunchInvites,
@@ -716,6 +747,16 @@ export default async function AdminSettingsPage({
     sitePrelaunchInviteOnlySetting,
     false
   );
+  const siteAdminEntryEnabled = parseBooleanSetting(
+    siteAdminEntryEnabledSetting,
+    false
+  );
+  const siteAdminEntryCodeConfigured =
+    typeof siteAdminEntryCodeHashSetting === "string" &&
+    siteAdminEntryCodeHashSetting.trim().length > 0;
+  const siteAdminEntryPath = normalizeAdminEntryPathSetting(
+    siteAdminEntryPathSetting ?? DEFAULT_ADMIN_ENTRY_PATH
+  );
   const comingSoonContent =
     normalizeComingSoonContentSetting(comingSoonContentSetting);
   const comingSoonTimer = normalizeComingSoonTimerSetting(comingSoonTimerSetting);
@@ -856,6 +897,9 @@ export default async function AdminSettingsPage({
     typeof appBaseUrlRaw === "string" && /^https?:\/\//i.test(appBaseUrlRaw)
       ? appBaseUrlRaw.replace(/\/+$/, "")
       : null;
+  const siteAdminEntryFullUrl = appBaseUrl
+    ? `${appBaseUrl}${siteAdminEntryPath}`
+    : siteAdminEntryPath;
 
   return (
     <>
@@ -897,6 +941,79 @@ export default async function AdminSettingsPage({
             />
 
             <MaintenanceToggleControl
+              currentValue={siteAdminEntryEnabled}
+              description="When on and site access is restricted, admins can unlock /login from your custom hidden admin-entry path using a code."
+              fieldName="adminAccessEnabled"
+              title="Admin entry code"
+            />
+
+            <form
+              action={updateAdminEntryPathAction}
+              className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[1fr_auto]"
+            >
+              <div className="space-y-1">
+                <label className="font-medium text-sm" htmlFor="adminEntryPath">
+                  Admin entry path
+                </label>
+                <input
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={siteAdminEntryPath}
+                  id="adminEntryPath"
+                  name="adminEntryPath"
+                  placeholder="/your-secret-entry-path"
+                  required
+                  type="text"
+                />
+                <p className="text-muted-foreground text-xs">
+                  Current URL:{" "}
+                  <span className="font-mono">{siteAdminEntryFullUrl}</span>
+                </p>
+              </div>
+              <div className="flex items-end">
+                <SettingsSubmitButton
+                  pendingLabel="Saving..."
+                  successMessage="Admin entry path updated."
+                >
+                  Save path
+                </SettingsSubmitButton>
+              </div>
+            </form>
+
+            <form
+              action={updateAdminEntryCodeAction}
+              className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[1fr_auto]"
+            >
+              <div className="space-y-1">
+                <label className="font-medium text-sm" htmlFor="adminEntryCode">
+                  Admin access code
+                </label>
+                <input
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  id="adminEntryCode"
+                  name="adminEntryCode"
+                  placeholder="Set a new admin code (6+ chars)"
+                  required
+                  type="password"
+                />
+                <p className="text-muted-foreground text-xs">
+                  Entry path: <span className="font-mono">{siteAdminEntryPath}</span>{" "}
+                  | Status:{" "}
+                  {siteAdminEntryCodeConfigured
+                    ? "Code configured"
+                    : "Code not configured yet"}
+                </p>
+              </div>
+              <div className="flex items-end">
+                <SettingsSubmitButton
+                  pendingLabel="Saving..."
+                  successMessage="Admin access code updated."
+                >
+                  Save code
+                </SettingsSubmitButton>
+              </div>
+            </form>
+
+            <MaintenanceToggleControl
               currentValue={sitePrelaunchInviteOnly}
               description="When enabled and Public launched is off, only invited users can access the app after redeeming an invite link."
               fieldName="inviteOnlyPrelaunch"
@@ -907,21 +1024,33 @@ export default async function AdminSettingsPage({
               <div className="space-y-1">
                 <h3 className="font-semibold text-sm">Prelaunch invites</h3>
                 <p className="text-muted-foreground text-xs">
-                  Generate one-time invite links for prelaunch access. Invite-only
-                  prelaunch only applies when Public launched is off and Under
-                  maintenance is off.
+                  Generate invite links for prelaunch access with a custom
+                  redemption limit. Invite-only prelaunch only applies when
+                  Public launched is off and Under maintenance is off.
                 </p>
               </div>
 
               <form
                 action={createPrelaunchInviteAction}
-                className="grid gap-3 md:grid-cols-[1fr_auto]"
+                className="grid gap-3 md:grid-cols-[1fr_180px_auto]"
               >
                 <input
                   className="rounded-md border bg-background px-3 py-2 text-sm"
                   id="inviteLabel"
                   name="inviteLabel"
                   placeholder="Invite label (optional)"
+                />
+                <input
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue="1"
+                  id="inviteMaxRedemptions"
+                  max={10000}
+                  min={1}
+                  name="inviteMaxRedemptions"
+                  placeholder="Redeem limit"
+                  required
+                  step={1}
+                  type="number"
                 />
                 <SettingsSubmitButton
                   pendingLabel="Creating..."
@@ -937,10 +1066,12 @@ export default async function AdminSettingsPage({
                     const invitePath = `/invite/${invite.token}`;
                     const inviteUrl = appBaseUrl ? `${appBaseUrl}${invitePath}` : invitePath;
                     const isRevoked = Boolean(invite.revokedAt);
+                    const inviteLimit = Math.max(1, Number(invite.maxRedemptions ?? 1));
+                    const isExhausted = invite.redemptionCount >= inviteLimit;
                     const statusLabel = isRevoked
-                      ? "Revoked"
-                      : invite.redemptionCount > 0
-                        ? "Used"
+                      ? "Inactive"
+                      : isExhausted
+                        ? "Exhausted"
                         : "Active";
 
                     return (
@@ -965,9 +1096,9 @@ export default async function AdminSettingsPage({
                               "rounded-full px-2 py-0.5 font-medium text-xs",
                               isRevoked
                                 ? "bg-rose-100 text-rose-700"
-                                : invite.redemptionCount > 0
+                                : isExhausted
                                   ? "bg-amber-100 text-amber-700"
-                                  : "bg-emerald-100 text-emerald-700"
+                                : "bg-emerald-100 text-emerald-700"
                             )}
                           >
                             {statusLabel}
@@ -982,20 +1113,31 @@ export default async function AdminSettingsPage({
 
                         <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground text-xs">
                           <span>
-                            Redemptions: {invite.redemptionCount} | Active access:{" "}
-                            {invite.activeAccessCount}
+                            Redemptions: {invite.redemptionCount} / {inviteLimit} |
+                            Active access: {invite.activeAccessCount}
                           </span>
-                          {!isRevoked ? (
-                            <form action={revokePrelaunchInviteAction}>
+                          <div className="flex items-center gap-2">
+                            {!isRevoked ? (
+                              <form action={revokePrelaunchInviteAction}>
+                                <input name="inviteId" type="hidden" value={invite.id} />
+                                <button
+                                  className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                                  type="submit"
+                                >
+                                  Make inactive
+                                </button>
+                              </form>
+                            ) : null}
+                            <form action={deletePrelaunchInviteAction}>
                               <input name="inviteId" type="hidden" value={invite.id} />
                               <button
-                                className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                                className="rounded-md border border-rose-300 px-2 py-1 text-rose-700 text-xs hover:bg-rose-50"
                                 type="submit"
                               >
-                                Revoke invite
+                                Delete invite
                               </button>
                             </form>
-                          ) : null}
+                          </div>
                         </div>
                       </div>
                     );
