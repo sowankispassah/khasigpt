@@ -1,7 +1,10 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
-import { db } from "@/lib/db/queries";
-import { ragEntry } from "@/lib/db/schema";
-import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
+import "server-only";
+import type {
+  RagEmbeddingStatus,
+  RagEntryApprovalStatus,
+  RagEntryStatus,
+} from "@/lib/db/schema";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   listQuestionPaperEntries,
   listQuestionPapers,
@@ -18,6 +21,8 @@ export const JOB_POSTING_MAX_TEXT_CHARS = 120_000;
 export const JOB_POSTING_RUNTIME_CONTEXT_CHARS = 80_000;
 
 const UNKNOWN_LABEL = "Unknown";
+const DEFAULT_JOB_APPROVAL_STATUS: RagEntryApprovalStatus = "approved";
+const DEFAULT_JOB_EMBEDDING_STATUS: RagEmbeddingStatus = "ready";
 
 type JobPostingMetadataInput = {
   jobId: string;
@@ -33,145 +38,102 @@ type JobPostingMetadataInput = {
   parseError?: string | null;
 };
 
-function toRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
+type SupabaseJobRow = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  description: string | null;
+  status: string | null;
+  source_url: string;
+  created_at: string;
+};
 
 function toTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function toStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function toNumberList(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return [];
+function parseValidDate(value: string | null | undefined) {
+  if (!value) {
+    return new Date();
   }
 
-  return Array.from(
-    new Set(
-      value
-        .map((item) => {
-          if (typeof item === "number" && Number.isFinite(item)) {
-            return Math.trunc(item);
-          }
-          if (typeof item === "string") {
-            const parsed = Number.parseInt(item.trim(), 10);
-            return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
-          }
-          return null;
-        })
-        .filter((item): item is number => Boolean(item && item > 0))
-    )
-  );
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-function looksLikeJobPosting(metadata: Record<string, unknown>) {
-  const jobsKind = toTrimmedString(metadata.jobs_kind).toLowerCase();
-  if (jobsKind === "job_posting") {
-    return true;
-  }
-
-  const jobId = toTrimmedString(metadata.job_id);
-  const jobTitle = toTrimmedString(metadata.job_title);
-  const company = toTrimmedString(metadata.company);
-  const location = toTrimmedString(metadata.location);
-  return Boolean(jobId || jobTitle || company || location);
-}
-
-function normalizeJobPostingRecord(
-  entry: typeof ragEntry.$inferSelect
-): JobPostingRecord {
-  const metadata = toRecord(entry.metadata);
-  const metadataTags = toStringList(metadata.tags);
-
-  const titleFromMetadata = toTrimmedString(metadata.job_title);
-  const companyFromMetadata = toTrimmedString(metadata.company);
-  const locationFromMetadata = toTrimmedString(metadata.location);
-  const employmentTypeFromMetadata = toTrimmedString(metadata.employment_type);
-  const studyExamFromMetadata =
-    toTrimmedString(metadata.study_exam) || toTrimmedString(metadata.exam);
-  const studyRoleFromMetadata =
-    toTrimmedString(metadata.study_role) || toTrimmedString(metadata.role);
-  const studyYearsFromStudyMetadata = toNumberList(metadata.study_years);
-  const studyYearsFromLegacyMetadata = toNumberList(metadata.years);
-  const studyYearsFromMetadata =
-    studyYearsFromStudyMetadata.length > 0
-      ? studyYearsFromStudyMetadata
-      : studyYearsFromLegacyMetadata;
-  const studyTagsFromMetadata =
-    toStringList(metadata.study_tags).length > 0
-      ? toStringList(metadata.study_tags)
-      : toStringList(metadata.exam_tags);
-  const parseErrorFromMetadata = toTrimmedString(metadata.parse_error);
+function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
+  const createdAt = parseValidDate(row.created_at);
+  const rawSourceUrl = toTrimmedString(row.source_url);
+  const sourceUrl =
+    rawSourceUrl && !rawSourceUrl.startsWith("manual://") ? rawSourceUrl : null;
+  const normalizedStatusRaw = toTrimmedString(row.status).toLowerCase();
+  const status: RagEntryStatus =
+    normalizedStatusRaw === "inactive"
+      ? "inactive"
+      : normalizedStatusRaw === "archived"
+        ? "archived"
+        : "active";
 
   return {
-    id: entry.id,
-    title: titleFromMetadata || entry.title || "Job opening",
-    content: entry.content ?? "",
-    company: companyFromMetadata || UNKNOWN_LABEL,
-    location: locationFromMetadata || UNKNOWN_LABEL,
-    employmentType: employmentTypeFromMetadata || UNKNOWN_LABEL,
-    studyExam: studyExamFromMetadata || UNKNOWN_LABEL,
-    studyRole: studyRoleFromMetadata || UNKNOWN_LABEL,
-    studyYears: studyYearsFromMetadata,
-    studyTags: studyTagsFromMetadata,
-    tags:
-      metadataTags.length > 0
-        ? metadataTags
-        : Array.isArray(entry.tags)
-          ? entry.tags
-          : [],
-    sourceUrl: entry.sourceUrl ?? null,
-    status: entry.status,
-    approvalStatus: entry.approvalStatus,
-    parseError: parseErrorFromMetadata || null,
-    metadata,
-    models: Array.isArray(entry.models) ? entry.models : [],
-    categoryId: entry.categoryId ?? null,
-    embeddingStatus: entry.embeddingStatus,
-    createdAt:
-      entry.createdAt instanceof Date
-        ? entry.createdAt
-        : new Date(entry.createdAt),
-    updatedAt:
-      entry.updatedAt instanceof Date
-        ? entry.updatedAt
-        : new Date(entry.updatedAt),
+    id: row.id,
+    title: toTrimmedString(row.title) || "Job opening",
+    content: toTrimmedString(row.description),
+    company: toTrimmedString(row.company) || UNKNOWN_LABEL,
+    location: toTrimmedString(row.location) || UNKNOWN_LABEL,
+    employmentType: UNKNOWN_LABEL,
+    studyExam: UNKNOWN_LABEL,
+    studyRole: UNKNOWN_LABEL,
+    studyYears: [],
+    studyTags: [],
+    tags: [],
+    sourceUrl,
+    status,
+    approvalStatus: DEFAULT_JOB_APPROVAL_STATUS,
+    embeddingStatus: DEFAULT_JOB_EMBEDDING_STATUS,
+    metadata: {
+      jobs_kind: "job_posting",
+      source: "supabase_jobs_table",
+    },
+    models: [],
+    categoryId: null,
+    parseError: null,
+    createdAt,
+    updatedAt: createdAt,
   };
 }
 
-async function listJobPostingRows({
-  includeInactive,
-}: {
-  includeInactive?: boolean;
-}) {
-  const whereCondition = includeInactive
-    ? and(
-        eq(ragEntry.type, "document"),
-        isNull(ragEntry.personalForUserId),
-        isNull(ragEntry.deletedAt)
-      )
-    : and(
-        eq(ragEntry.type, "document"),
-        isNull(ragEntry.personalForUserId),
-        isNull(ragEntry.deletedAt),
-        eq(ragEntry.status, "active"),
-        eq(ragEntry.approvalStatus, "approved")
-      );
+async function listJobsFromSupabase() {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("jobs")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-  return db.select().from(ragEntry).where(whereCondition).orderBy(desc(ragEntry.updatedAt));
+  if (error) {
+    throw new Error(`[jobs-service] Failed to fetch jobs: ${error.message}`);
+  }
+
+  return (data ?? []) as SupabaseJobRow[];
+}
+
+async function getJobFromSupabaseById(id: string) {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`[jobs-service] Failed to fetch job by id: ${error.message}`);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return data as SupabaseJobRow;
 }
 
 export function buildJobPostingMetadata(
@@ -218,10 +180,14 @@ export async function listJobPostingEntries({
 }: {
   includeInactive?: boolean;
 } = {}): Promise<JobPostingRecord[]> {
-  const rows = await listJobPostingRows({ includeInactive });
-  return rows
-    .filter((row) => looksLikeJobPosting(toRecord(row.metadata)))
-    .map(normalizeJobPostingRecord);
+  const rows = await listJobsFromSupabase();
+  const normalized = rows.map(normalizeJobPostingRecord);
+
+  if (includeInactive) {
+    return normalized;
+  }
+
+  return normalized.filter((job) => job.status === "active");
 }
 
 export async function getJobPostingById({
@@ -231,9 +197,17 @@ export async function getJobPostingById({
   id: string;
   includeInactive?: boolean;
 }): Promise<JobPostingRecord | null> {
-  const jobs = await listJobPostingEntries({ includeInactive });
-  const match = jobs.find((job) => job.id === id);
-  return match ?? null;
+  const row = await getJobFromSupabaseById(id);
+  if (!row) {
+    return null;
+  }
+
+  const normalized = normalizeJobPostingRecord(row);
+  if (!includeInactive && normalized.status !== "active") {
+    return null;
+  }
+
+  return normalized;
 }
 
 export async function getJobPostingEntryById({
@@ -259,27 +233,21 @@ export async function listJobPostings({
 
   return jobs.filter((job) => {
     const companyMatch =
-      !normalizedCompany || job.company.trim().toLowerCase() === normalizedCompany;
+      !normalizedCompany ||
+      job.company.trim().toLowerCase().includes(normalizedCompany);
     const locationMatch =
-      !normalizedLocation || job.location.trim().toLowerCase() === normalizedLocation;
+      !normalizedLocation ||
+      job.location.trim().toLowerCase().includes(normalizedLocation);
     return companyMatch && locationMatch;
   });
 }
 
-export async function listActiveJobPostingIdsForModel({
-  modelConfigId,
-  modelKey,
-}: {
+export async function listActiveJobPostingIdsForModel(_input: {
   modelConfigId: string;
   modelKey?: string | null;
 }): Promise<string[]> {
-  const [activeRagEntryIds, jobs] = await Promise.all([
-    listActiveRagEntryIdsForModel({ modelConfigId, modelKey }),
-    listJobPostingEntries({ includeInactive: false }),
-  ]);
-
-  const activeIds = new Set(activeRagEntryIds);
-  return jobs.filter((job) => activeIds.has(job.id)).map((job) => job.id);
+  const jobs = await listJobPostingEntries({ includeInactive: false });
+  return jobs.map((job) => job.id);
 }
 
 export function toJobCard(job: JobPostingRecord): JobCard {

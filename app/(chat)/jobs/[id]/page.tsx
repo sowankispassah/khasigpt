@@ -103,9 +103,9 @@ export default async function JobPostingDetailPage(props: {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Source document</CardTitle>
+          <CardTitle className="text-base">Source listing</CardTitle>
           <CardDescription>
-            Preview the uploaded file used for this job posting.
+            Preview the original listing URL captured by the scraper.
           </CardDescription>
         </CardHeader>
         <CardContent>

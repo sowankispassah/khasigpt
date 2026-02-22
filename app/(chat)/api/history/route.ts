@@ -86,6 +86,32 @@ export async function GET(request: NextRequest) {
 
     return Response.json(chats);
   } catch (error) {
+    const requestedMode = request.nextUrl.searchParams.get("mode")?.trim().toLowerCase();
+    const details =
+      error instanceof ChatSDKError && typeof error.cause === "string"
+        ? error.cause
+        : error instanceof Error
+          ? error.message
+          : "";
+
+    if (
+      requestedMode === "jobs" &&
+      /invalid input value for enum .*chat_mode.*"jobs"/i.test(details)
+    ) {
+      console.warn(
+        "[api/history] jobs mode fallback activated because chat_mode enum is missing 'jobs'"
+      );
+      return Response.json(
+        { chats: [], hasMore: false },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Jobs-Mode-Compat": "chat_mode_enum_missing_jobs",
+          },
+        }
+      );
+    }
+
     if (error instanceof ChatSDKError) {
       return error.toResponse();
     }

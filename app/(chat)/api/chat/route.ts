@@ -262,6 +262,13 @@ function findRecentReferencedQuestionNumber(messages: ChatMessage[]): number | n
 }
 
 type JobsIntent = "job_detail" | "exam_prep" | "answer_help";
+const JOB_LOCATION_HINTS = [
+  "meghalaya",
+  "shillong",
+  "tura",
+  "jowai",
+  "east khasi hills",
+] as const;
 
 function detectJobsIntent(text: string): JobsIntent {
   const normalized = text.trim().toLowerCase();
@@ -293,6 +300,21 @@ function wantsDirectExamAnswer(text: string) {
   return /\b(just answer|only answer|direct answer|final answer)\b/.test(
     normalized
   );
+}
+
+function detectJobsLocationFilter(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  for (const location of JOB_LOCATION_HINTS) {
+    if (normalized.includes(location)) {
+      return location;
+    }
+  }
+
+  return null;
 }
 
 async function resolveStudyPaperContextText({
@@ -983,7 +1005,11 @@ export async function POST(request: Request) {
 
     if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
       const availableIds = jobPostingIdsForModel ?? [];
-      const jobs = await listJobPostings({ includeInactive: false });
+      const locationFilter = detectJobsLocationFilter(jobsUserText);
+      const jobs = await listJobPostings({
+        includeInactive: false,
+        location: locationFilter,
+      });
       const visibleJobs =
         availableIds.length > 0
           ? jobs.filter((job) => availableIds.includes(job.id))
@@ -991,7 +1017,7 @@ export async function POST(request: Request) {
 
       if (visibleJobs.length === 0) {
         return buildJobsResponse({
-          text: "No job postings are available yet. Please ask an admin to upload jobs.",
+          text: "No Meghalaya jobs from the latest scrape are available yet. Please try again later.",
         });
       }
 

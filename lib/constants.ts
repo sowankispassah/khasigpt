@@ -48,6 +48,24 @@ export const ADMIN_ENTRY_PASS_COOKIE_NAME = "__admin_entry_pass";
 export const ADMIN_ENTRY_PASS_COOKIE_MAX_AGE_SECONDS = 60 * 15;
 export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
 export const JOBS_FEATURE_FLAG_KEY = "chat.jobs.enabled";
+export const JOBS_SCRAPE_ENABLED_SETTING_KEY = "jobs.scrape.enabled";
+export const JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY =
+  "jobs.scrape.intervalHours";
+export const JOBS_SCRAPE_START_TIME_SETTING_KEY = "jobs.scrape.startTime";
+export const JOBS_SCRAPE_TIMEZONE_SETTING_KEY = "jobs.scrape.timezone";
+export const JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY =
+  "jobs.scrape.lastSuccessAt";
+export const JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY =
+  "jobs.scrape.lastRunStatus";
+export const JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY =
+  "jobs.scrape.lastRunSummary";
+export const JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY =
+  "jobs.scrape.lastSkipReason";
+export const JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY = "jobs.scrape.lockUntil";
+export const JOBS_SCRAPE_SOURCES_SETTING_KEY = "jobs.scrape.sources";
+export const JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY =
+  "jobs.scrape.lookbackDays";
+export const JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY = "jobs.scrape.oneTimeAt";
 export const ICON_PROMPTS_SETTING_KEY = "home.iconPrompts";
 export const ICON_PROMPTS_ENABLED_SETTING_KEY = "home.iconPrompts.enabled";
 export const SUGGESTED_PROMPTS_ENABLED_SETTING_KEY =

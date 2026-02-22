@@ -130,7 +130,7 @@ export default async function JobsPage({
       <div className="space-y-1">
         <h1 className="font-semibold text-2xl">Jobs</h1>
         <p className="text-muted-foreground text-sm">
-          Browse uploaded job postings and start a focused Jobs chat for any role.
+          Browse scraped job postings and start a focused Jobs chat for any role.
         </p>
       </div>
 
