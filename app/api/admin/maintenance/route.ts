@@ -10,6 +10,7 @@ import {
 import {
   appSettingCacheTagForKey,
   createAuditLogEntry,
+  getAppSettingUncached,
   setAppSetting,
 } from "@/lib/db/queries";
 import { withTimeout } from "@/lib/utils/async";
@@ -101,6 +102,15 @@ export async function POST(request: Request) {
       }),
       MAINTENANCE_TIMEOUT_MS
     );
+
+    const persistedRaw = await withTimeout(
+      getAppSettingUncached<unknown>(config.settingKey),
+      MAINTENANCE_TIMEOUT_MS
+    );
+    const persisted = parseBooleanInput(persistedRaw);
+    if (persisted === null || persisted !== enabled) {
+      throw new Error("persisted_value_mismatch");
+    }
   } catch (error) {
     console.error(
       `[api/admin/maintenance] Failed to save setting "${config.settingKey}".`,

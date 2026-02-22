@@ -73,6 +73,7 @@ import {
 } from "@/lib/constants";
 import {
   getAppSettingsByKeysUncached,
+  getAppSettingUncached,
   getTranslationValuesForKeys,
   listActivePrelaunchInviteAccess,
   listImageModelConfigs,
@@ -129,9 +130,9 @@ const PROVIDER_OPTIONS = [
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
-const SETTINGS_DATA_QUERY_TIMEOUT_MS = 2500;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3500;
-const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 6000;
+const SETTINGS_DATA_QUERY_TIMEOUT_MS = 5000;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 10000;
+const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 15000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -187,10 +188,31 @@ async function loadAppSettingValuesByKey() {
     return new Map(settings.map((setting) => [setting.key, setting.value]));
   } catch (error) {
     console.error(
-      "[admin/settings] App settings snapshot query timed out or failed. Using defaults for missing values.",
+      "[admin/settings] App settings snapshot query timed out or failed. Retrying with uncached per-key reads.",
       error
     );
+
+    try {
+      const entries = await Promise.all(
+        SETTINGS_SNAPSHOT_KEYS.map(async (key) => {
+          const value = await getAppSettingUncached<unknown>(key);
+          return [key, value] as const;
+        })
+      );
+
+      return new Map(
+        entries.filter((entry) => entry[1] !== null) as Array<
+          readonly [string, unknown]
+        >
+      );
+    } catch (retryError) {
+      console.error(
+        "[admin/settings] Per-key app setting retry failed. Using defaults for missing values.",
+        retryError
+      );
+    }
   }
+
   return new Map<string, unknown>();
 }
 
