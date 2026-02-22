@@ -52,6 +52,10 @@ const CHAT_PAGE_INITIAL_MESSAGE_LIMIT =
     ? Math.max(10, Math.min(chatPageInitialLimitRaw, CHAT_HISTORY_PAGE_SIZE))
     : CHAT_HISTORY_PAGE_SIZE;
 
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && error.message === "timeout";
+}
+
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
@@ -70,10 +74,15 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     () => {
       console.warn(`[chat] getChatById timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`);
     }
-  );
+  ).catch((error) => {
+    if (isTimeoutError(error)) {
+      return null;
+    }
+    throw error;
+  });
 
   if (!chat) {
-    notFound();
+    redirect("/chat");
   }
   const [
     modelsResult,
@@ -167,7 +176,12 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           `[chat] getMessagesByChatIdPage timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms (limit=${CHAT_PAGE_INITIAL_MESSAGE_LIMIT})`
         );
       }
-    );
+    ).catch((error) => {
+      if (isTimeoutError(error)) {
+        return { messages: [], hasMore: false };
+      }
+      throw error;
+    });
 
   const uiMessages = rewriteDocumentUrlsForViewer({
     messages: convertToUIMessages(messagesFromDb),
