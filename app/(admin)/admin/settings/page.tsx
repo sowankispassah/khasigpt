@@ -133,6 +133,7 @@ const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 5000;
 const SETTINGS_SNAPSHOT_TIMEOUT_MS = 10000;
 const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 15000;
+const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -164,6 +165,24 @@ const SETTINGS_SNAPSHOT_KEYS = [
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
 ] as const;
+const ESSENTIAL_FALLBACK_SETTING_KEYS = [
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
+  SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+  SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_COMING_SOON_CONTENT_SETTING_KEY,
+  SITE_COMING_SOON_TIMER_SETTING_KEY,
+  CALCULATOR_FEATURE_FLAG_KEY,
+  FORUM_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+] as const;
 
 function safeSettingsQuery<T>(
   label: string,
@@ -177,6 +196,30 @@ function safeSettingsQuery<T>(
     );
     return fallbackValue;
   });
+}
+
+async function loadEssentialFallbackSettingMap() {
+  const entries = await Promise.allSettled(
+    ESSENTIAL_FALLBACK_SETTING_KEYS.map(async (key) => {
+      const value = await withTimeout(
+        getAppSettingUncached<unknown>(key),
+        SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS
+      );
+      return [key, value] as const;
+    })
+  );
+
+  const map = new Map<string, unknown>();
+  for (const entry of entries) {
+    if (entry.status !== "fulfilled") {
+      continue;
+    }
+    const [key, value] = entry.value;
+    if (value !== null && value !== undefined) {
+      map.set(key, value);
+    }
+  }
+  return map;
 }
 
 async function loadAppSettingValuesByKey() {
@@ -193,18 +236,7 @@ async function loadAppSettingValuesByKey() {
     );
 
     try {
-      const entries = await Promise.all(
-        SETTINGS_SNAPSHOT_KEYS.map(async (key) => {
-          const value = await getAppSettingUncached<unknown>(key);
-          return [key, value] as const;
-        })
-      );
-
-      return new Map(
-        entries.filter((entry) => entry[1] !== null) as Array<
-          readonly [string, unknown]
-        >
-      );
+      return await loadEssentialFallbackSettingMap();
     } catch (retryError) {
       console.error(
         "[admin/settings] Per-key app setting retry failed. Using defaults for missing values.",
@@ -562,6 +594,70 @@ export default async function AdminSettingsPage({
       error
     );
     settingsData = buildFallbackAdminSettingsData();
+
+    try {
+      const essentialValues = await loadEssentialFallbackSettingMap();
+      const getEssential = <T,>(key: string): T | null => {
+        const value = essentialValues.get(key);
+        return value === undefined ? null : (value as T);
+      };
+      settingsData = {
+        ...settingsData,
+        sitePublicLaunchedSetting:
+          getEssential<string | boolean>(SITE_PUBLIC_LAUNCHED_SETTING_KEY) ??
+          settingsData.sitePublicLaunchedSetting,
+        siteUnderMaintenanceSetting:
+          getEssential<string | boolean>(SITE_UNDER_MAINTENANCE_SETTING_KEY) ??
+          settingsData.siteUnderMaintenanceSetting,
+        sitePrelaunchInviteOnlySetting:
+          getEssential<string | boolean>(SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY) ??
+          settingsData.sitePrelaunchInviteOnlySetting,
+        siteAdminEntryEnabledSetting:
+          getEssential<string | boolean>(SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY) ??
+          settingsData.siteAdminEntryEnabledSetting,
+        siteAdminEntryCodeHashSetting:
+          getEssential<string>(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY) ??
+          settingsData.siteAdminEntryCodeHashSetting,
+        siteAdminEntryPathSetting:
+          getEssential<string>(SITE_ADMIN_ENTRY_PATH_SETTING_KEY) ??
+          settingsData.siteAdminEntryPathSetting,
+        comingSoonContentSetting:
+          getEssential<unknown>(SITE_COMING_SOON_CONTENT_SETTING_KEY) ??
+          settingsData.comingSoonContentSetting,
+        comingSoonTimerSetting:
+          getEssential<unknown>(SITE_COMING_SOON_TIMER_SETTING_KEY) ??
+          settingsData.comingSoonTimerSetting,
+        calculatorEnabledSetting:
+          getEssential<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY) ??
+          settingsData.calculatorEnabledSetting,
+        forumEnabledSetting:
+          getEssential<string | boolean>(FORUM_FEATURE_FLAG_KEY) ??
+          settingsData.forumEnabledSetting,
+        studyModeEnabledSetting:
+          getEssential<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY) ??
+          settingsData.studyModeEnabledSetting,
+        jobsEnabledSetting:
+          getEssential<string | boolean>(JOBS_FEATURE_FLAG_KEY) ??
+          settingsData.jobsEnabledSetting,
+        imageGenerationEnabledSetting:
+          getEssential<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY) ??
+          settingsData.imageGenerationEnabledSetting,
+        documentUploadsEnabledSetting:
+          getEssential<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY) ??
+          settingsData.documentUploadsEnabledSetting,
+        suggestedPromptsEnabledSetting:
+          getEssential<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY) ??
+          settingsData.suggestedPromptsEnabledSetting,
+        iconPromptsEnabledSetting:
+          getEssential<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY) ??
+          settingsData.iconPromptsEnabledSetting,
+      };
+    } catch (fallbackReadError) {
+      console.error(
+        "[admin/settings] Essential fallback setting read failed.",
+        fallbackReadError
+      );
+    }
   }
 
   const {
