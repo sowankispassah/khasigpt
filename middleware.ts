@@ -551,27 +551,28 @@ export async function middleware(request: NextRequest) {
   ) {
     const pathname = request.nextUrl.pathname;
     const siteStatus = await resolveSiteStatus(request);
+    const configuredAdminEntryPath = siteStatus.adminEntryPath;
+    const isConfiguredAdminEntryRoute = pathname === configuredAdminEntryPath;
+
+    if (
+      siteStatus.adminAccessEnabled &&
+      isConfiguredAdminEntryRoute &&
+      configuredAdminEntryPath !== SITE_ADMIN_ENTRY_PATH
+    ) {
+      const rewriteUrl = request.nextUrl.clone();
+      rewriteUrl.pathname = SITE_ADMIN_ENTRY_PATH;
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
     const isAdmin = await resolveIsAdmin(request);
 
     if (!isAdmin) {
       const isAuthRoute = isAuthRoutePath(pathname);
-      const configuredAdminEntryPath = siteStatus.adminEntryPath;
-      const isConfiguredAdminEntryRoute = pathname === configuredAdminEntryPath;
       const allowAdminReentry =
         siteStatus.adminAccessEnabled &&
         (isConfiguredAdminEntryRoute ||
           (isAdminSignInRoutePath(pathname) &&
             (await resolveHasValidAdminEntryPass(request))));
-
-      if (
-        siteStatus.adminAccessEnabled &&
-        isConfiguredAdminEntryRoute &&
-        configuredAdminEntryPath !== SITE_ADMIN_ENTRY_PATH
-      ) {
-        const rewriteUrl = request.nextUrl.clone();
-        rewriteUrl.pathname = SITE_ADMIN_ENTRY_PATH;
-        return NextResponse.rewrite(rewriteUrl);
-      }
 
       if (siteStatus.underMaintenance) {
         if (!allowAdminReentry && pathname !== SITE_MAINTENANCE_PATH) {

@@ -25,10 +25,6 @@ const SITE_LAUNCH_SETTING_KEYS = [
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
 ] as const;
 
-function getInternalSiteStatusSecret() {
-  return (process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "").trim();
-}
-
 async function loadSiteLaunchSettingsMap() {
   try {
     const settings = await withTimeout(
@@ -66,7 +62,7 @@ async function loadSiteLaunchSettingsMap() {
   return map;
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const settingsMap = await loadSiteLaunchSettingsMap();
     const publicLaunchedSetting = settingsMap.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY);
@@ -91,28 +87,20 @@ export async function GET(request: Request) {
       false
     );
     const adminEntryPath = normalizeAdminEntryPathSetting(adminEntryPathSetting);
-    const internalSecret = getInternalSiteStatusSecret();
-    const internalHeader = request.headers.get("x-site-gate-secret") ?? "";
-    const includeInternalData =
-      internalSecret.length > 0
-        ? internalHeader === internalSecret
-        : process.env.NODE_ENV !== "production";
 
     const payload: {
       publicLaunched: boolean;
       underMaintenance: boolean;
       inviteOnlyPrelaunch: boolean;
       adminAccessEnabled: boolean;
-      adminEntryPath?: string;
+      adminEntryPath: string;
     } = {
       publicLaunched,
       underMaintenance,
       inviteOnlyPrelaunch,
       adminAccessEnabled,
+      adminEntryPath,
     };
-    if (includeInternalData) {
-      payload.adminEntryPath = adminEntryPath;
-    }
 
     return NextResponse.json(
       payload,
