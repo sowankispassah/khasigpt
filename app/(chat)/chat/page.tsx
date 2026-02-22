@@ -22,6 +22,7 @@ import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 export default async function Page({
   searchParams,
@@ -37,6 +38,14 @@ export default async function Page({
     redirect("/login?callbackUrl=/");
   }
 
+  const CHAT_HOME_QUERY_TIMEOUT_MS = 8_000;
+  const IMAGE_ACCESS_TIMEOUT_MS = 6_000;
+  const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
+    withTimeout(promise, CHAT_HOME_QUERY_TIMEOUT_MS).catch((error) => {
+      console.error(`[chat/home] ${label} query timed out or failed.`, error);
+      return fallback;
+    });
+
   const [
     modelsResult,
     suggestedPrompts,
@@ -49,16 +58,60 @@ export default async function Page({
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
-    loadSuggestedPrompts(preferredLanguage, session.user.role),
-    loadIconPromptActions(preferredLanguage, session.user.role),
-    listLanguagesWithSettings(),
-    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-    getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
-    getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-    getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-    getImageGenerationAccess({
-      userId: session.user.id,
-      userRole: session.user.role,
+    safeQuery(
+      "suggested prompts",
+      loadSuggestedPrompts(preferredLanguage, session.user.role),
+      []
+    ),
+    safeQuery(
+      "icon prompt actions",
+      loadIconPromptActions(preferredLanguage, session.user.role),
+      []
+    ),
+    safeQuery("languages", listLanguagesWithSettings(), []),
+    safeQuery(
+      "custom knowledge flag",
+      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+      null
+    ),
+    safeQuery(
+      "document uploads flag",
+      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeQuery(
+      "study mode flag",
+      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeQuery(
+      "jobs mode flag",
+      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
+      null
+    ),
+    withTimeout(
+      getImageGenerationAccess({
+        userId: session.user.id,
+        userRole: session.user.role,
+      }),
+      IMAGE_ACCESS_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        `[chat/home] image generation access timed out after ${IMAGE_ACCESS_TIMEOUT_MS}ms.`,
+        error
+      );
+      return {
+        enabled: false,
+        canGenerate: false,
+        hasCredits: false,
+        hasPaidPlan: false,
+        hasPaidCredits: false,
+        hasManualCredits: false,
+        requiresPaidCredits: false,
+        isAdmin: session.user.role === "admin",
+        tokensPerImage: 1,
+        model: null,
+      };
     }),
   ]);
 
@@ -125,9 +178,15 @@ export default async function Page({
   const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
   const initialJobEntry =
     chatMode === "jobs" && requestedJobId
-      ? await getJobPostingById({
-          id: requestedJobId,
-          includeInactive: false,
+      ? await withTimeout(
+          getJobPostingById({
+            id: requestedJobId,
+            includeInactive: false,
+          }),
+          CHAT_HOME_QUERY_TIMEOUT_MS
+        ).catch((error) => {
+          console.error("[chat/home] job lookup timed out or failed.", error);
+          return null;
         })
       : null;
   const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;

@@ -7,7 +7,7 @@ import {
   useCallback,
   useContext,
   useMemo,
-  useTransition,
+  useState,
 } from "react";
 import { setPreferredLanguageAction } from "@/app/actions/language";
 import type { LanguageOption } from "@/lib/i18n/languages";
@@ -54,7 +54,7 @@ export function LanguageProvider({
 }: LanguageProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const languageCodeSet = useMemo(() => {
     const codes = new Set<string>();
     for (const language of languages) {
@@ -80,9 +80,20 @@ export function LanguageProvider({
         return;
       }
 
-      startTransition(() => {
-        (async () => {
+      setIsPending(true);
+      void (async () => {
+        try {
+          if (typeof document !== "undefined") {
+            const encoded = encodeURIComponent(normalized);
+            document.cookie = `lang=${encoded}; path=/; max-age=${
+              60 * 60 * 24 * 365
+            }; samesite=lax`;
+          }
+
           await setPreferredLanguageAction(normalized);
+        } catch (error) {
+          console.error("[language/provider] Failed to persist language choice.", error);
+        } finally {
           if (pathname) {
             const segments = pathname.split("/").filter(Boolean);
             if (segments.length > 0 && languageCodeSet.has(segments[0])) {
@@ -91,12 +102,17 @@ export function LanguageProvider({
               const querySuffix =
                 typeof window !== "undefined" ? window.location.search ?? "" : "";
               router.replace(`${nextPath}${querySuffix}`);
+              setIsPending(false);
               return;
             }
           }
+
           router.refresh();
-        })();
-      });
+          window.setTimeout(() => {
+            setIsPending(false);
+          }, 300);
+        }
+      })();
     },
     [activeLanguage.code, languageCodeSet, pathname, router]
   );

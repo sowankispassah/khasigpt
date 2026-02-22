@@ -82,20 +82,20 @@ const mergeWithStaticDictionary = (dictionary: Record<string, string>) => {
 };
 
 const parsedTimeout = Number.parseInt(
-  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "1200",
+  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "2500",
   10
 );
 const TRANSLATION_QUERY_TIMEOUT_MS =
   Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1200;
 
 const parsedInitialTimeout = Number.parseInt(
-  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "1200",
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "2500",
   10
 );
 const TRANSLATION_INITIAL_TIMEOUT_MS =
   Number.isFinite(parsedInitialTimeout) && parsedInitialTimeout > 0
     ? parsedInitialTimeout
-    : 300;
+    : 2500;
 
 const parsedCacheTtl = Number.parseInt(
   process.env.TRANSLATION_CACHE_TTL_MS ?? `${1000 * 60 * 60 * 6}`,
@@ -150,6 +150,10 @@ function isTimeoutError(error: unknown): boolean {
     );
   }
   return false;
+}
+
+function shouldMarkTranslationDbFailure(error: unknown): boolean {
+  return !isTimeoutError(error);
 }
 
 function logTranslationTimeout(message: string) {
@@ -410,7 +414,9 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
       });
     })
     .catch((error) => {
-      markTranslationDbFailure();
+      if (shouldMarkTranslationDbFailure(error)) {
+        markTranslationDbFailure();
+      }
       logTranslationError(
         "[i18n] Falling back to static translations.",
         error
@@ -511,7 +517,9 @@ export async function getTranslationBundle(
     });
     return bundle;
   } catch (error) {
-    markTranslationDbFailure();
+    if (shouldMarkTranslationDbFailure(error)) {
+      markTranslationDbFailure();
+    }
     logTranslationError("[i18n] Falling back to static translations.", error);
     const fallbackBundle =
       typeof preferredCode === "string" && preferredCode.trim().length > 0

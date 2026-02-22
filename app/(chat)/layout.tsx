@@ -28,6 +28,7 @@ const PROFILE_LOOKUP_TIMEOUT_MS =
   Number.isFinite(profileLookupTimeoutRaw) && profileLookupTimeoutRaw > 0
     ? profileLookupTimeoutRaw
     : 1200;
+const CHAT_LAYOUT_QUERY_TIMEOUT_MS = 8_000;
 
 export default async function Layout({
   children,
@@ -66,12 +67,33 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
+  const safeSettingRead = <T,>(label: string, promise: Promise<T>, fallback: T) =>
+    withTimeout(promise, CHAT_LAYOUT_QUERY_TIMEOUT_MS).catch((error) => {
+      console.error(`[chat/layout] ${label} timed out or failed.`, error);
+      return fallback;
+    });
   const [studyModeSetting, forumSetting, calculatorSetting, jobsSetting] = session
     ? await Promise.all([
-        getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-        getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
-        getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
-        getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
+        safeSettingRead(
+          "study mode setting",
+          getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+          null
+        ),
+        safeSettingRead(
+          "forum setting",
+          getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+          null
+        ),
+        safeSettingRead(
+          "calculator setting",
+          getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
+          null
+        ),
+        safeSettingRead(
+          "jobs setting",
+          getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
+          null
+        ),
       ])
     : [null, null, null, null];
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);

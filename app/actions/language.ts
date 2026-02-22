@@ -7,7 +7,7 @@ import { withTimeout } from "@/lib/utils/async";
 
 const LANGUAGE_COOKIE = "lang";
 const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
-const LANGUAGE_LOOKUP_TIMEOUT_MS = 800;
+const LANGUAGE_LOOKUP_TIMEOUT_MS = 2000;
 
 export async function setPreferredLanguageAction(code: string) {
   const cookieStore = await cookies();
