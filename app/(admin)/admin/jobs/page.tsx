@@ -42,6 +42,7 @@ import {
   setManagedJobSourceEnabled,
 } from "@/lib/jobs/source-registry";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ const JOBS_SCRAPE_SETTINGS_KEYS = [
 const DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS = 10;
 const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
+const JOBS_ADMIN_ACTION_TIMEOUT_MS = 12_000;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
   "Asia/Kolkata": 330,
@@ -224,28 +226,38 @@ async function saveJobsScrapeScheduleAction(formData: FormData) {
   });
   const lookbackDays = parseLookbackDays(lookbackDaysRaw);
 
-  await Promise.all([
-    setAppSetting({
+  const updates: Array<{ key: string; value: unknown }> = [
+    {
       key: JOBS_SCRAPE_ENABLED_SETTING_KEY,
       value: settings.enabled,
-    }),
-    setAppSetting({
+    },
+    {
       key: JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
       value: settings.intervalHours,
-    }),
-    setAppSetting({
+    },
+    {
       key: JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
       value: lookbackDays,
-    }),
-    setAppSetting({
+    },
+    {
       key: JOBS_SCRAPE_START_TIME_SETTING_KEY,
       value: settings.startTime,
-    }),
-    setAppSetting({
+    },
+    {
       key: JOBS_SCRAPE_TIMEZONE_SETTING_KEY,
       value: settings.timezone,
-    }),
-  ]);
+    },
+  ];
+
+  for (const update of updates) {
+    await withTimeout(
+      setAppSetting({
+        key: update.key,
+        value: update.value,
+      }),
+      JOBS_ADMIN_ACTION_TIMEOUT_MS
+    );
+  }
 
   revalidateJobsScrapeSettingCaches();
   revalidatePath("/admin/jobs");
@@ -296,10 +308,13 @@ async function saveOneTimeJobsScrapeAction(formData: FormData) {
     throw new Error("One-time scrape time must be in the future.");
   }
 
-  await setAppSetting({
-    key: JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
-    value: oneTimeAt.toISOString(),
-  });
+  await withTimeout(
+    setAppSetting({
+      key: JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
+      value: oneTimeAt.toISOString(),
+    }),
+    JOBS_ADMIN_ACTION_TIMEOUT_MS
+  );
 
   revalidateJobsScrapeSettingCaches();
   revalidatePath("/admin/jobs");
@@ -313,7 +328,10 @@ async function clearOneTimeJobsScrapeAction() {
     redirect("/");
   }
 
-  await deleteAppSetting(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY);
+  await withTimeout(
+    deleteAppSetting(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY),
+    JOBS_ADMIN_ACTION_TIMEOUT_MS
+  );
   revalidateJobsScrapeSettingCaches();
   revalidatePath("/admin/jobs");
 }
@@ -482,17 +500,6 @@ export default async function AdminJobsPage() {
   const session = await auth();
   if (!session?.user || session.user.role !== "admin") {
     redirect("/");
-  }
-
-  const autoRunResult = await runJobsScrapeWithScheduling({
-    trigger: "auto",
-    persistSkips: false,
-  });
-  if (!autoRunResult.ok) {
-    console.error(
-      "[admin/jobs] auto_scrape_check_failed",
-      autoRunResult.errorMessage
-    );
   }
 
   const [
@@ -674,8 +681,8 @@ export default async function AdminJobsPage() {
               />
             </label>
             <p className="text-muted-foreground text-xs md:col-span-2">
-              One-time schedules run once on or after the selected time when an automatic
-              background check runs (for example via cron, or when this page/jobs page is opened).
+              One-time schedules run once on or after the selected time when the
+              scheduled background trigger runs.
             </p>
             <div className="flex flex-wrap gap-2 md:col-span-2">
               <ActionSubmitButton

@@ -4,7 +4,6 @@ import { auth } from "@/app/(auth)/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
-import { runJobsScrapeWithScheduling } from "@/lib/jobs/scrape-orchestrator";
 import { listJobPostings } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
@@ -37,17 +36,6 @@ export default async function JobsPage({
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/jobs");
-  }
-
-  const autoRunResult = await runJobsScrapeWithScheduling({
-    trigger: "auto",
-    persistSkips: false,
-  });
-  if (!autoRunResult.ok) {
-    console.error(
-      "[jobs/page] auto_scrape_check_failed",
-      autoRunResult.errorMessage
-    );
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;

@@ -75,17 +75,17 @@ function resolveEarlierDate(first: Date | null, second: Date | null) {
 }
 
 async function setManyAppSettings(entries: AppSettingEntry[]) {
-  await Promise.all(
-    entries.map((entry) => {
-      if (entry.value === null || entry.value === undefined) {
-        return deleteAppSetting(entry.key);
-      }
-      return setAppSetting({
-        key: entry.key,
-        value: entry.value,
-      });
-    })
-  );
+  for (const entry of entries) {
+    if (entry.value === null || entry.value === undefined) {
+      await deleteAppSetting(entry.key);
+      continue;
+    }
+
+    await setAppSetting({
+      key: entry.key,
+      value: entry.value,
+    });
+  }
 }
 
 async function loadJobsScrapeRuntimeState() {
