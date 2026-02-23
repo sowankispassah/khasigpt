@@ -100,6 +100,7 @@ async function runScrapeRequest(request: Request) {
         : 0,
       filteredByLocation: scrapeResult?.summary.totalFilteredByLocation ?? 0,
       filteredByDate: scrapeResult?.summary.totalFilteredByDate ?? 0,
+      filteredByKeyword: scrapeResult?.summary.totalFilteredByKeyword ?? 0,
       sourceStats: scrapeResult?.summary.sourceStats ?? [],
     },
     {

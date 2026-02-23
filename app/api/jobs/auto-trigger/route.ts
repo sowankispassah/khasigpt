@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const AUTH_TIMEOUT_MS = 8_000;
-const SCRAPE_TIMEOUT_MS = 45_000;
+const SCRAPE_TIMEOUT_MS = 90_000;
 
 async function requireSignedInUser() {
   const session = await withTimeout(auth(), AUTH_TIMEOUT_MS).catch(() => null);
@@ -46,6 +46,19 @@ export async function POST() {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
+    if (error instanceof Error && error.message === "timeout") {
+      return NextResponse.json(
+        {
+          ok: true,
+          accepted: true,
+          skipped: false,
+          skipReason: "running_or_slow",
+          message: "Auto scrape is still running in background.",
+        },
+        { status: 202, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     console.error("[api/jobs/auto-trigger] scrape_failed", error);
     return NextResponse.json(
       {

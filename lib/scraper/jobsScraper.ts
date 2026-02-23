@@ -1,12 +1,21 @@
 import "server-only";
 import { load } from "cheerio";
-import { jobSources, type JobSourceConfig } from "@/config/jobSources";
+import {
+  jobSources,
+  type JobSourceConfig,
+  type JobSourceLocationScope,
+} from "@/config/jobSources";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
+import { extractDocumentText } from "@/lib/uploads/document-parser";
 import { fetchWithTimeout } from "@/lib/utils/async";
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_LOOKBACK_DAYS = 10;
 const DEFAULT_MAX_ITEMS_PER_SOURCE = 200;
+const DEFAULT_MAX_PDF_ENRICHMENTS_PER_SOURCE = 5;
+const DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS = 6_000;
+const DEFAULT_FETCH_RETRY_ATTEMPTS = 2;
+const MAX_JOB_DESCRIPTION_CHARS = 12_000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const MEGHALAYA_LOCATION_KEYWORDS = [
@@ -15,6 +24,46 @@ const MEGHALAYA_LOCATION_KEYWORDS = [
   "tura",
   "jowai",
   "east khasi hills",
+] as const;
+
+const DEFAULT_JOB_FILTER_INCLUDE_KEYWORDS = [
+  "recruitment",
+  "recruit",
+  "job",
+  "jobs",
+  "hiring",
+  "vacancy",
+  "vacancies",
+  "position",
+  "positions",
+  "post",
+  "posts",
+  "walk-in",
+  "walk in",
+  "apply now",
+  "career opportunity",
+] as const;
+
+const DEFAULT_JOB_FILTER_EXCLUDE_KEYWORDS = [
+  "tender",
+  "rfq",
+  "rfp",
+  "eoi",
+  "expression of interest",
+  "corrigendum",
+  "shortlisted",
+  "short list",
+  "result",
+  "results",
+  "interview result",
+  "notice of award",
+  "award of contract",
+  "cancellation notice",
+  "clarification",
+  "pre-bid",
+  "bid",
+  "quotation",
+  "procurement",
 ] as const;
 
 const SCRAPER_USER_AGENT =
@@ -31,7 +80,11 @@ type SourceScrapeStats = {
   extracted: number;
   filteredByLocation: number;
   filteredByDate: number;
+  filteredByKeyword: number;
   parseErrors: number;
+  pdfDetailAttempts: number;
+  pdfDetailSuccesses: number;
+  pdfDetailFailures: number;
   errorMessage?: string;
 };
 
@@ -43,6 +96,7 @@ export type ScrapeJobsResult = {
     totalExtracted: number;
     totalFilteredByLocation: number;
     totalFilteredByDate: number;
+    totalFilteredByKeyword: number;
     totalDuplicatesInRun: number;
     sourceStats: SourceScrapeStats[];
   };
@@ -71,8 +125,135 @@ function parsePositiveInt(rawValue: string | undefined, fallback: number) {
   return parsed;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeForKeywordMatch(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseKeywordListFromEnv({
+  envValue,
+  fallback,
+}: {
+  envValue: string | undefined;
+  fallback: readonly string[];
+}) {
+  if (!envValue) {
+    return [...fallback];
+  }
+
+  const parsed = envValue
+    .split(",")
+    .map((value) => normalizeWhitespace(value))
+    .filter((value) => value.length > 0);
+
+  if (parsed.length === 0) {
+    return [...fallback];
+  }
+
+  return parsed;
+}
+
+function findMatchedKeywords(text: string, keywords: string[]) {
+  const normalizedText = normalizeForKeywordMatch(text);
+  if (!normalizedText) {
+    return [];
+  }
+
+  const padded = ` ${normalizedText} `;
+  const matches: string[] = [];
+
+  for (const keyword of keywords) {
+    const normalizedKeyword = normalizeForKeywordMatch(keyword);
+    if (!normalizedKeyword) {
+      continue;
+    }
+
+    if (padded.includes(` ${normalizedKeyword} `)) {
+      matches.push(keyword);
+    }
+  }
+
+  return matches;
+}
+
+function containsAnyKeyword(text: string, keywords: string[]) {
+  return findMatchedKeywords(text, keywords).length > 0;
+}
+
+function classifyJobIntent({
+  title,
+  description,
+  sourceUrl,
+  sourcePageUrl,
+  includeKeywords,
+  excludeKeywords,
+}: {
+  title: string;
+  description: string;
+  sourceUrl: string;
+  sourcePageUrl: string;
+  includeKeywords: string[];
+  excludeKeywords: string[];
+}) {
+  const signalText = [title, description, sourceUrl].filter(Boolean).join(" ");
+  const matchedExclude = findMatchedKeywords(signalText, excludeKeywords);
+  if (matchedExclude.length > 0) {
+    return {
+      isJobRelated: false,
+      matchedInclude: [] as string[],
+      matchedExclude,
+      reason: "exclude_keyword_match",
+    };
+  }
+
+  const sourceHost = hostnameFromUrl(sourcePageUrl);
+  const sourceUrlHost = hostnameFromUrl(sourceUrl);
+  const sourcePath = (() => {
+    try {
+      return new URL(sourceUrl).pathname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const looksLikeLinkedInJob =
+    (isLinkedInHost(sourceHost) || isLinkedInHost(sourceUrlHost)) &&
+    (sourcePath.includes("/jobs/view") || sourcePath.includes("/jobs/search"));
+  if (looksLikeLinkedInJob) {
+    return {
+      isJobRelated: true,
+      matchedInclude: ["linkedin_job_url"],
+      matchedExclude: [] as string[],
+      reason: "trusted_linkedin_job_url",
+    };
+  }
+
+  const matchedInclude = findMatchedKeywords(signalText, includeKeywords);
+  if (matchedInclude.length > 0) {
+    return {
+      isJobRelated: true,
+      matchedInclude,
+      matchedExclude: [] as string[],
+      reason: "include_keyword_match",
+    };
+  }
+
+  return {
+    isJobRelated: false,
+    matchedInclude: [] as string[],
+    matchedExclude: [] as string[],
+    reason: "missing_include_keyword",
+  };
 }
 
 function safeText(
@@ -131,6 +312,290 @@ function resolveSourceUrl(baseUrl: string, href: string) {
   }
 }
 
+function hostnameFromUrl(url: string) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isLinkedInHost(hostname: string) {
+  return hostname === "linkedin.com" || hostname.endsWith(".linkedin.com");
+}
+
+function isGovernmentHost(hostname: string) {
+  return hostname.endsWith(".gov.in") || hostname.endsWith(".gov");
+}
+
+function isPdfUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.toLowerCase();
+    return pathname.endsWith(".pdf") || pathname.includes(".pdf");
+  } catch {
+    return false;
+  }
+}
+
+function shouldAttemptPdfEnrichment({
+  sourcePageUrl,
+  sourceUrl,
+}: {
+  sourcePageUrl: string;
+  sourceUrl: string;
+}) {
+  const sourceHost = hostnameFromUrl(sourcePageUrl);
+  const jobHost = hostnameFromUrl(sourceUrl);
+
+  if (isLinkedInHost(sourceHost) || isLinkedInHost(jobHost)) {
+    return false;
+  }
+  if (isPdfUrl(sourceUrl)) {
+    return true;
+  }
+  if (isGovernmentHost(sourceHost) || isGovernmentHost(jobHost)) {
+    return true;
+  }
+
+  return false;
+}
+
+function extractPdfCandidatesFromHtml(baseUrl: string, html: string) {
+  const $ = load(html);
+  const candidates = new Map<string, number>();
+
+  const addCandidate = (hrefRaw: string, contextText: string) => {
+    const resolved = resolveSourceUrl(baseUrl, hrefRaw);
+    if (!resolved || !isPdfUrl(resolved)) {
+      return;
+    }
+
+    let score = 1;
+    const normalizedContext = contextText.toLowerCase();
+    if (
+      /advertisement|recruit|vacanc|job|tor|application|shortlist|result/.test(
+        normalizedContext
+      )
+    ) {
+      score += 4;
+    }
+    if (/mbda|meghalaya/.test(normalizedContext)) {
+      score += 2;
+    }
+
+    const previousScore = candidates.get(resolved) ?? 0;
+    candidates.set(resolved, Math.max(previousScore, score));
+  };
+
+  $("a[href]").each((_, node) => {
+    const element = $(node);
+    addCandidate(
+      element.attr("href") ?? "",
+      `${element.text()} ${element.attr("title") ?? ""}`
+    );
+  });
+
+  $("iframe[src], embed[src], object[data]").each((_, node) => {
+    const element = $(node);
+    const src =
+      element.attr("src") ??
+      element.attr("data") ??
+      "";
+    addCandidate(src, `${element.attr("title") ?? ""} ${element.attr("class") ?? ""}`);
+  });
+
+  return Array.from(candidates.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([url]) => url);
+}
+
+async function fetchHtmlForPdfDiscovery(url: string, timeoutMs: number) {
+  try {
+    const response = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          "user-agent": SCRAPER_USER_AGENT,
+          accept: "text/html,application/xhtml+xml",
+        },
+      },
+      timeoutMs
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("text/html")) {
+      return null;
+    }
+
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+function isRetryableFetchError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("aborted") ||
+    message.includes("timeout") ||
+    message.includes("fetch failed") ||
+    message.includes("network")
+  );
+}
+
+async function fetchSourceHtmlWithRetry({
+  url,
+  timeoutMs,
+  retryAttempts,
+}: {
+  url: string;
+  timeoutMs: number;
+  retryAttempts: number;
+}) {
+  let lastError: unknown = null;
+  const attempts = Math.max(1, retryAttempts);
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            "user-agent": SCRAPER_USER_AGENT,
+            accept: "text/html,application/xhtml+xml",
+          },
+        },
+        timeoutMs
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} while fetching source.`);
+      }
+
+      return await response.text();
+    } catch (error) {
+      lastError = error;
+      const retrying = attempt < attempts && isRetryableFetchError(error);
+      console.warn("[jobs-scraper] source_fetch_attempt_failed", {
+        url,
+        attempt,
+        retrying,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!retrying) {
+        break;
+      }
+      await sleep(250 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function extractTextFromPdfUrl(pdfUrl: string, maxChars: number) {
+  try {
+    const parsed = await extractDocumentText(
+      {
+        name: "job-details.pdf",
+        url: pdfUrl,
+        mediaType: "application/pdf",
+      },
+      {
+        maxTextChars: maxChars,
+      }
+    );
+    return normalizeWhitespace(parsed.text);
+  } catch {
+    return null;
+  }
+}
+
+async function enrichDescriptionFromPdf({
+  sourcePageUrl,
+  sourceUrl,
+  fallbackDescription,
+  timeoutMs,
+  maxPdfTextChars,
+}: {
+  sourcePageUrl: string;
+  sourceUrl: string;
+  fallbackDescription: string;
+  timeoutMs: number;
+  maxPdfTextChars: number;
+}) {
+  if (
+    !shouldAttemptPdfEnrichment({
+      sourcePageUrl,
+      sourceUrl,
+    })
+  ) {
+    return {
+      description: fallbackDescription,
+      pdfSourceUrl: null,
+      attempted: false,
+      success: false,
+    };
+  }
+
+  const pdfCandidates: string[] = [];
+  if (isPdfUrl(sourceUrl)) {
+    pdfCandidates.push(sourceUrl);
+  } else {
+    const detailHtml = await fetchHtmlForPdfDiscovery(sourceUrl, timeoutMs);
+    if (detailHtml) {
+      pdfCandidates.push(...extractPdfCandidatesFromHtml(sourceUrl, detailHtml));
+    }
+  }
+
+  if (pdfCandidates.length === 0) {
+    return {
+      description: fallbackDescription,
+      pdfSourceUrl: null,
+      attempted: true,
+      success: false,
+    };
+  }
+
+  const uniqueCandidates = Array.from(new Set(pdfCandidates)).slice(0, 3);
+  for (const pdfUrl of uniqueCandidates) {
+    const pdfText = await extractTextFromPdfUrl(pdfUrl, maxPdfTextChars);
+    if (!pdfText) {
+      continue;
+    }
+
+    const joined = [
+      fallbackDescription.trim(),
+      `PDF Source: ${pdfUrl}`,
+      pdfText,
+    ]
+      .filter((value) => value.length > 0)
+      .join("\n\n")
+      .slice(0, MAX_JOB_DESCRIPTION_CHARS);
+
+    return {
+      description: joined,
+      pdfSourceUrl: pdfUrl,
+      attempted: true,
+      success: true,
+    };
+  }
+
+  return {
+    description: fallbackDescription,
+    pdfSourceUrl: null,
+    attempted: true,
+    success: false,
+  };
+}
+
 function containsMeghalayaKeyword(text: string) {
   const normalized = text.trim().toLowerCase();
   if (!normalized) {
@@ -145,7 +610,10 @@ function looksLikeJobListingText(text: string) {
     return false;
   }
 
-  return /job|vacanc|hiring|opening|career|apply/.test(normalized);
+  return (
+    /job|vacanc|hiring|opening|career|apply/.test(normalized) ||
+    containsAnyKeyword(normalized, [...DEFAULT_JOB_FILTER_INCLUDE_KEYWORDS])
+  );
 }
 
 function inferLocationFromText(text: string) {
@@ -171,6 +639,26 @@ function inferLocationFromText(text: string) {
   }
 
   return "";
+}
+
+function buildSourceLocationHint({
+  sourceName,
+  sourceUrl,
+  pageTitle,
+  pageDescription,
+}: {
+  sourceName: string;
+  sourceUrl: string;
+  pageTitle: string;
+  pageDescription: string;
+}) {
+  const inferred = inferLocationFromText(
+    [sourceName, sourceUrl, pageTitle, pageDescription]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(" ")
+  );
+  return inferred;
 }
 
 function collectHeuristicContainers(
@@ -242,6 +730,10 @@ function collectHeuristicContainers(
 
 function isMeghalayaLocation(location: string) {
   return containsMeghalayaKeyword(location);
+}
+
+function resolveLocationScope(value: unknown): JobSourceLocationScope {
+  return value === "all_locations" ? "all_locations" : "meghalaya_only";
 }
 
 function parseDateFromRelativeText(rawText: string, now: Date) {
@@ -361,10 +853,30 @@ async function scrapeSource(
   options: JobsScraperRuntimeOptions
 ): Promise<{ jobs: NewJobRow[]; stats: SourceScrapeStats }> {
   const timeoutMs = parsePositiveInt(process.env.JOBS_SCRAPE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+  const fetchRetryAttempts = parsePositiveInt(
+    process.env.JOBS_SCRAPE_FETCH_RETRY_ATTEMPTS,
+    DEFAULT_FETCH_RETRY_ATTEMPTS
+  );
   const maxItemsPerSource = parsePositiveInt(
     process.env.JOBS_SCRAPE_MAX_ITEMS_PER_SOURCE,
     DEFAULT_MAX_ITEMS_PER_SOURCE
   );
+  const maxPdfEnrichmentsPerSource = parsePositiveInt(
+    process.env.JOBS_SCRAPE_MAX_PDF_ENRICHMENTS_PER_SOURCE,
+    DEFAULT_MAX_PDF_ENRICHMENTS_PER_SOURCE
+  );
+  const maxPdfExtractChars = parsePositiveInt(
+    process.env.JOBS_SCRAPE_PDF_MAX_TEXT_CHARS,
+    DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS
+  );
+  const includeKeywords = parseKeywordListFromEnv({
+    envValue: process.env.JOBS_SCRAPE_INCLUDE_KEYWORDS,
+    fallback: DEFAULT_JOB_FILTER_INCLUDE_KEYWORDS,
+  });
+  const excludeKeywords = parseKeywordListFromEnv({
+    envValue: process.env.JOBS_SCRAPE_EXCLUDE_KEYWORDS,
+    fallback: DEFAULT_JOB_FILTER_EXCLUDE_KEYWORDS,
+  });
   const envLookbackDays = parsePositiveInt(
     process.env.JOBS_SCRAPE_LOOKBACK_DAYS,
     DEFAULT_LOOKBACK_DAYS
@@ -375,6 +887,7 @@ async function scrapeSource(
     options.lookbackDays > 0
       ? Math.trunc(options.lookbackDays)
       : envLookbackDays;
+  const locationScope = resolveLocationScope(source.locationScope);
 
   const stats: SourceScrapeStats = {
     source: source.name,
@@ -383,7 +896,11 @@ async function scrapeSource(
     extracted: 0,
     filteredByLocation: 0,
     filteredByDate: 0,
+    filteredByKeyword: 0,
     parseErrors: 0,
+    pdfDetailAttempts: 0,
+    pdfDetailSuccesses: 0,
+    pdfDetailFailures: 0,
   };
 
   const requiredSelectors = [
@@ -401,24 +918,23 @@ async function scrapeSource(
   }
 
   try {
-    const response = await fetchWithTimeout(
-      source.url,
-      {
-        headers: {
-          "user-agent": SCRAPER_USER_AGENT,
-          accept: "text/html,application/xhtml+xml",
-        },
-      },
-      timeoutMs
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} while fetching source.`);
-    }
-
-    const html = await response.text();
+    const html = await fetchSourceHtmlWithRetry({
+      url: source.url,
+      timeoutMs,
+      retryAttempts: fetchRetryAttempts,
+    });
     const $ = load(html);
     stats.fetched = true;
+    const pageTitle = normalizeWhitespace($("title").first().text());
+    const pageDescription = normalizeWhitespace(
+      ($("meta[name='description']").attr("content") ?? "").toString()
+    );
+    const sourceLocationHint = buildSourceLocationHint({
+      sourceName: source.name,
+      sourceUrl: source.url,
+      pageTitle,
+      pageDescription,
+    });
 
     let containers: ReturnType<typeof $>;
     try {
@@ -435,6 +951,7 @@ async function scrapeSource(
 
     const jobs: NewJobRow[] = [];
     const limit = Math.min(containers.length, maxItemsPerSource);
+    let pdfDetailsUsed = 0;
 
     for (let index = 0; index < limit; index += 1) {
       const container = containers.eq(index);
@@ -448,10 +965,18 @@ async function scrapeSource(
       const company =
         safeText(container, source.selectors.company) ||
         safeText(container, "[class*='company'], .company, [class*='employer']");
-      const location =
+      const rawLocation =
         safeText(container, source.selectors.location) ||
-        safeText(container, "[class*='location'], .location, [class*='city'], [class*='place']") ||
-        inferLocationFromText(fallbackText);
+        safeText(container, "[class*='location'], .location, [class*='city'], [class*='place']");
+      const location =
+        rawLocation ||
+        inferLocationFromText(
+          [fallbackText, pageTitle, pageDescription, source.name, source.url]
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .join(" ")
+        ) ||
+        sourceLocationHint;
       const rawDescription =
         safeText(container, source.selectors.description) ||
         safeText(container, "[class*='description'], .description, [class*='summary'], p");
@@ -464,7 +989,7 @@ async function scrapeSource(
         continue;
       }
 
-      if (!isMeghalayaLocation(location)) {
+      if (locationScope === "meghalaya_only" && !isMeghalayaLocation(location)) {
         stats.filteredByLocation += 1;
         continue;
       }
@@ -473,8 +998,9 @@ async function scrapeSource(
         source.selectors.publishedAt || "time, [datetime], [class*='date'], [class*='posted']";
       const publishedAtText = safeText(container, publishedAtSelector);
       const publishedAtDatetime = safeAttr(container, publishedAtSelector, "datetime");
+      const publishedAtContent = safeAttr(container, publishedAtSelector, "content");
       const publishedAt = parsePublishedDate(
-        publishedAtDatetime || publishedAtText,
+        publishedAtDatetime || publishedAtContent || publishedAtText,
         fallbackText,
         now
       );
@@ -483,7 +1009,44 @@ async function scrapeSource(
         continue;
       }
 
-      const description = (rawDescription || fallbackText).slice(0, 4_000);
+      const jobIntent = classifyJobIntent({
+        title,
+        description: rawDescription || fallbackText,
+        sourceUrl,
+        sourcePageUrl: source.url,
+        includeKeywords,
+        excludeKeywords,
+      });
+      if (!jobIntent.isJobRelated) {
+        stats.filteredByKeyword += 1;
+        continue;
+      }
+
+      const fallbackDescription = (rawDescription || fallbackText).slice(
+        0,
+        MAX_JOB_DESCRIPTION_CHARS
+      );
+      let description = fallbackDescription;
+      if (pdfDetailsUsed < maxPdfEnrichmentsPerSource) {
+        const enriched = await enrichDescriptionFromPdf({
+          sourcePageUrl: source.url,
+          sourceUrl,
+          fallbackDescription,
+          timeoutMs,
+          maxPdfTextChars: maxPdfExtractChars,
+        });
+        if (enriched.attempted) {
+          stats.pdfDetailAttempts += 1;
+          if (enriched.success) {
+            stats.pdfDetailSuccesses += 1;
+            pdfDetailsUsed += 1;
+          } else {
+            stats.pdfDetailFailures += 1;
+          }
+        }
+        description = enriched.description;
+      }
+
       jobs.push({
         title,
         company: company || "Unknown",
@@ -524,6 +1087,7 @@ export async function scrapeJobsFromSources(
   let totalExtracted = 0;
   let totalFilteredByLocation = 0;
   let totalFilteredByDate = 0;
+  let totalFilteredByKeyword = 0;
 
   for (const source of sources) {
     const { jobs, stats } = await scrapeSource(source, now, { lookbackDays });
@@ -532,6 +1096,7 @@ export async function scrapeJobsFromSources(
     totalExtracted += stats.extracted;
     totalFilteredByLocation += stats.filteredByLocation;
     totalFilteredByDate += stats.filteredByDate;
+    totalFilteredByKeyword += stats.filteredByKeyword;
 
     for (const job of jobs) {
       if (seenSourceUrls.has(job.source_url)) {
@@ -549,7 +1114,11 @@ export async function scrapeJobsFromSources(
       extracted: stats.extracted,
       filteredByLocation: stats.filteredByLocation,
       filteredByDate: stats.filteredByDate,
+      filteredByKeyword: stats.filteredByKeyword,
       parseErrors: stats.parseErrors,
+      pdfDetailAttempts: stats.pdfDetailAttempts,
+      pdfDetailSuccesses: stats.pdfDetailSuccesses,
+      pdfDetailFailures: stats.pdfDetailFailures,
       error: stats.errorMessage ?? null,
     });
   }
@@ -562,6 +1131,7 @@ export async function scrapeJobsFromSources(
       totalExtracted,
       totalFilteredByLocation,
       totalFilteredByDate,
+      totalFilteredByKeyword,
       totalDuplicatesInRun,
       sourceStats,
     },
@@ -584,6 +1154,7 @@ export async function runJobsScraper(
     skippedDuplicates: persisted.skippedDuplicateCount + scraped.summary.totalDuplicatesInRun,
     filteredByLocation: scraped.summary.totalFilteredByLocation,
     filteredByDate: scraped.summary.totalFilteredByDate,
+    filteredByKeyword: scraped.summary.totalFilteredByKeyword,
   });
 
   return {

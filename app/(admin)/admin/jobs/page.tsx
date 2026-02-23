@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -40,7 +41,9 @@ import {
   addManagedJobSource,
   deleteManagedJobSource,
   listManagedJobSources,
+  type ManagedJobSourceLocationScope,
   type ManagedJobSourceType,
+  setManagedJobSourceLocationScope,
   setManagedJobSourceEnabled,
 } from "@/lib/jobs/source-registry";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -249,6 +252,16 @@ function resolveEarlierDate(first: Date | null, second: Date | null) {
 
 function normalizeJobStatus(value: string | null | undefined): "active" | "inactive" {
   return value === "inactive" ? "inactive" : "active";
+}
+
+function normalizeLocationScope(
+  value: string | null | undefined
+): ManagedJobSourceLocationScope {
+  return value === "all_locations" ? "all_locations" : "meghalaya_only";
+}
+
+function formatLocationScope(value: ManagedJobSourceLocationScope) {
+  return value === "all_locations" ? "all_locations" : "meghalaya_only";
 }
 
 function parseLookbackDays(value: unknown) {
@@ -474,6 +487,9 @@ async function addScrapeSourceAction(formData: FormData) {
     typeRaw === "linkedin" || typeRaw === "generic" || typeRaw === "auto"
       ? typeRaw
       : "auto";
+  const locationScope = normalizeLocationScope(
+    formData.get("locationScope")?.toString().trim()
+  );
   const enabled = formData
     .getAll("enabled")
     .some((entry) => parseBoolean(entry, false));
@@ -482,6 +498,7 @@ async function addScrapeSourceAction(formData: FormData) {
     name,
     url,
     type,
+    locationScope,
     enabled,
   });
 
@@ -504,6 +521,27 @@ async function toggleScrapeSourceAction(formData: FormData) {
   await setManagedJobSourceEnabled({
     id: sourceId,
     enabled: nextEnabled,
+  });
+
+  revalidateJobsScrapeSettingCaches();
+  revalidatePath("/admin/jobs");
+}
+
+async function setScrapeSourceLocationScopeAction(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user || session.user.role !== "admin") {
+    redirect("/");
+  }
+
+  const sourceId = formData.get("sourceId")?.toString().trim() ?? "";
+  const nextLocationScope = normalizeLocationScope(
+    formData.get("nextLocationScope")?.toString().trim()
+  );
+  await setManagedJobSourceLocationScope({
+    id: sourceId,
+    locationScope: nextLocationScope,
   });
 
   revalidateJobsScrapeSettingCaches();
@@ -705,7 +743,7 @@ export default async function AdminJobsPage() {
             Jobs are scraped automatically in the background and inserted into Supabase.
           </p>
           <p>
-            Meghalaya-only filtering is always enforced by the scraper.
+            Each source can use Meghalaya-only or all-locations scraping scope.
           </p>
           <p>
             Configure source sites in the Source Management section below.
@@ -896,6 +934,9 @@ export default async function AdminJobsPage() {
                 <span className="font-medium text-foreground">{insertedLastRun}</span>
               </p>
             ) : null}
+            <div className="mt-2 border-t pt-2">
+              <JobsAutoScrapeStatus />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -913,7 +954,7 @@ export default async function AdminJobsPage() {
           </p>
           <p className="text-muted-foreground text-xs">
             Use <strong>Auto</strong> for most sites. The scraper will try generic extraction
-            patterns and still enforce Meghalaya-location and lookback-days filtering.
+            patterns. You can choose per-source location scope below.
           </p>
 
           <form action={addScrapeSourceAction} className="grid gap-3 md:grid-cols-2">
@@ -947,6 +988,17 @@ export default async function AdminJobsPage() {
                 <option value="linkedin">LinkedIn</option>
               </select>
             </label>
+            <label className="flex flex-col gap-1 md:col-span-2">
+              Location scope
+              <select
+                className="rounded-md border bg-background px-3 py-2"
+                defaultValue="meghalaya_only"
+                name="locationScope"
+              >
+                <option value="meghalaya_only">Meghalaya-only</option>
+                <option value="all_locations">All locations</option>
+              </select>
+            </label>
             <label className="flex items-center gap-2 md:col-span-2">
               <input defaultChecked name="enabled" type="checkbox" value="true" />
               Enable this source immediately
@@ -963,67 +1015,125 @@ export default async function AdminJobsPage() {
             </div>
           </form>
 
-          <div className="space-y-3">
-            {managedSources.length === 0 ? (
-              <p className="text-muted-foreground">
-                No managed sources added yet. Add at least one source URL above.
-              </p>
-            ) : (
-              managedSources.map((source) => (
-                <div className="rounded-md border p-3" key={source.id}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{source.name}</span>
-                    <span className="rounded-full border px-2 py-0.5 text-xs">
-                      {source.type}
-                    </span>
-                    <span className="rounded-full border px-2 py-0.5 text-xs">
-                      {source.enabled ? "enabled" : "disabled"}
-                    </span>
-                  </div>
-                  <a
-                    className="mt-2 inline-block text-primary text-xs underline"
-                    href={source.url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {source.url}
-                  </a>
-                  <p className="mt-1 text-muted-foreground text-xs">
-                    Updated {formatIsoDateTime(source.updatedAt, scheduleSettings.timezone)}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <form action={toggleScrapeSourceAction}>
-                      <input name="sourceId" type="hidden" value={source.id} />
-                      <input
-                        name="nextEnabled"
-                        type="hidden"
-                        value={source.enabled ? "false" : "true"}
-                      />
-                      <ActionSubmitButton
-                        className="cursor-pointer"
-                        pendingLabel="Updating..."
-                        successMessage="Source updated."
-                        variant="outline"
-                      >
-                        {source.enabled ? "Disable Source" : "Enable Source"}
-                      </ActionSubmitButton>
-                    </form>
-                    <form action={deleteScrapeSourceAction}>
-                      <input name="sourceId" type="hidden" value={source.id} />
-                      <ActionSubmitButton
-                        className="cursor-pointer"
-                        pendingLabel="Removing..."
-                        successMessage="Source removed."
-                        variant="destructive"
-                      >
-                        Remove Source
-                      </ActionSubmitButton>
-                    </form>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          {managedSources.length === 0 ? (
+            <p className="text-muted-foreground">
+              No managed sources added yet. Add at least one source URL above.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      Source
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      Type
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      Scope
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      Status
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      URL
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      Updated
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {managedSources.map((source) => (
+                    <tr className="border-t" key={source.id}>
+                      <td className="px-3 py-3 align-top">
+                        <span className="font-medium">{source.name}</span>
+                      </td>
+                      <td className="px-3 py-3 align-top text-xs">{source.type}</td>
+                      <td className="px-3 py-3 align-top text-xs">
+                        {formatLocationScope(source.locationScope)}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <span className="rounded-full border px-2 py-0.5 text-xs">
+                          {source.enabled ? "enabled" : "disabled"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <a
+                          className="text-primary text-xs underline"
+                          href={source.url}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {source.url}
+                        </a>
+                      </td>
+                      <td className="px-3 py-3 align-top text-xs">
+                        {formatIsoDateTime(source.updatedAt, scheduleSettings.timezone)}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <form action={toggleScrapeSourceAction}>
+                            <input name="sourceId" type="hidden" value={source.id} />
+                            <input
+                              name="nextEnabled"
+                              type="hidden"
+                              value={source.enabled ? "false" : "true"}
+                            />
+                            <ActionSubmitButton
+                              className="h-7 cursor-pointer px-2 text-xs"
+                              pendingLabel="Updating..."
+                              successMessage="Source updated."
+                              variant="outline"
+                            >
+                              {source.enabled ? "Disable" : "Enable"}
+                            </ActionSubmitButton>
+                          </form>
+                          <form action={setScrapeSourceLocationScopeAction}>
+                            <input name="sourceId" type="hidden" value={source.id} />
+                            <input
+                              name="nextLocationScope"
+                              type="hidden"
+                              value={
+                                source.locationScope === "meghalaya_only"
+                                  ? "all_locations"
+                                  : "meghalaya_only"
+                              }
+                            />
+                            <ActionSubmitButton
+                              className="h-7 cursor-pointer px-2 text-xs"
+                              pendingLabel="Updating..."
+                              successMessage="Source scope updated."
+                              variant="outline"
+                            >
+                              {source.locationScope === "meghalaya_only"
+                                ? "All locations"
+                                : "Meghalaya-only"}
+                            </ActionSubmitButton>
+                          </form>
+                          <form action={deleteScrapeSourceAction}>
+                            <input name="sourceId" type="hidden" value={source.id} />
+                            <ActionSubmitButton
+                              className="h-7 cursor-pointer px-2 text-xs"
+                              pendingLabel="Removing..."
+                              successMessage="Source removed."
+                              variant="destructive"
+                            >
+                              Remove
+                            </ActionSubmitButton>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
