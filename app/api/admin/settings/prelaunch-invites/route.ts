@@ -5,6 +5,8 @@ import {
   createAuditLogEntry,
   createPrelaunchInviteToken,
   deletePrelaunchInviteToken,
+  disablePrelaunchInviteForRedeemer,
+  enablePrelaunchInviteForRedeemer,
   listActivePrelaunchInviteAccess,
   listPrelaunchInviteJoinedUsers,
   listPrelaunchInviteTokens,
@@ -275,6 +277,61 @@ export async function POST(request: Request) {
         target: {
           userId,
           inviteId: inviteId || null,
+        },
+      });
+    } else if (action === "disableRedeemer") {
+      const inviteId = normalizeString(body.inviteId);
+      const userId = normalizeString(body.userId);
+      if (!inviteId) {
+        return NextResponse.json({ error: "invalid_invite_id" }, { status: 400 });
+      }
+      if (!userId) {
+        return NextResponse.json({ error: "invalid_user_id" }, { status: 400 });
+      }
+      const blocked = await withTimeout(
+        disablePrelaunchInviteForRedeemer({
+          inviteId,
+          userId,
+          blockedByAdminId: user.id,
+        }),
+        API_TIMEOUT_MS
+      );
+      if (!blocked) {
+        return NextResponse.json({ error: "disable_failed" }, { status: 404 });
+      }
+      void auditSafely({
+        actorId: user.id,
+        action: "site.prelaunch_invite_redeemer.disable",
+        target: {
+          inviteId,
+          userId,
+        },
+      });
+    } else if (action === "enableRedeemer") {
+      const inviteId = normalizeString(body.inviteId);
+      const userId = normalizeString(body.userId);
+      if (!inviteId) {
+        return NextResponse.json({ error: "invalid_invite_id" }, { status: 400 });
+      }
+      if (!userId) {
+        return NextResponse.json({ error: "invalid_user_id" }, { status: 400 });
+      }
+      const enabled = await withTimeout(
+        enablePrelaunchInviteForRedeemer({
+          inviteId,
+          userId,
+        }),
+        API_TIMEOUT_MS
+      );
+      if (!enabled) {
+        return NextResponse.json({ error: "enable_failed" }, { status: 404 });
+      }
+      void auditSafely({
+        actorId: user.id,
+        action: "site.prelaunch_invite_redeemer.enable",
+        target: {
+          inviteId,
+          userId,
         },
       });
     } else {

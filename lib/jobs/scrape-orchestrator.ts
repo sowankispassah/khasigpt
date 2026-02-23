@@ -135,8 +135,10 @@ async function loadJobsScrapeRuntimeState() {
 
 export async function runJobsScrapeWithScheduling({
   trigger,
+  persistSkips = true,
 }: {
   trigger: JobsScrapeTrigger;
+  persistSkips?: boolean;
 }): Promise<JobsScrapeOrchestrationResult> {
   const startedAt = new Date();
   const runtime = await loadJobsScrapeRuntimeState();
@@ -176,20 +178,22 @@ export async function runJobsScrapeWithScheduling({
       durationMs: finishedAt.getTime() - startedAt.getTime(),
     };
 
-    await setManyAppSettings([
-      {
-        key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
-        value: "skipped",
-      },
-      {
-        key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
-        value: effectiveSkipReason ?? null,
-      },
-      {
-        key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
-        value: summary,
-      },
-    ]);
+    if (persistSkips) {
+      await setManyAppSettings([
+        {
+          key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
+          value: "skipped",
+        },
+        {
+          key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
+          value: effectiveSkipReason ?? null,
+        },
+        {
+          key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
+          value: summary,
+        },
+      ]);
+    }
 
     return {
       ok: true,

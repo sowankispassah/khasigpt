@@ -1081,6 +1081,7 @@ export default async function AdminSettingsPage({
       userEmail: entry.userEmail,
       redeemedAt: toIsoDateString(entry.redeemedAt),
       hasActiveAccess: entry.hasActiveAccess,
+      isInviteDisabled: entry.isInviteDisabled,
     })
   );
 

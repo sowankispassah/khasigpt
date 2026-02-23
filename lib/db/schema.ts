@@ -976,6 +976,29 @@ export const inviteRedemption = pgTable(
 
 export type InviteRedemption = InferSelectModel<typeof inviteRedemption>;
 
+export const inviteRedeemerBlock = pgTable(
+  "InviteRedeemerBlock",
+  {
+    inviteId: uuid("inviteId")
+      .notNull()
+      .references(() => inviteToken.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    blockedAt: timestamp("blockedAt").notNull().defaultNow(),
+    blockedByAdminId: uuid("blockedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.inviteId, table.userId] }),
+    userIdx: index("InviteRedeemerBlock_user_idx").on(table.userId),
+    blockedAtIdx: index("InviteRedeemerBlock_blockedAt_idx").on(table.blockedAt),
+  })
+);
+
+export type InviteRedeemerBlock = InferSelectModel<typeof inviteRedeemerBlock>;
+
 export const userInviteAccess = pgTable(
   "UserInviteAccess",
   {

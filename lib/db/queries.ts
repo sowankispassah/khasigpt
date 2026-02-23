@@ -67,11 +67,13 @@ import {
   emailVerificationToken,
   type ImageModelConfig,
   type ImpersonationToken,
+  type InviteRedeemerBlock,
   type InviteRedemption,
   type InviteToken,
   type UserInviteAccess,
   imageModelConfig,
   impersonationToken,
+  inviteRedeemerBlock,
   inviteRedemption,
   inviteToken,
   type Language,
@@ -2026,6 +2028,7 @@ export type PrelaunchInviteTokenStatus =
 export type RedeemPrelaunchInviteResult =
   | { status: "invalid_user" }
   | { status: "invalid_token" }
+  | { status: "blocked" }
   | { status: "revoked" }
   | { status: "expired" }
   | { status: "exhausted" }
@@ -2053,6 +2056,7 @@ export type PrelaunchInviteJoinedUserItem = {
   userEmail: string | null;
   redeemedAt: Date;
   hasActiveAccess: boolean;
+  isInviteDisabled: boolean;
 };
 
 export async function createPrelaunchInviteToken({
@@ -2250,7 +2254,7 @@ export async function listPrelaunchInviteJoinedUsers({
   const normalizedLimit = Math.min(Math.max(Math.floor(limit), 1), 5000);
 
   try {
-    const [rows, activeAccessRows] = await Promise.all([
+    const [rows, activeAccessRows, blockedRows] = await Promise.all([
       db
         .select({
           inviteId: inviteRedemption.inviteId,
@@ -2275,10 +2279,20 @@ export async function listPrelaunchInviteJoinedUsers({
             isNull(userInviteAccess.revokedAt)
           )
         ),
+      db
+        .select({
+          inviteId: inviteRedeemerBlock.inviteId,
+          userId: inviteRedeemerBlock.userId,
+        })
+        .from(inviteRedeemerBlock)
+        .where(inArray(inviteRedeemerBlock.inviteId, validInviteIds)),
     ]);
 
     const activeAccessSet = new Set(
       activeAccessRows.map((row) => `${row.inviteId}:${row.userId}`)
+    );
+    const disabledSet = new Set(
+      blockedRows.map((row) => `${row.inviteId}:${row.userId}`)
     );
 
     return rows.map((row) => ({
@@ -2287,6 +2301,7 @@ export async function listPrelaunchInviteJoinedUsers({
       userEmail: row.userEmail,
       redeemedAt: row.redeemedAt,
       hasActiveAccess: activeAccessSet.has(`${row.inviteId}:${row.userId}`),
+      isInviteDisabled: disabledSet.has(`${row.inviteId}:${row.userId}`),
     }));
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -2385,6 +2400,23 @@ export async function redeemPrelaunchInviteTokenForUser({
       const now = new Date();
       if (invite.expiresAt && invite.expiresAt <= now) {
         return { status: "expired" };
+      }
+
+      const [disabledInviteAccess] = await tx
+        .select({
+          inviteId: inviteRedeemerBlock.inviteId,
+        })
+        .from(inviteRedeemerBlock)
+        .where(
+          and(
+            eq(inviteRedeemerBlock.inviteId, invite.id),
+            eq(inviteRedeemerBlock.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (disabledInviteAccess) {
+        return { status: "blocked" };
       }
 
       const [existingActiveAccess] = await tx
@@ -2723,6 +2755,106 @@ export async function revokePrelaunchInviteAccessForUser({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to revoke invite access"
+    );
+  }
+}
+
+export async function disablePrelaunchInviteForRedeemer({
+  inviteId,
+  userId,
+  blockedByAdminId,
+}: {
+  inviteId: string;
+  userId: string;
+  blockedByAdminId?: string | null;
+}): Promise<InviteRedeemerBlock | null> {
+  if (!(isValidUUID(inviteId) && isValidUUID(userId))) {
+    return null;
+  }
+
+  const validBlockerId =
+    blockedByAdminId && isValidUUID(blockedByAdminId) ? blockedByAdminId : null;
+  const now = new Date();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [blockRecord] = await tx
+        .insert(inviteRedeemerBlock)
+        .values({
+          inviteId,
+          userId,
+          blockedAt: now,
+          blockedByAdminId: validBlockerId,
+        })
+        .onConflictDoUpdate({
+          target: [inviteRedeemerBlock.inviteId, inviteRedeemerBlock.userId],
+          set: {
+            blockedAt: now,
+            blockedByAdminId: validBlockerId,
+          },
+        })
+        .returning();
+
+      await tx
+        .update(userInviteAccess)
+        .set({
+          revokedAt: now,
+          revokedByAdminId: validBlockerId,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(userInviteAccess.inviteId, inviteId),
+            eq(userInviteAccess.userId, userId),
+            isNull(userInviteAccess.revokedAt)
+          )
+        );
+
+      return blockRecord ?? null;
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to disable invite for user"
+    );
+  }
+}
+
+export async function enablePrelaunchInviteForRedeemer({
+  inviteId,
+  userId,
+}: {
+  inviteId: string;
+  userId: string;
+}): Promise<boolean> {
+  if (!(isValidUUID(inviteId) && isValidUUID(userId))) {
+    return false;
+  }
+
+  try {
+    const unblocked = await db
+      .delete(inviteRedeemerBlock)
+      .where(
+        and(
+          eq(inviteRedeemerBlock.inviteId, inviteId),
+          eq(inviteRedeemerBlock.userId, userId)
+        )
+      )
+      .returning({
+        inviteId: inviteRedeemerBlock.inviteId,
+      });
+
+    return unblocked.length > 0;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to enable invite for user"
     );
   }
 }

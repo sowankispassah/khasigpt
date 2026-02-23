@@ -1,11 +1,18 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Eye, EyeOff } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Eye } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const PRELAUNCH_INVITE_API_ENDPOINT = "/api/admin/settings/prelaunch-invites";
@@ -40,6 +47,7 @@ type InviteJoinedUserItem = {
   userEmail: string | null;
   redeemedAt: string;
   hasActiveAccess: boolean;
+  isInviteDisabled: boolean;
 };
 
 type InviteStateResponse = {
@@ -129,7 +137,7 @@ export function PrelaunchInvitesPanel({
   const [inviteMaxRedemptions, setInviteMaxRedemptions] = useState("1");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
-  const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null);
+  const [viewerInviteId, setViewerInviteId] = useState<string | null>(null);
   const [assignedEmailDraftByInvite, setAssignedEmailDraftByInvite] = useState<
     Record<string, string>
   >({});
@@ -166,6 +174,46 @@ export function PrelaunchInvitesPanel({
     }
     return map;
   }, [joinedUsers]);
+  const viewerInvite = useMemo(
+    () => invites.find((invite) => invite.id === viewerInviteId) ?? null,
+    [invites, viewerInviteId]
+  );
+  const viewerInviteUsers = useMemo(() => {
+    if (!viewerInvite) {
+      return [];
+    }
+    return joinedUsersByInvite.get(viewerInvite.id) ?? [];
+  }, [joinedUsersByInvite, viewerInvite]);
+  const viewerSearchInputValue =
+    viewerInviteId ? joinedUserSearchByInvite[viewerInviteId] ?? "" : "";
+  const viewerSearchQuery = viewerSearchInputValue.trim().toLowerCase();
+  const filteredViewerInviteUsers =
+    viewerSearchQuery.length === 0
+      ? viewerInviteUsers
+      : viewerInviteUsers.filter((entry) => {
+          const normalizedEmail = (entry.userEmail ?? "").toLowerCase();
+          const normalizedUserId = entry.userId.toLowerCase();
+          return (
+            normalizedEmail.includes(viewerSearchQuery) ||
+            normalizedUserId.includes(viewerSearchQuery)
+          );
+        });
+  const viewerTotalPages = Math.max(
+    1,
+    Math.ceil(filteredViewerInviteUsers.length / JOINED_USERS_PAGE_SIZE)
+  );
+  const viewerRequestedPage = viewerInviteId
+    ? (joinedUserPageByInvite[viewerInviteId] ?? 1)
+    : 1;
+  const viewerCurrentPage = Math.min(
+    Math.max(viewerRequestedPage, 1),
+    viewerTotalPages
+  );
+  const viewerPageStart = (viewerCurrentPage - 1) * JOINED_USERS_PAGE_SIZE;
+  const pagedViewerInviteUsers = filteredViewerInviteUsers.slice(
+    viewerPageStart,
+    viewerPageStart + JOINED_USERS_PAGE_SIZE
+  );
 
   const applyState = (state: InviteStateResponse) => {
     setInvites(state.invites);
@@ -311,16 +359,16 @@ export function PrelaunchInvitesPanel({
 
       {invites.length > 0 ? (
         <div className="overflow-x-auto rounded-md border">
-          <table className="min-w-full border-collapse text-sm">
+          <table className="min-w-max border-collapse whitespace-nowrap text-sm">
             <thead className="bg-muted/40">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Invite</th>
-                <th className="px-3 py-2 text-left font-medium">Assigned to</th>
-                <th className="px-3 py-2 text-left font-medium">Owner</th>
-                <th className="px-3 py-2 text-left font-medium">Invite link</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-left font-medium">Redemptions</th>
-                <th className="px-3 py-2 text-left font-medium">Actions</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Invite</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Assigned to</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Owner</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Invite link</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Redemptions</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -331,32 +379,6 @@ export function PrelaunchInvitesPanel({
                   : invitePath;
                 const isRevoked = Boolean(invite.revokedAt);
                 const inviteLimit = Math.max(1, Number(invite.maxRedemptions ?? 1));
-                const inviteUsers = joinedUsersByInvite.get(invite.id) ?? [];
-                const searchInputValue = joinedUserSearchByInvite[invite.id] ?? "";
-                const searchQuery = searchInputValue.trim().toLowerCase();
-                const filteredInviteUsers =
-                  searchQuery.length === 0
-                    ? inviteUsers
-                    : inviteUsers.filter((entry) => {
-                        const normalizedEmail = (entry.userEmail ?? "").toLowerCase();
-                        const normalizedUserId = entry.userId.toLowerCase();
-                        return (
-                          normalizedEmail.includes(searchQuery) ||
-                          normalizedUserId.includes(searchQuery)
-                        );
-                      });
-                const totalPages = Math.max(
-                  1,
-                  Math.ceil(filteredInviteUsers.length / JOINED_USERS_PAGE_SIZE)
-                );
-                const requestedPage = joinedUserPageByInvite[invite.id] ?? 1;
-                const currentPage = Math.min(Math.max(requestedPage, 1), totalPages);
-                const pageStart = (currentPage - 1) * JOINED_USERS_PAGE_SIZE;
-                const pagedInviteUsers = filteredInviteUsers.slice(
-                  pageStart,
-                  pageStart + JOINED_USERS_PAGE_SIZE
-                );
-                const isExpanded = expandedInviteId === invite.id;
                 const assignedToDraft =
                   assignedEmailDraftByInvite[invite.id] ?? invite.assignedToEmail ?? "";
                 const normalizedAssignedToDraft = assignedToDraft.trim().toLowerCase();
@@ -370,10 +392,9 @@ export function PrelaunchInvitesPanel({
                 const clearAssignedActionKey = `assign-clear:${invite.id}`;
 
                 return (
-                  <Fragment key={invite.id}>
-                    <tr className="border-t">
+                  <tr className="border-t" key={invite.id}>
                       <td className="px-3 py-3 align-top">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <span className="font-medium">
                             {invite.label?.trim() || "Untitled invite"}
                           </span>
@@ -383,9 +404,9 @@ export function PrelaunchInvitesPanel({
                         </div>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <div className="flex min-w-[220px] flex-col gap-2">
+                        <div className="flex min-w-[360px] items-center gap-2 whitespace-nowrap">
                           <input
-                            className="rounded-md border bg-background px-2 py-1 text-xs"
+                            className="min-w-[220px] rounded-md border bg-background px-2 py-1 text-xs"
                             disabled={Boolean(pendingAction)}
                             onChange={(event) => {
                               const value = event.target.value;
@@ -398,7 +419,7 @@ export function PrelaunchInvitesPanel({
                             type="email"
                             value={assignedToDraft}
                           />
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 whitespace-nowrap">
                             <Button
                               className="h-6 px-2 text-[11px]"
                               disabled={Boolean(pendingAction) || !hasAssignedToChanges}
@@ -474,14 +495,14 @@ export function PrelaunchInvitesPanel({
                       </td>
                       <td className="px-3 py-3 align-top text-xs">
                         <div>
-                          {invite.redemptionCount} / {inviteLimit}
-                        </div>
-                        <div className="text-muted-foreground">
-                          Active access: {invite.activeAccessCount}
+                          {invite.redemptionCount} / {inviteLimit}{" "}
+                          <span className="text-muted-foreground">
+                            | Active access: {invite.activeAccessCount}
+                          </span>
                         </div>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <Button
                             className="h-7 px-2 text-xs"
                             disabled={Boolean(pendingAction)}
@@ -530,184 +551,17 @@ export function PrelaunchInvitesPanel({
                             className="h-7 px-2"
                             disabled={Boolean(pendingAction)}
                             onClick={() => {
-                              setExpandedInviteId((current) =>
-                                current === invite.id ? null : invite.id
-                              );
+                              setViewerInviteId(invite.id);
                             }}
                             title="View users joined via this invite"
                             type="button"
                             variant="outline"
                           >
-                            {isExpanded ? <EyeOff size={14} /> : <Eye size={14} />}
+                            <Eye size={14} />
                           </Button>
                         </div>
                       </td>
-                    </tr>
-                    {isExpanded ? (
-                      <tr className="border-t bg-muted/20">
-                        <td className="px-3 py-3" colSpan={7}>
-                          <div className="space-y-2">
-                            <div className="font-medium text-xs uppercase tracking-wide">
-                              Users joined with this invite
-                            </div>
-                            {inviteUsers.length === 0 ? (
-                              <p className="text-muted-foreground text-xs">
-                                No users joined using this link yet.
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                  <input
-                                    className="w-full max-w-sm rounded-md border bg-background px-2 py-1 text-xs"
-                                    disabled={Boolean(pendingAction)}
-                                    onChange={(event) => {
-                                      const value = event.target.value;
-                                      setJoinedUserSearchByInvite((previous) => ({
-                                        ...previous,
-                                        [invite.id]: value,
-                                      }));
-                                      setJoinedUserPageByInvite((previous) => ({
-                                        ...previous,
-                                        [invite.id]: 1,
-                                      }));
-                                    }}
-                                    placeholder="Search by email or user ID"
-                                    value={searchInputValue}
-                                  />
-                                  <span className="text-muted-foreground text-xs">
-                                    Showing {pagedInviteUsers.length} of {filteredInviteUsers.length}
-                                  </span>
-                                </div>
-
-                                {filteredInviteUsers.length === 0 ? (
-                                  <p className="text-muted-foreground text-xs">
-                                    No users match this search.
-                                  </p>
-                                ) : (
-                                  <>
-                                    <div className="overflow-x-auto rounded-md border bg-background">
-                                      <table className="min-w-full border-collapse text-xs">
-                                        <thead className="bg-muted/30">
-                                          <tr>
-                                            <th className="px-2 py-2 text-left font-medium">
-                                              User
-                                            </th>
-                                            <th className="px-2 py-2 text-left font-medium">
-                                              Joined
-                                            </th>
-                                            <th className="px-2 py-2 text-left font-medium">
-                                              Access
-                                            </th>
-                                            <th className="px-2 py-2 text-left font-medium">
-                                              Action
-                                            </th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {pagedInviteUsers.map((entry) => {
-                                            const revokeAccessActionKey = `revoke-access:${entry.inviteId}:${entry.userId}`;
-                                            return (
-                                              <tr
-                                                className="border-t"
-                                                key={`${entry.inviteId}:${entry.userId}:${entry.redeemedAt}`}
-                                              >
-                                                <td className="px-2 py-2">
-                                                  {entry.userEmail ?? entry.userId}
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                  {formatRelativeDate(entry.redeemedAt)}
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                  <span
-                                                    className={cn(
-                                                      "rounded-full px-2 py-0.5 font-medium",
-                                                      entry.hasActiveAccess
-                                                        ? "bg-emerald-100 text-emerald-700"
-                                                        : "bg-zinc-200 text-zinc-700"
-                                                    )}
-                                                  >
-                                                    {entry.hasActiveAccess ? "Active" : "Revoked"}
-                                                  </span>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                  {entry.hasActiveAccess ? (
-                                                    <Button
-                                                      className="h-6 px-2 text-[11px]"
-                                                      disabled={Boolean(pendingAction)}
-                                                      onClick={() => {
-                                                        void runMutation(
-                                                          revokeAccessActionKey,
-                                                          {
-                                                            action: "revokeAccess",
-                                                            inviteId: entry.inviteId,
-                                                            userId: entry.userId,
-                                                          },
-                                                          "User access revoked."
-                                                        );
-                                                      }}
-                                                      type="button"
-                                                      variant="outline"
-                                                    >
-                                                      {pendingAction === revokeAccessActionKey
-                                                        ? "Revoking..."
-                                                        : "Revoke access"}
-                                                    </Button>
-                                                  ) : (
-                                                    <span className="text-muted-foreground">
-                                                      -
-                                                    </span>
-                                                  )}
-                                                </td>
-                                              </tr>
-                                            );
-                                          })}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                    {totalPages > 1 ? (
-                                      <div className="flex items-center justify-end gap-2">
-                                        <span className="text-muted-foreground text-xs">
-                                          Page {currentPage} of {totalPages}
-                                        </span>
-                                        <Button
-                                          className="h-6 px-2 text-[11px]"
-                                          disabled={Boolean(pendingAction) || currentPage <= 1}
-                                          onClick={() => {
-                                            setJoinedUserPageByInvite((previous) => ({
-                                              ...previous,
-                                              [invite.id]: Math.max(currentPage - 1, 1),
-                                            }));
-                                          }}
-                                          type="button"
-                                          variant="outline"
-                                        >
-                                          Previous
-                                        </Button>
-                                        <Button
-                                          className="h-6 px-2 text-[11px]"
-                                          disabled={Boolean(pendingAction) || currentPage >= totalPages}
-                                          onClick={() => {
-                                            setJoinedUserPageByInvite((previous) => ({
-                                              ...previous,
-                                              [invite.id]: Math.min(currentPage + 1, totalPages),
-                                            }));
-                                          }}
-                                          type="button"
-                                          variant="outline"
-                                        >
-                                          Next
-                                        </Button>
-                                      </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
+                  </tr>
                 );
               })}
             </tbody>
@@ -718,6 +572,236 @@ export function PrelaunchInvitesPanel({
           No prelaunch invites created yet.
         </p>
       )}
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setViewerInviteId(null);
+          }
+        }}
+        open={Boolean(viewerInviteId)}
+      >
+        <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{viewerInvite?.label?.trim() || "Invite users"}</DialogTitle>
+            <DialogDescription>
+              {viewerInvite
+                ? `Users who joined using ${viewerInvite.token}`
+                : "Users who joined via this invite."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!viewerInvite ? null : viewerInviteUsers.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No users joined using this link yet.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <input
+                  className="w-full max-w-sm rounded-md border bg-background px-2 py-1 text-xs"
+                  disabled={Boolean(pendingAction)}
+                  onChange={(event) => {
+                    if (!viewerInviteId) {
+                      return;
+                    }
+                    const value = event.target.value;
+                    setJoinedUserSearchByInvite((previous) => ({
+                      ...previous,
+                      [viewerInviteId]: value,
+                    }));
+                    setJoinedUserPageByInvite((previous) => ({
+                      ...previous,
+                      [viewerInviteId]: 1,
+                    }));
+                  }}
+                  placeholder="Search by email or user ID"
+                  value={viewerSearchInputValue}
+                />
+                <span className="text-muted-foreground text-xs">
+                  Showing {pagedViewerInviteUsers.length} of {filteredViewerInviteUsers.length}
+                </span>
+              </div>
+
+              {filteredViewerInviteUsers.length === 0 ? (
+                <p className="text-muted-foreground text-xs">No users match this search.</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto rounded-md border bg-background">
+                    <table className="min-w-full border-collapse text-xs">
+                      <thead className="bg-muted/30">
+                        <tr>
+                          <th className="px-2 py-2 text-left font-medium">User</th>
+                          <th className="px-2 py-2 text-left font-medium">Joined</th>
+                          <th className="px-2 py-2 text-left font-medium">Access</th>
+                          <th className="px-2 py-2 text-left font-medium">Invite link</th>
+                          <th className="px-2 py-2 text-left font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedViewerInviteUsers.map((entry) => {
+                          const revokeAccessActionKey = `revoke-access:${entry.inviteId}:${entry.userId}`;
+                          const disableRedeemerActionKey = `disable-redeemer:${entry.inviteId}:${entry.userId}`;
+                          const enableRedeemerActionKey = `enable-redeemer:${entry.inviteId}:${entry.userId}`;
+
+                          return (
+                            <tr
+                              className="border-t"
+                              key={`${entry.inviteId}:${entry.userId}:${entry.redeemedAt}`}
+                            >
+                              <td className="px-2 py-2">{entry.userEmail ?? entry.userId}</td>
+                              <td className="px-2 py-2">{formatRelativeDate(entry.redeemedAt)}</td>
+                              <td className="px-2 py-2">
+                                <span
+                                  className={cn(
+                                    "rounded-full px-2 py-0.5 font-medium",
+                                    entry.hasActiveAccess
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-zinc-200 text-zinc-700"
+                                  )}
+                                >
+                                  {entry.hasActiveAccess ? "Active" : "Revoked"}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2">
+                                <span
+                                  className={cn(
+                                    "rounded-full px-2 py-0.5 font-medium",
+                                    entry.isInviteDisabled
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-blue-100 text-blue-700"
+                                  )}
+                                >
+                                  {entry.isInviteDisabled ? "Disabled" : "Enabled"}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2">
+                                <div className="flex items-center gap-2">
+                                  {entry.isInviteDisabled ? (
+                                    <Button
+                                      className="h-6 px-2 text-[11px]"
+                                      disabled={Boolean(pendingAction)}
+                                      onClick={() => {
+                                        void runMutation(
+                                          enableRedeemerActionKey,
+                                          {
+                                            action: "enableRedeemer",
+                                            inviteId: entry.inviteId,
+                                            userId: entry.userId,
+                                          },
+                                          "Invite link re-enabled for user."
+                                        );
+                                      }}
+                                      type="button"
+                                      variant="outline"
+                                    >
+                                      {pendingAction === enableRedeemerActionKey
+                                        ? "Enabling..."
+                                        : "Enable link"}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      className="h-6 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50"
+                                      disabled={Boolean(pendingAction)}
+                                      onClick={() => {
+                                        void runMutation(
+                                          disableRedeemerActionKey,
+                                          {
+                                            action: "disableRedeemer",
+                                            inviteId: entry.inviteId,
+                                            userId: entry.userId,
+                                          },
+                                          "Invite link disabled for user."
+                                        );
+                                      }}
+                                      type="button"
+                                      variant="outline"
+                                    >
+                                      {pendingAction === disableRedeemerActionKey
+                                        ? "Disabling..."
+                                        : "Disable link"}
+                                    </Button>
+                                  )}
+
+                                  {entry.hasActiveAccess ? (
+                                    <Button
+                                      className="h-6 px-2 text-[11px]"
+                                      disabled={Boolean(pendingAction)}
+                                      onClick={() => {
+                                        void runMutation(
+                                          revokeAccessActionKey,
+                                          {
+                                            action: "revokeAccess",
+                                            inviteId: entry.inviteId,
+                                            userId: entry.userId,
+                                          },
+                                          "User access revoked."
+                                        );
+                                      }}
+                                      type="button"
+                                      variant="outline"
+                                    >
+                                      {pendingAction === revokeAccessActionKey
+                                        ? "Revoking..."
+                                        : "Revoke access"}
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {viewerTotalPages > 1 ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="text-muted-foreground text-xs">
+                        Page {viewerCurrentPage} of {viewerTotalPages}
+                      </span>
+                      <Button
+                        className="h-6 px-2 text-[11px]"
+                        disabled={Boolean(pendingAction) || viewerCurrentPage <= 1}
+                        onClick={() => {
+                          if (!viewerInviteId) {
+                            return;
+                          }
+                          setJoinedUserPageByInvite((previous) => ({
+                            ...previous,
+                            [viewerInviteId]: Math.max(viewerCurrentPage - 1, 1),
+                          }));
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        className="h-6 px-2 text-[11px]"
+                        disabled={Boolean(pendingAction) || viewerCurrentPage >= viewerTotalPages}
+                        onClick={() => {
+                          if (!viewerInviteId) {
+                            return;
+                          }
+                          setJoinedUserPageByInvite((previous) => ({
+                            ...previous,
+                            [viewerInviteId]: Math.min(viewerCurrentPage + 1, viewerTotalPages),
+                          }));
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex justify-end">
         <Button
@@ -785,6 +869,7 @@ export function mapInviteJoinedUserForClient(entry: {
   userEmail: string | null;
   redeemedAt: Date | string | null;
   hasActiveAccess: boolean;
+  isInviteDisabled: boolean;
 }): InviteJoinedUserItem {
   return {
     inviteId: entry.inviteId,
@@ -792,5 +877,6 @@ export function mapInviteJoinedUserForClient(entry: {
     userEmail: entry.userEmail,
     redeemedAt: toIsoDateString(entry.redeemedAt),
     hasActiveAccess: entry.hasActiveAccess,
+    isInviteDisabled: entry.isInviteDisabled,
   };
 }

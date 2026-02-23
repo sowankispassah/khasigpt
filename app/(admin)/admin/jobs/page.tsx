@@ -484,6 +484,17 @@ export default async function AdminJobsPage() {
     redirect("/");
   }
 
+  const autoRunResult = await runJobsScrapeWithScheduling({
+    trigger: "auto",
+    persistSkips: false,
+  });
+  if (!autoRunResult.ok) {
+    console.error(
+      "[admin/jobs] auto_scrape_check_failed",
+      autoRunResult.errorMessage
+    );
+  }
+
   const [
     jobs,
     managedSources,
@@ -663,8 +674,8 @@ export default async function AdminJobsPage() {
               />
             </label>
             <p className="text-muted-foreground text-xs md:col-span-2">
-              One-time schedules run once on or after the selected time when the hourly background
-              cron checks.
+              One-time schedules run once on or after the selected time when an automatic
+              background check runs (for example via cron, or when this page/jobs page is opened).
             </p>
             <div className="flex flex-wrap gap-2 md:col-span-2">
               <ActionSubmitButton
