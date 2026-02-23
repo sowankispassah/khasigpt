@@ -304,9 +304,6 @@ async function saveOneTimeJobsScrapeAction(formData: FormData) {
   if (Number.isNaN(oneTimeAt.getTime())) {
     throw new Error("Invalid one-time schedule date.");
   }
-  if (oneTimeAt.getTime() <= Date.now()) {
-    throw new Error("One-time scrape time must be in the future.");
-  }
 
   await withTimeout(
     setAppSetting({
@@ -682,7 +679,8 @@ export default async function AdminJobsPage() {
             </label>
             <p className="text-muted-foreground text-xs md:col-span-2">
               One-time schedules run once on or after the selected time when the
-              scheduled background trigger runs.
+              scheduled background trigger runs. If you pick a past time, it will
+              run on the next scheduled trigger.
             </p>
             <div className="flex flex-wrap gap-2 md:col-span-2">
               <ActionSubmitButton
