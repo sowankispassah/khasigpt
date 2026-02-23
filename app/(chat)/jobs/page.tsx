@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
+import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
@@ -127,6 +128,7 @@ export default async function JobsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+      <JobsAutoScrapeTrigger />
       <div className="space-y-1">
         <h1 className="font-semibold text-2xl">Jobs</h1>
         <p className="text-muted-foreground text-sm">

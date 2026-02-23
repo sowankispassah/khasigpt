@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
@@ -110,6 +111,13 @@ function formatIsoDateTime(value: string, timezone: string) {
   return parsed.toLocaleString("en-IN", {
     timeZone: timezone,
   });
+}
+
+function resolveEarlierDate(first: Date | null, second: Date | null) {
+  if (first && second) {
+    return first.getTime() <= second.getTime() ? first : second;
+  }
+  return first ?? second;
 }
 
 function normalizeJobStatus(value: string | null | undefined): "active" | "inactive" {
@@ -549,11 +557,15 @@ export default async function AdminJobsPage() {
     lastRunStatus: lastRunStatusRaw,
     lastSkipReason: lastSkipReasonRaw,
   });
-  const nextDueAt = getNextJobsScrapeDueAt({
+  const now = new Date();
+  const nextScheduleDueAt = getNextJobsScrapeDueAt({
     settings: scheduleSettings,
     lastSuccessAt: scheduleState.lastSuccessAt,
-    now: new Date(),
+    now,
   });
+  const nextDueAt = resolveEarlierDate(nextScheduleDueAt, oneTimeAt);
+  const oneTimeDueNow =
+    oneTimeAt !== null && oneTimeAt.getTime() <= now.getTime();
   const lastRunSummary = normalizeSummary(lastRunSummaryRaw);
   const insertedLastRun =
     typeof lastRunSummary?.inserted === "number"
@@ -565,6 +577,7 @@ export default async function AdminJobsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <JobsAutoScrapeTrigger />
       <Card>
         <CardHeader>
           <CardTitle>Automated Jobs Ingestion</CardTitle>
@@ -743,6 +756,14 @@ export default async function AdminJobsPage() {
                 {formatMaybeDateTime(oneTimeAt, scheduleSettings.timezone)}
               </span>
             </p>
+            {oneTimeDueNow ? (
+              <p>
+                One-time status:{" "}
+                <span className="font-medium text-foreground">
+                  due now (will run on next auto trigger)
+                </span>
+              </p>
+            ) : null}
             {scheduleState.lastSkipReason ? (
               <p>
                 Last skip reason:{" "}
