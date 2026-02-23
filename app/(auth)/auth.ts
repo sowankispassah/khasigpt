@@ -52,7 +52,7 @@ declare module "next-auth" {
 }
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
-const AUTH_DB_TIMEOUT_MS = 1500;
+const AUTH_DB_TIMEOUT_MS = 4000;
 const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
 const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
 const INVITE_REDEMPTION_TIMEOUT_MS = 2500;

@@ -22,6 +22,7 @@ import {
   appSettingCacheTagForKey,
   deleteAppSetting,
   getAppSetting,
+  getAppSettingUncached,
   setAppSetting,
 } from "@/lib/db/queries";
 import { listJobPostingEntries } from "@/lib/jobs/service";
@@ -65,7 +66,9 @@ const JOBS_SCRAPE_SETTINGS_KEYS = [
 const DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS = 10;
 const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
-const JOBS_ADMIN_ACTION_TIMEOUT_MS = 12_000;
+const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
+const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
+const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
   "Asia/Kolkata": 330,
@@ -111,6 +114,130 @@ function formatIsoDateTime(value: string, timezone: string) {
   return parsed.toLocaleString("en-IN", {
     timeZone: timezone,
   });
+}
+
+function settingMatchesExpectedValue({
+  expected,
+  persisted,
+}: {
+  expected: unknown;
+  persisted: unknown;
+}) {
+  if (expected === null || typeof expected === "undefined") {
+    return persisted === null;
+  }
+
+  if (typeof expected === "boolean") {
+    return parseBoolean(persisted, !expected) === expected;
+  }
+
+  if (typeof expected === "number") {
+    if (typeof persisted === "number") {
+      return persisted === expected;
+    }
+    if (typeof persisted === "string") {
+      const parsed = Number.parseFloat(persisted);
+      return Number.isFinite(parsed) && parsed === expected;
+    }
+    return false;
+  }
+
+  if (typeof expected === "string") {
+    if (typeof persisted === "string") {
+      return persisted === expected;
+    }
+    return String(persisted ?? "") === expected;
+  }
+
+  return JSON.stringify(persisted) === JSON.stringify(expected);
+}
+
+async function persistAppSettingWithRetry({
+  key,
+  value,
+}: {
+  key: string;
+  value: unknown;
+}) {
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= JOBS_ADMIN_ACTION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await withTimeout(
+        setAppSetting({
+          key,
+          value,
+        }),
+        JOBS_ADMIN_ACTION_TIMEOUT_MS
+      );
+    } catch (error) {
+      lastError = error;
+      console.warn("[admin/jobs] setting_write_attempt_failed", {
+        key,
+        attempt,
+        retrying: attempt < JOBS_ADMIN_ACTION_RETRY_ATTEMPTS,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const persisted = await withTimeout(
+      getAppSettingUncached<unknown>(key),
+      JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS
+    ).catch(() => undefined);
+
+    if (
+      settingMatchesExpectedValue({
+        expected: value,
+        persisted,
+      })
+    ) {
+      return;
+    }
+  }
+
+  throw (
+    lastError ??
+    new Error(`Failed to persist application setting: ${key}`)
+  );
+}
+
+async function deleteAppSettingWithRetry(key: string) {
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= JOBS_ADMIN_ACTION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await withTimeout(deleteAppSetting(key), JOBS_ADMIN_ACTION_TIMEOUT_MS);
+    } catch (error) {
+      lastError = error;
+      console.warn("[admin/jobs] setting_delete_attempt_failed", {
+        key,
+        attempt,
+        retrying: attempt < JOBS_ADMIN_ACTION_RETRY_ATTEMPTS,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const persisted = await withTimeout(
+      getAppSettingUncached<unknown>(key),
+      JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS
+    ).catch(() => undefined);
+    if (persisted === null) {
+      return;
+    }
+  }
+
+  throw (
+    lastError ??
+    new Error(`Failed to delete application setting: ${key}`)
+  );
 }
 
 function resolveEarlierDate(first: Date | null, second: Date | null) {
@@ -258,13 +385,10 @@ async function saveJobsScrapeScheduleAction(formData: FormData) {
   ];
 
   for (const update of updates) {
-    await withTimeout(
-      setAppSetting({
-        key: update.key,
-        value: update.value,
-      }),
-      JOBS_ADMIN_ACTION_TIMEOUT_MS
-    );
+    await persistAppSettingWithRetry({
+      key: update.key,
+      value: update.value,
+    });
   }
 
   revalidateJobsScrapeSettingCaches();
@@ -313,13 +437,10 @@ async function saveOneTimeJobsScrapeAction(formData: FormData) {
     throw new Error("Invalid one-time schedule date.");
   }
 
-  await withTimeout(
-    setAppSetting({
-      key: JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
-      value: oneTimeAt.toISOString(),
-    }),
-    JOBS_ADMIN_ACTION_TIMEOUT_MS
-  );
+  await persistAppSettingWithRetry({
+    key: JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
+    value: oneTimeAt.toISOString(),
+  });
 
   revalidateJobsScrapeSettingCaches();
   revalidatePath("/admin/jobs");
@@ -333,10 +454,7 @@ async function clearOneTimeJobsScrapeAction() {
     redirect("/");
   }
 
-  await withTimeout(
-    deleteAppSetting(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY),
-    JOBS_ADMIN_ACTION_TIMEOUT_MS
-  );
+  await deleteAppSettingWithRetry(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY);
   revalidateJobsScrapeSettingCaches();
   revalidatePath("/admin/jobs");
 }
