@@ -136,9 +136,11 @@ async function loadJobsScrapeRuntimeState() {
 export async function runJobsScrapeWithScheduling({
   trigger,
   persistSkips = true,
+  ignoreLockForManual = false,
 }: {
   trigger: JobsScrapeTrigger;
   persistSkips?: boolean;
+  ignoreLockForManual?: boolean;
 }): Promise<JobsScrapeOrchestrationResult> {
   const startedAt = new Date();
   const runtime = await loadJobsScrapeRuntimeState();
@@ -158,7 +160,12 @@ export async function runJobsScrapeWithScheduling({
     startedAt.getTime() < runtime.oneTimeAt.getTime()
       ? runtime.oneTimeAt
       : null;
-  const shouldRun = decision.skipReason === "locked" ? false : decision.shouldRun || oneTimeDue;
+  const shouldIgnoreLock = trigger === "manual" && ignoreLockForManual;
+  const forcedManualRun = shouldIgnoreLock && decision.skipReason === "locked";
+  const shouldRun =
+    forcedManualRun ||
+    (decision.skipReason === "locked" ? false : decision.shouldRun) ||
+    oneTimeDue;
 
   if (!shouldRun) {
     const finishedAt = new Date();
@@ -239,6 +246,7 @@ export async function runJobsScrapeWithScheduling({
       lookbackDays: scrapeResult.summary.lookbackDays,
       scrapedAfterFilters: scrapeResult.jobs.length,
       inserted: scrapeResult.persisted.insertedCount,
+      updated: scrapeResult.persisted.updatedCount,
       skippedDuplicates:
         scrapeResult.persisted.skippedDuplicateCount +
         scrapeResult.summary.totalDuplicatesInRun,

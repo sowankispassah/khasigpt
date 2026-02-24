@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
-import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
@@ -418,9 +417,14 @@ async function runManualJobsScrapeAction() {
 
   const result = await runJobsScrapeWithScheduling({
     trigger: "manual",
+    ignoreLockForManual: true,
   });
   if (!result.ok) {
     throw new Error(result.errorMessage ?? "Manual scrape failed.");
+  }
+  if (result.skipped) {
+    const reason = result.skipReason ?? "unknown";
+    throw new Error(`Manual scrape was skipped (${reason}).`);
   }
 
   revalidateJobsScrapeSettingCaches();
@@ -729,11 +733,16 @@ export default async function AdminJobsPage() {
       : typeof lastRunSummary?.["inserted"] === "number"
         ? (lastRunSummary["inserted"] as number)
         : null;
+  const updatedLastRun =
+    typeof lastRunSummary?.updated === "number"
+      ? lastRunSummary.updated
+      : typeof lastRunSummary?.["updated"] === "number"
+        ? (lastRunSummary["updated"] as number)
+        : null;
   const enabledSourcesCount = managedSources.filter((source) => source.enabled).length;
 
   return (
     <div className="flex flex-col gap-6">
-      <JobsAutoScrapeTrigger />
       <Card>
         <CardHeader>
           <CardTitle>Automated Jobs Ingestion</CardTitle>
@@ -932,6 +941,12 @@ export default async function AdminJobsPage() {
               <p>
                 Last inserted count:{" "}
                 <span className="font-medium text-foreground">{insertedLastRun}</span>
+              </p>
+            ) : null}
+            {updatedLastRun !== null ? (
+              <p>
+                Last updated count:{" "}
+                <span className="font-medium text-foreground">{updatedLastRun}</span>
               </p>
             ) : null}
             <div className="mt-2 border-t pt-2">

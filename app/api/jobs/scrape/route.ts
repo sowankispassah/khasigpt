@@ -94,6 +94,7 @@ async function runScrapeRequest(request: Request) {
       lookbackDays: scrapeResult?.summary.lookbackDays ?? null,
       scrapedAfterFilters: scrapeResult?.jobs.length ?? 0,
       inserted: scrapeResult?.persisted.insertedCount ?? 0,
+      updated: scrapeResult?.persisted.updatedCount ?? 0,
       skippedDuplicates: scrapeResult
         ? scrapeResult.persisted.skippedDuplicateCount +
           scrapeResult.summary.totalDuplicatesInRun

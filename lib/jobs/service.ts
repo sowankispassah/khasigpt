@@ -62,6 +62,55 @@ function parseValidDate(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function resolveSourceNameFallback(rawSourceUrl: string) {
+  const normalizedUrl = rawSourceUrl.trim();
+  if (!normalizedUrl) {
+    return "Source";
+  }
+
+  if (normalizedUrl.startsWith("manual://")) {
+    return "Manual source";
+  }
+
+  try {
+    const hostname = new URL(normalizedUrl).hostname.replace(/^www\./i, "").trim();
+    if (!hostname) {
+      return "Source";
+    }
+
+    if (hostname.toLowerCase().includes("linkedin.")) {
+      return "LinkedIn";
+    }
+
+    return hostname;
+  } catch {
+    return "Source";
+  }
+}
+
+function resolveCompanyName({
+  rawCompany,
+  rawSourceUrl,
+}: {
+  rawCompany: string;
+  rawSourceUrl: string;
+}) {
+  const normalizedCompany = rawCompany.trim();
+  if (normalizedCompany) {
+    const lowered = normalizedCompany.toLowerCase();
+    if (
+      lowered !== "unknown" &&
+      lowered !== "n/a" &&
+      lowered !== "na" &&
+      lowered !== "not available"
+    ) {
+      return normalizedCompany;
+    }
+  }
+
+  return resolveSourceNameFallback(rawSourceUrl);
+}
+
 function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   const createdAt = parseValidDate(row.created_at);
   const rawSourceUrl = toTrimmedString(row.source_url);
@@ -79,7 +128,10 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
     id: row.id,
     title: toTrimmedString(row.title) || "Job opening",
     content: toTrimmedString(row.description),
-    company: toTrimmedString(row.company) || UNKNOWN_LABEL,
+    company: resolveCompanyName({
+      rawCompany: toTrimmedString(row.company),
+      rawSourceUrl,
+    }),
     location: toTrimmedString(row.location) || UNKNOWN_LABEL,
     employmentType: UNKNOWN_LABEL,
     studyExam: UNKNOWN_LABEL,

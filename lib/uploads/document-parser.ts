@@ -1,4 +1,3 @@
-import { pathToFileURL } from "node:url";
 import {
   DOCUMENT_UPLOADS_MAX_BYTES,
   DOCUMENT_UPLOADS_MAX_TEXT_CHARS,
@@ -19,6 +18,7 @@ type ParsedDocument = {
 
 type ParseDocumentOptions = {
   maxTextChars?: number;
+  downloadTimeoutMs?: number;
 };
 
 let pdfWorkerReady = false;
@@ -40,7 +40,7 @@ async function fetchFileBuffer(
   url: string,
   {
     maxBytes = DOCUMENT_UPLOADS_MAX_BYTES,
-    timeoutMs = 10_000,
+    timeoutMs = 20_000,
   }: { maxBytes?: number; timeoutMs?: number } = {}
 ) {
   const controller = new AbortController();
@@ -53,6 +53,10 @@ async function fetchFileBuffer(
     const response = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      },
     });
     if (!response.ok) {
       throw new Error(`Failed to download file (${response.status})`);
@@ -110,27 +114,37 @@ async function ensurePdfWorkerReady() {
   if (pdfWorkerReady) {
     return;
   }
-  const [{ PDFParse }, worker, canvas] = await Promise.all([
-    import("pdf-parse"),
-    import("pdf-parse/worker"),
-    import("@napi-rs/canvas"),
-  ]);
-  if (!globalThis.DOMMatrix) {
-    globalThis.DOMMatrix = canvas.DOMMatrix as unknown as typeof DOMMatrix;
+
+  // pdf-parse may evaluate DOMMatrix/ImageData/Path2D during module load.
+  // Install polyfills before importing pdf-parse to avoid runtime ReferenceError.
+  try {
+    const canvas = await import("@napi-rs/canvas");
+    if (!globalThis.DOMMatrix) {
+      globalThis.DOMMatrix = canvas.DOMMatrix as unknown as typeof DOMMatrix;
+    }
+    if (!globalThis.ImageData) {
+      globalThis.ImageData = canvas.ImageData as unknown as typeof ImageData;
+    }
+    if (!globalThis.Path2D) {
+      globalThis.Path2D = canvas.Path2D as unknown as typeof Path2D;
+    }
+  } catch {
+    // Fallback shim for environments where native canvas can't load.
+    if (!globalThis.DOMMatrix) {
+      class DOMMatrixShim {}
+      globalThis.DOMMatrix = DOMMatrixShim as unknown as typeof DOMMatrix;
+    }
+    if (!globalThis.ImageData) {
+      class ImageDataShim {}
+      globalThis.ImageData = ImageDataShim as unknown as typeof ImageData;
+    }
+    if (!globalThis.Path2D) {
+      class Path2DShim {}
+      globalThis.Path2D = Path2DShim as unknown as typeof Path2D;
+    }
   }
-  if (!globalThis.ImageData) {
-    globalThis.ImageData = canvas.ImageData as unknown as typeof ImageData;
-  }
-  if (!globalThis.Path2D) {
-    globalThis.Path2D = canvas.Path2D as unknown as typeof Path2D;
-  }
-  if (worker.getPath && typeof PDFParse?.setWorker === "function") {
-    const workerPath = worker.getPath();
-    const workerUrl = workerPath.startsWith("data:")
-      ? workerPath
-      : pathToFileURL(workerPath).toString();
-    PDFParse.setWorker(workerUrl);
-  }
+
+  await import("pdf-parse");
   pdfWorkerReady = true;
 }
 
@@ -221,7 +235,9 @@ export async function extractDocumentText(
     throw new Error("Unsupported document type");
   }
 
-  const buffer = await fetchFileBuffer(attachment.url);
+  const buffer = await fetchFileBuffer(attachment.url, {
+    timeoutMs: options.downloadTimeoutMs,
+  });
   let rawText = "";
 
   switch (attachment.mediaType) {

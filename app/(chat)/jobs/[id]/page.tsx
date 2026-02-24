@@ -8,6 +8,124 @@ import { getJobPostingById } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
 
+function compactText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function formatDateLabel(value: Date) {
+  return value.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getSourceHostLabel(sourceUrl: string | null) {
+  if (!sourceUrl) {
+    return "Source unavailable";
+  }
+
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./i, "");
+  } catch {
+    return "Source available";
+  }
+}
+
+function extractSalaryLabel(rawDescription: string) {
+  const description = compactText(rawDescription);
+  if (!description) {
+    return "Not disclosed";
+  }
+
+  const salaryMatch = description.match(
+    /(?:\u20b9|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:\u20b9|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?))?/i
+  );
+  if (salaryMatch?.[0]) {
+    return salaryMatch[0].trim();
+  }
+
+  if (/\bas per norms\b/i.test(description)) {
+    return "As per norms";
+  }
+
+  if (/\bnegotiable\b/i.test(description)) {
+    return "Negotiable";
+  }
+
+  return "Not disclosed";
+}
+
+function isPdfUrl(url: string | null) {
+  if (!url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.toLowerCase().endsWith(".pdf");
+  } catch {
+    return false;
+  }
+}
+
+function extractPdfUrlFromContent(content: string) {
+  const match = content.match(/PDF Source:\s*(https?:\/\/\S+)/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const candidate = match[1].replace(/[),.;]+$/g, "");
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolvePdfUrl({
+  sourceUrl,
+  content,
+}: {
+  sourceUrl: string | null;
+  content: string;
+}) {
+  if (isPdfUrl(sourceUrl)) {
+    return sourceUrl;
+  }
+  return extractPdfUrlFromContent(content);
+}
+
+function formatFullDetailsText(content: string) {
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/^\s*PDF Source:\s*https?:\/\/\S+\s*$/gim, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function extractDateByKeywordLabel({
+  rawDescription,
+  keywordPattern,
+}: {
+  rawDescription: string;
+  keywordPattern: RegExp;
+}) {
+  const description = compactText(rawDescription);
+  if (!description) {
+    return null;
+  }
+
+  const datePattern =
+    "(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4}|[A-Za-z]{3,9}\\s+\\d{1,2},?\\s+\\d{4})";
+  const expression = new RegExp(
+    `(?:${keywordPattern.source})\\s*(?:for\\s*application)?\\s*[:\\-]?\\s*(${datePattern})`,
+    "i"
+  );
+  const match = description.match(expression);
+  return match?.[1] ? match[1].trim() : null;
+}
+
 export default async function JobPostingDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -32,6 +150,27 @@ export default async function JobPostingDetailPage(props: {
     notFound();
   }
 
+  const salaryLabel = extractSalaryLabel(job.content);
+  const deadlineLabel =
+    extractDateByKeywordLabel({
+      rawDescription: job.content,
+      keywordPattern:
+        /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
+    }) ?? "Not specified";
+  const notificationDateLabel =
+    extractDateByKeywordLabel({
+      rawDescription: job.content,
+      keywordPattern:
+        /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
+    }) ?? formatDateLabel(job.createdAt);
+  const sourceLabel = getSourceHostLabel(job.sourceUrl);
+  const fullDetailsText = formatFullDetailsText(job.content);
+  const pdfUrl = resolvePdfUrl({
+    sourceUrl: job.sourceUrl,
+    content: job.content,
+  });
+  const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
       <div className="flex items-center justify-between gap-2">
@@ -48,40 +187,26 @@ export default async function JobPostingDetailPage(props: {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2 text-muted-foreground">
-            <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-              {job.employmentType}
-            </span>
-            <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-              {job.studyExam}
-            </span>
-            <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-              {job.studyRole}
-            </span>
-            {job.studyYears.map((year) => (
-              <span
-                className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
-                key={`${job.id}-year-${year}`}
-              >
-                {year}
-              </span>
-            ))}
-            {job.studyTags.map((tag) => (
-              <span
-                className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
-                key={`${job.id}-study-tag-${tag}`}
-              >
-                {tag}
-              </span>
-            ))}
-            {job.tags.map((tag) => (
-              <span
-                className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
-                key={`${job.id}-tag-${tag}`}
-              >
-                {tag}
-              </span>
-            ))}
+          <div className="grid gap-2 text-sm md:grid-cols-2">
+            <p>
+              <span className="font-medium">Location:</span> {job.location}
+            </p>
+            <p>
+              <span className="font-medium">Type:</span> {job.employmentType}
+            </p>
+            <p>
+              <span className="font-medium">Salary:</span> {salaryLabel}
+            </p>
+            <p>
+              <span className="font-medium">Deadline:</span> {deadlineLabel}
+            </p>
+            <p>
+              <span className="font-medium">Notification date:</span>{" "}
+              {notificationDateLabel}
+            </p>
+            <p>
+              <span className="font-medium">Source:</span> {sourceLabel}
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -93,7 +218,14 @@ export default async function JobPostingDetailPage(props: {
             {job.sourceUrl ? (
               <Button asChild className="cursor-pointer" size="sm" variant="outline">
                 <a href={job.sourceUrl} rel="noreferrer" target="_blank">
-                  Download source file
+                  Open source listing
+                </a>
+              </Button>
+            ) : null}
+            {pdfUrl ? (
+              <Button asChild className="cursor-pointer" size="sm" variant="outline">
+                <a href={pdfUrl} rel="noreferrer" target="_blank">
+                  Open PDF file
                 </a>
               </Button>
             ) : null}
@@ -103,23 +235,63 @@ export default async function JobPostingDetailPage(props: {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Source listing</CardTitle>
-          <CardDescription>
-            Preview the original listing URL captured by the scraper.
-          </CardDescription>
+          <CardTitle className="text-base">About the job</CardTitle>
+          <CardDescription>Full details captured from source listing and PDF.</CardDescription>
         </CardHeader>
         <CardContent>
-          {job.sourceUrl ? (
-            <div className="overflow-hidden rounded-lg border">
-              <iframe className="h-[70vh] w-full" src={job.sourceUrl} title={job.title} />
+          {fullDetailsText ? (
+            <div className="rounded-lg border bg-muted/10 p-4 whitespace-pre-wrap break-words text-[15px] leading-7">
+              {fullDetailsText}
             </div>
           ) : (
             <div className="rounded-lg border border-dashed px-4 py-8 text-center text-muted-foreground text-sm">
-              No source file is available for this job posting.
+              No detailed text was captured for this job posting.
             </div>
           )}
         </CardContent>
       </Card>
+
+      {pdfUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">PDF file</CardTitle>
+            <CardDescription>Preview the source PDF attached to this job.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-3">
+              <a
+                className="text-primary text-sm underline underline-offset-2"
+                href={pdfUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open PDF in new tab
+              </a>
+            </div>
+            <div className="overflow-hidden rounded-lg border">
+              <iframe className="h-[75vh] w-full" src={pdfUrl} title={`${job.title} PDF`} />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {sourcePreviewUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Original source page</CardTitle>
+            <CardDescription>Preview the original listing URL captured by scraper.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-hidden rounded-lg border">
+              <iframe
+                className="h-[70vh] w-full"
+                src={sourcePreviewUrl}
+                title={`${job.title} source page`}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

@@ -17,7 +17,14 @@ export type NewJobRow = {
 export type SaveJobsResult = {
   attemptedCount: number;
   insertedCount: number;
+  updatedCount: number;
   skippedDuplicateCount: number;
+};
+
+export type SaveJobsDuplicateMode = "skip" | "update";
+
+export type SaveJobsOptions = {
+  onDuplicate?: SaveJobsDuplicateMode;
 };
 
 function sleep(ms: number) {
@@ -60,6 +67,55 @@ function chunkArray<T>(items: T[], chunkSize: number) {
   return chunks;
 }
 
+function resolveCompanyFallbackFromSourceUrl(sourceUrl: string) {
+  const normalizedUrl = sourceUrl.trim();
+  if (!normalizedUrl) {
+    return "Source";
+  }
+
+  if (normalizedUrl.startsWith("manual://")) {
+    return "Manual source";
+  }
+
+  try {
+    const hostname = new URL(normalizedUrl).hostname.replace(/^www\./i, "").trim();
+    if (!hostname) {
+      return "Source";
+    }
+
+    if (hostname.toLowerCase().includes("linkedin.")) {
+      return "LinkedIn";
+    }
+
+    return hostname;
+  } catch {
+    return "Source";
+  }
+}
+
+function normalizeCompany({
+  company,
+  sourceUrl,
+}: {
+  company: string;
+  sourceUrl: string;
+}) {
+  const normalized = company.trim();
+  if (normalized) {
+    const lowered = normalized.toLowerCase();
+    if (
+      lowered !== "unknown" &&
+      lowered !== "n/a" &&
+      lowered !== "na" &&
+      lowered !== "not available"
+    ) {
+      return normalized;
+    }
+  }
+
+  return resolveCompanyFallbackFromSourceUrl(sourceUrl);
+}
+
 function normalizeJobRows(rows: NewJobRow[]) {
   const dedupedByUrl = new Map<string, NewJobRow>();
 
@@ -71,7 +127,10 @@ function normalizeJobRows(rows: NewJobRow[]) {
 
     dedupedByUrl.set(sourceUrl, {
       title: row.title.trim() || "Job opening",
-      company: row.company.trim() || "Unknown",
+      company: normalizeCompany({
+        company: row.company,
+        sourceUrl,
+      }),
       location: row.location.trim() || "Unknown",
       description: row.description.trim(),
       status: row.status === "inactive" ? "inactive" : "active",
@@ -92,28 +151,52 @@ function stripStatusField(rows: NewJobRow[]) {
   }));
 }
 
-export async function saveJobs(rows: NewJobRow[]): Promise<SaveJobsResult> {
+export async function saveJobs(
+  rows: NewJobRow[],
+  options: SaveJobsOptions = {}
+): Promise<SaveJobsResult> {
   const normalizedRows = normalizeJobRows(rows);
   if (normalizedRows.length === 0) {
-    return { attemptedCount: 0, insertedCount: 0, skippedDuplicateCount: 0 };
+    return {
+      attemptedCount: 0,
+      insertedCount: 0,
+      updatedCount: 0,
+      skippedDuplicateCount: 0,
+    };
   }
 
   const supabase = createSupabaseAdminClient();
+  const duplicateMode: SaveJobsDuplicateMode =
+    options.onDuplicate === "update" ? "update" : "skip";
   let insertedCount = 0;
+  let updatedCount = 0;
   let skippedDuplicateCount = 0;
 
   for (const batch of chunkArray(normalizedRows, BATCH_SIZE)) {
     const sourceUrls = batch.map((job) => job.source_url);
 
     const existingRows = await withDbRetry("select-existing-source-urls", async () => {
-      const { data, error } = await supabase
+      const withStatus = await supabase
         .from("jobs")
-        .select("source_url")
+        .select("source_url,status")
         .in("source_url", sourceUrls);
-      if (error) {
-        throw new Error(error.message);
+      if (!withStatus.error) {
+        return withStatus.data ?? [];
       }
-      return data ?? [];
+
+      // Backward compatibility if the status column is not added yet.
+      if (/status/i.test(withStatus.error.message)) {
+        const withoutStatus = await supabase
+          .from("jobs")
+          .select("source_url")
+          .in("source_url", sourceUrls);
+        if (withoutStatus.error) {
+          throw new Error(withoutStatus.error.message);
+        }
+        return withoutStatus.data ?? [];
+      }
+
+      throw new Error(withStatus.error.message);
     });
 
     const existingUrlSet = new Set(
@@ -122,18 +205,49 @@ export async function saveJobs(rows: NewJobRow[]): Promise<SaveJobsResult> {
         .filter(Boolean)
     );
 
-    const newRows = batch.filter((job) => !existingUrlSet.has(job.source_url));
-    skippedDuplicateCount += batch.length - newRows.length;
+    const existingStatusByUrl = new Map<string, "active" | "inactive">();
+    for (const row of existingRows as Array<{ source_url?: unknown; status?: unknown }>) {
+      const sourceUrl =
+        typeof row.source_url === "string" ? row.source_url.trim() : "";
+      if (!sourceUrl) {
+        continue;
+      }
+      const status = typeof row.status === "string" ? row.status.trim().toLowerCase() : "";
+      if (status === "inactive") {
+        existingStatusByUrl.set(sourceUrl, "inactive");
+      } else {
+        existingStatusByUrl.set(sourceUrl, "active");
+      }
+    }
 
-    if (newRows.length === 0) {
+    const rowsToWrite =
+      duplicateMode === "update"
+        ? batch.map((row) => {
+            const existingStatus = existingStatusByUrl.get(row.source_url);
+            if (existingStatus === "inactive" && row.status !== "inactive") {
+              return {
+                ...row,
+                status: "inactive" as const,
+              };
+            }
+            return row;
+          })
+        : batch.filter((job) => !existingUrlSet.has(job.source_url));
+
+    skippedDuplicateCount += batch.length - rowsToWrite.length;
+
+    if (rowsToWrite.length === 0) {
       continue;
     }
 
-    const insertedRows = await withDbRetry("insert-new-jobs", async () => {
+    const writtenRows = await withDbRetry("upsert-jobs", async () => {
       const insertWithStatus = await supabase
         .from("jobs")
-        .upsert(newRows, { onConflict: "source_url", ignoreDuplicates: true })
-        .select("id");
+        .upsert(rowsToWrite, {
+          onConflict: "source_url",
+          ignoreDuplicates: duplicateMode === "skip",
+        })
+        .select("id, source_url");
 
       if (!insertWithStatus.error) {
         return insertWithStatus.data ?? [];
@@ -141,11 +255,14 @@ export async function saveJobs(rows: NewJobRow[]): Promise<SaveJobsResult> {
 
       // Backward compatibility if the status column is not added yet.
       if (/status/i.test(insertWithStatus.error.message)) {
-        const fallbackRows = stripStatusField(newRows);
+        const fallbackRows = stripStatusField(rowsToWrite);
         const insertWithoutStatus = await supabase
           .from("jobs")
-          .upsert(fallbackRows, { onConflict: "source_url", ignoreDuplicates: true })
-          .select("id");
+          .upsert(fallbackRows, {
+            onConflict: "source_url",
+            ignoreDuplicates: duplicateMode === "skip",
+          })
+          .select("id, source_url");
         if (insertWithoutStatus.error) {
           throw new Error(insertWithoutStatus.error.message);
         }
@@ -155,13 +272,30 @@ export async function saveJobs(rows: NewJobRow[]): Promise<SaveJobsResult> {
       throw new Error(insertWithStatus.error.message);
     });
 
-    insertedCount += insertedRows.length;
-    skippedDuplicateCount += newRows.length - insertedRows.length;
+    const writtenUrlSet = new Set(
+      writtenRows
+        .map((row) => (typeof row.source_url === "string" ? row.source_url.trim() : ""))
+        .filter(Boolean)
+    );
+
+    for (const row of rowsToWrite) {
+      if (!writtenUrlSet.has(row.source_url)) {
+        skippedDuplicateCount += 1;
+        continue;
+      }
+
+      if (existingUrlSet.has(row.source_url)) {
+        updatedCount += 1;
+      } else {
+        insertedCount += 1;
+      }
+    }
   }
 
   return {
     attemptedCount: normalizedRows.length,
     insertedCount,
+    updatedCount,
     skippedDuplicateCount,
   };
 }

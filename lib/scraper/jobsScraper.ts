@@ -85,6 +85,7 @@ type SourceScrapeStats = {
   pdfDetailAttempts: number;
   pdfDetailSuccesses: number;
   pdfDetailFailures: number;
+  pdfFieldsExtracted: number;
   errorMessage?: string;
 };
 
@@ -106,6 +107,7 @@ export type RunJobsScraperResult = ScrapeJobsResult & {
   persisted: {
     attemptedCount: number;
     insertedCount: number;
+    updatedCount: number;
     skippedDuplicateCount: number;
   };
 };
@@ -131,6 +133,43 @@ function sleep(ms: number) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeMultilineText(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function mergeDescriptionText(primary: string, secondary: string) {
+  const first = normalizeMultilineText(primary);
+  const second = normalizeMultilineText(secondary);
+
+  if (!first) {
+    return second;
+  }
+  if (!second) {
+    return first;
+  }
+
+  const firstNormalized = normalizeWhitespace(first).toLowerCase();
+  const secondNormalized = normalizeWhitespace(second).toLowerCase();
+  if (!firstNormalized) {
+    return second;
+  }
+  if (!secondNormalized) {
+    return first;
+  }
+  if (secondNormalized.includes(firstNormalized)) {
+    return second;
+  }
+  if (firstNormalized.includes(secondNormalized)) {
+    return first;
+  }
+
+  return `${first}\n\n${second}`;
 }
 
 function normalizeForKeywordMatch(value: string) {
@@ -189,6 +228,103 @@ function findMatchedKeywords(text: string, keywords: string[]) {
 
 function containsAnyKeyword(text: string, keywords: string[]) {
   return findMatchedKeywords(text, keywords).length > 0;
+}
+
+type ExtractedPdfFields = {
+  salary: string | null;
+  applicationLastDate: string | null;
+  notificationDate: string | null;
+};
+
+const INLINE_DATE_PATTERN =
+  "(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4}|[A-Za-z]{3,9}\\s+\\d{1,2},?\\s+\\d{4})";
+
+function extractDateByKeywords(text: string, keywords: string[]) {
+  for (const keyword of keywords) {
+    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const expression = new RegExp(
+      `${escapedKeyword}[^\\n\\r]{0,100}?(${INLINE_DATE_PATTERN})`,
+      "i"
+    );
+    const match = text.match(expression);
+    if (match?.[1]) {
+      return normalizeWhitespace(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractSalaryFromText(text: string) {
+  const labelled = text.match(
+    /(?:salary|pay\s*scale|remuneration|consolidated\s*pay|emoluments?)\s*[:\-]?\s*([^\n\r.;]{3,120})/i
+  );
+  if (labelled?.[1]) {
+    return normalizeWhitespace(labelled[1]);
+  }
+
+  const currency = text.match(
+    /((?:₹|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:₹|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?))?)/i
+  );
+  if (currency?.[1]) {
+    return normalizeWhitespace(currency[1]);
+  }
+
+  if (/\bas per norms\b/i.test(text)) {
+    return "As per norms";
+  }
+
+  return null;
+}
+
+function extractStructuredFieldsFromPdfText(text: string): ExtractedPdfFields {
+  const normalized = normalizeWhitespace(text);
+  if (!normalized) {
+    return {
+      salary: null,
+      applicationLastDate: null,
+      notificationDate: null,
+    };
+  }
+
+  const applicationLastDate = extractDateByKeywords(normalized, [
+    "last date",
+    "last date of receipt",
+    "closing date",
+    "application deadline",
+    "submission deadline",
+    "apply before",
+    "deadline",
+  ]);
+
+  const notificationDate = extractDateByKeywords(normalized, [
+    "notification date",
+    "date of notification",
+    "advertisement date",
+    "date of publication",
+    "published on",
+    "issue date",
+    "date of issue",
+  ]);
+
+  return {
+    salary: extractSalaryFromText(normalized),
+    applicationLastDate,
+    notificationDate,
+  };
+}
+
+function buildPdfDerivedDetailsLines(fields: ExtractedPdfFields) {
+  const lines: string[] = [];
+  if (fields.salary) {
+    lines.push(`Salary: ${fields.salary}`);
+  }
+  if (fields.applicationLastDate) {
+    lines.push(`Application Last Date: ${fields.applicationLastDate}`);
+  }
+  if (fields.notificationDate) {
+    lines.push(`Notification Date: ${fields.notificationDate}`);
+  }
+  return lines;
 }
 
 function classifyJobIntent({
@@ -438,6 +574,42 @@ async function fetchHtmlForPdfDiscovery(url: string, timeoutMs: number) {
   }
 }
 
+function extractDetailTextFromHtml(html: string) {
+  const $ = load(html);
+  $("script, style, noscript, svg, nav, footer, header").remove();
+
+  const candidates = [
+    "main",
+    "article",
+    ".job-description",
+    ".job-details",
+    ".entry-content",
+    ".node-content",
+    ".field-item",
+    ".content",
+    ".post-content",
+  ];
+
+  let best = "";
+  for (const selector of candidates) {
+    let text = "";
+    try {
+      text = normalizeMultilineText($(selector).first().text());
+    } catch {
+      text = "";
+    }
+    if (text.length > best.length) {
+      best = text;
+    }
+  }
+
+  if (best.length >= 120) {
+    return best;
+  }
+
+  return normalizeMultilineText($("body").text());
+}
+
 function isRetryableFetchError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
@@ -510,10 +682,15 @@ async function extractTextFromPdfUrl(pdfUrl: string, maxChars: number) {
       },
       {
         maxTextChars: maxChars,
+        downloadTimeoutMs: 25_000,
       }
     );
-    return normalizeWhitespace(parsed.text);
-  } catch {
+    return normalizeMultilineText(parsed.text);
+  } catch (error) {
+    console.warn("[jobs-scraper] pdf_extract_failed", {
+      pdfUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -542,25 +719,34 @@ async function enrichDescriptionFromPdf({
       pdfSourceUrl: null,
       attempted: false,
       success: false,
+      fieldsExtractedCount: 0,
     };
   }
 
   const pdfCandidates: string[] = [];
+  let detailPageText = "";
   if (isPdfUrl(sourceUrl)) {
     pdfCandidates.push(sourceUrl);
   } else {
     const detailHtml = await fetchHtmlForPdfDiscovery(sourceUrl, timeoutMs);
     if (detailHtml) {
       pdfCandidates.push(...extractPdfCandidatesFromHtml(sourceUrl, detailHtml));
+      detailPageText = extractDetailTextFromHtml(detailHtml);
     }
   }
 
+  const baseDescription = mergeDescriptionText(
+    fallbackDescription,
+    detailPageText
+  ).slice(0, MAX_JOB_DESCRIPTION_CHARS);
+
   if (pdfCandidates.length === 0) {
     return {
-      description: fallbackDescription,
+      description: baseDescription || fallbackDescription,
       pdfSourceUrl: null,
       attempted: true,
       success: false,
+      fieldsExtractedCount: 0,
     };
   }
 
@@ -571,8 +757,12 @@ async function enrichDescriptionFromPdf({
       continue;
     }
 
+    const extractedFields = extractStructuredFieldsFromPdfText(pdfText);
+    const pdfDetailLines = buildPdfDerivedDetailsLines(extractedFields);
+
     const joined = [
-      fallbackDescription.trim(),
+      baseDescription || fallbackDescription.trim(),
+      pdfDetailLines.length > 0 ? pdfDetailLines.join("\n") : "",
       `PDF Source: ${pdfUrl}`,
       pdfText,
     ]
@@ -585,6 +775,7 @@ async function enrichDescriptionFromPdf({
       pdfSourceUrl: pdfUrl,
       attempted: true,
       success: true,
+      fieldsExtractedCount: pdfDetailLines.length,
     };
   }
 
@@ -593,6 +784,7 @@ async function enrichDescriptionFromPdf({
     pdfSourceUrl: null,
     attempted: true,
     success: false,
+    fieldsExtractedCount: 0,
   };
 }
 
@@ -901,6 +1093,7 @@ async function scrapeSource(
     pdfDetailAttempts: 0,
     pdfDetailSuccesses: 0,
     pdfDetailFailures: 0,
+    pdfFieldsExtracted: 0,
   };
 
   const requiredSelectors = [
@@ -983,7 +1176,8 @@ async function scrapeSource(
       const href =
         safeAttr(container, source.selectors.link, "href") ||
         safeAttr(container, "a[href*='job'], a[href*='career'], a[href]", "href");
-      const sourceUrl = resolveSourceUrl(source.url, href);
+      const directPdfHref = safeAttr(container, "a[href$='.pdf'], a[href*='.pdf']", "href");
+      const sourceUrl = resolveSourceUrl(source.url, directPdfHref || href);
 
       if (!title || !sourceUrl) {
         continue;
@@ -1040,6 +1234,7 @@ async function scrapeSource(
           if (enriched.success) {
             stats.pdfDetailSuccesses += 1;
             pdfDetailsUsed += 1;
+            stats.pdfFieldsExtracted += enriched.fieldsExtractedCount;
           } else {
             stats.pdfDetailFailures += 1;
           }
@@ -1119,6 +1314,7 @@ export async function scrapeJobsFromSources(
       pdfDetailAttempts: stats.pdfDetailAttempts,
       pdfDetailSuccesses: stats.pdfDetailSuccesses,
       pdfDetailFailures: stats.pdfDetailFailures,
+      pdfFieldsExtracted: stats.pdfFieldsExtracted,
       error: stats.errorMessage ?? null,
     });
   }
@@ -1143,7 +1339,9 @@ export async function runJobsScraper(
   options: JobsScraperRuntimeOptions = {}
 ): Promise<RunJobsScraperResult> {
   const scraped = await scrapeJobsFromSources(sources, options);
-  const persisted = await saveJobs(scraped.jobs);
+  const persisted = await saveJobs(scraped.jobs, {
+    onDuplicate: "update",
+  });
 
   console.info("[jobs-scraper] run_complete", {
     sourcesProcessed: scraped.summary.sourcesProcessed,
@@ -1151,6 +1349,7 @@ export async function runJobsScraper(
     extractedAfterFilters: scraped.jobs.length,
     attemptedInsert: persisted.attemptedCount,
     inserted: persisted.insertedCount,
+    updated: persisted.updatedCount,
     skippedDuplicates: persisted.skippedDuplicateCount + scraped.summary.totalDuplicatesInRun,
     filteredByLocation: scraped.summary.totalFilteredByLocation,
     filteredByDate: scraped.summary.totalFilteredByDate,

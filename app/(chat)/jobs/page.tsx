@@ -14,14 +14,89 @@ type JobsPageSearchParams = {
   company?: string;
   location?: string;
   employmentType?: string;
-  studyExam?: string;
-  studyRole?: string;
-  tag?: string;
 };
 
 const normalizeFilter = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
 
 const normalizeFilterKey = (value: string) => value.trim().toLowerCase();
+
+function compactText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function formatDateLabel(value: Date) {
+  return value.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getSourceHostLabel(sourceUrl: string | null) {
+  if (!sourceUrl) {
+    return "Source unavailable";
+  }
+
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./i, "");
+  } catch {
+    return "Source available";
+  }
+}
+
+function extractSalaryLabel(rawDescription: string) {
+  const description = compactText(rawDescription);
+  if (!description) {
+    return "Not disclosed";
+  }
+
+  const salaryMatch = description.match(
+    /(?:\u20b9|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:\u20b9|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?))?/i
+  );
+  if (salaryMatch?.[0]) {
+    return salaryMatch[0].trim();
+  }
+
+  if (/\bas per norms\b/i.test(description)) {
+    return "As per norms";
+  }
+
+  if (/\bnegotiable\b/i.test(description)) {
+    return "Negotiable";
+  }
+
+  return "Not disclosed";
+}
+
+function extractDateByKeywordLabel({
+  rawDescription,
+  keywordPattern,
+}: {
+  rawDescription: string;
+  keywordPattern: RegExp;
+}) {
+  const description = compactText(rawDescription);
+  if (!description) {
+    return null;
+  }
+
+  const datePattern =
+    "(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4}|[A-Za-z]{3,9}\\s+\\d{1,2},?\\s+\\d{4})";
+  const expression = new RegExp(
+    `(?:${keywordPattern.source})\\s*(?:for\\s*application)?\\s*[:\\-]?\\s*(${datePattern})`,
+    "i"
+  );
+  const match = description.match(expression);
+  return match?.[1] ? match[1].trim() : null;
+}
+
+function buildDescriptionSnippet(rawDescription: string) {
+  const normalized = compactText(rawDescription);
+  if (!normalized) {
+    return "No description available.";
+  }
+  return normalized.length > 170 ? `${normalized.slice(0, 170)}...` : normalized;
+}
 
 export default async function JobsPage({
   searchParams,
@@ -44,9 +119,6 @@ export default async function JobsPage({
   const companyFilter = normalizeFilter(resolvedSearchParams?.company);
   const locationFilter = normalizeFilter(resolvedSearchParams?.location);
   const employmentTypeFilter = normalizeFilter(resolvedSearchParams?.employmentType);
-  const studyExamFilter = normalizeFilter(resolvedSearchParams?.studyExam);
-  const studyRoleFilter = normalizeFilter(resolvedSearchParams?.studyRole);
-  const tagFilter = normalizeFilter(resolvedSearchParams?.tag);
 
   const jobs = await listJobPostings({ includeInactive: false });
   const filteredJobs = jobs.filter((job) => {
@@ -71,21 +143,6 @@ export default async function JobsPage({
       return false;
     }
 
-    if (studyExamFilter && normalizeFilterKey(job.studyExam) !== studyExamFilter) {
-      return false;
-    }
-
-    if (studyRoleFilter && normalizeFilterKey(job.studyRole) !== studyRoleFilter) {
-      return false;
-    }
-
-    if (
-      tagFilter &&
-      !job.tags.some((tag) => normalizeFilterKey(tag) === tagFilter)
-    ) {
-      return false;
-    }
-
     if (!qFilter) {
       return true;
     }
@@ -95,8 +152,7 @@ export default async function JobsPage({
       job.company,
       job.location,
       job.employmentType,
-      job.studyExam,
-      job.studyRole,
+      job.content,
       job.tags.join(" "),
     ]
       .join(" ")
@@ -113,17 +169,6 @@ export default async function JobsPage({
   ).sort((a, b) => a.localeCompare(b));
   const employmentTypes = Array.from(
     new Set(jobs.map((job) => job.employmentType.trim()).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
-  const studyExams = Array.from(
-    new Set(jobs.map((job) => job.studyExam.trim()).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
-  const studyRoles = Array.from(
-    new Set(jobs.map((job) => job.studyRole.trim()).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
-  const tags = Array.from(
-    new Set(
-      jobs.flatMap((job) => job.tags.map((tag) => tag.trim()).filter(Boolean))
-    )
   ).sort((a, b) => a.localeCompare(b));
 
   return (
@@ -146,7 +191,7 @@ export default async function JobsPage({
               className="rounded-md border bg-background px-3 py-2 text-sm lg:col-span-2"
               defaultValue={resolvedSearchParams?.q ?? ""}
               name="q"
-              placeholder="Search title, company, location, or tags"
+              placeholder="Search title, company, location, or description"
             />
             <input
               className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -168,27 +213,6 @@ export default async function JobsPage({
               list="jobs-employment-type-options"
               name="employmentType"
               placeholder="Employment type"
-            />
-            <input
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-              defaultValue={resolvedSearchParams?.studyExam ?? ""}
-              list="jobs-study-exam-options"
-              name="studyExam"
-              placeholder="Study exam"
-            />
-            <input
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-              defaultValue={resolvedSearchParams?.studyRole ?? ""}
-              list="jobs-study-role-options"
-              name="studyRole"
-              placeholder="Study role"
-            />
-            <input
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-              defaultValue={resolvedSearchParams?.tag ?? ""}
-              list="jobs-tag-options"
-              name="tag"
-              placeholder="Tag"
             />
             <div className="flex items-center gap-2 md:col-span-2 lg:col-span-6">
               <Button className="cursor-pointer" size="sm" type="submit">
@@ -215,21 +239,6 @@ export default async function JobsPage({
               <option key={employmentType} value={employmentType} />
             ))}
           </datalist>
-          <datalist id="jobs-study-exam-options">
-            {studyExams.map((studyExam) => (
-              <option key={studyExam} value={studyExam} />
-            ))}
-          </datalist>
-          <datalist id="jobs-study-role-options">
-            {studyRoles.map((studyRole) => (
-              <option key={studyRole} value={studyRole} />
-            ))}
-          </datalist>
-          <datalist id="jobs-tag-options">
-            {tags.map((tag) => (
-              <option key={tag} value={tag} />
-            ))}
-          </datalist>
         </CardContent>
       </Card>
 
@@ -237,55 +246,77 @@ export default async function JobsPage({
         {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"} found
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid gap-3 md:grid-cols-2">
         {filteredJobs.length === 0 ? (
-          <Card>
+          <Card className="md:col-span-2">
             <CardContent className="py-8 text-center text-muted-foreground text-sm">
               No jobs match the current filters.
             </CardContent>
           </Card>
         ) : (
-          filteredJobs.map((job) => (
-            <Card className="border-border/60" key={job.id}>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{job.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-muted-foreground text-sm">
-                <div>
-                  {job.company} / {job.location}
-                </div>
-                <div>
-                  Study: {job.studyExam} / {job.studyRole}
-                  {job.studyYears.length > 0
-                    ? ` / ${job.studyYears.join(", ")}`
-                    : ""}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-                    {job.employmentType}
-                  </span>
-                  {job.tags.map((tag) => (
-                    <span
-                      className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
-                      key={`${job.id}-${tag}`}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </CardContent>
-              <CardFooter className="gap-2">
-                <Button asChild className="cursor-pointer" size="sm" variant="outline">
-                  <Link href={`/jobs/${job.id}`}>View details</Link>
-                </Button>
-                <Button asChild className="cursor-pointer" size="sm">
-                  <Link href={`/chat?mode=jobs&new=1&jobId=${job.id}`}>
-                    Ask about this job
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))
+          filteredJobs.map((job) => {
+            const salaryLabel = extractSalaryLabel(job.content);
+            const deadlineLabel =
+              extractDateByKeywordLabel({
+                rawDescription: job.content,
+                keywordPattern:
+                  /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
+              }) ?? "Not specified";
+            const notificationDateLabel =
+              extractDateByKeywordLabel({
+                rawDescription: job.content,
+                keywordPattern:
+                  /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
+              }) ?? formatDateLabel(job.createdAt);
+            const sourceLabel = getSourceHostLabel(job.sourceUrl);
+            const descriptionSnippet = buildDescriptionSnippet(job.content);
+
+            return (
+              <Card className="border-border/60" key={job.id}>
+                <CardHeader className="space-y-1 pb-2">
+                  <CardTitle className="line-clamp-2 text-base">{job.title}</CardTitle>
+                  <p className="text-muted-foreground text-sm">{job.company}</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="line-clamp-2 text-muted-foreground text-sm">
+                    {descriptionSnippet}
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <p>
+                      <span className="font-medium text-foreground">Location:</span>{" "}
+                      {job.location}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Type:</span>{" "}
+                      {job.employmentType}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Salary:</span>{" "}
+                      {salaryLabel}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Deadline:</span>{" "}
+                      {deadlineLabel}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Notification:</span>{" "}
+                      {notificationDateLabel}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Source:</span>{" "}
+                      {sourceLabel}
+                    </p>
+                  </div>
+                </CardContent>
+                <CardFooter className="justify-end pt-0">
+                  <Button asChild className="cursor-pointer" size="sm">
+                    <Link href={`/jobs/${job.id}`}>View Details</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })
         )}
       </div>
     </div>
