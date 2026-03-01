@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
   JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
   JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
@@ -7,6 +8,7 @@ import {
   JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
   JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
   JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
+  JOBS_SCRAPE_PROGRESS_SETTING_KEY,
 } from "@/lib/constants";
 import { deleteAppSetting, getAppSettingUncached, setAppSetting } from "@/lib/db/queries";
 import {
@@ -24,6 +26,33 @@ import { resolveJobsScrapeSources } from "@/lib/jobs/source-registry";
 import { runJobsScraper } from "@/lib/scraper/jobsScraper";
 
 type ScrapeResultPayload = Awaited<ReturnType<typeof runJobsScraper>>;
+
+export type JobsScrapeProgressState =
+  | "idle"
+  | "running"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "skipped";
+
+export type JobsScrapeProgressSnapshot = {
+  runId: string;
+  trigger: JobsScrapeTrigger;
+  state: JobsScrapeProgressState;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  totalSources: number;
+  processedSources: number;
+  currentSource: string | null;
+  lastCompletedSource: string | null;
+  lookbackDays: number;
+  cancelRequested: boolean;
+  inserted: number | null;
+  updated: number | null;
+  skippedDuplicates: number | null;
+  message: string | null;
+};
 
 export type JobsScrapeOrchestrationResult = {
   ok: boolean;
@@ -67,6 +96,125 @@ function parseLookbackDays(rawValue: unknown) {
   return DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS;
 }
 
+function parseBoolean(rawValue: unknown, fallback: boolean) {
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+  if (typeof rawValue === "number") {
+    if (rawValue === 1) {
+      return true;
+    }
+    if (rawValue === 0) {
+      return false;
+    }
+  }
+  if (typeof rawValue === "string") {
+    const normalized = rawValue.trim().toLowerCase();
+    if (["1", "true", "yes", "on", "enabled"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "no", "off", "disabled"].includes(normalized)) {
+      return false;
+    }
+  }
+  return fallback;
+}
+
+function normalizeProgressSnapshot(rawValue: unknown): JobsScrapeProgressSnapshot | null {
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+    return null;
+  }
+  const candidate = rawValue as Record<string, unknown>;
+  const runId =
+    typeof candidate.runId === "string" && candidate.runId.trim()
+      ? candidate.runId.trim()
+      : "";
+  const startedAt =
+    typeof candidate.startedAt === "string" && candidate.startedAt.trim()
+      ? candidate.startedAt.trim()
+      : "";
+  const updatedAt =
+    typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
+      ? candidate.updatedAt.trim()
+      : "";
+  if (!runId || !startedAt || !updatedAt) {
+    return null;
+  }
+
+  const trigger: JobsScrapeTrigger =
+    candidate.trigger === "manual" || candidate.trigger === "auto"
+      ? candidate.trigger
+      : "manual";
+  const state = (() => {
+    const value = typeof candidate.state === "string" ? candidate.state : "";
+    if (
+      value === "idle" ||
+      value === "running" ||
+      value === "success" ||
+      value === "failed" ||
+      value === "cancelled" ||
+      value === "skipped"
+    ) {
+      return value;
+    }
+    return "idle";
+  })();
+
+  const finishedAt =
+    typeof candidate.finishedAt === "string" && candidate.finishedAt.trim()
+      ? candidate.finishedAt.trim()
+      : null;
+
+  return {
+    runId,
+    trigger,
+    state,
+    startedAt,
+    updatedAt,
+    finishedAt,
+    totalSources:
+      typeof candidate.totalSources === "number" && Number.isFinite(candidate.totalSources)
+        ? Math.max(0, Math.trunc(candidate.totalSources))
+        : 0,
+    processedSources:
+      typeof candidate.processedSources === "number" &&
+      Number.isFinite(candidate.processedSources)
+        ? Math.max(0, Math.trunc(candidate.processedSources))
+        : 0,
+    currentSource:
+      typeof candidate.currentSource === "string" && candidate.currentSource.trim()
+        ? candidate.currentSource.trim()
+        : null,
+    lastCompletedSource:
+      typeof candidate.lastCompletedSource === "string" &&
+      candidate.lastCompletedSource.trim()
+        ? candidate.lastCompletedSource.trim()
+        : null,
+    lookbackDays:
+      typeof candidate.lookbackDays === "number" && Number.isFinite(candidate.lookbackDays)
+        ? Math.max(0, Math.trunc(candidate.lookbackDays))
+        : DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS,
+    cancelRequested: parseBoolean(candidate.cancelRequested, false),
+    inserted:
+      typeof candidate.inserted === "number" && Number.isFinite(candidate.inserted)
+        ? Math.trunc(candidate.inserted)
+        : null,
+    updated:
+      typeof candidate.updated === "number" && Number.isFinite(candidate.updated)
+        ? Math.trunc(candidate.updated)
+        : null,
+    skippedDuplicates:
+      typeof candidate.skippedDuplicates === "number" &&
+      Number.isFinite(candidate.skippedDuplicates)
+        ? Math.trunc(candidate.skippedDuplicates)
+        : null,
+    message:
+      typeof candidate.message === "string" && candidate.message.trim()
+        ? candidate.message.trim()
+        : null,
+  };
+}
+
 function resolveEarlierDate(first: Date | null, second: Date | null) {
   if (first && second) {
     return first.getTime() <= second.getTime() ? first : second;
@@ -84,6 +232,23 @@ async function setManyAppSettings(entries: AppSettingEntry[]) {
     await setAppSetting({
       key: entry.key,
       value: entry.value,
+    });
+  }
+}
+
+async function setProgressSafely(snapshot: JobsScrapeProgressSnapshot | null) {
+  try {
+    if (snapshot === null) {
+      await deleteAppSetting(JOBS_SCRAPE_PROGRESS_SETTING_KEY);
+      return;
+    }
+    await setAppSetting({
+      key: JOBS_SCRAPE_PROGRESS_SETTING_KEY,
+      value: snapshot,
+    });
+  } catch (error) {
+    console.warn("[jobs-orchestrator] progress_update_failed", {
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 }
@@ -133,14 +298,42 @@ async function loadJobsScrapeRuntimeState() {
   return { settings, state, lookbackDays, oneTimeAt };
 }
 
+export async function getJobsScrapeProgressSnapshot() {
+  const raw = await getAppSettingUncached<unknown>(JOBS_SCRAPE_PROGRESS_SETTING_KEY);
+  return normalizeProgressSnapshot(raw);
+}
+
+export async function requestJobsScrapeCancel() {
+  await setAppSetting({
+    key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+    value: true,
+  });
+
+  const current = await getJobsScrapeProgressSnapshot();
+  if (current?.state === "running") {
+    await setProgressSafely({
+      ...current,
+      cancelRequested: true,
+      updatedAt: new Date().toISOString(),
+      message: "Cancellation requested. Waiting for current source to finish.",
+    });
+  }
+}
+
+export async function clearJobsScrapeCancelRequest() {
+  await deleteAppSetting(JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY);
+}
+
 export async function runJobsScrapeWithScheduling({
   trigger,
   persistSkips = true,
   ignoreLockForManual = false,
+  runId = crypto.randomUUID(),
 }: {
   trigger: JobsScrapeTrigger;
   persistSkips?: boolean;
   ignoreLockForManual?: boolean;
+  runId?: string;
 }): Promise<JobsScrapeOrchestrationResult> {
   const startedAt = new Date();
   const runtime = await loadJobsScrapeRuntimeState();
@@ -202,6 +395,25 @@ export async function runJobsScrapeWithScheduling({
       ]);
     }
 
+    await setProgressSafely({
+      runId,
+      trigger,
+      state: "skipped",
+      startedAt: startedAt.toISOString(),
+      updatedAt: finishedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      totalSources: 0,
+      processedSources: 0,
+      currentSource: null,
+      lastCompletedSource: null,
+      lookbackDays: runtime.lookbackDays,
+      cancelRequested: false,
+      inserted: null,
+      updated: null,
+      skippedDuplicates: null,
+      message: effectiveSkipReason ?? "Skipped",
+    });
+
     return {
       ok: true,
       trigger,
@@ -217,25 +429,100 @@ export async function runJobsScrapeWithScheduling({
     };
   }
 
-  const lockUntil = createScrapeLockUntil(startedAt);
-  await setAppSetting({
-    key: JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
-    value: lockUntil.toISOString(),
+  const sourceResolution = await resolveJobsScrapeSources({
+    uncached: true,
   });
+  const totalSources = sourceResolution.scraperSources.length;
+
+  const lockUntil = createScrapeLockUntil(startedAt);
+  await setManyAppSettings([
+    {
+      key: JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
+      value: lockUntil.toISOString(),
+    },
+    {
+      key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+      value: false,
+    },
+  ]);
+
+  let progressSnapshot: JobsScrapeProgressSnapshot = {
+    runId,
+    trigger,
+    state: "running",
+    startedAt: startedAt.toISOString(),
+    updatedAt: startedAt.toISOString(),
+    finishedAt: null,
+    totalSources,
+    processedSources: 0,
+    currentSource: null,
+    lastCompletedSource: null,
+    lookbackDays: runtime.lookbackDays,
+    cancelRequested: false,
+    inserted: null,
+    updated: null,
+    skippedDuplicates: null,
+    message: "Scrape started",
+  };
+  await setProgressSafely(progressSnapshot);
+
+  const updateProgress = async (
+    patch: Partial<JobsScrapeProgressSnapshot>,
+    now: Date = new Date()
+  ) => {
+    progressSnapshot = {
+      ...progressSnapshot,
+      ...patch,
+      updatedAt: now.toISOString(),
+    };
+    await setProgressSafely(progressSnapshot);
+  };
+
+  const shouldCancel = async () => {
+    const rawCancel = await getAppSettingUncached<unknown>(
+      JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY
+    ).catch(() => false);
+    const cancelRequested = parseBoolean(rawCancel, false);
+    if (cancelRequested !== progressSnapshot.cancelRequested) {
+      await updateProgress({
+        cancelRequested,
+        message: cancelRequested
+          ? "Cancellation requested. Waiting for current source to finish."
+          : progressSnapshot.message,
+      });
+    }
+    return cancelRequested;
+  };
 
   try {
-    const sourceResolution = await resolveJobsScrapeSources({
-      uncached: true,
-    });
     const scrapeResult = await runJobsScraper(sourceResolution.scraperSources, {
       lookbackDays: runtime.lookbackDays,
+      shouldCancel,
+      onSourceStart: async ({ source, sourceIndex }) => {
+        await updateProgress({
+          currentSource: source,
+          processedSources: sourceIndex,
+          message: `Processing ${source} (${sourceIndex + 1}/${totalSources})`,
+        });
+      },
+      onSourceComplete: async ({ source, sourceIndex }) => {
+        await updateProgress({
+          currentSource: null,
+          lastCompletedSource: source,
+          processedSources: sourceIndex + 1,
+          message: `Completed ${source} (${sourceIndex + 1}/${totalSources})`,
+        });
+      },
     });
+
     const finishedAt = new Date();
     const nextDueAt = getNextJobsScrapeDueAt({
       settings: runtime.settings,
       lastSuccessAt: finishedAt,
       now: finishedAt,
     });
+
+    const wasCancelled = scrapeResult.summary.cancelled;
     const summary = {
       trigger,
       skipped: false,
@@ -243,6 +530,7 @@ export async function runJobsScrapeWithScheduling({
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),
       sourcesProcessed: scrapeResult.summary.sourcesProcessed,
+      totalSources: scrapeResult.summary.totalSources,
       lookbackDays: scrapeResult.summary.lookbackDays,
       scrapedAfterFilters: scrapeResult.jobs.length,
       inserted: scrapeResult.persisted.insertedCount,
@@ -258,19 +546,17 @@ export async function runJobsScrapeWithScheduling({
       enabledManagedSourceCount: sourceResolution.enabledManagedSources.length,
       oneTimeTriggered: oneTimeDue,
       oneTimeScheduledAt: runtime.oneTimeAt?.toISOString() ?? null,
+      cancelled: wasCancelled,
     };
+
     const successEntries: AppSettingEntry[] = [
       {
-        key: JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
-        value: finishedAt.toISOString(),
-      },
-      {
         key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
-        value: "success",
+        value: wasCancelled ? "cancelled" : "success",
       },
       {
         key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
-        value: null,
+        value: wasCancelled ? "cancel_requested" : null,
       },
       {
         key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
@@ -280,7 +566,17 @@ export async function runJobsScrapeWithScheduling({
         key: JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
         value: null,
       },
+      {
+        key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+        value: false,
+      },
     ];
+    if (!wasCancelled) {
+      successEntries.push({
+        key: JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
+        value: finishedAt.toISOString(),
+      });
+    }
     if (oneTimeDue) {
       successEntries.push({
         key: JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
@@ -289,11 +585,25 @@ export async function runJobsScrapeWithScheduling({
     }
     await setManyAppSettings(successEntries);
 
+    await updateProgress({
+      state: wasCancelled ? "cancelled" : "success",
+      finishedAt: finishedAt.toISOString(),
+      currentSource: null,
+      processedSources: scrapeResult.summary.sourcesProcessed,
+      totalSources: scrapeResult.summary.totalSources,
+      inserted: scrapeResult.persisted.insertedCount,
+      updated: scrapeResult.persisted.updatedCount,
+      skippedDuplicates:
+        scrapeResult.persisted.skippedDuplicateCount +
+        scrapeResult.summary.totalDuplicatesInRun,
+      message: wasCancelled ? "Scrape cancelled" : "Scrape completed",
+    });
+
     return {
       ok: true,
       trigger,
       skipped: false,
-      skipReason: null,
+      skipReason: wasCancelled ? "cancel_requested" : null,
       nextDueAt: nextDueAt?.toISOString() ?? null,
       settings: runtime.settings,
       startedAt: startedAt.toISOString(),
@@ -328,6 +638,10 @@ export async function runJobsScrapeWithScheduling({
         key: JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
         value: null,
       },
+      {
+        key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+        value: false,
+      },
     ];
     if (oneTimeDue) {
       failedEntries.push({
@@ -336,6 +650,13 @@ export async function runJobsScrapeWithScheduling({
       });
     }
     await setManyAppSettings(failedEntries);
+
+    await updateProgress({
+      state: "failed",
+      finishedAt: finishedAt.toISOString(),
+      currentSource: null,
+      message,
+    });
 
     return {
       ok: false,

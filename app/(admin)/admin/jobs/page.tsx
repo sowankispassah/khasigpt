@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -35,7 +36,6 @@ import {
   resolveJobsScrapeScheduleSettings,
   resolveJobsScrapeScheduleState,
 } from "@/lib/jobs/schedule";
-import { runJobsScrapeWithScheduling } from "@/lib/jobs/scrape-orchestrator";
 import {
   addManagedJobSource,
   deleteManagedJobSource,
@@ -417,30 +417,6 @@ async function saveJobsScrapeScheduleAction(formData: FormData) {
   revalidatePath("/admin/jobs");
 }
 
-async function runManualJobsScrapeAction() {
-  "use server";
-
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
-    redirect("/");
-  }
-
-  const result = await runJobsScrapeWithScheduling({
-    trigger: "manual",
-    ignoreLockForManual: true,
-  });
-  if (!result.ok) {
-    throw new Error(result.errorMessage ?? "Manual scrape failed.");
-  }
-  if (result.skipped) {
-    const reason = result.skipReason ?? "unknown";
-    throw new Error(`Manual scrape was skipped (${reason}).`);
-  }
-
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
-}
-
 async function saveOneTimeJobsScrapeAction(formData: FormData) {
   "use server";
 
@@ -767,16 +743,9 @@ export default async function AdminJobsPage() {
           <p>
             Configure source sites in the Source Management section below.
           </p>
-          <form action={runManualJobsScrapeAction}>
-            <ActionSubmitButton
-              className="mt-2 cursor-pointer"
-              pendingLabel="Scraping..."
-              refreshOnSuccess
-              successMessage="Job scrape completed."
-            >
-              Run Scrape Now
-            </ActionSubmitButton>
-          </form>
+          <div className="mt-2">
+            <AdminJobsScrapeControl />
+          </div>
         </CardContent>
       </Card>
 

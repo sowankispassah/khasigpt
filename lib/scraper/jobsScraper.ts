@@ -74,7 +74,7 @@ type CheerioRoot = ReturnType<typeof load>;
 type CheerioSelection = ReturnType<CheerioRoot>;
 type CheerioNode = ReturnType<CheerioSelection["toArray"]>[number];
 
-type SourceScrapeStats = {
+export type SourceScrapeStats = {
   source: string;
   fetched: boolean;
   containersScanned: number;
@@ -94,12 +94,14 @@ export type ScrapeJobsResult = {
   jobs: NewJobRow[];
   summary: {
     sourcesProcessed: number;
+    totalSources: number;
     lookbackDays: number;
     totalExtracted: number;
     totalFilteredByLocation: number;
     totalFilteredByDate: number;
     totalFilteredByKeyword: number;
     totalDuplicatesInRun: number;
+    cancelled: boolean;
     sourceStats: SourceScrapeStats[];
   };
 };
@@ -115,6 +117,20 @@ export type RunJobsScraperResult = ScrapeJobsResult & {
 
 export type JobsScraperRuntimeOptions = {
   lookbackDays?: number;
+  shouldCancel?: () => boolean | Promise<boolean>;
+  onSourceStart?: (event: {
+    source: string;
+    sourceIndex: number;
+    totalSources: number;
+    lookbackDays: number;
+  }) => void | Promise<void>;
+  onSourceComplete?: (event: {
+    source: string;
+    sourceIndex: number;
+    totalSources: number;
+    lookbackDays: number;
+    stats: SourceScrapeStats;
+  }) => void | Promise<void>;
 };
 
 function parsePositiveInt(rawValue: string | undefined, fallback: number) {
@@ -1320,6 +1336,7 @@ export async function scrapeJobsFromSources(
   const seenSourceUrls = new Set<string>();
   const combinedJobs: NewJobRow[] = [];
   const pdfUrlCache = new Map<string, string | null>();
+  let cancelled = false;
 
   let totalDuplicatesInRun = 0;
   let totalExtracted = 0;
@@ -1327,7 +1344,20 @@ export async function scrapeJobsFromSources(
   let totalFilteredByDate = 0;
   let totalFilteredByKeyword = 0;
 
-  for (const source of sources) {
+  for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex += 1) {
+    if ((await options.shouldCancel?.()) === true) {
+      cancelled = true;
+      break;
+    }
+
+    const source = sources[sourceIndex];
+    await options.onSourceStart?.({
+      source: source.name,
+      sourceIndex,
+      totalSources: sources.length,
+      lookbackDays,
+    });
+
     const { jobs, stats } = await scrapeSource(source, now, { lookbackDays }, pdfUrlCache);
     sourceStats.push(stats);
 
@@ -1360,18 +1390,33 @@ export async function scrapeJobsFromSources(
       pdfFieldsExtracted: stats.pdfFieldsExtracted,
       error: stats.errorMessage ?? null,
     });
+
+    await options.onSourceComplete?.({
+      source: source.name,
+      sourceIndex,
+      totalSources: sources.length,
+      lookbackDays,
+      stats,
+    });
+
+    if ((await options.shouldCancel?.()) === true) {
+      cancelled = true;
+      break;
+    }
   }
 
   return {
     jobs: combinedJobs,
     summary: {
-      sourcesProcessed: sources.length,
+      sourcesProcessed: sourceStats.length,
+      totalSources: sources.length,
       lookbackDays,
       totalExtracted,
       totalFilteredByLocation,
       totalFilteredByDate,
       totalFilteredByKeyword,
       totalDuplicatesInRun,
+      cancelled,
       sourceStats,
     },
   };
@@ -1388,6 +1433,7 @@ export async function runJobsScraper(
 
   console.info("[jobs-scraper] run_complete", {
     sourcesProcessed: scraped.summary.sourcesProcessed,
+    totalSources: scraped.summary.totalSources,
     lookbackDays: scraped.summary.lookbackDays,
     extractedAfterFilters: scraped.jobs.length,
     attemptedInsert: persisted.attemptedCount,
@@ -1397,6 +1443,7 @@ export async function runJobsScraper(
     filteredByLocation: scraped.summary.totalFilteredByLocation,
     filteredByDate: scraped.summary.totalFilteredByDate,
     filteredByKeyword: scraped.summary.totalFilteredByKeyword,
+    cancelled: scraped.summary.cancelled,
   });
 
   return {
