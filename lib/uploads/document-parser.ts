@@ -115,7 +115,7 @@ async function ensurePdfRuntimeReady() {
     return;
   }
 
-  // pdfjs-dist may evaluate these globals during module load.
+  // PDF parser dependencies may evaluate these globals during module load.
   // Install polyfills before importing parser modules to avoid runtime errors.
   try {
     const canvas = await import("@napi-rs/canvas");
@@ -147,58 +147,19 @@ async function ensurePdfRuntimeReady() {
   pdfRuntimeReady = true;
 }
 
-async function parsePdfViaPdfJs(buffer: Buffer) {
+async function parsePdfViaLibrary(buffer: Buffer) {
   await ensurePdfRuntimeReady();
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const loadingTask = pdfjs.getDocument(
-    {
-      data: new Uint8Array(buffer),
-      disableWorker: true,
-      useWorkerFetch: false,
-      isEvalSupported: false,
-      stopAtErrors: false,
-    } as unknown as Parameters<typeof pdfjs.getDocument>[0]
-  );
-
-  let pdfDocument: {
-    numPages: number;
-    getPage: (page: number) => Promise<{
-      getTextContent: () => Promise<{ items: unknown[] }>;
-    }>;
-    destroy: () => Promise<void> | void;
-  } | null = null;
-
+  const { PDFParse } = await import("pdf-parse");
+  if (!PDFParse) {
+    throw new Error("PDF parser unavailable");
+  }
+  const parser = new PDFParse({ data: buffer });
   try {
-    pdfDocument = await loadingTask.promise;
-    const chunks: string[] = [];
-
-    for (let page = 1; page <= pdfDocument.numPages; page += 1) {
-      const currentPage = await pdfDocument.getPage(page);
-      const textContent = await currentPage.getTextContent();
-      const pageText = textContent.items
-        .map((item) =>
-          item && typeof item === "object" && "str" in item
-            ? String((item as { str?: unknown }).str ?? "")
-            : ""
-        )
-        .join(" ");
-
-      if (pageText.trim()) {
-        chunks.push(pageText);
-      }
-    }
-
-    return chunks.join("\n\n");
+    const result = await parser.getText();
+    return result.text ?? "";
   } finally {
     try {
-      await pdfDocument?.destroy();
-    } catch {
-      // noop
-    }
-    try {
-      if (typeof loadingTask.destroy === "function") {
-        await loadingTask.destroy();
-      }
+      await parser.destroy();
     } catch {
       // noop
     }
@@ -213,9 +174,9 @@ function parsePdfTextFallback(buffer: Buffer) {
 
 async function parsePdf(buffer: Buffer) {
   try {
-    return await parsePdfViaPdfJs(buffer);
+    return await parsePdfViaLibrary(buffer);
   } catch (error) {
-    console.warn("[document-parser] pdfjs_parse_failed", {
+    console.warn("[document-parser] pdf_parse_failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     const fallback = parsePdfTextFallback(buffer);
