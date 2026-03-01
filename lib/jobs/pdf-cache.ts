@@ -7,8 +7,10 @@ const DEFAULT_TIMEOUT_MS = 25_000;
 const DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
 const DEFAULT_BUCKET = "jobs-pdfs";
 const DEFAULT_PATH_PREFIX = "jobs";
+const DEFAULT_CACHE_CONTROL = "3600";
 const SCRAPER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+let ensuredBucketName: string | null = null;
 
 function parsePositiveInt(rawValue: string | undefined, fallback: number) {
   if (!rawValue) {
@@ -82,6 +84,34 @@ async function downloadPdfBuffer(url: string) {
   return buffer;
 }
 
+async function ensurePdfBucket(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  bucket: string
+) {
+  if (ensuredBucketName === bucket) {
+    return;
+  }
+
+  const { data: existingBucket, error: getBucketError } = await supabase.storage.getBucket(bucket);
+  if (existingBucket && !getBucketError) {
+    ensuredBucketName = bucket;
+    return;
+  }
+
+  const createResult = await supabase.storage.createBucket(bucket, {
+    public: true,
+    fileSizeLimit: `${DEFAULT_MAX_BYTES}`,
+  });
+
+  if (createResult.error && !/already exists|duplicate/i.test(createResult.error.message)) {
+    throw new Error(
+      `Failed to ensure storage bucket "${bucket}": ${createResult.error.message}`
+    );
+  }
+
+  ensuredBucketName = bucket;
+}
+
 export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
   const trimmedUrl = pdfUrl.trim();
   if (!trimmedUrl) {
@@ -109,9 +139,10 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
   const supabase = createSupabaseAdminClient();
 
   try {
+    await ensurePdfBucket(supabase, bucket);
     const buffer = await downloadPdfBuffer(trimmedUrl);
     const { error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, buffer, {
-      cacheControl: "3600",
+      cacheControl: DEFAULT_CACHE_CONTROL,
       contentType: "application/pdf",
       upsert: false,
     });
@@ -126,6 +157,12 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
     const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
     const publicUrl = data.publicUrl?.trim() ?? "";
     if (!publicUrl) {
+      console.warn("[jobs-scraper] pdf_cache_failed", {
+        pdfUrl: trimmedUrl,
+        storagePath,
+        bucket,
+        error: "No public URL returned after upload.",
+      });
       return null;
     }
     return publicUrl;
@@ -133,6 +170,7 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
     console.warn("[jobs-scraper] pdf_cache_failed", {
       pdfUrl: trimmedUrl,
       storagePath,
+      bucket,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;

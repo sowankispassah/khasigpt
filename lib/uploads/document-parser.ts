@@ -21,7 +21,7 @@ type ParseDocumentOptions = {
   downloadTimeoutMs?: number;
 };
 
-let pdfWorkerReady = false;
+let pdfRuntimeReady = false;
 
 const normalizeText = (value: string) =>
   value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -110,13 +110,13 @@ async function fetchFileBuffer(
   }
 }
 
-async function ensurePdfWorkerReady() {
-  if (pdfWorkerReady) {
+async function ensurePdfRuntimeReady() {
+  if (pdfRuntimeReady) {
     return;
   }
 
-  // pdf-parse may evaluate DOMMatrix/ImageData/Path2D during module load.
-  // Install polyfills before importing pdf-parse to avoid runtime ReferenceError.
+  // pdfjs-dist may evaluate these globals during module load.
+  // Install polyfills before importing parser modules to avoid runtime errors.
   try {
     const canvas = await import("@napi-rs/canvas");
     if (!globalThis.DOMMatrix) {
@@ -144,22 +144,85 @@ async function ensurePdfWorkerReady() {
     }
   }
 
-  await import("pdf-parse");
-  pdfWorkerReady = true;
+  pdfRuntimeReady = true;
+}
+
+async function parsePdfViaPdfJs(buffer: Buffer) {
+  await ensurePdfRuntimeReady();
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const loadingTask = pdfjs.getDocument(
+    {
+      data: new Uint8Array(buffer),
+      disableWorker: true,
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      stopAtErrors: false,
+    } as unknown as Parameters<typeof pdfjs.getDocument>[0]
+  );
+
+  let pdfDocument: {
+    numPages: number;
+    getPage: (page: number) => Promise<{
+      getTextContent: () => Promise<{ items: unknown[] }>;
+    }>;
+    destroy: () => Promise<void> | void;
+  } | null = null;
+
+  try {
+    pdfDocument = await loadingTask.promise;
+    const chunks: string[] = [];
+
+    for (let page = 1; page <= pdfDocument.numPages; page += 1) {
+      const currentPage = await pdfDocument.getPage(page);
+      const textContent = await currentPage.getTextContent();
+      const pageText = textContent.items
+        .map((item) =>
+          item && typeof item === "object" && "str" in item
+            ? String((item as { str?: unknown }).str ?? "")
+            : ""
+        )
+        .join(" ");
+
+      if (pageText.trim()) {
+        chunks.push(pageText);
+      }
+    }
+
+    return chunks.join("\n\n");
+  } finally {
+    try {
+      await pdfDocument?.destroy();
+    } catch {
+      // noop
+    }
+    try {
+      if (typeof loadingTask.destroy === "function") {
+        await loadingTask.destroy();
+      }
+    } catch {
+      // noop
+    }
+  }
+}
+
+function parsePdfTextFallback(buffer: Buffer) {
+  const raw = buffer.toString("latin1");
+  const matches = raw.match(/[A-Za-z0-9][A-Za-z0-9 ,.;:()/%+\-]{3,}/g) ?? [];
+  return matches.slice(0, 8_000).join(" ");
 }
 
 async function parsePdf(buffer: Buffer) {
-  await ensurePdfWorkerReady();
-  const { PDFParse } = await import("pdf-parse");
-  if (!PDFParse) {
-    throw new Error("PDF parser unavailable");
-  }
-  const parser = new PDFParse({ data: buffer });
   try {
-    const result = await parser.getText();
-    return result.text ?? "";
-  } finally {
-    await parser.destroy();
+    return await parsePdfViaPdfJs(buffer);
+  } catch (error) {
+    console.warn("[document-parser] pdfjs_parse_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const fallback = parsePdfTextFallback(buffer);
+    if (fallback.trim()) {
+      return fallback;
+    }
+    throw new Error("PDF parser unavailable");
   }
 }
 

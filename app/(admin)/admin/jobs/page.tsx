@@ -253,6 +253,16 @@ function normalizeJobStatus(value: string | null | undefined): "active" | "inact
   return value === "inactive" ? "inactive" : "active";
 }
 
+function getJobPdfCacheState(job: { pdfCachedUrl: string | null; pdfSourceUrl: string | null }) {
+  if (job.pdfCachedUrl) {
+    return "cached";
+  }
+  if (job.pdfSourceUrl) {
+    return "external";
+  }
+  return "none";
+}
+
 function normalizeLocationScope(
   value: string | null | undefined
 ): ManagedJobSourceLocationScope {
@@ -1235,70 +1245,124 @@ export default async function AdminJobsPage() {
           <CardTitle>Latest Jobs ({jobs.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-4">
-            {jobs.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No jobs are available in the Supabase jobs table yet.
-              </p>
-            ) : (
-              jobs.map((job) => (
-                <div className="rounded-lg border p-4" key={job.id}>
-                  <div className="font-medium text-sm">{job.title}</div>
-                  <div className="mt-1 text-muted-foreground text-xs">
-                    {job.company} / {job.location}
-                  </div>
-                  <div className="mt-1">
-                    <span className="rounded-full border px-2 py-0.5 text-xs">
-                      status: {job.status}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-muted-foreground text-xs">
-                    Added {job.createdAt.toLocaleString()}
-                  </div>
-                  <p className="mt-2 text-sm">{formatDescription(job.content)}</p>
-                  {job.sourceUrl ? (
-                    <a
-                      className="mt-2 inline-block text-primary text-sm underline"
-                      href={job.sourceUrl}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Open source listing
-                    </a>
-                  ) : null}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <form action={updateJobStatusAction}>
-                      <input name="id" type="hidden" value={job.id} />
-                      <input
-                        name="nextStatus"
-                        type="hidden"
-                        value={job.status === "active" ? "inactive" : "active"}
-                      />
-                      <ActionSubmitButton
-                        className="cursor-pointer"
-                        pendingLabel="Updating..."
-                        successMessage="Job status updated."
-                        variant="outline"
-                      >
-                        {job.status === "active" ? "Set inactive" : "Set active"}
-                      </ActionSubmitButton>
-                    </form>
-                    <form action={deleteManualJobAction}>
-                      <input name="id" type="hidden" value={job.id} />
-                      <ActionSubmitButton
-                        className="cursor-pointer"
-                        pendingLabel="Deleting..."
-                        successMessage="Job deleted."
-                        variant="destructive"
-                      >
-                        Delete Job
-                      </ActionSubmitButton>
-                    </form>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          {jobs.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No jobs are available in the Supabase jobs table yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Title</th>
+                    <th className="px-3 py-2 text-left font-medium">Company</th>
+                    <th className="px-3 py-2 text-left font-medium">Location</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">PDF Cache</th>
+                    <th className="px-3 py-2 text-left font-medium">Added</th>
+                    <th className="px-3 py-2 text-left font-medium">Description</th>
+                    <th className="px-3 py-2 text-left font-medium">Links</th>
+                    <th className="px-3 py-2 text-left font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map((job) => {
+                    const pdfCacheState = getJobPdfCacheState(job);
+                    return (
+                      <tr className="border-t align-top" key={job.id}>
+                        <td className="px-3 py-3">
+                          <span className="font-medium">{job.title}</span>
+                        </td>
+                        <td className="px-3 py-3">{job.company}</td>
+                        <td className="px-3 py-3">{job.location}</td>
+                        <td className="px-3 py-3">
+                          <span className="rounded-full border px-2 py-0.5 text-xs">
+                            {job.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="rounded-full border px-2 py-0.5 text-xs">
+                            {pdfCacheState}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {job.createdAt.toLocaleString()}
+                        </td>
+                        <td className="max-w-sm px-3 py-3 whitespace-normal text-xs text-muted-foreground">
+                          {formatDescription(job.content)}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col gap-1 text-xs">
+                            {job.sourceUrl ? (
+                              <a
+                                className="text-primary underline"
+                                href={job.sourceUrl}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                Source
+                              </a>
+                            ) : null}
+                            {job.pdfCachedUrl ? (
+                              <a
+                                className="text-primary underline"
+                                href={job.pdfCachedUrl}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                Cached PDF
+                              </a>
+                            ) : null}
+                            {!job.pdfCachedUrl && job.pdfSourceUrl ? (
+                              <a
+                                className="text-primary underline"
+                                href={job.pdfSourceUrl}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                Source PDF
+                              </a>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <form action={updateJobStatusAction}>
+                              <input name="id" type="hidden" value={job.id} />
+                              <input
+                                name="nextStatus"
+                                type="hidden"
+                                value={job.status === "active" ? "inactive" : "active"}
+                              />
+                              <ActionSubmitButton
+                                className="h-7 cursor-pointer px-2 text-xs"
+                                pendingLabel="Updating..."
+                                successMessage="Job status updated."
+                                variant="outline"
+                              >
+                                {job.status === "active" ? "Set inactive" : "Set active"}
+                              </ActionSubmitButton>
+                            </form>
+                            <form action={deleteManualJobAction}>
+                              <input name="id" type="hidden" value={job.id} />
+                              <ActionSubmitButton
+                                className="h-7 cursor-pointer px-2 text-xs"
+                                pendingLabel="Deleting..."
+                                successMessage="Job deleted."
+                                variant="destructive"
+                              >
+                                Delete Job
+                              </ActionSubmitButton>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
