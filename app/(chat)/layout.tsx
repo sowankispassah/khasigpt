@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPreloader } from "@/components/chat-preloader";
+import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -128,6 +129,7 @@ export default async function Layout({
     >
       {session ? (
         <SidebarProvider defaultOpen={defaultSidebarOpen}>
+          <JobsAutoScrapeTrigger />
           <ChatPreloader />
           <AppSidebar
             calculatorEnabled={calculatorEnabled}

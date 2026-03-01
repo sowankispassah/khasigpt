@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ChatLoader } from "@/components/chat-loader";
-import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { ModelConfigProvider } from "@/components/model-config-provider";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -212,7 +211,6 @@ export default async function Page({
         supportsReasoning: model.supportsReasoning,
       }))}
     >
-      <JobsAutoScrapeTrigger />
       <ChatLoader
         autoResume={false}
         customKnowledgeEnabled={customKnowledgeEnabled}
