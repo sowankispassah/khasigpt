@@ -31,6 +31,30 @@ type StatusResponse = {
   progress?: JobsScrapeProgressSnapshot | null;
 };
 
+function createOptimisticRunningSnapshot(
+  runId: string = `pending-${Date.now()}`
+): JobsScrapeProgressSnapshot {
+  const nowIso = new Date().toISOString();
+  return {
+    runId,
+    trigger: "manual",
+    state: "running",
+    startedAt: nowIso,
+    updatedAt: nowIso,
+    finishedAt: null,
+    totalSources: 0,
+    processedSources: 0,
+    currentSource: null,
+    lastCompletedSource: null,
+    lookbackDays: 0,
+    cancelRequested: false,
+    inserted: null,
+    updated: null,
+    skippedDuplicates: null,
+    message: "Starting scrape...",
+  };
+}
+
 function formatTime(value: string | null) {
   if (!value) {
     return null;
@@ -98,6 +122,8 @@ export function AdminJobsScrapeControl() {
   }, [progress?.state, refreshStatus]);
 
   const runStart = useCallback(async () => {
+    const optimistic = createOptimisticRunningSnapshot();
+    setProgress(optimistic);
     setStatusUiVisible(true);
     setLoading(true);
     setMessage(null);
@@ -111,11 +137,22 @@ export function AdminJobsScrapeControl() {
         | {
             accepted?: boolean;
             alreadyRunning?: boolean;
+            runId?: string;
             progress?: JobsScrapeProgressSnapshot | null;
           }
         | null;
       if (!response.ok) {
         setMessage("Failed to start scrape.");
+        setProgress((current) =>
+          current?.runId === optimistic.runId
+            ? {
+                ...current,
+                state: "failed",
+                message: "Failed to start scrape.",
+                finishedAt: new Date().toISOString(),
+              }
+            : current
+        );
         return;
       }
       if (payload?.progress) {
@@ -124,11 +161,26 @@ export function AdminJobsScrapeControl() {
       if (payload?.alreadyRunning) {
         setMessage("A scrape is already running.");
       } else if (payload?.accepted) {
+        setProgress(
+          createOptimisticRunningSnapshot(payload.runId ?? optimistic.runId)
+        );
         setMessage("Scrape started in background.");
       }
-      await refreshStatus();
+      window.setTimeout(() => {
+        void refreshStatus();
+      }, 1200);
     } catch {
       setMessage("Failed to start scrape.");
+      setProgress((current) =>
+        current?.runId === optimistic.runId
+          ? {
+              ...current,
+              state: "failed",
+              message: "Failed to start scrape.",
+              finishedAt: new Date().toISOString(),
+            }
+          : current
+      );
     } finally {
       setLoading(false);
     }
