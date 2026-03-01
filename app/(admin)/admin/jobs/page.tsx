@@ -1,6 +1,9 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 import { auth } from "@/app/(auth)/auth";
+import { AdminJobEditDialog } from "@/components/admin-job-edit-dialog";
+import { AdminJobsExpandableTable } from "@/components/admin-jobs-expandable-table";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
@@ -302,6 +305,32 @@ function normalizeLocationScope(
 
 function formatLocationScope(value: ManagedJobSourceLocationScope) {
   return value === "all_locations" ? "all_locations" : "meghalaya_only";
+}
+
+function CollapsibleSectionCard({
+  title,
+  children,
+  contentClassName,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: ReactNode;
+  contentClassName?: string;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <Card>
+      <details open={defaultOpen}>
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle>{title}</CardTitle>
+            <span className="text-muted-foreground text-xs">Click to expand/collapse</span>
+          </CardHeader>
+        </summary>
+        <CardContent className={contentClassName}>{children}</CardContent>
+      </details>
+    </Card>
+  );
 }
 
 function parseLookbackDays(value: unknown) {
@@ -761,14 +790,201 @@ export default async function AdminJobsPage() {
         ? (lastRunSummary["updated"] as number)
         : null;
   const enabledSourcesCount = managedSources.filter((source) => source.enabled).length;
+  const scrapeHistoryInitial = scrapeHistory.slice(0, 10);
+  const scrapeHistoryRemaining = scrapeHistory.slice(10);
+  const latestJobsInitial = jobs.slice(0, 10);
+  const latestJobsRemaining = jobs.slice(10);
+
+  const renderScrapeHistoryRow = (entry: (typeof scrapeHistory)[number]) => {
+    const progressBarColor =
+      entry.status === "success"
+        ? "bg-emerald-500"
+        : entry.status === "failed"
+          ? "bg-red-500"
+          : entry.status === "cancelled"
+            ? "bg-amber-500"
+            : "bg-slate-500";
+
+    return (
+      <tr className="border-t align-top" key={entry.runId}>
+        <td className="px-3 py-3 text-xs">
+          {formatIsoDateTime(entry.startedAt, scheduleSettings.timezone)}
+        </td>
+        <td className="px-3 py-3 text-xs">{entry.trigger}</td>
+        <td className="px-3 py-3">
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs ${getHistoryStatusBadgeClasses(
+              entry.status
+            )}`}
+          >
+            {entry.status}
+          </span>
+        </td>
+        <td className="px-3 py-3">
+          <div className="w-36">
+            <div className="h-2 w-full overflow-hidden rounded bg-muted">
+              <div
+                className={`h-full ${progressBarColor}`}
+                style={{ width: `${entry.completionPercent}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {entry.completionPercent}%
+            </p>
+          </div>
+        </td>
+        <td className="px-3 py-3 text-xs">
+          {entry.processedSources}/{entry.totalSources}
+        </td>
+        <td className="px-3 py-3 text-xs">{formatDurationMs(entry.durationMs)}</td>
+        <td className="px-3 py-3 text-xs">
+          <div>Inserted: {entry.inserted}</div>
+          <div>Updated: {entry.updated}</div>
+          <div>Duplicates: {entry.skippedDuplicates}</div>
+        </td>
+        <td className="max-w-xs px-3 py-3 whitespace-normal text-xs text-muted-foreground">
+          {entry.errorMessage ??
+            entry.skipReason ??
+            (entry.status === "success"
+              ? "Completed successfully."
+              : "No additional details.")}
+        </td>
+      </tr>
+    );
+  };
+
+  const renderLatestJobRow = (job: (typeof jobs)[number]) => {
+    const pdfCacheState = getJobPdfCacheState(job);
+    const addedOnLabel = job.createdAt.toLocaleString("en-IN", {
+      timeZone: scheduleSettings.timezone,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return (
+      <tr className="border-t align-middle" key={job.id}>
+        <td className="px-3 py-2">
+          <span className="block max-w-[250px] truncate font-medium" title={job.title}>
+            {job.title}
+          </span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="block max-w-[180px] truncate" title={job.company}>
+            {job.company}
+          </span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="block max-w-[180px] truncate" title={job.location}>
+            {job.location}
+          </span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="rounded-full border px-2 py-0.5 text-xs">
+            {job.status}
+          </span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="rounded-full border px-2 py-0.5 text-xs">
+            {pdfCacheState}
+          </span>
+        </td>
+        <td className="px-3 py-2 text-xs text-muted-foreground">{addedOnLabel}</td>
+        <td className="max-w-sm px-3 py-2 text-xs text-muted-foreground">
+          <span className="block max-w-[300px] truncate" title={formatDescription(job.content)}>
+            {formatDescription(job.content)}
+          </span>
+        </td>
+        <td className="px-3 py-2">
+          <div className="flex max-w-[260px] gap-2 overflow-x-auto text-xs whitespace-nowrap">
+            {job.sourceUrl ? (
+              <a
+                className="text-primary underline"
+                href={job.sourceUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Source
+              </a>
+            ) : null}
+            {job.pdfCachedUrl ? (
+              <a
+                className="text-primary underline"
+                href={job.pdfCachedUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Cached PDF
+              </a>
+            ) : null}
+            {!job.pdfCachedUrl && job.pdfSourceUrl ? (
+              <a
+                className="text-primary underline"
+                href={job.pdfSourceUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Source PDF
+              </a>
+            ) : null}
+          </div>
+        </td>
+        <td className="sticky right-0 z-10 border-l bg-background px-3 py-2">
+          <div className="flex flex-wrap gap-2">
+            <AdminJobEditDialog
+              job={{
+                id: job.id,
+                title: job.title,
+                company: job.company,
+                location: job.location,
+                status: job.status === "inactive" ? "inactive" : "active",
+                description: job.content,
+                sourceUrl: job.sourceUrl,
+                pdfSourceUrl: job.pdfSourceUrl,
+                pdfCachedUrl: job.pdfCachedUrl,
+              }}
+            />
+            <form action={updateJobStatusAction}>
+              <input name="id" type="hidden" value={job.id} />
+              <input
+                name="nextStatus"
+                type="hidden"
+                value={job.status === "active" ? "inactive" : "active"}
+              />
+              <ActionSubmitButton
+                className="h-7 cursor-pointer px-2 text-xs"
+                pendingLabel="Updating..."
+                successMessage="Job status updated."
+                variant="outline"
+              >
+                {job.status === "active" ? "Set inactive" : "Set active"}
+              </ActionSubmitButton>
+            </form>
+            <form action={deleteManualJobAction}>
+              <input name="id" type="hidden" value={job.id} />
+              <ActionSubmitButton
+                className="h-7 cursor-pointer px-2 text-xs"
+                pendingLabel="Deleting..."
+                successMessage="Job deleted."
+                variant="destructive"
+              >
+                Delete Job
+              </ActionSubmitButton>
+            </form>
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Automated Jobs Ingestion</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-muted-foreground text-sm">
+      <CollapsibleSectionCard
+        contentClassName="space-y-2 text-muted-foreground text-sm"
+        title="Automated Jobs Ingestion"
+      >
           <p>
             Jobs are scraped automatically in the background and inserted into Supabase.
           </p>
@@ -781,14 +997,9 @@ export default async function AdminJobsPage() {
           <div className="mt-2">
             <AdminJobsScrapeControl initialProgress={scrapeProgress} />
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleSectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Auto Scrape Schedule</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
+      <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Auto Scrape Schedule">
           <form action={saveJobsScrapeScheduleAction} className="grid gap-3 md:grid-cols-2">
             <label className="flex items-center gap-2 md:col-span-2">
               <input
@@ -967,14 +1178,9 @@ export default async function AdminJobsPage() {
               <JobsAutoScrapeStatus />
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleSectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Scraping History</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+      <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Scraping History">
           <p className="text-muted-foreground">
             Latest 50 scrape runs across auto schedule and manual runs.
           </p>
@@ -983,91 +1189,29 @@ export default async function AdminJobsPage() {
               No scrape history yet.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Run Time</th>
-                    <th className="px-3 py-2 text-left font-medium">Trigger</th>
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Progress</th>
-                    <th className="px-3 py-2 text-left font-medium">Sources</th>
-                    <th className="px-3 py-2 text-left font-medium">Duration</th>
-                    <th className="px-3 py-2 text-left font-medium">Result</th>
-                    <th className="px-3 py-2 text-left font-medium">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scrapeHistory.map((entry) => {
-                    const progressBarColor =
-                      entry.status === "success"
-                        ? "bg-emerald-500"
-                        : entry.status === "failed"
-                          ? "bg-red-500"
-                          : entry.status === "cancelled"
-                            ? "bg-amber-500"
-                            : "bg-slate-500";
-                    return (
-                      <tr className="border-t align-top" key={entry.runId}>
-                        <td className="px-3 py-3 text-xs">
-                          {formatIsoDateTime(entry.startedAt, scheduleSettings.timezone)}
-                        </td>
-                        <td className="px-3 py-3 text-xs">{entry.trigger}</td>
-                        <td className="px-3 py-3">
-                          <span
-                            className={`rounded-full border px-2 py-0.5 text-xs ${getHistoryStatusBadgeClasses(
-                              entry.status
-                            )}`}
-                          >
-                            {entry.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="w-36">
-                            <div className="h-2 w-full overflow-hidden rounded bg-muted">
-                              <div
-                                className={`h-full ${progressBarColor}`}
-                                style={{ width: `${entry.completionPercent}%` }}
-                              />
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {entry.completionPercent}%
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 text-xs">
-                          {entry.processedSources}/{entry.totalSources}
-                        </td>
-                        <td className="px-3 py-3 text-xs">
-                          {formatDurationMs(entry.durationMs)}
-                        </td>
-                        <td className="px-3 py-3 text-xs">
-                          <div>Inserted: {entry.inserted}</div>
-                          <div>Updated: {entry.updated}</div>
-                          <div>Duplicates: {entry.skippedDuplicates}</div>
-                        </td>
-                        <td className="max-w-xs px-3 py-3 whitespace-normal text-xs text-muted-foreground">
-                          {entry.errorMessage ??
-                            entry.skipReason ??
-                            (entry.status === "success"
-                              ? "Completed successfully."
-                              : "No additional details.")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <AdminJobsExpandableTable
+              header={
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Run Time</th>
+                  <th className="px-3 py-2 text-left font-medium">Trigger</th>
+                  <th className="px-3 py-2 text-left font-medium">Status</th>
+                  <th className="px-3 py-2 text-left font-medium">Progress</th>
+                  <th className="px-3 py-2 text-left font-medium">Sources</th>
+                  <th className="px-3 py-2 text-left font-medium">Duration</th>
+                  <th className="px-3 py-2 text-left font-medium">Result</th>
+                  <th className="px-3 py-2 text-left font-medium">Notes</th>
+                </tr>
+              }
+              initialRows={scrapeHistoryInitial.map((entry) => renderScrapeHistoryRow(entry))}
+              remainingCount={scrapeHistoryRemaining.length}
+              remainingRows={scrapeHistoryRemaining.map((entry) =>
+                renderScrapeHistoryRow(entry)
+              )}
+            />
           )}
-        </CardContent>
-      </Card>
+      </CollapsibleSectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Source Management</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
+      <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Source Management">
           <p className="text-muted-foreground">
             Managed sources: {managedSources.length} total / {enabledSourcesCount} enabled.
             {enabledSourcesCount === 0
@@ -1256,14 +1400,9 @@ export default async function AdminJobsPage() {
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </CollapsibleSectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Manual Job Entry</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+      <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Manual Job Entry">
           <p className="text-muted-foreground">
             You can add jobs manually. These entries are stored in the same Supabase jobs table.
           </p>
@@ -1334,134 +1473,41 @@ export default async function AdminJobsPage() {
               </ActionSubmitButton>
             </div>
           </form>
-        </CardContent>
-      </Card>
+      </CollapsibleSectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Latest Jobs ({jobs.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {jobs.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No jobs are available in the Supabase jobs table yet.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Title</th>
-                    <th className="px-3 py-2 text-left font-medium">Company</th>
-                    <th className="px-3 py-2 text-left font-medium">Location</th>
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">PDF Cache</th>
-                    <th className="px-3 py-2 text-left font-medium">Added</th>
-                    <th className="px-3 py-2 text-left font-medium">Description</th>
-                    <th className="px-3 py-2 text-left font-medium">Links</th>
-                    <th className="px-3 py-2 text-left font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.map((job) => {
-                    const pdfCacheState = getJobPdfCacheState(job);
-                    return (
-                      <tr className="border-t align-top" key={job.id}>
-                        <td className="px-3 py-3">
-                          <span className="font-medium">{job.title}</span>
-                        </td>
-                        <td className="px-3 py-3">{job.company}</td>
-                        <td className="px-3 py-3">{job.location}</td>
-                        <td className="px-3 py-3">
-                          <span className="rounded-full border px-2 py-0.5 text-xs">
-                            {job.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="rounded-full border px-2 py-0.5 text-xs">
-                            {pdfCacheState}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-muted-foreground">
-                          {job.createdAt.toLocaleString()}
-                        </td>
-                        <td className="max-w-sm px-3 py-3 whitespace-normal text-xs text-muted-foreground">
-                          {formatDescription(job.content)}
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-col gap-1 text-xs">
-                            {job.sourceUrl ? (
-                              <a
-                                className="text-primary underline"
-                                href={job.sourceUrl}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                Source
-                              </a>
-                            ) : null}
-                            {job.pdfCachedUrl ? (
-                              <a
-                                className="text-primary underline"
-                                href={job.pdfCachedUrl}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                Cached PDF
-                              </a>
-                            ) : null}
-                            {!job.pdfCachedUrl && job.pdfSourceUrl ? (
-                              <a
-                                className="text-primary underline"
-                                href={job.pdfSourceUrl}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                Source PDF
-                              </a>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <form action={updateJobStatusAction}>
-                              <input name="id" type="hidden" value={job.id} />
-                              <input
-                                name="nextStatus"
-                                type="hidden"
-                                value={job.status === "active" ? "inactive" : "active"}
-                              />
-                              <ActionSubmitButton
-                                className="h-7 cursor-pointer px-2 text-xs"
-                                pendingLabel="Updating..."
-                                successMessage="Job status updated."
-                                variant="outline"
-                              >
-                                {job.status === "active" ? "Set inactive" : "Set active"}
-                              </ActionSubmitButton>
-                            </form>
-                            <form action={deleteManualJobAction}>
-                              <input name="id" type="hidden" value={job.id} />
-                              <ActionSubmitButton
-                                className="h-7 cursor-pointer px-2 text-xs"
-                                pendingLabel="Deleting..."
-                                successMessage="Job deleted."
-                                variant="destructive"
-                              >
-                                Delete Job
-                              </ActionSubmitButton>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+      <CollapsibleSectionCard title={`Latest Jobs (${jobs.length})`}>
+        {jobs.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            No jobs are available in the Supabase jobs table yet.
+          </p>
+        ) : (
+          <AdminJobsExpandableTable
+            header={
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Title</th>
+                <th className="px-3 py-2 text-left font-medium">Company</th>
+                <th className="px-3 py-2 text-left font-medium">Location</th>
+                <th className="px-3 py-2 text-left font-medium">Status</th>
+                <th className="px-3 py-2 text-left font-medium">PDF Cache</th>
+                <th className="px-3 py-2 text-left font-medium">Added On</th>
+                <th className="px-3 py-2 text-left font-medium">Description</th>
+                <th className="px-3 py-2 text-left font-medium">Links</th>
+                <th className="sticky right-0 z-10 border-l bg-muted/70 px-3 py-2 text-left font-medium">
+                  Actions
+                </th>
+              </tr>
+            }
+            initialRows={latestJobsInitial.map((job) => renderLatestJobRow(job))}
+            remainingCount={latestJobsRemaining.length}
+            remainingRows={latestJobsRemaining.map((job) => renderLatestJobRow(job))}
+          />
           )}
-        </CardContent>
-      </Card>
+          {jobs.length > 0 ? (
+            <p className="text-muted-foreground mt-2 text-xs">
+              Action buttons are pinned in the right-most column (Set active/inactive, Delete).
+            </p>
+          ) : null}
+      </CollapsibleSectionCard>
     </div>
   );
 }
