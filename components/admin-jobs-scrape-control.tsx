@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
 const ENDPOINT = "/api/admin/jobs/scrape";
+const VISIBILITY_KEY = "admin:jobs:scrape-control:visible";
 
 type JobsScrapeProgressSnapshot = {
   runId: string;
@@ -45,6 +46,20 @@ export function AdminJobsScrapeControl() {
   const [progress, setProgress] = useState<JobsScrapeProgressSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [showStatusUi, setShowStatusUi] = useState(false);
+
+  const setStatusUiVisible = useCallback((value: boolean) => {
+    setShowStatusUi(value);
+    try {
+      if (value) {
+        window.sessionStorage.setItem(VISIBILITY_KEY, "1");
+      } else {
+        window.sessionStorage.removeItem(VISIBILITY_KEY);
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -63,6 +78,14 @@ export function AdminJobsScrapeControl() {
   }, []);
 
   useEffect(() => {
+    try {
+      setShowStatusUi(window.sessionStorage.getItem(VISIBILITY_KEY) === "1");
+    } catch {
+      setShowStatusUi(false);
+    }
+  }, []);
+
+  useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
@@ -75,6 +98,7 @@ export function AdminJobsScrapeControl() {
   }, [progress?.state, refreshStatus]);
 
   const runStart = useCallback(async () => {
+    setStatusUiVisible(true);
     setLoading(true);
     setMessage(null);
     try {
@@ -108,9 +132,10 @@ export function AdminJobsScrapeControl() {
     } finally {
       setLoading(false);
     }
-  }, [refreshStatus]);
+  }, [refreshStatus, setStatusUiVisible]);
 
   const requestCancel = useCallback(async () => {
+    setStatusUiVisible(true);
     setLoading(true);
     setMessage(null);
     try {
@@ -134,7 +159,7 @@ export function AdminJobsScrapeControl() {
     } finally {
       setLoading(false);
     }
-  }, [refreshStatus]);
+  }, [refreshStatus, setStatusUiVisible]);
 
   const progressValue = useMemo(() => {
     if (!progress) {
@@ -163,33 +188,39 @@ export function AdminJobsScrapeControl() {
         >
           {running ? "Scraping in progress..." : "Run Scrape Now"}
         </Button>
-        <div className="min-w-0 flex-1">
-          <Progress className="h-2" value={running ? progressValue : progressValue || 0} />
-        </div>
-        <Button
-          className="cursor-pointer"
-          disabled={loading || !running || Boolean(progress?.cancelRequested)}
-          onClick={() => {
-            void requestCancel();
-          }}
-          type="button"
-          variant="destructive"
-        >
-          {progress?.cancelRequested ? "Cancel requested" : "Cancel Scrape"}
-        </Button>
+        {showStatusUi ? (
+          <>
+            <div className="min-w-0 flex-1">
+              <Progress className="h-2" value={running ? progressValue : progressValue || 0} />
+            </div>
+            <Button
+              className="cursor-pointer"
+              disabled={loading || !running || Boolean(progress?.cancelRequested)}
+              onClick={() => {
+                void requestCancel();
+              }}
+              type="button"
+              variant="destructive"
+            >
+              {progress?.cancelRequested ? "Cancel requested" : "Cancel Scrape"}
+            </Button>
+          </>
+        ) : null}
       </div>
 
-      <p className="text-muted-foreground text-xs">
-        {running
-          ? `Progress: ${progress?.processedSources ?? 0}/${progress?.totalSources ?? 0} sources. ${
-              progress?.currentSource ? `Current: ${progress.currentSource}. ` : ""
-            }${progress?.message ?? ""}`
-          : progress
-            ? `Last run state: ${progress.state}${
-                finishedAtLabel ? ` at ${finishedAtLabel}` : ""
-              }${progress.message ? ` (${progress.message})` : ""}`
-            : "No active scrape run."}
-      </p>
+      {showStatusUi ? (
+        <p className="text-muted-foreground text-xs">
+          {running
+            ? `Progress: ${progress?.processedSources ?? 0}/${progress?.totalSources ?? 0} sources. ${
+                progress?.currentSource ? `Current: ${progress.currentSource}. ` : ""
+              }${progress?.message ?? ""}`
+            : progress
+              ? `Last run state: ${progress.state}${
+                  finishedAtLabel ? ` at ${finishedAtLabel}` : ""
+                }${progress.message ? ` (${progress.message})` : ""}`
+              : "No active scrape run."}
+        </p>
+      ) : null}
       {message ? <p className="text-xs">{message}</p> : null}
     </div>
   );
