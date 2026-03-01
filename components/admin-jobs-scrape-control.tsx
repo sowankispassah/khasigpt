@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
 const ENDPOINT = "/api/admin/jobs/scrape";
-const VISIBILITY_KEY = "admin:jobs:scrape-control:visible";
+const RUN_START_GRACE_MS = 8_000;
 
 type JobsScrapeProgressSnapshot = {
   runId: string;
@@ -66,24 +66,17 @@ function formatTime(value: string | null) {
   return date.toLocaleString("en-IN", { hour12: true });
 }
 
-export function AdminJobsScrapeControl() {
-  const [progress, setProgress] = useState<JobsScrapeProgressSnapshot | null>(null);
+export function AdminJobsScrapeControl({
+  initialProgress = null,
+}: {
+  initialProgress?: JobsScrapeProgressSnapshot | null;
+}) {
+  const [progress, setProgress] = useState<JobsScrapeProgressSnapshot | null>(
+    initialProgress
+  );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [showStatusUi, setShowStatusUi] = useState(false);
-
-  const setStatusUiVisible = useCallback((value: boolean) => {
-    setShowStatusUi(value);
-    try {
-      if (value) {
-        window.sessionStorage.setItem(VISIBILITY_KEY, "1");
-      } else {
-        window.sessionStorage.removeItem(VISIBILITY_KEY);
-      }
-    } catch {
-      // ignore storage failures
-    }
-  }, []);
+  const [runStartGraceUntil, setRunStartGraceUntil] = useState(0);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -95,19 +88,22 @@ export function AdminJobsScrapeControl() {
         return;
       }
       const payload = (await response.json()) as StatusResponse;
-      setProgress(payload.progress ?? null);
+      const next = payload.progress ?? null;
+      setProgress((current) => {
+        if (
+          Date.now() < runStartGraceUntil &&
+          current?.state === "running" &&
+          next?.state !== "running" &&
+          (!next || next.runId !== current.runId)
+        ) {
+          return current;
+        }
+        return next;
+      });
     } catch {
       // ignore transient polling failures
     }
-  }, []);
-
-  useEffect(() => {
-    try {
-      setShowStatusUi(window.sessionStorage.getItem(VISIBILITY_KEY) === "1");
-    } catch {
-      setShowStatusUi(false);
-    }
-  }, []);
+  }, [runStartGraceUntil]);
 
   useEffect(() => {
     void refreshStatus();
@@ -124,7 +120,7 @@ export function AdminJobsScrapeControl() {
   const runStart = useCallback(async () => {
     const optimistic = createOptimisticRunningSnapshot();
     setProgress(optimistic);
-    setStatusUiVisible(true);
+    setRunStartGraceUntil(Date.now() + RUN_START_GRACE_MS);
     setLoading(true);
     setMessage(null);
     try {
@@ -153,6 +149,7 @@ export function AdminJobsScrapeControl() {
               }
             : current
         );
+        setRunStartGraceUntil(0);
         return;
       }
       if (payload?.progress) {
@@ -160,6 +157,7 @@ export function AdminJobsScrapeControl() {
       }
       if (payload?.alreadyRunning) {
         setMessage("A scrape is already running.");
+        setRunStartGraceUntil(0);
       } else if (payload?.accepted) {
         setProgress(
           createOptimisticRunningSnapshot(payload.runId ?? optimistic.runId)
@@ -181,13 +179,13 @@ export function AdminJobsScrapeControl() {
             }
           : current
       );
+      setRunStartGraceUntil(0);
     } finally {
       setLoading(false);
     }
-  }, [refreshStatus, setStatusUiVisible]);
+  }, [refreshStatus]);
 
   const requestCancel = useCallback(async () => {
-    setStatusUiVisible(true);
     setLoading(true);
     setMessage(null);
     try {
@@ -211,7 +209,7 @@ export function AdminJobsScrapeControl() {
     } finally {
       setLoading(false);
     }
-  }, [refreshStatus, setStatusUiVisible]);
+  }, [refreshStatus]);
 
   const progressValue = useMemo(() => {
     if (!progress) {
@@ -240,7 +238,7 @@ export function AdminJobsScrapeControl() {
         >
           {running ? "Scraping in progress..." : "Run Scrape Now"}
         </Button>
-        {showStatusUi ? (
+        {running ? (
           <>
             <div className="min-w-0 flex-1">
               <Progress className="h-2" value={running ? progressValue : progressValue || 0} />
@@ -260,7 +258,7 @@ export function AdminJobsScrapeControl() {
         ) : null}
       </div>
 
-      {showStatusUi ? (
+      {running ? (
         <p className="text-muted-foreground text-xs">
           {running
             ? `Progress: ${progress?.processedSources ?? 0}/${progress?.totalSources ?? 0} sources. ${

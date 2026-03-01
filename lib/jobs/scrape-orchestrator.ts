@@ -1,6 +1,7 @@
 import "server-only";
 import {
   JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+  JOBS_SCRAPE_HISTORY_SETTING_KEY,
   JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
   JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
@@ -54,6 +55,23 @@ export type JobsScrapeProgressSnapshot = {
   message: string | null;
 };
 
+export type JobsScrapeHistoryEntry = {
+  runId: string;
+  trigger: JobsScrapeTrigger;
+  status: "success" | "failed" | "cancelled" | "skipped";
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  completionPercent: number;
+  processedSources: number;
+  totalSources: number;
+  inserted: number;
+  updated: number;
+  skippedDuplicates: number;
+  skipReason: string | null;
+  errorMessage: string | null;
+};
+
 export type JobsScrapeOrchestrationResult = {
   ok: boolean;
   trigger: JobsScrapeTrigger;
@@ -76,6 +94,7 @@ type AppSettingEntry = {
 const DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS = 10;
 const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
+const JOBS_SCRAPE_HISTORY_MAX_ITEMS = 100;
 
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
@@ -222,6 +241,120 @@ function resolveEarlierDate(first: Date | null, second: Date | null) {
   return first ?? second;
 }
 
+function normalizeCompletionPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function computeCompletionPercent({
+  status,
+  processedSources,
+  totalSources,
+}: {
+  status: JobsScrapeHistoryEntry["status"];
+  processedSources: number;
+  totalSources: number;
+}) {
+  if (status === "success") {
+    return 100;
+  }
+  if (totalSources <= 0) {
+    return status === "failed" ? 0 : 100;
+  }
+  const ratio = processedSources / totalSources;
+  return normalizeCompletionPercent(ratio * 100);
+}
+
+function normalizeHistoryEntry(rawValue: unknown): JobsScrapeHistoryEntry | null {
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+    return null;
+  }
+  const value = rawValue as Record<string, unknown>;
+  const runId =
+    typeof value.runId === "string" && value.runId.trim()
+      ? value.runId.trim()
+      : "";
+  const trigger =
+    value.trigger === "manual" || value.trigger === "auto" ? value.trigger : null;
+  const status =
+    value.status === "success" ||
+    value.status === "failed" ||
+    value.status === "cancelled" ||
+    value.status === "skipped"
+      ? value.status
+      : null;
+  const startedAt =
+    typeof value.startedAt === "string" && value.startedAt.trim()
+      ? value.startedAt.trim()
+      : "";
+  const finishedAt =
+    typeof value.finishedAt === "string" && value.finishedAt.trim()
+      ? value.finishedAt.trim()
+      : "";
+  if (!runId || !trigger || !status || !startedAt || !finishedAt) {
+    return null;
+  }
+
+  return {
+    runId,
+    trigger,
+    status,
+    startedAt,
+    finishedAt,
+    durationMs:
+      typeof value.durationMs === "number" && Number.isFinite(value.durationMs)
+        ? Math.max(0, Math.trunc(value.durationMs))
+        : 0,
+    completionPercent:
+      typeof value.completionPercent === "number" &&
+      Number.isFinite(value.completionPercent)
+        ? normalizeCompletionPercent(value.completionPercent)
+        : 0,
+    processedSources:
+      typeof value.processedSources === "number" &&
+      Number.isFinite(value.processedSources)
+        ? Math.max(0, Math.trunc(value.processedSources))
+        : 0,
+    totalSources:
+      typeof value.totalSources === "number" && Number.isFinite(value.totalSources)
+        ? Math.max(0, Math.trunc(value.totalSources))
+        : 0,
+    inserted:
+      typeof value.inserted === "number" && Number.isFinite(value.inserted)
+        ? Math.max(0, Math.trunc(value.inserted))
+        : 0,
+    updated:
+      typeof value.updated === "number" && Number.isFinite(value.updated)
+        ? Math.max(0, Math.trunc(value.updated))
+        : 0,
+    skippedDuplicates:
+      typeof value.skippedDuplicates === "number" &&
+      Number.isFinite(value.skippedDuplicates)
+        ? Math.max(0, Math.trunc(value.skippedDuplicates))
+        : 0,
+    skipReason:
+      typeof value.skipReason === "string" && value.skipReason.trim()
+        ? value.skipReason.trim()
+        : null,
+    errorMessage:
+      typeof value.errorMessage === "string" && value.errorMessage.trim()
+        ? value.errorMessage.trim()
+        : null,
+  };
+}
+
+function normalizeHistoryList(rawValue: unknown) {
+  if (!Array.isArray(rawValue)) {
+    return [] as JobsScrapeHistoryEntry[];
+  }
+  return rawValue
+    .map((entry) => normalizeHistoryEntry(entry))
+    .filter((entry): entry is JobsScrapeHistoryEntry => entry !== null)
+    .slice(0, JOBS_SCRAPE_HISTORY_MAX_ITEMS);
+}
+
 async function setManyAppSettings(entries: AppSettingEntry[]) {
   for (const entry of entries) {
     if (entry.value === null || entry.value === undefined) {
@@ -301,6 +434,36 @@ async function loadJobsScrapeRuntimeState() {
 export async function getJobsScrapeProgressSnapshot() {
   const raw = await getAppSettingUncached<unknown>(JOBS_SCRAPE_PROGRESS_SETTING_KEY);
   return normalizeProgressSnapshot(raw);
+}
+
+export async function getJobsScrapeHistory({
+  limit = 30,
+}: {
+  limit?: number;
+} = {}) {
+  const raw = await getAppSettingUncached<unknown>(JOBS_SCRAPE_HISTORY_SETTING_KEY);
+  const history = normalizeHistoryList(raw);
+  if (!(Number.isFinite(limit) && limit > 0)) {
+    return history;
+  }
+  return history.slice(0, Math.trunc(limit));
+}
+
+async function appendJobsScrapeHistory(entry: JobsScrapeHistoryEntry) {
+  try {
+    const raw = await getAppSettingUncached<unknown>(JOBS_SCRAPE_HISTORY_SETTING_KEY);
+    const current = normalizeHistoryList(raw);
+    const deduped = current.filter((item) => item.runId !== entry.runId);
+    const next = [entry, ...deduped].slice(0, JOBS_SCRAPE_HISTORY_MAX_ITEMS);
+    await setAppSetting({
+      key: JOBS_SCRAPE_HISTORY_SETTING_KEY,
+      value: next,
+    });
+  } catch (error) {
+    console.warn("[jobs-orchestrator] history_append_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function requestJobsScrapeCancel() {
@@ -412,6 +575,27 @@ export async function runJobsScrapeWithScheduling({
       updated: null,
       skippedDuplicates: null,
       message: effectiveSkipReason ?? "Skipped",
+    });
+
+    await appendJobsScrapeHistory({
+      runId,
+      trigger,
+      status: "skipped",
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: summary.durationMs,
+      completionPercent: computeCompletionPercent({
+        status: "skipped",
+        processedSources: 0,
+        totalSources: 0,
+      }),
+      processedSources: 0,
+      totalSources: 0,
+      inserted: 0,
+      updated: 0,
+      skippedDuplicates: 0,
+      skipReason: effectiveSkipReason ?? null,
+      errorMessage: null,
     });
 
     return {
@@ -599,6 +783,32 @@ export async function runJobsScrapeWithScheduling({
       message: wasCancelled ? "Scrape cancelled" : "Scrape completed",
     });
 
+    const historyStatus: JobsScrapeHistoryEntry["status"] = wasCancelled
+      ? "cancelled"
+      : "success";
+    await appendJobsScrapeHistory({
+      runId,
+      trigger,
+      status: historyStatus,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: summary.durationMs,
+      completionPercent: computeCompletionPercent({
+        status: historyStatus,
+        processedSources: scrapeResult.summary.sourcesProcessed,
+        totalSources: scrapeResult.summary.totalSources,
+      }),
+      processedSources: scrapeResult.summary.sourcesProcessed,
+      totalSources: scrapeResult.summary.totalSources,
+      inserted: scrapeResult.persisted.insertedCount,
+      updated: scrapeResult.persisted.updatedCount,
+      skippedDuplicates:
+        scrapeResult.persisted.skippedDuplicateCount +
+        scrapeResult.summary.totalDuplicatesInRun,
+      skipReason: wasCancelled ? "cancel_requested" : null,
+      errorMessage: null,
+    });
+
     return {
       ok: true,
       trigger,
@@ -656,6 +866,27 @@ export async function runJobsScrapeWithScheduling({
       finishedAt: finishedAt.toISOString(),
       currentSource: null,
       message,
+    });
+
+    await appendJobsScrapeHistory({
+      runId,
+      trigger,
+      status: "failed",
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: summary.durationMs,
+      completionPercent: computeCompletionPercent({
+        status: "failed",
+        processedSources: progressSnapshot.processedSources,
+        totalSources: totalSources,
+      }),
+      processedSources: progressSnapshot.processedSources,
+      totalSources,
+      inserted: 0,
+      updated: 0,
+      skippedDuplicates: 0,
+      skipReason: null,
+      errorMessage: message,
     });
 
     return {

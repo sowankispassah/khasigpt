@@ -29,6 +29,11 @@ import {
 import { listJobPostingEntries } from "@/lib/jobs/service";
 import { saveJobs } from "@/lib/jobs/saveJobs";
 import {
+  getJobsScrapeHistory,
+  getJobsScrapeProgressSnapshot,
+  type JobsScrapeHistoryEntry,
+} from "@/lib/jobs/scrape-orchestrator";
+import {
   JOBS_SCRAPE_SETTING_KEYS,
   getNextJobsScrapeDueAt,
   parseDateOrNull,
@@ -116,6 +121,32 @@ function formatIsoDateTime(value: string, timezone: string) {
   return parsed.toLocaleString("en-IN", {
     timeZone: timezone,
   });
+}
+
+function formatDurationMs(value: number) {
+  if (!(Number.isFinite(value) && value >= 0)) {
+    return "0s";
+  }
+  const totalSeconds = Math.floor(value / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
+function getHistoryStatusBadgeClasses(status: JobsScrapeHistoryEntry["status"]) {
+  if (status === "success") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-700";
+  }
+  if (status === "failed") {
+    return "border-red-300 bg-red-50 text-red-700";
+  }
+  if (status === "cancelled") {
+    return "border-amber-300 bg-amber-50 text-amber-700";
+  }
+  return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
 function settingMatchesExpectedValue({
@@ -667,6 +698,8 @@ export default async function AdminJobsPage() {
     lastRunStatusRaw,
     lastSkipReasonRaw,
     lastRunSummaryRaw,
+    scrapeProgress,
+    scrapeHistory,
   ] = await Promise.all([
     listJobPostingEntries({ includeInactive: true }),
     listManagedJobSources(),
@@ -681,6 +714,8 @@ export default async function AdminJobsPage() {
     getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus),
     getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason),
     getAppSetting<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY),
+    getJobsScrapeProgressSnapshot(),
+    getJobsScrapeHistory({ limit: 50 }),
   ]);
 
   const scheduleSettings = resolveJobsScrapeScheduleSettings({
@@ -744,7 +779,7 @@ export default async function AdminJobsPage() {
             Configure source sites in the Source Management section below.
           </p>
           <div className="mt-2">
-            <AdminJobsScrapeControl />
+            <AdminJobsScrapeControl initialProgress={scrapeProgress} />
           </div>
         </CardContent>
       </Card>
@@ -932,6 +967,99 @@ export default async function AdminJobsPage() {
               <JobsAutoScrapeStatus />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Scraping History</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            Latest 50 scrape runs across auto schedule and manual runs.
+          </p>
+          {scrapeHistory.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No scrape history yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Run Time</th>
+                    <th className="px-3 py-2 text-left font-medium">Trigger</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">Progress</th>
+                    <th className="px-3 py-2 text-left font-medium">Sources</th>
+                    <th className="px-3 py-2 text-left font-medium">Duration</th>
+                    <th className="px-3 py-2 text-left font-medium">Result</th>
+                    <th className="px-3 py-2 text-left font-medium">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scrapeHistory.map((entry) => {
+                    const progressBarColor =
+                      entry.status === "success"
+                        ? "bg-emerald-500"
+                        : entry.status === "failed"
+                          ? "bg-red-500"
+                          : entry.status === "cancelled"
+                            ? "bg-amber-500"
+                            : "bg-slate-500";
+                    return (
+                      <tr className="border-t align-top" key={entry.runId}>
+                        <td className="px-3 py-3 text-xs">
+                          {formatIsoDateTime(entry.startedAt, scheduleSettings.timezone)}
+                        </td>
+                        <td className="px-3 py-3 text-xs">{entry.trigger}</td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-xs ${getHistoryStatusBadgeClasses(
+                              entry.status
+                            )}`}
+                          >
+                            {entry.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="w-36">
+                            <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                              <div
+                                className={`h-full ${progressBarColor}`}
+                                style={{ width: `${entry.completionPercent}%` }}
+                              />
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {entry.completionPercent}%
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-xs">
+                          {entry.processedSources}/{entry.totalSources}
+                        </td>
+                        <td className="px-3 py-3 text-xs">
+                          {formatDurationMs(entry.durationMs)}
+                        </td>
+                        <td className="px-3 py-3 text-xs">
+                          <div>Inserted: {entry.inserted}</div>
+                          <div>Updated: {entry.updated}</div>
+                          <div>Duplicates: {entry.skippedDuplicates}</div>
+                        </td>
+                        <td className="max-w-xs px-3 py-3 whitespace-normal text-xs text-muted-foreground">
+                          {entry.errorMessage ??
+                            entry.skipReason ??
+                            (entry.status === "success"
+                              ? "Completed successfully."
+                              : "No additional details.")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
