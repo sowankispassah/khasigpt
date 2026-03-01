@@ -186,9 +186,9 @@ export default async function JobsPage({
           <CardTitle className="text-base">Filter jobs</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-2 lg:grid-cols-6" method="get">
+          <form className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6" method="get">
             <input
-              className="rounded-md border bg-background px-3 py-2 text-sm lg:col-span-2"
+              className="rounded-md border bg-background px-3 py-2 text-sm sm:col-span-2 lg:col-span-2"
               defaultValue={resolvedSearchParams?.q ?? ""}
               name="q"
               placeholder="Search title, company, location, or description"
@@ -214,7 +214,7 @@ export default async function JobsPage({
               name="employmentType"
               placeholder="Employment type"
             />
-            <div className="flex items-center gap-2 md:col-span-2 lg:col-span-6">
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-6">
               <Button className="cursor-pointer" size="sm" type="submit">
                 Apply filters
               </Button>
@@ -272,45 +272,45 @@ export default async function JobsPage({
             const descriptionSnippet = buildDescriptionSnippet(job.content);
 
             return (
-              <Card className="border-border/60" key={job.id}>
+              <Card className="min-w-0 border-border/60" key={job.id}>
                 <CardHeader className="space-y-1 pb-2">
                   <CardTitle className="line-clamp-2 text-base">{job.title}</CardTitle>
-                  <p className="text-muted-foreground text-sm">{job.company}</p>
+                  <p className="break-words text-muted-foreground text-sm">{job.company}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="line-clamp-2 text-muted-foreground text-sm">
+                  <p className="line-clamp-3 break-words text-muted-foreground text-sm">
                     {descriptionSnippet}
                   </p>
 
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <p>
+                  <div className="grid grid-cols-1 gap-x-3 gap-y-1 text-[13px] sm:grid-cols-2 sm:text-xs">
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Location:</span>{" "}
                       {job.location}
                     </p>
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Type:</span>{" "}
                       {job.employmentType}
                     </p>
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Salary:</span>{" "}
                       {salaryLabel}
                     </p>
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Deadline:</span>{" "}
                       {deadlineLabel}
                     </p>
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Notification:</span>{" "}
                       {notificationDateLabel}
                     </p>
-                    <p>
+                    <p className="break-words">
                       <span className="font-medium text-foreground">Source:</span>{" "}
                       {sourceLabel}
                     </p>
                   </div>
                 </CardContent>
                 <CardFooter className="justify-end pt-0">
-                  <Button asChild className="cursor-pointer" size="sm">
+                  <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
                     <Link href={`/jobs/${job.id}`}>View Details</Link>
                   </Button>
                 </CardFooter>

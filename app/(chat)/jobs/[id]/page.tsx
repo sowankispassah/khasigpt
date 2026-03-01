@@ -181,49 +181,59 @@ export default async function JobPostingDetailPage(props: {
 
       <Card>
         <CardHeader className="space-y-2">
-          <CardTitle className="text-2xl">{job.title}</CardTitle>
+          <CardTitle className="break-words text-xl sm:text-2xl">{job.title}</CardTitle>
           <CardDescription className="text-sm">
             {job.company} / {job.location}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 text-sm md:grid-cols-2">
-            <p>
+            <p className="break-words">
               <span className="font-medium">Location:</span> {job.location}
             </p>
-            <p>
+            <p className="break-words">
               <span className="font-medium">Type:</span> {job.employmentType}
             </p>
-            <p>
+            <p className="break-words">
               <span className="font-medium">Salary:</span> {salaryLabel}
             </p>
-            <p>
+            <p className="break-words">
               <span className="font-medium">Deadline:</span> {deadlineLabel}
             </p>
-            <p>
+            <p className="break-words">
               <span className="font-medium">Notification date:</span>{" "}
               {notificationDateLabel}
             </p>
-            <p>
+            <p className="break-words">
               <span className="font-medium">Source:</span> {sourceLabel}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button asChild className="cursor-pointer" size="sm">
+            <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
               <Link href={`/chat?mode=jobs&new=1&jobId=${job.id}`}>
                 Ask about this job
               </Link>
             </Button>
             {job.sourceUrl ? (
-              <Button asChild className="cursor-pointer" size="sm" variant="outline">
+              <Button
+                asChild
+                className="w-full cursor-pointer sm:w-auto"
+                size="sm"
+                variant="outline"
+              >
                 <a href={job.sourceUrl} rel="noreferrer" target="_blank">
                   Open source listing
                 </a>
               </Button>
             ) : null}
             {pdfUrl ? (
-              <Button asChild className="cursor-pointer" size="sm" variant="outline">
+              <Button
+                asChild
+                className="w-full cursor-pointer sm:w-auto"
+                size="sm"
+                variant="outline"
+              >
                 <a href={pdfUrl} rel="noreferrer" target="_blank">
                   Open PDF file
                 </a>
@@ -240,7 +250,7 @@ export default async function JobPostingDetailPage(props: {
         </CardHeader>
         <CardContent>
           {fullDetailsText ? (
-            <div className="rounded-lg border bg-muted/10 p-4 whitespace-pre-wrap break-words text-[15px] leading-7">
+            <div className="rounded-lg border bg-muted/10 p-4 whitespace-pre-wrap break-words text-sm leading-6 sm:text-[15px] sm:leading-7">
               {fullDetailsText}
             </div>
           ) : (
@@ -260,7 +270,7 @@ export default async function JobPostingDetailPage(props: {
           <CardContent>
             <div className="mb-3">
               <a
-                className="text-primary text-sm underline underline-offset-2"
+                className="break-all text-primary text-sm underline underline-offset-2"
                 href={pdfUrl}
                 rel="noreferrer"
                 target="_blank"
@@ -269,7 +279,11 @@ export default async function JobPostingDetailPage(props: {
               </a>
             </div>
             <div className="overflow-hidden rounded-lg border">
-              <iframe className="h-[75vh] w-full" src={pdfUrl} title={`${job.title} PDF`} />
+              <iframe
+                className="h-[58vh] w-full sm:h-[68vh] md:h-[75vh]"
+                src={pdfUrl}
+                title={`${job.title} PDF`}
+              />
             </div>
           </CardContent>
         </Card>
@@ -279,12 +293,12 @@ export default async function JobPostingDetailPage(props: {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Original source page</CardTitle>
-            <CardDescription>Preview the original listing URL captured by scraper.</CardDescription>
+          <CardDescription>Preview the original listing URL captured by scraper.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-hidden rounded-lg border">
               <iframe
-                className="h-[70vh] w-full"
+                className="h-[56vh] w-full sm:h-[64vh] md:h-[70vh]"
                 src={sourcePreviewUrl}
                 title={`${job.title} source page`}
               />
