@@ -5,6 +5,7 @@ import {
   type JobSourceConfig,
   type JobSourceLocationScope,
 } from "@/config/jobSources";
+import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 import { fetchWithTimeout } from "@/lib/utils/async";
@@ -701,12 +702,14 @@ async function enrichDescriptionFromPdf({
   fallbackDescription,
   timeoutMs,
   maxPdfTextChars,
+  pdfUrlCache,
 }: {
   sourcePageUrl: string;
   sourceUrl: string;
   fallbackDescription: string;
   timeoutMs: number;
   maxPdfTextChars: number;
+  pdfUrlCache: Map<string, string | null>;
 }) {
   if (
     !shouldAttemptPdfEnrichment({
@@ -717,6 +720,7 @@ async function enrichDescriptionFromPdf({
     return {
       description: fallbackDescription,
       pdfSourceUrl: null,
+      pdfCachedUrl: null,
       attempted: false,
       success: false,
       fieldsExtractedCount: 0,
@@ -744,14 +748,30 @@ async function enrichDescriptionFromPdf({
     return {
       description: baseDescription || fallbackDescription,
       pdfSourceUrl: null,
+      pdfCachedUrl: null,
       attempted: true,
       success: false,
       fieldsExtractedCount: 0,
     };
   }
 
+  let fallbackPdfSourceUrl: string | null = null;
+  let fallbackPdfCachedUrl: string | null = null;
   const uniqueCandidates = Array.from(new Set(pdfCandidates)).slice(0, 3);
   for (const pdfUrl of uniqueCandidates) {
+    let pdfCachedUrl: string | null = null;
+    if (pdfUrlCache.has(pdfUrl)) {
+      pdfCachedUrl = pdfUrlCache.get(pdfUrl) ?? null;
+    } else {
+      pdfCachedUrl = await cacheJobPdfAsset(pdfUrl);
+      pdfUrlCache.set(pdfUrl, pdfCachedUrl);
+    }
+
+    if (!fallbackPdfSourceUrl) {
+      fallbackPdfSourceUrl = pdfUrl;
+      fallbackPdfCachedUrl = pdfCachedUrl;
+    }
+
     const pdfText = await extractTextFromPdfUrl(pdfUrl, maxPdfTextChars);
     if (!pdfText) {
       continue;
@@ -773,6 +793,7 @@ async function enrichDescriptionFromPdf({
     return {
       description: joined,
       pdfSourceUrl: pdfUrl,
+      pdfCachedUrl,
       attempted: true,
       success: true,
       fieldsExtractedCount: pdfDetailLines.length,
@@ -780,8 +801,9 @@ async function enrichDescriptionFromPdf({
   }
 
   return {
-    description: fallbackDescription,
-    pdfSourceUrl: null,
+    description: baseDescription || fallbackDescription,
+    pdfSourceUrl: fallbackPdfSourceUrl,
+    pdfCachedUrl: fallbackPdfCachedUrl,
     attempted: true,
     success: false,
     fieldsExtractedCount: 0,
@@ -1042,7 +1064,8 @@ function isWithinLookbackWindow(date: Date, lookbackDays: number, now: Date) {
 async function scrapeSource(
   source: JobSourceConfig,
   now: Date,
-  options: JobsScraperRuntimeOptions
+  options: JobsScraperRuntimeOptions,
+  pdfUrlCache: Map<string, string | null>
 ): Promise<{ jobs: NewJobRow[]; stats: SourceScrapeStats }> {
   const timeoutMs = parsePositiveInt(process.env.JOBS_SCRAPE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
   const fetchRetryAttempts = parsePositiveInt(
@@ -1221,6 +1244,16 @@ async function scrapeSource(
         MAX_JOB_DESCRIPTION_CHARS
       );
       let description = fallbackDescription;
+      let pdfSourceUrl: string | null = isPdfUrl(sourceUrl) ? sourceUrl : null;
+      let pdfCachedUrl: string | null = null;
+      if (pdfSourceUrl) {
+        if (pdfUrlCache.has(pdfSourceUrl)) {
+          pdfCachedUrl = pdfUrlCache.get(pdfSourceUrl) ?? null;
+        } else {
+          pdfCachedUrl = await cacheJobPdfAsset(pdfSourceUrl);
+          pdfUrlCache.set(pdfSourceUrl, pdfCachedUrl);
+        }
+      }
       if (pdfDetailsUsed < maxPdfEnrichmentsPerSource) {
         const enriched = await enrichDescriptionFromPdf({
           sourcePageUrl: source.url,
@@ -1228,6 +1261,7 @@ async function scrapeSource(
           fallbackDescription,
           timeoutMs,
           maxPdfTextChars: maxPdfExtractChars,
+          pdfUrlCache,
         });
         if (enriched.attempted) {
           stats.pdfDetailAttempts += 1;
@@ -1240,6 +1274,12 @@ async function scrapeSource(
           }
         }
         description = enriched.description;
+        if (enriched.pdfSourceUrl) {
+          pdfSourceUrl = enriched.pdfSourceUrl;
+        }
+        if (enriched.pdfCachedUrl) {
+          pdfCachedUrl = enriched.pdfCachedUrl;
+        }
       }
 
       jobs.push({
@@ -1248,6 +1288,8 @@ async function scrapeSource(
         location,
         description,
         source_url: sourceUrl,
+        pdf_source_url: pdfSourceUrl,
+        pdf_cached_url: pdfCachedUrl,
       });
     }
 
@@ -1277,6 +1319,7 @@ export async function scrapeJobsFromSources(
   const sourceStats: SourceScrapeStats[] = [];
   const seenSourceUrls = new Set<string>();
   const combinedJobs: NewJobRow[] = [];
+  const pdfUrlCache = new Map<string, string | null>();
 
   let totalDuplicatesInRun = 0;
   let totalExtracted = 0;
@@ -1285,7 +1328,7 @@ export async function scrapeJobsFromSources(
   let totalFilteredByKeyword = 0;
 
   for (const source of sources) {
-    const { jobs, stats } = await scrapeSource(source, now, { lookbackDays });
+    const { jobs, stats } = await scrapeSource(source, now, { lookbackDays }, pdfUrlCache);
     sourceStats.push(stats);
 
     totalExtracted += stats.extracted;

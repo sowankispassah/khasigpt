@@ -12,6 +12,8 @@ export type NewJobRow = {
   description: string;
   status?: "active" | "inactive";
   source_url: string;
+  pdf_source_url?: string | null;
+  pdf_cached_url?: string | null;
 };
 
 export type SaveJobsResult = {
@@ -116,6 +118,19 @@ function normalizeCompany({
   return resolveCompanyFallbackFromSourceUrl(sourceUrl);
 }
 
+function normalizeOptionalUrl(value: string | null | undefined) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized;
+}
+
 function normalizeJobRows(rows: NewJobRow[]) {
   const dedupedByUrl = new Map<string, NewJobRow>();
 
@@ -135,20 +150,43 @@ function normalizeJobRows(rows: NewJobRow[]) {
       description: row.description.trim(),
       status: row.status === "inactive" ? "inactive" : "active",
       source_url: sourceUrl,
+      pdf_source_url: normalizeOptionalUrl(row.pdf_source_url),
+      pdf_cached_url: normalizeOptionalUrl(row.pdf_cached_url),
     });
   }
 
   return Array.from(dedupedByUrl.values());
 }
 
-function stripStatusField(rows: NewJobRow[]) {
-  return rows.map((row) => ({
-    title: row.title,
-    company: row.company,
-    location: row.location,
-    description: row.description,
-    source_url: row.source_url,
-  }));
+function stripUnsupportedColumns({
+  rows,
+  stripStatus,
+  stripPdfColumns,
+}: {
+  rows: NewJobRow[];
+  stripStatus: boolean;
+  stripPdfColumns: boolean;
+}) {
+  return rows.map((row) => {
+    const payload: Record<string, unknown> = {
+      title: row.title,
+      company: row.company,
+      location: row.location,
+      description: row.description,
+      source_url: row.source_url,
+    };
+
+    if (!stripStatus) {
+      payload.status = row.status;
+    }
+
+    if (!stripPdfColumns) {
+      payload.pdf_source_url = row.pdf_source_url ?? null;
+      payload.pdf_cached_url = row.pdf_cached_url ?? null;
+    }
+
+    return payload;
+  });
 }
 
 export async function saveJobs(
@@ -253,9 +291,18 @@ export async function saveJobs(
         return insertWithStatus.data ?? [];
       }
 
-      // Backward compatibility if the status column is not added yet.
-      if (/status/i.test(insertWithStatus.error.message)) {
-        const fallbackRows = stripStatusField(rowsToWrite);
+      const shouldStripStatus = /status/i.test(insertWithStatus.error.message);
+      const shouldStripPdfColumns = /pdf_source_url|pdf_cached_url/i.test(
+        insertWithStatus.error.message
+      );
+
+      // Backward compatibility when optional columns have not been added yet.
+      if (shouldStripStatus || shouldStripPdfColumns) {
+        const fallbackRows = stripUnsupportedColumns({
+          rows: rowsToWrite,
+          stripStatus: shouldStripStatus,
+          stripPdfColumns: shouldStripPdfColumns,
+        });
         const insertWithoutStatus = await supabase
           .from("jobs")
           .upsert(fallbackRows, {

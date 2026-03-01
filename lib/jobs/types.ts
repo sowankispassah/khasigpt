@@ -34,6 +34,8 @@ export type JobPostingRecord = {
   studyTags: string[];
   tags: string[];
   sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
   status: RagEntryStatus;
   approvalStatus: RagEntryApprovalStatus;
   embeddingStatus: RagEmbeddingStatus;
@@ -57,6 +59,8 @@ export type JobCard = {
   studyTags: string[];
   tags: string[];
   sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
 };
 
 export type JobStudyLinkResult = {

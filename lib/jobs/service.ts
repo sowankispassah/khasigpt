@@ -46,6 +46,8 @@ type SupabaseJobRow = {
   description: string | null;
   status: string | null;
   source_url: string;
+  pdf_source_url?: string | null;
+  pdf_cached_url?: string | null;
   created_at: string;
 };
 
@@ -140,6 +142,8 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
     studyTags: [],
     tags: [],
     sourceUrl,
+    pdfSourceUrl: toTrimmedString(row.pdf_source_url ?? null) || null,
+    pdfCachedUrl: toTrimmedString(row.pdf_cached_url ?? null) || null,
     status,
     approvalStatus: DEFAULT_JOB_APPROVAL_STATUS,
     embeddingStatus: DEFAULT_JOB_EMBEDDING_STATUS,
@@ -315,6 +319,8 @@ export function toJobCard(job: JobPostingRecord): JobCard {
     studyTags: job.studyTags,
     tags: job.tags,
     sourceUrl: job.sourceUrl,
+    pdfSourceUrl: job.pdfSourceUrl,
+    pdfCachedUrl: job.pdfCachedUrl,
   };
 }
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
+import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
@@ -310,9 +311,7 @@ export default async function JobsPage({
                   </div>
                 </CardContent>
                 <CardFooter className="justify-end pt-0">
-                  <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
-                    <Link href={`/jobs/${job.id}`}>View Details</Link>
-                  </Button>
+                  <ViewDetailsButton href={`/jobs/${job.id}`} />
                 </CardFooter>
               </Card>
             );

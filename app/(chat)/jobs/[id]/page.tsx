@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
+import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
@@ -84,11 +85,21 @@ function extractPdfUrlFromContent(content: string) {
 
 function resolvePdfUrl({
   sourceUrl,
+  pdfSourceUrl,
+  pdfCachedUrl,
   content,
 }: {
   sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
   content: string;
 }) {
+  if (isPdfUrl(pdfCachedUrl)) {
+    return pdfCachedUrl;
+  }
+  if (isPdfUrl(pdfSourceUrl)) {
+    return pdfSourceUrl;
+  }
   if (isPdfUrl(sourceUrl)) {
     return sourceUrl;
   }
@@ -167,6 +178,8 @@ export default async function JobPostingDetailPage(props: {
   const fullDetailsText = formatFullDetailsText(job.content);
   const pdfUrl = resolvePdfUrl({
     sourceUrl: job.sourceUrl,
+    pdfSourceUrl: job.pdfSourceUrl,
+    pdfCachedUrl: job.pdfCachedUrl,
     content: job.content,
   });
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
@@ -278,13 +291,11 @@ export default async function JobPostingDetailPage(props: {
                 Open PDF in new tab
               </a>
             </div>
-            <div className="overflow-hidden rounded-lg border">
-              <iframe
-                className="h-[58vh] w-full sm:h-[68vh] md:h-[75vh]"
-                src={pdfUrl}
-                title={`${job.title} PDF`}
-              />
-            </div>
+            <ExternalPreviewFrame
+              heightClassName="h-[58vh] sm:h-[68vh] md:h-[75vh]"
+              src={pdfUrl}
+              title={`${job.title} PDF`}
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -293,16 +304,14 @@ export default async function JobPostingDetailPage(props: {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Original source page</CardTitle>
-          <CardDescription>Preview the original listing URL captured by scraper.</CardDescription>
+            <CardDescription>Preview the original listing URL captured by scraper.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-hidden rounded-lg border">
-              <iframe
-                className="h-[56vh] w-full sm:h-[64vh] md:h-[70vh]"
-                src={sourcePreviewUrl}
-                title={`${job.title} source page`}
-              />
-            </div>
+            <ExternalPreviewFrame
+              heightClassName="h-[56vh] sm:h-[64vh] md:h-[70vh]"
+              src={sourcePreviewUrl}
+              title={`${job.title} source page`}
+            />
           </CardContent>
         </Card>
       ) : null}
