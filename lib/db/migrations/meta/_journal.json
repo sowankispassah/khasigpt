@@ -1,1 +1,363 @@
-{"version":"7","dialect":"postgresql","entries":[]}
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1765238399950,
+      "tag": "0000_keen_devos",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1765238399951,
+      "tag": "0001_sparkling_blue_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765238399952,
+      "tag": "0002_wandering_riptide",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765238399953,
+      "tag": "0003_cloudy_glorian",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1765238399954,
+      "tag": "0004_odd_slayback",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1765238399955,
+      "tag": "0005_wooden_whistler",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1765238399956,
+      "tag": "0006_marvelous_frog_thor",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1765238399957,
+      "tag": "0007_flowery_ben_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1765238399958,
+      "tag": "0008_admin-role",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1765238399959,
+      "tag": "0009_model-config-settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1765238399960,
+      "tag": "0010_token-usage-tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1765238399961,
+      "tag": "0011_model-pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1765238399962,
+      "tag": "0012_enable-pgcrypto",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1765238399963,
+      "tag": "0012_soft-delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1765238399964,
+      "tag": "0013_subscription-tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1765238399965,
+      "tag": "0014_subscription-tables-final",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1765238399966,
+      "tag": "0015_email-verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1765238399967,
+      "tag": "0016_user-auth-provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1765238399968,
+      "tag": "0017_password-reset-tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1765238399969,
+      "tag": "0018_payment-transactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1765238399970,
+      "tag": "0019_user-date-of-birth",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1765238399971,
+      "tag": "0020_user_profile_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1765238399972,
+      "tag": "0021_contact_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1765238399973,
+      "tag": "0022_contact_message_phone",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1765238399974,
+      "tag": "0023_translation_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1765238399975,
+      "tag": "0024_model_provider_costs",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1765238399976,
+      "tag": "0025_admin_dashboard_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1765238399977,
+      "tag": "0027_model_config_free_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1765238399978,
+      "tag": "0027_user_add_name_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1765238399979,
+      "tag": "0028_creator_coupons",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1765238399980,
+      "tag": "0029_rag_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1765238399981,
+      "tag": "0030_coupon_reward_payouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1765238399982,
+      "tag": "0031_rag_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1765238399983,
+      "tag": "0032_remove-model-user-costs",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1765238399984,
+      "tag": "0033_add-model-margin-baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1765238399985,
+      "tag": "0034_split-manual-paid-credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1765238399986,
+      "tag": "0035_audit_log_client_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1765238399987,
+      "tag": "0036_user_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1765238399988,
+      "tag": "0037_impersonation_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1765238399989,
+      "tag": "0038_user_email_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1765238399990,
+      "tag": "0039_image_model_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1765238399991,
+      "tag": "0040_character_reference",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1765238399992,
+      "tag": "0041_character_physical_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1765238399993,
+      "tag": "0042_token_usage_user_created_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1765238399994,
+      "tag": "0043_language_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1765238399995,
+      "tag": "0044_user_presence",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1765238399996,
+      "tag": "0045_chat_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1765238399997,
+      "tag": "0046_performance_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1765238399998,
+      "tag": "0047_chat_mode_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1765238399999,
+      "tag": "0048_chat_mode_jobs_enum_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1765238400000,
+      "tag": "0049_prelaunch_invites",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,9 +1,19 @@
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-
+import { redirect } from "next/navigation";
+import { getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../auth";
 import { CompleteProfileForm } from "./complete-profile-form";
+
+const profileLookupTimeoutRaw = Number.parseInt(
+  process.env.PROFILE_LOOKUP_TIMEOUT_MS ?? "1200",
+  10
+);
+const PROFILE_LOOKUP_TIMEOUT_MS =
+  Number.isFinite(profileLookupTimeoutRaw) && profileLookupTimeoutRaw > 0
+    ? profileLookupTimeoutRaw
+    : 1200;
 
 export default async function CompleteProfilePage() {
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
@@ -12,15 +22,21 @@ export default async function CompleteProfilePage() {
     redirect("/login");
   }
 
+  const dbUser = await withTimeout(
+    getUserById(session.user.id),
+    PROFILE_LOOKUP_TIMEOUT_MS
+  ).catch(() => null);
+  const profileUser = dbUser ?? session.user;
+
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const { dictionary } = await getTranslationBundle(preferredLanguage);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 
   const hasCompletedProfile =
-    Boolean(session.user.dateOfBirth) &&
-    Boolean(session.user.firstName) &&
-    Boolean(session.user.lastName);
+    Boolean(profileUser.dateOfBirth) &&
+    Boolean(profileUser.firstName) &&
+    Boolean(profileUser.lastName);
 
   if (hasCompletedProfile) {
     redirect("/");
@@ -30,7 +46,7 @@ export default async function CompleteProfilePage() {
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-6 shadow-sm">
         <div className="space-y-2 text-center">
-          <h1 className="text-xl font-semibold">
+          <h1 className="font-semibold text-xl">
             {t("complete_profile.heading", "Almost there!")}
           </h1>
           <p className="text-muted-foreground text-sm">
@@ -41,9 +57,9 @@ export default async function CompleteProfilePage() {
           </p>
         </div>
         <CompleteProfileForm
-          defaultDateOfBirth={session.user.dateOfBirth ?? null}
-          defaultFirstName={session.user.firstName ?? null}
-          defaultLastName={session.user.lastName ?? null}
+          defaultDateOfBirth={profileUser.dateOfBirth ?? null}
+          defaultFirstName={profileUser.firstName ?? null}
+          defaultLastName={profileUser.lastName ?? null}
         />
       </div>
     </div>

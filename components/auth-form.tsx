@@ -1,12 +1,11 @@
 "use client";
 
-import Form from "next/form";
 import { Mail } from "lucide-react";
-
+import Form from "next/form";
+import { useTranslation } from "@/components/language-provider";
+import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Button } from "./ui/button";
-import { useTranslation } from "@/components/language-provider";
 
 type AuthFormProps = {
   action: NonNullable<
@@ -85,9 +84,9 @@ export function AuthForm({
       ) : onShowCredentials ? (
         <Button
           className="w-full"
+          onClick={onShowCredentials}
           type="button"
           variant="outline"
-          onClick={onShowCredentials}
         >
           <Mail className="mr-2 h-4 w-4" />
           {resolvedEmailButtonLabel}

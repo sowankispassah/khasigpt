@@ -1,7 +1,15 @@
 import { cache } from "react";
-
+import {
+  DEFAULT_SUGGESTED_PROMPTS,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+} from "@/lib/constants";
+import type { UserRole } from "@/lib/db/schema";
 import { getAppSetting } from "@/lib/db/queries";
-import { DEFAULT_SUGGESTED_PROMPTS } from "@/lib/constants";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+  type FeatureAccessMode,
+} from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 
 type SuggestedPromptsMap = Record<string, string[]>;
@@ -19,18 +27,47 @@ function isPromptsMap(value: unknown): value is SuggestedPromptsMap {
   }
 
   return Object.entries(value).every(
-    ([lang, prompts]) =>
-      typeof lang === "string" && isPromptsArray(prompts)
+    ([lang, prompts]) => typeof lang === "string" && isPromptsArray(prompts)
   );
 }
 
+export const SUGGESTED_PROMPTS_ACCESS_MODE_FALLBACK: FeatureAccessMode =
+  "enabled";
+
+export function parseSuggestedPromptsAccessModeSetting(
+  value: unknown
+): FeatureAccessMode {
+  return parseFeatureAccessMode(value, SUGGESTED_PROMPTS_ACCESS_MODE_FALLBACK);
+}
+
 async function fetchSuggestedPrompts(
-  preferredLanguageCode?: string | null
+  preferredLanguageCode?: string | null,
+  userRole?: UserRole | null
 ): Promise<string[]> {
-  const { activeLanguage, languages } = await getTranslationBundle(preferredLanguageCode);
+  const { activeLanguage, languages } = await getTranslationBundle(
+    preferredLanguageCode
+  );
 
   try {
-    const storedMap = await getAppSetting<unknown>("suggestedPromptsByLanguage");
+    const enabledSetting = await getAppSetting<unknown>(
+      SUGGESTED_PROMPTS_ENABLED_SETTING_KEY
+    );
+    const mode = parseSuggestedPromptsAccessModeSetting(enabledSetting);
+    const enabled = isFeatureEnabledForRole(mode, userRole ?? null);
+    if (!enabled) {
+      return [];
+    }
+  } catch (error) {
+    console.warn(
+      "Failed to load suggested prompts availability; falling back.",
+      error
+    );
+  }
+
+  try {
+    const storedMap = await getAppSetting<unknown>(
+      "suggestedPromptsByLanguage"
+    );
 
     if (isPromptsMap(storedMap)) {
       const fromLanguage = storedMap[activeLanguage.code];
@@ -39,7 +76,9 @@ async function fetchSuggestedPrompts(
       }
 
       const defaultLanguage =
-        languages.find((language) => language.isDefault) ?? languages[0] ?? null;
+        languages.find((language) => language.isDefault) ??
+        languages[0] ??
+        null;
 
       if (defaultLanguage) {
         const defaultPrompts = storedMap[defaultLanguage.code];
@@ -49,7 +88,10 @@ async function fetchSuggestedPrompts(
       }
     }
   } catch (error) {
-    console.warn("Failed to load language-specific prompts; falling back.", error);
+    console.warn(
+      "Failed to load language-specific prompts; falling back.",
+      error
+    );
   }
 
   try {

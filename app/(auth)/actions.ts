@@ -1,10 +1,11 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import {
+  createAuditLogEntry,
   createEmailVerificationTokenRecord,
   createUser,
   deleteEmailVerificationTokensForUser,
@@ -12,12 +13,33 @@ import {
   updateUserPassword,
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { signIn } from "./auth";
 
 const authFormSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
+
+const REGISTER_RATE_LIMIT = {
+  limit: 5,
+  windowMs: 10 * 60 * 1000,
+};
+
+async function allowRegisterAttempt(email: string) {
+  const headerStore = await headers();
+  const clientKey = getClientKeyFromHeaders(headerStore);
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const [ipResult, emailResult] = await Promise.all([
+    incrementRateLimit(`register:ip:${clientKey}`, REGISTER_RATE_LIMIT),
+    incrementRateLimit(`register:email:${normalizedEmail}`, REGISTER_RATE_LIMIT),
+  ]);
+
+  return ipResult.allowed && emailResult.allowed;
+}
 
 export type LoginActionState = {
   status:
@@ -80,7 +102,8 @@ export type RegisterActionState = {
     | "failed"
     | "user_exists"
     | "invalid_data"
-    | "terms_unaccepted";
+    | "terms_unaccepted"
+    | "rate_limited";
 };
 
 export const register = async (
@@ -98,25 +121,43 @@ export const register = async (
       password: formData.get("password"),
     });
 
+    const isAllowed = await allowRegisterAttempt(validatedData.email);
+    if (!isAllowed) {
+      return { status: "rate_limited" };
+    }
+
     const [existingUser] = await getUser(validatedData.email);
 
-    if (existingUser && existingUser.isActive) {
+    if (existingUser?.isActive) {
       return { status: "user_exists" };
     }
 
     let userRecord = existingUser;
 
-    if (!userRecord) {
-      userRecord = await createUser(
-        validatedData.email,
-        validatedData.password
-      );
-    } else {
+    if (userRecord) {
       await updateUserPassword({
         id: userRecord.id,
         password: validatedData.password,
       });
+    } else {
+      userRecord = await createUser(
+        validatedData.email,
+        validatedData.password
+      );
     }
+
+    const clientInfo = await getClientInfoFromHeaders();
+    await createAuditLogEntry({
+      actorId: userRecord.id,
+      action: "user.signup",
+      target: { userId: userRecord.id, email: validatedData.email },
+      metadata: {
+        provider: "credentials",
+        reactivated: Boolean(existingUser),
+      },
+      subjectUserId: userRecord.id,
+      ...clientInfo,
+    });
 
     await deleteEmailVerificationTokensForUser({ userId: userRecord.id });
 

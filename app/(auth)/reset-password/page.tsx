@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { ResetPasswordForm } from "../password-reset/reset-password-form";
 
 type ResetPasswordSearchParams = {
@@ -8,7 +10,7 @@ function resolveToken(param: string | string[] | undefined) {
   if (!param) {
     return null;
   }
-  return Array.isArray(param) ? param[0] ?? null : param;
+  return Array.isArray(param) ? (param[0] ?? null) : param;
 }
 
 export default async function ResetPasswordPage({
@@ -16,6 +18,10 @@ export default async function ResetPasswordPage({
 }: {
   searchParams?: Promise<ResetPasswordSearchParams>;
 }) {
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const { dictionary } = await getTranslationBundle(preferredLanguage);
+  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const resolvedParams = searchParams ? await searchParams : undefined;
   const token = resolveToken(resolvedParams?.token);
 
@@ -23,9 +29,14 @@ export default async function ResetPasswordPage({
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background px-4">
         <div className="w-full max-w-md space-y-4 rounded-2xl border bg-card p-6 text-center shadow-sm">
-          <h1 className="text-xl font-semibold">Invalid link</h1>
+          <h1 className="font-semibold text-xl">
+            {t("reset_password.invalid_title", "Invalid link")}
+          </h1>
           <p className="text-muted-foreground text-sm">
-            This password reset link is missing or malformed. Request a new link and try again.
+            {t(
+              "reset_password.invalid_message",
+              "This password reset link is missing or malformed. Request a new link and try again."
+            )}
           </p>
         </div>
       </div>
@@ -36,9 +47,14 @@ export default async function ResetPasswordPage({
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-6 shadow-sm">
         <div className="space-y-2 text-center">
-          <h1 className="text-xl font-semibold">Reset password</h1>
+          <h1 className="font-semibold text-xl">
+            {t("reset_password.title", "Reset password")}
+          </h1>
           <p className="text-muted-foreground text-sm">
-            Choose a new password for your account.
+            {t(
+              "reset_password.subtitle",
+              "Choose a new password for your account."
+            )}
           </p>
         </div>
         <ResetPasswordForm token={token} />

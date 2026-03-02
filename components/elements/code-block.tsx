@@ -1,13 +1,13 @@
 "use client";
 
 import { CheckIcon, CopyIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
-import { createContext, useContext, useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import {
-  oneDark,
-  oneLight,
-} from "react-syntax-highlighter/dist/esm/styles/prism";
+import type {
+  ComponentProps,
+  CSSProperties,
+  HTMLAttributes,
+  ReactNode,
+} from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -42,68 +42,124 @@ export const CodeBlock = ({
       )}
       {...props}
     >
+      <LazySyntaxHighlighter
+        code={code}
+        language={language}
+        showLineNumbers={showLineNumbers}
+      >
+        {children}
+      </LazySyntaxHighlighter>
+    </div>
+  </CodeBlockContext.Provider>
+);
+
+type HighlighterProps = {
+  code: string;
+  language: string;
+  showLineNumbers: boolean;
+  children?: ReactNode;
+};
+
+const LazySyntaxHighlighter = ({
+  code,
+  language,
+  showLineNumbers,
+  children,
+}: HighlighterProps) => {
+  const [highlighter, setHighlighter] =
+    useState<null | typeof import("react-syntax-highlighter").Prism>(null);
+  const [styles, setStyles] =
+    useState<null | typeof import("react-syntax-highlighter/dist/esm/styles/prism")>(
+      null
+    );
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const [syntaxModule, styleModule] = await Promise.all([
+        import("react-syntax-highlighter"),
+        import("react-syntax-highlighter/dist/esm/styles/prism"),
+      ]);
+      if (!mounted) return;
+      setHighlighter(() => syntaxModule.Prism);
+      setStyles(styleModule);
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const fallback = useMemo(
+    () => (
+      <pre className="overflow-auto bg-muted/60 p-4 text-sm font-mono text-foreground">
+        {code}
+      </pre>
+    ),
+    [code]
+  );
+
+  if (!highlighter || !styles) {
+    return (
       <div className="relative">
-        <SyntaxHighlighter
-          className="overflow-hidden dark:hidden"
-          codeTagProps={{
-            className: "font-mono text-sm",
-          }}
-          customStyle={{
-            margin: 0,
-            padding: "1rem",
-            fontSize: "0.875rem",
-            background: "hsl(var(--background))",
-            color: "hsl(var(--foreground))",
-            overflowX: "auto",
-            overflowWrap: "break-word",
-            wordBreak: "break-all",
-          }}
-          language={language}
-          lineNumberStyle={{
-            color: "hsl(var(--muted-foreground))",
-            paddingRight: "1rem",
-            minWidth: "2.5rem",
-          }}
-          showLineNumbers={showLineNumbers}
-          style={oneLight}
-        >
-          {code}
-        </SyntaxHighlighter>
-        <SyntaxHighlighter
-          className="hidden overflow-hidden dark:block"
-          codeTagProps={{
-            className: "font-mono text-sm",
-          }}
-          customStyle={{
-            margin: 0,
-            padding: "1rem",
-            fontSize: "0.875rem",
-            background: "hsl(var(--background))",
-            color: "hsl(var(--foreground))",
-            overflowX: "auto",
-            overflowWrap: "break-word",
-            wordBreak: "break-all",
-          }}
-          language={language}
-          lineNumberStyle={{
-            color: "hsl(var(--muted-foreground))",
-            paddingRight: "1rem",
-            minWidth: "2.5rem",
-          }}
-          showLineNumbers={showLineNumbers}
-          style={oneDark}
-        >
-          {code}
-        </SyntaxHighlighter>
+        {fallback}
         {children && (
           <div className="absolute top-2 right-2 flex items-center gap-2">
             {children}
           </div>
         )}
       </div>
+    );
+  }
+
+  const baseStyle: CSSProperties = {
+    margin: 0,
+    padding: "1rem",
+    fontSize: "0.875rem",
+    background: "hsl(var(--background))",
+    color: "hsl(var(--foreground))",
+    overflowX: "auto",
+    wordBreak: "break-all",
+  };
+
+  const sharedProps = {
+    codeTagProps: { className: "font-mono text-sm" },
+    customStyle: baseStyle,
+    language,
+    lineNumberStyle: {
+      color: "hsl(var(--muted-foreground))",
+      paddingRight: "1rem",
+      minWidth: "2.5rem",
+    },
+    showLineNumbers,
+  };
+
+  const SyntaxHighlighter = highlighter;
+
+  return (
+    <div className="relative">
+      <SyntaxHighlighter
+        className="overflow-hidden dark:hidden"
+        style={styles.oneLight}
+        {...sharedProps}
+      >
+        {code}
+      </SyntaxHighlighter>
+      <SyntaxHighlighter
+        className="hidden overflow-hidden dark:block"
+        style={styles.oneDark}
+        {...sharedProps}
+      >
+        {code}
+      </SyntaxHighlighter>
+      {children && (
+        <div className="absolute top-2 right-2 flex items-center gap-2">
+          {children}
+        </div>
+      )}
     </div>
-  </CodeBlockContext.Provider>
-);
+  );
+};
 
 export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
   onCopy?: () => void;

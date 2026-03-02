@@ -23,7 +23,7 @@ export default async function AdminContactsPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Contact requests</h1>
+        <h1 className="font-semibold text-2xl">Contact requests</h1>
         <p className="text-muted-foreground text-sm">
           Messages submitted through the public contact form.
         </p>
@@ -53,7 +53,7 @@ export default async function AdminContactsPage() {
                 </tr>
               ) : (
                 messages.map((message) => (
-                  <tr key={message.id} className="border-t">
+                  <tr className="border-t" key={message.id}>
                     <td className="py-3 align-top">
                       <div className="font-medium">{message.name}</div>
                       <a
@@ -63,7 +63,7 @@ export default async function AdminContactsPage() {
                         {message.email}
                       </a>
                     </td>
-                    <td className="py-3 align-top text-xs text-muted-foreground">
+                    <td className="py-3 align-top text-muted-foreground text-xs">
                       {message.phone ? (
                         <a
                           className="hover:underline"
@@ -77,7 +77,7 @@ export default async function AdminContactsPage() {
                     </td>
                     <td className="py-3 align-top">
                       <div className="font-medium">{message.subject}</div>
-                      <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2">
+                      <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">
                         {message.message}
                       </p>
                     </td>

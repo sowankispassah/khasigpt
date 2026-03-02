@@ -6,14 +6,15 @@ import { auth } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   deleteTranslationValueEntry,
-  upsertTranslationValueEntry,
   updateTranslationDefaultText,
+  upsertTranslationValueEntry,
 } from "@/lib/db/queries";
-import { getLanguageByCode } from "@/lib/i18n/languages";
 import {
   invalidateTranslationBundleCache,
-  publishAllTranslations,
+  registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
+import { getLanguageByCode } from "@/lib/i18n/languages";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 
 const TRANSLATIONS_PATH = "/admin/translations";
 
@@ -131,7 +132,8 @@ export async function saveTranslationValueAction(formData: FormData) {
 export async function publishTranslationsAction() {
   const actor = await requireAdminUser();
 
-  await publishAllTranslations();
+  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
+  await invalidateTranslationBundleCache();
 
   await createAuditLogEntry({
     actorId: actor.id,
