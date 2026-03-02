@@ -50,7 +50,7 @@ export function PdfCanvasPreview({
       setTotalPages(0);
 
       try {
-        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const pdfjs = await import("pdfjs-dist");
 
         if (!pdfjs.GlobalWorkerOptions.workerSrc) {
           // Use a local worker served by Next.js to avoid CDN/CORS failures.
