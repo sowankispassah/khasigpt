@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
+import { PdfCanvasPreview } from "@/components/jobs/pdf-canvas-preview";
 
 type ExternalPreviewFrameProps = {
   src: string;
   title: string;
   heightClassName: string;
+  format?: "html" | "pdf";
 };
 
 const PREVIEW_LOAD_TIMEOUT_MS = 12000;
@@ -15,21 +17,41 @@ export function ExternalPreviewFrame({
   src,
   title,
   heightClassName,
+  format = "html",
 }: ExternalPreviewFrameProps) {
+  if (format === "pdf") {
+    return (
+      <div className={`relative overflow-hidden rounded-lg border ${heightClassName}`}>
+        <PdfCanvasPreview src={src} title={title} />
+      </div>
+    );
+  }
+
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+
+  const clearLoadTimeout = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
 
   useEffect(() => {
     setIsLoading(true);
     setFailed(false);
+    clearLoadTimeout();
 
-    const timeoutId = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       setIsLoading(false);
       setFailed(true);
     }, PREVIEW_LOAD_TIMEOUT_MS);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearLoadTimeout();
+    };
   }, [src]);
 
   return (
@@ -38,19 +60,14 @@ export function ExternalPreviewFrame({
         <iframe
           className={`h-full w-full ${isLoading ? "opacity-0" : "opacity-100"}`}
           onError={() => {
+            clearLoadTimeout();
             setIsLoading(false);
             setFailed(true);
           }}
           onLoad={() => {
+            clearLoadTimeout();
             setIsLoading(false);
-            try {
-              const href = frameRef.current?.contentWindow?.location?.href ?? "";
-              if (href === "about:blank" || href.startsWith("chrome-error://")) {
-                setFailed(true);
-              }
-            } catch {
-              // Cross-origin iframes can throw on location access; assume loaded.
-            }
+            setFailed(false);
           }}
           ref={frameRef}
           src={src}
@@ -87,4 +104,3 @@ export function ExternalPreviewFrame({
     </div>
   );
 }
-

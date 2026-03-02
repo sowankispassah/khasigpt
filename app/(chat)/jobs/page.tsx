@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { FileText } from "lucide-react";
 import { auth } from "@/app/(auth)/auth";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,46 @@ function buildDescriptionSnippet(rawDescription: string) {
     return "No description available.";
   }
   return normalized.length > 170 ? `${normalized.slice(0, 170)}...` : normalized;
+}
+
+function isPdfUrl(url: string | null) {
+  if (!url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.toLowerCase();
+    return pathname.endsWith(".pdf") || pathname.includes(".pdf");
+  } catch {
+    return false;
+  }
+}
+
+function extractPdfUrlFromContent(content: string) {
+  const match = content.match(/PDF Source:\s*(https?:\/\/\S+)/i);
+  if (!match?.[1]) {
+    return null;
+  }
+  const candidate = match[1].replace(/[),.;]+$/g, "");
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
+function hasJobPdfFile(job: {
+  sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
+  content: string;
+}) {
+  return Boolean(
+    isPdfUrl(job.pdfCachedUrl) ||
+      isPdfUrl(job.pdfSourceUrl) ||
+      isPdfUrl(job.sourceUrl) ||
+      extractPdfUrlFromContent(job.content)
+  );
 }
 
 export default async function JobsPage({
@@ -269,11 +310,23 @@ export default async function JobsPage({
               }) ?? formatDateLabel(job.createdAt);
             const sourceLabel = getSourceHostLabel(job.sourceUrl);
             const descriptionSnippet = buildDescriptionSnippet(job.content);
+            const hasPdfFile = hasJobPdfFile(job);
 
             return (
               <Card className="min-w-0 border-border/60" key={job.id}>
                 <CardHeader className="space-y-1 pb-2">
-                  <CardTitle className="line-clamp-2 text-base">{job.title}</CardTitle>
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="line-clamp-2 text-base">{job.title}</CardTitle>
+                    {hasPdfFile ? (
+                      <span
+                        aria-label="PDF available"
+                        className="shrink-0 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-1 text-emerald-700"
+                        title="PDF file available"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="break-words text-muted-foreground text-sm">{job.company}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">

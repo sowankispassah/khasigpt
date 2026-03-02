@@ -26,6 +26,7 @@ const scriptSrc = isDevelopment
       "data:",
       "https://cdn.jsdelivr.net",
       "https://checkout.razorpay.com",
+      "https://va.vercel-scripts.com",
     ].join(" ")
   : [
       "script-src",
@@ -35,6 +36,7 @@ const scriptSrc = isDevelopment
       ...inlineScriptHashes,
       "https://cdn.jsdelivr.net",
       "https://checkout.razorpay.com",
+      "https://va.vercel-scripts.com",
     ].join(" ");
 
 const connectSrc = [
@@ -50,6 +52,8 @@ const connectSrc = [
   "https://cdn.jsdelivr.net",
   "https://checkout.razorpay.com",
   "https://api.razorpay.com",
+  "https://vitals.vercel-insights.com",
+  "https://va.vercel-scripts.com",
   ...(isDevelopment
     ? [
         "ws://localhost:*",

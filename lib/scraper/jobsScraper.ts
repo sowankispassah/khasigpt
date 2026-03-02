@@ -719,6 +719,7 @@ async function enrichDescriptionFromPdf({
   timeoutMs,
   maxPdfTextChars,
   pdfUrlCache,
+  includePdfText,
 }: {
   sourcePageUrl: string;
   sourceUrl: string;
@@ -726,6 +727,7 @@ async function enrichDescriptionFromPdf({
   timeoutMs: number;
   maxPdfTextChars: number;
   pdfUrlCache: Map<string, string | null>;
+  includePdfText: boolean;
 }) {
   if (
     !shouldAttemptPdfEnrichment({
@@ -765,7 +767,7 @@ async function enrichDescriptionFromPdf({
       description: baseDescription || fallbackDescription,
       pdfSourceUrl: null,
       pdfCachedUrl: null,
-      attempted: true,
+      attempted: includePdfText,
       success: false,
       fieldsExtractedCount: 0,
     };
@@ -786,6 +788,17 @@ async function enrichDescriptionFromPdf({
     if (!fallbackPdfSourceUrl) {
       fallbackPdfSourceUrl = pdfUrl;
       fallbackPdfCachedUrl = pdfCachedUrl;
+    }
+
+    if (!includePdfText) {
+      return {
+        description: baseDescription || fallbackDescription,
+        pdfSourceUrl: pdfUrl,
+        pdfCachedUrl,
+        attempted: false,
+        success: false,
+        fieldsExtractedCount: 0,
+      };
     }
 
     const pdfText = await extractTextFromPdfUrl(pdfUrl, maxPdfTextChars);
@@ -820,7 +833,7 @@ async function enrichDescriptionFromPdf({
     description: baseDescription || fallbackDescription,
     pdfSourceUrl: fallbackPdfSourceUrl,
     pdfCachedUrl: fallbackPdfCachedUrl,
-    attempted: true,
+    attempted: includePdfText,
     success: false,
     fieldsExtractedCount: 0,
   };
@@ -1270,32 +1283,31 @@ async function scrapeSource(
           pdfUrlCache.set(pdfSourceUrl, pdfCachedUrl);
         }
       }
-      if (pdfDetailsUsed < maxPdfEnrichmentsPerSource) {
-        const enriched = await enrichDescriptionFromPdf({
-          sourcePageUrl: source.url,
-          sourceUrl,
-          fallbackDescription,
-          timeoutMs,
-          maxPdfTextChars: maxPdfExtractChars,
-          pdfUrlCache,
-        });
-        if (enriched.attempted) {
-          stats.pdfDetailAttempts += 1;
-          if (enriched.success) {
-            stats.pdfDetailSuccesses += 1;
-            pdfDetailsUsed += 1;
-            stats.pdfFieldsExtracted += enriched.fieldsExtractedCount;
-          } else {
-            stats.pdfDetailFailures += 1;
-          }
+      const enriched = await enrichDescriptionFromPdf({
+        sourcePageUrl: source.url,
+        sourceUrl,
+        fallbackDescription,
+        timeoutMs,
+        maxPdfTextChars: maxPdfExtractChars,
+        pdfUrlCache,
+        includePdfText: pdfDetailsUsed < maxPdfEnrichmentsPerSource,
+      });
+      if (enriched.attempted) {
+        stats.pdfDetailAttempts += 1;
+        if (enriched.success) {
+          stats.pdfDetailSuccesses += 1;
+          pdfDetailsUsed += 1;
+          stats.pdfFieldsExtracted += enriched.fieldsExtractedCount;
+        } else {
+          stats.pdfDetailFailures += 1;
         }
-        description = enriched.description;
-        if (enriched.pdfSourceUrl) {
-          pdfSourceUrl = enriched.pdfSourceUrl;
-        }
-        if (enriched.pdfCachedUrl) {
-          pdfCachedUrl = enriched.pdfCachedUrl;
-        }
+      }
+      description = enriched.description;
+      if (enriched.pdfSourceUrl) {
+        pdfSourceUrl = enriched.pdfSourceUrl;
+      }
+      if (enriched.pdfCachedUrl) {
+        pdfCachedUrl = enriched.pdfCachedUrl;
       }
 
       jobs.push({

@@ -168,8 +168,90 @@ async function parsePdfViaLibrary(buffer: Buffer) {
 
 function parsePdfTextFallback(buffer: Buffer) {
   const raw = buffer.toString("latin1");
-  const matches = raw.match(/[A-Za-z0-9][A-Za-z0-9 ,.;:()/%+\-]{3,}/g) ?? [];
-  return matches.slice(0, 8_000).join(" ");
+
+  const decodePdfLiteralString = (value: string) =>
+    value
+      .replace(/\\([nrtbf()\\])/g, (_match, escaped: string) => {
+        switch (escaped) {
+          case "n":
+            return "\n";
+          case "r":
+            return "\r";
+          case "t":
+            return "\t";
+          case "b":
+            return "\b";
+          case "f":
+            return "\f";
+          default:
+            return escaped;
+        }
+      })
+      .replace(/\\([0-7]{1,3})/g, (_match, octal: string) => {
+        const codePoint = Number.parseInt(octal, 8);
+        if (!Number.isFinite(codePoint)) {
+          return "";
+        }
+        return String.fromCharCode(codePoint);
+      })
+      .replace(/\\\r?\n/g, "");
+
+  const isLikelyReadableText = (value: string) => {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+      return false;
+    }
+
+    if (
+      /%?PDF-\d\.\d/i.test(normalized) ||
+      /\b(?:obj|endobj|stream|endstream)\b/i.test(normalized) ||
+      /\/(?:Type|XObject|Filter|DecodeParms|ColorSpace|BitsPerComponent|Length)\b/i.test(
+        normalized
+      )
+    ) {
+      return false;
+    }
+
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (words.length < 8) {
+      return false;
+    }
+
+    const alphaWordCount = words.filter((word) => /[A-Za-z]{3,}/.test(word)).length;
+    const alphaRatio = alphaWordCount / words.length;
+    if (alphaRatio < 0.5) {
+      return false;
+    }
+
+    const longTokenCount = words.filter(
+      (word) => word.length >= 30 && !/^https?:\/\//i.test(word)
+    ).length;
+    if (longTokenCount / words.length > 0.06) {
+      return false;
+    }
+
+    const symbolCount = (normalized.match(/[^A-Za-z0-9\s.,;:'"!?()/-]/g) ?? []).length;
+    const symbolRatio = symbolCount / normalized.length;
+    return symbolRatio <= 0.18;
+  };
+
+  const literalMatches = raw.match(/\((?:\\.|[^\\()]){3,}\)/g) ?? [];
+  const literalText = literalMatches
+    .slice(0, 12_000)
+    .map((match) => decodePdfLiteralString(match.slice(1, -1)))
+    .filter((segment) => /[A-Za-z]{2,}/.test(segment))
+    .join(" ");
+  if (isLikelyReadableText(literalText)) {
+    return literalText;
+  }
+
+  const tokenMatches = raw.match(/[A-Za-z0-9][A-Za-z0-9 ,.;:'"()/%+\-]{3,}/g) ?? [];
+  const tokenText = tokenMatches.slice(0, 8_000).join(" ");
+  if (isLikelyReadableText(tokenText)) {
+    return tokenText;
+  }
+
+  return "";
 }
 
 async function parsePdf(buffer: Buffer) {

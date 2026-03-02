@@ -37,6 +37,20 @@ type DescriptionMeta = {
   body: string;
 };
 
+function isPdfUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname.toLowerCase();
+    return pathname.endsWith(".pdf") || pathname.includes(".pdf");
+  } catch {
+    return false;
+  }
+}
+
 function parseDescriptionMeta(description: string): DescriptionMeta {
   const lines = description.split(/\r?\n/);
   const retainedLines: string[] = [];
@@ -199,6 +213,23 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
       return;
     }
 
+    const normalizedPdfSourceUrl = pdfSourceUrl.trim();
+    const normalizedPdfCachedUrl = pdfCachedUrl.trim();
+    if (normalizedPdfSourceUrl && !isPdfUrl(normalizedPdfSourceUrl)) {
+      toast({
+        type: "error",
+        description: "PDF Source URL must point to a .pdf link.",
+      });
+      return;
+    }
+    if (normalizedPdfCachedUrl && !isPdfUrl(normalizedPdfCachedUrl)) {
+      toast({
+        type: "error",
+        description: "PDF Cached URL must point to a .pdf link.",
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       const composedDescription = composeDescription({
@@ -216,8 +247,8 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
           location: location.trim(),
           status,
           sourceUrl: sourceUrl.trim(),
-          pdfSourceUrl: pdfSourceUrl.trim(),
-          pdfCachedUrl: pdfCachedUrl.trim(),
+          pdfSourceUrl: normalizedPdfSourceUrl,
+          pdfCachedUrl: normalizedPdfCachedUrl,
           description: composedDescription,
         }),
       });
@@ -367,6 +398,7 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
                 placeholder="https://example.com/notice.pdf"
                 value={pdfSourceUrl}
               />
+              <p className="text-muted-foreground text-xs">Must be a direct URL containing .pdf</p>
             </div>
             <div className="grid gap-1 md:col-span-2">
               <Label htmlFor={`edit-job-pdf-cached-url-${job.id}`}>PDF Cached URL (optional)</Label>
@@ -376,6 +408,7 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
                 placeholder="https://your-storage/jobs/notice.pdf"
                 value={pdfCachedUrl}
               />
+              <p className="text-muted-foreground text-xs">Must be a direct URL containing .pdf</p>
             </div>
           </div>
 
@@ -405,4 +438,3 @@ export function AdminJobEditDialog({ job }: { job: EditableJob }) {
     </>
   );
 }
-

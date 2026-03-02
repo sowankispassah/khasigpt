@@ -65,6 +65,8 @@ async function downloadPdfBuffer(url: string) {
     throw new Error(`Failed to download PDF (HTTP ${response.status})`);
   }
 
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
   const contentLengthHeader = response.headers.get("content-length");
   if (contentLengthHeader) {
     const contentLength = Number(contentLengthHeader);
@@ -79,6 +81,13 @@ async function downloadPdfBuffer(url: string) {
   }
   if (buffer.byteLength > maxBytes) {
     throw new Error("PDF is larger than configured max bytes.");
+  }
+
+  const hasPdfContentType =
+    contentType.includes("application/pdf") || contentType.includes("application/x-pdf");
+  const hasPdfMagicHeader = buffer.subarray(0, 8).toString("latin1").includes("%PDF-");
+  if (!hasPdfContentType && !hasPdfMagicHeader) {
+    throw new Error("Downloaded file is not a PDF.");
   }
 
   return buffer;
@@ -127,10 +136,6 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
   try {
     parsedUrl = new URL(trimmedUrl);
   } catch {
-    return null;
-  }
-
-  if (!parsedUrl.pathname.toLowerCase().includes(".pdf")) {
     return null;
   }
 

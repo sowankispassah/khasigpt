@@ -106,15 +106,6 @@ function resolvePdfUrl({
   return extractPdfUrlFromContent(content);
 }
 
-function formatFullDetailsText(content: string) {
-  return content
-    .replace(/\r\n/g, "\n")
-    .replace(/^\s*PDF Source:\s*https?:\/\/\S+\s*$/gim, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 function extractDateByKeywordLabel({
   rawDescription,
   keywordPattern,
@@ -175,14 +166,15 @@ export default async function JobPostingDetailPage(props: {
         /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
     }) ?? formatDateLabel(job.createdAt);
   const sourceLabel = getSourceHostLabel(job.sourceUrl);
-  const fullDetailsText = formatFullDetailsText(job.content);
   const pdfUrl = resolvePdfUrl({
     sourceUrl: job.sourceUrl,
     pdfSourceUrl: job.pdfSourceUrl,
     pdfCachedUrl: job.pdfCachedUrl,
     content: job.content,
   });
+  const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
+  const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
@@ -240,14 +232,14 @@ export default async function JobPostingDetailPage(props: {
                 </a>
               </Button>
             ) : null}
-            {pdfUrl ? (
+            {proxiedPdfUrl ? (
               <Button
                 asChild
                 className="w-full cursor-pointer sm:w-auto"
                 size="sm"
                 variant="outline"
               >
-                <a href={pdfUrl} rel="noreferrer" target="_blank">
+                <a href={proxiedPdfUrl} rel="noreferrer" target="_blank">
                   Open PDF file
                 </a>
               </Button>
@@ -256,62 +248,49 @@ export default async function JobPostingDetailPage(props: {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">About the job</CardTitle>
-          <CardDescription>Full details captured from source listing and PDF.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {fullDetailsText ? (
-            <div className="rounded-lg border bg-muted/10 p-4 whitespace-pre-wrap break-words text-sm leading-6 sm:text-[15px] sm:leading-7">
-              {fullDetailsText}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed px-4 py-8 text-center text-muted-foreground text-sm">
-              No detailed text was captured for this job posting.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {pdfUrl ? (
+      {proxiedPdfUrl ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">PDF file</CardTitle>
-            <CardDescription>Preview the source PDF attached to this job.</CardDescription>
+            <CardTitle className="text-base">About the job</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="mb-3">
-              <a
-                className="break-all text-primary text-sm underline underline-offset-2"
-                href={pdfUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Open PDF in new tab
-              </a>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <a
+                  className="cursor-pointer text-primary text-sm underline underline-offset-2"
+                  href={proxiedPdfUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open PDF in new tab
+                </a>
+              </div>
+              <ExternalPreviewFrame
+                format="pdf"
+                heightClassName="h-[58vh] sm:h-[68vh] md:h-[75vh]"
+                src={proxiedPdfUrl}
+                title={`${job.title} PDF`}
+              />
             </div>
-            <ExternalPreviewFrame
-              heightClassName="h-[58vh] sm:h-[68vh] md:h-[75vh]"
-              src={pdfUrl}
-              title={`${job.title} PDF`}
-            />
           </CardContent>
         </Card>
       ) : null}
 
-      {sourcePreviewUrl ? (
+      {hasAnyFileLinks && sourcePreviewUrl ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Original source page</CardTitle>
-            <CardDescription>Preview the original listing URL captured by scraper.</CardDescription>
+            <CardDescription>Open the original listing in a new tab.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ExternalPreviewFrame
-              heightClassName="h-[56vh] sm:h-[64vh] md:h-[70vh]"
-              src={sourcePreviewUrl}
-              title={`${job.title} source page`}
-            />
+            <a
+              className="cursor-pointer break-all text-primary text-sm underline underline-offset-2"
+              href={sourcePreviewUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open source page in new tab
+            </a>
           </CardContent>
         </Card>
       ) : null}

@@ -287,12 +287,65 @@ function normalizeJobStatus(value: string | null | undefined): "active" | "inact
   return value === "inactive" ? "inactive" : "active";
 }
 
-function getJobPdfCacheState(job: { pdfCachedUrl: string | null; pdfSourceUrl: string | null }) {
+function isPdfUrl(url: string | null) {
+  if (!url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.toLowerCase();
+    return pathname.endsWith(".pdf") || pathname.includes(".pdf");
+  } catch {
+    return false;
+  }
+}
+
+function extractPdfUrlFromContent(content: string) {
+  const match = content.match(/PDF Source:\s*(https?:\/\/\S+)/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const candidate = match[1].replace(/[),.;]+$/g, "");
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolvePdfUrl(job: {
+  sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
+  content: string;
+}) {
+  if (isPdfUrl(job.pdfCachedUrl)) {
+    return job.pdfCachedUrl;
+  }
+  if (isPdfUrl(job.pdfSourceUrl)) {
+    return job.pdfSourceUrl;
+  }
+  if (isPdfUrl(job.sourceUrl)) {
+    return job.sourceUrl;
+  }
+  return extractPdfUrlFromContent(job.content);
+}
+
+function getJobPdfCacheState(job: {
+  sourceUrl: string | null;
+  pdfCachedUrl: string | null;
+  pdfSourceUrl: string | null;
+  content: string;
+}) {
   if (job.pdfCachedUrl) {
     return "cached";
   }
   if (job.pdfSourceUrl) {
     return "external";
+  }
+  if (isPdfUrl(job.sourceUrl) || extractPdfUrlFromContent(job.content)) {
+    return "derived";
   }
   return "none";
 }
@@ -855,6 +908,8 @@ export default async function AdminJobsPage() {
 
   const renderLatestJobRow = (job: (typeof jobs)[number]) => {
     const pdfCacheState = getJobPdfCacheState(job);
+    const resolvedPdfUrl = resolvePdfUrl(job);
+    const proxiedPdfUrl = resolvedPdfUrl ? `/api/jobs/${job.id}/pdf` : null;
     const addedOnLabel = job.createdAt.toLocaleString("en-IN", {
       timeZone: scheduleSettings.timezone,
       day: "2-digit",
@@ -909,24 +964,14 @@ export default async function AdminJobsPage() {
                 Source
               </a>
             ) : null}
-            {job.pdfCachedUrl ? (
+            {proxiedPdfUrl ? (
               <a
                 className="text-primary underline"
-                href={job.pdfCachedUrl}
+                href={proxiedPdfUrl}
                 rel="noreferrer"
                 target="_blank"
               >
-                Cached PDF
-              </a>
-            ) : null}
-            {!job.pdfCachedUrl && job.pdfSourceUrl ? (
-              <a
-                className="text-primary underline"
-                href={job.pdfSourceUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Source PDF
+                PDF
               </a>
             ) : null}
           </div>
