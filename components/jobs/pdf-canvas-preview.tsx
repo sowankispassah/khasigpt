@@ -19,6 +19,7 @@ export function PdfCanvasPreview({
   maxPages = DEFAULT_MAX_PAGES,
 }: PdfCanvasPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
   const [state, setState] = useState<RenderState>("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [pagesRendered, setPagesRendered] = useState<number>(0);
@@ -32,6 +33,33 @@ export function PdfCanvasPreview({
   }, [maxPages]);
 
   useEffect(() => {
+    const container = mountRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updateWidth = () => {
+      const width = Math.floor(container.clientWidth);
+      if (Number.isFinite(width) && width > 0) {
+        setContainerWidth(width);
+      }
+    };
+
+    updateWidth();
+
+    const observer = new ResizeObserver(() => {
+      updateWidth();
+    });
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (containerWidth <= 0) {
+      return;
+    }
+
     let cancelled = false;
     let loadingTask: any = null;
     let pdfDocument: any = null;
@@ -78,7 +106,7 @@ export function PdfCanvasPreview({
           return;
         }
 
-        const containerWidth = Math.max(container.clientWidth, 360);
+        const effectiveWidth = Math.max(containerWidth, 1);
         const deviceScale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
         for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
@@ -88,7 +116,7 @@ export function PdfCanvasPreview({
 
           const page = await pdfDoc.getPage(pageNumber);
           const baseViewport = page.getViewport({ scale: 1 });
-          const fitScale = containerWidth / baseViewport.width;
+          const fitScale = effectiveWidth / baseViewport.width;
           const renderScale = Math.max(fitScale, 0.85);
           const cssViewport = page.getViewport({ scale: renderScale });
           const renderViewport = page.getViewport({
@@ -148,7 +176,7 @@ export function PdfCanvasPreview({
         // noop
       }
     };
-  }, [normalizedMaxPages, src]);
+  }, [containerWidth, normalizedMaxPages, src]);
 
   return (
     <div className="relative h-full w-full overflow-auto bg-muted/10 p-2 sm:p-3">
