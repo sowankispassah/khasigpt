@@ -1,5 +1,6 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { JobsInfiniteList } from "@/components/jobs/jobs-infinite-list";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function JobsModeListPanel({
 }: JobsModeListPanelProps) {
   const [draftFilters, setDraftFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
+  const [isMobileFiltersVisible, setIsMobileFiltersVisible] = useState(false);
 
   const companies = useMemo(
     () => Array.from(new Set(jobs.map((job) => job.company.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
@@ -85,7 +87,21 @@ export function JobsModeListPanel({
 
   return (
     <div className="space-y-3">
-      <Card>
+      <div className="flex justify-end md:hidden">
+        <Button
+          aria-expanded={isMobileFiltersVisible}
+          className="cursor-pointer"
+          onClick={() => setIsMobileFiltersVisible((current) => !current)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Search className="mr-1 h-4 w-4" />
+          {isMobileFiltersVisible ? "Hide filters" : "Filter jobs"}
+        </Button>
+      </div>
+
+      <Card className={isMobileFiltersVisible ? "block" : "hidden md:block"}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Filter jobs</CardTitle>
         </CardHeader>
