@@ -78,6 +78,7 @@ function PureMultimodalInput({
   studyQuestionReference,
   onClearStudyQuestionReference,
   onJumpToQuestionPaper,
+  onBeforeSubmit,
   onGenerateImage,
   onToggleImageMode,
   documentUploadsEnabled,
@@ -106,6 +107,7 @@ function PureMultimodalInput({
   studyQuestionReference?: StudyQuestionReference | null;
   onClearStudyQuestionReference?: () => void;
   onJumpToQuestionPaper?: (paperId: string) => void;
+  onBeforeSubmit?: () => void;
   onGenerateImage: () => void;
   onToggleImageMode: () => void;
   documentUploadsEnabled: boolean;
@@ -203,6 +205,7 @@ function PureMultimodalInput({
 
   const submitForm = useCallback(() => {
     window.history.replaceState({}, "", `/chat/${chatId}`);
+    onBeforeSubmit?.();
 
     const parts: ChatMessage["parts"] = [
       ...attachments.map((attachment) => ({
@@ -246,6 +249,7 @@ function PureMultimodalInput({
     setAttachments,
     width,
     chatId,
+    onBeforeSubmit,
     onClearStudyQuestionReference,
     studyQuestionReference,
     resetHeight,

@@ -1082,6 +1082,13 @@ export function Chat({
     ]
   );
 
+  const handleSubmitScrollToBottom = useCallback(() => {
+    if (!isJobsMode) {
+      return;
+    }
+    void mutate("messages:should-scroll", "auto", { revalidate: false });
+  }, [isJobsMode, mutate]);
+
   useEffect(() => {
     setIconPromptSuggestions([]);
   }, []);
@@ -1352,6 +1359,7 @@ export function Chat({
                   setStudyQuestionReference(null)
                 }
                 onJumpToQuestionPaper={handleJumpToQuestionPaper}
+                onBeforeSubmit={handleSubmitScrollToBottom}
                 sendMessage={sendMessage}
                 setAttachments={setAttachments}
                 setInput={setInput}
