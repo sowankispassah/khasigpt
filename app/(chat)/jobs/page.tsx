@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
-import { type JobListItem } from "@/components/jobs/jobs-infinite-list";
-import { JobsPageContent } from "@/components/jobs/jobs-page-content";
+import { JobsInfiniteList } from "@/components/jobs/jobs-infinite-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { listJobPostings } from "@/lib/jobs/service";
+import { type JobListItem } from "@/lib/jobs/types";
 
 export const dynamic = "force-dynamic";
 
@@ -236,7 +236,7 @@ export default async function JobsPage({
   ).sort((a, b) => a.localeCompare(b));
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
       <div className="flex items-center justify-between gap-2">
         <Button asChild className="cursor-pointer" size="sm" variant="ghost">
           <Link href="/">Back to home</Link>
@@ -311,7 +311,7 @@ export default async function JobsPage({
         </CardContent>
       </Card>
 
-      <JobsPageContent jobs={filteredJobCards} />
+      <JobsInfiniteList jobs={filteredJobCards} />
     </div>
   );
 }

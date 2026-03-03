@@ -5,22 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoaderIcon } from "@/components/icons";
+import type { JobListItem } from "@/lib/jobs/types";
 
 const JOBS_PAGE_SIZE = 10;
-
-export type JobListItem = {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  employmentType: string;
-  salaryLabel: string;
-  deadlineLabel: string;
-  notificationDateLabel: string;
-  sourceLabel: string;
-  descriptionSnippet: string;
-  hasPdfFile: boolean;
-};
 
 export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
   const [visibleCount, setVisibleCount] = useState(Math.min(JOBS_PAGE_SIZE, jobs.length));

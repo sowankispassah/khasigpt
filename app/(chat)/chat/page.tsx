@@ -14,7 +14,9 @@ import {
 import { getAppSetting, listLanguagesWithSettings } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { toJobListItems } from "@/lib/jobs/list-items";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { getJobPostingById, listJobPostings, toJobCard } from "@/lib/jobs/service";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -174,14 +176,33 @@ export default async function Page({
   if (isJobsMode && !jobsModeEnabled) {
     notFound();
   }
-  if (isJobsMode) {
-    const redirectTarget = requestedJobId
-      ? `/jobs?jobId=${encodeURIComponent(requestedJobId)}`
-      : "/jobs";
-    redirect(redirectTarget);
-  }
-
-  const chatMode = isStudyMode ? "study" : "default";
+  const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
+  const initialJobEntry =
+    chatMode === "jobs" && requestedJobId
+      ? await withTimeout(
+          getJobPostingById({
+            id: requestedJobId,
+            includeInactive: false,
+          }),
+          CHAT_HOME_QUERY_TIMEOUT_MS
+        ).catch((error) => {
+          console.error("[chat/home] job lookup timed out or failed.", error);
+          return null;
+        })
+      : null;
+  const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
+  const jobsListItems =
+    chatMode === "jobs"
+      ? await withTimeout(
+          listJobPostings({ includeInactive: false }),
+          CHAT_HOME_QUERY_TIMEOUT_MS
+        )
+          .then((jobs) => toJobListItems(jobs))
+          .catch((error) => {
+            console.error("[chat/home] jobs listing query timed out or failed.", error);
+            return [];
+          })
+      : [];
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)
     .map((language) => ({
@@ -216,6 +237,8 @@ export default async function Page({
         documentUploadsEnabled={documentUploadsEnabled}
         initialChatLanguage={initialChatLanguage}
         initialChatModel={fallbackModelId}
+        initialJobContext={initialJobContext}
+        jobsListItems={jobsListItems}
         initialMessages={[]}
         initialHasMoreHistory={false}
         initialOldestMessageAt={null}

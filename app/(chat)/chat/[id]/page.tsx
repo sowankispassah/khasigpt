@@ -24,7 +24,9 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { toJobListItems } from "@/lib/jobs/list-items";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { listJobPostings } from "@/lib/jobs/service";
 import { getSiteUrl } from "@/lib/seo/site";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -182,6 +184,25 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   if (chatMode === "jobs" && !jobsModeEnabled) {
     return notFound();
   }
+  const jobsListItems =
+    chatMode === "jobs"
+      ? await withTimeout(
+          listJobPostings({ includeInactive: false }),
+          CHAT_PAGE_LOAD_TIMEOUT_MS,
+          () => {
+            console.warn(
+              `[chat] listJobPostings timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`
+            );
+          }
+        )
+          .then((jobs) => toJobListItems(jobs))
+          .catch((error) => {
+            if (!isTimeoutError(error)) {
+              console.error("[chat] Failed to load jobs list for jobs mode", error);
+            }
+            return [];
+          })
+      : [];
 
   const { messages: messagesFromDb, hasMore: hasMoreMessages } =
     await withTimeout(
@@ -260,6 +281,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         documentUploadsEnabled={documentUploadsEnabled}
         initialChatLanguage={initialChatLanguage}
         initialChatModel={fallbackModelId}
+        jobsListItems={jobsListItems}
         initialMessages={uiMessages}
         initialHasMoreHistory={hasMoreMessages}
         initialOldestMessageAt={oldestMessageAt}

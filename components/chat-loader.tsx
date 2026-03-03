@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
+import type { JobListItem } from "@/lib/jobs/types";
 import type { ChatMessage } from "@/lib/types";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import type { VisibilityType } from "./visibility-selector";
@@ -32,6 +33,7 @@ type ChatLoaderProps = {
   initialChatModel: string;
   initialChatLanguage: string;
   initialJobContext?: JobCard | null;
+  jobsListItems?: JobListItem[];
   initialVisibilityType: VisibilityType;
   chatMode: "default" | "study" | "jobs";
   languageSettings?: LanguageOption[];

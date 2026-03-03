@@ -15,6 +15,7 @@ import {
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
+import { JobsModeListPanel } from "@/components/jobs/jobs-mode-list-panel";
 import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
@@ -44,6 +45,7 @@ import type {
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
+import type { JobListItem } from "@/lib/jobs/types";
 import {
   getStudyContextForChat,
   setStudyContextForChat,
@@ -82,6 +84,7 @@ export function Chat({
   initialChatModel,
   initialChatLanguage,
   initialJobContext = null,
+  jobsListItems = [],
   initialVisibilityType,
   chatMode,
   languageSettings,
@@ -100,6 +103,7 @@ export function Chat({
   initialChatModel: string;
   initialChatLanguage: string;
   initialJobContext?: JobCard | null;
+  jobsListItems?: JobListItem[];
   initialVisibilityType: VisibilityType;
   chatMode: "default" | "study" | "jobs";
   languageSettings?: LanguageOption[];
@@ -1232,6 +1236,7 @@ export function Chat({
           </Button>
         </div>
       ) : null}
+      <JobsModeListPanel jobs={jobsListItems} />
     </div>
   ) : null;
   const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;

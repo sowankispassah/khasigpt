@@ -63,6 +63,20 @@ export type JobCard = {
   pdfCachedUrl: string | null;
 };
 
+export type JobListItem = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  employmentType: string;
+  salaryLabel: string;
+  deadlineLabel: string;
+  notificationDateLabel: string;
+  sourceLabel: string;
+  descriptionSnippet: string;
+  hasPdfFile: boolean;
+};
+
 export type JobStudyLinkResult = {
   papers: QuestionPaperRecord[];
   source: "exact" | "exam_role" | "tags" | "none";
