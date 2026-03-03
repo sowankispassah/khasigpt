@@ -336,7 +336,7 @@ function PureMessages({
   if (messages.length === 0) {
     return (
       <div
-        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         ref={messagesContainerRef}
         style={{ overflowAnchor: "none" }}
       >
@@ -378,7 +378,7 @@ function PureMessages({
 
   return (
     <div
-      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       ref={messagesContainerRef}
       style={{ overflowAnchor: "none" }}
     >
