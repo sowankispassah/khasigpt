@@ -104,6 +104,7 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
 
       {hasMoreJobs ? (
         <div className="flex flex-col items-center justify-center gap-2 py-4">
+          <p className="text-center text-muted-foreground text-xs">Ask in the chat box</p>
           <Button
             className="cursor-pointer"
             disabled={isLoadingMore}
