@@ -146,6 +146,7 @@ export function Chat({
     ? translate("greeting.study.subtitle", "What would you like to study today?")
     : undefined;
   const [input, setInput] = useState<string>("");
+  const [jobsSubmitScrollSignal, setJobsSubmitScrollSignal] = useState(0);
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
@@ -1086,8 +1087,12 @@ export function Chat({
     if (!isJobsMode) {
       return;
     }
+    setJobsSubmitScrollSignal((current) => current + 1);
     void mutate("messages:should-scroll", "auto", { revalidate: false });
   }, [isJobsMode, mutate]);
+
+  const pauseJobsAutoLoad =
+    isJobsMode && status !== "ready" && status !== "error" && !isGeneratingImage;
 
   useEffect(() => {
     setIconPromptSuggestions([]);
@@ -1241,7 +1246,7 @@ export function Chat({
           </Button>
         </div>
       ) : null}
-      <JobsModeListPanel jobs={jobsListItems} />
+      <JobsModeListPanel jobs={jobsListItems} pauseAutoLoad={pauseJobsAutoLoad} />
     </div>
   ) : null;
   const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
@@ -1290,6 +1295,7 @@ export function Chat({
           chatId={id}
           key={id}
           enableGenerationAutoFollow={isJobsMode}
+          submitScrollSignal={jobsSubmitScrollSignal}
           greetingSubtitle={greetingSubtitle}
           showGreeting={!isJobsMode}
           hasMoreHistory={hasMoreHistory}

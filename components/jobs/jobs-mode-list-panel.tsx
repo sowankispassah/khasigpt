@@ -8,6 +8,7 @@ import type { JobListItem } from "@/lib/jobs/types";
 
 type JobsModeListPanelProps = {
   jobs: JobListItem[];
+  pauseAutoLoad?: boolean;
 };
 
 type JobsLocalFilters = {
@@ -26,7 +27,10 @@ const EMPTY_FILTERS: JobsLocalFilters = {
 
 const normalizeFilter = (value: string) => value.trim().toLowerCase();
 
-export function JobsModeListPanel({ jobs }: JobsModeListPanelProps) {
+export function JobsModeListPanel({
+  jobs,
+  pauseAutoLoad = false,
+}: JobsModeListPanelProps) {
   const [draftFilters, setDraftFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
 
@@ -163,7 +167,7 @@ export function JobsModeListPanel({ jobs }: JobsModeListPanelProps) {
         </CardContent>
       </Card>
 
-      <JobsInfiniteList jobs={filteredJobs} />
+      <JobsInfiniteList jobs={filteredJobs} pauseAutoLoad={pauseAutoLoad} />
     </div>
   );
 }

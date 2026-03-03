@@ -9,7 +9,13 @@ import type { JobListItem } from "@/lib/jobs/types";
 
 const JOBS_PAGE_SIZE = 10;
 
-export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
+export function JobsInfiniteList({
+  jobs,
+  pauseAutoLoad = false,
+}: {
+  jobs: JobListItem[];
+  pauseAutoLoad?: boolean;
+}) {
   const [visibleCount, setVisibleCount] = useState(Math.min(JOBS_PAGE_SIZE, jobs.length));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -23,7 +29,7 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
   const hasMoreJobs = visibleCount < jobs.length;
 
   useEffect(() => {
-    if (!hasMoreJobs) {
+    if (!hasMoreJobs || pauseAutoLoad) {
       return;
     }
 
@@ -48,7 +54,14 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
 
     observer.observe(sentinelNode);
     return () => observer.disconnect();
-  }, [hasMoreJobs, isLoadingMore, jobs.length]);
+  }, [hasMoreJobs, isLoadingMore, jobs.length, pauseAutoLoad]);
+
+  useEffect(() => {
+    if (!pauseAutoLoad) {
+      return;
+    }
+    setIsLoadingMore(false);
+  }, [pauseAutoLoad]);
 
   useEffect(() => {
     if (!isLoadingMore) {
@@ -129,7 +142,9 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
         <div className="flex flex-col items-center justify-center gap-2 py-4">
           <div aria-hidden className="h-px w-full" ref={sentinelRef} />
           <span className="flex items-center gap-2 text-muted-foreground text-xs">
-            {isLoadingMore ? (
+            {pauseAutoLoad ? (
+              "AI response in progress. Auto-load paused."
+            ) : isLoadingMore ? (
               <>
                 <span className="h-3.5 w-3.5 animate-spin">
                   <LoaderIcon size={14} />
