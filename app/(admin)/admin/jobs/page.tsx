@@ -1170,7 +1170,7 @@ export default async function AdminJobsPage() {
               </span>
             </p>
             <p>
-              Next due:{" "}
+              Next auto run at:{" "}
               <span className="font-medium text-foreground">
                 {formatMaybeDateTime(nextDueAt, scheduleSettings.timezone)}
               </span>
@@ -1228,6 +1228,14 @@ export default async function AdminJobsPage() {
       <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Scraping History">
           <p className="text-muted-foreground">
             Latest 50 scrape runs across auto schedule and manual runs.
+          </p>
+          <p className="text-muted-foreground text-xs">
+            Next auto run at:{" "}
+            <span className="font-medium text-foreground">
+              {scheduleSettings.enabled
+                ? formatMaybeDateTime(nextDueAt, scheduleSettings.timezone)
+                : "Auto scrape disabled"}
+            </span>
           </p>
           {scrapeHistory.length === 0 ? (
             <p className="text-muted-foreground text-sm">

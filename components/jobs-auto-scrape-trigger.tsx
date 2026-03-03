@@ -5,11 +5,18 @@ import { useEffect } from "react";
 const AUTO_TRIGGER_ENDPOINT = "/api/jobs/auto-trigger";
 const AUTO_TRIGGER_LAST_RUN_KEY = "jobs:auto-trigger:last-run-at";
 const AUTO_TRIGGER_LAST_RESPONSE_KEY = "jobs:auto-trigger:last-response";
+const AUTO_TRIGGER_NEXT_DUE_AT_KEY = "jobs:auto-trigger:next-due-at";
 export const JOBS_AUTO_TRIGGER_RESPONSE_EVENT = "jobs:auto-trigger-response";
-const AUTO_TRIGGER_MIN_INTERVAL_MS = 90_000;
+const AUTO_TRIGGER_MIN_INTERVAL_MS = 10 * 60 * 1000;
 
 function shouldRunAutoTriggerNow() {
   try {
+    const nextDueAtRaw = window.localStorage.getItem(AUTO_TRIGGER_NEXT_DUE_AT_KEY);
+    const nextDueAt = nextDueAtRaw ? Date.parse(nextDueAtRaw) : Number.NaN;
+    if (Number.isFinite(nextDueAt) && Date.now() < nextDueAt) {
+      return false;
+    }
+
     const raw = window.sessionStorage.getItem(AUTO_TRIGGER_LAST_RUN_KEY);
     const lastRunAt = raw ? Number.parseInt(raw, 10) : Number.NaN;
     if (!Number.isFinite(lastRunAt)) {
@@ -38,11 +45,20 @@ type AutoTriggerResponseSnapshot = {
   ok: boolean;
   accepted: boolean;
   skipReason: string | null;
+  nextDueAt: string | null;
   message: string | null;
   error: string | null;
 };
 
 function persistAutoTriggerResponse(snapshot: AutoTriggerResponseSnapshot) {
+  try {
+    if (snapshot.nextDueAt) {
+      window.localStorage.setItem(AUTO_TRIGGER_NEXT_DUE_AT_KEY, snapshot.nextDueAt);
+    }
+  } catch {
+    // Ignore storage failures and continue without persisted next due marker.
+  }
+
   try {
     window.sessionStorage.setItem(
       AUTO_TRIGGER_LAST_RESPONSE_KEY,
@@ -79,13 +95,14 @@ export function JobsAutoScrapeTrigger() {
         });
 
         const payload = (await response.json().catch(() => null)) as
-          | {
-              ok?: boolean;
-              accepted?: boolean;
-              skipReason?: string | null;
-              message?: string | null;
-              error?: string | null;
-            }
+            | {
+                ok?: boolean;
+                accepted?: boolean;
+                skipReason?: string | null;
+                nextDueAt?: string | null;
+                message?: string | null;
+                error?: string | null;
+              }
           | null;
 
         persistAutoTriggerResponse({
@@ -95,6 +112,8 @@ export function JobsAutoScrapeTrigger() {
           accepted: payload?.accepted === true,
           skipReason:
             typeof payload?.skipReason === "string" ? payload.skipReason : null,
+          nextDueAt:
+            typeof payload?.nextDueAt === "string" ? payload.nextDueAt : null,
           message: typeof payload?.message === "string" ? payload.message : null,
           error: typeof payload?.error === "string" ? payload.error : null,
         });
@@ -105,6 +124,7 @@ export function JobsAutoScrapeTrigger() {
           ok: false,
           accepted: false,
           skipReason: null,
+          nextDueAt: null,
           message: null,
           error: error instanceof Error ? error.message : String(error),
         });

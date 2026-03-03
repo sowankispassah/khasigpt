@@ -577,26 +577,28 @@ export async function runJobsScrapeWithScheduling({
       message: effectiveSkipReason ?? "Skipped",
     });
 
-    await appendJobsScrapeHistory({
-      runId,
-      trigger,
-      status: "skipped",
-      startedAt: startedAt.toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      durationMs: summary.durationMs,
-      completionPercent: computeCompletionPercent({
+    if (persistSkips) {
+      await appendJobsScrapeHistory({
+        runId,
+        trigger,
         status: "skipped",
+        startedAt: startedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        durationMs: summary.durationMs,
+        completionPercent: computeCompletionPercent({
+          status: "skipped",
+          processedSources: 0,
+          totalSources: 0,
+        }),
         processedSources: 0,
         totalSources: 0,
-      }),
-      processedSources: 0,
-      totalSources: 0,
-      inserted: 0,
-      updated: 0,
-      skippedDuplicates: 0,
-      skipReason: effectiveSkipReason ?? null,
-      errorMessage: null,
-    });
+        inserted: 0,
+        updated: 0,
+        skippedDuplicates: 0,
+        skipReason: effectiveSkipReason ?? null,
+        errorMessage: null,
+      });
+    }
 
     return {
       ok: true,

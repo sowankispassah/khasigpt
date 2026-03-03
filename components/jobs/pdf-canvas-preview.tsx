@@ -106,7 +106,7 @@ export function PdfCanvasPreview({
           return;
         }
 
-        const effectiveWidth = Math.max(containerWidth, 1);
+        const effectiveWidth = containerWidth;
         const deviceScale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
         for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
@@ -117,15 +117,15 @@ export function PdfCanvasPreview({
           const page = await pdfDoc.getPage(pageNumber);
           const baseViewport = page.getViewport({ scale: 1 });
           const fitScale = effectiveWidth / baseViewport.width;
-          const renderScale = Math.max(fitScale, 0.85);
+          const renderScale = Math.max(fitScale, 0.1);
           const cssViewport = page.getViewport({ scale: renderScale });
           const renderViewport = page.getViewport({
             scale: renderScale * deviceScale,
           });
 
           const canvas = globalThis.document.createElement("canvas");
-          canvas.className = "mx-auto mb-3 block max-w-full rounded-md border bg-white shadow-sm";
-          canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+          canvas.className = "mb-3 block box-border w-full bg-white";
+          canvas.style.width = "100%";
           canvas.style.height = `${Math.floor(cssViewport.height)}px`;
           canvas.width = Math.max(1, Math.floor(renderViewport.width));
           canvas.height = Math.max(1, Math.floor(renderViewport.height));
@@ -179,7 +179,7 @@ export function PdfCanvasPreview({
   }, [containerWidth, normalizedMaxPages, src]);
 
   return (
-    <div className="relative h-full w-full overflow-auto bg-muted/10 p-2 sm:p-3">
+    <div className="relative h-full w-full overflow-y-auto overflow-x-hidden bg-muted/10">
       {state === "loading" ? (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/20">
           <span className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -210,7 +210,11 @@ export function PdfCanvasPreview({
         </div>
       ) : null}
 
-      <div aria-label={title} className="mx-auto w-full max-w-4xl" ref={mountRef} />
+      <div
+        aria-label={title}
+        className="w-full"
+        ref={mountRef}
+      />
 
       {state === "ready" && totalPages > pagesRendered ? (
         <div className="px-2 pb-2 text-center text-muted-foreground text-xs">

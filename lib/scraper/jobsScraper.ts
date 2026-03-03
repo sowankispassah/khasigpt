@@ -5,6 +5,7 @@ import {
   type JobSourceConfig,
   type JobSourceLocationScope,
 } from "@/config/jobSources";
+import { fetchSourceDetailMarkdown } from "@/lib/jobs/linkedin-detail";
 import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
@@ -16,6 +17,7 @@ const DEFAULT_MAX_ITEMS_PER_SOURCE = 200;
 const DEFAULT_MAX_PDF_ENRICHMENTS_PER_SOURCE = 5;
 const DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS = 6_000;
 const DEFAULT_FETCH_RETRY_ATTEMPTS = 2;
+const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
 const MAX_JOB_DESCRIPTION_CHARS = 12_000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -477,6 +479,179 @@ function isLinkedInHost(hostname: string) {
   return hostname === "linkedin.com" || hostname.endsWith(".linkedin.com");
 }
 
+function isProtectedSourceHost(hostname: string) {
+  return (
+    hostname === "indeed.com" ||
+    hostname.endsWith(".indeed.com") ||
+    hostname === "naukri.com" ||
+    hostname.endsWith(".naukri.com")
+  );
+}
+
+function isBrowserFallbackEnabled() {
+  const raw = process.env.JOBS_SCRAPE_BROWSER_FALLBACK_ENABLED?.trim().toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return !["0", "false", "no", "off", "disabled"].includes(raw);
+}
+
+function classifySourceFetchBlockReason(html: string, sourceUrl: string) {
+  const lowered = html.toLowerCase();
+  const host = hostnameFromUrl(sourceUrl);
+
+  const hasCloudflareChallenge =
+    lowered.includes("cloudflare") &&
+    (lowered.includes("security check") ||
+      lowered.includes("additional verification required") ||
+      lowered.includes("attention required"));
+  if (hasCloudflareChallenge) {
+    return `Source is blocked by Cloudflare challenge (${host || sourceUrl}).`;
+  }
+
+  const hasCaptcha =
+    lowered.includes("captcha") ||
+    lowered.includes("g-recaptcha") ||
+    lowered.includes("hcaptcha");
+  if (hasCaptcha) {
+    return `Source requires CAPTCHA verification and cannot be scraped directly (${host || sourceUrl}).`;
+  }
+
+  const hasAkamaiSignals =
+    (lowered.includes("/akam/") || lowered.includes("akamai")) &&
+    (lowered.includes("pixel_") || lowered.includes("bot"));
+  if (hasAkamaiSignals) {
+    return `Source appears protected by Akamai bot controls (${host || sourceUrl}).`;
+  }
+
+  const hasAccessDenied =
+    lowered.includes("access denied") ||
+    lowered.includes("request blocked") ||
+    lowered.includes("forbidden");
+  if (hasAccessDenied) {
+    return `Source returned an access-denied page (${host || sourceUrl}).`;
+  }
+
+  // Some sources return a client-rendered shell with no server-side job content.
+  if (
+    /_next\/static\/chunks|id=["']__next["']|data-reactroot/i.test(html) &&
+    !/<article\b|<li\b|job|vacanc|career|recruit/i.test(lowered)
+  ) {
+    return `Source returned a client-rendered shell without server-side job listings (${host || sourceUrl}).`;
+  }
+
+  return null;
+}
+
+async function fetchSourceHtmlWithBrowserFallback({
+  url,
+  timeoutMs,
+}: {
+  url: string;
+  timeoutMs: number;
+}): Promise<{
+  html: string | null;
+  errorMessage: string | null;
+}> {
+  let chromium: { launch: (options?: unknown) => Promise<unknown> } | null = null;
+  try {
+    const playwrightModule = (await import("@playwright/test")) as {
+      chromium: { launch: (options?: unknown) => Promise<unknown> };
+    };
+    chromium = playwrightModule.chromium;
+  } catch (error) {
+    return {
+      html: null,
+      errorMessage: `Browser fallback unavailable (Playwright import failed): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  const launchOptions: Record<string, unknown> = {
+    headless: true,
+  };
+  const proxyServer = process.env.JOBS_SCRAPE_BROWSER_PROXY_SERVER?.trim();
+  if (proxyServer) {
+    launchOptions.proxy = {
+      server: proxyServer,
+      username: process.env.JOBS_SCRAPE_BROWSER_PROXY_USERNAME?.trim() || undefined,
+      password: process.env.JOBS_SCRAPE_BROWSER_PROXY_PASSWORD?.trim() || undefined,
+    };
+  }
+
+  type BrowserLike = {
+    newContext: (options?: unknown) => Promise<{
+      newPage: () => Promise<{
+        setDefaultTimeout: (timeout: number) => void;
+        goto: (
+          targetUrl: string,
+          options?: unknown
+        ) => Promise<{ status: () => number } | null>;
+        waitForTimeout: (ms: number) => Promise<void>;
+        content: () => Promise<string>;
+      }>;
+      close: () => Promise<void>;
+    }>;
+    close: () => Promise<void>;
+  };
+
+  let browser: BrowserLike | null = null;
+
+  try {
+    browser = (await chromium.launch(launchOptions)) as BrowserLike;
+    if (!browser) {
+      throw new Error("Chromium launch returned no browser instance.");
+    }
+    const context = await browser.newContext({
+      userAgent: SCRAPER_USER_AGENT,
+      locale: "en-IN",
+    });
+    try {
+      const page = await context.newPage();
+      const effectiveTimeoutMs = Math.max(10_000, Math.min(timeoutMs, 90_000));
+      page.setDefaultTimeout(effectiveTimeoutMs);
+      const response = await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: effectiveTimeoutMs,
+      });
+      await page.waitForTimeout(2500);
+      const html = await page.content();
+      const status = response?.status() ?? 0;
+      if (status >= 400) {
+        return {
+          html: null,
+          errorMessage: `Browser fallback received HTTP ${status} while loading source.`,
+        };
+      }
+      const blockedReason = classifySourceFetchBlockReason(html, url);
+      if (blockedReason) {
+        return {
+          html: null,
+          errorMessage: `${blockedReason} (browser fallback)`,
+        };
+      }
+      return {
+        html,
+        errorMessage: null,
+      };
+    } finally {
+      await context.close().catch(() => undefined);
+    }
+  } catch (error) {
+    return {
+      html: null,
+      errorMessage: `Browser fallback failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  } finally {
+    if (browser) {
+      await browser.close().catch(() => undefined);
+    }
+  }
+}
+
 function isGovernmentHost(hostname: string) {
   return hostname.endsWith(".gov.in") || hostname.endsWith(".gov");
 }
@@ -651,6 +826,8 @@ async function fetchSourceHtmlWithRetry({
 }) {
   let lastError: unknown = null;
   const attempts = Math.max(1, retryAttempts);
+  const sourceHost = hostnameFromUrl(url);
+  const canTryBrowserFallback = isBrowserFallbackEnabled() && isProtectedSourceHost(sourceHost);
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -666,10 +843,29 @@ async function fetchSourceHtmlWithRetry({
       );
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} while fetching source.`);
+        const status = response.status;
+        const host = hostnameFromUrl(url);
+        const blockedStatus = status === 401 || status === 403 || status === 429;
+        if (blockedStatus) {
+          throw new Error(
+            `HTTP ${status} while fetching source (${host || url}); likely blocked by source protection/rate limit.`
+          );
+        }
+        throw new Error(`HTTP ${status} while fetching source.`);
+      }
+      const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+      if (!contentType.includes("text/html")) {
+        throw new Error(
+          `Unexpected content-type "${contentType || "unknown"}" while fetching source.`
+        );
+      }
+      const html = await response.text();
+      const blockedReason = classifySourceFetchBlockReason(html, url);
+      if (blockedReason) {
+        throw new Error(blockedReason);
       }
 
-      return await response.text();
+      return html;
     } catch (error) {
       lastError = error;
       const retrying = attempt < attempts && isRetryableFetchError(error);
@@ -684,6 +880,26 @@ async function fetchSourceHtmlWithRetry({
       }
       await sleep(250 * attempt);
     }
+  }
+
+  if (canTryBrowserFallback) {
+    const browserFallback = await fetchSourceHtmlWithBrowserFallback({
+      url,
+      timeoutMs,
+    });
+    if (browserFallback.html) {
+      console.info("[jobs-scraper] source_fetch_browser_fallback_success", {
+        url,
+      });
+      return browserFallback.html;
+    }
+    const fallbackErrorMessage =
+      browserFallback.errorMessage || "Browser fallback failed for unknown reason.";
+    throw new Error(
+      `${
+        lastError instanceof Error ? lastError.message : String(lastError)
+      } ${fallbackErrorMessage}`.trim()
+    );
   }
 
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
@@ -1197,6 +1413,7 @@ async function scrapeSource(
     const jobs: NewJobRow[] = [];
     const limit = Math.min(containers.length, maxItemsPerSource);
     let pdfDetailsUsed = 0;
+    const sourceDetailCache = new Map<string, string | null>();
 
     for (let index = 0; index < limit; index += 1) {
       const container = containers.eq(index);
@@ -1268,11 +1485,31 @@ async function scrapeSource(
         continue;
       }
 
-      const fallbackDescription = (rawDescription || fallbackText).slice(
+      let baseDescription = (rawDescription || fallbackText).slice(
         0,
         MAX_JOB_DESCRIPTION_CHARS
       );
-      let description = fallbackDescription;
+      const baseDescriptionLength = normalizeWhitespace(baseDescription).length;
+      if (!isPdfUrl(sourceUrl) && baseDescriptionLength < MIN_SOURCE_DETAIL_FETCH_CHARS) {
+        let sourceDetailText: string | null = null;
+        if (sourceDetailCache.has(sourceUrl)) {
+          sourceDetailText = sourceDetailCache.get(sourceUrl) ?? null;
+        } else {
+          sourceDetailText = await fetchSourceDetailMarkdown(sourceUrl, {
+            timeoutMs,
+          });
+          sourceDetailCache.set(sourceUrl, sourceDetailText);
+        }
+
+        if (sourceDetailText) {
+          baseDescription = mergeDescriptionText(
+            baseDescription,
+            sourceDetailText
+          ).slice(0, MAX_JOB_DESCRIPTION_CHARS);
+        }
+      }
+
+      let description = baseDescription;
       let pdfSourceUrl: string | null = isPdfUrl(sourceUrl) ? sourceUrl : null;
       let pdfCachedUrl: string | null = null;
       if (pdfSourceUrl) {
@@ -1286,7 +1523,7 @@ async function scrapeSource(
       const enriched = await enrichDescriptionFromPdf({
         sourcePageUrl: source.url,
         sourceUrl,
-        fallbackDescription,
+        fallbackDescription: baseDescription,
         timeoutMs,
         maxPdfTextChars: maxPdfExtractChars,
         pdfUrlCache,

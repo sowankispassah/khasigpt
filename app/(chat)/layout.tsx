@@ -129,7 +129,7 @@ export default async function Layout({
     >
       {session ? (
         <SidebarProvider defaultOpen={defaultSidebarOpen}>
-          <JobsAutoScrapeTrigger />
+          {jobsModeEnabled ? <JobsAutoScrapeTrigger /> : null}
           <ChatPreloader />
           <AppSidebar
             calculatorEnabled={calculatorEnabled}

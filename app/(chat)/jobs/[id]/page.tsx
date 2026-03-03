@@ -1,16 +1,28 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
+import { Response } from "@/components/elements/response";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { fetchSourceDetailMarkdown } from "@/lib/jobs/linkedin-detail";
 import { getJobPostingById } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
+const SOURCE_DETAIL_MIN_CHARS = 700;
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function markdownToPlainText(value: string) {
+  return compactText(
+    value
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+      .replace(/[#>*`_~|-]/g, " ")
+  );
 }
 
 function formatDateLabel(value: Date) {
@@ -152,16 +164,30 @@ export default async function JobPostingDetailPage(props: {
     notFound();
   }
 
-  const salaryLabel = extractSalaryLabel(job.content);
+  let detailMarkdown = job.content.trim();
+  if (job.sourceUrl && !isPdfUrl(job.sourceUrl)) {
+    const currentLength = markdownToPlainText(detailMarkdown).length;
+    const sourceDetail = await fetchSourceDetailMarkdown(job.sourceUrl, {
+      timeoutMs: 12_000,
+    });
+    const sourceDetailLength = sourceDetail ? markdownToPlainText(sourceDetail).length : 0;
+    if (sourceDetail && sourceDetailLength >= Math.max(SOURCE_DETAIL_MIN_CHARS, currentLength + 80)) {
+      detailMarkdown = sourceDetail;
+    }
+  }
+
+  const detailTextForMeta = markdownToPlainText(detailMarkdown);
+
+  const salaryLabel = extractSalaryLabel(detailTextForMeta);
   const deadlineLabel =
     extractDateByKeywordLabel({
-      rawDescription: job.content,
+      rawDescription: detailTextForMeta,
       keywordPattern:
         /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
     }) ?? "Not specified";
   const notificationDateLabel =
     extractDateByKeywordLabel({
-      rawDescription: job.content,
+      rawDescription: detailTextForMeta,
       keywordPattern:
         /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
     }) ?? formatDateLabel(job.createdAt);
@@ -175,6 +201,7 @@ export default async function JobPostingDetailPage(props: {
   const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
   const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
+  const showDescriptionText = !proxiedPdfUrl && detailTextForMeta.length > 0;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
@@ -216,9 +243,7 @@ export default async function JobPostingDetailPage(props: {
 
           <div className="flex flex-wrap gap-2">
             <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
-              <Link href={`/chat?mode=jobs&new=1&jobId=${job.id}`}>
-                Ask about this job
-              </Link>
+              <Link href={`/chat?mode=jobs&new=1&jobId=${job.id}`}>Ask about this job</Link>
             </Button>
             {job.sourceUrl ? (
               <Button
@@ -248,14 +273,28 @@ export default async function JobPostingDetailPage(props: {
         </CardContent>
       </Card>
 
-      {proxiedPdfUrl ? (
+      {showDescriptionText ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">About the job</CardTitle>
+            <CardDescription>Detailed description extracted from the source listing.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
+            <Response className="prose prose-zinc max-w-none text-sm leading-relaxed [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_li]:my-1 [&_ol]:pl-5 [&_p]:my-3 [&_ul]:pl-5">
+              {detailMarkdown}
+            </Response>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {proxiedPdfUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Relevant file</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-0 pb-0">
             <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-6">
                 <a
                   className="cursor-pointer text-primary text-sm underline underline-offset-2"
                   href={proxiedPdfUrl}
@@ -267,7 +306,7 @@ export default async function JobPostingDetailPage(props: {
               </div>
               <ExternalPreviewFrame
                 format="pdf"
-                heightClassName="h-[58vh] sm:h-[68vh] md:h-[75vh]"
+                heightClassName="h-[75vh]"
                 src={proxiedPdfUrl}
                 title={`${job.title} PDF`}
               />
