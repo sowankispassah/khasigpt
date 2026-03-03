@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { FileText } from "lucide-react";
 import { auth } from "@/app/(auth)/auth";
-import { JobsAutoLoadMore } from "@/components/jobs/jobs-auto-load-more";
-import { ViewDetailsButton } from "@/components/jobs/view-details-button";
+import { JobsInfiniteList, type JobListItem } from "@/components/jobs/jobs-infinite-list";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { listJobPostings } from "@/lib/jobs/service";
 
@@ -16,10 +14,7 @@ type JobsPageSearchParams = {
   company?: string;
   location?: string;
   employmentType?: string;
-  page?: string;
 };
-
-const JOBS_PAGE_SIZE = 10;
 
 const normalizeFilter = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
 
@@ -143,45 +138,6 @@ function hasJobPdfFile(job: {
   );
 }
 
-function parsePageNumber(value: string | undefined) {
-  const parsed = Number.parseInt((value ?? "").trim(), 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1;
-  }
-  return parsed;
-}
-
-function buildLoadMoreHref({
-  params,
-  nextPage,
-}: {
-  params: JobsPageSearchParams | undefined;
-  nextPage: number;
-}) {
-  const query = new URLSearchParams();
-  const q = params?.q?.trim() ?? "";
-  const company = params?.company?.trim() ?? "";
-  const location = params?.location?.trim() ?? "";
-  const employmentType = params?.employmentType?.trim() ?? "";
-
-  if (q) {
-    query.set("q", q);
-  }
-  if (company) {
-    query.set("company", company);
-  }
-  if (location) {
-    query.set("location", location);
-  }
-  if (employmentType) {
-    query.set("employmentType", employmentType);
-  }
-  query.set("page", String(nextPage));
-
-  const encoded = query.toString();
-  return encoded ? `/jobs?${encoded}` : "/jobs";
-}
-
 export default async function JobsPage({
   searchParams,
 }: {
@@ -203,7 +159,6 @@ export default async function JobsPage({
   const companyFilter = normalizeFilter(resolvedSearchParams?.company);
   const locationFilter = normalizeFilter(resolvedSearchParams?.location);
   const employmentTypeFilter = normalizeFilter(resolvedSearchParams?.employmentType);
-  const currentPage = parsePageNumber(resolvedSearchParams?.page);
 
   const jobs = await listJobPostings({ includeInactive: false });
   const filteredJobs = jobs.filter((job) => {
@@ -245,13 +200,29 @@ export default async function JobsPage({
 
     return haystack.includes(qFilter);
   });
-  const visibleJobsCount = Math.min(filteredJobs.length, currentPage * JOBS_PAGE_SIZE);
-  const visibleJobs = filteredJobs.slice(0, visibleJobsCount);
-  const hasMoreJobs = visibleJobsCount < filteredJobs.length;
-  const loadMoreHref = buildLoadMoreHref({
-    params: resolvedSearchParams,
-    nextPage: currentPage + 1,
-  });
+  const filteredJobCards: JobListItem[] = filteredJobs.map((job) => ({
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    employmentType: job.employmentType,
+    salaryLabel: extractSalaryLabel(job.content),
+    deadlineLabel:
+      extractDateByKeywordLabel({
+        rawDescription: job.content,
+        keywordPattern:
+          /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
+      }) ?? "Not specified",
+    notificationDateLabel:
+      extractDateByKeywordLabel({
+        rawDescription: job.content,
+        keywordPattern:
+          /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
+      }) ?? formatDateLabel(job.createdAt),
+    sourceLabel: getSourceHostLabel(job.sourceUrl),
+    descriptionSnippet: buildDescriptionSnippet(job.content),
+    hasPdfFile: hasJobPdfFile(job),
+  }));
 
   const companies = Array.from(
     new Set(jobs.map((job) => job.company.trim()).filter(Boolean))
@@ -339,96 +310,7 @@ export default async function JobsPage({
         </CardContent>
       </Card>
 
-      <div className="text-muted-foreground text-sm">
-        Showing {visibleJobs.length} of {filteredJobs.length} job
-        {filteredJobs.length === 1 ? "" : "s"}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {filteredJobs.length === 0 ? (
-          <Card className="md:col-span-2">
-            <CardContent className="py-8 text-center text-muted-foreground text-sm">
-              No jobs match the current filters.
-            </CardContent>
-          </Card>
-        ) : (
-          visibleJobs.map((job) => {
-            const salaryLabel = extractSalaryLabel(job.content);
-            const deadlineLabel =
-              extractDateByKeywordLabel({
-                rawDescription: job.content,
-                keywordPattern:
-                  /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
-              }) ?? "Not specified";
-            const notificationDateLabel =
-              extractDateByKeywordLabel({
-                rawDescription: job.content,
-                keywordPattern:
-                  /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
-              }) ?? formatDateLabel(job.createdAt);
-            const sourceLabel = getSourceHostLabel(job.sourceUrl);
-            const descriptionSnippet = buildDescriptionSnippet(job.content);
-            const hasPdfFile = hasJobPdfFile(job);
-
-            return (
-              <Card className="min-w-0 border-border/60" key={job.id}>
-                <CardHeader className="space-y-1 pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="line-clamp-2 text-base">{job.title}</CardTitle>
-                    {hasPdfFile ? (
-                      <span
-                        aria-label="PDF available"
-                        className="shrink-0 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-1 text-emerald-700"
-                        title="PDF file available"
-                      >
-                        <FileText className="h-3.5 w-3.5" />
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="break-words text-muted-foreground text-sm">{job.company}</p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="line-clamp-3 break-words text-muted-foreground text-sm">
-                    {descriptionSnippet}
-                  </p>
-
-                  <div className="grid grid-cols-1 gap-x-3 gap-y-1 text-[13px] sm:grid-cols-2 sm:text-xs">
-                    <p className="break-words">
-                      <span className="font-medium text-foreground">Location:</span>{" "}
-                      {job.location}
-                    </p>
-                    <p className="break-words">
-                      <span className="font-medium text-foreground">Type:</span>{" "}
-                      {job.employmentType}
-                    </p>
-                    <p className="break-words">
-                      <span className="font-medium text-foreground">Salary:</span>{" "}
-                      {salaryLabel}
-                    </p>
-                    <p className="break-words">
-                      <span className="font-medium text-foreground">Deadline:</span>{" "}
-                      {deadlineLabel}
-                    </p>
-                    <p className="break-words">
-                      <span className="font-medium text-foreground">Notification:</span>{" "}
-                      {notificationDateLabel}
-                    </p>
-                    <p className="break-words">
-                      <span className="font-medium text-foreground">Source:</span>{" "}
-                      {sourceLabel}
-                    </p>
-                  </div>
-                </CardContent>
-                <CardFooter className="justify-end pt-0">
-                  <ViewDetailsButton href={`/jobs/${job.id}`} />
-                </CardFooter>
-              </Card>
-            );
-          })
-        )}
-      </div>
-
-      <JobsAutoLoadMore enabled={hasMoreJobs} href={loadMoreHref} />
+      <JobsInfiniteList jobs={filteredJobCards} />
     </div>
   );
 }
