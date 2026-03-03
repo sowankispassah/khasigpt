@@ -1330,7 +1330,7 @@ export function Chat({
           {isReadonly ? null : isJobsMode && !isJobsComposerVisible ? (
             <div className="flex w-full justify-end">
               <Button
-                className="cursor-pointer"
+                className="h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted"
                 onClick={() => setIsJobsComposerVisible(true)}
                 size="sm"
                 type="button"
@@ -1342,17 +1342,15 @@ export function Chat({
           ) : (
             <div className="flex w-full flex-col gap-2">
               {isJobsMode ? (
-                <div className="flex justify-end">
-                  <Button
-                    className="cursor-pointer"
-                    onClick={() => setIsJobsComposerVisible(false)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    Hide
-                  </Button>
-                </div>
+                <Button
+                  className="h-8 w-fit self-end cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted"
+                  onClick={() => setIsJobsComposerVisible(false)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Hide
+                </Button>
               ) : null}
               {iconPromptSuggestions.length > 0 ? (
                 <div className="rounded-lg bg-background p-2">
