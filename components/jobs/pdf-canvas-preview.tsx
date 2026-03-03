@@ -9,14 +9,12 @@ type PdfCanvasPreviewProps = {
   maxPages?: number;
 };
 
-const DEFAULT_MAX_PAGES = 6;
-
 type RenderState = "loading" | "ready" | "error";
 
 export function PdfCanvasPreview({
   src,
   title,
-  maxPages = DEFAULT_MAX_PAGES,
+  maxPages,
 }: PdfCanvasPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
@@ -25,11 +23,11 @@ export function PdfCanvasPreview({
   const [pagesRendered, setPagesRendered] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(0);
 
-  const normalizedMaxPages = useMemo(() => {
-    if (!Number.isFinite(maxPages) || maxPages <= 0) {
-      return DEFAULT_MAX_PAGES;
+  const normalizedMaxPages = useMemo<number | null>(() => {
+    if (!Number.isFinite(maxPages) || (maxPages ?? 0) <= 0) {
+      return null;
     }
-    return Math.max(1, Math.trunc(maxPages));
+    return Math.max(1, Math.trunc(maxPages ?? 0));
   }, [maxPages]);
 
   useEffect(() => {
@@ -100,7 +98,10 @@ export function PdfCanvasPreview({
         const pageCount = Math.max(0, Number(pdfDoc.numPages) || 0);
         setTotalPages(pageCount);
 
-        const pagesToRender = Math.min(pageCount, normalizedMaxPages);
+        const pagesToRender =
+          normalizedMaxPages === null
+            ? pageCount
+            : Math.min(pageCount, normalizedMaxPages);
         const container = mountRef.current;
         if (!container) {
           return;
@@ -179,7 +180,7 @@ export function PdfCanvasPreview({
   }, [containerWidth, normalizedMaxPages, src]);
 
   return (
-    <div className="relative h-full w-full overflow-y-auto overflow-x-hidden bg-muted/10">
+    <div className="relative min-h-[220px] w-full bg-muted/10">
       {state === "loading" ? (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/20">
           <span className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -216,7 +217,9 @@ export function PdfCanvasPreview({
         ref={mountRef}
       />
 
-      {state === "ready" && totalPages > pagesRendered ? (
+      {state === "ready" &&
+      normalizedMaxPages !== null &&
+      totalPages > pagesRendered ? (
         <div className="px-2 pb-2 text-center text-muted-foreground text-xs">
           Showing first {pagesRendered} of {totalPages} pages.
         </div>

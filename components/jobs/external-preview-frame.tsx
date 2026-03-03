@@ -7,7 +7,7 @@ import { PdfCanvasPreview } from "@/components/jobs/pdf-canvas-preview";
 type ExternalPreviewFrameProps = {
   src: string;
   title: string;
-  heightClassName: string;
+  heightClassName?: string;
   format?: "html" | "pdf";
 };
 
@@ -16,12 +16,12 @@ const PREVIEW_LOAD_TIMEOUT_MS = 12000;
 export function ExternalPreviewFrame({
   src,
   title,
-  heightClassName,
+  heightClassName = "h-[75vh]",
   format = "html",
 }: ExternalPreviewFrameProps) {
   if (format === "pdf") {
     return (
-      <div className={`relative overflow-hidden rounded-lg border ${heightClassName}`}>
+      <div className="relative rounded-lg border">
         <PdfCanvasPreview src={src} title={title} />
       </div>
     );

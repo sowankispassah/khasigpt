@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { Response } from "@/components/elements/response";
+import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -215,9 +216,7 @@ export default async function JobPostingDetailPage(props: {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
       <div className="flex items-center justify-between gap-2">
-        <Button asChild className="cursor-pointer" size="sm" variant="ghost">
-          <Link href="/jobs">Back to jobs</Link>
-        </Button>
+        <BackToJobsButton />
       </div>
 
       <Card>
@@ -315,7 +314,6 @@ export default async function JobPostingDetailPage(props: {
               </div>
               <ExternalPreviewFrame
                 format="pdf"
-                heightClassName="h-[75vh]"
                 src={proxiedPdfUrl}
                 title={`${job.title} PDF`}
               />
