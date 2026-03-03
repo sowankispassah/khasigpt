@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,88 +10,30 @@ import type { JobListItem } from "@/lib/jobs/types";
 
 const JOBS_PAGE_SIZE = 10;
 
-export function JobsInfiniteList({
-  isGeneratingResponse = false,
-  jobs,
-  onResumeAutoLoad,
-  pauseAutoLoad = false,
-}: {
-  isGeneratingResponse?: boolean;
-  jobs: JobListItem[];
-  onResumeAutoLoad?: () => void;
-  pauseAutoLoad?: boolean;
-}) {
+export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
   const [visibleCount, setVisibleCount] = useState(Math.min(JOBS_PAGE_SIZE, jobs.length));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isResumingLoad, setIsResumingLoad] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setVisibleCount(Math.min(JOBS_PAGE_SIZE, jobs.length));
     setIsLoadingMore(false);
-    setIsResumingLoad(false);
   }, [jobs]);
 
   const visibleJobs = useMemo(() => jobs.slice(0, visibleCount), [jobs, visibleCount]);
   const hasMoreJobs = visibleCount < jobs.length;
 
-  useEffect(() => {
-    if (!hasMoreJobs || pauseAutoLoad) {
-      return;
-    }
-
-    const sentinelNode = sentinelRef.current;
-    if (!sentinelNode) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting || isLoadingMore) {
-            continue;
-          }
-          setIsLoadingMore(true);
-          setVisibleCount((previous) => Math.min(previous + JOBS_PAGE_SIZE, jobs.length));
-          break;
-        }
-      },
-      { rootMargin: "220px" }
-    );
-
-    observer.observe(sentinelNode);
-    return () => observer.disconnect();
-  }, [hasMoreJobs, isLoadingMore, jobs.length, pauseAutoLoad]);
-
-  useEffect(() => {
-    if (!pauseAutoLoad) {
-      return;
-    }
-    setIsLoadingMore(false);
-  }, [pauseAutoLoad]);
-
   const handleManualLoadMore = () => {
-    if (isResumingLoad) {
+    if (isLoadingMore) {
       return;
     }
-    setIsResumingLoad(true);
     setIsLoadingMore(true);
-    setVisibleCount((previous) => Math.min(previous + JOBS_PAGE_SIZE, jobs.length));
-    onResumeAutoLoad?.();
-
     window.setTimeout(() => {
+      setVisibleCount((previous) =>
+        Math.min(previous + JOBS_PAGE_SIZE, jobs.length)
+      );
       setIsLoadingMore(false);
-      setIsResumingLoad(false);
-    }, 180);
+    }, 120);
   };
-
-  useEffect(() => {
-    if (!isLoadingMore) {
-      return;
-    }
-    const timeout = window.setTimeout(() => setIsLoadingMore(false), 150);
-    return () => window.clearTimeout(timeout);
-  }, [isLoadingMore]);
 
   return (
     <>
@@ -162,32 +104,25 @@ export function JobsInfiniteList({
 
       {hasMoreJobs ? (
         <div className="flex flex-col items-center justify-center gap-2 py-4">
-          <div aria-hidden className="h-px w-full" ref={sentinelRef} />
-          <span className="flex items-center gap-2 text-muted-foreground text-xs">
-            {pauseAutoLoad && isGeneratingResponse ? (
-              "AI response in progress. Auto-load paused."
-            ) : pauseAutoLoad ? (
-              <Button
-                className="cursor-pointer"
-                disabled={isResumingLoad}
-                onClick={handleManualLoadMore}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {isResumingLoad ? "Loading..." : "Load more jobs"}
-              </Button>
-            ) : isLoadingMore ? (
-              <>
+          <Button
+            className="cursor-pointer"
+            disabled={isLoadingMore}
+            onClick={handleManualLoadMore}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {isLoadingMore ? (
+              <span className="flex items-center gap-2">
                 <span className="h-3.5 w-3.5 animate-spin">
                   <LoaderIcon size={14} />
                 </span>
-                Loading more jobs...
-              </>
+                Loading...
+              </span>
             ) : (
-              "Scroll down to load more jobs"
+              "Load more jobs"
             )}
-          </span>
+          </Button>
         </div>
       ) : jobs.length > 0 ? (
         <div className="py-2 text-center text-muted-foreground text-xs">

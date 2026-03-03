@@ -171,7 +171,6 @@ export function Chat({
   const [showActionProgress, setShowActionProgress] = useState(false);
   const [actionProgress, setActionProgress] = useState(0);
   const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const [jobsAutoLoadPaused, setJobsAutoLoadPaused] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(
     initialHasMoreHistory
   );
@@ -1092,24 +1091,6 @@ export function Chat({
     void mutate("messages:should-scroll", "auto", { revalidate: false });
   }, [isJobsMode, mutate]);
 
-  const isTextResponseGenerating =
-    status !== "ready" && status !== "error" && !isGeneratingImage;
-  const pauseJobsAutoLoad = isJobsMode && jobsAutoLoadPaused;
-
-  const handleResumeJobsAutoLoad = useCallback(() => {
-    setJobsAutoLoadPaused(false);
-  }, []);
-
-  useEffect(() => {
-    if (!isJobsMode) {
-      setJobsAutoLoadPaused(false);
-      return;
-    }
-    if (isTextResponseGenerating) {
-      setJobsAutoLoadPaused(true);
-    }
-  }, [isJobsMode, isTextResponseGenerating]);
-
   useEffect(() => {
     setIconPromptSuggestions([]);
   }, []);
@@ -1262,12 +1243,7 @@ export function Chat({
           </Button>
         </div>
       ) : null}
-      <JobsModeListPanel
-        isGeneratingResponse={isTextResponseGenerating}
-        jobs={jobsListItems}
-        onResumeAutoLoad={handleResumeJobsAutoLoad}
-        pauseAutoLoad={pauseJobsAutoLoad}
-      />
+      <JobsModeListPanel jobs={jobsListItems} />
     </div>
   ) : null;
   const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
