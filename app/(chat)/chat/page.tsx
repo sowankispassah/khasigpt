@@ -15,7 +15,6 @@ import { getAppSetting, listLanguagesWithSettings } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -175,21 +174,14 @@ export default async function Page({
   if (isJobsMode && !jobsModeEnabled) {
     notFound();
   }
-  const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
-  const initialJobEntry =
-    chatMode === "jobs" && requestedJobId
-      ? await withTimeout(
-          getJobPostingById({
-            id: requestedJobId,
-            includeInactive: false,
-          }),
-          CHAT_HOME_QUERY_TIMEOUT_MS
-        ).catch((error) => {
-          console.error("[chat/home] job lookup timed out or failed.", error);
-          return null;
-        })
-      : null;
-  const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
+  if (isJobsMode) {
+    const redirectTarget = requestedJobId
+      ? `/jobs?jobId=${encodeURIComponent(requestedJobId)}`
+      : "/jobs";
+    redirect(redirectTarget);
+  }
+
+  const chatMode = isStudyMode ? "study" : "default";
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)
     .map((language) => ({
@@ -224,7 +216,6 @@ export default async function Page({
         documentUploadsEnabled={documentUploadsEnabled}
         initialChatLanguage={initialChatLanguage}
         initialChatModel={fallbackModelId}
-        initialJobContext={initialJobContext}
         initialMessages={[]}
         initialHasMoreHistory={false}
         initialOldestMessageAt={null}
