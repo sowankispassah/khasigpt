@@ -8,6 +8,8 @@ import type { JobListItem } from "@/lib/jobs/types";
 
 type JobsModeListPanelProps = {
   jobs: JobListItem[];
+  isGeneratingResponse?: boolean;
+  onResumeAutoLoad?: () => void;
   pauseAutoLoad?: boolean;
 };
 
@@ -29,6 +31,8 @@ const normalizeFilter = (value: string) => value.trim().toLowerCase();
 
 export function JobsModeListPanel({
   jobs,
+  isGeneratingResponse = false,
+  onResumeAutoLoad,
   pauseAutoLoad = false,
 }: JobsModeListPanelProps) {
   const [draftFilters, setDraftFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
@@ -167,7 +171,12 @@ export function JobsModeListPanel({
         </CardContent>
       </Card>
 
-      <JobsInfiniteList jobs={filteredJobs} pauseAutoLoad={pauseAutoLoad} />
+      <JobsInfiniteList
+        isGeneratingResponse={isGeneratingResponse}
+        jobs={filteredJobs}
+        onResumeAutoLoad={onResumeAutoLoad}
+        pauseAutoLoad={pauseAutoLoad}
+      />
     </div>
   );
 }

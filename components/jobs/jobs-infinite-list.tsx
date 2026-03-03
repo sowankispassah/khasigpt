@@ -4,25 +4,32 @@ import { FileText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { LoaderIcon } from "@/components/icons";
 import type { JobListItem } from "@/lib/jobs/types";
 
 const JOBS_PAGE_SIZE = 10;
 
 export function JobsInfiniteList({
+  isGeneratingResponse = false,
   jobs,
+  onResumeAutoLoad,
   pauseAutoLoad = false,
 }: {
+  isGeneratingResponse?: boolean;
   jobs: JobListItem[];
+  onResumeAutoLoad?: () => void;
   pauseAutoLoad?: boolean;
 }) {
   const [visibleCount, setVisibleCount] = useState(Math.min(JOBS_PAGE_SIZE, jobs.length));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isResumingLoad, setIsResumingLoad] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setVisibleCount(Math.min(JOBS_PAGE_SIZE, jobs.length));
     setIsLoadingMore(false);
+    setIsResumingLoad(false);
   }, [jobs]);
 
   const visibleJobs = useMemo(() => jobs.slice(0, visibleCount), [jobs, visibleCount]);
@@ -62,6 +69,21 @@ export function JobsInfiniteList({
     }
     setIsLoadingMore(false);
   }, [pauseAutoLoad]);
+
+  const handleManualLoadMore = () => {
+    if (isResumingLoad) {
+      return;
+    }
+    setIsResumingLoad(true);
+    setIsLoadingMore(true);
+    setVisibleCount((previous) => Math.min(previous + JOBS_PAGE_SIZE, jobs.length));
+    onResumeAutoLoad?.();
+
+    window.setTimeout(() => {
+      setIsLoadingMore(false);
+      setIsResumingLoad(false);
+    }, 180);
+  };
 
   useEffect(() => {
     if (!isLoadingMore) {
@@ -142,8 +164,19 @@ export function JobsInfiniteList({
         <div className="flex flex-col items-center justify-center gap-2 py-4">
           <div aria-hidden className="h-px w-full" ref={sentinelRef} />
           <span className="flex items-center gap-2 text-muted-foreground text-xs">
-            {pauseAutoLoad ? (
+            {pauseAutoLoad && isGeneratingResponse ? (
               "AI response in progress. Auto-load paused."
+            ) : pauseAutoLoad ? (
+              <Button
+                className="cursor-pointer"
+                disabled={isResumingLoad}
+                onClick={handleManualLoadMore}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {isResumingLoad ? "Loading..." : "Load more jobs"}
+              </Button>
             ) : isLoadingMore ? (
               <>
                 <span className="h-3.5 w-3.5 animate-spin">
