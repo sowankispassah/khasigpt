@@ -88,7 +88,7 @@ type SupportedScrapeTimezone = keyof typeof TIMEZONE_OFFSETS_MINUTES;
 
 function revalidateJobsScrapeSettingCaches() {
   for (const key of JOBS_SCRAPE_SETTINGS_KEYS) {
-    revalidateTag(appSettingCacheTagForKey(key));
+    revalidateTag(appSettingCacheTagForKey(key), "max");
   }
 }
 

@@ -119,7 +119,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "save_failed" }, { status: 500 });
   }
 
-  revalidateTag(appSettingCacheTagForKey(config.settingKey));
+  revalidateTag(appSettingCacheTagForKey(config.settingKey), "max");
 
   void withTimeout(
     createAuditLogEntry({

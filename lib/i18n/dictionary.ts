@@ -565,8 +565,8 @@ export async function invalidateTranslationBundleCache(
           );
         })
         .finally(() => {
-          revalidateTag(APP_SETTING_CACHE_TAG);
-          revalidateTag(appSettingCacheTagForKey(persistedKey));
+          revalidateTag(APP_SETTING_CACHE_TAG, "max");
+          revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
         });
     })
   );

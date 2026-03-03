@@ -160,7 +160,7 @@ async function requireAdmin() {
 }
 
 function revalidateAppSettingCache(key: string) {
-  revalidateTag(appSettingCacheTagForKey(key));
+  revalidateTag(appSettingCacheTagForKey(key), "max");
 }
 
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
@@ -1214,7 +1214,7 @@ export async function createModelConfigAction(formData: FormData) {
     metadata: { key, provider, providerModelId },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -1333,7 +1333,7 @@ export async function updateModelConfigAction(formData: FormData) {
     metadata: patch,
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -1357,7 +1357,7 @@ export async function deleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -1383,7 +1383,7 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -1409,7 +1409,7 @@ export async function setDefaultModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -1435,7 +1435,7 @@ export async function setMarginBaselineModelAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
@@ -1502,7 +1502,7 @@ export async function createImageModelConfigAction(formData: FormData) {
     metadata: { key, provider, providerModelId },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
 }
@@ -1573,7 +1573,7 @@ export async function updateImageModelConfigAction(formData: FormData) {
     metadata: patch,
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
 }
@@ -1595,7 +1595,7 @@ export async function deleteImageModelConfigAction(formData: FormData) {
     target: { imageModelId: id },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
 
@@ -1619,7 +1619,7 @@ export async function hardDeleteImageModelConfigAction(formData: FormData) {
     target: { imageModelId: id },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
 
@@ -1643,7 +1643,7 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
     target: { imageModelId: id },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG);
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
 
@@ -1998,7 +1998,7 @@ export async function createLanguageAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  revalidateTag("languages");
+  revalidateTag("languages", "max");
   revalidatePath("/", "layout");
   revalidatePath("/admin/settings");
   revalidatePath("/admin/translations");
@@ -2050,7 +2050,7 @@ export async function updateLanguageStatusAction(formData: FormData) {
     metadata: { isActive: shouldActivate },
   });
 
-  revalidateTag("languages");
+  revalidateTag("languages", "max");
   revalidatePath("/", "layout");
   revalidatePath("/admin/settings");
   revalidatePath("/admin/translations");
@@ -2103,7 +2103,7 @@ export async function updateLanguageSettingsAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  revalidateTag("languages");
+  revalidateTag("languages", "max");
   revalidatePath("/", "layout");
   revalidatePath("/admin/settings");
 
@@ -2139,7 +2139,7 @@ export async function deleteLanguageAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  revalidateTag("languages");
+  revalidateTag("languages", "max");
   revalidatePath("/", "layout");
   revalidatePath("/admin/settings");
   revalidatePath("/admin/translations");
@@ -2284,7 +2284,7 @@ export async function updatePlanTranslationAction(formData: FormData) {
       },
     });
 
-    revalidateTag(PRICING_PLAN_CACHE_TAG);
+    revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
     revalidatePath("/admin/settings");
     revalidatePath("/admin/translations");
     revalidatePath("/recharge");
@@ -2515,7 +2515,7 @@ export async function createPricingPlanAction(formData: FormData) {
     metadata: plan,
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG);
+  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
@@ -2595,7 +2595,7 @@ export async function updatePricingPlanAction(formData: FormData) {
     metadata: updates,
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG);
+  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
@@ -2647,7 +2647,7 @@ export async function deletePricingPlanAction(formData: FormData) {
     target: { planId: id },
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG);
+  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
@@ -2672,7 +2672,7 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
     target: { planId: id },
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG);
+  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
   revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");

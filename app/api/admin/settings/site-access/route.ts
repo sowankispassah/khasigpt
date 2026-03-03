@@ -147,7 +147,7 @@ async function writeSettingAndVerify({
     throw new Error("persisted_value_mismatch");
   }
 
-  revalidateTag(appSettingCacheTagForKey(key));
+  revalidateTag(appSettingCacheTagForKey(key), "max");
 }
 
 async function auditSafely(args: Parameters<typeof createAuditLogEntry>[0]) {
