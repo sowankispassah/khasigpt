@@ -59,6 +59,7 @@ type MessagesProps = {
   };
   header?: ReactNode;
   headerFullWidth?: boolean;
+  showGreeting?: boolean;
   greetingTitle?: string;
   greetingSubtitle?: string;
 };
@@ -87,6 +88,7 @@ function PureMessages({
   jobActions,
   header,
   headerFullWidth = false,
+  showGreeting = true,
   greetingTitle,
   greetingSubtitle,
 }: MessagesProps) {
@@ -351,9 +353,11 @@ function PureMessages({
               {header}
             </div>
           ) : null}
-          <div className="flex flex-1 items-center justify-center">
-            <Greeting title={greetingTitle} subtitle={greetingSubtitle} />
-          </div>
+          {showGreeting ? (
+            <div className="flex flex-1 items-center justify-center">
+              <Greeting title={greetingTitle} subtitle={greetingSubtitle} />
+            </div>
+          ) : null}
           <div className="mt-10 w-full max-w-3xl self-center">
             <SuggestedActions
               chatId={chatId}

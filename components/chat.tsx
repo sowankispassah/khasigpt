@@ -144,9 +144,7 @@ export function Chat({
   const isJobsMode = chatMode === "jobs";
   const greetingSubtitle = isStudyMode
     ? translate("greeting.study.subtitle", "What would you like to study today?")
-    : isJobsMode
-      ? "Which job would you like to review today?"
-      : undefined;
+    : undefined;
   const [input, setInput] = useState<string>("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
@@ -1285,6 +1283,7 @@ export function Chat({
           chatId={id}
           key={id}
           greetingSubtitle={greetingSubtitle}
+          showGreeting={!isJobsMode}
           hasMoreHistory={hasMoreHistory}
           header={modeHeader}
           headerFullWidth={isJobsMode}
