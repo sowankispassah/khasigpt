@@ -214,10 +214,16 @@ export default async function JobsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+      <div className="flex items-center justify-between gap-2">
+        <Button asChild className="cursor-pointer" size="sm" variant="ghost">
+          <Link href="/">Back to home</Link>
+        </Button>
+      </div>
+
       <div className="space-y-1">
         <h1 className="font-semibold text-2xl">Jobs</h1>
         <p className="text-muted-foreground text-sm">
-          Browse scraped job postings and start a focused Jobs chat for any role.
+          Browse jobs posted across Meghalaya.
         </p>
       </div>
 
