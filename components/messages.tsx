@@ -60,6 +60,7 @@ type MessagesProps = {
   header?: ReactNode;
   headerFullWidth?: boolean;
   showGreeting?: boolean;
+  enableGenerationAutoFollow?: boolean;
   greetingTitle?: string;
   greetingSubtitle?: string;
 };
@@ -89,6 +90,7 @@ function PureMessages({
   header,
   headerFullWidth = false,
   showGreeting = true,
+  enableGenerationAutoFollow = false,
   greetingTitle,
   greetingSubtitle,
 }: MessagesProps) {
@@ -120,6 +122,8 @@ function PureMessages({
   const initialPinDeadlineRef = useRef(0);
   const userInterruptedInitialPinRef = useRef(false);
   const isFetchingHistoryRef = useRef(false);
+  const generationFollowActiveRef = useRef(false);
+  const generationFollowInterruptedRef = useRef(false);
   const hiddenCount = showAllLoaded
     ? 0
     : Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
@@ -139,6 +143,25 @@ function PureMessages({
           })
           .join("|") ?? "")
       : null;
+  const isGenerationActive = status !== "ready" && status !== "error";
+
+  const followLiveGenerationTail = useCallback(() => {
+    const container = messagesContainerRef.current;
+    const end = messagesEndRef.current;
+    if (!container) {
+      return;
+    }
+
+    if (end) {
+      try {
+        end.scrollIntoView({ block: "end" });
+      } catch {
+        // ignore
+      }
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }, [messagesContainerRef, messagesEndRef]);
 
   useEffect(() => {
     if (status !== "ready" && status !== "streaming" && status !== "error") {
@@ -161,8 +184,65 @@ function PureMessages({
       pendingInitialScrollChatIdRef.current = chatId;
       initialPinDeadlineRef.current = Date.now() + 3500;
       userInterruptedInitialPinRef.current = false;
+      generationFollowActiveRef.current = false;
+      generationFollowInterruptedRef.current = false;
     }
   }, [chatId]);
+
+  useEffect(() => {
+    if (!enableGenerationAutoFollow) {
+      generationFollowActiveRef.current = false;
+      generationFollowInterruptedRef.current = false;
+      return;
+    }
+
+    if (isGenerationActive) {
+      if (!generationFollowActiveRef.current) {
+        generationFollowActiveRef.current = true;
+        generationFollowInterruptedRef.current = false;
+      }
+      return;
+    }
+
+    generationFollowActiveRef.current = false;
+    generationFollowInterruptedRef.current = false;
+  }, [enableGenerationAutoFollow, isGenerationActive]);
+
+  useEffect(() => {
+    if (!enableGenerationAutoFollow) {
+      return;
+    }
+
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const markUserInterrupt = () => {
+      if (!generationFollowActiveRef.current || !isGenerationActive) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        const isAtBottomNow =
+          container.scrollTop + container.clientHeight >=
+          container.scrollHeight - 24;
+        if (!isAtBottomNow) {
+          generationFollowInterruptedRef.current = true;
+        }
+      });
+    };
+
+    container.addEventListener("wheel", markUserInterrupt, { passive: true });
+    container.addEventListener("touchstart", markUserInterrupt, {
+      passive: true,
+    });
+
+    return () => {
+      container.removeEventListener("wheel", markUserInterrupt);
+      container.removeEventListener("touchstart", markUserInterrupt);
+    };
+  }, [enableGenerationAutoFollow, isGenerationActive, messagesContainerRef]);
 
   useLayoutEffect(() => {
     if (pendingInitialScrollChatIdRef.current !== chatId) {
@@ -302,6 +382,47 @@ function PureMessages({
       });
     }
   }, [status, streamingSignature, isAtBottom, scrollToBottom]);
+
+  useEffect(() => {
+    if (!enableGenerationAutoFollow || !isGenerationActive) {
+      return;
+    }
+    if (
+      !generationFollowActiveRef.current ||
+      generationFollowInterruptedRef.current
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const follow = () => {
+      if (cancelled || generationFollowInterruptedRef.current) {
+        return;
+      }
+      followLiveGenerationTail();
+    };
+
+    const rafId = requestAnimationFrame(follow);
+    const timeoutIds = [
+      window.setTimeout(follow, 120),
+      window.setTimeout(follow, 360),
+    ];
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      for (const id of timeoutIds) {
+        window.clearTimeout(id);
+      }
+    };
+  }, [
+    enableGenerationAutoFollow,
+    followLiveGenerationTail,
+    isGenerationActive,
+    messages.length,
+    streamingSignature,
+  ]);
 
   useEffect(() => {
     if (!isGeneratingImage) {

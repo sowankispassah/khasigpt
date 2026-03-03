@@ -1282,6 +1282,7 @@ export function Chat({
         <Messages
           chatId={id}
           key={id}
+          enableGenerationAutoFollow={isJobsMode}
           greetingSubtitle={greetingSubtitle}
           showGreeting={!isJobsMode}
           hasMoreHistory={hasMoreHistory}
