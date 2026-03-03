@@ -15,7 +15,10 @@ type JobsPageSearchParams = {
   company?: string;
   location?: string;
   employmentType?: string;
+  page?: string;
 };
+
+const JOBS_PAGE_SIZE = 10;
 
 const normalizeFilter = (value: string | undefined) => value?.trim().toLowerCase() ?? "";
 
@@ -139,6 +142,45 @@ function hasJobPdfFile(job: {
   );
 }
 
+function parsePageNumber(value: string | undefined) {
+  const parsed = Number.parseInt((value ?? "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
+  return parsed;
+}
+
+function buildLoadMoreHref({
+  params,
+  nextPage,
+}: {
+  params: JobsPageSearchParams | undefined;
+  nextPage: number;
+}) {
+  const query = new URLSearchParams();
+  const q = params?.q?.trim() ?? "";
+  const company = params?.company?.trim() ?? "";
+  const location = params?.location?.trim() ?? "";
+  const employmentType = params?.employmentType?.trim() ?? "";
+
+  if (q) {
+    query.set("q", q);
+  }
+  if (company) {
+    query.set("company", company);
+  }
+  if (location) {
+    query.set("location", location);
+  }
+  if (employmentType) {
+    query.set("employmentType", employmentType);
+  }
+  query.set("page", String(nextPage));
+
+  const encoded = query.toString();
+  return encoded ? `/jobs?${encoded}` : "/jobs";
+}
+
 export default async function JobsPage({
   searchParams,
 }: {
@@ -160,6 +202,7 @@ export default async function JobsPage({
   const companyFilter = normalizeFilter(resolvedSearchParams?.company);
   const locationFilter = normalizeFilter(resolvedSearchParams?.location);
   const employmentTypeFilter = normalizeFilter(resolvedSearchParams?.employmentType);
+  const currentPage = parsePageNumber(resolvedSearchParams?.page);
 
   const jobs = await listJobPostings({ includeInactive: false });
   const filteredJobs = jobs.filter((job) => {
@@ -200,6 +243,13 @@ export default async function JobsPage({
       .toLowerCase();
 
     return haystack.includes(qFilter);
+  });
+  const visibleJobsCount = Math.min(filteredJobs.length, currentPage * JOBS_PAGE_SIZE);
+  const visibleJobs = filteredJobs.slice(0, visibleJobsCount);
+  const hasMoreJobs = visibleJobsCount < filteredJobs.length;
+  const loadMoreHref = buildLoadMoreHref({
+    params: resolvedSearchParams,
+    nextPage: currentPage + 1,
   });
 
   const companies = Array.from(
@@ -289,7 +339,8 @@ export default async function JobsPage({
       </Card>
 
       <div className="text-muted-foreground text-sm">
-        {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"} found
+        Showing {visibleJobs.length} of {filteredJobs.length} job
+        {filteredJobs.length === 1 ? "" : "s"}
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -300,7 +351,7 @@ export default async function JobsPage({
             </CardContent>
           </Card>
         ) : (
-          filteredJobs.map((job) => {
+          visibleJobs.map((job) => {
             const salaryLabel = extractSalaryLabel(job.content);
             const deadlineLabel =
               extractDateByKeywordLabel({
@@ -375,6 +426,14 @@ export default async function JobsPage({
           })
         )}
       </div>
+
+      {hasMoreJobs ? (
+        <div className="flex justify-center">
+          <Button asChild size="sm" variant="outline">
+            <Link href={loadMoreHref}>Load more</Link>
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
