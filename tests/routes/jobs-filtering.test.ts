@@ -1,0 +1,118 @@
+import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { resolveJobsFilterConversation } from "@/lib/jobs/filtering";
+import type { JobPostingRecord } from "@/lib/jobs/types";
+
+function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {
+  const now = new Date("2026-03-03T00:00:00.000Z");
+  return {
+    id: overrides.id ?? randomUUID(),
+    title: overrides.title ?? "General Assistant",
+    content: overrides.content ?? "12th pass required. Salary Rs 18000 to Rs 24000 per month.",
+    company: overrides.company ?? "Acme Ltd",
+    location: overrides.location ?? "Agartala",
+    employmentType: overrides.employmentType ?? "Full-time",
+    studyExam: overrides.studyExam ?? "Unknown",
+    studyRole: overrides.studyRole ?? "Unknown",
+    studyYears: overrides.studyYears ?? [],
+    studyTags: overrides.studyTags ?? [],
+    tags: overrides.tags ?? [],
+    sourceUrl: overrides.sourceUrl ?? null,
+    pdfSourceUrl: overrides.pdfSourceUrl ?? null,
+    pdfCachedUrl: overrides.pdfCachedUrl ?? null,
+    status: overrides.status ?? "active",
+    approvalStatus: overrides.approvalStatus ?? "approved",
+    embeddingStatus: overrides.embeddingStatus ?? "ready",
+    metadata: overrides.metadata ?? {},
+    models: overrides.models ?? [],
+    categoryId: overrides.categoryId ?? null,
+    parseError: overrides.parseError,
+    createdAt: overrides.createdAt ?? now,
+    updatedAt: overrides.updatedAt ?? now,
+  };
+}
+
+const jobs: JobPostingRecord[] = [
+  createJob({
+    id: "job-12th-govt",
+    title: "Office Assistant",
+    company: "Tripura Public Service Commission",
+    location: "Agartala",
+    content:
+      "Government recruitment. 12th pass required. Salary Rs 18000 to Rs 22000 per month.",
+    tags: ["government", "clerical"],
+  }),
+  createJob({
+    id: "job-12th-private",
+    title: "Store Helper",
+    company: "Retail Hub Pvt Ltd",
+    location: "Agartala",
+    content:
+      "Private company opening. 12th pass required. Salary Rs 16000 to Rs 20000 per month. Part-time allowed.",
+    tags: ["private", "retail", "part-time"],
+  }),
+  createJob({
+    id: "job-grad",
+    title: "Data Analyst",
+    company: "Insight Analytics",
+    location: "Shillong",
+    content:
+      "Graduate degree required. Salary Rs 35000 to Rs 45000 per month. Full-time private role.",
+    tags: ["private", "analytics"],
+  }),
+];
+
+test.describe("jobs filtering engine", () => {
+  test("filters by qualification and salary range", () => {
+    const result = resolveJobsFilterConversation({
+      jobs,
+      priorUserMessages: [],
+      latestUserMessage: "Show me jobs for 12th pass qualification with salary between Rs 15000 and Rs 25000",
+    });
+
+    expect(result.clarification).toBeNull();
+    expect(result.hasActiveFilters).toBe(true);
+    expect(result.filteredJobs.map((job) => job.id)).toEqual([
+      "job-12th-govt",
+      "job-12th-private",
+    ]);
+  });
+
+  test("refines previous result with follow-up sector filter", () => {
+    const result = resolveJobsFilterConversation({
+      jobs,
+      priorUserMessages: ["Show me 12th pass jobs"],
+      latestUserMessage: "Only government jobs",
+    });
+
+    expect(result.clarification).toBeNull();
+    expect(result.filteredJobs.map((job) => job.id)).toEqual(["job-12th-govt"]);
+    expect(result.summary.toLowerCase()).toContain("government jobs");
+  });
+
+  test("returns clarification for ambiguous salary query", () => {
+    const result = resolveJobsFilterConversation({
+      jobs,
+      priorUserMessages: ["Show me 12th pass jobs"],
+      latestUserMessage: "Show me jobs with good salary",
+    });
+
+    expect(result.clarification).toContain("salary");
+    expect(result.filteredJobs.map((job) => job.id)).toEqual([
+      "job-12th-govt",
+      "job-12th-private",
+    ]);
+  });
+
+  test("reset query clears prior filters", () => {
+    const result = resolveJobsFilterConversation({
+      jobs,
+      priorUserMessages: ["Show me 12th pass jobs", "Only government jobs"],
+      latestUserMessage: "show all jobs and reset filters",
+    });
+
+    expect(result.clarification).toBeNull();
+    expect(result.hasActiveFilters).toBe(false);
+    expect(result.filteredJobs).toHaveLength(jobs.length);
+  });
+});

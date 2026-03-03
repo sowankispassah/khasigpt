@@ -55,6 +55,7 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { resolveJobsFilterConversation } from "@/lib/jobs/filtering";
 import {
   JOBS_CHAT_MODE,
   JOB_POSTING_RUNTIME_CONTEXT_CHARS,
@@ -262,13 +263,6 @@ function findRecentReferencedQuestionNumber(messages: ChatMessage[]): number | n
 }
 
 type JobsIntent = "job_detail" | "exam_prep" | "answer_help";
-const JOB_LOCATION_HINTS = [
-  "meghalaya",
-  "shillong",
-  "tura",
-  "jowai",
-  "east khasi hills",
-] as const;
 
 function detectJobsIntent(text: string): JobsIntent {
   const normalized = text.trim().toLowerCase();
@@ -300,21 +294,6 @@ function wantsDirectExamAnswer(text: string) {
   return /\b(just answer|only answer|direct answer|final answer)\b/.test(
     normalized
   );
-}
-
-function detectJobsLocationFilter(text: string) {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-  for (const location of JOB_LOCATION_HINTS) {
-    if (normalized.includes(location)) {
-      return location;
-    }
-  }
-
-  return null;
 }
 
 async function resolveStudyPaperContextText({
@@ -572,6 +551,8 @@ export async function POST(request: Request) {
       const fallbackTitle =
         resolvedChatMode === STUDY_CHAT_MODE
           ? "Study"
+          : resolvedChatMode === JOBS_CHAT_MODE
+            ? "Job Chat"
           : buildFallbackTitleFromMessage(message);
 
       await saveChat({
@@ -582,7 +563,7 @@ export async function POST(request: Request) {
         mode: resolvedChatMode,
       });
 
-      if (resolvedChatMode !== STUDY_CHAT_MODE) {
+      if (resolvedChatMode === "default") {
         (async () => {
           try {
             const generatedTitle = await generateTitleFromUserMessage({
@@ -628,7 +609,7 @@ export async function POST(request: Request) {
       if (text) {
         assistantParts.push({ type: "text", text });
       }
-      if (cards && cards.length > 0) {
+      if (cards) {
         assistantParts.push({
           type: "data-jobCards",
           data: { jobs: cards },
@@ -1005,10 +986,8 @@ export async function POST(request: Request) {
 
     if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
       const availableIds = jobPostingIdsForModel ?? [];
-      const locationFilter = detectJobsLocationFilter(jobsUserText);
       const jobs = await listJobPostings({
         includeInactive: false,
-        location: locationFilter,
       });
       const visibleJobs =
         availableIds.length > 0
@@ -1021,16 +1000,51 @@ export async function POST(request: Request) {
         });
       }
 
-      if (visibleJobs.length === 1) {
+      const { messages: jobsMessagesFromDb } = await getMessagesByChatIdPage({
+        id,
+        limit: CHAT_CONTEXT_MESSAGE_LIMIT,
+      });
+      const jobsUiMessagesFromDb = convertToUIMessages(jobsMessagesFromDb);
+      const priorUserMessages = jobsUiMessagesFromDb
+        .filter((entry) => entry.role === "user")
+        .map((entry) => getTextFromMessage(entry).trim())
+        .filter((entry) => entry.length > 0);
+      const filterResolution = resolveJobsFilterConversation({
+        jobs: visibleJobs,
+        priorUserMessages,
+        latestUserMessage: jobsUserText,
+      });
+
+      if (filterResolution.clarification) {
         return buildJobsResponse({
-          text: "Here is the available job posting.",
-          cards: visibleJobs.map(toJobCard),
+          text: filterResolution.clarification,
+        });
+      }
+
+      if (!filterResolution.hasActiveFilters) {
+        return buildJobsResponse({
+          text: "Tell me your filters (qualification, salary range, job type, or location). Here are the latest available jobs.",
+          cards: visibleJobs.slice(0, 12).map(toJobCard),
+        });
+      }
+
+      if (filterResolution.filteredJobs.length === 0) {
+        return buildJobsResponse({
+          text: `I could not find jobs matching ${filterResolution.summary}. Try broadening your filters.`,
+          cards: [],
+        });
+      }
+
+      if (filterResolution.filteredJobs.length === 1) {
+        return buildJobsResponse({
+          text: `I found 1 job matching ${filterResolution.summary}.`,
+          cards: filterResolution.filteredJobs.map(toJobCard),
         });
       }
 
       return buildJobsResponse({
-        text: "I found multiple job postings. Select one first, then ask your question.",
-        cards: visibleJobs.slice(0, 12).map(toJobCard),
+        text: `I found ${filterResolution.filteredJobs.length} jobs matching ${filterResolution.summary}.`,
+        cards: filterResolution.filteredJobs.slice(0, 50).map(toJobCard),
       });
     }
 
