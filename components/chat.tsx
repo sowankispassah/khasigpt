@@ -825,12 +825,13 @@ export function Chat({
       const nextPath = pathname === "/chat" ? "/chat" : "/";
       const nextParams = new URLSearchParams(searchParams.toString());
       nextParams.delete("new");
+      nextParams.delete("nonce");
       const nextHref = nextParams.toString()
         ? `${nextPath}?${nextParams.toString()}`
         : nextPath;
-      router.replace(nextHref, { scroll: false });
+      window.history.replaceState({}, "", nextHref);
     }
-  }, [newChatNonce, pathname, router, searchParams]);
+  }, [newChatNonce, pathname, searchParams]);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
