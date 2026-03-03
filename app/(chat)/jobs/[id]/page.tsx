@@ -6,11 +6,13 @@ import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
-import { fetchSourceDetailMarkdown } from "@/lib/jobs/linkedin-detail";
+import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-detail";
 import { getJobPostingById } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
 const SOURCE_DETAIL_MIN_CHARS = 700;
+const SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS = 2_500;
+const SOURCE_DETAIL_FETCH_TIMEOUT_MS = 2_500;
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -165,10 +167,17 @@ export default async function JobPostingDetailPage(props: {
   }
 
   let detailMarkdown = job.content.trim();
-  if (job.sourceUrl && !isPdfUrl(job.sourceUrl)) {
+  const currentDetailLength = markdownToPlainText(detailMarkdown).length;
+  const shouldFetchSourceDetail =
+    Boolean(job.sourceUrl) &&
+    !isPdfUrl(job.sourceUrl) &&
+    isLinkedInUrl(job.sourceUrl) &&
+    currentDetailLength < SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS;
+
+  if (job.sourceUrl && shouldFetchSourceDetail) {
     const currentLength = markdownToPlainText(detailMarkdown).length;
     const sourceDetail = await fetchSourceDetailMarkdown(job.sourceUrl, {
-      timeoutMs: 12_000,
+      timeoutMs: SOURCE_DETAIL_FETCH_TIMEOUT_MS,
     });
     const sourceDetailLength = sourceDetail ? markdownToPlainText(sourceDetail).length : 0;
     if (sourceDetail && sourceDetailLength >= Math.max(SOURCE_DETAIL_MIN_CHARS, currentLength + 80)) {
