@@ -55,10 +55,9 @@ const SidebarHistory = dynamic(
 // These force a server rerender so `/chat` generates a fresh chat id, then the
 // Chat UI strips `new` back out via router.replace.
 const HOME_HREF = "/chat";
-const JOBS_HREF = "/jobs";
 const NEW_CHAT_HREF = "/chat?new=1";
-const NEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
+const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 
 export function AppSidebar({
   calculatorEnabled = true,
@@ -174,27 +173,7 @@ export function AppSidebar({
     [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
   );
 
-  const handleJobsClick = useCallback(
-    (event: MouseEvent<HTMLAnchorElement>) => {
-      if (!shouldHandleClientNavigation(event)) {
-        return;
-      }
-      event.preventDefault();
-      if (pathname === "/jobs" || pathname.startsWith("/jobs/")) {
-        setOpenMobile(false);
-        return;
-      }
-      navigateWithFeedback("jobs", JOBS_HREF);
-    },
-    [
-      navigateWithFeedback,
-      pathname,
-      setOpenMobile,
-      shouldHandleClientNavigation,
-    ]
-  );
-
-  const handleNewJobsClick = useCallback(
+  const handleViewJobsClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
       if (!shouldHandleClientNavigation(event)) {
         return;
@@ -202,7 +181,7 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      const href = `${NEW_JOBS_HREF}&nonce=${Date.now()}`;
+      const href = `${VIEW_JOBS_HREF}&nonce=${Date.now()}`;
       navigateWithFeedback("jobs", href);
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
@@ -292,40 +271,38 @@ export function AppSidebar({
             ) : null}
             {jobsModeEnabled ? (
               <SidebarMenuItem>
-                <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                  <Link
-                    aria-disabled={pendingNavigation !== null}
-                    href={JOBS_HREF}
-                    onClick={handleJobsClick}
-                  >
-                    <BriefcaseBusiness />
-                    <span>
-                      {pendingNavigation === "jobs" ? "Opening..." : "Jobs"}
-                    </span>
-                  </Link>
-                </SidebarMenuButton>
-                <div className="mt-1 ml-[5px] flex flex-col gap-1">
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                        <Link
-                          aria-disabled={pendingNavigation !== null}
-                          href={NEW_JOBS_HREF}
-                          onClick={handleNewJobsClick}
-                        >
-                          <PlusIcon />
-                          <span>
-                            {pendingNavigation === "jobs" ? "Opening..." : "New Jobs"}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
+                <Collapsible defaultOpen={false}>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton className="cursor-pointer text-sm" type="button">
+                      <BriefcaseBusiness />
+                      <span>Jobs</span>
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1">
+                    <div className="flex flex-col gap-1">
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                            <Link
+                              aria-disabled={pendingNavigation !== null}
+                              href={VIEW_JOBS_HREF}
+                              onClick={handleViewJobsClick}
+                            >
+                              <BriefcaseBusiness />
+                              <span>
+                                {pendingNavigation === "jobs" ? "Opening..." : "View Jobs"}
+                              </span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
 
-                  <div className="ml-[5px]">
-                    <SidebarHistory mode="jobs" user={activeUser ?? user} />
-                  </div>
-                </div>
+                      <div className="ml-[5px]">
+                        <SidebarHistory mode="jobs" user={activeUser ?? user} />
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </SidebarMenuItem>
             ) : null}
             {calculatorEnabled ? (

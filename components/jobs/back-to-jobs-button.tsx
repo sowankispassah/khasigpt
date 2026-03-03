@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
-const JOBS_ROUTE = "/jobs";
+const JOBS_ROUTE = "/chat?mode=jobs&new=1";
 
 export function BackToJobsButton() {
   const router = useRouter();
