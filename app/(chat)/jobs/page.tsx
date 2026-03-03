@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { FileText } from "lucide-react";
 import { auth } from "@/app/(auth)/auth";
+import { JobsAutoLoadMore } from "@/components/jobs/jobs-auto-load-more";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -427,13 +428,7 @@ export default async function JobsPage({
         )}
       </div>
 
-      {hasMoreJobs ? (
-        <div className="flex justify-center">
-          <Button asChild size="sm" variant="outline">
-            <Link href={loadMoreHref}>Load more</Link>
-          </Button>
-        </div>
-      ) : null}
+      <JobsAutoLoadMore enabled={hasMoreJobs} href={loadMoreHref} />
     </div>
   );
 }
