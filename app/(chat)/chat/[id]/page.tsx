@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -51,6 +52,24 @@ const CHAT_PAGE_INITIAL_MESSAGE_LIMIT =
   Number.isFinite(chatPageInitialLimitRaw) && chatPageInitialLimitRaw > 0
     ? Math.max(10, Math.min(chatPageInitialLimitRaw, CHAT_HISTORY_PAGE_SIZE))
     : CHAT_HISTORY_PAGE_SIZE;
+const CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS = 15;
+const CHAT_PAGE_MESSAGE_CACHE_REVALIDATE_SECONDS = 10;
+
+const getChatByIdCached = unstable_cache(
+  async (chatId: string) => getChatById({ id: chatId, includeDeleted: true }),
+  ["chat-page:get-chat-by-id"],
+  { revalidate: CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS }
+);
+
+const getInitialMessagesByChatIdCached = unstable_cache(
+  async ({ chatId, limit }: { chatId: string; limit: number }) =>
+    getMessagesByChatIdPage({
+      id: chatId,
+      limit,
+    }),
+  ["chat-page:get-messages-by-chat-id"],
+  { revalidate: CHAT_PAGE_MESSAGE_CACHE_REVALIDATE_SECONDS }
+);
 
 function isTimeoutError(error: unknown) {
   return error instanceof Error && error.message === "timeout";
@@ -69,7 +88,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }
 
   const chat = await withTimeout(
-    getChatById({ id, includeDeleted: true }),
+    getChatByIdCached(id),
     CHAT_PAGE_LOAD_TIMEOUT_MS,
     () => {
       console.warn(`[chat] getChatById timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`);
@@ -166,8 +185,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
 
   const { messages: messagesFromDb, hasMore: hasMoreMessages } =
     await withTimeout(
-      getMessagesByChatIdPage({
-        id,
+      getInitialMessagesByChatIdCached({
+        chatId: id,
         limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
       }),
       CHAT_PAGE_LOAD_TIMEOUT_MS,

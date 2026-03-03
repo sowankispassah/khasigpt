@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { Response } from "@/components/elements/response";
@@ -14,6 +15,16 @@ export const dynamic = "force-dynamic";
 const SOURCE_DETAIL_MIN_CHARS = 700;
 const SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS = 2_500;
 const SOURCE_DETAIL_FETCH_TIMEOUT_MS = 2_500;
+const SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS = 300;
+
+const getCachedSourceDetailMarkdown = unstable_cache(
+  async (sourceUrl: string) =>
+    fetchSourceDetailMarkdown(sourceUrl, {
+      timeoutMs: SOURCE_DETAIL_FETCH_TIMEOUT_MS,
+    }),
+  ["jobs-detail:source-markdown"],
+  { revalidate: SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS }
+);
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -177,9 +188,7 @@ export default async function JobPostingDetailPage(props: {
 
   if (job.sourceUrl && shouldFetchSourceDetail) {
     const currentLength = markdownToPlainText(detailMarkdown).length;
-    const sourceDetail = await fetchSourceDetailMarkdown(job.sourceUrl, {
-      timeoutMs: SOURCE_DETAIL_FETCH_TIMEOUT_MS,
-    });
+    const sourceDetail = await getCachedSourceDetailMarkdown(job.sourceUrl);
     const sourceDetailLength = sourceDetail ? markdownToPlainText(sourceDetail).length : 0;
     if (sourceDetail && sourceDetailLength >= Math.max(SOURCE_DETAIL_MIN_CHARS, currentLength + 80)) {
       detailMarkdown = sourceDetail;

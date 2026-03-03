@@ -65,6 +65,23 @@ function toSafeFilename(title: string) {
   return `${stem || "job-details"}.pdf`;
 }
 
+function isInternalCachedPdfUrl(url: string | null) {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return (
+      hostname.includes("vercel-storage.com") ||
+      hostname.includes("supabase.co") ||
+      hostname.includes("supabase.net")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> }
@@ -141,6 +158,14 @@ export async function GET(
   if (range) {
     forwardHeaders.set("range", range);
   }
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch) {
+    forwardHeaders.set("if-none-match", ifNoneMatch);
+  }
+  const ifModifiedSince = request.headers.get("if-modified-since");
+  if (ifModifiedSince) {
+    forwardHeaders.set("if-modified-since", ifModifiedSince);
+  }
 
   let upstream: Response;
   try {
@@ -148,7 +173,7 @@ export async function GET(
       method: "GET",
       headers: forwardHeaders,
       redirect: "follow",
-      cache: "no-store",
+      cache: "force-cache",
       signal: request.signal,
     });
   } catch {
@@ -162,6 +187,23 @@ export async function GET(
   }
 
   if (!upstream.ok || !upstream.body) {
+    if (upstream.status === 304) {
+      const notModifiedHeaders = new Headers();
+      const etag = upstream.headers.get("etag");
+      if (etag) {
+        notModifiedHeaders.set("ETag", etag);
+      }
+      const lastModified = upstream.headers.get("last-modified");
+      if (lastModified) {
+        notModifiedHeaders.set("Last-Modified", lastModified);
+      }
+      notModifiedHeaders.set("Cache-Control", "private, max-age=1800, stale-while-revalidate=86400");
+      return new Response(null, {
+        status: 304,
+        headers: notModifiedHeaders,
+      });
+    }
+
     return NextResponse.json(
       {
         code: "bad_gateway:pdf",
@@ -200,7 +242,12 @@ export async function GET(
   }
 
   headers.set("Content-Disposition", `inline; filename="${toSafeFilename(job.title)}"`);
-  headers.set("Cache-Control", "private, max-age=300");
+  headers.set(
+    "Cache-Control",
+    isInternalCachedPdfUrl(pdfUrl)
+      ? "private, max-age=86400, stale-while-revalidate=604800"
+      : "private, max-age=1800, stale-while-revalidate=86400"
+  );
   headers.set("X-Content-Type-Options", "nosniff");
 
   return new Response(upstream.body, {
@@ -208,4 +255,3 @@ export async function GET(
     headers,
   });
 }
-

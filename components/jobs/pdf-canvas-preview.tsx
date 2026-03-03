@@ -11,6 +11,223 @@ type PdfCanvasPreviewProps = {
 
 type RenderState = "loading" | "ready" | "error";
 
+type PdfBytesCacheEntry = {
+  bytes: Uint8Array;
+  size: number;
+  expiresAt: number;
+  lastAccessedAt: number;
+};
+
+type PdfPagePreviewCacheEntry = {
+  dataUrl: string;
+  expiresAt: number;
+  lastAccessedAt: number;
+};
+
+const PDF_BYTES_CACHE_TTL_MS = 10 * 60 * 1000;
+const PDF_BYTES_CACHE_MAX_ENTRIES = 8;
+const PDF_BYTES_CACHE_MAX_TOTAL_BYTES = 80 * 1024 * 1024;
+const PDF_PREVIEW_CACHE_TTL_MS = 15 * 60 * 1000;
+const PDF_PREVIEW_CACHE_MAX_ENTRIES = 120;
+const MAX_CACHED_PREVIEW_PAGE_NUMBER = 8;
+
+const pdfBytesCache = new Map<string, PdfBytesCacheEntry>();
+const pdfPagePreviewCache = new Map<string, PdfPagePreviewCacheEntry>();
+let pdfBytesCacheTotalBytes = 0;
+
+function nowMs() {
+  return Date.now();
+}
+
+function getWidthBucket(width: number) {
+  return Math.max(320, Math.round(width / 24) * 24);
+}
+
+function getPreviewCacheKey({
+  src,
+  widthBucket,
+  pageNumber,
+}: {
+  src: string;
+  widthBucket: number;
+  pageNumber: number;
+}) {
+  return `${src}::${widthBucket}::${pageNumber}`;
+}
+
+function evictExpiredPdfByteCacheEntries() {
+  const now = nowMs();
+  for (const [key, entry] of pdfBytesCache.entries()) {
+    if (entry.expiresAt <= now) {
+      pdfBytesCache.delete(key);
+      pdfBytesCacheTotalBytes = Math.max(0, pdfBytesCacheTotalBytes - entry.size);
+    }
+  }
+}
+
+function enforcePdfByteCacheLimits() {
+  while (
+    pdfBytesCache.size > PDF_BYTES_CACHE_MAX_ENTRIES ||
+    pdfBytesCacheTotalBytes > PDF_BYTES_CACHE_MAX_TOTAL_BYTES
+  ) {
+    let oldestKey: string | null = null;
+    let oldestAccess = Number.POSITIVE_INFINITY;
+
+    for (const [key, entry] of pdfBytesCache.entries()) {
+      if (entry.lastAccessedAt < oldestAccess) {
+        oldestAccess = entry.lastAccessedAt;
+        oldestKey = key;
+      }
+    }
+
+    if (!oldestKey) {
+      break;
+    }
+
+    const removed = pdfBytesCache.get(oldestKey);
+    pdfBytesCache.delete(oldestKey);
+    if (removed) {
+      pdfBytesCacheTotalBytes = Math.max(0, pdfBytesCacheTotalBytes - removed.size);
+    }
+  }
+}
+
+function readCachedPdfBytes(src: string) {
+  evictExpiredPdfByteCacheEntries();
+  const entry = pdfBytesCache.get(src);
+  if (!entry) {
+    return null;
+  }
+
+  entry.lastAccessedAt = nowMs();
+  return entry.bytes;
+}
+
+function cachePdfBytes(src: string, bytes: Uint8Array) {
+  evictExpiredPdfByteCacheEntries();
+
+  const existing = pdfBytesCache.get(src);
+  if (existing) {
+    pdfBytesCacheTotalBytes = Math.max(0, pdfBytesCacheTotalBytes - existing.size);
+  }
+
+  pdfBytesCache.set(src, {
+    bytes,
+    size: bytes.byteLength,
+    expiresAt: nowMs() + PDF_BYTES_CACHE_TTL_MS,
+    lastAccessedAt: nowMs(),
+  });
+  pdfBytesCacheTotalBytes += bytes.byteLength;
+  enforcePdfByteCacheLimits();
+}
+
+function evictExpiredPdfPreviewCacheEntries() {
+  const now = nowMs();
+  for (const [key, entry] of pdfPagePreviewCache.entries()) {
+    if (entry.expiresAt <= now) {
+      pdfPagePreviewCache.delete(key);
+    }
+  }
+}
+
+function enforcePdfPreviewCacheLimits() {
+  while (pdfPagePreviewCache.size > PDF_PREVIEW_CACHE_MAX_ENTRIES) {
+    let oldestKey: string | null = null;
+    let oldestAccess = Number.POSITIVE_INFINITY;
+
+    for (const [key, entry] of pdfPagePreviewCache.entries()) {
+      if (entry.lastAccessedAt < oldestAccess) {
+        oldestAccess = entry.lastAccessedAt;
+        oldestKey = key;
+      }
+    }
+
+    if (!oldestKey) {
+      break;
+    }
+
+    pdfPagePreviewCache.delete(oldestKey);
+  }
+}
+
+function readCachedPagePreview({
+  src,
+  widthBucket,
+  pageNumber,
+}: {
+  src: string;
+  widthBucket: number;
+  pageNumber: number;
+}) {
+  evictExpiredPdfPreviewCacheEntries();
+  const key = getPreviewCacheKey({
+    src,
+    widthBucket,
+    pageNumber,
+  });
+  const entry = pdfPagePreviewCache.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  entry.lastAccessedAt = nowMs();
+  return entry.dataUrl;
+}
+
+function cachePagePreview({
+  src,
+  widthBucket,
+  pageNumber,
+  dataUrl,
+}: {
+  src: string;
+  widthBucket: number;
+  pageNumber: number;
+  dataUrl: string;
+}) {
+  if (pageNumber > MAX_CACHED_PREVIEW_PAGE_NUMBER) {
+    return;
+  }
+
+  evictExpiredPdfPreviewCacheEntries();
+  const key = getPreviewCacheKey({
+    src,
+    widthBucket,
+    pageNumber,
+  });
+  pdfPagePreviewCache.set(key, {
+    dataUrl,
+    expiresAt: nowMs() + PDF_PREVIEW_CACHE_TTL_MS,
+    lastAccessedAt: nowMs(),
+  });
+  enforcePdfPreviewCacheLimits();
+}
+
+async function fetchPdfBytes({
+  src,
+  signal,
+}: {
+  src: string;
+  signal: AbortSignal;
+}) {
+  const response = await fetch(src, {
+    method: "GET",
+    credentials: "include",
+    cache: "force-cache",
+    signal,
+    headers: {
+      accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`PDF fetch failed (HTTP ${response.status})`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
 export function PdfCanvasPreview({
   src,
   title,
@@ -61,6 +278,7 @@ export function PdfCanvasPreview({
     let cancelled = false;
     let loadingTask: any = null;
     let pdfDocument: any = null;
+    const pdfBytesAbortController = new AbortController();
 
     const clearMount = () => {
       if (mountRef.current) {
@@ -83,11 +301,34 @@ export function PdfCanvasPreview({
           pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         }
 
-        loadingTask = pdfjs.getDocument({
+        let documentInput: Record<string, unknown> = {
           url: src,
           withCredentials: true,
           useSystemFonts: true,
-        });
+        };
+
+        try {
+          let bytes = readCachedPdfBytes(src);
+          if (!bytes) {
+            bytes = await fetchPdfBytes({
+              src,
+              signal: pdfBytesAbortController.signal,
+            });
+            if (cancelled) {
+              return;
+            }
+            cachePdfBytes(src, bytes);
+          }
+
+          documentInput = {
+            data: bytes.slice(),
+            useSystemFonts: true,
+          };
+        } catch {
+          // Fallback to URL mode when in-memory byte cache cannot be populated.
+        }
+
+        loadingTask = pdfjs.getDocument(documentInput);
 
         const pdfDoc = await loadingTask.promise;
         pdfDocument = pdfDoc;
@@ -108,11 +349,28 @@ export function PdfCanvasPreview({
         }
 
         const effectiveWidth = containerWidth;
+        const widthBucket = getWidthBucket(effectiveWidth);
         const deviceScale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
         for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
           if (cancelled) {
             return;
+          }
+          const cachedPreviewDataUrl = readCachedPagePreview({
+            src,
+            widthBucket,
+            pageNumber,
+          });
+
+          if (cachedPreviewDataUrl) {
+            const previewImage = globalThis.document.createElement("img");
+            previewImage.className = "mb-3 block box-border w-full bg-white";
+            previewImage.alt = `PDF page ${pageNumber}`;
+            previewImage.loading = "lazy";
+            previewImage.src = cachedPreviewDataUrl;
+            container.appendChild(previewImage);
+            setPagesRendered((previous) => previous + 1);
+            continue;
           }
 
           const page = await pdfDoc.getPage(pageNumber);
@@ -146,6 +404,15 @@ export function PdfCanvasPreview({
           }
 
           container.appendChild(canvas);
+          if (pageNumber <= MAX_CACHED_PREVIEW_PAGE_NUMBER) {
+            const previewDataUrl = canvas.toDataURL("image/webp", 0.82);
+            cachePagePreview({
+              src,
+              widthBucket,
+              pageNumber,
+              dataUrl: previewDataUrl,
+            });
+          }
           setPagesRendered((previous) => previous + 1);
         }
 
@@ -165,6 +432,7 @@ export function PdfCanvasPreview({
 
     return () => {
       cancelled = true;
+      pdfBytesAbortController.abort();
       clearMount();
       try {
         void loadingTask?.destroy?.();

@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import type {
   RagEmbeddingStatus,
   RagEntryApprovalStatus,
@@ -23,6 +24,7 @@ export const JOB_POSTING_RUNTIME_CONTEXT_CHARS = 80_000;
 const UNKNOWN_LABEL = "Unknown";
 const DEFAULT_JOB_APPROVAL_STATUS: RagEntryApprovalStatus = "approved";
 const DEFAULT_JOB_EMBEDDING_STATUS: RagEmbeddingStatus = "ready";
+const JOBS_SERVICE_CACHE_REVALIDATE_SECONDS = 30;
 
 type JobPostingMetadataInput = {
   jobId: string;
@@ -159,7 +161,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   };
 }
 
-async function listJobsFromSupabase() {
+async function listJobsFromSupabaseUncached() {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("jobs")
@@ -173,7 +175,7 @@ async function listJobsFromSupabase() {
   return (data ?? []) as SupabaseJobRow[];
 }
 
-async function getJobFromSupabaseById(id: string) {
+async function getJobFromSupabaseByIdUncached(id: string) {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("jobs")
@@ -191,6 +193,24 @@ async function getJobFromSupabaseById(id: string) {
 
   return data as SupabaseJobRow;
 }
+
+const listJobsFromSupabaseCached = unstable_cache(
+  async () => listJobsFromSupabaseUncached(),
+  ["jobs-service:list-jobs"],
+  {
+    revalidate: JOBS_SERVICE_CACHE_REVALIDATE_SECONDS,
+    tags: ["jobs:list"],
+  }
+);
+
+const getJobFromSupabaseByIdCached = unstable_cache(
+  async (id: string) => getJobFromSupabaseByIdUncached(id),
+  ["jobs-service:get-job-by-id"],
+  {
+    revalidate: JOBS_SERVICE_CACHE_REVALIDATE_SECONDS,
+    tags: ["jobs:list"],
+  }
+);
 
 export function buildJobPostingMetadata(
   input: JobPostingMetadataInput
@@ -236,7 +256,9 @@ export async function listJobPostingEntries({
 }: {
   includeInactive?: boolean;
 } = {}): Promise<JobPostingRecord[]> {
-  const rows = await listJobsFromSupabase();
+  const rows = includeInactive
+    ? await listJobsFromSupabaseUncached()
+    : await listJobsFromSupabaseCached();
   const normalized = rows.map(normalizeJobPostingRecord);
 
   if (includeInactive) {
@@ -253,7 +275,9 @@ export async function getJobPostingById({
   id: string;
   includeInactive?: boolean;
 }): Promise<JobPostingRecord | null> {
-  const row = await getJobFromSupabaseById(id);
+  const row = includeInactive
+    ? await getJobFromSupabaseByIdUncached(id)
+    : await getJobFromSupabaseByIdCached(id);
   if (!row) {
     return null;
   }
