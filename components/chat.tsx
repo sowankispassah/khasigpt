@@ -147,6 +147,7 @@ export function Chat({
     : undefined;
   const [input, setInput] = useState<string>("");
   const [jobsSubmitScrollSignal, setJobsSubmitScrollSignal] = useState(0);
+  const [isJobsComposerVisible, setIsJobsComposerVisible] = useState(true);
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
@@ -477,6 +478,13 @@ export function Chat({
     setJobContext(initialJobContext ?? null);
     setJobViewerPosting(null);
   }, [id, initialJobContext, isStudyMode, isJobsMode]);
+
+  useEffect(() => {
+    if (!isJobsMode) {
+      return;
+    }
+    setIsJobsComposerVisible(true);
+  }, [id, isJobsMode]);
 
   useEffect(() => {
     void id;
@@ -1319,8 +1327,33 @@ export function Chat({
         />
 
         <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
-          {isReadonly ? null : (
+          {isReadonly ? null : isJobsMode && !isJobsComposerVisible ? (
+            <div className="flex w-full justify-end">
+              <Button
+                className="cursor-pointer"
+                onClick={() => setIsJobsComposerVisible(true)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Show chat box
+              </Button>
+            </div>
+          ) : (
             <div className="flex w-full flex-col gap-2">
+              {isJobsMode ? (
+                <div className="flex justify-end">
+                  <Button
+                    className="cursor-pointer"
+                    onClick={() => setIsJobsComposerVisible(false)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Hide
+                  </Button>
+                </div>
+              ) : null}
               {iconPromptSuggestions.length > 0 ? (
                 <div className="rounded-lg bg-background p-2">
                   {iconPromptSuggestions.map((suggestion, index) => (
