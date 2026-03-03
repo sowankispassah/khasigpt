@@ -36,7 +36,7 @@ export default async function LocaleLayout({
   const [translationBundle, session, forumSetting] = await Promise.all([
     getTranslationBundle(requested),
     auth(),
-    getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
+    getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY).catch(() => null),
   ]);
   const { languages, activeLanguage, dictionary } = translationBundle;
 

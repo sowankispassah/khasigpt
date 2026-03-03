@@ -27,10 +27,12 @@ export default async function TermsOfServicePage({
 }) {
   const { lang } = await params;
   const preferredLanguage = lang?.trim().toLowerCase() ?? null;
-  const stored = await getAppSetting<string>("termsOfService").catch(() => null);
-  const storedByLanguage = await getAppSetting<Record<string, string>>(
-    "termsOfServiceByLanguage"
-  ).catch(() => null);
+  const [stored, storedByLanguage] = await Promise.all([
+    getAppSetting<string>("termsOfService").catch(() => null),
+    getAppSetting<Record<string, string>>("termsOfServiceByLanguage").catch(
+      () => null
+    ),
+  ]);
   const englishContent =
     stored && stored.trim().length > 0
       ? stored.trim()

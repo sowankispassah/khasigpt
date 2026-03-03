@@ -315,6 +315,10 @@ const poolConfig = {
   max: parseOr(process.env.POSTGRES_POOL_SIZE, 3),
   idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
   max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
+  connect_timeout: parseOr(
+    process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
+    5
+  ),
 };
 
 const postgresUrl = process.env.POSTGRES_URL;
