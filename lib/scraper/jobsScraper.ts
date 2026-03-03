@@ -555,14 +555,20 @@ async function fetchSourceHtmlWithBrowserFallback({
 }> {
   let chromium: { launch: (options?: unknown) => Promise<unknown> } | null = null;
   try {
-    const playwrightModule = (await import("@playwright/test")) as {
+    // Keep this as runtime-only dynamic import so Next.js webpack does not
+    // statically bundle Playwright test internals into production server build.
+    const runtimeImport = new Function(
+      "moduleName",
+      "return import(moduleName);"
+    ) as (moduleName: string) => Promise<unknown>;
+    const playwrightModule = (await runtimeImport("playwright-core")) as {
       chromium: { launch: (options?: unknown) => Promise<unknown> };
     };
     chromium = playwrightModule.chromium;
   } catch (error) {
     return {
       html: null,
-      errorMessage: `Browser fallback unavailable (Playwright import failed): ${
+      errorMessage: `Browser fallback unavailable (playwright-core import failed): ${
         error instanceof Error ? error.message : String(error)
       }`,
     };
