@@ -1869,7 +1869,32 @@ export async function POST(request: Request) {
       }
 
       await recordUsageReport(mergedUsage, { persistContext });
-      resolveUsageReady?.();
+    };
+
+    let usageReportPromise: Promise<void> | null = null;
+    const queueUsageReport = (
+      usage: LanguageModelUsage,
+      { persistContext }: { persistContext: boolean }
+    ) => {
+      if (!usageReportPromise) {
+        usageReportPromise = handleUsageReport(usage, { persistContext })
+          .catch((error) => {
+            if (error instanceof ChatSDKError) {
+              console.warn(
+                "Unable to record usage due to chat sdk error",
+                { chatId: id },
+                error
+              );
+              return;
+            }
+            console.warn("Unable to handle usage report", { chatId: id }, error);
+          })
+          .finally(() => {
+            resolveUsageReady?.();
+          });
+      }
+
+      return usageReportPromise;
     };
 
     const extractTextFromStep = (step?: StepResult<any>) => {
@@ -1930,9 +1955,9 @@ export async function POST(request: Request) {
       clientAbortHandled = true;
 
       if (latestStepUsage) {
-        (async () => {
+        void (async () => {
           await persistAssistantSnapshot(latestStepResult ?? undefined);
-          await handleUsageReport(latestStepUsage, { persistContext: false });
+          void queueUsageReport(latestStepUsage, { persistContext: false });
         })();
         return;
       }
@@ -1948,9 +1973,19 @@ export async function POST(request: Request) {
           modelId: modelConfig.providerModelId,
         };
 
-        (async () => {
-          await persistAssistantSnapshot(undefined, partialText);
-          await recordUsageReport(fallbackUsage, { persistContext: false });
+        void (async () => {
+          try {
+            await persistAssistantSnapshot(undefined, partialText);
+            await recordUsageReport(fallbackUsage, { persistContext: false });
+          } catch (error) {
+            console.warn(
+              "Unable to persist fallback usage report",
+              { chatId: id },
+              error
+            );
+          } finally {
+            resolveUsageReady?.();
+          }
         })();
         return;
       }
@@ -1982,32 +2017,34 @@ export async function POST(request: Request) {
         }
       },
       abortSignal: request.signal,
-      onFinish: async ({ usage }) => {
-        await handleUsageReport(usage, { persistContext: !clientAborted });
+      onFinish: ({ usage }) => {
+        void queueUsageReport(usage, { persistContext: !clientAborted });
       },
       onStepFinish: (stepResult) => {
         latestStepUsage = stepResult?.usage ?? null;
         latestStepResult = stepResult ?? null;
       },
-      onAbort: async ({ steps }) => {
+      onAbort: ({ steps }) => {
         if (clientAbortHandled) {
           return;
         }
-        const lastStep = steps.at(-1);
-        await persistAssistantSnapshot(lastStep);
-        const usage = lastStep?.usage ?? latestStepUsage;
-        if (!usage) {
-          resolveUsageReady?.();
-          return;
-        }
-        await handleUsageReport(usage, { persistContext: !clientAborted });
+        void (async () => {
+          const lastStep = steps.at(-1);
+          await persistAssistantSnapshot(lastStep);
+          const usage = lastStep?.usage ?? latestStepUsage;
+          if (!usage) {
+            resolveUsageReady?.();
+            return;
+          }
+          void queueUsageReport(usage, { persistContext: !clientAborted });
+        })();
       },
     });
 
     result.usage
-      .then(async (usage) => {
+      .then((usage) => {
         if (!usageRecorded && usage) {
-          await handleUsageReport(usage, { persistContext: !clientAborted });
+          void queueUsageReport(usage, { persistContext: !clientAborted });
         }
       })
       .catch((error) => {
@@ -2040,7 +2077,7 @@ export async function POST(request: Request) {
 
         void persistUserMessagePromise;
 
-        if (!finalMergedUsage) {
+        if (!finalMergedUsage && !usageReportPromise) {
           resolveUsageReady?.();
         }
       },

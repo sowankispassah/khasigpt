@@ -109,8 +109,15 @@ export class ChatPage {
     await this.page.getByTestId("model-selector").click();
     const option = this.page.getByTestId(`model-selector-item-${chatModelId}`);
     const optionText = await option.innerText();
+    const expectedModelName = optionText
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean);
     await option.click();
-    expect(await this.getSelectedModel()).toBe(optionText);
+    if (!expectedModelName) {
+      throw new Error(`Unable to resolve model label for ${chatModelId}`);
+    }
+    expect(await this.getSelectedModel()).toContain(expectedModelName);
   }
 
   async getSelectedVisibility() {
@@ -217,6 +224,10 @@ export class ChatPage {
         ).not.toBeVisible();
       },
     };
+  }
+
+  async getAssistantMessageCount() {
+    return this.page.getByTestId("message-assistant").count();
   }
 
   async expectToastToContain(text: string) {

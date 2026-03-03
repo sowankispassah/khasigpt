@@ -1,9 +1,8 @@
 "use client";
 
 import type { Session } from "next-auth";
-import { startTransition, useMemo, useOptimistic, useState } from "react";
+import { useMemo, useOptimistic, useState } from "react";
 
-import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { useModelConfig } from "@/components/model-config-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +14,8 @@ import {
 import { cn } from "@/lib/utils";
 
 import { CheckCircleFillIcon, ChevronDownIcon } from "./icons";
+
+const CHAT_MODEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export function ModelSelector({
   session: _session,
@@ -78,11 +79,11 @@ export function ModelSelector({
               key={id}
               onSelect={() => {
                 setOpen(false);
-
-                startTransition(() => {
-                  setOptimisticModelId(id);
-                  saveChatModelAsCookie(id);
-                });
+                setOptimisticModelId(id);
+                if (typeof document !== "undefined") {
+                  const encodedModelId = encodeURIComponent(id);
+                  document.cookie = `chat-model=${encodedModelId}; path=/; max-age=${CHAT_MODEL_COOKIE_MAX_AGE}; samesite=lax`;
+                }
               }}
             >
               <button

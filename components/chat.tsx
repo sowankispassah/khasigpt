@@ -6,7 +6,6 @@ import { BookOpen, BriefcaseBusiness } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -15,7 +14,6 @@ import {
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import { saveChatModelAsCookie } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import {
@@ -65,6 +63,7 @@ import type { VisibilityType } from "./visibility-selector";
 
 const MODEL_STORAGE_KEY = "chat-model-preference";
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
+const CHAT_MODEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 const buildStudyQuestionReference = (
@@ -315,8 +314,22 @@ export function Chat({
     studyQuizActiveRef.current = studyQuizActive;
   }, [studyQuizActive]);
 
+  const setChatModelCookie = useCallback((modelId: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const encoded = encodeURIComponent(modelId);
+    document.cookie = `chat-model=${encoded}; path=/; max-age=${CHAT_MODEL_COOKIE_MAX_AGE}; samesite=lax`;
+  }, []);
+
   const handleModelChange = useCallback((modelId: string) => {
+    if (modelId === currentModelIdRef.current) {
+      return;
+    }
+
+    currentModelIdRef.current = modelId;
     setCurrentModelId(modelId);
+
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(MODEL_STORAGE_KEY, modelId);
@@ -324,10 +337,8 @@ export function Chat({
         // Ignore storage errors (private mode, quotas).
       }
     }
-    startTransition(() => {
-      saveChatModelAsCookie(modelId);
-    });
-  }, []);
+    setChatModelCookie(modelId);
+  }, [setChatModelCookie]);
 
   const setChatLanguageCookie = useCallback((languageCode: string) => {
     if (typeof document === "undefined") {
