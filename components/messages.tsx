@@ -17,6 +17,7 @@ import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
 import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Greeting } from "./greeting";
 import { IconPromptActions } from "./icon-prompt-actions";
 import { LoaderIcon } from "./icons";
@@ -57,6 +58,7 @@ type MessagesProps = {
     activeJobId?: string | null;
   };
   header?: ReactNode;
+  headerFullWidth?: boolean;
   greetingTitle?: string;
   greetingSubtitle?: string;
 };
@@ -84,6 +86,7 @@ function PureMessages({
   studyActions,
   jobActions,
   header,
+  headerFullWidth = false,
   greetingTitle,
   greetingSubtitle,
 }: MessagesProps) {
@@ -339,7 +342,14 @@ function PureMessages({
       >
         <div className="mx-auto flex min-h-full w-full max-w-4xl flex-1 flex-col px-2 py-6 md:px-4">
           {header ? (
-            <div className="w-full max-w-3xl self-center">{header}</div>
+            <div
+              className={cn(
+                "w-full self-center",
+                headerFullWidth ? "max-w-full" : "max-w-3xl"
+              )}
+            >
+              {header}
+            </div>
           ) : null}
           <div className="flex flex-1 items-center justify-center">
             <Greeting title={greetingTitle} subtitle={greetingSubtitle} />

@@ -1287,6 +1287,7 @@ export function Chat({
           greetingSubtitle={greetingSubtitle}
           hasMoreHistory={hasMoreHistory}
           header={modeHeader}
+          headerFullWidth={isJobsMode}
           isArtifactVisible={isArtifactVisible}
           isGeneratingImage={isGeneratingImage}
           isLoadingHistory={isLoadingHistory}
