@@ -357,6 +357,17 @@ function parseJobsRagSelection(rawText: string) {
   return parseCandidate(objectMatch[0]);
 }
 
+function isReferentialJobsFollowup(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return /\b(those|these|them|above|previous|last|earlier|same)\b/.test(
+    normalized
+  );
+}
+
 async function resolveStudyPaperContextText({
   paper,
   maxChars,
@@ -1072,6 +1083,145 @@ export async function POST(request: Request) {
         .filter((entry) => entry.role === "user")
         .map((entry) => getTextFromMessage(entry).trim())
         .filter((entry) => entry.length > 0);
+
+      let lastReturnedJobIds: string[] = [];
+      for (let index = jobsUiMessagesFromDb.length - 1; index >= 0; index -= 1) {
+        const entry = jobsUiMessagesFromDb[index];
+        if (entry.role !== "assistant") {
+          continue;
+        }
+
+        const cardsPart = entry.parts.find(
+          (part) => part.type === "data-jobCards"
+        ) as
+          | Extract<
+              ChatMessage["parts"][number],
+              { type: "data-jobCards" }
+            >
+          | undefined;
+
+        const candidateIds =
+          cardsPart?.data?.jobs
+            ?.map((job) => (typeof job.id === "string" ? job.id.trim() : ""))
+            .filter((jobId) => jobId.length > 0) ?? [];
+        if (candidateIds.length > 0) {
+          lastReturnedJobIds = Array.from(new Set(candidateIds));
+          break;
+        }
+      }
+
+      if (isReferentialJobsFollowup(jobsUserText) && lastReturnedJobIds.length > 0) {
+        const visibleJobsById = new Map(
+          visibleJobs.map((job) => [job.id, job] as const)
+        );
+        const referencedJobs = lastReturnedJobIds
+          .map((jobId) => visibleJobsById.get(jobId))
+          .filter((job): job is (typeof visibleJobs)[number] => Boolean(job));
+
+        if (referencedJobs.length > 0) {
+          const referencedContext = referencedJobs
+            .slice(0, 12)
+            .map((job) =>
+              [
+                `Job ID: ${job.id}`,
+                `Title: ${job.title}`,
+                `Company: ${job.company}`,
+                `Location: ${job.location}`,
+                `Type: ${job.employmentType}`,
+                `Source URL: ${job.sourceUrl ?? "Not available"}`,
+                `Description: ${job.content || "No description available."}`,
+              ].join("\n")
+            )
+            .join("\n\n---\n\n");
+
+          try {
+            const followupResult = await generateText({
+              model: resolveLanguageModel(modelConfig),
+              ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+              system: [
+                "You are in Jobs mode.",
+                "Answer ONLY using the provided referenced jobs context.",
+                "If the requested detail is not present in the context, say exactly: I don't know.",
+                "Keep the response concise and directly answer the follow-up question.",
+              ].join("\n"),
+              messages: convertToModelMessages([
+                ...jobsUiMessagesFromDb
+                  .slice(-8)
+                  .map((entry) => ({
+                    ...entry,
+                    parts: entry.parts.filter((part) => part.type === "text"),
+                  })),
+                {
+                  ...message,
+                  parts: [
+                    {
+                      type: "text" as const,
+                      text: [
+                        "Referenced jobs context:",
+                        referencedContext,
+                        `Follow-up question: ${jobsUserText}`,
+                      ].join("\n\n"),
+                    },
+                  ],
+                },
+              ]),
+            });
+
+            const followupUsage = followupResult.usage as
+              | {
+                  inputTokens?: number;
+                  outputTokens?: number;
+                  promptTokens?: number;
+                  completionTokens?: number;
+                }
+              | undefined;
+            const followupInputTokens =
+              typeof followupUsage?.inputTokens === "number"
+                ? followupUsage.inputTokens
+                : typeof followupUsage?.promptTokens === "number"
+                  ? followupUsage.promptTokens
+                  : 0;
+            const followupOutputTokens =
+              typeof followupUsage?.outputTokens === "number"
+                ? followupUsage.outputTokens
+                : typeof followupUsage?.completionTokens === "number"
+                  ? followupUsage.completionTokens
+                  : 0;
+            if (followupInputTokens > 0 || followupOutputTokens > 0) {
+              await recordTokenUsage({
+                userId: session.user.id,
+                chatId: id,
+                modelConfigId: modelConfig.id,
+                inputTokens: followupInputTokens,
+                outputTokens: followupOutputTokens,
+                deductCredits: hasActiveCredits,
+              }).catch((tokenError) => {
+                console.warn("[jobs-chat] failed to record followup token usage", {
+                  chatId: id,
+                  error:
+                    tokenError instanceof Error
+                      ? tokenError.message
+                      : String(tokenError),
+                });
+              });
+            }
+
+            const followupText = followupResult.text.trim();
+            return buildJobsResponse({
+              text:
+                followupText.length > 0
+                  ? followupText
+                  : "I don't know.",
+              cards: referencedJobs.map(toJobCard),
+            });
+          } catch (error) {
+            console.warn("[jobs-chat] referential_followup_failed", {
+              chatId: id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
 
       const runFallbackFilterFlow = (fallbackNotice?: string) => {
         const filterResolution = resolveJobsFilterConversation({
