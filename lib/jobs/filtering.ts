@@ -22,6 +22,7 @@ export type JobsFilterState = {
   sector: SectorFilter | null;
   salaryMin: number | null;
   salaryMax: number | null;
+  salaryKnownOnly: boolean;
   qualifications: QualificationFilter[];
   keywords: string[];
 };
@@ -46,6 +47,7 @@ type ParsedFilterUpdate = {
   sector?: SectorFilter;
   salaryMin?: number | null;
   salaryMax?: number | null;
+  salaryKnownOnly?: boolean;
   qualifications?: QualificationFilter[];
   keywords?: string[];
   salaryMentioned: boolean;
@@ -69,6 +71,8 @@ const WORD_STOPLIST = new Set([
   "be",
   "between",
   "by",
+  "has",
+  "have",
   "for",
   "from",
   "get",
@@ -97,6 +101,7 @@ const WORD_STOPLIST = new Set([
   "the",
   "to",
   "under",
+  "where",
   "with",
 ]);
 
@@ -267,6 +272,25 @@ function parseSalaryRangeFromQuery(text: string): SalaryRange | null {
   return null;
 }
 
+function isSalaryPresenceIntent(text: string) {
+  const normalized = normalize(text);
+  if (!normalized) {
+    return false;
+  }
+
+  if (!/\b(salary|pay|stipend)\b/.test(normalized)) {
+    return false;
+  }
+
+  if (parseSalaryRangeFromQuery(text)) {
+    return false;
+  }
+
+  return /\b(has|have|with|where|mention|mentioned|provided|available|disclosed|listed|show|showing|any)\b/.test(
+    normalized
+  );
+}
+
 function parseSalaryRangeFromJobText(text: string): SalaryRange | null {
   const normalized = normalize(text);
   if (!normalized) {
@@ -420,6 +444,7 @@ function parseFilterUpdate(text: string, knownLocations: string[]): ParsedFilter
   }
 
   const salary = parseSalaryRangeFromQuery(text);
+  const salaryKnownOnly = isSalaryPresenceIntent(text);
   const qualifications = extractQualifications(text);
   const employmentType = parseEmploymentType(text);
   const sector = parseSector(text);
@@ -437,10 +462,11 @@ function parseFilterUpdate(text: string, knownLocations: string[]): ParsedFilter
           salaryMax: salary.max,
         }
       : {}),
+    ...(salaryKnownOnly ? { salaryKnownOnly: true } : {}),
     ...(qualifications.length > 0 ? { qualifications } : {}),
     ...(keywords.length > 0 ? { keywords } : {}),
     salaryMentioned,
-    salaryParsed: salary !== null,
+    salaryParsed: salary !== null || salaryKnownOnly,
     qualificationMentioned,
     qualificationParsed: qualifications.length > 0,
   };
@@ -453,6 +479,7 @@ function getInitialState(): JobsFilterState {
     sector: null,
     salaryMin: null,
     salaryMax: null,
+    salaryKnownOnly: false,
     qualifications: [],
     keywords: [],
   };
@@ -471,6 +498,10 @@ function mergeFilterState(state: JobsFilterState, update: ParsedFilterUpdate): J
       update.salaryMin !== undefined ? update.salaryMin : state.salaryMin,
     salaryMax:
       update.salaryMax !== undefined ? update.salaryMax : state.salaryMax,
+    salaryKnownOnly:
+      update.salaryKnownOnly !== undefined
+        ? update.salaryKnownOnly
+        : state.salaryKnownOnly,
     qualifications: update.qualifications ?? state.qualifications,
     keywords: update.keywords?.length ? update.keywords : state.keywords,
   };
@@ -498,6 +529,10 @@ function describeState(state: JobsFilterState) {
     } else if (state.salaryMax !== null) {
       labels.push(`salary up to ${formatCurrency(state.salaryMax)}`);
     }
+  }
+
+  if (state.salaryKnownOnly) {
+    labels.push("salary mentioned");
   }
 
   if (state.employmentType) {
@@ -645,11 +680,16 @@ function matchesKeywordsWithPrecision({
 }
 
 function matchesSalary(job: JobPostingRecord, state: JobsFilterState) {
+  const jobSalary = parseSalaryRangeFromJobText(`${job.title} ${job.content}`);
+
+  if (state.salaryKnownOnly && !jobSalary) {
+    return false;
+  }
+
   if (state.salaryMin === null && state.salaryMax === null) {
     return true;
   }
 
-  const jobSalary = parseSalaryRangeFromJobText(`${job.title} ${job.content}`);
   if (!jobSalary) {
     return false;
   }
@@ -667,6 +707,7 @@ function applyFilters(jobs: JobPostingRecord[], state: JobsFilterState) {
     Boolean(state.sector) ||
     state.salaryMin !== null ||
     state.salaryMax !== null ||
+    state.salaryKnownOnly ||
     state.qualifications.length > 0 ||
     state.keywords.length > 0;
 
@@ -681,6 +722,7 @@ function applyFilters(jobs: JobPostingRecord[], state: JobsFilterState) {
     !state.sector &&
     state.salaryMin === null &&
     state.salaryMax === null &&
+    !state.salaryKnownOnly &&
     state.qualifications.length === 0;
 
   const filteredJobs = jobs.filter((job) => {
