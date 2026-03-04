@@ -96,6 +96,7 @@ const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_SCRAPE_HISTORY_MAX_ITEMS = 100;
 const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 45 * 60 * 1000;
+const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 60 * 1000;
 
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
@@ -155,6 +156,13 @@ function getStaleRunningThresholdMs() {
   return parsePositiveInt(
     process.env.JOBS_SCRAPE_STALE_RUNNING_MS,
     DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS
+  );
+}
+
+function getCancelRequestedStaleThresholdMs() {
+  return parsePositiveInt(
+    process.env.JOBS_SCRAPE_CANCEL_STALE_MS,
+    DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS
   );
 }
 
@@ -498,20 +506,32 @@ async function resolveStaleRunningSnapshot(
     return snapshot;
   }
 
-  const staleThresholdMs = getStaleRunningThresholdMs();
+  const staleThresholdMs = snapshot.cancelRequested
+    ? getCancelRequestedStaleThresholdMs()
+    : getStaleRunningThresholdMs();
   const now = new Date();
   if (now.getTime() - lastUpdateAt.getTime() < staleThresholdMs) {
     return snapshot;
   }
 
+  const terminalState: Extract<JobsScrapeProgressState, "failed" | "cancelled"> =
+    snapshot.cancelRequested ? "cancelled" : "failed";
+  const terminalSkipReason =
+    terminalState === "cancelled"
+      ? "cancel_requested_timeout"
+      : "stale_or_timed_out";
+
   const startedAt = parseDateOrNull(snapshot.startedAt) ?? lastUpdateAt;
   const durationMs = Math.max(0, now.getTime() - startedAt.getTime());
   const staleMinutes = Math.max(1, Math.round(staleThresholdMs / 60_000));
-  const message = `Scrape stopped: no progress update for ${staleMinutes}+ minutes.`;
+  const message =
+    terminalState === "cancelled"
+      ? `Scrape cancelled after waiting ${staleMinutes}+ minutes for current source.`
+      : `Scrape stopped: no progress update for ${staleMinutes}+ minutes.`;
 
-  const failedSnapshot: JobsScrapeProgressSnapshot = {
+  const terminalSnapshot: JobsScrapeProgressSnapshot = {
     ...snapshot,
-    state: "failed",
+    state: terminalState,
     finishedAt: now.toISOString(),
     updatedAt: now.toISOString(),
     currentSource: null,
@@ -531,17 +551,17 @@ async function resolveStaleRunningSnapshot(
     staleThresholdMs,
     staleUpdatedAt: snapshot.updatedAt,
     currentSource: snapshot.currentSource,
-    error: "stale_or_timed_out",
+    error: terminalSkipReason,
   };
 
   await setManyAppSettings([
     {
       key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
-      value: "failed",
+      value: terminalState,
     },
     {
       key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
-      value: "stale_or_timed_out",
+      value: terminalSkipReason,
     },
     {
       key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
@@ -557,16 +577,16 @@ async function resolveStaleRunningSnapshot(
     },
   ]);
 
-  await setProgressSafely(failedSnapshot);
+  await setProgressSafely(terminalSnapshot);
   await appendJobsScrapeHistory({
     runId: snapshot.runId,
     trigger: snapshot.trigger,
-    status: "failed",
+    status: terminalState === "cancelled" ? "cancelled" : "failed",
     startedAt: startedAt.toISOString(),
     finishedAt: now.toISOString(),
     durationMs,
     completionPercent: computeCompletionPercent({
-      status: "failed",
+      status: terminalState === "cancelled" ? "cancelled" : "failed",
       processedSources: snapshot.processedSources,
       totalSources: snapshot.totalSources,
     }),
@@ -575,7 +595,7 @@ async function resolveStaleRunningSnapshot(
     inserted: Math.max(0, snapshot.inserted ?? 0),
     updated: Math.max(0, snapshot.updated ?? 0),
     skippedDuplicates: Math.max(0, snapshot.skippedDuplicates ?? 0),
-    skipReason: null,
+    skipReason: terminalState === "cancelled" ? "cancel_requested" : null,
     errorMessage: message,
   });
 
@@ -583,11 +603,12 @@ async function resolveStaleRunningSnapshot(
     runId: snapshot.runId,
     updatedAt: snapshot.updatedAt,
     staleThresholdMs,
+    cancelRequested: snapshot.cancelRequested,
     processedSources: snapshot.processedSources,
     totalSources: snapshot.totalSources,
   });
 
-  return failedSnapshot;
+  return terminalSnapshot;
 }
 
 export async function requestJobsScrapeCancel() {

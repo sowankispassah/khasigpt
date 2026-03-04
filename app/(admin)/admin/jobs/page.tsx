@@ -83,6 +83,7 @@ const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
 const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
 const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
+const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 12_000;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
   "Asia/Kolkata": 330,
@@ -785,6 +786,18 @@ async function updateJobStatusAction(formData: FormData) {
   revalidatePath("/admin/jobs");
 }
 
+async function withTimeoutFallback<T>(
+  promise: Promise<T>,
+  fallback: T,
+  timeoutMs = JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
+) {
+  try {
+    return await withTimeout(promise, timeoutMs);
+  } catch {
+    return fallback;
+  }
+}
+
 export default async function AdminJobsPage() {
   const session = await auth();
   if (!session?.user || session.user.role !== "admin") {
@@ -808,21 +821,25 @@ export default async function AdminJobsPage() {
     scrapeProgress,
     scrapeHistory,
   ] = await Promise.all([
-    listJobPostingEntries({ includeInactive: true }),
-    listManagedJobSources(),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.enabled),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.intervalHours),
-    getAppSetting<unknown>(JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.startTime),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.timezone),
-    getAppSetting<unknown>(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lockUntil),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus),
-    getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason),
-    getAppSetting<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY),
-    getJobsScrapeProgressSnapshot(),
-    getJobsScrapeHistory({ limit: 50 }),
+    withTimeoutFallback(
+      listJobPostingEntries({ includeInactive: true }),
+      [],
+      20_000
+    ),
+    withTimeoutFallback(listManagedJobSources(), [], 10_000),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.enabled), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.intervalHours), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.startTime), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.timezone), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lockUntil), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason), null),
+    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY), null),
+    withTimeoutFallback(getJobsScrapeProgressSnapshot(), null, 10_000),
+    withTimeoutFallback(getJobsScrapeHistory({ limit: 50 }), [], 10_000),
   ]);
 
   const scheduleSettings = resolveJobsScrapeScheduleSettings({
