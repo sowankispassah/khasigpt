@@ -663,7 +663,8 @@ export async function POST(request: Request) {
       text?: string;
       cards?: JobCard[];
     }) => {
-      const createdAt = new Date();
+      const userCreatedAt = new Date();
+      const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
       const assistantMessageId = generateUUID();
       const assistantParts: ChatMessage["parts"] = [];
 
@@ -685,7 +686,7 @@ export async function POST(request: Request) {
             role: "user",
             parts: message.parts,
             attachments: [],
-            createdAt: new Date(),
+            createdAt: userCreatedAt,
           },
           {
             chatId: id,
@@ -693,7 +694,7 @@ export async function POST(request: Request) {
             role: "assistant",
             parts: assistantParts,
             attachments: [],
-            createdAt,
+            createdAt: assistantCreatedAt,
           },
         ],
       });
@@ -703,7 +704,7 @@ export async function POST(request: Request) {
           writer.write({
             type: "start",
             messageId: assistantMessageId,
-            messageMetadata: { createdAt: createdAt.toISOString() },
+            messageMetadata: { createdAt: assistantCreatedAt.toISOString() },
           });
           writer.write({ type: "start-step" });
           let textIndex = 0;
@@ -743,7 +744,8 @@ export async function POST(request: Request) {
       cards?: ReturnType<typeof toStudyCard>[];
       assistChips?: { question: string; chips: string[] } | null;
     }) => {
-      const createdAt = new Date();
+      const userCreatedAt = new Date();
+      const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
       const assistantMessageId = generateUUID();
       const assistantParts: ChatMessage["parts"] = [];
 
@@ -771,7 +773,7 @@ export async function POST(request: Request) {
             role: "user",
             parts: message.parts,
             attachments: [],
-            createdAt: new Date(),
+            createdAt: userCreatedAt,
           },
           {
             chatId: id,
@@ -779,7 +781,7 @@ export async function POST(request: Request) {
             role: "assistant",
             parts: assistantParts,
             attachments: [],
-            createdAt,
+            createdAt: assistantCreatedAt,
           },
         ],
       });
@@ -789,7 +791,7 @@ export async function POST(request: Request) {
           writer.write({
             type: "start",
             messageId: assistantMessageId,
-            messageMetadata: { createdAt: createdAt.toISOString() },
+            messageMetadata: { createdAt: assistantCreatedAt.toISOString() },
           });
           writer.write({ type: "start-step" });
           let textIndex = 0;
@@ -1120,10 +1122,18 @@ export async function POST(request: Request) {
       };
 
       const fileSearchStoreName = getGeminiFileSearchStoreName();
-      const canUseJobsRagSelection =
+      const preferredJobsRagModelId = process.env.JOBS_RAG_GEMINI_MODEL_ID?.trim();
+      const jobsRagModelId =
         modelConfig.provider === "google" &&
+        supportsGeminiFileSearchModel(modelConfig.providerModelId)
+          ? modelConfig.providerModelId
+          : preferredJobsRagModelId &&
+              supportsGeminiFileSearchModel(preferredJobsRagModelId)
+            ? preferredJobsRagModelId
+            : "gemini-2.5-flash";
+      const canUseJobsRagSelection =
         typeof fileSearchStoreName === "string" &&
-        supportsGeminiFileSearchModel(modelConfig.providerModelId);
+        supportsGeminiFileSearchModel(jobsRagModelId);
 
       if (!canUseJobsRagSelection || !fileSearchStoreName) {
         return runFallbackFilterFlow(
@@ -1132,19 +1142,11 @@ export async function POST(request: Request) {
       }
 
       const jobsRagModelBase = createGeminiFileSearchLanguageModel({
-        modelId: modelConfig.providerModelId,
+        modelId: jobsRagModelId,
         storeName: fileSearchStoreName,
         metadataFilter: 'jobs_kind = "job_posting" AND jobs_source = "supabase_jobs_table"',
       });
-      const jobsRagModel =
-        modelConfig.supportsReasoning && modelConfig.reasoningTag
-          ? wrapLanguageModel({
-              model: jobsRagModelBase,
-              middleware: extractReasoningMiddleware({
-                tagName: modelConfig.reasoningTag,
-              }),
-            })
-          : jobsRagModelBase;
+      const jobsRagModel = jobsRagModelBase;
 
       const jobsHistoryMessages = jobsUiMessagesFromDb.map((entry) => ({
         ...entry,
@@ -1159,7 +1161,7 @@ export async function POST(request: Request) {
       try {
         const ragSelectionResult = await generateText({
           model: jobsRagModel,
-          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          maxRetries: 0,
           system: [
             "You are helping with Meghalaya jobs search.",
             "Use ONLY retrieved File Search job documents. Do not invent jobs.",
