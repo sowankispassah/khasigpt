@@ -101,11 +101,7 @@ export default async function Page({
       }),
       IMAGE_ACCESS_TIMEOUT_MS
     ).catch((error) => {
-      if (isTimeoutError(error)) {
-        console.warn(
-          `[chat/home] image generation access timed out after ${IMAGE_ACCESS_TIMEOUT_MS}ms. Using fallback access.`
-        );
-      } else {
+      if (!isTimeoutError(error)) {
         console.error("[chat/home] image generation access failed.", error);
       }
       return {

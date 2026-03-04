@@ -4,9 +4,21 @@ import { getChatsByUserId } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { isStudyModeEnabledForRole } from "@/lib/study/config";
+import { withTimeout } from "@/lib/utils/async";
 
 const DEFAULT_HISTORY_LIMIT = 10;
 const MAX_HISTORY_LIMIT = 100;
+const HISTORY_QUERY_TIMEOUT_MS = 12_000;
+
+function isTransientDatabaseConnectionError(details: string) {
+  if (!details.trim()) {
+    return false;
+  }
+
+  return /connect_timeout|econnrefused|econnreset|etimedout|connection terminated|network|timeout/i.test(
+    details
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -76,13 +88,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const chats = await getChatsByUserId({
-      id: session.user.id,
-      limit,
-      startingAfter,
-      endingBefore,
-      mode,
-    });
+    const chats = await withTimeout(
+      getChatsByUserId({
+        id: session.user.id,
+        limit,
+        startingAfter,
+        endingBefore,
+        mode,
+      }),
+      HISTORY_QUERY_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[api/history] getChatsByUserId timed out after ${HISTORY_QUERY_TIMEOUT_MS}ms`
+        );
+      }
+    );
 
     return Response.json(chats);
   } catch (error) {
@@ -107,6 +127,29 @@ export async function GET(request: NextRequest) {
           headers: {
             "Cache-Control": "no-store",
             "X-Jobs-Mode-Compat": "chat_mode_enum_missing_jobs",
+          },
+        }
+      );
+    }
+
+    const isDbError =
+      error instanceof ChatSDKError &&
+      error.type === "bad_request" &&
+      error.surface === "database";
+    if (
+      (isDbError || !(error instanceof ChatSDKError)) &&
+      isTransientDatabaseConnectionError(details)
+    ) {
+      console.warn("[api/history] transient database connection failure", {
+        mode: requestedMode ?? "default",
+        details,
+      });
+      return Response.json(
+        { chats: [], hasMore: false },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-History-Fallback": "transient_database_connection_error",
           },
         }
       );

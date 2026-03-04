@@ -45,6 +45,7 @@ const CHAT_PAGE_LOAD_TIMEOUT_MS =
   Number.isFinite(chatPageTimeoutRaw) && chatPageTimeoutRaw > 0
     ? chatPageTimeoutRaw
     : 15000;
+const IMAGE_ACCESS_TIMEOUT_MS = 6_000;
 
 const chatPageInitialLimitRaw = Number.parseInt(
   process.env.CHAT_PAGE_INITIAL_MESSAGE_LIMIT ?? "",
@@ -123,9 +124,28 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-    getImageGenerationAccess({
-      userId: session?.user?.id ?? null,
-      userRole: session?.user?.role ?? null,
+    withTimeout(
+      getImageGenerationAccess({
+        userId: session?.user?.id ?? null,
+        userRole: session?.user?.role ?? null,
+      }),
+      IMAGE_ACCESS_TIMEOUT_MS
+    ).catch((error) => {
+      if (!isTimeoutError(error)) {
+        console.error("[chat] image generation access failed.", error);
+      }
+      return {
+        enabled: false,
+        canGenerate: false,
+        hasCredits: false,
+        hasPaidPlan: false,
+        hasPaidCredits: false,
+        hasManualCredits: false,
+        requiresPaidCredits: false,
+        isAdmin: session.user.role === "admin",
+        tokensPerImage: 1,
+        model: null,
+      };
     }),
   ]);
   const { dictionary } = translationBundle;
