@@ -123,6 +123,7 @@ export const PreviewAttachment = ({
             className="size-full object-cover"
             height={resolvedPreviewSize}
             src={url}
+            unoptimized
             width={resolvedPreviewSize}
           />
 
@@ -193,6 +194,7 @@ export const PreviewAttachment = ({
             }}
             sizes="(min-width: 1024px) 95vw, 95vw"
             src={url}
+            unoptimized
             width={dimensions?.width ?? 800}
           />
         </div>

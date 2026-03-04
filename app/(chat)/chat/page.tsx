@@ -25,6 +25,10 @@ import {
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && error.message === "timeout";
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -97,10 +101,13 @@ export default async function Page({
       }),
       IMAGE_ACCESS_TIMEOUT_MS
     ).catch((error) => {
-      console.error(
-        `[chat/home] image generation access timed out after ${IMAGE_ACCESS_TIMEOUT_MS}ms.`,
-        error
-      );
+      if (isTimeoutError(error)) {
+        console.warn(
+          `[chat/home] image generation access timed out after ${IMAGE_ACCESS_TIMEOUT_MS}ms. Using fallback access.`
+        );
+      } else {
+        console.error("[chat/home] image generation access failed.", error);
+      }
       return {
         enabled: false,
         canGenerate: false,
