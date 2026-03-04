@@ -403,6 +403,37 @@ function isReferentialJobsFollowup(text: string) {
   );
 }
 
+function isImplicitJobDetailFollowup(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const asksDetail = /\b(salary|pay|stipend|qualification|eligibility|deadline|last date|location|company|type|source|link|apply|experience|responsibilit|role detail|details)\b/.test(
+    normalized
+  );
+  if (!asksDetail) {
+    return false;
+  }
+
+  const asksFreshSearch = /\b(show|list|find|search|jobs?|openings?|vacanc)\b/.test(
+    normalized
+  );
+  if (asksFreshSearch) {
+    return false;
+  }
+
+  const hasExplicitFilterPattern =
+    /\bbetween|under|upto|up to|above|over|minimum|at least|less than|more than\b/.test(
+      normalized
+    ) ||
+    /\b(part[\s-]?time|full[\s-]?time|contract|internship|government|private)\b/.test(
+      normalized
+    );
+
+  return !hasExplicitFilterPattern;
+}
+
 function wantsJobCardsInFollowup(text: string) {
   const normalized = text.trim().toLowerCase();
   if (!normalized) {
@@ -1173,7 +1204,11 @@ export async function POST(request: Request) {
         }
       }
 
-      if (isReferentialJobsFollowup(jobsUserText) && lastReturnedJobIds.length > 0) {
+      if (
+        (isReferentialJobsFollowup(jobsUserText) ||
+          isImplicitJobDetailFollowup(jobsUserText)) &&
+        lastReturnedJobIds.length > 0
+      ) {
         const visibleJobsById = new Map(
           visibleJobs.map((job) => [job.id, job] as const)
         );
@@ -1207,6 +1242,7 @@ export async function POST(request: Request) {
                 "Format responses in clean Markdown with short headings and bullet points when listing multiple jobs.",
                 "If a requested detail is missing, respond naturally (for example: The salary details are not mentioned in the listing). Do not reply with only 'I don't know.'",
                 "Do not repeat the job list unless the user explicitly asks to show/list jobs again.",
+                "When asked about salary/eligibility/deadline for previously shown jobs, answer directly for each referenced job title.",
                 "Keep the response concise and directly answer the follow-up question.",
               ].join("\n"),
               messages: convertToModelMessages([
