@@ -68,6 +68,8 @@ const DEFAULT_JOB_FILTER_EXCLUDE_KEYWORDS = [
   "quotation",
   "procurement",
 ] as const;
+const ROLE_TITLE_HINT_PATTERN =
+  /\b(manager|officer|assistant|executive|engineer|teacher|tutor|nurse|staff|consultant|developer|analyst|specialist|coordinator|supervisor|clerk|technician|lecturer|faculty|professor|driver|operator|accountant|sales|marketing|recruitment|post|vacancy)\b/i;
 
 const SCRAPER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -554,6 +556,40 @@ function classifyJobIntent({
       matchedInclude: ["linkedin_job_url"],
       matchedExclude: [] as string[],
       reason: "trusted_linkedin_job_url",
+    };
+  }
+
+  // LinkedIn list pages sometimes expose non-canonical links (for example
+  // company/school profile links). When the source page itself is LinkedIn jobs,
+  // treat extracted cards as job-intent unless excluded above.
+  const isLinkedInSource = isLinkedInHost(sourceHost);
+  if (isLinkedInSource) {
+    return {
+      isJobRelated: true,
+      matchedInclude: ["trusted_linkedin_source"],
+      matchedExclude: [] as string[],
+      reason: "trusted_linkedin_source",
+    };
+  }
+
+  const looksLikeJobUrlPath = /\/(job|jobs|career|careers|vacanc|recruit)/i.test(
+    sourcePath
+  );
+  if (looksLikeJobUrlPath) {
+    return {
+      isJobRelated: true,
+      matchedInclude: ["job_url_path_signal"],
+      matchedExclude: [] as string[],
+      reason: "job_url_path_signal",
+    };
+  }
+
+  if (ROLE_TITLE_HINT_PATTERN.test(title)) {
+    return {
+      isJobRelated: true,
+      matchedInclude: ["role_title_signal"],
+      matchedExclude: [] as string[],
+      reason: "role_title_signal",
     };
   }
 
@@ -1494,6 +1530,20 @@ function isWithinLookbackWindow(date: Date, lookbackDays: number, now: Date) {
   return ageMs <= lookbackDays * DAY_IN_MS;
 }
 
+function parseBooleanSetting(rawValue: string | undefined, fallback: boolean) {
+  const normalized = rawValue?.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
 async function scrapeSource(
   source: JobSourceConfig,
   now: Date,
@@ -1532,6 +1582,10 @@ async function scrapeSource(
   const envLookbackDays = parsePositiveInt(
     process.env.JOBS_SCRAPE_LOOKBACK_DAYS,
     DEFAULT_LOOKBACK_DAYS
+  );
+  const allowMissingPublishedAt = parseBooleanSetting(
+    process.env.JOBS_SCRAPE_ALLOW_MISSING_PUBLISHED_AT,
+    true
   );
   const lookbackDays =
     typeof options.lookbackDays === "number" &&
@@ -1654,11 +1708,14 @@ async function scrapeSource(
       const publishedAtText = safeText(container, publishedAtSelector);
       const publishedAtDatetime = safeAttr(container, publishedAtSelector, "datetime");
       const publishedAtContent = safeAttr(container, publishedAtSelector, "content");
-      const publishedAt = parsePublishedDate(
+      let publishedAt = parsePublishedDate(
         publishedAtDatetime || publishedAtContent || publishedAtText,
         fallbackText,
         now
       );
+      if (!publishedAt && allowMissingPublishedAt) {
+        publishedAt = now;
+      }
       if (!publishedAt || !isWithinLookbackWindow(publishedAt, lookbackDays, now)) {
         stats.filteredByDate += 1;
         continue;
