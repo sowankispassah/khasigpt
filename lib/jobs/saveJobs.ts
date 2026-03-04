@@ -29,6 +29,7 @@ export type SaveJobsDuplicateMode = "skip" | "update";
 
 export type SaveJobsOptions = {
   onDuplicate?: SaveJobsDuplicateMode;
+  syncRag?: boolean;
 };
 
 function sleep(ms: number) {
@@ -349,7 +350,8 @@ export async function saveJobs(
   }
 
   const syncedJobIds = Array.from(writtenJobIds);
-  if (syncedJobIds.length > 0) {
+  const shouldSyncRag = options.syncRag !== false;
+  if (shouldSyncRag && syncedJobIds.length > 0) {
     try {
       await syncJobPostingsToRag({
         jobIds: syncedJobIds,

@@ -66,6 +66,20 @@ function formatTime(value: string | null) {
   return date.toLocaleString("en-IN", { hour12: true });
 }
 
+function formatElapsedMs(durationMs: number | null) {
+  if (!(typeof durationMs === "number") || !Number.isFinite(durationMs) || durationMs < 0) {
+    return null;
+  }
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+  }
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
 export function AdminJobsScrapeControl({
   initialProgress = null,
 }: {
@@ -77,6 +91,7 @@ export function AdminJobsScrapeControl({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [runStartGraceUntil, setRunStartGraceUntil] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -116,6 +131,18 @@ export function AdminJobsScrapeControl({
     }, intervalMs);
     return () => window.clearInterval(id);
   }, [progress?.state, refreshStatus]);
+
+  const running = progress?.state === "running";
+
+  useEffect(() => {
+    if (!running) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1_000);
+    return () => window.clearInterval(id);
+  }, [running]);
 
   const runStart = useCallback(async () => {
     const optimistic = createOptimisticRunningSnapshot();
@@ -222,8 +249,44 @@ export function AdminJobsScrapeControl({
     return Math.max(0, Math.min(100, value));
   }, [progress]);
 
-  const running = progress?.state === "running";
   const finishedAtLabel = formatTime(progress?.finishedAt ?? null);
+  const elapsedLabel = useMemo(() => {
+    if (!progress) {
+      return null;
+    }
+
+    const startedAtMs = Date.parse(progress.startedAt);
+    if (!Number.isFinite(startedAtMs)) {
+      return null;
+    }
+
+    const endMs = running
+      ? nowMs
+      : progress.finishedAt
+        ? Date.parse(progress.finishedAt)
+        : nowMs;
+    if (!Number.isFinite(endMs)) {
+      return null;
+    }
+
+    return formatElapsedMs(Math.max(0, endMs - startedAtMs));
+  }, [nowMs, progress, running]);
+  const progressPercentLabel = `${progressValue}%`;
+  const statusText = useMemo(() => {
+    if (!progress) {
+      return "No active scrape run.";
+    }
+
+    if (running) {
+      return `Progress: ${progress.processedSources}/${progress.totalSources} sources (${progressPercentLabel}).${
+        elapsedLabel ? ` Elapsed: ${elapsedLabel}.` : ""
+      } ${progress.currentSource ? `Current: ${progress.currentSource}. ` : ""}${progress.message ?? ""}`.trim();
+    }
+
+    return `Last run state: ${progress.state}${
+      finishedAtLabel ? ` at ${finishedAtLabel}` : ""
+    }${elapsedLabel ? ` (${elapsedLabel})` : ""}${progress.message ? ` (${progress.message})` : ""}`;
+  }, [elapsedLabel, finishedAtLabel, progress, progressPercentLabel, running]);
 
   return (
     <div className="space-y-2">
@@ -258,19 +321,7 @@ export function AdminJobsScrapeControl({
         ) : null}
       </div>
 
-      {running ? (
-        <p className="text-muted-foreground text-xs">
-          {running
-            ? `Progress: ${progress?.processedSources ?? 0}/${progress?.totalSources ?? 0} sources. ${
-                progress?.currentSource ? `Current: ${progress.currentSource}. ` : ""
-              }${progress?.message ?? ""}`
-            : progress
-              ? `Last run state: ${progress.state}${
-                  finishedAtLabel ? ` at ${finishedAtLabel}` : ""
-                }${progress.message ? ` (${progress.message})` : ""}`
-              : "No active scrape run."}
-        </p>
-      ) : null}
+      <p className="text-muted-foreground text-xs">{statusText}</p>
       {message ? <p className="text-xs">{message}</p> : null}
     </div>
   );

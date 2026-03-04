@@ -7,6 +7,7 @@ import {
 } from "@/config/jobSources";
 import { fetchSourceDetailMarkdown } from "@/lib/jobs/linkedin-detail";
 import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
+import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 import { fetchWithTimeout, withTimeout } from "@/lib/utils/async";
@@ -135,6 +136,23 @@ export type JobsScraperRuntimeOptions = {
     totalSources: number;
     lookbackDays: number;
     stats: SourceScrapeStats;
+  }) => void | Promise<void>;
+  onSourceJobs?: (event: {
+    source: string;
+    sourceIndex: number;
+    totalSources: number;
+    jobs: NewJobRow[];
+  }) => void | Promise<void>;
+  onSourcePersisted?: (event: {
+    source: string;
+    sourceIndex: number;
+    totalSources: number;
+    persisted: {
+      attemptedCount: number;
+      insertedCount: number;
+      updatedCount: number;
+      skippedDuplicateCount: number;
+    };
   }) => void | Promise<void>;
 };
 
@@ -1954,13 +1972,38 @@ export async function scrapeJobsFromSources(
     totalFilteredByDate += stats.filteredByDate;
     totalFilteredByKeyword += stats.filteredByKeyword;
 
+    const uniqueSourceJobs: NewJobRow[] = [];
     for (const job of jobs) {
       if (seenSourceUrls.has(job.source_url)) {
         totalDuplicatesInRun += 1;
         continue;
       }
       seenSourceUrls.add(job.source_url);
+      uniqueSourceJobs.push(job);
       combinedJobs.push(job);
+    }
+
+    if (uniqueSourceJobs.length > 0 && options.onSourceJobs) {
+      try {
+        await options.onSourceJobs({
+          source: source.name,
+          sourceIndex,
+          totalSources: sources.length,
+          jobs: uniqueSourceJobs,
+        });
+      } catch (error) {
+        stats.parseErrors += 1;
+        const sourcePersistMessage =
+          error instanceof Error ? error.message : String(error);
+        stats.errorMessage = stats.errorMessage
+          ? `${stats.errorMessage} | persistence_failed: ${sourcePersistMessage}`
+          : `persistence_failed: ${sourcePersistMessage}`;
+        console.error("[jobs-scraper] source_persistence_failed", {
+          source: source.name,
+          sourceIndex,
+          error: sourcePersistMessage,
+        });
+      }
     }
 
     console.info("[jobs-scraper] source_complete", {
@@ -2014,10 +2057,65 @@ export async function runJobsScraper(
   sources: JobSourceConfig[] = jobSources,
   options: JobsScraperRuntimeOptions = {}
 ): Promise<RunJobsScraperResult> {
-  const scraped = await scrapeJobsFromSources(sources, options);
-  const persisted = await saveJobs(scraped.jobs, {
-    onDuplicate: "update",
+  const persistedJobIds = new Set<string>();
+  let attemptedCount = 0;
+  let insertedCount = 0;
+  let updatedCount = 0;
+  let skippedDuplicateCount = 0;
+
+  const scraped = await scrapeJobsFromSources(sources, {
+    ...options,
+    onSourceJobs: async (event) => {
+      await options.onSourceJobs?.(event);
+
+      const persisted = await saveJobs(event.jobs, {
+        onDuplicate: "update",
+        syncRag: false,
+      });
+
+      attemptedCount += persisted.attemptedCount;
+      insertedCount += persisted.insertedCount;
+      updatedCount += persisted.updatedCount;
+      skippedDuplicateCount += persisted.skippedDuplicateCount;
+      for (const jobId of persisted.writtenJobIds) {
+        persistedJobIds.add(jobId);
+      }
+
+      await options.onSourcePersisted?.({
+        source: event.source,
+        sourceIndex: event.sourceIndex,
+        totalSources: event.totalSources,
+        persisted: {
+          attemptedCount: persisted.attemptedCount,
+          insertedCount: persisted.insertedCount,
+          updatedCount: persisted.updatedCount,
+          skippedDuplicateCount: persisted.skippedDuplicateCount,
+        },
+      });
+    },
   });
+
+  const writtenJobIds = Array.from(persistedJobIds);
+  if (writtenJobIds.length > 0) {
+    try {
+      await syncJobPostingsToRag({
+        jobIds: writtenJobIds,
+      });
+    } catch (error) {
+      console.warn("[jobs-scraper] rag_sync_failed", {
+        count: writtenJobIds.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const persisted = {
+    attemptedCount,
+    insertedCount,
+    updatedCount,
+    skippedDuplicateCount,
+    writtenJobIds,
+  };
 
   console.info("[jobs-scraper] run_complete", {
     sourcesProcessed: scraped.summary.sourcesProcessed,

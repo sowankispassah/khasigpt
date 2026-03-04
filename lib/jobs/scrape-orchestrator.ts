@@ -825,6 +825,10 @@ export async function runJobsScrapeWithScheduling({
     return cancelRequested;
   };
 
+  let runningInserted = 0;
+  let runningUpdated = 0;
+  let runningSkippedDuplicates = 0;
+
   try {
     const scrapeResult = await runJobsScraper(sourceResolution.scraperSources, {
       lookbackDays: runtime.lookbackDays,
@@ -836,12 +840,31 @@ export async function runJobsScrapeWithScheduling({
           message: `Processing ${source} (${sourceIndex + 1}/${totalSources})`,
         });
       },
-      onSourceComplete: async ({ source, sourceIndex }) => {
+      onSourceComplete: async ({ source, sourceIndex, stats }) => {
+        const warning =
+          typeof stats.errorMessage === "string" && stats.errorMessage.trim().length > 0
+            ? stats.errorMessage.trim()
+            : null;
+        const warningSuffix = warning
+          ? ` (warning: ${warning.slice(0, 180)}${warning.length > 180 ? "..." : ""})`
+          : "";
         await updateProgress({
           currentSource: null,
           lastCompletedSource: source,
           processedSources: sourceIndex + 1,
-          message: `Completed ${source} (${sourceIndex + 1}/${totalSources})`,
+          message: `Completed ${source} (${sourceIndex + 1}/${totalSources})${warningSuffix}`,
+        });
+      },
+      onSourcePersisted: async ({ persisted }) => {
+        runningInserted += persisted.insertedCount;
+        runningUpdated += persisted.updatedCount;
+        runningSkippedDuplicates += persisted.skippedDuplicateCount;
+
+        await updateProgress({
+          inserted: runningInserted,
+          updated: runningUpdated,
+          skippedDuplicates: runningSkippedDuplicates,
+          message: `Saved so far: ${runningInserted} inserted, ${runningUpdated} updated`,
         });
       },
     });
