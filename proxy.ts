@@ -530,7 +530,7 @@ function isAdminSignInRoutePath(pathname: string) {
   return pathname === "/login";
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
     SHOULD_ENFORCE_CANONICAL &&
