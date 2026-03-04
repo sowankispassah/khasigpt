@@ -1,10 +1,14 @@
 import "server-only";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
+import { ragEntry } from "@/lib/db/schema";
 import type {
   RagEmbeddingStatus,
   RagEntryApprovalStatus,
   RagEntryStatus,
+  RagEntry,
 } from "@/lib/db/schema";
+import { db } from "@/lib/db/queries";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   listQuestionPaperEntries,
@@ -23,8 +27,10 @@ export const JOB_POSTING_RUNTIME_CONTEXT_CHARS = 80_000;
 
 const UNKNOWN_LABEL = "Unknown";
 const DEFAULT_JOB_APPROVAL_STATUS: RagEntryApprovalStatus = "approved";
-const DEFAULT_JOB_EMBEDDING_STATUS: RagEmbeddingStatus = "ready";
+const DEFAULT_JOB_EMBEDDING_STATUS: RagEmbeddingStatus = "pending";
 const JOBS_SERVICE_CACHE_REVALIDATE_SECONDS = 30;
+const JOBS_RAG_KIND = "job_posting";
+const JOBS_RAG_SOURCE = "supabase_jobs_table";
 
 type JobPostingMetadataInput = {
   jobId: string;
@@ -150,8 +156,9 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
     approvalStatus: DEFAULT_JOB_APPROVAL_STATUS,
     embeddingStatus: DEFAULT_JOB_EMBEDDING_STATUS,
     metadata: {
-      jobs_kind: "job_posting",
-      source: "supabase_jobs_table",
+      jobs_kind: JOBS_RAG_KIND,
+      jobs_source: JOBS_RAG_SOURCE,
+      source: JOBS_RAG_SOURCE,
     },
     models: [],
     categoryId: null,
@@ -237,6 +244,7 @@ export function buildJobPostingMetadata(
 
   return {
     jobs_kind: "job_posting",
+    jobs_source: JOBS_RAG_SOURCE,
     job_id: input.jobId,
     job_title: jobTitle,
     company,
@@ -260,12 +268,16 @@ export async function listJobPostingEntries({
     ? await listJobsFromSupabaseUncached()
     : await listJobsFromSupabaseCached();
   const normalized = rows.map(normalizeJobPostingRecord);
+  const ragStateById = await getJobRagStateByIds(normalized.map((job) => job.id));
+  const hydrated = normalized.map((job) =>
+    applyRagStateToJob(job, ragStateById.get(job.id) ?? null)
+  );
 
   if (includeInactive) {
-    return normalized;
+    return hydrated;
   }
 
-  return normalized.filter((job) => job.status === "active");
+  return hydrated.filter((job) => job.status === "active");
 }
 
 export async function getJobPostingById({
@@ -283,11 +295,16 @@ export async function getJobPostingById({
   }
 
   const normalized = normalizeJobPostingRecord(row);
-  if (!includeInactive && normalized.status !== "active") {
+  const ragStateById = await getJobRagStateByIds([normalized.id]);
+  const hydrated = applyRagStateToJob(
+    normalized,
+    ragStateById.get(normalized.id) ?? null
+  );
+  if (!includeInactive && hydrated.status !== "active") {
     return null;
   }
 
-  return normalized;
+  return hydrated;
 }
 
 export async function getJobPostingEntryById({
@@ -322,12 +339,46 @@ export async function listJobPostings({
   });
 }
 
-export async function listActiveJobPostingIdsForModel(_input: {
+export async function listActiveJobPostingIdsForModel({
+  modelConfigId,
+  modelKey,
+}: {
   modelConfigId: string;
   modelKey?: string | null;
 }): Promise<string[]> {
-  const jobs = await listJobPostingEntries({ includeInactive: false });
-  return jobs.map((job) => job.id);
+  const rows = await db
+    .select({
+      id: ragEntry.id,
+      models: ragEntry.models,
+    })
+    .from(ragEntry)
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        eq(ragEntry.status, "active"),
+        eq(ragEntry.approvalStatus, "approved"),
+        sql`(${ragEntry.metadata} ->> 'jobs_kind') = ${JOBS_RAG_KIND}`,
+        sql`(${ragEntry.metadata} ->> 'jobs_source') = ${JOBS_RAG_SOURCE}`
+      )
+    )
+    .orderBy(desc(ragEntry.updatedAt));
+
+  const normalizedModelKey = modelKey?.trim() ?? null;
+  return rows
+    .filter((row) => {
+      const models = Array.isArray(row.models) ? row.models : [];
+      if (models.length === 0) {
+        return true;
+      }
+      if (models.includes(modelConfigId)) {
+        return true;
+      }
+      if (normalizedModelKey && models.includes(normalizedModelKey)) {
+        return true;
+      }
+      return false;
+    })
+    .map((row) => row.id);
 }
 
 export function toJobCard(job: JobPostingRecord): JobCard {
@@ -346,6 +397,122 @@ export function toJobCard(job: JobPostingRecord): JobCard {
     pdfSourceUrl: job.pdfSourceUrl,
     pdfCachedUrl: job.pdfCachedUrl,
   };
+}
+
+function toMetadataRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getMetadataStringList(metadata: Record<string, unknown>, key: string) {
+  const raw = metadata[key];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getMetadataNumberList(metadata: Record<string, unknown>, key: string) {
+  const raw = metadata[key];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const values = raw
+    .map((item) => {
+      if (typeof item === "number" && Number.isFinite(item)) {
+        return Math.trunc(item);
+      }
+      if (typeof item === "string") {
+        const parsed = Number.parseInt(item.trim(), 10);
+        return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+      }
+      return null;
+    })
+    .filter((item): item is number => Boolean(item && item > 0));
+  return Array.from(new Set(values));
+}
+
+function applyRagStateToJob(
+  job: JobPostingRecord,
+  ragState: Pick<
+    RagEntry,
+    | "status"
+    | "approvalStatus"
+    | "embeddingStatus"
+    | "metadata"
+    | "models"
+    | "categoryId"
+    | "createdAt"
+    | "updatedAt"
+  > | null
+): JobPostingRecord {
+  if (!ragState) {
+    return job;
+  }
+
+  const metadata = toMetadataRecord(ragState.metadata);
+  const metadataEmploymentType = toTrimmedString(metadata.employment_type);
+  const metadataStudyExam = toTrimmedString(metadata.study_exam);
+  const metadataStudyRole = toTrimmedString(metadata.study_role);
+  const metadataTags = getMetadataStringList(metadata, "tags");
+  const metadataStudyTags = getMetadataStringList(metadata, "study_tags");
+  const metadataStudyYears = getMetadataNumberList(metadata, "study_years");
+  const metadataParseError = toTrimmedString(metadata.parse_error) || null;
+  const metadataSourceUrl = toTrimmedString(metadata.source_url) || null;
+
+  return {
+    ...job,
+    employmentType: metadataEmploymentType || job.employmentType,
+    studyExam: metadataStudyExam || job.studyExam,
+    studyRole: metadataStudyRole || job.studyRole,
+    studyYears: metadataStudyYears.length > 0 ? metadataStudyYears : job.studyYears,
+    studyTags: metadataStudyTags.length > 0 ? metadataStudyTags : job.studyTags,
+    tags: metadataTags.length > 0 ? metadataTags : job.tags,
+    parseError: metadataParseError ?? job.parseError ?? null,
+    sourceUrl: job.sourceUrl ?? metadataSourceUrl,
+    status: ragState.status,
+    approvalStatus: ragState.approvalStatus,
+    embeddingStatus: ragState.embeddingStatus,
+    metadata: metadata,
+    models: Array.isArray(ragState.models) ? ragState.models : [],
+    categoryId: ragState.categoryId ?? null,
+    createdAt:
+      ragState.createdAt instanceof Date
+        ? ragState.createdAt
+        : job.createdAt,
+    updatedAt:
+      ragState.updatedAt instanceof Date
+        ? ragState.updatedAt
+        : job.updatedAt,
+  };
+}
+
+async function getJobRagStateByIds(ids: string[]) {
+  const normalizedIds = Array.from(
+    new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0))
+  );
+  if (normalizedIds.length === 0) {
+    return new Map<string, RagEntry>();
+  }
+
+  const rows = await db
+    .select()
+    .from(ragEntry)
+    .where(
+      and(
+        inArray(ragEntry.id, normalizedIds),
+        isNull(ragEntry.deletedAt),
+        sql`(${ragEntry.metadata} ->> 'jobs_kind') = ${JOBS_RAG_KIND}`,
+        sql`(${ragEntry.metadata} ->> 'jobs_source') = ${JOBS_RAG_SOURCE}`
+      )
+    );
+
+  return new Map(rows.map((row) => [row.id, row] as const));
 }
 
 function matchesStudyTag(paper: QuestionPaperRecord, tags: Set<string>) {

@@ -4,6 +4,7 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
+  generateText,
   type LanguageModelUsage,
   type StepResult,
   smoothStream,
@@ -19,6 +20,7 @@ import {
 import type { ModelCatalog } from "tokenlens/core";
 import { fetchModels } from "tokenlens/fetch";
 import { getUsage } from "tokenlens/helpers";
+import { z } from "zod";
 import { auth, type UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
@@ -294,6 +296,65 @@ function wantsDirectExamAnswer(text: string) {
   return /\b(just answer|only answer|direct answer|final answer)\b/.test(
     normalized
   );
+}
+
+const jobsRagSelectionSchema = z.object({
+  answer: z.string().trim().min(1),
+  jobIds: z.array(z.string().uuid()).max(20).default([]),
+});
+
+function supportsGeminiFileSearchModel(providerModelId: string) {
+  const normalized = providerModelId.includes("/")
+    ? providerModelId.split("/").at(-1) ?? providerModelId
+    : providerModelId;
+
+  return (
+    normalized === "gemini-pro-latest" ||
+    normalized === "gemini-flash-latest" ||
+    normalized === "gemini-3-pro-preview" ||
+    normalized.startsWith("gemini-3-pro-preview-") ||
+    normalized === "gemini-2.5-pro" ||
+    normalized.startsWith("gemini-2.5-pro-") ||
+    normalized === "gemini-2.5-flash" ||
+    normalized.startsWith("gemini-2.5-flash-") ||
+    normalized === "gemini-2.5-flash-lite" ||
+    normalized.startsWith("gemini-2.5-flash-lite-")
+  );
+}
+
+function parseJobsRagSelection(rawText: string) {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parseCandidate = (candidate: string) => {
+    try {
+      const parsedJson = JSON.parse(candidate);
+      return jobsRagSelectionSchema.parse(parsedJson);
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = parseCandidate(trimmed);
+  if (direct) {
+    return direct;
+  }
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch?.[1]) {
+    const fenced = parseCandidate(fencedMatch[1]);
+    if (fenced) {
+      return fenced;
+    }
+  }
+
+  const objectMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (!objectMatch?.[0]) {
+    return null;
+  }
+  return parseCandidate(objectMatch[0]);
 }
 
 async function resolveStudyPaperContextText({
@@ -1009,48 +1070,192 @@ export async function POST(request: Request) {
         .filter((entry) => entry.role === "user")
         .map((entry) => getTextFromMessage(entry).trim())
         .filter((entry) => entry.length > 0);
-      const filterResolution = resolveJobsFilterConversation({
-        jobs: visibleJobs,
-        priorUserMessages,
-        latestUserMessage: jobsUserText,
+
+      const runFallbackFilterFlow = (fallbackNotice?: string) => {
+        const filterResolution = resolveJobsFilterConversation({
+          jobs: visibleJobs,
+          priorUserMessages,
+          latestUserMessage: jobsUserText,
+        });
+        const withNotice = (text: string) =>
+          fallbackNotice ? `${fallbackNotice}\n\n${text}` : text;
+
+        if (filterResolution.clarification) {
+          return buildJobsResponse({
+            text: withNotice(filterResolution.clarification),
+          });
+        }
+
+        if (!filterResolution.hasActiveFilters) {
+          return buildJobsResponse({
+            text: withNotice(
+              "Tell me your filters (qualification, salary range, job type, or location). Here are the latest available jobs."
+            ),
+            cards: visibleJobs.slice(0, 12).map(toJobCard),
+          });
+        }
+
+        if (filterResolution.filteredJobs.length === 0) {
+          return buildJobsResponse({
+            text: withNotice(
+              `I could not find jobs matching ${filterResolution.summary}. Try broadening your filters.`
+            ),
+            cards: [],
+          });
+        }
+
+        if (filterResolution.filteredJobs.length === 1) {
+          return buildJobsResponse({
+            text: withNotice(`I found 1 job matching ${filterResolution.summary}.`),
+            cards: filterResolution.filteredJobs.map(toJobCard),
+          });
+        }
+
+        return buildJobsResponse({
+          text: withNotice(
+            `I found ${filterResolution.filteredJobs.length} jobs matching ${filterResolution.summary}.`
+          ),
+          cards: filterResolution.filteredJobs.slice(0, 50).map(toJobCard),
+        });
+      };
+
+      const fileSearchStoreName = getGeminiFileSearchStoreName();
+      const canUseJobsRagSelection =
+        modelConfig.provider === "google" &&
+        typeof fileSearchStoreName === "string" &&
+        supportsGeminiFileSearchModel(modelConfig.providerModelId);
+
+      if (!canUseJobsRagSelection || !fileSearchStoreName) {
+        return runFallbackFilterFlow(
+          "I am temporarily using fallback matching while the jobs knowledge index is unavailable."
+        );
+      }
+
+      const jobsRagModelBase = createGeminiFileSearchLanguageModel({
+        modelId: modelConfig.providerModelId,
+        storeName: fileSearchStoreName,
+        metadataFilter: 'jobs_kind = "job_posting" AND jobs_source = "supabase_jobs_table"',
       });
+      const jobsRagModel =
+        modelConfig.supportsReasoning && modelConfig.reasoningTag
+          ? wrapLanguageModel({
+              model: jobsRagModelBase,
+              middleware: extractReasoningMiddleware({
+                tagName: modelConfig.reasoningTag,
+              }),
+            })
+          : jobsRagModelBase;
 
-      if (filterResolution.clarification) {
-        return buildJobsResponse({
-          text: filterResolution.clarification,
+      const jobsHistoryMessages = jobsUiMessagesFromDb.map((entry) => ({
+        ...entry,
+        parts: entry.parts.filter((part) => part.type === "text"),
+      }));
+      const jobsPromptText = jobsUserText.length > 0 ? jobsUserText : "Show me relevant jobs.";
+      const jobsPromptMessage: ChatMessage = {
+        ...message,
+        parts: [{ type: "text", text: jobsPromptText }],
+      };
+
+      try {
+        const ragSelectionResult = await generateText({
+          model: jobsRagModel,
+          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          system: [
+            "You are helping with Meghalaya jobs search.",
+            "Use ONLY retrieved File Search job documents. Do not invent jobs.",
+            "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
+            "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
+            "If no matches, return an empty jobIds array and explain briefly in answer.",
+            "If uncertain, state what is missing instead of guessing.",
+          ].join("\n"),
+          messages: convertToModelMessages([
+            ...jobsHistoryMessages,
+            jobsPromptMessage,
+          ]),
         });
-      }
+        const ragUsage = ragSelectionResult.usage as
+          | {
+              inputTokens?: number;
+              outputTokens?: number;
+              promptTokens?: number;
+              completionTokens?: number;
+            }
+          | undefined;
+        const ragInputTokens =
+          typeof ragUsage?.inputTokens === "number"
+            ? ragUsage.inputTokens
+            : typeof ragUsage?.promptTokens === "number"
+              ? ragUsage.promptTokens
+              : 0;
+        const ragOutputTokens =
+          typeof ragUsage?.outputTokens === "number"
+            ? ragUsage.outputTokens
+            : typeof ragUsage?.completionTokens === "number"
+              ? ragUsage.completionTokens
+              : 0;
+        if (ragInputTokens > 0 || ragOutputTokens > 0) {
+          await recordTokenUsage({
+            userId: session.user.id,
+            chatId: id,
+            modelConfigId: modelConfig.id,
+            inputTokens: ragInputTokens,
+            outputTokens: ragOutputTokens,
+            deductCredits: hasActiveCredits,
+          }).catch((tokenError) => {
+            console.warn("[jobs-chat] failed to record rag token usage", {
+              chatId: id,
+              error:
+                tokenError instanceof Error
+                  ? tokenError.message
+                  : String(tokenError),
+            });
+          });
+        }
 
-      if (!filterResolution.hasActiveFilters) {
+        const parsedSelection = parseJobsRagSelection(ragSelectionResult.text);
+        if (!parsedSelection) {
+          return runFallbackFilterFlow(
+            "I could not parse the RAG result, so I am using fallback matching for this response."
+          );
+        }
+
+        const visibleJobsById = new Map(
+          visibleJobs.map((job) => [job.id, job] as const)
+        );
+        const selectedCards = parsedSelection.jobIds
+          .map((jobId) => visibleJobsById.get(jobId))
+          .filter((job): job is (typeof visibleJobs)[number] => Boolean(job))
+          .slice(0, 12)
+          .map(toJobCard);
+
+        if (selectedCards.length === 0) {
+          return buildJobsResponse({
+            text: parsedSelection.answer,
+            cards: [],
+          });
+        }
+
         return buildJobsResponse({
-          text: "Tell me your filters (qualification, salary range, job type, or location). Here are the latest available jobs.",
-          cards: visibleJobs.slice(0, 12).map(toJobCard),
+          text: parsedSelection.answer,
+          cards: selectedCards,
         });
-      }
-
-      if (filterResolution.filteredJobs.length === 0) {
-        return buildJobsResponse({
-          text: `I could not find jobs matching ${filterResolution.summary}. Try broadening your filters.`,
-          cards: [],
+      } catch (error) {
+        console.warn("[jobs-chat] rag_selection_failed", {
+          chatId: id,
+          error: error instanceof Error ? error.message : String(error),
         });
+        return runFallbackFilterFlow(
+          "I am temporarily using fallback matching while the jobs knowledge index refreshes."
+        );
       }
-
-      if (filterResolution.filteredJobs.length === 1) {
-        return buildJobsResponse({
-          text: `I found 1 job matching ${filterResolution.summary}.`,
-          cards: filterResolution.filteredJobs.map(toJobCard),
-        });
-      }
-
-      return buildJobsResponse({
-        text: `I found ${filterResolution.filteredJobs.length} jobs matching ${filterResolution.summary}.`,
-        cards: filterResolution.filteredJobs.slice(0, 50).map(toJobCard),
-      });
     }
 
     if (resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId) {
       const availableIds = jobPostingIdsForModel ?? [];
-      if (!availableIds.includes(effectiveJobPostingId)) {
+      if (
+        availableIds.length > 0 &&
+        !availableIds.includes(effectiveJobPostingId)
+      ) {
         return new ChatSDKError(
           "not_found:chat",
           "Job posting not found or unavailable."
@@ -1613,25 +1818,6 @@ export async function POST(request: Request) {
 
     const escapeFilterValue = (value: string) =>
       value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-
-    const supportsGeminiFileSearchModel = (providerModelId: string) => {
-      const normalized = providerModelId.includes("/")
-        ? providerModelId.split("/").at(-1) ?? providerModelId
-        : providerModelId;
-
-      return (
-        normalized === "gemini-pro-latest" ||
-        normalized === "gemini-flash-latest" ||
-        normalized === "gemini-3-pro-preview" ||
-        normalized.startsWith("gemini-3-pro-preview-") ||
-        normalized === "gemini-2.5-pro" ||
-        normalized.startsWith("gemini-2.5-pro-") ||
-        normalized === "gemini-2.5-flash" ||
-        normalized.startsWith("gemini-2.5-flash-") ||
-        normalized === "gemini-2.5-flash-lite" ||
-        normalized.startsWith("gemini-2.5-flash-lite-")
-      );
-    };
 
     const fileSearchStoreName = getGeminiFileSearchStoreName();
     const allowModeSpecificFileSearch =

@@ -30,6 +30,10 @@ import {
   setAppSetting,
 } from "@/lib/db/queries";
 import { listJobPostingEntries } from "@/lib/jobs/service";
+import {
+  archiveJobPostingFromRag,
+  syncJobPostingsToRag,
+} from "@/lib/jobs/rag-sync";
 import { saveJobs } from "@/lib/jobs/saveJobs";
 import {
   getJobsScrapeHistory,
@@ -728,6 +732,15 @@ async function deleteManualJobAction(formData: FormData) {
   if (error) {
     throw new Error(`Failed to delete job: ${error.message}`);
   }
+  try {
+    await archiveJobPostingFromRag({ jobId: id });
+  } catch (syncError) {
+    console.warn("[admin/jobs] failed to archive deleted job from RAG", {
+      id,
+      error:
+        syncError instanceof Error ? syncError.message : String(syncError),
+    });
+  }
 
   revalidatePath("/admin/jobs");
 }
@@ -755,6 +768,18 @@ async function updateJobStatusAction(formData: FormData) {
     .eq("id", id);
   if (error) {
     throw new Error(`Failed to update status: ${error.message}`);
+  }
+  try {
+    await syncJobPostingsToRag({
+      jobIds: [id],
+    });
+  } catch (syncError) {
+    console.warn("[admin/jobs] failed to sync job status to RAG", {
+      id,
+      nextStatus,
+      error:
+        syncError instanceof Error ? syncError.message : String(syncError),
+    });
   }
 
   revalidatePath("/admin/jobs");

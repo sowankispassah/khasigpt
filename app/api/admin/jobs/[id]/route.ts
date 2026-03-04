@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
+import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -145,8 +146,19 @@ export async function PATCH(
     );
   }
 
+  try {
+    await syncJobPostingsToRag({
+      jobIds: [id],
+    });
+  } catch (syncError) {
+    console.warn("[api/admin/jobs/:id] failed to sync updated job to RAG", {
+      id,
+      error:
+        syncError instanceof Error ? syncError.message : String(syncError),
+    });
+  }
+
   return NextResponse.json({
     ok: true,
   });
 }
-

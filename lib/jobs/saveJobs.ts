@@ -1,5 +1,6 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 
 const BATCH_SIZE = 100;
 const DB_RETRY_ATTEMPTS = 3;
@@ -21,6 +22,7 @@ export type SaveJobsResult = {
   insertedCount: number;
   updatedCount: number;
   skippedDuplicateCount: number;
+  writtenJobIds: string[];
 };
 
 export type SaveJobsDuplicateMode = "skip" | "update";
@@ -200,6 +202,7 @@ export async function saveJobs(
       insertedCount: 0,
       updatedCount: 0,
       skippedDuplicateCount: 0,
+      writtenJobIds: [],
     };
   }
 
@@ -209,6 +212,7 @@ export async function saveJobs(
   let insertedCount = 0;
   let updatedCount = 0;
   let skippedDuplicateCount = 0;
+  const writtenJobIds = new Set<string>();
 
   for (const batch of chunkArray(normalizedRows, BATCH_SIZE)) {
     const sourceUrls = batch.map((job) => job.source_url);
@@ -324,6 +328,11 @@ export async function saveJobs(
         .map((row) => (typeof row.source_url === "string" ? row.source_url.trim() : ""))
         .filter(Boolean)
     );
+    for (const row of writtenRows) {
+      if (typeof row.id === "string" && row.id.trim().length > 0) {
+        writtenJobIds.add(row.id.trim());
+      }
+    }
 
     for (const row of rowsToWrite) {
       if (!writtenUrlSet.has(row.source_url)) {
@@ -339,10 +348,25 @@ export async function saveJobs(
     }
   }
 
+  const syncedJobIds = Array.from(writtenJobIds);
+  if (syncedJobIds.length > 0) {
+    try {
+      await syncJobPostingsToRag({
+        jobIds: syncedJobIds,
+      });
+    } catch (error) {
+      console.warn("[jobs-save] rag_sync_failed", {
+        count: syncedJobIds.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return {
     attemptedCount: normalizedRows.length,
     insertedCount,
     updatedCount,
     skippedDuplicateCount,
+    writtenJobIds: syncedJobIds,
   };
 }
