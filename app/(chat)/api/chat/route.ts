@@ -403,6 +403,22 @@ function isReferentialJobsFollowup(text: string) {
   );
 }
 
+function wantsJobCardsInFollowup(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const asksToShow = /\b(show|list|display|see|view|repeat|again)\b/.test(
+    normalized
+  );
+  const asksForListings = /\b(job|jobs|listing|listings|card|cards|result|results)\b/.test(
+    normalized
+  );
+
+  return asksToShow && asksForListings;
+}
+
 async function resolveStudyPaperContextText({
   paper,
   maxChars,
@@ -1188,7 +1204,9 @@ export async function POST(request: Request) {
               system: [
                 "You are in Jobs mode.",
                 "Answer ONLY using the provided referenced jobs context.",
-                "If the requested detail is not present in the context, say exactly: I don't know.",
+                "Format responses in clean Markdown with short headings and bullet points when listing multiple jobs.",
+                "If a requested detail is missing, respond naturally (for example: The salary details are not mentioned in the listing). Do not reply with only 'I don't know.'",
+                "Do not repeat the job list unless the user explicitly asks to show/list jobs again.",
                 "Keep the response concise and directly answer the follow-up question.",
               ].join("\n"),
               messages: convertToModelMessages([
@@ -1254,12 +1272,13 @@ export async function POST(request: Request) {
             }
 
             const followupText = followupResult.text.trim();
+            const includeCards = wantsJobCardsInFollowup(jobsUserText);
             return buildJobsResponse({
               text:
                 followupText.length > 0
                   ? followupText
-                  : "I don't know.",
-              cards: referencedJobs.map(toJobCard),
+                  : "The requested detail is not mentioned in the available job listings.",
+              cards: includeCards ? referencedJobs.map(toJobCard) : undefined,
             });
           } catch (error) {
             console.warn("[jobs-chat] referential_followup_failed", {
@@ -1993,8 +2012,14 @@ export async function POST(request: Request) {
       resolvedChatMode === JOBS_CHAT_MODE
         ? "You are in Jobs mode. Use only the uploaded job posting documents as the primary source for eligibility, responsibilities, requirements, and role details."
         : "",
+      resolvedChatMode === JOBS_CHAT_MODE
+        ? "Format job responses in clean Markdown with clear sections (for example: Overview, Eligibility, Salary, Location, Important dates) and consistent bullet points."
+        : "",
+      resolvedChatMode === JOBS_CHAT_MODE
+        ? "When job details are missing, respond naturally (for example: The listing does not mention salary details) instead of replying with only: I don't know."
+        : "",
       resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
-        ? "Answer using the selected job posting. If a detail is not present in the posting, say you don't know instead of guessing."
+        ? "Answer using the selected job posting. If a detail is not present in the posting, clearly say the listing does not mention it instead of guessing."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE && jobsIntent === "exam_prep"
         ? "The user is asking exam-prep questions for the selected job. Prefer matched study papers as the source for expected question types, preparation topics, and exam strategy."
