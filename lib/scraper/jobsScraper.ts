@@ -251,6 +251,11 @@ function containsAnyKeyword(text: string, keywords: string[]) {
 
 type ExtractedPdfFields = {
   salary: string | null;
+  qualification: string | null;
+  experience: string | null;
+  ageLimit: string | null;
+  applicationFee: string | null;
+  selectionProcess: string | null;
   applicationLastDate: string | null;
   notificationDate: string | null;
 };
@@ -295,11 +300,150 @@ function extractSalaryFromText(text: string) {
   return null;
 }
 
+function extractFieldValueByLabel({
+  text,
+  labels,
+}: {
+  text: string;
+  labels: string[];
+}) {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const expression = new RegExp(
+      `(?:${escaped})\\s*[:\\-]?\\s*([^\\n\\r]{3,180})`,
+      "i"
+    );
+    const match = text.match(expression);
+    if (match?.[1]) {
+      return normalizeWhitespace(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractQualificationFromText(text: string) {
+  const labelled = extractFieldValueByLabel({
+    text,
+    labels: [
+      "qualification",
+      "essential qualification",
+      "educational qualification",
+      "minimum qualification",
+      "eligibility",
+      "education",
+    ],
+  });
+  if (labelled) {
+    return labelled;
+  }
+
+  const patternMatch = text.match(
+    /\b(10th|12th|graduate|graduation|bachelor(?:'s)?|master(?:'s)?|postgraduate|diploma|iti|phd)\b/i
+  );
+  return patternMatch?.[1] ? normalizeWhitespace(patternMatch[1]) : null;
+}
+
+function extractExperienceFromText(text: string) {
+  const labelled = extractFieldValueByLabel({
+    text,
+    labels: [
+      "experience",
+      "work experience",
+      "minimum experience",
+      "post qualification experience",
+    ],
+  });
+  if (labelled) {
+    return labelled;
+  }
+
+  const yearsMatch = text.match(
+    /\b(\d{1,2}\s*(?:\+)?\s*(?:years?|yrs?))(?:\s+of)?\s+experience\b/i
+  );
+  return yearsMatch?.[1] ? normalizeWhitespace(yearsMatch[1]) : null;
+}
+
+function extractAgeLimitFromText(text: string) {
+  const labelled = extractFieldValueByLabel({
+    text,
+    labels: [
+      "age limit",
+      "maximum age",
+      "minimum age",
+      "age as on",
+    ],
+  });
+  if (labelled) {
+    return labelled;
+  }
+
+  const rangeMatch = text.match(/\b(\d{1,2}\s*(?:-|to)\s*\d{1,2}\s*years?)\b/i);
+  return rangeMatch?.[1] ? normalizeWhitespace(rangeMatch[1]) : null;
+}
+
+function extractApplicationFeeFromText(text: string) {
+  const labelled = extractFieldValueByLabel({
+    text,
+    labels: [
+      "application fee",
+      "fee",
+      "application charges",
+      "exam fee",
+      "registration fee",
+    ],
+  });
+  if (labelled) {
+    return labelled;
+  }
+
+  if (/\b(no fee|nil fee|fee not required|no application fee)\b/i.test(text)) {
+    return "No application fee";
+  }
+  return null;
+}
+
+function extractSelectionProcessFromText(text: string) {
+  const labelled = extractFieldValueByLabel({
+    text,
+    labels: [
+      "selection process",
+      "mode of selection",
+      "selection procedure",
+      "selection will be based on",
+    ],
+  });
+  if (labelled) {
+    return labelled;
+  }
+
+  const hasInterview = /\b(interview|personal interview)\b/i.test(text);
+  const hasWritten = /\b(written test|written examination|exam)\b/i.test(text);
+  const hasSkill = /\b(skill test|trade test|practical test)\b/i.test(text);
+
+  const parts: string[] = [];
+  if (hasWritten) {
+    parts.push("Written Test");
+  }
+  if (hasSkill) {
+    parts.push("Skill/Trade Test");
+  }
+  if (hasInterview) {
+    parts.push("Interview");
+  }
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 function extractStructuredFieldsFromPdfText(text: string): ExtractedPdfFields {
   const normalized = normalizeWhitespace(text);
   if (!normalized) {
     return {
       salary: null,
+      qualification: null,
+      experience: null,
+      ageLimit: null,
+      applicationFee: null,
+      selectionProcess: null,
       applicationLastDate: null,
       notificationDate: null,
     };
@@ -327,6 +471,11 @@ function extractStructuredFieldsFromPdfText(text: string): ExtractedPdfFields {
 
   return {
     salary: extractSalaryFromText(normalized),
+    qualification: extractQualificationFromText(normalized),
+    experience: extractExperienceFromText(normalized),
+    ageLimit: extractAgeLimitFromText(normalized),
+    applicationFee: extractApplicationFeeFromText(normalized),
+    selectionProcess: extractSelectionProcessFromText(normalized),
     applicationLastDate,
     notificationDate,
   };
@@ -336,6 +485,21 @@ function buildPdfDerivedDetailsLines(fields: ExtractedPdfFields) {
   const lines: string[] = [];
   if (fields.salary) {
     lines.push(`Salary: ${fields.salary}`);
+  }
+  if (fields.qualification) {
+    lines.push(`Qualification: ${fields.qualification}`);
+  }
+  if (fields.experience) {
+    lines.push(`Experience: ${fields.experience}`);
+  }
+  if (fields.ageLimit) {
+    lines.push(`Age Limit: ${fields.ageLimit}`);
+  }
+  if (fields.applicationFee) {
+    lines.push(`Application Fee: ${fields.applicationFee}`);
+  }
+  if (fields.selectionProcess) {
+    lines.push(`Selection Process: ${fields.selectionProcess}`);
   }
   if (fields.applicationLastDate) {
     lines.push(`Application Last Date: ${fields.applicationLastDate}`);
@@ -940,6 +1104,7 @@ async function enrichDescriptionFromPdf({
   fallbackDescription,
   timeoutMs,
   maxPdfTextChars,
+  maxPdfFieldsOnlyChars,
   pdfUrlCache,
   includePdfText,
 }: {
@@ -948,6 +1113,7 @@ async function enrichDescriptionFromPdf({
   fallbackDescription: string;
   timeoutMs: number;
   maxPdfTextChars: number;
+  maxPdfFieldsOnlyChars: number;
   pdfUrlCache: Map<string, string | null>;
   includePdfText: boolean;
 }) {
@@ -1013,13 +1179,29 @@ async function enrichDescriptionFromPdf({
     }
 
     if (!includePdfText) {
+      const minimalPdfText = await extractTextFromPdfUrl(pdfUrl, maxPdfFieldsOnlyChars);
+      const minimalExtractedFields = minimalPdfText
+        ? extractStructuredFieldsFromPdfText(minimalPdfText)
+        : null;
+      const minimalLines = minimalExtractedFields
+        ? buildPdfDerivedDetailsLines(minimalExtractedFields)
+        : [];
+      const compactDescription = [
+        baseDescription || fallbackDescription.trim(),
+        minimalLines.length > 0 ? minimalLines.join("\n") : "",
+        `PDF Source: ${pdfUrl}`,
+      ]
+        .filter((value) => value.length > 0)
+        .join("\n\n")
+        .slice(0, MAX_JOB_DESCRIPTION_CHARS);
+
       return {
-        description: baseDescription || fallbackDescription,
+        description: compactDescription || baseDescription || fallbackDescription,
         pdfSourceUrl: pdfUrl,
         pdfCachedUrl,
-        attempted: false,
-        success: false,
-        fieldsExtractedCount: 0,
+        attempted: true,
+        success: minimalLines.length > 0,
+        fieldsExtractedCount: minimalLines.length,
       };
     }
 
@@ -1335,6 +1517,10 @@ async function scrapeSource(
     process.env.JOBS_SCRAPE_PDF_MAX_TEXT_CHARS,
     DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS
   );
+  const maxPdfFieldsOnlyChars = parsePositiveInt(
+    process.env.JOBS_SCRAPE_PDF_FIELDS_MAX_TEXT_CHARS,
+    3_500
+  );
   const includeKeywords = parseKeywordListFromEnv({
     envValue: process.env.JOBS_SCRAPE_INCLUDE_KEYWORDS,
     fallback: DEFAULT_JOB_FILTER_INCLUDE_KEYWORDS,
@@ -1532,6 +1718,7 @@ async function scrapeSource(
         fallbackDescription: baseDescription,
         timeoutMs,
         maxPdfTextChars: maxPdfExtractChars,
+        maxPdfFieldsOnlyChars,
         pdfUrlCache,
         includePdfText: pdfDetailsUsed < maxPdfEnrichmentsPerSource,
       });

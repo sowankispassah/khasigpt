@@ -147,6 +147,7 @@ const CHAT_RATE_LIMIT = {
 const STUDY_CONTEXT_MAX_CHARS = QUESTION_PAPER_RUNTIME_CONTEXT_CHARS;
 const JOBS_CONTEXT_MAX_CHARS = JOB_POSTING_RUNTIME_CONTEXT_CHARS;
 const JOBS_STUDY_CONTEXT_MAX_CHARS = 60_000;
+const JOBS_FOLLOWUP_PDF_MAX_CHARS = 5_000;
 const rawContextMessageLimit = Number.parseInt(
   process.env.CHAT_CONTEXT_MESSAGE_LIMIT ?? "120",
   10
@@ -448,6 +449,188 @@ function wantsJobCardsInFollowup(text: string) {
   );
 
   return asksToShow && asksForListings;
+}
+
+function resolveDocumentMediaTypeFromUrl(url: string) {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    if (pathname.endsWith(".pdf")) {
+      return "application/pdf";
+    }
+    if (pathname.endsWith(".docx")) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+    if (pathname.endsWith(".xlsx")) {
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractLabelledValueFromText({
+  text,
+  labels,
+}: {
+  text: string;
+  labels: string[];
+}) {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const expression = new RegExp(
+      `(?:${escaped})\\s*[:\\-]?\\s*([^\\n\\r]{3,180})`,
+      "i"
+    );
+    const match = text.match(expression);
+    if (match?.[1]) {
+      return match[1].replace(/\s+/g, " ").trim();
+    }
+  }
+  return null;
+}
+
+function extractJobFactsFromText(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const salary =
+    extractLabelledValueFromText({
+      text: normalized,
+      labels: ["salary", "pay scale", "remuneration", "emoluments"],
+    }) ??
+    (normalized.match(
+      /((?:₹|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:₹|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa))?)/i
+    )?.[1] ?? null);
+
+  const qualification = extractLabelledValueFromText({
+    text: normalized,
+    labels: [
+      "qualification",
+      "essential qualification",
+      "educational qualification",
+      "eligibility",
+      "education",
+    ],
+  });
+  const experience = extractLabelledValueFromText({
+    text: normalized,
+    labels: ["experience", "work experience", "minimum experience"],
+  });
+  const ageLimit = extractLabelledValueFromText({
+    text: normalized,
+    labels: ["age limit", "maximum age", "minimum age"],
+  });
+  const applicationFee = extractLabelledValueFromText({
+    text: normalized,
+    labels: ["application fee", "exam fee", "registration fee", "fee"],
+  });
+  const selectionProcess = extractLabelledValueFromText({
+    text: normalized,
+    labels: ["selection process", "mode of selection", "selection procedure"],
+  });
+  const applicationLastDate = extractLabelledValueFromText({
+    text: normalized,
+    labels: [
+      "last date",
+      "last date of receipt",
+      "application deadline",
+      "submission deadline",
+      "closing date",
+      "apply before",
+    ],
+  });
+  const notificationDate = extractLabelledValueFromText({
+    text: normalized,
+    labels: [
+      "notification date",
+      "date of notification",
+      "advertisement date",
+      "date of publication",
+      "published on",
+      "issue date",
+    ],
+  });
+
+  const facts: string[] = [];
+  if (salary) {
+    facts.push(`Salary: ${salary}`);
+  }
+  if (qualification) {
+    facts.push(`Qualification: ${qualification}`);
+  }
+  if (experience) {
+    facts.push(`Experience: ${experience}`);
+  }
+  if (ageLimit) {
+    facts.push(`Age Limit: ${ageLimit}`);
+  }
+  if (applicationFee) {
+    facts.push(`Application Fee: ${applicationFee}`);
+  }
+  if (selectionProcess) {
+    facts.push(`Selection Process: ${selectionProcess}`);
+  }
+  if (applicationLastDate) {
+    facts.push(`Application Last Date: ${applicationLastDate}`);
+  }
+  if (notificationDate) {
+    facts.push(`Notification Date: ${notificationDate}`);
+  }
+
+  return facts;
+}
+
+async function resolveJobPdfSupplementalContext(job: {
+  title: string;
+  sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
+}) {
+  const candidateUrls = [job.pdfCachedUrl, job.pdfSourceUrl, job.sourceUrl]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
+  const pdfUrl = candidateUrls.find((value) =>
+    value.toLowerCase().includes(".pdf")
+  );
+  if (!pdfUrl) {
+    return "";
+  }
+
+  try {
+    const parsed = await extractDocumentText(
+      {
+        name: `${job.title || "job-posting"}.pdf`,
+        url: pdfUrl,
+        mediaType: "application/pdf",
+      },
+      {
+        maxTextChars: JOBS_FOLLOWUP_PDF_MAX_CHARS,
+        downloadTimeoutMs: 25_000,
+      }
+    );
+    const pdfText = parsed.text.trim();
+    if (!pdfText) {
+      return "";
+    }
+
+    const facts = extractJobFactsFromText(pdfText);
+    const excerpt = pdfText.replace(/\s+/g, " ").trim().slice(0, 1_200);
+    const sections: string[] = [];
+    if (facts.length > 0) {
+      sections.push(`PDF extracted details:\n${facts.join("\n")}`);
+    }
+    if (excerpt.length > 0) {
+      sections.push(`PDF excerpt: ${excerpt}`);
+    }
+
+    return sections.join("\n\n");
+  } catch (error) {
+    console.warn("[jobs-chat] pdf_followup_extract_failed", {
+      title: job.title,
+      pdfUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "";
+  }
 }
 
 async function resolveStudyPaperContextText({
@@ -946,25 +1129,28 @@ export async function POST(request: Request) {
       typeof jobEntry?.content === "string" ? jobEntry.content.trim() : "";
     const hasJobPlaceholderContent =
       jobContentRaw.startsWith("Job posting uploaded") || jobContentRaw.length === 0;
+    const hasThinJobContent = jobContentRaw.length > 0 && jobContentRaw.length < 900;
     let resolvedJobContent = jobContentRaw;
 
-    if (
-      hasJobPlaceholderContent &&
-      jobEntry?.sourceUrl &&
-      typeof jobEntry.sourceUrl === "string"
-    ) {
+    const shouldExtractJobDocumentContent =
+      (hasJobPlaceholderContent || hasThinJobContent) &&
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      Boolean(jobEntry);
+    if (shouldExtractJobDocumentContent && jobEntry) {
       try {
-        const url = jobEntry.sourceUrl;
-        const lowerUrl = url.toLowerCase();
-        const isDocx = lowerUrl.endsWith(".docx");
-        const isXlsx = lowerUrl.endsWith(".xlsx");
-        const isPdf = lowerUrl.endsWith(".pdf");
-        if (isDocx || isXlsx || isPdf) {
-          const mediaType = isDocx
-            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            : isXlsx
-              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              : "application/pdf";
+        const candidates = [
+          jobEntry.pdfCachedUrl,
+          jobEntry.pdfSourceUrl,
+          jobEntry.sourceUrl,
+        ]
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter((value) => value.length > 0);
+
+        for (const url of candidates) {
+          const mediaType = resolveDocumentMediaTypeFromUrl(url);
+          if (!mediaType) {
+            continue;
+          }
           const parsed = await extractDocumentText(
             {
               name: jobEntry.title ?? "job-posting",
@@ -973,7 +1159,11 @@ export async function POST(request: Request) {
             },
             { maxTextChars: JOBS_CONTEXT_MAX_CHARS }
           );
-          resolvedJobContent = parsed.text.trim();
+          const extracted = parsed.text.trim();
+          if (extracted.length > 0) {
+            resolvedJobContent = extracted;
+            break;
+          }
         }
       } catch (error) {
         console.warn("Failed to extract job posting content", error);
@@ -1217,10 +1407,15 @@ export async function POST(request: Request) {
           .filter((job): job is (typeof visibleJobs)[number] => Boolean(job));
 
         if (referencedJobs.length > 0) {
-          const referencedContext = referencedJobs
-            .slice(0, 12)
-            .map((job) =>
-              [
+          const needsPdfSupplement =
+            isImplicitJobDetailFollowup(jobsUserText) ||
+            /\b(pdf|document|notification)\b/i.test(jobsUserText);
+          const referencedContextBlocks = await Promise.all(
+            referencedJobs.slice(0, 12).map(async (job) => {
+              const pdfSupplement = needsPdfSupplement
+                ? await resolveJobPdfSupplementalContext(job)
+                : "";
+              return [
                 `Job ID: ${job.id}`,
                 `Title: ${job.title}`,
                 `Company: ${job.company}`,
@@ -1228,9 +1423,13 @@ export async function POST(request: Request) {
                 `Type: ${job.employmentType}`,
                 `Source URL: ${job.sourceUrl ?? "Not available"}`,
                 `Description: ${job.content || "No description available."}`,
-              ].join("\n")
-            )
-            .join("\n\n---\n\n");
+                pdfSupplement ? `Supplemental PDF context:\n${pdfSupplement}` : "",
+              ]
+                .filter((value) => value.length > 0)
+                .join("\n");
+            })
+          );
+          const referencedContext = referencedContextBlocks.join("\n\n---\n\n");
 
           try {
             const followupResult = await generateText({
