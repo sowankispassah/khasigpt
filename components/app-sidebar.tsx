@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, BriefcaseBusiness, Calculator } from "lucide-react";
+import { BookOpen, BriefcaseBusiness, Calculator, Eye } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -288,7 +288,7 @@ export function AppSidebar({
                               href={VIEW_JOBS_HREF}
                               onClick={handleViewJobsClick}
                             >
-                              <BriefcaseBusiness />
+                              <Eye />
                               <span>
                                 {pendingNavigation === "jobs" ? "Opening..." : "View Jobs"}
                               </span>
