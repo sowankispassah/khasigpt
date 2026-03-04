@@ -19,6 +19,8 @@ const DEFAULT_MAX_PDF_ENRICHMENTS_PER_SOURCE = 5;
 const DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS = 6_000;
 const DEFAULT_FETCH_RETRY_ATTEMPTS = 2;
 const DEFAULT_MAX_SOURCE_DURATION_MS = 3 * 60 * 1000;
+const DEFAULT_PERSIST_TIMEOUT_MS = 45_000;
+const DEFAULT_RAG_SYNC_TIMEOUT_MS = 45_000;
 const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
 const MAX_JOB_DESCRIPTION_CHARS = 12_000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -2057,6 +2059,14 @@ export async function runJobsScraper(
   sources: JobSourceConfig[] = jobSources,
   options: JobsScraperRuntimeOptions = {}
 ): Promise<RunJobsScraperResult> {
+  const persistTimeoutMs = parsePositiveInt(
+    process.env.JOBS_SCRAPE_PERSIST_TIMEOUT_MS,
+    DEFAULT_PERSIST_TIMEOUT_MS
+  );
+  const ragSyncTimeoutMs = parsePositiveInt(
+    process.env.JOBS_SCRAPE_RAG_SYNC_TIMEOUT_MS,
+    DEFAULT_RAG_SYNC_TIMEOUT_MS
+  );
   const persistedJobIds = new Set<string>();
   let attemptedCount = 0;
   let insertedCount = 0;
@@ -2068,10 +2078,13 @@ export async function runJobsScraper(
     onSourceJobs: async (event) => {
       await options.onSourceJobs?.(event);
 
-      const persisted = await saveJobs(event.jobs, {
-        onDuplicate: "update",
-        syncRag: false,
-      });
+      const persisted = await withTimeout(
+        saveJobs(event.jobs, {
+          onDuplicate: "update",
+          syncRag: false,
+        }),
+        persistTimeoutMs
+      );
 
       attemptedCount += persisted.attemptedCount;
       insertedCount += persisted.insertedCount;
@@ -2098,9 +2111,12 @@ export async function runJobsScraper(
   const writtenJobIds = Array.from(persistedJobIds);
   if (writtenJobIds.length > 0) {
     try {
-      await syncJobPostingsToRag({
-        jobIds: writtenJobIds,
-      });
+      await withTimeout(
+        syncJobPostingsToRag({
+          jobIds: writtenJobIds,
+        }),
+        ragSyncTimeoutMs
+      );
     } catch (error) {
       console.warn("[jobs-scraper] rag_sync_failed", {
         count: writtenJobIds.length,
