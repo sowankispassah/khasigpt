@@ -19,6 +19,9 @@ const DEFAULT_MAX_PDF_ENRICHMENTS_PER_SOURCE = 5;
 const DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS = 6_000;
 const DEFAULT_FETCH_RETRY_ATTEMPTS = 2;
 const DEFAULT_MAX_SOURCE_DURATION_MS = 3 * 60 * 1000;
+const DEFAULT_SOURCE_DETAIL_TIMEOUT_MS = 12_000;
+const DEFAULT_PDF_DISCOVERY_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_SOURCE_DETAIL_FETCHES = 25;
 const DEFAULT_PERSIST_TIMEOUT_MS = 45_000;
 const DEFAULT_RAG_SYNC_TIMEOUT_MS = 45_000;
 const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
@@ -913,7 +916,10 @@ function shouldAttemptPdfEnrichment({
     return true;
   }
 
-  return false;
+  const candidate = sourceUrl.toLowerCase();
+  return /pdf|advertisement|notification|notice|recruit|vacanc|apply|download/.test(
+    candidate
+  );
 }
 
 function extractPdfCandidatesFromHtml(baseUrl: string, html: string) {
@@ -1159,20 +1165,24 @@ async function enrichDescriptionFromPdf({
   sourcePageUrl,
   sourceUrl,
   fallbackDescription,
-  timeoutMs,
+  discoveryTimeoutMs,
+  cacheTimeoutMs,
   maxPdfTextChars,
-  maxPdfFieldsOnlyChars,
   pdfUrlCache,
   includePdfText,
+  enablePdfTextExtraction,
+  allowDetailPageFetch,
 }: {
   sourcePageUrl: string;
   sourceUrl: string;
   fallbackDescription: string;
-  timeoutMs: number;
+  discoveryTimeoutMs: number;
+  cacheTimeoutMs: number;
   maxPdfTextChars: number;
-  maxPdfFieldsOnlyChars: number;
   pdfUrlCache: Map<string, string | null>;
   includePdfText: boolean;
+  enablePdfTextExtraction: boolean;
+  allowDetailPageFetch: boolean;
 }) {
   if (
     !shouldAttemptPdfEnrichment({
@@ -1194,8 +1204,11 @@ async function enrichDescriptionFromPdf({
   let detailPageText = "";
   if (isPdfUrl(sourceUrl)) {
     pdfCandidates.push(sourceUrl);
-  } else {
-    const detailHtml = await fetchHtmlForPdfDiscovery(sourceUrl, timeoutMs);
+  } else if (allowDetailPageFetch) {
+    const detailHtml = await fetchHtmlForPdfDiscovery(
+      sourceUrl,
+      discoveryTimeoutMs
+    );
     if (detailHtml) {
       pdfCandidates.push(...extractPdfCandidatesFromHtml(sourceUrl, detailHtml));
       detailPageText = extractDetailTextFromHtml(detailHtml);
@@ -1212,7 +1225,7 @@ async function enrichDescriptionFromPdf({
       description: baseDescription || fallbackDescription,
       pdfSourceUrl: null,
       pdfCachedUrl: null,
-      attempted: includePdfText,
+      attempted: false,
       success: false,
       fieldsExtractedCount: 0,
     };
@@ -1220,13 +1233,18 @@ async function enrichDescriptionFromPdf({
 
   let fallbackPdfSourceUrl: string | null = null;
   let fallbackPdfCachedUrl: string | null = null;
+  const shouldExtractPdfText = includePdfText && enablePdfTextExtraction;
   const uniqueCandidates = Array.from(new Set(pdfCandidates)).slice(0, 3);
-  for (const pdfUrl of uniqueCandidates) {
+  for (let candidateIndex = 0; candidateIndex < uniqueCandidates.length; candidateIndex += 1) {
+    const pdfUrl = uniqueCandidates[candidateIndex];
     let pdfCachedUrl: string | null = null;
     if (pdfUrlCache.has(pdfUrl)) {
       pdfCachedUrl = pdfUrlCache.get(pdfUrl) ?? null;
     } else {
-      pdfCachedUrl = await cacheJobPdfAsset(pdfUrl);
+      pdfCachedUrl = await withTimeout(
+        cacheJobPdfAsset(pdfUrl),
+        cacheTimeoutMs
+      ).catch(() => null);
       pdfUrlCache.set(pdfUrl, pdfCachedUrl);
     }
 
@@ -1235,36 +1253,35 @@ async function enrichDescriptionFromPdf({
       fallbackPdfCachedUrl = pdfCachedUrl;
     }
 
-    if (!includePdfText) {
-      const minimalPdfText = await extractTextFromPdfUrl(pdfUrl, maxPdfFieldsOnlyChars);
-      const minimalExtractedFields = minimalPdfText
-        ? extractStructuredFieldsFromPdfText(minimalPdfText)
-        : null;
-      const minimalLines = minimalExtractedFields
-        ? buildPdfDerivedDetailsLines(minimalExtractedFields)
-        : [];
-      const compactDescription = [
-        baseDescription || fallbackDescription.trim(),
-        minimalLines.length > 0 ? minimalLines.join("\n") : "",
-        `PDF Source: ${pdfUrl}`,
-      ]
-        .filter((value) => value.length > 0)
-        .join("\n\n")
-        .slice(0, MAX_JOB_DESCRIPTION_CHARS);
+    const compactDescription = [
+      baseDescription || fallbackDescription.trim(),
+      `PDF Source: ${pdfUrl}`,
+    ]
+      .filter((value) => value.length > 0)
+      .join("\n\n")
+      .slice(0, MAX_JOB_DESCRIPTION_CHARS);
 
+    if (!shouldExtractPdfText || candidateIndex > 0) {
       return {
         description: compactDescription || baseDescription || fallbackDescription,
         pdfSourceUrl: pdfUrl,
         pdfCachedUrl,
-        attempted: true,
-        success: minimalLines.length > 0,
-        fieldsExtractedCount: minimalLines.length,
+        attempted: false,
+        success: false,
+        fieldsExtractedCount: 0,
       };
     }
 
     const pdfText = await extractTextFromPdfUrl(pdfUrl, maxPdfTextChars);
     if (!pdfText) {
-      continue;
+      return {
+        description: compactDescription || baseDescription || fallbackDescription,
+        pdfSourceUrl: pdfUrl,
+        pdfCachedUrl,
+        attempted: true,
+        success: false,
+        fieldsExtractedCount: 0,
+      };
     }
 
     const extractedFields = extractStructuredFieldsFromPdfText(pdfText);
@@ -1294,7 +1311,7 @@ async function enrichDescriptionFromPdf({
     description: baseDescription || fallbackDescription,
     pdfSourceUrl: fallbackPdfSourceUrl,
     pdfCachedUrl: fallbackPdfCachedUrl,
-    attempted: includePdfText,
+    attempted: false,
     success: false,
     fieldsExtractedCount: 0,
   };
@@ -1592,9 +1609,44 @@ async function scrapeSource(
     process.env.JOBS_SCRAPE_PDF_MAX_TEXT_CHARS,
     DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS
   );
-  const maxPdfFieldsOnlyChars = parsePositiveInt(
-    process.env.JOBS_SCRAPE_PDF_FIELDS_MAX_TEXT_CHARS,
-    3_500
+  const detailTimeoutMs = Math.max(
+    4_000,
+    Math.min(
+      timeoutMs,
+      parsePositiveInt(
+        process.env.JOBS_SCRAPE_SOURCE_DETAIL_TIMEOUT_MS,
+        DEFAULT_SOURCE_DETAIL_TIMEOUT_MS
+      )
+    )
+  );
+  const pdfDiscoveryTimeoutMs = Math.max(
+    4_000,
+    Math.min(
+      timeoutMs,
+      parsePositiveInt(
+        process.env.JOBS_SCRAPE_PDF_DISCOVERY_TIMEOUT_MS,
+        DEFAULT_PDF_DISCOVERY_TIMEOUT_MS
+      )
+    )
+  );
+  const pdfCacheTimeoutMs = Math.max(
+    4_000,
+    Math.min(
+      timeoutMs,
+      parsePositiveInt(process.env.JOBS_SCRAPE_PDF_CACHE_TIMEOUT_MS, detailTimeoutMs)
+    )
+  );
+  const maxSourceDetailFetches = parsePositiveInt(
+    process.env.JOBS_SCRAPE_MAX_SOURCE_DETAIL_FETCHES,
+    DEFAULT_MAX_SOURCE_DETAIL_FETCHES
+  );
+  const enablePdfTextExtraction = parseBooleanSetting(
+    process.env.JOBS_SCRAPE_ENABLE_PDF_TEXT_EXTRACTION,
+    false
+  );
+  const pdfEnrichmentTimeoutMs = Math.max(
+    8_000,
+    Math.min(timeoutMs, detailTimeoutMs + pdfDiscoveryTimeoutMs)
   );
   const includeKeywords = parseKeywordListFromEnv({
     envValue: process.env.JOBS_SCRAPE_INCLUDE_KEYWORDS,
@@ -1687,6 +1739,8 @@ async function scrapeSource(
     const jobs: NewJobRow[] = [];
     const limit = Math.min(containers.length, maxItemsPerSource);
     let pdfDetailsUsed = 0;
+    let sourceDetailFetches = 0;
+    let pdfDiscoveryFetches = 0;
     const sourceDetailCache = new Map<string, string | null>();
 
     for (let index = 0; index < limit; index += 1) {
@@ -1777,16 +1831,21 @@ async function scrapeSource(
         MAX_JOB_DESCRIPTION_CHARS
       );
       const baseDescriptionLength = normalizeWhitespace(baseDescription).length;
-      if (!isPdfUrl(sourceUrl) && baseDescriptionLength < MIN_SOURCE_DETAIL_FETCH_CHARS) {
+      if (
+        !isPdfUrl(sourceUrl) &&
+        baseDescriptionLength < MIN_SOURCE_DETAIL_FETCH_CHARS &&
+        sourceDetailFetches < maxSourceDetailFetches
+      ) {
         let sourceDetailText: string | null = null;
         if (sourceDetailCache.has(sourceUrl)) {
           sourceDetailText = sourceDetailCache.get(sourceUrl) ?? null;
         } else {
+          sourceDetailFetches += 1;
           sourceDetailText = await withTimeout(
             fetchSourceDetailMarkdown(sourceUrl, {
-              timeoutMs,
+              timeoutMs: detailTimeoutMs,
             }),
-            timeoutMs
+            detailTimeoutMs
           ).catch(() => null);
           sourceDetailCache.set(sourceUrl, sourceDetailText);
         }
@@ -1806,9 +1865,10 @@ async function scrapeSource(
         if (pdfUrlCache.has(pdfSourceUrl)) {
           pdfCachedUrl = pdfUrlCache.get(pdfSourceUrl) ?? null;
         } else {
-          pdfCachedUrl = await withTimeout(cacheJobPdfAsset(pdfSourceUrl), timeoutMs).catch(
-            () => null
-          );
+          pdfCachedUrl = await withTimeout(
+            cacheJobPdfAsset(pdfSourceUrl),
+            pdfCacheTimeoutMs
+          ).catch(() => null);
           pdfUrlCache.set(pdfSourceUrl, pdfCachedUrl);
         }
       }
@@ -1821,25 +1881,38 @@ async function scrapeSource(
         success: false,
         fieldsExtractedCount: 0,
       };
+      const allowPdfDetailPageFetch =
+        !isPdfUrl(sourceUrl) &&
+        shouldAttemptPdfEnrichment({
+          sourcePageUrl: source.url,
+          sourceUrl,
+        }) &&
+        pdfDiscoveryFetches < maxSourceDetailFetches;
+      if (allowPdfDetailPageFetch) {
+        pdfDiscoveryFetches += 1;
+      }
       const enriched = await withTimeout(
         enrichDescriptionFromPdf({
           sourcePageUrl: source.url,
           sourceUrl,
           fallbackDescription: baseDescription,
-          timeoutMs,
+          discoveryTimeoutMs: pdfDiscoveryTimeoutMs,
+          cacheTimeoutMs: pdfCacheTimeoutMs,
           maxPdfTextChars: maxPdfExtractChars,
-          maxPdfFieldsOnlyChars,
           pdfUrlCache,
-          includePdfText: pdfDetailsUsed < maxPdfEnrichmentsPerSource,
+          includePdfText:
+            enablePdfTextExtraction && pdfDetailsUsed < maxPdfEnrichmentsPerSource,
+          enablePdfTextExtraction,
+          allowDetailPageFetch: allowPdfDetailPageFetch,
         }),
-        timeoutMs
+        pdfEnrichmentTimeoutMs
       ).catch(() => fallbackEnriched);
 
       if (enriched.attempted) {
         stats.pdfDetailAttempts += 1;
+        pdfDetailsUsed += 1;
         if (enriched.success) {
           stats.pdfDetailSuccesses += 1;
-          pdfDetailsUsed += 1;
           stats.pdfFieldsExtracted += enriched.fieldsExtractedCount;
         } else {
           stats.pdfDetailFailures += 1;

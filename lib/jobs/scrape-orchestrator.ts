@@ -95,8 +95,8 @@ const DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS = 10;
 const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_SCRAPE_HISTORY_MAX_ITEMS = 100;
-const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 45 * 60 * 1000;
-const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 10 * 1000;
+const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 8 * 60 * 1000;
+const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 15 * 1000;
 
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
@@ -1001,6 +1001,11 @@ export async function runJobsScrapeWithScheduling({
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),
+      sourcesProcessed: progressSnapshot.processedSources,
+      totalSources,
+      inserted: runningInserted,
+      updated: runningUpdated,
+      skippedDuplicates: runningSkippedDuplicates,
       oneTimeTriggered: oneTimeDue,
       oneTimeScheduledAt: runtime.oneTimeAt?.toISOString() ?? null,
       error: message,
@@ -1035,6 +1040,11 @@ export async function runJobsScrapeWithScheduling({
       state: "failed",
       finishedAt: finishedAt.toISOString(),
       currentSource: null,
+      processedSources: progressSnapshot.processedSources,
+      totalSources,
+      inserted: runningInserted,
+      updated: runningUpdated,
+      skippedDuplicates: runningSkippedDuplicates,
       message,
     });
 
@@ -1052,9 +1062,9 @@ export async function runJobsScrapeWithScheduling({
       }),
       processedSources: progressSnapshot.processedSources,
       totalSources,
-      inserted: 0,
-      updated: 0,
-      skippedDuplicates: 0,
+      inserted: runningInserted,
+      updated: runningUpdated,
+      skippedDuplicates: runningSkippedDuplicates,
       skipReason: null,
       errorMessage: message,
     });
