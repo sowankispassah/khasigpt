@@ -1278,6 +1278,34 @@ export async function POST(request: Request) {
         });
         const withNotice = (text: string) =>
           fallbackNotice ? `${fallbackNotice}\n\n${text}` : text;
+        const onlyKeywordFilters =
+          filterResolution.state.keywords.length > 0 &&
+          !filterResolution.state.location &&
+          !filterResolution.state.employmentType &&
+          !filterResolution.state.sector &&
+          filterResolution.state.salaryMin === null &&
+          filterResolution.state.salaryMax === null &&
+          filterResolution.state.qualifications.length === 0;
+
+        const buildSuccessText = (count: number) => {
+          if (count <= 0) {
+            return "I could not find matching jobs right now. Try broadening your request.";
+          }
+
+          if (onlyKeywordFilters && filterResolution.state.keywords.length === 1) {
+            const keyword = filterResolution.state.keywords[0];
+            if (count === 1) {
+              return `Here is a ${keyword}-related job I found.`;
+            }
+            return `Here are some ${keyword}-related jobs I found.`;
+          }
+
+          if (count === 1) {
+            return "Here is one job that matches your request.";
+          }
+
+          return "Here are the jobs that best match your request.";
+        };
 
         if (filterResolution.clarification) {
           return buildJobsResponse({
@@ -1288,7 +1316,7 @@ export async function POST(request: Request) {
         if (!filterResolution.hasActiveFilters) {
           return buildJobsResponse({
             text: withNotice(
-              "Tell me your filters (qualification, salary range, job type, or location). Here are the latest available jobs."
+              "Tell me what you want to filter by (qualification, salary range, job type, or location). Here are the latest jobs."
             ),
             cards: visibleJobs.slice(0, 12).map(toJobCard),
           });
@@ -1297,23 +1325,14 @@ export async function POST(request: Request) {
         if (filterResolution.filteredJobs.length === 0) {
           return buildJobsResponse({
             text: withNotice(
-              `I could not find jobs matching ${filterResolution.summary}. Try broadening your filters.`
+              "I could not find jobs matching that request. Try a broader keyword or fewer filters."
             ),
             cards: [],
           });
         }
 
-        if (filterResolution.filteredJobs.length === 1) {
-          return buildJobsResponse({
-            text: withNotice(`I found 1 job matching ${filterResolution.summary}.`),
-            cards: filterResolution.filteredJobs.map(toJobCard),
-          });
-        }
-
         return buildJobsResponse({
-          text: withNotice(
-            `I found ${filterResolution.filteredJobs.length} jobs matching ${filterResolution.summary}.`
-          ),
+          text: withNotice(buildSuccessText(filterResolution.filteredJobs.length)),
           cards: filterResolution.filteredJobs.slice(0, 50).map(toJobCard),
         });
       };

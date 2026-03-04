@@ -540,6 +540,16 @@ function getJobHaystack(job: JobPostingRecord) {
   ].join(" "));
 }
 
+function getJobPrimaryHaystack(job: JobPostingRecord) {
+  return normalize([
+    job.title,
+    job.company,
+    job.location,
+    job.employmentType,
+    ...job.tags,
+  ].join(" "));
+}
+
 function matchesEmploymentType(haystack: string, employmentType: EmploymentTypeFilter) {
   if (employmentType === "part-time") {
     return /\bpart[\s-]?time\b/i.test(haystack);
@@ -612,6 +622,28 @@ function matchesKeywords(haystack: string, keywords: string[]) {
   });
 }
 
+function matchesKeywordsWithPrecision({
+  fullHaystack,
+  primaryHaystack,
+  keywords,
+  requirePrimaryKeywordMatch,
+}: {
+  fullHaystack: string;
+  primaryHaystack: string;
+  keywords: string[];
+  requirePrimaryKeywordMatch: boolean;
+}) {
+  if (!matchesKeywords(fullHaystack, keywords)) {
+    return false;
+  }
+
+  if (!requirePrimaryKeywordMatch) {
+    return true;
+  }
+
+  return matchesKeywords(primaryHaystack, keywords);
+}
+
 function matchesSalary(job: JobPostingRecord, state: JobsFilterState) {
   if (state.salaryMin === null && state.salaryMax === null) {
     return true;
@@ -642,8 +674,18 @@ function applyFilters(jobs: JobPostingRecord[], state: JobsFilterState) {
     return { jobs, hasActiveFilters: false };
   }
 
+  const hasOnlyKeywordFilters =
+    state.keywords.length > 0 &&
+    !state.location &&
+    !state.employmentType &&
+    !state.sector &&
+    state.salaryMin === null &&
+    state.salaryMax === null &&
+    state.qualifications.length === 0;
+
   const filteredJobs = jobs.filter((job) => {
     const haystack = getJobHaystack(job);
+    const primaryHaystack = getJobPrimaryHaystack(job);
 
     if (state.location) {
       const normalizedLocation = normalize(state.location);
@@ -667,7 +709,15 @@ function applyFilters(jobs: JobPostingRecord[], state: JobsFilterState) {
       return false;
     }
 
-    if (state.keywords.length > 0 && !matchesKeywords(haystack, state.keywords)) {
+    if (
+      state.keywords.length > 0 &&
+      !matchesKeywordsWithPrecision({
+        fullHaystack: haystack,
+        primaryHaystack,
+        keywords: state.keywords,
+        requirePrimaryKeywordMatch: hasOnlyKeywordFilters,
+      })
+    ) {
       return false;
     }
 
