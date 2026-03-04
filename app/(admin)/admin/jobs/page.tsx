@@ -839,7 +839,7 @@ export default async function AdminJobsPage() {
     withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason), null),
     withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY), null),
     withTimeoutFallback(getJobsScrapeProgressSnapshot(), null, 10_000),
-    withTimeoutFallback(getJobsScrapeHistory({ limit: 50 }), [], 10_000),
+    withTimeoutFallback<Awaited<ReturnType<typeof getJobsScrapeHistory>> | null>(getJobsScrapeHistory({ limit: 50 }), null, 10_000),
   ]);
 
   const scheduleSettings = resolveJobsScrapeScheduleSettings({
@@ -885,12 +885,14 @@ export default async function AdminJobsPage() {
         ? (lastRunSummary["updated"] as number)
         : null;
   const enabledSourcesCount = managedSources.filter((source) => source.enabled).length;
-  const scrapeHistoryInitial = scrapeHistory.slice(0, 10);
-  const scrapeHistoryRemaining = scrapeHistory.slice(10);
+  const scrapeHistoryUnavailable = scrapeHistory === null;
+  const scrapeHistoryItems = scrapeHistory ?? [];
+  const scrapeHistoryInitial = scrapeHistoryItems.slice(0, 10);
+  const scrapeHistoryRemaining = scrapeHistoryItems.slice(10);
   const latestJobsInitial = jobs.slice(0, 10);
   const latestJobsRemaining = jobs.slice(10);
 
-  const renderScrapeHistoryRow = (entry: (typeof scrapeHistory)[number]) => {
+  const renderScrapeHistoryRow = (entry: (typeof scrapeHistoryItems)[number]) => {
     const progressBarColor =
       entry.status === "success"
         ? "bg-emerald-500"
@@ -1279,7 +1281,11 @@ export default async function AdminJobsPage() {
                 : "Auto scrape disabled"}
             </span>
           </p>
-          {scrapeHistory.length === 0 ? (
+          {scrapeHistoryUnavailable ? (
+            <p className="text-amber-700 text-sm">
+              Scrape history is temporarily unavailable. Please refresh in a few seconds.
+            </p>
+          ) : scrapeHistoryItems.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               No scrape history yet.
             </p>

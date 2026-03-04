@@ -96,7 +96,7 @@ const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_SCRAPE_HISTORY_MAX_ITEMS = 100;
 const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 45 * 60 * 1000;
-const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 60 * 1000;
+const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 10 * 1000;
 
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
