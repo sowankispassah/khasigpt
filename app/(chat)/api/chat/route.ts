@@ -302,6 +302,8 @@ const jobsRagSelectionSchema = z.object({
   answer: z.string().trim().min(1),
   jobIds: z.array(z.string().uuid()).max(20).default([]),
 });
+const JOB_UUID_PATTERN =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 
 function supportsGeminiFileSearchModel(providerModelId: string) {
   const normalized = providerModelId.includes("/")
@@ -328,9 +330,16 @@ function parseJobsRagSelection(rawText: string) {
     return null;
   }
 
+  const sanitizeCandidate = (candidate: string) =>
+    candidate
+      .trim()
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'");
+
   const parseCandidate = (candidate: string) => {
     try {
-      const parsedJson = JSON.parse(candidate);
+      const parsedJson = JSON.parse(sanitizeCandidate(candidate));
       return jobsRagSelectionSchema.parse(parsedJson);
     } catch {
       return null;
@@ -351,10 +360,36 @@ function parseJobsRagSelection(rawText: string) {
   }
 
   const objectMatch = trimmed.match(/\{[\s\S]*\}/);
-  if (!objectMatch?.[0]) {
+  if (objectMatch?.[0]) {
+    const objectParsed = parseCandidate(objectMatch[0]);
+    if (objectParsed) {
+      return objectParsed;
+    }
+  }
+
+  const recoveredJobIds = Array.from(
+    new Set((trimmed.match(JOB_UUID_PATTERN) ?? []).map((id) => id.toLowerCase()))
+  ).slice(0, 20);
+  const answerMatch = trimmed.match(/"answer"\s*:\s*"([\s\S]*?)"/i);
+  const recoveredAnswer =
+    answerMatch?.[1]
+      ?.replace(/\\"/g, '"')
+      .replace(/\\n/g, "\n")
+      .trim() ?? "";
+
+  if (!recoveredAnswer && recoveredJobIds.length === 0) {
     return null;
   }
-  return parseCandidate(objectMatch[0]);
+
+  const fallbackAnswer =
+    recoveredAnswer.length > 0
+      ? recoveredAnswer
+      : "Here are the most relevant jobs I found.";
+
+  return jobsRagSelectionSchema.parse({
+    answer: fallbackAnswer,
+    jobIds: recoveredJobIds,
+  });
 }
 
 function isReferentialJobsFollowup(text: string) {
@@ -1298,9 +1333,7 @@ export async function POST(request: Request) {
         supportsGeminiFileSearchModel(jobsRagModelId);
 
       if (!canUseJobsRagSelection || !fileSearchStoreName) {
-        return runFallbackFilterFlow(
-          "I am temporarily using fallback matching while the jobs knowledge index is unavailable."
-        );
+        return runFallbackFilterFlow();
       }
 
       const jobsRagModelBase = createGeminiFileSearchLanguageModel({
@@ -1378,9 +1411,7 @@ export async function POST(request: Request) {
 
         const parsedSelection = parseJobsRagSelection(ragSelectionResult.text);
         if (!parsedSelection) {
-          return runFallbackFilterFlow(
-            "I could not parse the RAG result, so I am using fallback matching for this response."
-          );
+          return runFallbackFilterFlow();
         }
 
         const visibleJobsById = new Map(
@@ -1393,10 +1424,7 @@ export async function POST(request: Request) {
           .map(toJobCard);
 
         if (selectedCards.length === 0) {
-          return buildJobsResponse({
-            text: parsedSelection.answer,
-            cards: [],
-          });
+          return runFallbackFilterFlow();
         }
 
         return buildJobsResponse({

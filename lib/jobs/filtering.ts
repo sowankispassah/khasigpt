@@ -91,6 +91,9 @@ const WORD_STOPLIST = new Set([
   "salary",
   "show",
   "that",
+  "there",
+  "these",
+  "those",
   "the",
   "to",
   "under",
@@ -566,7 +569,47 @@ function matchesSector(haystack: string, sector: SectorFilter) {
 }
 
 function matchesKeywords(haystack: string, keywords: string[]) {
-  return keywords.every((keyword) => haystack.includes(keyword));
+  const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const toKeywordRoot = (value: string) => {
+    let root = normalize(value).replace(/[^a-z]/g, "");
+    if (!root) {
+      return "";
+    }
+
+    if (root.endsWith("ing") && root.length > 5) {
+      root = root.slice(0, -3);
+    } else if (root.endsWith("ers") && root.length > 5) {
+      root = root.slice(0, -3);
+    } else if (root.endsWith("er") && root.length > 4) {
+      root = root.slice(0, -2);
+    } else if (root.endsWith("es") && root.length > 4) {
+      root = root.slice(0, -2);
+    } else if (root.endsWith("s") && root.length > 3) {
+      root = root.slice(0, -1);
+    }
+
+    if (root.endsWith("e") && root.length > 4) {
+      root = root.slice(0, -1);
+    }
+
+    return root;
+  };
+
+  return keywords.every((keyword) => {
+    if (haystack.includes(keyword)) {
+      return true;
+    }
+
+    const root = toKeywordRoot(keyword);
+    if (root.length < 3) {
+      return false;
+    }
+
+    const rootPattern = new RegExp(`\\b${escapeRegExp(root)}[a-z]*\\b`, "i");
+    return rootPattern.test(haystack);
+  });
 }
 
 function matchesSalary(job: JobPostingRecord, state: JobsFilterState) {
