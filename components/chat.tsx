@@ -800,7 +800,9 @@ export function Chat({
   }, []);
 
   const handleJobView = useCallback((job: JobCard) => {
-    setJobViewerPosting(job);
+    if (typeof window !== "undefined") {
+      window.location.href = `/jobs/${job.id}`;
+    }
   }, []);
 
   const handleJobAsk = useCallback((job: JobCard) => {

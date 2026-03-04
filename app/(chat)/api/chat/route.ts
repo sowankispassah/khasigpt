@@ -1060,13 +1060,25 @@ export async function POST(request: Request) {
 
     if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
       const availableIds = jobPostingIdsForModel ?? [];
-      const jobs = await listJobPostings({
+      const activeJobs = await listJobPostings({
         includeInactive: false,
       });
-      const visibleJobs =
+      const applyModelScope = (jobs: typeof activeJobs) =>
         availableIds.length > 0
           ? jobs.filter((job) => availableIds.includes(job.id))
           : jobs;
+
+      const scopedActiveJobs = applyModelScope(activeJobs);
+      let visibleJobs =
+        scopedActiveJobs.length > 0 ? scopedActiveJobs : activeJobs;
+
+      if (visibleJobs.length === 0) {
+        const allJobs = await listJobPostings({
+          includeInactive: true,
+        });
+        const scopedAllJobs = applyModelScope(allJobs);
+        visibleJobs = scopedAllJobs.length > 0 ? scopedAllJobs : allJobs;
+      }
 
       if (visibleJobs.length === 0) {
         return buildJobsResponse({
@@ -1403,11 +1415,7 @@ export async function POST(request: Request) {
     }
 
     if (resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId) {
-      const availableIds = jobPostingIdsForModel ?? [];
-      if (
-        availableIds.length > 0 &&
-        !availableIds.includes(effectiveJobPostingId)
-      ) {
+      if (!jobEntry) {
         return new ChatSDKError(
           "not_found:chat",
           "Job posting not found or unavailable."
