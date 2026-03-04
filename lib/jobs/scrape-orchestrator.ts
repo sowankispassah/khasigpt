@@ -95,6 +95,7 @@ const DEFAULT_JOBS_SCRAPE_LOOKBACK_DAYS = 10;
 const MIN_JOBS_SCRAPE_LOOKBACK_DAYS = 1;
 const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_SCRAPE_HISTORY_MAX_ITEMS = 100;
+const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 45 * 60 * 1000;
 
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
@@ -137,6 +138,24 @@ function parseBoolean(rawValue: unknown, fallback: boolean) {
     }
   }
   return fallback;
+}
+
+function parsePositiveInt(rawValue: string | undefined, fallback: number) {
+  if (!rawValue) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function getStaleRunningThresholdMs() {
+  return parsePositiveInt(
+    process.env.JOBS_SCRAPE_STALE_RUNNING_MS,
+    DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS
+  );
 }
 
 function normalizeProgressSnapshot(rawValue: unknown): JobsScrapeProgressSnapshot | null {
@@ -433,7 +452,8 @@ async function loadJobsScrapeRuntimeState() {
 
 export async function getJobsScrapeProgressSnapshot() {
   const raw = await getAppSettingUncached<unknown>(JOBS_SCRAPE_PROGRESS_SETTING_KEY);
-  return normalizeProgressSnapshot(raw);
+  const snapshot = normalizeProgressSnapshot(raw);
+  return resolveStaleRunningSnapshot(snapshot);
 }
 
 export async function getJobsScrapeHistory({
@@ -464,6 +484,110 @@ async function appendJobsScrapeHistory(entry: JobsScrapeHistoryEntry) {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+async function resolveStaleRunningSnapshot(
+  snapshot: JobsScrapeProgressSnapshot | null
+) {
+  if (snapshot?.state !== "running") {
+    return snapshot;
+  }
+
+  const lastUpdateAt = parseDateOrNull(snapshot.updatedAt);
+  if (!lastUpdateAt) {
+    return snapshot;
+  }
+
+  const staleThresholdMs = getStaleRunningThresholdMs();
+  const now = new Date();
+  if (now.getTime() - lastUpdateAt.getTime() < staleThresholdMs) {
+    return snapshot;
+  }
+
+  const startedAt = parseDateOrNull(snapshot.startedAt) ?? lastUpdateAt;
+  const durationMs = Math.max(0, now.getTime() - startedAt.getTime());
+  const staleMinutes = Math.max(1, Math.round(staleThresholdMs / 60_000));
+  const message = `Scrape stopped: no progress update for ${staleMinutes}+ minutes.`;
+
+  const failedSnapshot: JobsScrapeProgressSnapshot = {
+    ...snapshot,
+    state: "failed",
+    finishedAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    currentSource: null,
+    cancelRequested: false,
+    message,
+  };
+
+  const summary = {
+    trigger: snapshot.trigger,
+    skipped: false,
+    startedAt: startedAt.toISOString(),
+    finishedAt: now.toISOString(),
+    durationMs,
+    sourcesProcessed: snapshot.processedSources,
+    totalSources: snapshot.totalSources,
+    staleRunRecovered: true,
+    staleThresholdMs,
+    staleUpdatedAt: snapshot.updatedAt,
+    currentSource: snapshot.currentSource,
+    error: "stale_or_timed_out",
+  };
+
+  await setManyAppSettings([
+    {
+      key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
+      value: "failed",
+    },
+    {
+      key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
+      value: "stale_or_timed_out",
+    },
+    {
+      key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
+      value: summary,
+    },
+    {
+      key: JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
+      value: null,
+    },
+    {
+      key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+      value: false,
+    },
+  ]);
+
+  await setProgressSafely(failedSnapshot);
+  await appendJobsScrapeHistory({
+    runId: snapshot.runId,
+    trigger: snapshot.trigger,
+    status: "failed",
+    startedAt: startedAt.toISOString(),
+    finishedAt: now.toISOString(),
+    durationMs,
+    completionPercent: computeCompletionPercent({
+      status: "failed",
+      processedSources: snapshot.processedSources,
+      totalSources: snapshot.totalSources,
+    }),
+    processedSources: snapshot.processedSources,
+    totalSources: snapshot.totalSources,
+    inserted: Math.max(0, snapshot.inserted ?? 0),
+    updated: Math.max(0, snapshot.updated ?? 0),
+    skippedDuplicates: Math.max(0, snapshot.skippedDuplicates ?? 0),
+    skipReason: null,
+    errorMessage: message,
+  });
+
+  console.warn("[jobs-orchestrator] stale_run_recovered", {
+    runId: snapshot.runId,
+    updatedAt: snapshot.updatedAt,
+    staleThresholdMs,
+    processedSources: snapshot.processedSources,
+    totalSources: snapshot.totalSources,
+  });
+
+  return failedSnapshot;
 }
 
 export async function requestJobsScrapeCancel() {

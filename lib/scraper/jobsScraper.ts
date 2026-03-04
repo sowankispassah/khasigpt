@@ -9,7 +9,7 @@ import { fetchSourceDetailMarkdown } from "@/lib/jobs/linkedin-detail";
 import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
-import { fetchWithTimeout } from "@/lib/utils/async";
+import { fetchWithTimeout, withTimeout } from "@/lib/utils/async";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_LOOKBACK_DAYS = 10;
@@ -17,6 +17,7 @@ const DEFAULT_MAX_ITEMS_PER_SOURCE = 200;
 const DEFAULT_MAX_PDF_ENRICHMENTS_PER_SOURCE = 5;
 const DEFAULT_PDF_EXTRACT_MAX_TEXT_CHARS = 6_000;
 const DEFAULT_FETCH_RETRY_ATTEMPTS = 2;
+const DEFAULT_MAX_SOURCE_DURATION_MS = 3 * 60 * 1000;
 const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
 const MAX_JOB_DESCRIPTION_CHARS = 12_000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -1551,6 +1552,10 @@ async function scrapeSource(
   pdfUrlCache: Map<string, string | null>
 ): Promise<{ jobs: NewJobRow[]; stats: SourceScrapeStats }> {
   const timeoutMs = parsePositiveInt(process.env.JOBS_SCRAPE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+  const maxSourceDurationMs = parsePositiveInt(
+    process.env.JOBS_SCRAPE_MAX_SOURCE_DURATION_MS,
+    DEFAULT_MAX_SOURCE_DURATION_MS
+  );
   const fetchRetryAttempts = parsePositiveInt(
     process.env.JOBS_SCRAPE_FETCH_RETRY_ATTEMPTS,
     DEFAULT_FETCH_RETRY_ATTEMPTS
@@ -1624,6 +1629,9 @@ async function scrapeSource(
     return { jobs: [], stats };
   }
 
+  const startedAtMs = Date.now();
+  const hasSourceTimedOut = () => Date.now() - startedAtMs >= maxSourceDurationMs;
+
   try {
     const html = await fetchSourceHtmlWithRetry({
       url: source.url,
@@ -1662,6 +1670,16 @@ async function scrapeSource(
     const sourceDetailCache = new Map<string, string | null>();
 
     for (let index = 0; index < limit; index += 1) {
+      if ((await options.shouldCancel?.()) === true) {
+        stats.errorMessage = "Cancelled while processing source.";
+        break;
+      }
+      if (hasSourceTimedOut()) {
+        stats.parseErrors += 1;
+        stats.errorMessage = `Source processing exceeded ${Math.round(maxSourceDurationMs / 1000)}s and was stopped.`;
+        break;
+      }
+
       const container = containers.eq(index);
       stats.containersScanned += 1;
 
@@ -1744,9 +1762,12 @@ async function scrapeSource(
         if (sourceDetailCache.has(sourceUrl)) {
           sourceDetailText = sourceDetailCache.get(sourceUrl) ?? null;
         } else {
-          sourceDetailText = await fetchSourceDetailMarkdown(sourceUrl, {
-            timeoutMs,
-          });
+          sourceDetailText = await withTimeout(
+            fetchSourceDetailMarkdown(sourceUrl, {
+              timeoutMs,
+            }),
+            timeoutMs
+          ).catch(() => null);
           sourceDetailCache.set(sourceUrl, sourceDetailText);
         }
 
@@ -1765,20 +1786,35 @@ async function scrapeSource(
         if (pdfUrlCache.has(pdfSourceUrl)) {
           pdfCachedUrl = pdfUrlCache.get(pdfSourceUrl) ?? null;
         } else {
-          pdfCachedUrl = await cacheJobPdfAsset(pdfSourceUrl);
+          pdfCachedUrl = await withTimeout(cacheJobPdfAsset(pdfSourceUrl), timeoutMs).catch(
+            () => null
+          );
           pdfUrlCache.set(pdfSourceUrl, pdfCachedUrl);
         }
       }
-      const enriched = await enrichDescriptionFromPdf({
-        sourcePageUrl: source.url,
-        sourceUrl,
-        fallbackDescription: baseDescription,
-        timeoutMs,
-        maxPdfTextChars: maxPdfExtractChars,
-        maxPdfFieldsOnlyChars,
-        pdfUrlCache,
-        includePdfText: pdfDetailsUsed < maxPdfEnrichmentsPerSource,
-      });
+
+      const fallbackEnriched = {
+        description: baseDescription,
+        pdfSourceUrl,
+        pdfCachedUrl,
+        attempted: false,
+        success: false,
+        fieldsExtractedCount: 0,
+      };
+      const enriched = await withTimeout(
+        enrichDescriptionFromPdf({
+          sourcePageUrl: source.url,
+          sourceUrl,
+          fallbackDescription: baseDescription,
+          timeoutMs,
+          maxPdfTextChars: maxPdfExtractChars,
+          maxPdfFieldsOnlyChars,
+          pdfUrlCache,
+          includePdfText: pdfDetailsUsed < maxPdfEnrichmentsPerSource,
+        }),
+        timeoutMs
+      ).catch(() => fallbackEnriched);
+
       if (enriched.attempted) {
         stats.pdfDetailAttempts += 1;
         if (enriched.success) {
@@ -1831,6 +1867,10 @@ export async function scrapeJobsFromSources(
     options.lookbackDays > 0
       ? Math.trunc(options.lookbackDays)
       : envLookbackDays;
+  const maxSourceDurationMs = parsePositiveInt(
+    process.env.JOBS_SCRAPE_MAX_SOURCE_DURATION_MS,
+    DEFAULT_MAX_SOURCE_DURATION_MS
+  );
   const sourceStats: SourceScrapeStats[] = [];
   const seenSourceUrls = new Set<string>();
   const combinedJobs: NewJobRow[] = [];
@@ -1857,7 +1897,56 @@ export async function scrapeJobsFromSources(
       lookbackDays,
     });
 
-    const { jobs, stats } = await scrapeSource(source, now, { lookbackDays }, pdfUrlCache);
+    let jobs: NewJobRow[] = [];
+    let stats: SourceScrapeStats = {
+      source: source.name,
+      fetched: false,
+      containersScanned: 0,
+      extracted: 0,
+      filteredByLocation: 0,
+      filteredByDate: 0,
+      filteredByKeyword: 0,
+      parseErrors: 0,
+      pdfDetailAttempts: 0,
+      pdfDetailSuccesses: 0,
+      pdfDetailFailures: 0,
+      pdfFieldsExtracted: 0,
+    };
+
+    try {
+      const result = await withTimeout(
+        scrapeSource(
+          source,
+          now,
+          {
+            lookbackDays,
+            shouldCancel: options.shouldCancel,
+          },
+          pdfUrlCache
+        ),
+        maxSourceDurationMs
+      );
+      jobs = result.jobs;
+      stats = result.stats;
+    } catch (error) {
+      const timedOut = error instanceof Error && error.message === "timeout";
+      stats = {
+        ...stats,
+        parseErrors: timedOut ? 1 : stats.parseErrors,
+        errorMessage: timedOut
+          ? `Source processing exceeded ${Math.round(maxSourceDurationMs / 1000)}s and was skipped.`
+          : error instanceof Error
+            ? error.message
+            : String(error),
+      };
+
+      console.warn("[jobs-scraper] source_failed_or_timed_out", {
+        source: source.name,
+        timeoutMs: maxSourceDurationMs,
+        error: stats.errorMessage,
+      });
+    }
+
     sourceStats.push(stats);
 
     totalExtracted += stats.extracted;
