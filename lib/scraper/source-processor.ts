@@ -325,6 +325,43 @@ function findPdfUrlInHtml(html: string, baseUrl: string) {
   return candidates.length > 0 ? candidates[0] : null;
 }
 
+function findPdfUrlInText(text: string, baseUrl: string) {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const markdownLinkMatch = normalized.match(
+    /\[[^\]]*]\(([^)\s]+\.pdf(?:\?[^)\s]*)?)\)/i
+  );
+  if (markdownLinkMatch?.[1]) {
+    const resolved = resolveUrl(baseUrl, markdownLinkMatch[1]);
+    if (resolved && isPdfUrl(resolved)) {
+      return resolved;
+    }
+  }
+
+  const rawUrlMatch = normalized.match(/https?:\/\/[^\s)"']+\.pdf(?:\?[^\s)"']*)?/i);
+  if (rawUrlMatch?.[0]) {
+    const resolved = resolveUrl(baseUrl, rawUrlMatch[0]);
+    if (resolved && isPdfUrl(resolved)) {
+      return resolved;
+    }
+  }
+
+  const relativePathMatch = normalized.match(
+    /(?:^|[\s("'])(\/[^\s)"']+\.pdf(?:\?[^\s)"']*)?)/i
+  );
+  if (relativePathMatch?.[1]) {
+    const resolved = resolveUrl(baseUrl, relativePathMatch[1]);
+    if (resolved && isPdfUrl(resolved)) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
 async function resolveDetailMarkdown({
   url,
   httpClient,
@@ -392,34 +429,161 @@ type PdfProcessingOutcome = PdfExtractionResult & {
   fields: ReturnType<typeof extractPdfStructuredFields>;
 };
 
+function isPdfResponse({
+  contentType,
+  buffer,
+}: {
+  contentType: string;
+  buffer: Buffer;
+}) {
+  const normalizedType = contentType.toLowerCase();
+  const hasPdfContentType =
+    normalizedType.includes("application/pdf") ||
+    normalizedType.includes("application/x-pdf");
+  const hasPdfHeader = buffer.subarray(0, 8).toString("latin1").includes("%PDF-");
+  return hasPdfContentType || hasPdfHeader;
+}
+
+function findPdfRedirectFromText({
+  text,
+  baseUrl,
+}: {
+  text: string;
+  baseUrl: string;
+}) {
+  const fromHtml = findPdfUrlInHtml(text, baseUrl);
+  if (fromHtml) {
+    return fromHtml;
+  }
+  const fromText = findPdfUrlInText(text, baseUrl);
+  if (fromText) {
+    return fromText;
+  }
+  return null;
+}
+
+async function downloadPdfWithFallback({
+  pdfUrl,
+  sourcePageUrl,
+  applicationUrl,
+  httpClient,
+  requestTimeoutMs,
+  requestRetryAttempts,
+}: {
+  pdfUrl: string;
+  sourcePageUrl: string;
+  applicationUrl: string;
+  httpClient: RobustHttpClient;
+  requestTimeoutMs: number;
+  requestRetryAttempts: number;
+}) {
+  const headerVariants: HeadersInit[] = [
+    {},
+    {
+      referer: applicationUrl,
+      origin: (() => {
+        try {
+          return new URL(applicationUrl).origin;
+        } catch {
+          return "";
+        }
+      })(),
+    },
+    {
+      referer: sourcePageUrl,
+      origin: (() => {
+        try {
+          return new URL(sourcePageUrl).origin;
+        } catch {
+          return "";
+        }
+      })(),
+    },
+  ];
+
+  let lastError: Error | null = null;
+  for (const headers of headerVariants) {
+    try {
+      const downloaded = await httpClient.fetchBuffer(pdfUrl, {
+        timeoutMs: requestTimeoutMs,
+        retryAttempts: requestRetryAttempts,
+        maxBodyBytes: DEFAULT_PDF_MAX_BYTES,
+        headers,
+        accept: "application/pdf,application/octet-stream;q=0.9,text/html;q=0.6,*/*;q=0.5",
+      });
+      const contentType = downloaded.headers.get("content-type") ?? "";
+      if (isPdfResponse({ contentType, buffer: downloaded.buffer })) {
+        return {
+          resolvedPdfUrl: pdfUrl,
+          downloaded,
+        };
+      }
+
+      const htmlText = downloaded.buffer.toString("utf8");
+      const redirectedPdfUrl = findPdfRedirectFromText({
+        text: htmlText,
+        baseUrl: downloaded.url || pdfUrl,
+      });
+      if (redirectedPdfUrl && redirectedPdfUrl !== pdfUrl) {
+        try {
+          const redirected = await httpClient.fetchBuffer(redirectedPdfUrl, {
+            timeoutMs: requestTimeoutMs,
+            retryAttempts: requestRetryAttempts,
+            maxBodyBytes: DEFAULT_PDF_MAX_BYTES,
+            headers,
+            accept:
+              "application/pdf,application/octet-stream;q=0.9,text/html;q=0.6,*/*;q=0.5",
+          });
+          const redirectedType = redirected.headers.get("content-type") ?? "";
+          if (isPdfResponse({ contentType: redirectedType, buffer: redirected.buffer })) {
+            return {
+              resolvedPdfUrl: redirectedPdfUrl,
+              downloaded: redirected,
+            };
+          }
+        } catch (redirectError) {
+          lastError =
+            redirectError instanceof Error
+              ? redirectError
+              : new Error(String(redirectError));
+        }
+      }
+
+      lastError = new Error("not_a_pdf_response");
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  throw lastError ?? new Error("pdf_download_failed");
+}
+
 async function processPdf({
   pdfUrl,
+  sourcePageUrl,
+  applicationUrl,
   httpClient,
   requestTimeoutMs,
   requestRetryAttempts,
   maxPdfTextChars,
 }: {
   pdfUrl: string;
+  sourcePageUrl: string;
+  applicationUrl: string;
   httpClient: RobustHttpClient;
   requestTimeoutMs: number;
   requestRetryAttempts: number;
   maxPdfTextChars: number;
 }): Promise<PdfProcessingOutcome | null> {
   try {
-    const downloaded = await httpClient.fetchBuffer(pdfUrl, {
-      timeoutMs: requestTimeoutMs,
-      retryAttempts: requestRetryAttempts,
-      maxBodyBytes: DEFAULT_PDF_MAX_BYTES,
-      accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+    const { downloaded, resolvedPdfUrl } = await downloadPdfWithFallback({
+      pdfUrl,
+      sourcePageUrl,
+      applicationUrl,
+      httpClient,
+      requestTimeoutMs,
+      requestRetryAttempts,
     });
-
-    const contentType = downloaded.headers.get("content-type")?.toLowerCase() ?? "";
-    const hasPdfContentType =
-      contentType.includes("application/pdf") || contentType.includes("application/x-pdf");
-    const hasPdfHeader = downloaded.buffer.subarray(0, 8).toString("latin1").includes("%PDF-");
-    if (!hasPdfContentType && !hasPdfHeader) {
-      throw new Error("not_a_pdf_response");
-    }
 
     const parsed = await extractDocumentTextFromBuffer(
       {
@@ -437,13 +601,13 @@ async function processPdf({
       return null;
     }
 
-    const pdfCachedUrl = await cacheJobPdfAsset(pdfUrl, {
+    const pdfCachedUrl = await cacheJobPdfAsset(resolvedPdfUrl, {
       timeoutMs: requestTimeoutMs,
       retryAttempts: requestRetryAttempts,
     }).catch(() => null);
     const fields = extractPdfStructuredFields(pdfText);
     return {
-      pdfSourceUrl: pdfUrl,
+      pdfSourceUrl: resolvedPdfUrl,
       pdfCachedUrl,
       pdfText,
       extractedFieldsCount: countPdfStructuredFields(fields),
@@ -494,7 +658,13 @@ async function enrichCandidateJob({
   if (!pdfSourceUrl && isPdfUrl(candidate.applicationUrl)) {
     pdfSourceUrl = candidate.applicationUrl;
   }
-  if (!pdfSourceUrl && detailText) {
+  if (!pdfSourceUrl) {
+    pdfSourceUrl =
+      findPdfUrlInText(detailText ?? "", candidate.applicationUrl) ||
+      findPdfUrlInText(baseText, candidate.applicationUrl) ||
+      findPdfUrlInText(webText, candidate.applicationUrl);
+  }
+  if (!pdfSourceUrl && !isPdfUrl(candidate.applicationUrl)) {
     pdfSourceUrl = await discoverPdfUrlFromDetailPage({
       sourceUrl: candidate.applicationUrl,
       httpClient,
@@ -520,6 +690,8 @@ async function enrichCandidateJob({
     } else {
       pdfResult = await processPdf({
         pdfUrl: pdfSourceUrl,
+        sourcePageUrl: candidate.sourcePageUrl,
+        applicationUrl: candidate.applicationUrl,
         httpClient,
         requestTimeoutMs: context.requestTimeoutMs,
         requestRetryAttempts: context.requestRetryAttempts,
