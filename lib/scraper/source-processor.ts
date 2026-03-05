@@ -61,7 +61,6 @@ const DEFAULT_DETAIL_FETCH_MIN_CHARS = 260;
 const DEFAULT_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS = 60_000;
 const DEFAULT_SOURCE_LISTING_RETRY_ATTEMPTS = 1;
-const DEFAULT_DETAIL_REQUEST_TIMEOUT_MS = 20_000;
 const DEFAULT_DETAIL_RETRY_ATTEMPTS = 1;
 const DEFAULT_PDF_RETRY_ATTEMPTS = 2;
 
@@ -388,7 +387,7 @@ async function resolveDetailMarkdown({
   try {
     const detailTimeoutMs = parsePositiveInt(
       process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
-      Math.min(requestTimeoutMs, DEFAULT_DETAIL_REQUEST_TIMEOUT_MS)
+      requestTimeoutMs
     );
     const detailRetryAttempts = parsePositiveInt(
       process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
@@ -430,7 +429,7 @@ async function discoverPdfUrlFromDetailPage({
   try {
     const detailTimeoutMs = parsePositiveInt(
       process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
-      Math.min(requestTimeoutMs, DEFAULT_DETAIL_REQUEST_TIMEOUT_MS)
+      requestTimeoutMs
     );
     const detailRetryAttempts = parsePositiveInt(
       process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
