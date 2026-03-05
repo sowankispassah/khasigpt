@@ -5,6 +5,7 @@ import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
 import type { NewJobRow } from "@/lib/jobs/saveJobs";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
+import { fetchWithTimeout } from "@/lib/utils/async";
 import { RobustHttpClient } from "./http-client";
 import type {
   PdfExtractionResult,
@@ -63,6 +64,7 @@ const DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS = 60_000;
 const DEFAULT_SOURCE_LISTING_RETRY_ATTEMPTS = 1;
 const DEFAULT_DETAIL_RETRY_ATTEMPTS = 1;
 const DEFAULT_PDF_RETRY_ATTEMPTS = 2;
+const MBDA_HOST = "mbda.gov.in";
 
 const ROLE_TITLE_HINT_PATTERN =
   /\b(manager|officer|assistant|executive|engineer|teacher|tutor|nurse|staff|consultant|developer|analyst|specialist|coordinator|supervisor|clerk|technician|lecturer|faculty|professor|driver|operator|accountant|sales|marketing|recruitment|post|vacancy)\b/i;
@@ -120,36 +122,57 @@ function chunkItems<T>(items: T[], chunkSize: number) {
   return chunks;
 }
 
-async function findExistingSourceUrls(sourceUrls: string[]) {
+type ExistingJobState = {
+  hasPdfSourceUrl: boolean;
+  hasPdfContent: boolean;
+};
+
+async function findExistingJobStates(sourceUrls: string[]) {
   const deduped = Array.from(new Set(sourceUrls.map((url) => normalizeWhitespace(url)).filter(Boolean)));
-  const existing = new Set<string>();
+  const existing = new Map<string, ExistingJobState>();
   if (deduped.length === 0) {
     return existing;
   }
+
   try {
     const supabase = createSupabaseAdminClient();
     const chunks = chunkItems(deduped, DEFAULT_EXISTING_LOOKUP_BATCH_SIZE);
     for (const chunk of chunks) {
-      const { data, error } = await supabase.from("jobs").select("source_url").in("source_url", chunk);
+      const { data, error } = await supabase
+        .from("jobs")
+        .select("source_url,pdf_source_url,pdf_content")
+        .in("source_url", chunk);
+
       if (error) {
-        console.warn("[jobs-scraper] existing_lookup_failed", {
+        console.warn("[jobs-scraper] existing_state_lookup_failed", {
           chunkSize: chunk.length,
           error: error.message,
         });
         break;
       }
+
       for (const row of data ?? []) {
-        if (typeof row.source_url === "string" && row.source_url.trim()) {
-          existing.add(row.source_url.trim());
+        const sourceUrl =
+          typeof row.source_url === "string" ? normalizeWhitespace(row.source_url) : "";
+        if (!sourceUrl) {
+          continue;
         }
+
+        existing.set(sourceUrl, {
+          hasPdfSourceUrl:
+            typeof row.pdf_source_url === "string" && row.pdf_source_url.trim().length > 0,
+          hasPdfContent:
+            typeof row.pdf_content === "string" && row.pdf_content.trim().length > 0,
+        });
       }
     }
   } catch (error) {
-    console.warn("[jobs-scraper] existing_lookup_failed", {
+    console.warn("[jobs-scraper] existing_state_lookup_failed", {
       count: deduped.length,
       error: error instanceof Error ? error.message : String(error),
     });
   }
+
   return existing;
 }
 
@@ -367,6 +390,57 @@ function findPdfUrlInText(text: string, baseUrl: string) {
   return null;
 }
 
+function isSlowDetailHost(url: string) {
+  const hostname = hostnameFromUrl(url).toLowerCase();
+  return hostname === MBDA_HOST || hostname.endsWith(`.${MBDA_HOST}`);
+}
+
+function resolveDetailTimeoutMs(url: string, requestTimeoutMs: number) {
+  const configuredTimeoutMs = parsePositiveInt(
+    process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
+    requestTimeoutMs
+  );
+  if (!isSlowDetailHost(url)) {
+    return configuredTimeoutMs;
+  }
+  return Math.max(configuredTimeoutMs, DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS);
+}
+
+function buildDetailFetchHeaders() {
+  return {
+    "user-agent":
+      process.env.JOBS_SCRAPE_USER_AGENT?.trim() ||
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+  };
+}
+
+async function fetchDetailPageTextFallback(url: string, timeoutMs: number) {
+  try {
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "GET",
+        redirect: "follow",
+        cache: "no-store",
+        headers: buildDetailFetchHeaders(),
+      },
+      timeoutMs
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.text();
+  } catch (error) {
+    console.warn("[jobs-scraper] detail_fetch_fallback_failed", {
+      url,
+      timeoutMs,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function resolveDetailMarkdown({
   url,
   httpClient,
@@ -385,10 +459,7 @@ async function resolveDetailMarkdown({
   }
 
   try {
-    const detailTimeoutMs = parsePositiveInt(
-      process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
-      requestTimeoutMs
-    );
+    const detailTimeoutMs = resolveDetailTimeoutMs(url, requestTimeoutMs);
     const detailRetryAttempts = parsePositiveInt(
       process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
       DEFAULT_DETAIL_RETRY_ATTEMPTS
@@ -403,16 +474,36 @@ async function resolveDetailMarkdown({
       sourceUrl: url,
     });
     const normalized = normalizeMultiline(markdown);
-    sharedCache.set(url, normalized || null);
-    return normalized || null;
+    if (normalized) {
+      sharedCache.set(url, normalized);
+      return normalized;
+    }
   } catch (error) {
     console.warn("[jobs-scraper] detail_fetch_failed", {
       url,
       error: error instanceof Error ? error.message : String(error),
     });
-    sharedCache.set(url, null);
-    return null;
   }
+
+  const fallbackHtml = await fetchDetailPageTextFallback(
+    url,
+    resolveDetailTimeoutMs(url, requestTimeoutMs)
+  );
+  if (fallbackHtml) {
+    const fallbackMarkdown = normalizeMultiline(
+      extractSourceDetailMarkdownFromHtml({
+        html: fallbackHtml,
+        sourceUrl: url,
+      })
+    );
+    if (fallbackMarkdown) {
+      sharedCache.set(url, fallbackMarkdown);
+      return fallbackMarkdown;
+    }
+  }
+
+  sharedCache.set(url, null);
+  return null;
 }
 
 async function discoverPdfUrlFromDetailPage({
@@ -426,24 +517,55 @@ async function discoverPdfUrlFromDetailPage({
   requestTimeoutMs: number;
   requestRetryAttempts: number;
 }) {
+  const detailTimeoutMs = resolveDetailTimeoutMs(sourceUrl, requestTimeoutMs);
+  const detailRetryAttempts = parsePositiveInt(
+    process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
+    DEFAULT_DETAIL_RETRY_ATTEMPTS
+  );
+
   try {
-    const detailTimeoutMs = parsePositiveInt(
-      process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
-      requestTimeoutMs
-    );
-    const detailRetryAttempts = parsePositiveInt(
-      process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
-      DEFAULT_DETAIL_RETRY_ATTEMPTS
-    );
     const response = await httpClient.fetchText(sourceUrl, {
       timeoutMs: detailTimeoutMs,
       retryAttempts: detailRetryAttempts,
       accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
     });
-    return findPdfUrlInHtml(response.text, sourceUrl);
-  } catch {
+    const fromHtml =
+      findPdfUrlInHtml(response.text, sourceUrl) ||
+      findPdfUrlInText(response.text, sourceUrl);
+    if (fromHtml) {
+      return fromHtml;
+    }
+  } catch (error) {
+    console.warn("[jobs-scraper] pdf_discovery_detail_fetch_failed", {
+      sourceUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const fallbackHtml = await fetchDetailPageTextFallback(sourceUrl, detailTimeoutMs);
+  if (!fallbackHtml) {
     return null;
   }
+
+  return (
+    findPdfUrlInHtml(fallbackHtml, sourceUrl) ||
+    findPdfUrlInText(fallbackHtml, sourceUrl)
+  );
+}
+
+function shouldRepairMissingPdfForCandidate(candidate: CandidateJob) {
+  if (candidate.directPdfUrl || isPdfUrl(candidate.applicationUrl)) {
+    return true;
+  }
+
+  const sourceHost = hostnameFromUrl(candidate.sourcePageUrl).toLowerCase();
+  const applicationHost = hostnameFromUrl(candidate.applicationUrl).toLowerCase();
+  return (
+    sourceHost === MBDA_HOST ||
+    sourceHost.endsWith(`.${MBDA_HOST}`) ||
+    applicationHost === MBDA_HOST ||
+    applicationHost.endsWith(`.${MBDA_HOST}`)
+  );
 }
 
 type PdfProcessingOutcome = PdfExtractionResult & {
@@ -978,9 +1100,24 @@ export async function scrapeSource({
     }
 
     if (context.skipExistingSourceUrls && candidates.length > 0) {
-      const existing = await findExistingSourceUrls(candidates.map((candidate) => candidate.applicationUrl));
+      const existing = await findExistingJobStates(
+        candidates.map((candidate) => candidate.applicationUrl)
+      );
       if (existing.size > 0) {
-        const filtered = candidates.filter((candidate) => !existing.has(candidate.applicationUrl));
+        const filtered = candidates.filter((candidate) => {
+          const existingState = existing.get(candidate.applicationUrl);
+          if (!existingState) {
+            return true;
+          }
+
+          const missingPdfData =
+            !existingState.hasPdfSourceUrl && !existingState.hasPdfContent;
+          if (missingPdfData && shouldRepairMissingPdfForCandidate(candidate)) {
+            return true;
+          }
+
+          return false;
+        });
         stats.skippedExisting += candidates.length - filtered.length;
         candidates.length = 0;
         candidates.push(...filtered);

@@ -522,15 +522,99 @@ async function resolveStaleRunningSnapshot(
     return snapshot;
   }
 
+  const startedAt = parseDateOrNull(snapshot.startedAt) ?? lastUpdateAt;
+  const durationMs = Math.max(0, now.getTime() - startedAt.getTime());
+  const allSourcesProcessed =
+    snapshot.totalSources > 0 &&
+    snapshot.processedSources >= snapshot.totalSources &&
+    snapshot.currentSource === null;
+
+  if (allSourcesProcessed) {
+    const message =
+      "Scrape finalized from progress recovery after all sources had already completed.";
+    const terminalSnapshot: JobsScrapeProgressSnapshot = {
+      ...snapshot,
+      state: "success",
+      finishedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      cancelRequested: false,
+      message,
+    };
+
+    await setManyAppSettings([
+      {
+        key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
+        value: "success",
+      },
+      {
+        key: JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
+        value: null,
+      },
+      {
+        key: JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
+        value: {
+          trigger: snapshot.trigger,
+          skipped: false,
+          startedAt: startedAt.toISOString(),
+          finishedAt: now.toISOString(),
+          durationMs,
+          sourcesProcessed: snapshot.processedSources,
+          totalSources: snapshot.totalSources,
+          recoveredFromStaleProgress: true,
+          recoveredAt: now.toISOString(),
+          staleThresholdMs,
+          finalizationRecovered: true,
+        },
+      },
+      {
+        key: JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
+        value: now.toISOString(),
+      },
+      {
+        key: JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
+        value: null,
+      },
+      {
+        key: JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY,
+        value: false,
+      },
+    ]);
+
+    await setProgressSafely(terminalSnapshot);
+    await appendJobsScrapeHistory({
+      runId: snapshot.runId,
+      trigger: snapshot.trigger,
+      status: "success",
+      startedAt: startedAt.toISOString(),
+      finishedAt: now.toISOString(),
+      durationMs,
+      completionPercent: 100,
+      processedSources: snapshot.processedSources,
+      totalSources: snapshot.totalSources,
+      inserted: Math.max(0, snapshot.inserted ?? 0),
+      updated: Math.max(0, snapshot.updated ?? 0),
+      skippedDuplicates: Math.max(0, snapshot.skippedDuplicates ?? 0),
+      skipReason: null,
+      errorMessage: message,
+    });
+
+    console.warn("[jobs-orchestrator] stale_run_recovered_as_success", {
+      runId: snapshot.runId,
+      updatedAt: snapshot.updatedAt,
+      staleThresholdMs,
+      processedSources: snapshot.processedSources,
+      totalSources: snapshot.totalSources,
+    });
+
+    return terminalSnapshot;
+  }
+
   const terminalState: Extract<JobsScrapeProgressState, "failed" | "cancelled"> =
     snapshot.cancelRequested ? "cancelled" : "failed";
   const terminalSkipReason =
     terminalState === "cancelled"
       ? "cancel_requested_timeout"
       : "stale_or_timed_out";
-
-  const startedAt = parseDateOrNull(snapshot.startedAt) ?? lastUpdateAt;
-  const durationMs = Math.max(0, now.getTime() - startedAt.getTime());
   const staleMinutes = Math.max(1, Math.round(staleThresholdMs / 60_000));
   const message =
     terminalState === "cancelled"
