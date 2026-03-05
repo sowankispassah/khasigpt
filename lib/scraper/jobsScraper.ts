@@ -29,6 +29,7 @@ const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
 const MAX_JOB_DESCRIPTION_CHARS = 12_000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const SOURCE_URL_EXISTING_LOOKUP_BATCH_SIZE = 200;
+const DEFAULT_EXISTING_SOURCE_LOOKUP_TIMEOUT_MS = 12_000;
 
 const MEGHALAYA_LOCATION_KEYWORDS = [
   "meghalaya",
@@ -200,12 +201,39 @@ async function findExistingSourceUrls(sourceUrls: string[]) {
 
   try {
     const supabase = createSupabaseAdminClient();
+    const lookupTimeoutMs = parsePositiveInt(
+      process.env.JOBS_SCRAPE_EXISTING_LOOKUP_TIMEOUT_MS,
+      DEFAULT_EXISTING_SOURCE_LOOKUP_TIMEOUT_MS
+    );
     const urlChunks = chunkItems(deduped, SOURCE_URL_EXISTING_LOOKUP_BATCH_SIZE);
     for (const chunk of urlChunks) {
-      const { data, error } = await supabase
-        .from("jobs")
-        .select("source_url")
-        .in("source_url", chunk);
+      let data: Array<{ source_url?: unknown }> | null = null;
+      let error: { message: string } | null = null;
+
+      try {
+        const response = (await withTimeout(
+          Promise.resolve(
+            supabase
+              .from("jobs")
+              .select("source_url")
+              .in("source_url", chunk)
+          ),
+          lookupTimeoutMs
+        )) as {
+          data: Array<{ source_url?: unknown }> | null;
+          error: { message: string } | null;
+        };
+        data = (response.data ?? null) as Array<{ source_url?: unknown }> | null;
+        error = response.error ? { message: response.error.message } : null;
+      } catch (lookupError) {
+        console.warn("[jobs-scraper] existing_source_url_lookup_timed_out", {
+          chunkSize: chunk.length,
+          timeoutMs: lookupTimeoutMs,
+          error:
+            lookupError instanceof Error ? lookupError.message : String(lookupError),
+        });
+        break;
+      }
 
       if (error) {
         console.warn("[jobs-scraper] existing_source_url_lookup_failed", {
