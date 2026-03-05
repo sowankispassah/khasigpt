@@ -9,6 +9,7 @@ import { fetchSourceDetailMarkdown } from "@/lib/jobs/linkedin-detail";
 import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 import { fetchWithTimeout, withTimeout } from "@/lib/utils/async";
 
@@ -27,6 +28,7 @@ const DEFAULT_RAG_SYNC_TIMEOUT_MS = 45_000;
 const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
 const MAX_JOB_DESCRIPTION_CHARS = 12_000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const SOURCE_URL_EXISTING_LOOKUP_BATCH_SIZE = 200;
 
 const MEGHALAYA_LOCATION_KEYWORDS = [
   "meghalaya",
@@ -90,6 +92,7 @@ export type SourceScrapeStats = {
   fetched: boolean;
   containersScanned: number;
   extracted: number;
+  skippedExisting: number;
   filteredByLocation: number;
   filteredByDate: number;
   filteredByKeyword: number;
@@ -108,6 +111,7 @@ export type ScrapeJobsResult = {
     totalSources: number;
     lookbackDays: number;
     totalExtracted: number;
+    totalSkippedExisting: number;
     totalFilteredByLocation: number;
     totalFilteredByDate: number;
     totalFilteredByKeyword: number;
@@ -128,6 +132,7 @@ export type RunJobsScraperResult = ScrapeJobsResult & {
 
 export type JobsScraperRuntimeOptions = {
   lookbackDays?: number;
+  skipExistingSourceUrls?: boolean;
   shouldCancel?: () => boolean | Promise<boolean>;
   onSourceStart?: (event: {
     source: string;
@@ -170,6 +175,64 @@ function parsePositiveInt(rawValue: string | undefined, fallback: number) {
     return fallback;
   }
   return parsed;
+}
+
+function chunkItems<T>(items: T[], chunkSize: number) {
+  if (items.length <= chunkSize) {
+    return [items];
+  }
+
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function findExistingSourceUrls(sourceUrls: string[]) {
+  const deduped = Array.from(
+    new Set(sourceUrls.map((url) => normalizeWhitespace(url)).filter(Boolean))
+  );
+  const existing = new Set<string>();
+  if (deduped.length === 0) {
+    return existing;
+  }
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const urlChunks = chunkItems(deduped, SOURCE_URL_EXISTING_LOOKUP_BATCH_SIZE);
+    for (const chunk of urlChunks) {
+      const { data, error } = await supabase
+        .from("jobs")
+        .select("source_url")
+        .in("source_url", chunk);
+
+      if (error) {
+        console.warn("[jobs-scraper] existing_source_url_lookup_failed", {
+          chunkSize: chunk.length,
+          error: error.message,
+        });
+        break;
+      }
+
+      for (const row of data ?? []) {
+        const sourceUrl =
+          typeof row.source_url === "string"
+            ? normalizeWhitespace(row.source_url)
+            : "";
+        if (sourceUrl) {
+          existing.add(sourceUrl);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[jobs-scraper] existing_source_url_lookup_failed", {
+      count: deduped.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return existing;
 }
 
 function sleep(ms: number) {
@@ -1677,6 +1740,7 @@ async function scrapeSource(
     fetched: false,
     containersScanned: 0,
     extracted: 0,
+    skippedExisting: 0,
     filteredByLocation: 0,
     filteredByDate: 0,
     filteredByKeyword: 0,
@@ -1738,6 +1802,28 @@ async function scrapeSource(
 
     const jobs: NewJobRow[] = [];
     const limit = Math.min(containers.length, maxItemsPerSource);
+    const skipExistingSourceUrls = options.skipExistingSourceUrls === true;
+    let existingSourceUrls = new Set<string>();
+    if (skipExistingSourceUrls && limit > 0) {
+      const candidateSourceUrls: string[] = [];
+      for (let index = 0; index < limit; index += 1) {
+        const container = containers.eq(index);
+        const href =
+          safeAttr(container, source.selectors.link, "href") ||
+          safeAttr(container, "a[href*='job'], a[href*='career'], a[href]", "href");
+        const directPdfHref = safeAttr(
+          container,
+          "a[href$='.pdf'], a[href*='.pdf']",
+          "href"
+        );
+        const sourceUrl = resolveSourceUrl(source.url, directPdfHref || href);
+        if (sourceUrl) {
+          candidateSourceUrls.push(sourceUrl);
+        }
+      }
+      existingSourceUrls = await findExistingSourceUrls(candidateSourceUrls);
+    }
+
     let pdfDetailsUsed = 0;
     let sourceDetailFetches = 0;
     let pdfDiscoveryFetches = 0;
@@ -1787,6 +1873,10 @@ async function scrapeSource(
       const sourceUrl = resolveSourceUrl(source.url, directPdfHref || href);
 
       if (!title || !sourceUrl) {
+        continue;
+      }
+      if (skipExistingSourceUrls && existingSourceUrls.has(sourceUrl)) {
+        stats.skippedExisting += 1;
         continue;
       }
 
@@ -1972,6 +2062,7 @@ export async function scrapeJobsFromSources(
 
   let totalDuplicatesInRun = 0;
   let totalExtracted = 0;
+  let totalSkippedExisting = 0;
   let totalFilteredByLocation = 0;
   let totalFilteredByDate = 0;
   let totalFilteredByKeyword = 0;
@@ -1996,6 +2087,7 @@ export async function scrapeJobsFromSources(
       fetched: false,
       containersScanned: 0,
       extracted: 0,
+      skippedExisting: 0,
       filteredByLocation: 0,
       filteredByDate: 0,
       filteredByKeyword: 0,
@@ -2043,6 +2135,7 @@ export async function scrapeJobsFromSources(
     sourceStats.push(stats);
 
     totalExtracted += stats.extracted;
+    totalSkippedExisting += stats.skippedExisting;
     totalFilteredByLocation += stats.filteredByLocation;
     totalFilteredByDate += stats.filteredByDate;
     totalFilteredByKeyword += stats.filteredByKeyword;
@@ -2086,6 +2179,7 @@ export async function scrapeJobsFromSources(
       fetched: stats.fetched,
       scanned: stats.containersScanned,
       extracted: stats.extracted,
+      skippedExisting: stats.skippedExisting,
       filteredByLocation: stats.filteredByLocation,
       filteredByDate: stats.filteredByDate,
       filteredByKeyword: stats.filteredByKeyword,
@@ -2118,6 +2212,7 @@ export async function scrapeJobsFromSources(
       totalSources: sources.length,
       lookbackDays,
       totalExtracted,
+      totalSkippedExisting,
       totalFilteredByLocation,
       totalFilteredByDate,
       totalFilteredByKeyword,
@@ -2215,6 +2310,7 @@ export async function runJobsScraper(
     inserted: persisted.insertedCount,
     updated: persisted.updatedCount,
     skippedDuplicates: persisted.skippedDuplicateCount + scraped.summary.totalDuplicatesInRun,
+    skippedExisting: scraped.summary.totalSkippedExisting,
     filteredByLocation: scraped.summary.totalFilteredByLocation,
     filteredByDate: scraped.summary.totalFilteredByDate,
     filteredByKeyword: scraped.summary.totalFilteredByKeyword,

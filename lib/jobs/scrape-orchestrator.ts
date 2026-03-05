@@ -832,6 +832,7 @@ export async function runJobsScrapeWithScheduling({
   try {
     const scrapeResult = await runJobsScraper(sourceResolution.scraperSources, {
       lookbackDays: runtime.lookbackDays,
+      skipExistingSourceUrls: trigger === "auto",
       shouldCancel,
       onSourceStart: async ({ source, sourceIndex }) => {
         await updateProgress({
@@ -887,6 +888,7 @@ export async function runJobsScrapeWithScheduling({
       totalSources: scrapeResult.summary.totalSources,
       lookbackDays: scrapeResult.summary.lookbackDays,
       scrapedAfterFilters: scrapeResult.jobs.length,
+      skippedExisting: scrapeResult.summary.totalSkippedExisting,
       inserted: scrapeResult.persisted.insertedCount,
       updated: scrapeResult.persisted.updatedCount,
       skippedDuplicates:
