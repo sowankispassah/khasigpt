@@ -25,6 +25,7 @@ import {
   matchKeywords,
   normalizeMultiline,
   normalizeWhitespace,
+  parsePositiveInt,
   parseBoolean,
   parsePublishedDate,
   resolveUrl,
@@ -58,6 +59,7 @@ const DEFAULT_ALLOW_MISSING_PUBLISHED_AT = true;
 const DEFAULT_EXISTING_LOOKUP_BATCH_SIZE = 200;
 const DEFAULT_DETAIL_FETCH_MIN_CHARS = 260;
 const DEFAULT_PDF_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS = 60_000;
 
 const ROLE_TITLE_HINT_PATTERN =
   /\b(manager|officer|assistant|executive|engineer|teacher|tutor|nurse|staff|consultant|developer|analyst|specialist|coordinator|supervisor|clerk|technician|lecturer|faculty|professor|driver|operator|accountant|sales|marketing|recruitment|post|vacancy)\b/i;
@@ -764,6 +766,61 @@ function buildSourceStats(sourceName: string): SourceScrapeStats {
   };
 }
 
+function isTimeoutLikeError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message === "timeout" ||
+    /timeout|timed out|aborted|headers timeout/i.test(message)
+  );
+}
+
+async function fetchSourceListingWithFallback({
+  sourceUrl,
+  requestTimeoutMs,
+  requestRetryAttempts,
+  httpClient,
+}: {
+  sourceUrl: string;
+  requestTimeoutMs: number;
+  requestRetryAttempts: number;
+  httpClient: RobustHttpClient;
+}) {
+  try {
+    return await httpClient.fetchText(sourceUrl, {
+      timeoutMs: requestTimeoutMs,
+      retryAttempts: requestRetryAttempts,
+      accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    });
+  } catch (error) {
+    if (!isTimeoutLikeError(error)) {
+      throw error;
+    }
+
+    const slowSourceTimeoutMs = parsePositiveInt(
+      process.env.JOBS_SCRAPE_SLOW_SOURCE_TIMEOUT_MS,
+      DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS
+    );
+    const escalatedTimeoutMs = Math.max(
+      requestTimeoutMs,
+      slowSourceTimeoutMs,
+      requestTimeoutMs * 2
+    );
+
+    console.warn("[jobs-scraper] source_listing_retry_with_extended_timeout", {
+      sourceUrl,
+      baseTimeoutMs: requestTimeoutMs,
+      escalatedTimeoutMs,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return httpClient.fetchText(sourceUrl, {
+      timeoutMs: escalatedTimeoutMs,
+      retryAttempts: 1,
+      accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    });
+  }
+}
+
 export async function scrapeSource({
   source,
   sourceIndex,
@@ -796,10 +853,11 @@ export async function scrapeSource({
   );
 
   try {
-    const response = await httpClient.fetchText(source.url, {
-      timeoutMs: context.requestTimeoutMs,
-      retryAttempts: context.requestRetryAttempts,
-      accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    const response = await fetchSourceListingWithFallback({
+      sourceUrl: source.url,
+      requestTimeoutMs: context.requestTimeoutMs,
+      requestRetryAttempts: context.requestRetryAttempts,
+      httpClient,
     });
     stats.fetched = true;
 
