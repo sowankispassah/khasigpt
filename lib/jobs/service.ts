@@ -10,6 +10,7 @@ import type {
 } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/utils/async";
 import {
   listQuestionPaperEntries,
   listQuestionPapers,
@@ -31,6 +32,14 @@ const DEFAULT_JOB_EMBEDDING_STATUS: RagEmbeddingStatus = "pending";
 const JOBS_SERVICE_CACHE_REVALIDATE_SECONDS = 30;
 const JOBS_RAG_KIND = "job_posting";
 const JOBS_RAG_SOURCE = "supabase_jobs_table";
+const jobsRagLookupTimeoutRaw = Number.parseInt(
+  process.env.JOBS_RAG_LOOKUP_TIMEOUT_MS ?? "",
+  10
+);
+const JOBS_RAG_LOOKUP_TIMEOUT_MS =
+  Number.isFinite(jobsRagLookupTimeoutRaw) && jobsRagLookupTimeoutRaw > 0
+    ? Math.max(500, Math.min(jobsRagLookupTimeoutRaw, 10_000))
+    : 2_500;
 
 type JobPostingMetadataInput = {
   jobId: string;
@@ -518,19 +527,35 @@ async function getJobRagStateByIds(ids: string[]) {
     return new Map<string, RagEntry>();
   }
 
-  const rows = await db
-    .select()
-    .from(ragEntry)
-    .where(
-      and(
-        inArray(ragEntry.id, normalizedIds),
-        isNull(ragEntry.deletedAt),
-        sql`(${ragEntry.metadata} ->> 'jobs_kind') = ${JOBS_RAG_KIND}`,
-        sql`(${ragEntry.metadata} ->> 'jobs_source') = ${JOBS_RAG_SOURCE}`
-      )
+  try {
+    const rows = await withTimeout(
+      db
+        .select()
+        .from(ragEntry)
+        .where(
+          and(
+            inArray(ragEntry.id, normalizedIds),
+            isNull(ragEntry.deletedAt),
+            sql`(${ragEntry.metadata} ->> 'jobs_kind') = ${JOBS_RAG_KIND}`,
+            sql`(${ragEntry.metadata} ->> 'jobs_source') = ${JOBS_RAG_SOURCE}`
+          )
+        ),
+      JOBS_RAG_LOOKUP_TIMEOUT_MS,
+      () => {
+        console.warn(
+          `[jobs-service] RAG state lookup timed out after ${JOBS_RAG_LOOKUP_TIMEOUT_MS}ms for ${normalizedIds.length} job id(s).`
+        );
+      }
     );
 
-  return new Map(rows.map((row) => [row.id, row] as const));
+    return new Map(rows.map((row) => [row.id, row] as const));
+  } catch (error) {
+    console.error(
+      `[jobs-service] Failed to load RAG state for ${normalizedIds.length} job id(s). Falling back to Supabase jobs data only.`,
+      error
+    );
+    return new Map<string, RagEntry>();
+  }
 }
 
 function matchesStudyTag(paper: QuestionPaperRecord, tags: Set<string>) {
