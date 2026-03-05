@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
@@ -90,8 +90,11 @@ export function AdminJobsScrapeControl({
   );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [runStartGraceUntil, setRunStartGraceUntil] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const optimisticRunGuardRef = useRef<{
+    runId: string;
+    untilMs: number;
+  } | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -105,20 +108,28 @@ export function AdminJobsScrapeControl({
       const payload = (await response.json()) as StatusResponse;
       const next = payload.progress ?? null;
       setProgress((current) => {
-        if (
-          Date.now() < runStartGraceUntil &&
-          current?.state === "running" &&
-          next?.state !== "running" &&
-          (!next || next.runId !== current.runId)
-        ) {
-          return current;
+        const guard = optimisticRunGuardRef.current;
+        if (guard) {
+          const guardActive = Date.now() < guard.untilMs;
+          const currentIsGuardRun =
+            current?.state === "running" && current.runId === guard.runId;
+          const nextIsGuardRun = next?.state === "running" && next.runId === guard.runId;
+
+          if (guardActive && currentIsGuardRun && !nextIsGuardRun && next?.state !== "running") {
+            return current;
+          }
+
+          if (!guardActive || next?.runId === guard.runId || next?.state === "running") {
+            optimisticRunGuardRef.current = null;
+          }
         }
+
         return next;
       });
     } catch {
       // ignore transient polling failures
     }
-  }, [runStartGraceUntil]);
+  }, []);
 
   useEffect(() => {
     void refreshStatus();
@@ -147,7 +158,10 @@ export function AdminJobsScrapeControl({
   const runStart = useCallback(async () => {
     const optimistic = createOptimisticRunningSnapshot();
     setProgress(optimistic);
-    setRunStartGraceUntil(Date.now() + RUN_START_GRACE_MS);
+    optimisticRunGuardRef.current = {
+      runId: optimistic.runId,
+      untilMs: Date.now() + RUN_START_GRACE_MS,
+    };
     setLoading(true);
     setMessage(null);
     try {
@@ -176,7 +190,7 @@ export function AdminJobsScrapeControl({
               }
             : current
         );
-        setRunStartGraceUntil(0);
+        optimisticRunGuardRef.current = null;
         return;
       }
       if (payload?.progress) {
@@ -184,11 +198,14 @@ export function AdminJobsScrapeControl({
       }
       if (payload?.alreadyRunning) {
         setMessage("A scrape is already running.");
-        setRunStartGraceUntil(0);
+        optimisticRunGuardRef.current = null;
       } else if (payload?.accepted) {
-        setProgress(
-          createOptimisticRunningSnapshot(payload.runId ?? optimistic.runId)
-        );
+        const acceptedRunId = payload.runId ?? optimistic.runId;
+        optimisticRunGuardRef.current = {
+          runId: acceptedRunId,
+          untilMs: Date.now() + RUN_START_GRACE_MS,
+        };
+        setProgress(createOptimisticRunningSnapshot(acceptedRunId));
         setMessage("Scrape started in background.");
       }
       window.setTimeout(() => {
@@ -206,7 +223,7 @@ export function AdminJobsScrapeControl({
             }
           : current
       );
-      setRunStartGraceUntil(0);
+      optimisticRunGuardRef.current = null;
     } finally {
       setLoading(false);
     }
