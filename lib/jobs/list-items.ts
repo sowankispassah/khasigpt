@@ -125,7 +125,7 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
     company: job.company,
     location: job.location,
     employmentType: job.employmentType,
-    salaryLabel: extractSalaryLabel(job.content),
+    salaryLabel: job.salary?.trim() || extractSalaryLabel(job.content),
     deadlineLabel:
       extractDateByKeywordLabel({
         rawDescription: job.content,
@@ -138,7 +138,7 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
         keywordPattern:
           /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
       }) ?? formatDateLabel(job.createdAt),
-    sourceLabel: getSourceHostLabel(job.sourceUrl),
+    sourceLabel: job.source?.trim() || getSourceHostLabel(job.sourceUrl),
     descriptionSnippet: buildDescriptionSnippet(job.content),
     hasPdfFile: hasJobPdfFile(job),
   };

@@ -27,6 +27,11 @@ export type JobPostingRecord = {
   content: string;
   company: string;
   location: string;
+  salary?: string | null;
+  source?: string | null;
+  applicationLink?: string | null;
+  pdfContent?: string | null;
+  contentHash?: string | null;
   employmentType: string;
   studyExam: string;
   studyRole: string;
@@ -52,6 +57,9 @@ export type JobCard = {
   title: string;
   company: string;
   location: string;
+  salary?: string | null;
+  source?: string | null;
+  applicationLink?: string | null;
   employmentType: string;
   studyExam: string;
   studyRole: string;

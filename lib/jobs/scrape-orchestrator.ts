@@ -828,20 +828,24 @@ export async function runJobsScrapeWithScheduling({
   let runningInserted = 0;
   let runningUpdated = 0;
   let runningSkippedDuplicates = 0;
+  let startedSourcesCount = 0;
+  let completedSourcesCount = 0;
 
   try {
     const scrapeResult = await runJobsScraper(sourceResolution.scraperSources, {
       lookbackDays: runtime.lookbackDays,
       skipExistingSourceUrls: trigger === "auto",
       shouldCancel,
-      onSourceStart: async ({ source, sourceIndex }) => {
+      onSourceStart: async ({ source }) => {
+        startedSourcesCount = Math.min(totalSources, startedSourcesCount + 1);
         await updateProgress({
           currentSource: source,
-          processedSources: sourceIndex,
-          message: `Processing ${source} (${sourceIndex + 1}/${totalSources})`,
+          processedSources: completedSourcesCount,
+          message: `Processing ${source} (${startedSourcesCount}/${totalSources})`,
         });
       },
-      onSourceComplete: async ({ source, sourceIndex, stats }) => {
+      onSourceComplete: async ({ source, stats }) => {
+        completedSourcesCount = Math.min(totalSources, completedSourcesCount + 1);
         const warning =
           typeof stats.errorMessage === "string" && stats.errorMessage.trim().length > 0
             ? stats.errorMessage.trim()
@@ -852,8 +856,8 @@ export async function runJobsScrapeWithScheduling({
         await updateProgress({
           currentSource: null,
           lastCompletedSource: source,
-          processedSources: sourceIndex + 1,
-          message: `Completed ${source} (${sourceIndex + 1}/${totalSources})${warningSuffix}`,
+          processedSources: completedSourcesCount,
+          message: `Completed ${source} (${completedSourcesCount}/${totalSources})${warningSuffix}`,
         });
       },
       onSourcePersisted: async ({ persisted }) => {

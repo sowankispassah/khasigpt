@@ -10,11 +10,16 @@ export type NewJobRow = {
   title: string;
   company: string;
   location: string;
+  salary?: string | null;
   description: string;
+  source?: string | null;
+  application_link?: string | null;
   status?: "active" | "inactive";
   source_url: string;
   pdf_source_url?: string | null;
   pdf_cached_url?: string | null;
+  pdf_content?: string | null;
+  content_hash?: string | null;
 };
 
 export type SaveJobsResult = {
@@ -134,13 +139,33 @@ function normalizeOptionalUrl(value: string | null | undefined) {
   return normalized;
 }
 
+function normalizeOptionalText(value: string | null | undefined) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function normalizeJobRows(rows: NewJobRow[]) {
   const dedupedByUrl = new Map<string, NewJobRow>();
+  const seenContentHashes = new Set<string>();
 
   for (const row of rows) {
-    const sourceUrl = row.source_url.trim();
+    const sourceUrl = (normalizeOptionalUrl(row.source_url) ||
+      normalizeOptionalUrl(row.application_link) ||
+      "")
+      .trim();
     if (!sourceUrl) {
       continue;
+    }
+
+    const contentHash = normalizeOptionalText(row.content_hash)?.toLowerCase() ?? null;
+    if (contentHash && seenContentHashes.has(contentHash)) {
+      continue;
+    }
+    if (contentHash) {
+      seenContentHashes.add(contentHash);
     }
 
     dedupedByUrl.set(sourceUrl, {
@@ -150,11 +175,16 @@ function normalizeJobRows(rows: NewJobRow[]) {
         sourceUrl,
       }),
       location: row.location.trim() || "Unknown",
+      salary: normalizeOptionalText(row.salary),
       description: row.description.trim(),
+      source: normalizeOptionalText(row.source),
+      application_link: normalizeOptionalUrl(row.application_link) ?? sourceUrl,
       status: row.status === "inactive" ? "inactive" : "active",
       source_url: sourceUrl,
       pdf_source_url: normalizeOptionalUrl(row.pdf_source_url),
       pdf_cached_url: normalizeOptionalUrl(row.pdf_cached_url),
+      pdf_content: normalizeOptionalText(row.pdf_content),
+      content_hash: contentHash,
     });
   }
 
@@ -165,10 +195,20 @@ function stripUnsupportedColumns({
   rows,
   stripStatus,
   stripPdfColumns,
+  stripSalaryColumn,
+  stripSourceColumn,
+  stripApplicationLinkColumn,
+  stripPdfContentColumn,
+  stripContentHashColumn,
 }: {
   rows: NewJobRow[];
   stripStatus: boolean;
   stripPdfColumns: boolean;
+  stripSalaryColumn: boolean;
+  stripSourceColumn: boolean;
+  stripApplicationLinkColumn: boolean;
+  stripPdfContentColumn: boolean;
+  stripContentHashColumn: boolean;
 }) {
   return rows.map((row) => {
     const payload: Record<string, unknown> = {
@@ -183,9 +223,29 @@ function stripUnsupportedColumns({
       payload.status = row.status;
     }
 
+    if (!stripSalaryColumn) {
+      payload.salary = row.salary ?? null;
+    }
+
+    if (!stripSourceColumn) {
+      payload.source = row.source ?? null;
+    }
+
+    if (!stripApplicationLinkColumn) {
+      payload.application_link = row.application_link ?? null;
+    }
+
     if (!stripPdfColumns) {
       payload.pdf_source_url = row.pdf_source_url ?? null;
       payload.pdf_cached_url = row.pdf_cached_url ?? null;
+    }
+
+    if (!stripPdfContentColumn) {
+      payload.pdf_content = row.pdf_content ?? null;
+    }
+
+    if (!stripContentHashColumn) {
+      payload.content_hash = row.content_hash ?? null;
     }
 
     return payload;
@@ -217,35 +277,72 @@ export async function saveJobs(
 
   for (const batch of chunkArray(normalizedRows, BATCH_SIZE)) {
     const sourceUrls = batch.map((job) => job.source_url);
+    const contentHashes = Array.from(
+      new Set(
+        batch
+          .map((job) => normalizeOptionalText(job.content_hash))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
 
     const existingRows = await withDbRetry("select-existing-source-urls", async () => {
-      const withStatus = await supabase
+      const withStatusAndHash = await supabase
         .from("jobs")
-        .select("source_url,status")
+        .select("source_url,status,content_hash")
         .in("source_url", sourceUrls);
-      if (!withStatus.error) {
-        return withStatus.data ?? [];
+      if (!withStatusAndHash.error) {
+        return withStatusAndHash.data ?? [];
       }
 
-      // Backward compatibility if the status column is not added yet.
-      if (/status/i.test(withStatus.error.message)) {
-        const withoutStatus = await supabase
+      if (/status|content_hash/i.test(withStatusAndHash.error.message)) {
+        const withoutOptional = await supabase
           .from("jobs")
           .select("source_url")
           .in("source_url", sourceUrls);
-        if (withoutStatus.error) {
-          throw new Error(withoutStatus.error.message);
+        if (withoutOptional.error) {
+          throw new Error(withoutOptional.error.message);
         }
-        return withoutStatus.data ?? [];
+        return withoutOptional.data ?? [];
       }
 
-      throw new Error(withStatus.error.message);
+      throw new Error(withStatusAndHash.error.message);
     });
+
+    const existingHashRows = contentHashes.length
+      ? await withDbRetry("select-existing-content-hashes", async () => {
+          const withHash = await supabase
+            .from("jobs")
+            .select("content_hash")
+            .in("content_hash", contentHashes);
+          if (!withHash.error) {
+            return withHash.data ?? [];
+          }
+          if (/content_hash/i.test(withHash.error.message)) {
+            return [] as Array<{ content_hash?: unknown }>;
+          }
+          throw new Error(withHash.error.message);
+        })
+      : [];
 
     const existingUrlSet = new Set(
       existingRows
         .map((row) => (typeof row.source_url === "string" ? row.source_url.trim() : ""))
         .filter(Boolean)
+    );
+
+    const existingHashSet = new Set(
+      [
+        ...existingRows.map((row) =>
+          typeof (row as { content_hash?: unknown }).content_hash === "string"
+            ? (row as { content_hash?: string }).content_hash?.trim()
+            : ""
+        ),
+        ...existingHashRows.map((row) =>
+          typeof (row as { content_hash?: unknown }).content_hash === "string"
+            ? (row as { content_hash?: string }).content_hash?.trim()
+            : ""
+        ),
+      ].filter((value): value is string => Boolean(value))
     );
 
     const existingStatusByUrl = new Map<string, "active" | "inactive">();
@@ -263,21 +360,35 @@ export async function saveJobs(
       }
     }
 
-    const rowsToWrite =
-      duplicateMode === "update"
-        ? batch.map((row) => {
-            const existingStatus = existingStatusByUrl.get(row.source_url);
-            if (existingStatus === "inactive" && row.status !== "inactive") {
-              return {
-                ...row,
-                status: "inactive" as const,
-              };
-            }
-            return row;
-          })
-        : batch.filter((job) => !existingUrlSet.has(job.source_url));
+    const rowsToWrite: NewJobRow[] = [];
+    for (const row of batch) {
+      const normalizedHash = normalizeOptionalText(row.content_hash);
+      const duplicateByHash =
+        !!normalizedHash &&
+        existingHashSet.has(normalizedHash) &&
+        !existingUrlSet.has(row.source_url);
+      const duplicateBySourceUrl = existingUrlSet.has(row.source_url);
 
-    skippedDuplicateCount += batch.length - rowsToWrite.length;
+      if (duplicateMode === "skip" && (duplicateBySourceUrl || duplicateByHash)) {
+        skippedDuplicateCount += 1;
+        continue;
+      }
+
+      if (duplicateMode === "update" && duplicateByHash) {
+        skippedDuplicateCount += 1;
+        continue;
+      }
+
+      const existingStatus = existingStatusByUrl.get(row.source_url);
+      if (existingStatus === "inactive" && row.status !== "inactive") {
+        rowsToWrite.push({
+          ...row,
+          status: "inactive",
+        });
+      } else {
+        rowsToWrite.push(row);
+      }
+    }
 
     if (rowsToWrite.length === 0) {
       continue;
@@ -296,17 +407,41 @@ export async function saveJobs(
         return insertWithStatus.data ?? [];
       }
 
-      const shouldStripStatus = /status/i.test(insertWithStatus.error.message);
-      const shouldStripPdfColumns = /pdf_source_url|pdf_cached_url/i.test(
-        insertWithStatus.error.message
-      );
+      const errorMessage = insertWithStatus.error.message.toLowerCase();
+      const isMissingColumnError =
+        errorMessage.includes("does not exist") || errorMessage.includes("unknown column");
+      const shouldStripStatus = isMissingColumnError && /status/.test(errorMessage);
+      const shouldStripPdfColumns =
+        isMissingColumnError && /pdf_source_url|pdf_cached_url/.test(errorMessage);
+      const shouldStripSalaryColumn = isMissingColumnError && /salary/.test(errorMessage);
+      const shouldStripSourceColumn =
+        isMissingColumnError && /column .*source[^_a-z]|source[^_a-z].*does not exist/.test(errorMessage);
+      const shouldStripApplicationLinkColumn =
+        isMissingColumnError && /application_link/.test(errorMessage);
+      const shouldStripPdfContentColumn =
+        isMissingColumnError && /pdf_content/.test(errorMessage);
+      const shouldStripContentHashColumn =
+        isMissingColumnError && /content_hash/.test(errorMessage);
 
       // Backward compatibility when optional columns have not been added yet.
-      if (shouldStripStatus || shouldStripPdfColumns) {
+      if (
+        shouldStripStatus ||
+        shouldStripPdfColumns ||
+        shouldStripSalaryColumn ||
+        shouldStripSourceColumn ||
+        shouldStripApplicationLinkColumn ||
+        shouldStripPdfContentColumn ||
+        shouldStripContentHashColumn
+      ) {
         const fallbackRows = stripUnsupportedColumns({
           rows: rowsToWrite,
           stripStatus: shouldStripStatus,
           stripPdfColumns: shouldStripPdfColumns,
+          stripSalaryColumn: shouldStripSalaryColumn,
+          stripSourceColumn: shouldStripSourceColumn,
+          stripApplicationLinkColumn: shouldStripApplicationLinkColumn,
+          stripPdfContentColumn: shouldStripPdfContentColumn,
+          stripContentHashColumn: shouldStripContentHashColumn,
         });
         const insertWithoutStatus = await supabase
           .from("jobs")

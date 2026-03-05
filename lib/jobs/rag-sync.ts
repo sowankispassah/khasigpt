@@ -16,7 +16,12 @@ type SupabaseJobRow = {
   title: string;
   company: string;
   location: string;
+  salary?: string | null;
+  source?: string | null;
+  application_link?: string | null;
   description: string | null;
+  pdf_content?: string | null;
+  content_hash?: string | null;
   status: string | null;
   source_url: string;
   pdf_source_url?: string | null;
@@ -49,6 +54,24 @@ function normalizeSourceUrl(sourceUrl: string): string | null {
   }
 }
 
+function buildRagContent(row: SupabaseJobRow) {
+  const description = toTrimmedString(row.description ?? "");
+  const pdfContent = toTrimmedString(row.pdf_content ?? "");
+  if (!pdfContent) {
+    return description;
+  }
+
+  const normalizedDescription = description.toLowerCase();
+  const normalizedPdf = pdfContent.toLowerCase();
+  if (normalizedDescription && normalizedPdf.includes(normalizedDescription)) {
+    return pdfContent;
+  }
+  if (normalizedDescription.includes(normalizedPdf)) {
+    return description;
+  }
+  return [description, `PDF Content:\n${pdfContent}`].filter(Boolean).join("\n\n");
+}
+
 function ensureRagContent(rawDescription: string) {
   const description = rawDescription.trim();
   if (description.length >= 16) {
@@ -65,8 +88,9 @@ function buildJobMetadata(row: SupabaseJobRow) {
   const title = toTrimmedString(row.title) || "Job opening";
   const company = toTrimmedString(row.company) || UNKNOWN_LABEL;
   const location = toTrimmedString(row.location) || UNKNOWN_LABEL;
-  const sourceUrl = toTrimmedString(row.source_url);
+  const sourceUrl = toTrimmedString(row.application_link ?? row.source_url);
   const normalizedSourceUrl = normalizeSourceUrl(sourceUrl);
+  const sourceLabel = toTrimmedString(row.source ?? "") || UNKNOWN_LABEL;
 
   return {
     jobs_kind: "job_posting",
@@ -76,6 +100,8 @@ function buildJobMetadata(row: SupabaseJobRow) {
     job_title: title,
     company,
     location,
+    salary: toTrimmedString(row.salary ?? null) || null,
+    source: sourceLabel,
     employment_type: UNKNOWN_LABEL,
     study_exam: UNKNOWN_LABEL,
     study_role: UNKNOWN_LABEL,
@@ -84,7 +110,11 @@ function buildJobMetadata(row: SupabaseJobRow) {
     tags: [] as string[],
     parse_error: null,
     source_url: sourceUrl || null,
+    source_page_url: toTrimmedString(row.source_url) || null,
     normalized_source_url: normalizedSourceUrl,
+    application_link: toTrimmedString(row.application_link ?? row.source_url) || null,
+    pdf_content_chars: toTrimmedString(row.pdf_content ?? "").length || 0,
+    content_hash: toTrimmedString(row.content_hash ?? null) || null,
     pdf_source_url: toTrimmedString(row.pdf_source_url ?? null) || null,
     pdf_cached_url: toTrimmedString(row.pdf_cached_url ?? null) || null,
     imported_from_jobs_created_at: toTrimmedString(row.created_at) || null,
@@ -139,8 +169,10 @@ async function upsertJobRowToRag({
   row: SupabaseJobRow;
 }) {
   const title = toTrimmedString(row.title) || "Job opening";
-  const content = ensureRagContent(toTrimmedString(row.description ?? ""));
-  const sourceUrl = normalizeSourceUrl(toTrimmedString(row.source_url));
+  const content = ensureRagContent(buildRagContent(row));
+  const sourceUrl = normalizeSourceUrl(
+    toTrimmedString(row.application_link ?? row.source_url)
+  );
   const status = normalizeJobStatus(row.status);
   const metadata = buildJobMetadata(row);
 

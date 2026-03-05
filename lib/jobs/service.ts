@@ -51,7 +51,12 @@ type SupabaseJobRow = {
   title: string;
   company: string;
   location: string;
+  salary?: string | null;
+  source?: string | null;
+  application_link?: string | null;
   description: string | null;
+  pdf_content?: string | null;
+  content_hash?: string | null;
   status: string | null;
   source_url: string;
   pdf_source_url?: string | null;
@@ -124,8 +129,13 @@ function resolveCompanyName({
 function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   const createdAt = parseValidDate(row.created_at);
   const rawSourceUrl = toTrimmedString(row.source_url);
+  const rawApplicationLink = toTrimmedString(row.application_link ?? null);
   const sourceUrl =
     rawSourceUrl && !rawSourceUrl.startsWith("manual://") ? rawSourceUrl : null;
+  const applicationLink =
+    rawApplicationLink && !rawApplicationLink.startsWith("manual://")
+      ? rawApplicationLink
+      : sourceUrl;
   const normalizedStatusRaw = toTrimmedString(row.status).toLowerCase();
   const status: RagEntryStatus =
     normalizedStatusRaw === "inactive"
@@ -143,6 +153,11 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       rawSourceUrl,
     }),
     location: toTrimmedString(row.location) || UNKNOWN_LABEL,
+    salary: toTrimmedString(row.salary ?? null) || null,
+    source: toTrimmedString(row.source ?? null) || null,
+    applicationLink,
+    pdfContent: toTrimmedString(row.pdf_content ?? null) || null,
+    contentHash: toTrimmedString(row.content_hash ?? null) || null,
     employmentType: UNKNOWN_LABEL,
     studyExam: UNKNOWN_LABEL,
     studyRole: UNKNOWN_LABEL,
@@ -387,6 +402,9 @@ export function toJobCard(job: JobPostingRecord): JobCard {
     title: job.title,
     company: job.company,
     location: job.location,
+    salary: job.salary,
+    source: job.source,
+    applicationLink: job.applicationLink,
     employmentType: job.employmentType,
     studyExam: job.studyExam,
     studyRole: job.studyRole,
