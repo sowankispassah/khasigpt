@@ -9,6 +9,7 @@ import {
   deleteRagEntries,
   updateRagEntry,
 } from "@/lib/rag/service";
+import { parsePositiveInt, runWithConcurrency } from "@/lib/scraper/scraper-utils";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type SupabaseJobRow = {
@@ -31,6 +32,7 @@ type SupabaseJobRow = {
 
 const UNKNOWN_LABEL = "Unknown";
 const JOBS_RAG_SYNC_VERSION = 1;
+const DEFAULT_JOBS_RAG_SYNC_CONCURRENCY = 4;
 
 function toTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -210,8 +212,18 @@ async function upsertJobRowToRag({
 
 export async function syncJobPostingsToRag({
   jobIds,
+  concurrency,
+  onProgress,
 }: {
   jobIds: string[];
+  concurrency?: number;
+  onProgress?: (event: {
+    processed: number;
+    total: number;
+    created: number;
+    updated: number;
+    failed: number;
+  }) => void | Promise<void>;
 }) {
   const uniqueJobIds = Array.from(
     new Set(
@@ -246,15 +258,32 @@ export async function syncJobPostingsToRag({
 
   const rows = await getJobsByIds(uniqueJobIds);
   const byId = new Map(rows.map((row) => [row.id, row] as const));
+  const total = uniqueJobIds.length;
+  const ragSyncConcurrency = parsePositiveInt(
+    concurrency,
+    parsePositiveInt(
+      process.env.JOBS_RAG_SYNC_CONCURRENCY,
+      DEFAULT_JOBS_RAG_SYNC_CONCURRENCY
+    )
+  );
 
   let created = 0;
   let updated = 0;
   let failed = 0;
-  for (const jobId of uniqueJobIds) {
+  let processed = 0;
+  await runWithConcurrency(uniqueJobIds, ragSyncConcurrency, async (jobId) => {
     const row = byId.get(jobId);
     if (!row) {
       failed += 1;
-      continue;
+      processed += 1;
+      await onProgress?.({
+        processed,
+        total,
+        created,
+        updated,
+        failed,
+      });
+      return;
     }
 
     try {
@@ -273,11 +302,20 @@ export async function syncJobPostingsToRag({
         jobId,
         error: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      processed += 1;
+      await onProgress?.({
+        processed,
+        total,
+        created,
+        updated,
+        failed,
+      });
     }
-  }
+  });
 
   return {
-    requested: uniqueJobIds.length,
+    requested: total,
     found: rows.length,
     created,
     updated,

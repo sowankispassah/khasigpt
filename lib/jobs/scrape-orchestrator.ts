@@ -949,7 +949,10 @@ export async function runJobsScrapeWithScheduling({
       const message =
         activeSource && sourceElapsedSec !== null
           ? `Processing ${activeSource} (${startedSourcesCount}/${totalSources}) - ${sourceElapsedSec}s elapsed`
-          : progressSnapshot.message ?? "Scrape running";
+          : progressSnapshot.processedSources >= progressSnapshot.totalSources &&
+              progressSnapshot.totalSources > 0
+            ? progressSnapshot.message ?? "All sources scraped. Finalizing scrape run..."
+            : progressSnapshot.message ?? "Scrape running";
 
       void updateProgress(
         {
@@ -1003,6 +1006,13 @@ export async function runJobsScrapeWithScheduling({
           updated: runningUpdated,
           skippedDuplicates: runningSkippedDuplicates,
           message: `Saved so far: ${runningInserted} inserted, ${runningUpdated} updated`,
+        });
+      },
+      onFinalizeProgress: async ({ message }) => {
+        await updateProgress({
+          currentSource: null,
+          processedSources: completedSourcesCount,
+          message,
         });
       },
     });

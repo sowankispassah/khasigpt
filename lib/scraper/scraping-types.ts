@@ -39,6 +39,13 @@ export type RunJobsScraperResult = ScrapeJobsResult & {
   persisted: SaveJobsResult;
 };
 
+export type JobsScraperFinalizeProgressEvent = {
+  phase: "rag_sync";
+  processed: number;
+  total: number;
+  message: string;
+};
+
 export type JobsScraperRuntimeOptions = {
   lookbackDays?: number;
   skipExistingSourceUrls?: boolean;
@@ -68,6 +75,9 @@ export type JobsScraperRuntimeOptions = {
     totalSources: number;
     persisted: SaveJobsResult;
   }) => void | Promise<void>;
+  onFinalizeProgress?: (
+    event: JobsScraperFinalizeProgressEvent
+  ) => void | Promise<void>;
   sourceConcurrency?: number;
 };
 
@@ -105,4 +115,3 @@ export type ProcessedSourceResult = {
   stats: SourceScrapeStats;
   cancelled: boolean;
 };
-

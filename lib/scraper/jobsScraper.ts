@@ -314,10 +314,28 @@ export async function runJobsScraper(
 
   const writtenJobIds = Array.from(persistedJobIds);
   if (writtenJobIds.length > 0) {
+    const totalIndexedJobs = writtenJobIds.length;
+    await options.onFinalizeProgress?.({
+      phase: "rag_sync",
+      processed: 0,
+      total: totalIndexedJobs,
+      message: `All sources scraped. Indexing ${totalIndexedJobs} job${
+        totalIndexedJobs === 1 ? "" : "s"
+      } for chat responses...`,
+    });
+
     try {
       await withTimeout(
         syncJobPostingsToRag({
           jobIds: writtenJobIds,
+          onProgress: async ({ processed, total, created, updated, failed }) => {
+            await options.onFinalizeProgress?.({
+              phase: "rag_sync",
+              processed,
+              total,
+              message: `All sources scraped. Indexing jobs for chat (${processed}/${total}, created ${created}, updated ${updated}, failed ${failed}).`,
+            });
+          },
         }),
         ragSyncTimeoutMs
       );
@@ -325,6 +343,13 @@ export async function runJobsScraper(
       console.warn("[jobs-scraper] rag_sync_failed", {
         count: writtenJobIds.length,
         error: error instanceof Error ? error.message : String(error),
+      });
+      await options.onFinalizeProgress?.({
+        phase: "rag_sync",
+        processed: totalIndexedJobs,
+        total: totalIndexedJobs,
+        message:
+          "All sources scraped. Chat indexing timed out or failed; job rows were still saved.",
       });
     }
   }

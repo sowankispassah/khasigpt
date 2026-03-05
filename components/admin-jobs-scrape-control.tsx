@@ -295,7 +295,12 @@ export function AdminJobsScrapeControl({
     }
 
     if (running) {
-      return `Progress: ${progress.processedSources}/${progress.totalSources} sources (${progressPercentLabel}).${
+      const isFinalizing =
+        progress.totalSources > 0 &&
+        progress.processedSources >= progress.totalSources &&
+        !progress.currentSource;
+      const prefix = isFinalizing ? "Finalizing" : "Progress";
+      return `${prefix}: ${progress.processedSources}/${progress.totalSources} sources (${progressPercentLabel}).${
         elapsedLabel ? ` Elapsed: ${elapsedLabel}.` : ""
       } ${progress.currentSource ? `Current: ${progress.currentSource}. ` : ""}${progress.message ?? ""}`.trim();
     }
