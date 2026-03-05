@@ -23,6 +23,7 @@ const DEFAULT_MAX_SOURCE_DURATION_MS = 3 * 60 * 1000;
 const DEFAULT_SOURCE_DETAIL_TIMEOUT_MS = 12_000;
 const DEFAULT_PDF_DISCOVERY_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_SOURCE_DETAIL_FETCHES = 25;
+const DEFAULT_MAX_PDF_DISCOVERY_FETCHES = 8;
 const DEFAULT_PERSIST_TIMEOUT_MS = 45_000;
 const DEFAULT_RAG_SYNC_TIMEOUT_MS = 45_000;
 const MIN_SOURCE_DETAIL_FETCH_CHARS = 900;
@@ -1258,6 +1259,7 @@ async function enrichDescriptionFromPdf({
   fallbackDescription,
   discoveryTimeoutMs,
   cacheTimeoutMs,
+  cacheRetryAttempts,
   maxPdfTextChars,
   pdfUrlCache,
   includePdfText,
@@ -1269,6 +1271,7 @@ async function enrichDescriptionFromPdf({
   fallbackDescription: string;
   discoveryTimeoutMs: number;
   cacheTimeoutMs: number;
+  cacheRetryAttempts: number;
   maxPdfTextChars: number;
   pdfUrlCache: Map<string, string | null>;
   includePdfText: boolean;
@@ -1332,10 +1335,10 @@ async function enrichDescriptionFromPdf({
     if (pdfUrlCache.has(pdfUrl)) {
       pdfCachedUrl = pdfUrlCache.get(pdfUrl) ?? null;
     } else {
-      pdfCachedUrl = await withTimeout(
-        cacheJobPdfAsset(pdfUrl),
-        cacheTimeoutMs
-      ).catch(() => null);
+      pdfCachedUrl = await cacheJobPdfAsset(pdfUrl, {
+        timeoutMs: cacheTimeoutMs,
+        retryAttempts: cacheRetryAttempts,
+      }).catch(() => null);
       pdfUrlCache.set(pdfUrl, pdfCachedUrl);
     }
 
@@ -1731,6 +1734,14 @@ async function scrapeSource(
     process.env.JOBS_SCRAPE_MAX_SOURCE_DETAIL_FETCHES,
     DEFAULT_MAX_SOURCE_DETAIL_FETCHES
   );
+  const maxPdfDiscoveryFetches = parsePositiveInt(
+    process.env.JOBS_SCRAPE_MAX_PDF_DISCOVERY_FETCHES,
+    Math.min(DEFAULT_MAX_PDF_DISCOVERY_FETCHES, maxSourceDetailFetches)
+  );
+  const pdfCacheRetryAttempts = parsePositiveInt(
+    process.env.JOBS_SCRAPE_PDF_CACHE_RETRY_ATTEMPTS,
+    1
+  );
   const enablePdfTextExtraction = parseBooleanSetting(
     process.env.JOBS_SCRAPE_ENABLE_PDF_TEXT_EXTRACTION,
     false
@@ -1795,6 +1806,11 @@ async function scrapeSource(
 
   const startedAtMs = Date.now();
   const hasSourceTimedOut = () => Date.now() - startedAtMs >= maxSourceDurationMs;
+  const remainingSourceDurationMs = () =>
+    Math.max(0, maxSourceDurationMs - (Date.now() - startedAtMs));
+  const hasSourceBudgetFor = (operationTimeoutMs: number, reserveMs = 1_500) =>
+    remainingSourceDurationMs() >
+    Math.max(1_000, Math.trunc(operationTimeoutMs)) + Math.max(500, reserveMs);
 
   try {
     const html = await fetchSourceHtmlWithRetry({
@@ -1952,7 +1968,8 @@ async function scrapeSource(
       if (
         !isPdfUrl(sourceUrl) &&
         baseDescriptionLength < MIN_SOURCE_DETAIL_FETCH_CHARS &&
-        sourceDetailFetches < maxSourceDetailFetches
+        sourceDetailFetches < maxSourceDetailFetches &&
+        hasSourceBudgetFor(detailTimeoutMs)
       ) {
         let sourceDetailText: string | null = null;
         if (sourceDetailCache.has(sourceUrl)) {
@@ -1983,10 +2000,12 @@ async function scrapeSource(
         if (pdfUrlCache.has(pdfSourceUrl)) {
           pdfCachedUrl = pdfUrlCache.get(pdfSourceUrl) ?? null;
         } else {
-          pdfCachedUrl = await withTimeout(
-            cacheJobPdfAsset(pdfSourceUrl),
-            pdfCacheTimeoutMs
-          ).catch(() => null);
+          if (hasSourceBudgetFor(pdfCacheTimeoutMs, 1_000)) {
+            pdfCachedUrl = await cacheJobPdfAsset(pdfSourceUrl, {
+              timeoutMs: pdfCacheTimeoutMs,
+              retryAttempts: pdfCacheRetryAttempts,
+            }).catch(() => null);
+          }
           pdfUrlCache.set(pdfSourceUrl, pdfCachedUrl);
         }
       }
@@ -2005,26 +2024,34 @@ async function scrapeSource(
           sourcePageUrl: source.url,
           sourceUrl,
         }) &&
-        pdfDiscoveryFetches < maxSourceDetailFetches;
+        pdfDiscoveryFetches < maxPdfDiscoveryFetches &&
+        hasSourceBudgetFor(pdfDiscoveryTimeoutMs, 1_000);
       if (allowPdfDetailPageFetch) {
         pdfDiscoveryFetches += 1;
       }
-      const enriched = await withTimeout(
-        enrichDescriptionFromPdf({
-          sourcePageUrl: source.url,
-          sourceUrl,
-          fallbackDescription: baseDescription,
-          discoveryTimeoutMs: pdfDiscoveryTimeoutMs,
-          cacheTimeoutMs: pdfCacheTimeoutMs,
-          maxPdfTextChars: maxPdfExtractChars,
-          pdfUrlCache,
-          includePdfText:
-            enablePdfTextExtraction && pdfDetailsUsed < maxPdfEnrichmentsPerSource,
-          enablePdfTextExtraction,
-          allowDetailPageFetch: allowPdfDetailPageFetch,
-        }),
-        pdfEnrichmentTimeoutMs
-      ).catch(() => fallbackEnriched);
+      const shouldAttemptPdfEnrichmentNow = hasSourceBudgetFor(
+        Math.max(pdfDiscoveryTimeoutMs, pdfCacheTimeoutMs),
+        750
+      );
+      const enriched = shouldAttemptPdfEnrichmentNow
+        ? await withTimeout(
+            enrichDescriptionFromPdf({
+              sourcePageUrl: source.url,
+              sourceUrl,
+              fallbackDescription: baseDescription,
+              discoveryTimeoutMs: pdfDiscoveryTimeoutMs,
+              cacheTimeoutMs: pdfCacheTimeoutMs,
+              cacheRetryAttempts: pdfCacheRetryAttempts,
+              maxPdfTextChars: maxPdfExtractChars,
+              pdfUrlCache,
+              includePdfText:
+                enablePdfTextExtraction && pdfDetailsUsed < maxPdfEnrichmentsPerSource,
+              enablePdfTextExtraction,
+              allowDetailPageFetch: allowPdfDetailPageFetch,
+            }),
+            pdfEnrichmentTimeoutMs
+          ).catch(() => fallbackEnriched)
+        : fallbackEnriched;
 
       if (enriched.attempted) {
         stats.pdfDetailAttempts += 1;

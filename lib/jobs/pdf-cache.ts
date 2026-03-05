@@ -3,14 +3,28 @@ import crypto from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { fetchWithTimeout } from "@/lib/utils/async";
 
-const DEFAULT_TIMEOUT_MS = 25_000;
+const DEFAULT_TIMEOUT_MS = 12_000;
 const DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
 const DEFAULT_BUCKET = "jobs-pdfs";
 const DEFAULT_PATH_PREFIX = "jobs";
 const DEFAULT_CACHE_CONTROL = "3600";
+const DEFAULT_RETRY_ATTEMPTS = 1;
+const DEFAULT_RETRY_BASE_DELAY_MS = 350;
+const DEFAULT_HOST_FAILURE_THRESHOLD = 2;
+const DEFAULT_HOST_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+const DEFAULT_STORAGE_FAILURE_COOLDOWN_MS = 60 * 1000;
 const SCRAPER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 let ensuredBucketName: string | null = null;
+let storageFailureCooldownUntilMs = 0;
+const hostFailureCounts = new Map<string, number>();
+const hostFailureCooldownUntilByHost = new Map<string, number>();
+
+export type CacheJobPdfAssetOptions = {
+  timeoutMs?: number;
+  maxBytes?: number;
+  retryAttempts?: number;
+};
 
 function parsePositiveInt(rawValue: string | undefined, fallback: number) {
   if (!rawValue) {
@@ -18,6 +32,17 @@ function parsePositiveInt(rawValue: string | undefined, fallback: number) {
   }
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseOptionalPositiveInt(rawValue: number | undefined, fallback: number) {
+  if (!(typeof rawValue === "number" && Number.isFinite(rawValue))) {
+    return fallback;
+  }
+  const parsed = Math.trunc(rawValue);
+  if (parsed <= 0) {
     return fallback;
   }
   return parsed;
@@ -44,12 +69,93 @@ function buildStoragePath(pdfUrl: string) {
   return `${prefix}/${host}/${stem}-${hash}.pdf`;
 }
 
-async function downloadPdfBuffer(url: string) {
-  const timeoutMs = parsePositiveInt(
-    process.env.JOBS_PDF_DOWNLOAD_TIMEOUT_MS,
-    DEFAULT_TIMEOUT_MS
+function normalizeErrorMessage(error: unknown) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRetryableNetworkError(error: unknown) {
+  const message = normalizeErrorMessage(error).toLowerCase();
+  return (
+    message.includes("aborted") ||
+    message.includes("timeout") ||
+    message.includes("fetch failed") ||
+    message.includes("network") ||
+    message.includes("econnreset") ||
+    message.includes("socket") ||
+    message.includes("enotfound") ||
+    message.includes("eai_again")
   );
-  const maxBytes = parsePositiveInt(process.env.JOBS_PDF_MAX_BYTES, DEFAULT_MAX_BYTES);
+}
+
+function sourceHostFromPdfUrl(pdfUrl: string) {
+  try {
+    return new URL(pdfUrl).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isStoragePhaseError(errorMessage: string) {
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes("failed to ensure storage bucket") ||
+    normalized.includes("failed to upload cached pdf")
+  );
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function clearHostFailureState(host: string) {
+  if (!host) {
+    return;
+  }
+  hostFailureCounts.delete(host);
+  hostFailureCooldownUntilByHost.delete(host);
+}
+
+function registerHostFailure(host: string) {
+  if (!host) {
+    return;
+  }
+
+  const threshold = parsePositiveInt(
+    process.env.JOBS_PDF_HOST_FAILURE_THRESHOLD,
+    DEFAULT_HOST_FAILURE_THRESHOLD
+  );
+  const cooldownMs = parsePositiveInt(
+    process.env.JOBS_PDF_HOST_FAILURE_COOLDOWN_MS,
+    DEFAULT_HOST_FAILURE_COOLDOWN_MS
+  );
+  const nextCount = (hostFailureCounts.get(host) ?? 0) + 1;
+  hostFailureCounts.set(host, nextCount);
+  if (nextCount < threshold) {
+    return;
+  }
+
+  hostFailureCounts.delete(host);
+  hostFailureCooldownUntilByHost.set(host, Date.now() + cooldownMs);
+}
+
+async function downloadPdfBuffer(
+  url: string,
+  {
+    timeoutMs,
+    maxBytes,
+  }: {
+    timeoutMs: number;
+    maxBytes: number;
+  }
+) {
   const response = await fetchWithTimeout(
     url,
     {
@@ -93,6 +199,42 @@ async function downloadPdfBuffer(url: string) {
   return buffer;
 }
 
+async function downloadPdfBufferWithRetry(
+  url: string,
+  {
+    timeoutMs,
+    maxBytes,
+    retryAttempts,
+  }: {
+    timeoutMs: number;
+    maxBytes: number;
+    retryAttempts: number;
+  }
+) {
+  const attempts = Math.max(1, retryAttempts);
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await downloadPdfBuffer(url, { timeoutMs, maxBytes });
+    } catch (error) {
+      lastError = error;
+      const retrying = attempt < attempts && isRetryableNetworkError(error);
+      if (!retrying) {
+        break;
+      }
+
+      const baseDelayMs = parsePositiveInt(
+        process.env.JOBS_PDF_DOWNLOAD_RETRY_BASE_DELAY_MS,
+        DEFAULT_RETRY_BASE_DELAY_MS
+      );
+      await wait(baseDelayMs * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function ensurePdfBucket(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   bucket: string
@@ -105,6 +247,11 @@ async function ensurePdfBucket(
   if (existingBucket && !getBucketError) {
     ensuredBucketName = bucket;
     return;
+  }
+  if (getBucketError && isRetryableNetworkError(getBucketError)) {
+    throw new Error(
+      `Failed to ensure storage bucket "${bucket}": ${getBucketError.message}`
+    );
   }
 
   const createResult = await supabase.storage.createBucket(bucket, {
@@ -121,7 +268,10 @@ async function ensurePdfBucket(
   ensuredBucketName = bucket;
 }
 
-export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
+export async function cacheJobPdfAsset(
+  pdfUrl: string,
+  options: CacheJobPdfAssetOptions = {}
+): Promise<string | null> {
   const trimmedUrl = pdfUrl.trim();
   if (!trimmedUrl) {
     return null;
@@ -132,20 +282,47 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
     return null;
   }
 
-  let parsedUrl: URL;
   try {
-    parsedUrl = new URL(trimmedUrl);
+    new URL(trimmedUrl);
   } catch {
     return null;
   }
 
+  const sourceHost = sourceHostFromPdfUrl(trimmedUrl);
+  const nowMs = Date.now();
+  if (storageFailureCooldownUntilMs > nowMs) {
+    return null;
+  }
+  if (
+    sourceHost &&
+    (hostFailureCooldownUntilByHost.get(sourceHost) ?? 0) > nowMs
+  ) {
+    return null;
+  }
+
+  const timeoutMs = parseOptionalPositiveInt(
+    options.timeoutMs,
+    parsePositiveInt(process.env.JOBS_PDF_DOWNLOAD_TIMEOUT_MS, DEFAULT_TIMEOUT_MS)
+  );
+  const maxBytes = parseOptionalPositiveInt(
+    options.maxBytes,
+    parsePositiveInt(process.env.JOBS_PDF_MAX_BYTES, DEFAULT_MAX_BYTES)
+  );
+  const retryAttempts = parseOptionalPositiveInt(
+    options.retryAttempts,
+    parsePositiveInt(process.env.JOBS_PDF_DOWNLOAD_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
+  );
   const bucket = process.env.JOBS_PDF_STORAGE_BUCKET?.trim() || DEFAULT_BUCKET;
   const storagePath = buildStoragePath(trimmedUrl);
   const supabase = createSupabaseAdminClient();
 
   try {
     await ensurePdfBucket(supabase, bucket);
-    const buffer = await downloadPdfBuffer(trimmedUrl);
+    const buffer = await downloadPdfBufferWithRetry(trimmedUrl, {
+      timeoutMs,
+      maxBytes,
+      retryAttempts,
+    });
     const { error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, buffer, {
       cacheControl: DEFAULT_CACHE_CONTROL,
       contentType: "application/pdf",
@@ -156,7 +333,7 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
       uploadError &&
       !/already exists|duplicate/i.test(uploadError.message)
     ) {
-      throw new Error(uploadError.message);
+      throw new Error(`Failed to upload cached PDF: ${uploadError.message}`);
     }
 
     const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
@@ -170,13 +347,28 @@ export async function cacheJobPdfAsset(pdfUrl: string): Promise<string | null> {
       });
       return null;
     }
+    clearHostFailureState(sourceHost);
     return publicUrl;
   } catch (error) {
+    const errorMessage = normalizeErrorMessage(error);
+    const retryableNetworkFailure = isRetryableNetworkError(error);
+    if (retryableNetworkFailure) {
+      if (isStoragePhaseError(errorMessage)) {
+        const storageCooldownMs = parsePositiveInt(
+          process.env.JOBS_PDF_STORAGE_FAILURE_COOLDOWN_MS,
+          DEFAULT_STORAGE_FAILURE_COOLDOWN_MS
+        );
+        storageFailureCooldownUntilMs = Date.now() + storageCooldownMs;
+      } else {
+        registerHostFailure(sourceHost);
+      }
+    }
+
     console.warn("[jobs-scraper] pdf_cache_failed", {
       pdfUrl: trimmedUrl,
       storagePath,
       bucket,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     });
     return null;
   }
