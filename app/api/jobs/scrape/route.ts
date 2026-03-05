@@ -55,7 +55,10 @@ async function runScrapeRequest(request: Request) {
   const url = new URL(request.url);
   const triggerParam = url.searchParams.get("trigger")?.trim().toLowerCase();
   const trigger = triggerParam === "manual" ? "manual" : "auto";
-  const result = await runJobsScrapeWithScheduling({ trigger });
+  const result = await runJobsScrapeWithScheduling({
+    trigger,
+    persistSkips: trigger === "manual",
+  });
 
   if (!result.ok) {
     return NextResponse.json(

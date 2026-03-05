@@ -101,11 +101,12 @@ export class RobustHttpClient {
 
   constructor() {
     this.defaultTimeoutMs = parsePositiveInt(
-      process.env.JOBS_SCRAPE_REQUEST_TIMEOUT_MS,
+      process.env.JOBS_SCRAPE_REQUEST_TIMEOUT_MS ?? process.env.JOBS_SCRAPE_TIMEOUT_MS,
       DEFAULT_TIMEOUT_MS
     );
     this.defaultRetryAttempts = parsePositiveInt(
-      process.env.JOBS_SCRAPE_REQUEST_RETRY_ATTEMPTS,
+      process.env.JOBS_SCRAPE_REQUEST_RETRY_ATTEMPTS ??
+        process.env.JOBS_SCRAPE_FETCH_RETRY_ATTEMPTS,
       DEFAULT_RETRY_ATTEMPTS
     );
     this.defaultRetryBaseDelayMs = parsePositiveInt(
@@ -286,4 +287,3 @@ export class RobustHttpClient {
     this.hostCooldownUntil.set(host, Date.now() + cooldownMs);
   }
 }
-

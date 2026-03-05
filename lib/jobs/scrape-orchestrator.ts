@@ -675,6 +675,7 @@ export async function runJobsScrapeWithScheduling({
       oneTimeUpcoming && decision.skipReason !== "locked"
         ? "waiting_for_one_time"
         : decision.skipReason;
+    const shouldRecordSkip = persistSkips && effectiveSkipReason !== "locked";
     const summary = {
       trigger,
       skipped: true,
@@ -686,7 +687,7 @@ export async function runJobsScrapeWithScheduling({
       durationMs: finishedAt.getTime() - startedAt.getTime(),
     };
 
-    if (persistSkips) {
+    if (shouldRecordSkip) {
       await setManyAppSettings([
         {
           key: JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
@@ -703,26 +704,28 @@ export async function runJobsScrapeWithScheduling({
       ]);
     }
 
-    await setProgressSafely({
-      runId,
-      trigger,
-      state: "skipped",
-      startedAt: startedAt.toISOString(),
-      updatedAt: finishedAt.toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      totalSources: 0,
-      processedSources: 0,
-      currentSource: null,
-      lastCompletedSource: null,
-      lookbackDays: runtime.lookbackDays,
-      cancelRequested: false,
-      inserted: null,
-      updated: null,
-      skippedDuplicates: null,
-      message: effectiveSkipReason ?? "Skipped",
-    });
+    if (effectiveSkipReason !== "locked") {
+      await setProgressSafely({
+        runId,
+        trigger,
+        state: "skipped",
+        startedAt: startedAt.toISOString(),
+        updatedAt: finishedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        totalSources: 0,
+        processedSources: 0,
+        currentSource: null,
+        lastCompletedSource: null,
+        lookbackDays: runtime.lookbackDays,
+        cancelRequested: false,
+        inserted: null,
+        updated: null,
+        skippedDuplicates: null,
+        message: effectiveSkipReason ?? "Skipped",
+      });
+    }
 
-    if (persistSkips) {
+    if (shouldRecordSkip) {
       await appendJobsScrapeHistory({
         runId,
         trigger,
