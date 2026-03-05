@@ -97,6 +97,7 @@ const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_SCRAPE_HISTORY_MAX_ITEMS = 100;
 const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 8 * 60 * 1000;
 const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 15 * 1000;
+const DEFAULT_JOBS_SCRAPE_PROGRESS_HEARTBEAT_MS = 20 * 1000;
 
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
@@ -163,6 +164,13 @@ function getCancelRequestedStaleThresholdMs() {
   return parsePositiveInt(
     process.env.JOBS_SCRAPE_CANCEL_STALE_MS,
     DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS
+  );
+}
+
+function getProgressHeartbeatIntervalMs() {
+  return parsePositiveInt(
+    process.env.JOBS_SCRAPE_PROGRESS_HEARTBEAT_MS,
+    DEFAULT_JOBS_SCRAPE_PROGRESS_HEARTBEAT_MS
   );
 }
 
@@ -833,6 +841,42 @@ export async function runJobsScrapeWithScheduling({
   let runningSkippedDuplicates = 0;
   let startedSourcesCount = 0;
   let completedSourcesCount = 0;
+  let currentSourceStartedAt: Date | null = null;
+  const heartbeatIntervalMs = getProgressHeartbeatIntervalMs();
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let heartbeatInFlight = false;
+
+  if (heartbeatIntervalMs > 0) {
+    heartbeatTimer = setInterval(() => {
+      if (heartbeatInFlight || progressSnapshot.state !== "running") {
+        return;
+      }
+
+      heartbeatInFlight = true;
+      const now = new Date();
+      const activeSource = progressSnapshot.currentSource;
+      const sourceElapsedSec =
+        activeSource && currentSourceStartedAt
+          ? Math.max(
+              1,
+              Math.trunc((now.getTime() - currentSourceStartedAt.getTime()) / 1000)
+            )
+          : null;
+      const message =
+        activeSource && sourceElapsedSec !== null
+          ? `Processing ${activeSource} (${startedSourcesCount}/${totalSources}) - ${sourceElapsedSec}s elapsed`
+          : progressSnapshot.message ?? "Scrape running";
+
+      void updateProgress(
+        {
+          message,
+        },
+        now
+      ).finally(() => {
+        heartbeatInFlight = false;
+      });
+    }, heartbeatIntervalMs);
+  }
 
   try {
     const scrapeResult = await runJobsScraper(sourceResolution.scraperSources, {
@@ -841,6 +885,7 @@ export async function runJobsScrapeWithScheduling({
       shouldCancel,
       onSourceStart: async ({ source }) => {
         startedSourcesCount = Math.min(totalSources, startedSourcesCount + 1);
+        currentSourceStartedAt = new Date();
         await updateProgress({
           currentSource: source,
           processedSources: completedSourcesCount,
@@ -849,6 +894,7 @@ export async function runJobsScrapeWithScheduling({
       },
       onSourceComplete: async ({ source, stats }) => {
         completedSourcesCount = Math.min(totalSources, completedSourcesCount + 1);
+        currentSourceStartedAt = null;
         const warning =
           typeof stats.errorMessage === "string" && stats.errorMessage.trim().length > 0
             ? stats.errorMessage.trim()
@@ -1091,5 +1137,9 @@ export async function runJobsScrapeWithScheduling({
       scrapeResult: null,
       errorMessage: message,
     };
+  } finally {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+    }
   }
 }

@@ -60,6 +60,10 @@ const DEFAULT_EXISTING_LOOKUP_BATCH_SIZE = 200;
 const DEFAULT_DETAIL_FETCH_MIN_CHARS = 260;
 const DEFAULT_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS = 60_000;
+const DEFAULT_SOURCE_LISTING_RETRY_ATTEMPTS = 1;
+const DEFAULT_DETAIL_REQUEST_TIMEOUT_MS = 20_000;
+const DEFAULT_DETAIL_RETRY_ATTEMPTS = 1;
+const DEFAULT_PDF_RETRY_ATTEMPTS = 2;
 
 const ROLE_TITLE_HINT_PATTERN =
   /\b(manager|officer|assistant|executive|engineer|teacher|tutor|nurse|staff|consultant|developer|analyst|specialist|coordinator|supervisor|clerk|technician|lecturer|faculty|professor|driver|operator|accountant|sales|marketing|recruitment|post|vacancy)\b/i;
@@ -382,9 +386,17 @@ async function resolveDetailMarkdown({
   }
 
   try {
+    const detailTimeoutMs = parsePositiveInt(
+      process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
+      Math.min(requestTimeoutMs, DEFAULT_DETAIL_REQUEST_TIMEOUT_MS)
+    );
+    const detailRetryAttempts = parsePositiveInt(
+      process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
+      DEFAULT_DETAIL_RETRY_ATTEMPTS
+    );
     const response = await httpClient.fetchText(url, {
-      timeoutMs: requestTimeoutMs,
-      retryAttempts: requestRetryAttempts,
+      timeoutMs: detailTimeoutMs,
+      retryAttempts: detailRetryAttempts,
       accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
     });
     const markdown = extractSourceDetailMarkdownFromHtml({
@@ -416,9 +428,17 @@ async function discoverPdfUrlFromDetailPage({
   requestRetryAttempts: number;
 }) {
   try {
+    const detailTimeoutMs = parsePositiveInt(
+      process.env.JOBS_SCRAPE_DETAIL_REQUEST_TIMEOUT_MS,
+      Math.min(requestTimeoutMs, DEFAULT_DETAIL_REQUEST_TIMEOUT_MS)
+    );
+    const detailRetryAttempts = parsePositiveInt(
+      process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
+      DEFAULT_DETAIL_RETRY_ATTEMPTS
+    );
     const response = await httpClient.fetchText(sourceUrl, {
-      timeoutMs: requestTimeoutMs,
-      retryAttempts: requestRetryAttempts,
+      timeoutMs: detailTimeoutMs,
+      retryAttempts: detailRetryAttempts,
       accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
     });
     return findPdfUrlInHtml(response.text, sourceUrl);
@@ -578,13 +598,17 @@ async function processPdf({
   maxPdfTextChars: number;
 }): Promise<PdfProcessingOutcome | null> {
   try {
+    const pdfRetryAttempts = parsePositiveInt(
+      process.env.JOBS_SCRAPE_PDF_FETCH_RETRY_ATTEMPTS,
+      Math.max(1, Math.min(requestRetryAttempts, DEFAULT_PDF_RETRY_ATTEMPTS))
+    );
     const { downloaded, resolvedPdfUrl } = await downloadPdfWithFallback({
       pdfUrl,
       sourcePageUrl,
       applicationUrl,
       httpClient,
       requestTimeoutMs,
-      requestRetryAttempts,
+      requestRetryAttempts: pdfRetryAttempts,
     });
 
     const parsed = await extractDocumentTextFromBuffer(
@@ -605,7 +629,7 @@ async function processPdf({
 
     const pdfCachedUrl = await cacheJobPdfAsset(resolvedPdfUrl, {
       timeoutMs: requestTimeoutMs,
-      retryAttempts: requestRetryAttempts,
+      retryAttempts: pdfRetryAttempts,
     }).catch(() => null);
     const fields = extractPdfStructuredFields(pdfText);
     return {
@@ -786,9 +810,13 @@ async function fetchSourceListingWithFallback({
   httpClient: RobustHttpClient;
 }) {
   try {
+    const listingRetryAttempts = parsePositiveInt(
+      process.env.JOBS_SCRAPE_SOURCE_LISTING_RETRY_ATTEMPTS,
+      DEFAULT_SOURCE_LISTING_RETRY_ATTEMPTS
+    );
     return await httpClient.fetchText(sourceUrl, {
       timeoutMs: requestTimeoutMs,
-      retryAttempts: requestRetryAttempts,
+      retryAttempts: Math.max(1, Math.min(requestRetryAttempts, listingRetryAttempts)),
       accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
     });
   } catch (error) {
