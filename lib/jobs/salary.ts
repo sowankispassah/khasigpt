@@ -154,6 +154,21 @@ function extractQualitativeSalary(value: string) {
   return match?.[1] ? trimSalaryPunctuation(normalizeWhitespace(match[1])) : null;
 }
 
+function hasSalaryOnlyTail(value: string, amount: string) {
+  if (!value.startsWith(amount)) {
+    return false;
+  }
+
+  const tail = trimSalaryPunctuation(value.slice(amount.length));
+  if (!tail) {
+    return false;
+  }
+
+  return /^(?:\([^)]{1,40}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|including allowances|\s)+$/i.test(
+    tail
+  );
+}
+
 function extractShortSalary(value: string) {
   const cleaned = cleanSalaryCandidate(value);
   if (!cleaned) {
@@ -166,7 +181,11 @@ function extractShortSalary(value: string) {
 
   const amountMatch = cleaned.match(SALARY_AMOUNT_PATTERN);
   if (amountMatch?.[0]) {
-    return trimSalaryPunctuation(normalizeWhitespace(amountMatch[0]));
+    const amount = trimSalaryPunctuation(normalizeWhitespace(amountMatch[0]));
+    if (hasSalaryOnlyTail(cleaned, amount)) {
+      return cleaned;
+    }
+    return amount;
   }
 
   if (SHORT_NUMERIC_SALARY_PATTERN.test(cleaned)) {
