@@ -161,14 +161,14 @@ test.describe("jobs salary parsing", () => {
     });
   });
 
-  test("maps list item salary label to summary for multi-role postings", () => {
+  test("maps list item salary label to summary for multi-role postings", async () => {
     const job = createJob({
       title: "MBMA Recruitment 2026",
       pdfContent:
         "Sl. No. Positions Essential Qualifications No. of Vacancy Monthly Emolument 1.1 Manager Qualifications: MBA. 01 Shillong Rs. 50,000/- 1.2 Field Coordinator Qualifications: Graduate. 02 Tura Rs. 20,000/- + HRA",
     });
 
-    const item = toJobListItem(job);
+    const item = await toJobListItem(job);
 
     expect(item.salaryLabel).toBe("Rs. 20,000 - Rs. 50,000 across 2 roles");
   });

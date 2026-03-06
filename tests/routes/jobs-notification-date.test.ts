@@ -83,13 +83,13 @@ test.describe("jobs notification date parsing", () => {
     ).toBe("04 Mar 2026");
   });
 
-  test("list item does not fall back to createdAt for notification date", () => {
+  test("list item does not fall back to createdAt for notification date", async () => {
     const job = createJob({
       content: "Recruitment notice. Apply online.",
       createdAt: new Date("2026-03-06T18:20:18.000Z"),
     });
 
-    const item = toJobListItem(job);
+    const item = await toJobListItem(job);
 
     expect(item.notificationDateLabel).toBe("Not specified");
   });

@@ -144,8 +144,8 @@ test.describe("job sector resolution", () => {
     expect(result.filteredJobs.map((job) => job.id)).toEqual(["gov-sector"]);
   });
 
-  test("list items preserve the visible type label", () => {
-    const item = toJobListItem(
+  test("list items preserve the visible type label", async () => {
+    const item = await toJobListItem(
       createJob({
         sector: "government",
         employmentType: "government",

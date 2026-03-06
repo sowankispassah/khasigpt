@@ -1,3 +1,4 @@
+import { resolveJobPdfMetaText } from "@/lib/jobs/pdf-meta";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import type { JobListItem, JobPostingRecord } from "@/lib/jobs/types";
@@ -34,32 +35,6 @@ function buildDescriptionSnippet(rawDescription: string) {
   return normalized.length > 170 ? `${normalized.slice(0, 170)}...` : normalized;
 }
 
-function isPdfUrl(url: string | null) {
-  if (!url) {
-    return false;
-  }
-  try {
-    const parsed = new URL(url);
-    const pathname = parsed.pathname.toLowerCase();
-    return pathname.endsWith(".pdf") || pathname.includes(".pdf");
-  } catch {
-    return false;
-  }
-}
-
-function extractPdfUrlFromContent(content: string) {
-  const match = content.match(/PDF Source:\s*(https?:\/\/\S+)/i);
-  if (!match?.[1]) {
-    return null;
-  }
-  const candidate = match[1].replace(/[),.;]+$/g, "");
-  try {
-    return new URL(candidate).toString();
-  } catch {
-    return null;
-  }
-}
-
 function hasJobPdfFile(job: {
   sourceUrl: string | null;
   pdfSourceUrl: string | null;
@@ -67,14 +42,16 @@ function hasJobPdfFile(job: {
   content: string;
 }) {
   return Boolean(
-    isPdfUrl(job.pdfCachedUrl) ||
-      isPdfUrl(job.pdfSourceUrl) ||
-      isPdfUrl(job.sourceUrl) ||
-      extractPdfUrlFromContent(job.content)
+    job.pdfCachedUrl ||
+      job.pdfSourceUrl ||
+      job.sourceUrl?.toLowerCase().includes(".pdf") ||
+      job.content.match(/PDF Source:\s*(https?:\/\/\S+)/i)
   );
 }
 
-export function toJobListItem(job: JobPostingRecord): JobListItem {
+export async function toJobListItem(job: JobPostingRecord): Promise<JobListItem> {
+  const pdfMetaText = await resolveJobPdfMetaText(job);
+
   return {
     id: job.id,
     title: job.title,
@@ -84,12 +61,12 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
     salaryLabel: resolveJobSalaryInfo({
       salary: job.salary,
       content: job.content,
-      pdfContent: job.pdfContent,
+      pdfContent: pdfMetaText,
     }).summary,
     notificationDateLabel:
       resolveJobNotificationDateLabel({
         content: job.content,
-        pdfContent: job.pdfContent,
+        pdfContent: pdfMetaText,
         referenceDate: job.createdAt,
       }),
     fetchedOnLabel: formatDateLabel(job.createdAt),
@@ -99,6 +76,6 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
   };
 }
 
-export function toJobListItems(jobs: JobPostingRecord[]): JobListItem[] {
-  return jobs.map(toJobListItem);
+export async function toJobListItems(jobs: JobPostingRecord[]): Promise<JobListItem[]> {
+  return Promise.all(jobs.map((job) => toJobListItem(job)));
 }
