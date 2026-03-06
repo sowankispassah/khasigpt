@@ -25,7 +25,6 @@ import {
 import {
   appSettingCacheTagForKey,
   deleteAppSetting,
-  getAppSetting,
   getAppSettingUncached,
   setAppSetting,
 } from "@/lib/db/queries";
@@ -828,17 +827,17 @@ export default async function AdminJobsPage() {
       20_000
     ),
     withTimeoutFallback(listManagedJobSources(), [], 10_000),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.enabled), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.intervalHours), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.startTime), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.timezone), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lockUntil), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason), null),
-    withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.enabled), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.intervalHours), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.startTime), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.timezone), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lockUntil), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY), null),
     withTimeoutFallback<Awaited<ReturnType<typeof getJobsScrapeHistory>> | null>(getJobsScrapeHistory({ limit: 50 }), null, 10_000),
   ]);
 

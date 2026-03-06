@@ -27,7 +27,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -3399,6 +3399,9 @@ export async function setAppSetting<T>({
       "Failed to update application setting"
     );
   }
+
+  revalidateTag(APP_SETTING_CACHE_TAG, "max");
+  revalidateTag(appSettingCacheTagForKey(key), "max");
 }
 
 export async function deleteAppSetting(key: string) {
@@ -3410,6 +3413,9 @@ export async function deleteAppSetting(key: string) {
       "Failed to delete application setting"
     );
   }
+
+  revalidateTag(APP_SETTING_CACHE_TAG, "max");
+  revalidateTag(appSettingCacheTagForKey(key), "max");
 }
 
 export async function createAuditLogEntry({
