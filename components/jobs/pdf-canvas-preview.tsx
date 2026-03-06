@@ -34,6 +34,8 @@ const MAX_CACHED_PREVIEW_PAGE_NUMBER = 8;
 const pdfBytesCache = new Map<string, PdfBytesCacheEntry>();
 const pdfPagePreviewCache = new Map<string, PdfPagePreviewCacheEntry>();
 let pdfBytesCacheTotalBytes = 0;
+const textSelectionLayers = new Map<HTMLDivElement, HTMLDivElement>();
+let textSelectionAbortController: AbortController | null = null;
 
 function nowMs() {
   return Date.now();
@@ -203,6 +205,179 @@ function cachePagePreview({
   enforcePdfPreviewCacheLimits();
 }
 
+function removeNullCharacters(value: string) {
+  return value.replace(/\u0000/g, "");
+}
+
+function unregisterTextSelectionLayer(textLayerDiv: HTMLDivElement) {
+  textSelectionLayers.delete(textLayerDiv);
+  if (textSelectionLayers.size === 0) {
+    textSelectionAbortController?.abort();
+    textSelectionAbortController = null;
+  }
+}
+
+function ensureTextSelectionTracking() {
+  if (textSelectionAbortController) {
+    return;
+  }
+
+  textSelectionAbortController = new AbortController();
+  const { signal } = textSelectionAbortController;
+
+  const reset = (endOfContent: HTMLDivElement, textLayerDiv: HTMLDivElement) => {
+    textLayerDiv.append(endOfContent);
+    endOfContent.style.width = "";
+    endOfContent.style.height = "";
+    textLayerDiv.classList.remove("selecting");
+  };
+
+  let isPointerDown = false;
+  let previousRange: Range | null = null;
+
+  document.addEventListener(
+    "pointerdown",
+    () => {
+      isPointerDown = true;
+    },
+    { signal }
+  );
+
+  document.addEventListener(
+    "pointerup",
+    () => {
+      isPointerDown = false;
+      previousRange = null;
+      textSelectionLayers.forEach(reset);
+    },
+    { signal }
+  );
+
+  window.addEventListener(
+    "blur",
+    () => {
+      isPointerDown = false;
+      previousRange = null;
+      textSelectionLayers.forEach(reset);
+    },
+    { signal }
+  );
+
+  document.addEventListener(
+    "keyup",
+    () => {
+      if (!isPointerDown) {
+        previousRange = null;
+        textSelectionLayers.forEach(reset);
+      }
+    },
+    { signal }
+  );
+
+  document.addEventListener(
+    "selectionchange",
+    () => {
+      const selection = document.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        previousRange = null;
+        textSelectionLayers.forEach(reset);
+        return;
+      }
+
+      const activeTextLayers = new Set<HTMLDivElement>();
+      for (let index = 0; index < selection.rangeCount; index += 1) {
+        const range = selection.getRangeAt(index);
+        for (const textLayerDiv of textSelectionLayers.keys()) {
+          if (
+            !activeTextLayers.has(textLayerDiv) &&
+            range.intersectsNode(textLayerDiv)
+          ) {
+            activeTextLayers.add(textLayerDiv);
+          }
+        }
+      }
+
+      for (const [textLayerDiv, endOfContent] of textSelectionLayers) {
+        if (activeTextLayers.has(textLayerDiv)) {
+          textLayerDiv.classList.add("selecting");
+        } else {
+          reset(endOfContent, textLayerDiv);
+        }
+      }
+
+      const range = selection.getRangeAt(0);
+      const modifyStart =
+        !!previousRange &&
+        (range.compareBoundaryPoints(Range.END_TO_END, previousRange) === 0 ||
+          range.compareBoundaryPoints(Range.START_TO_END, previousRange) === 0);
+
+      let anchor: Node | null = modifyStart
+        ? range.startContainer
+        : range.endContainer;
+      if (anchor?.nodeType === Node.TEXT_NODE) {
+        anchor = anchor.parentNode;
+      }
+      if (!anchor) {
+        previousRange = range.cloneRange();
+        return;
+      }
+
+      if (!modifyStart && range.endOffset === 0) {
+        do {
+          while (anchor && !anchor.previousSibling) {
+            anchor = anchor.parentNode;
+          }
+          anchor = anchor?.previousSibling ?? null;
+        } while (anchor && !anchor.childNodes.length);
+      }
+
+      const anchorElement =
+        anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+      const parentTextLayer = anchorElement?.closest(".textLayer");
+      if (parentTextLayer instanceof HTMLDivElement) {
+        const endOfContent = textSelectionLayers.get(parentTextLayer);
+        if (endOfContent) {
+          endOfContent.style.width = parentTextLayer.style.width;
+          endOfContent.style.height = parentTextLayer.style.height;
+          anchorElement?.parentElement?.insertBefore(
+            endOfContent,
+            modifyStart ? anchorElement : anchorElement?.nextSibling ?? null
+          );
+        }
+      }
+
+      previousRange = range.cloneRange();
+    },
+    { signal }
+  );
+}
+
+function registerTextSelectionLayer(textLayerDiv: HTMLDivElement) {
+  const endOfContent = document.createElement("div");
+  endOfContent.className = "endOfContent";
+  textLayerDiv.append(endOfContent);
+
+  textLayerDiv.tabIndex = 0;
+  textLayerDiv.addEventListener("mousedown", () => {
+    textLayerDiv.classList.add("selecting");
+  });
+  textLayerDiv.addEventListener("copy", (event) => {
+    const selection = document.getSelection();
+    if (!selection) {
+      return;
+    }
+
+    event.clipboardData?.setData(
+      "text/plain",
+      removeNullCharacters(selection.toString())
+    );
+    event.preventDefault();
+  });
+
+  textSelectionLayers.set(textLayerDiv, endOfContent);
+  ensureTextSelectionTracking();
+}
+
 async function fetchPdfBytes({
   src,
   signal,
@@ -279,6 +454,7 @@ export function PdfCanvasPreview({
     let loadingTask: any = null;
     let pdfDocument: any = null;
     const pdfBytesAbortController = new AbortController();
+    const registeredTextLayers: HTMLDivElement[] = [];
 
     const clearMount = () => {
       if (mountRef.current) {
@@ -378,14 +554,14 @@ export function PdfCanvasPreview({
 
           if (cachedPreviewDataUrl) {
             const previewImage = globalThis.document.createElement("img");
-            previewImage.className = "block h-full w-full bg-white";
+            previewImage.className = "pointer-events-none block h-full w-full bg-white select-none";
             previewImage.alt = `PDF page ${pageNumber}`;
             previewImage.loading = "lazy";
             previewImage.src = cachedPreviewDataUrl;
             pageWrapper.appendChild(previewImage);
           } else {
             const canvas = globalThis.document.createElement("canvas");
-            canvas.className = "block box-border w-full bg-white";
+            canvas.className = "pointer-events-none block box-border w-full bg-white select-none";
             canvas.style.width = "100%";
             canvas.style.height = `${Math.floor(cssViewport.height)}px`;
             canvas.width = Math.max(1, Math.floor(renderViewport.width));
@@ -420,14 +596,32 @@ export function PdfCanvasPreview({
           const textLayerDiv = globalThis.document.createElement("div");
           textLayerDiv.className = "pdf-preview-text-layer textLayer";
           textLayerDiv.setAttribute("data-main-rotation", String(cssViewport.rotation));
+          textLayerDiv.style.width = "100%";
+          textLayerDiv.style.height = `${Math.floor(cssViewport.height)}px`;
+          textLayerDiv.style.setProperty("--scale-factor", String(renderScale));
+          textLayerDiv.style.setProperty(
+            "--total-scale-factor",
+            String(renderScale)
+          );
           pageWrapper.appendChild(textLayerDiv);
 
           const textLayer = new pdfjs.TextLayer({
-            textContentSource: await page.getTextContent(),
+            textContentSource:
+              typeof page.streamTextContent === "function"
+                ? page.streamTextContent({
+                    includeMarkedContent: true,
+                    disableNormalization: true,
+                  })
+                : await page.getTextContent({
+                    includeMarkedContent: true,
+                    disableNormalization: true,
+                  }),
             container: textLayerDiv,
             viewport: cssViewport,
           });
           await textLayer.render();
+          registerTextSelectionLayer(textLayerDiv);
+          registeredTextLayers.push(textLayerDiv);
 
           setPagesRendered((previous) => previous + 1);
         }
@@ -449,6 +643,9 @@ export function PdfCanvasPreview({
     return () => {
       cancelled = true;
       pdfBytesAbortController.abort();
+      for (const textLayer of registeredTextLayers) {
+        unregisterTextSelectionLayer(textLayer);
+      }
       clearMount();
       try {
         void loadingTask?.destroy?.();

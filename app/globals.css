@@ -354,10 +354,15 @@
   opacity: 1;
   line-height: 1;
   text-align: initial;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
   text-size-adjust: none;
+  forced-color-adjust: none;
   transform-origin: 0 0;
   caret-color: CanvasText;
   z-index: 1;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .pdf-preview-text-layer :is(span, br) {
@@ -365,6 +370,8 @@
   cursor: text;
   position: absolute;
   transform-origin: 0 0;
+  user-select: text;
+  -webkit-user-select: text;
   white-space: pre;
 }
 
@@ -375,6 +382,26 @@
 
 .pdf-preview-text-layer span.markedContent {
   height: 0;
+  top: 0;
+}
+
+.pdf-preview-text-layer span[role="img"] {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pdf-preview-text-layer .endOfContent {
+  cursor: default;
+  display: block;
+  inset: 100% 0 0;
+  position: absolute;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 0;
+}
+
+.pdf-preview-text-layer.selecting .endOfContent {
   top: 0;
 }
 
