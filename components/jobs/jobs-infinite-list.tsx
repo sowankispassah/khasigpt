@@ -2,6 +2,7 @@
 
 import { FileText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { VisitSourceButton } from "@/components/jobs/visit-source-button";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,8 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                   </p>
                 </div>
               </CardContent>
-              <CardFooter className="justify-end pt-0">
+              <CardFooter className="flex-col gap-2 pt-0 sm:flex-row sm:justify-end">
+                <VisitSourceButton href={job.sourceUrl} />
                 <ViewDetailsButton href={`/jobs/${job.id}`} />
               </CardFooter>
             </Card>

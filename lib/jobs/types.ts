@@ -81,6 +81,7 @@ export type JobListItem = {
   deadlineLabel: string;
   notificationDateLabel: string;
   sourceLabel: string;
+  sourceUrl: string | null;
   descriptionSnippet: string;
   hasPdfFile: boolean;
 };

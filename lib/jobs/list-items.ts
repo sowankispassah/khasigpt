@@ -139,6 +139,7 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
           /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
       }) ?? formatDateLabel(job.createdAt),
     sourceLabel: job.source?.trim() || getSourceHostLabel(job.sourceUrl),
+    sourceUrl: job.sourceUrl,
     descriptionSnippet: buildDescriptionSnippet(job.content),
     hasPdfFile: hasJobPdfFile(job),
   };
