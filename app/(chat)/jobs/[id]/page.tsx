@@ -13,12 +13,16 @@ import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-de
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { getJobPostingById } from "@/lib/jobs/service";
+import { extractDocumentText } from "@/lib/uploads/document-parser";
 
 export const dynamic = "force-dynamic";
 const SOURCE_DETAIL_MIN_CHARS = 700;
 const SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS = 2_500;
 const SOURCE_DETAIL_FETCH_TIMEOUT_MS = 2_500;
 const SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS = 300;
+const PDF_META_TEXT_MAX_CHARS = 20_000;
+const PDF_META_TEXT_TIMEOUT_MS = 45_000;
+const PDF_META_TEXT_CACHE_REVALIDATE_SECONDS = 300;
 
 const getCachedSourceDetailMarkdown = unstable_cache(
   async (sourceUrl: string) =>
@@ -27,6 +31,25 @@ const getCachedSourceDetailMarkdown = unstable_cache(
     }),
   ["jobs-detail:source-markdown"],
   { revalidate: SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS }
+);
+
+const getCachedPdfMetaText = unstable_cache(
+  async (pdfUrl: string) => {
+    const parsed = await extractDocumentText(
+      {
+        name: "job-posting.pdf",
+        url: pdfUrl,
+        mediaType: "application/pdf",
+      },
+      {
+        maxTextChars: PDF_META_TEXT_MAX_CHARS,
+        downloadTimeoutMs: PDF_META_TEXT_TIMEOUT_MS,
+      }
+    );
+    return parsed.text;
+  },
+  ["jobs-detail:pdf-meta-text"],
+  { revalidate: PDF_META_TEXT_CACHE_REVALIDATE_SECONDS }
 );
 
 function compactText(value: string) {
@@ -152,27 +175,30 @@ export default async function JobPostingDetailPage(props: {
     }
   }
 
-  const detailTextForMeta = markdownToPlainText(detailMarkdown);
-
-  const salaryInfo = resolveJobSalaryInfo({
-    salary: job.salary,
-    content: detailMarkdown,
-    pdfContent: job.pdfContent,
-  });
-  const salaryLabel = salaryInfo.summary;
-  const notificationDateLabel = resolveJobNotificationDateLabel({
-    content: detailMarkdown,
-    pdfContent: job.pdfContent,
-    referenceDate: job.createdAt,
-  });
-  const fetchedOnLabel = formatDateLabel(job.createdAt);
-  const sourceLabel = getSourceHostLabel(job.sourceUrl);
   const pdfUrl = resolvePdfUrl({
     sourceUrl: job.sourceUrl,
     pdfSourceUrl: job.pdfSourceUrl,
     pdfCachedUrl: job.pdfCachedUrl,
     content: job.content,
   });
+  const pdfMetaText =
+    job.pdfContent ||
+    (pdfUrl ? await getCachedPdfMetaText(pdfUrl).catch(() => null) : null);
+  const detailTextForMeta = markdownToPlainText(detailMarkdown);
+
+  const salaryInfo = resolveJobSalaryInfo({
+    salary: job.salary,
+    content: detailMarkdown,
+    pdfContent: pdfMetaText,
+  });
+  const salaryLabel = salaryInfo.summary;
+  const notificationDateLabel = resolveJobNotificationDateLabel({
+    content: detailMarkdown,
+    pdfContent: pdfMetaText,
+    referenceDate: job.createdAt,
+  });
+  const fetchedOnLabel = formatDateLabel(job.createdAt);
+  const sourceLabel = getSourceHostLabel(job.sourceUrl);
   const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
   const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);

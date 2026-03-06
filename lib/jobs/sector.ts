@@ -7,6 +7,8 @@ type ResolveJobSectorInput = {
   source?: string | null;
   sourceUrl?: string | null;
   applicationLink?: string | null;
+  pdfSourceUrl?: string | null;
+  pdfCachedUrl?: string | null;
   description?: string | null;
   pdfContent?: string | null;
   tags?: readonly string[] | null;
@@ -158,8 +160,13 @@ export function resolveJobSector(input: ResolveJobSectorInput): JobSector {
   const contentText = joinText([input.description, input.pdfContent]);
   const sourceHost = extractHost(input.sourceUrl);
   const applicationHost = extractHost(input.applicationLink);
+  const pdfSourceHost = extractHost(input.pdfSourceUrl);
+  const pdfCachedHost = extractHost(input.pdfCachedUrl);
   const hasGovernmentDomain =
-    isGovernmentHost(sourceHost) || isGovernmentHost(applicationHost);
+    isGovernmentHost(sourceHost) ||
+    isGovernmentHost(applicationHost) ||
+    isGovernmentHost(pdfSourceHost) ||
+    isGovernmentHost(pdfCachedHost);
 
   let governmentScore = 0;
   let privateScore = 0;

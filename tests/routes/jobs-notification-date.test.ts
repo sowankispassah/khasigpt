@@ -57,6 +57,15 @@ test.describe("jobs notification date parsing", () => {
     ).toBe("06 Mar 2026");
   });
 
+  test("extracts dotted dates from dated labels", () => {
+    expect(
+      resolveJobNotificationDateLabel({
+        content:
+          "Advertisement.No.EST-II-RAP-A/1/2025-Estt.-I dated 06.03.2026 Walk-in interview for recruitment",
+      })
+    ).toBe("06.03.2026");
+  });
+
   test("uses Not specified when no notification date is available", () => {
     expect(
       resolveJobNotificationDateLabel({

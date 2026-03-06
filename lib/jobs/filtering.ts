@@ -583,6 +583,8 @@ function resolveCanonicalSector(job: JobPostingRecord): JobSector {
     source: job.source,
     sourceUrl: job.sourceUrl,
     applicationLink: job.applicationLink,
+    pdfSourceUrl: job.pdfSourceUrl,
+    pdfCachedUrl: job.pdfCachedUrl,
     description: job.content,
     pdfContent: job.pdfContent,
     tags: job.tags,

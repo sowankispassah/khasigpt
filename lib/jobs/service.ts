@@ -64,6 +64,7 @@ type JobPostingMetadataInput = {
   tags: string[];
   source?: string | null;
   sourceUrl?: string | null;
+  pdfSourceUrl?: string | null;
   description?: string | null;
   pdfContent?: string | null;
   parseError?: string | null;
@@ -167,6 +168,8 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
     source,
     sourceUrl: rawSourceUrl,
     applicationLink: rawApplicationLink,
+    pdfSourceUrl: toTrimmedString(row.pdf_source_url ?? null),
+    pdfCachedUrl: toTrimmedString(row.pdf_cached_url ?? null),
     description: content,
     pdfContent,
   });
@@ -295,6 +298,7 @@ export function buildJobPostingMetadata(
           company,
           source: input.source,
           sourceUrl: input.sourceUrl,
+          pdfSourceUrl: input.pdfSourceUrl,
           description: input.description,
           pdfContent: input.pdfContent,
           tags: input.tags,
@@ -538,7 +542,6 @@ function applyRagStateToJob(
     ...job.metadata,
     ...metadata,
   };
-  const metadataEmploymentType = toTrimmedString(metadata.employment_type).toLowerCase();
   const metadataSector = isJobSector(metadata.sector) ? metadata.sector : null;
   const metadataStudyExam = toTrimmedString(metadata.study_exam);
   const metadataStudyRole = toTrimmedString(metadata.study_role);
@@ -547,14 +550,14 @@ function applyRagStateToJob(
   const metadataStudyYears = getMetadataNumberList(metadata, "study_years");
   const metadataParseError = toTrimmedString(metadata.parse_error) || null;
   const metadataSourceUrl = toTrimmedString(metadata.source_url) || null;
-  mergedMetadata.sector = metadataSector ?? job.sector;
-  const resolvedEmploymentType = isJobType(metadataEmploymentType)
-    ? metadataEmploymentType
-    : resolveJobType(metadataSector ?? job.sector);
+  const resolvedSector =
+    job.sector !== "unknown" ? job.sector : metadataSector ?? "unknown";
+  mergedMetadata.sector = resolvedSector;
+  const resolvedEmploymentType = resolveJobType(resolvedSector);
 
   return {
     ...job,
-    sector: metadataSector ?? job.sector,
+    sector: resolvedSector,
     employmentType: resolvedEmploymentType,
     studyExam: metadataStudyExam || job.studyExam,
     studyRole: metadataStudyRole || job.studyRole,

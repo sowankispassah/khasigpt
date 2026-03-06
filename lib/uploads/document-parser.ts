@@ -1,3 +1,5 @@
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { generateText } from "ai";
 import {
   DOCUMENT_UPLOADS_MAX_BYTES,
   DOCUMENT_UPLOADS_MAX_TEXT_CHARS,
@@ -22,6 +24,14 @@ type ParseDocumentOptions = {
 };
 
 let pdfRuntimeReady = false;
+const DEFAULT_PDF_OCR_MODEL = "gemini-2.5-flash";
+const DEFAULT_PDF_OCR_MAX_BYTES = 6 * 1024 * 1024;
+const DEFAULT_PDF_OCR_MAX_OUTPUT_TOKENS = 12_000;
+
+const googlePdfOcrClient =
+  process.env.GOOGLE_API_KEY !== undefined
+    ? createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
+    : null;
 
 const normalizeText = (value: string) =>
   value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -166,6 +176,65 @@ async function parsePdfViaLibrary(buffer: Buffer) {
   }
 }
 
+async function parsePdfViaOcr(buffer: Buffer) {
+  if (!googlePdfOcrClient) {
+    throw new Error("PDF OCR unavailable");
+  }
+
+  const maxBytesRaw = Number.parseInt(
+    process.env.DOCUMENT_PDF_OCR_MAX_BYTES ?? "",
+    10
+  );
+  const maxBytes =
+    Number.isFinite(maxBytesRaw) && maxBytesRaw > 0
+      ? maxBytesRaw
+      : DEFAULT_PDF_OCR_MAX_BYTES;
+  if (buffer.byteLength > maxBytes) {
+    throw new Error("PDF OCR skipped for large file");
+  }
+
+  const maxOutputTokensRaw = Number.parseInt(
+    process.env.DOCUMENT_PDF_OCR_MAX_OUTPUT_TOKENS ?? "",
+    10
+  );
+  const maxOutputTokens =
+    Number.isFinite(maxOutputTokensRaw) && maxOutputTokensRaw > 0
+      ? maxOutputTokensRaw
+      : DEFAULT_PDF_OCR_MAX_OUTPUT_TOKENS;
+  const modelId =
+    process.env.DOCUMENT_PDF_OCR_MODEL?.trim() || DEFAULT_PDF_OCR_MODEL;
+
+  const result = await generateText({
+    model: googlePdfOcrClient.languageModel(modelId),
+    maxOutputTokens,
+    system:
+      "You are an OCR engine. Extract visible text from the provided PDF exactly as plain text. Preserve dates, numbers, headings, salary figures, qualifications, and section labels. Do not summarize or add commentary.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Extract all readable text from this PDF in page order. Return plain text only.",
+          },
+          {
+            type: "file",
+            data: buffer,
+            mediaType: "application/pdf",
+          },
+        ],
+      },
+    ],
+  });
+
+  const text = result.text?.trim() ?? "";
+  if (!text) {
+    throw new Error("No OCR text returned");
+  }
+
+  return text;
+}
+
 function parsePdfTextFallback(buffer: Buffer) {
   const raw = buffer.toString("latin1");
 
@@ -265,6 +334,15 @@ async function parsePdf(buffer: Buffer) {
     if (fallback.trim()) {
       return fallback;
     }
+
+    try {
+      return await parsePdfViaOcr(buffer);
+    } catch (ocrError) {
+      console.warn("[document-parser] pdf_ocr_failed", {
+        error: ocrError instanceof Error ? ocrError.message : String(ocrError),
+      });
+    }
+
     throw new Error("PDF parser unavailable");
   }
 }

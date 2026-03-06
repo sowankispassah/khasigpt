@@ -126,6 +126,8 @@ function buildJobMetadata(row: SupabaseJobRow) {
     source: sourceLabel,
     sourceUrl: toTrimmedString(row.source_url),
     applicationLink: toTrimmedString(row.application_link ?? row.source_url),
+    pdfSourceUrl: toTrimmedString(row.pdf_source_url ?? null),
+    pdfCachedUrl: toTrimmedString(row.pdf_cached_url ?? null),
     description: toTrimmedString(row.description ?? null),
     pdfContent: toTrimmedString(row.pdf_content ?? null),
   });

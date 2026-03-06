@@ -2,7 +2,7 @@ const NOT_SPECIFIED_LABEL = "Not specified";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const DATE_PATTERN =
-  "(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+[A-Za-z]{3,9},?\\s+\\d{2,4}|[A-Za-z]{3,9}\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{2,4})";
+  "(?:\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+[A-Za-z]{3,9},?\\s+\\d{2,4}|[A-Za-z]{3,9}\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{2,4})";
 
 const RELATIVE_DATE_PATTERN =
   /\b(?:(\d{1,2})\s+(minute|hour|day|week|month|year)s?\s+ago|yesterday|today|just now)\b/i;

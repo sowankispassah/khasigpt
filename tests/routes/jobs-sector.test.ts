@@ -102,6 +102,21 @@ test.describe("job sector resolution", () => {
     ).toBe("government");
   });
 
+  test("official government PDF URLs classify portal-listed jobs as government", () => {
+    expect(
+      resolveJobSector({
+        title: "NEIGRIHMS Recruitment 2026",
+        company: "meghalayaportal.com",
+        source: "Meghalayaportal",
+        sourceUrl: "https://www.meghalayaportal.com/2025/07/neigrihms-recruitment-2025-lab.html",
+        applicationLink:
+          "https://www.meghalayaportal.com/2025/07/neigrihms-recruitment-2025-lab.html",
+        pdfSourceUrl:
+          "https://neigrihms.gov.in/Latest%20News/estt-2/2026/Walk%20in%20interview%20for%20recruitment%20of%20Assistant%20Professor%20on%20adhoc%20basis.pdf",
+      })
+    ).toBe("government");
+  });
+
   test("jobs filtering uses canonical sector values instead of text coincidence", () => {
     const jobs = [
       createJob({
