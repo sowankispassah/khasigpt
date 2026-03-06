@@ -9,7 +9,7 @@ import type {
   RagEntry,
 } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
-import { extractSalaryText } from "@/lib/jobs/salary";
+import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
 import {
@@ -164,7 +164,12 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       rawSourceUrl,
     }),
     location: toTrimmedString(row.location) || UNKNOWN_LABEL,
-    salary: (extractSalaryText(rawSalary) ?? rawSalary) || null,
+    salary: (() => {
+      const summary = resolveJobSalaryInfo({
+        salary: rawSalary,
+      }).summary;
+      return summary === "Not disclosed" ? null : summary;
+    })(),
     source: toTrimmedString(row.source ?? null) || null,
     applicationLink,
     pdfContent: toTrimmedString(row.pdf_content ?? null) || null,

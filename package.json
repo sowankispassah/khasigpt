@@ -10,6 +10,7 @@
     "format": "pnpm exec ultracite fix",
     "typecheck": "pnpm exec tsc --noEmit",
     "translations:publish": "tsx scripts/publish-translations.ts",
+    "jobs:repair-pdf-compensation": "tsx scripts/repair-job-pdf-compensation.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx lib/db/migrate.ts",
     "db:studio": "drizzle-kit studio",

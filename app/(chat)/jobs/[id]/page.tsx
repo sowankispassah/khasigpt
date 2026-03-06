@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-detail";
-import { resolveJobSalaryLabel } from "@/lib/jobs/salary";
+import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobPostingById } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
@@ -174,11 +174,12 @@ export default async function JobPostingDetailPage(props: {
 
   const detailTextForMeta = markdownToPlainText(detailMarkdown);
 
-  const salaryLabel = resolveJobSalaryLabel({
+  const salaryInfo = resolveJobSalaryInfo({
     salary: job.salary,
     content: detailMarkdown,
     pdfContent: job.pdfContent,
   });
+  const salaryLabel = salaryInfo.summary;
   const deadlineLabel =
     extractDateByKeywordLabel({
       rawDescription: detailTextForMeta,
@@ -270,6 +271,35 @@ export default async function JobPostingDetailPage(props: {
           </div>
         </CardContent>
       </Card>
+
+      {salaryInfo.entries.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Compensation by role</CardTitle>
+            <CardDescription>Role-wise compensation extracted from the listing or PDF.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-hidden rounded-md border">
+              <table className="min-w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr className="border-b">
+                    <th className="px-4 py-2 text-left font-medium">Role</th>
+                    <th className="px-4 py-2 text-left font-medium">Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salaryInfo.entries.map((entry) => (
+                    <tr className="border-b last:border-b-0" key={`${entry.role}-${entry.salary}`}>
+                      <td className="px-4 py-2 align-top">{entry.role}</td>
+                      <td className="px-4 py-2 align-top">{entry.salary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {showDescriptionText ? (
         <Card>

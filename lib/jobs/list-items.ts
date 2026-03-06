@@ -1,4 +1,4 @@
-import { resolveJobSalaryLabel } from "@/lib/jobs/salary";
+import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import type { JobListItem, JobPostingRecord } from "@/lib/jobs/types";
 
 function compactText(value: string) {
@@ -102,11 +102,11 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
     company: job.company,
     location: job.location,
     employmentType: job.employmentType,
-    salaryLabel: resolveJobSalaryLabel({
+    salaryLabel: resolveJobSalaryInfo({
       salary: job.salary,
       content: job.content,
       pdfContent: job.pdfContent,
-    }),
+    }).summary,
     deadlineLabel:
       extractDateByKeywordLabel({
         rawDescription: job.content,
