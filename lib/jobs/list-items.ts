@@ -1,16 +1,9 @@
+import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import type { JobListItem, JobPostingRecord } from "@/lib/jobs/types";
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
-}
-
-function formatDateLabel(value: Date) {
-  return value.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 function getSourceHostLabel(sourceUrl: string | null) {
@@ -114,11 +107,10 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
           /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
       }) ?? "Not specified",
     notificationDateLabel:
-      extractDateByKeywordLabel({
-        rawDescription: job.content,
-        keywordPattern:
-          /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
-      }) ?? formatDateLabel(job.createdAt),
+      resolveJobNotificationDateLabel({
+        content: job.content,
+        pdfContent: job.pdfContent,
+      }),
     sourceLabel: job.source?.trim() || getSourceHostLabel(job.sourceUrl),
     descriptionSnippet: buildDescriptionSnippet(job.content),
     hasPdfFile: hasJobPdfFile(job),

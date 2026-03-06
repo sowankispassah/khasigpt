@@ -8,6 +8,7 @@ import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-detail";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobPostingById } from "@/lib/jobs/service";
@@ -38,14 +39,6 @@ function markdownToPlainText(value: string) {
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
       .replace(/[#>*`_~|-]/g, " ")
   );
-}
-
-function formatDateLabel(value: Date) {
-  return value.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 function getSourceHostLabel(sourceUrl: string | null) {
@@ -186,12 +179,10 @@ export default async function JobPostingDetailPage(props: {
       keywordPattern:
         /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
     }) ?? "Not specified";
-  const notificationDateLabel =
-    extractDateByKeywordLabel({
-      rawDescription: detailTextForMeta,
-      keywordPattern:
-        /notification\s*date|date\s*of\s*notification|advertisement\s*date|date\s*of\s*publication|published\s*on|date\s*of\s*issue|issue\s*date/,
-    }) ?? formatDateLabel(job.createdAt);
+  const notificationDateLabel = resolveJobNotificationDateLabel({
+    content: detailMarkdown,
+    pdfContent: job.pdfContent,
+  });
   const sourceLabel = getSourceHostLabel(job.sourceUrl);
   const pdfUrl = resolvePdfUrl({
     sourceUrl: job.sourceUrl,
