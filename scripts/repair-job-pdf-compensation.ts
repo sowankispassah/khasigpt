@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { resolveJobLocation } from "@/lib/jobs/location";
 import postgres from "postgres";
-import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
+import { NO_SALARY_LABEL, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 
 type RepairableJobRow = {
@@ -70,7 +70,7 @@ async function main() {
         });
 
         const nextSalary =
-          salaryInfo.summary === "Not disclosed" ? null : salaryInfo.summary;
+          salaryInfo.summary === NO_SALARY_LABEL ? null : salaryInfo.summary;
         const nextLocation = resolveJobLocation({
           location: row.location,
           pdfContent: parsed.text,
@@ -87,7 +87,7 @@ async function main() {
 
         repairedCount += 1;
         console.log(
-          `Repaired: ${row.title} -> salary=${nextSalary ?? "Not disclosed"}, location=${nextLocation}`
+          `Repaired: ${row.title} -> salary=${nextSalary ?? NO_SALARY_LABEL}, location=${nextLocation}`
         );
       } catch (error) {
         console.warn(`Failed to repair ${row.title}`, error);

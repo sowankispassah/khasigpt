@@ -8,7 +8,7 @@ export type ResolvedSalaryInfo = {
   entries: CompensationEntry[];
 };
 
-const NOT_DISCLOSED_LABEL = "Not disclosed";
+export const NO_SALARY_LABEL = "NA";
 
 const SALARY_LABELS = [
   "salary",
@@ -659,7 +659,7 @@ function formatSalaryAmount(value: number) {
 
 function summarizeCompensationEntries(entries: CompensationEntry[]) {
   if (entries.length === 0) {
-    return NOT_DISCLOSED_LABEL;
+    return NO_SALARY_LABEL;
   }
 
   const uniqueSalaryValues = Array.from(new Set(entries.map((entry) => entry.salary)));
@@ -702,14 +702,14 @@ function resolveTextSalaryInfo(text: string | null | undefined): ResolvedSalaryI
   }
 
   return {
-    summary: NOT_DISCLOSED_LABEL,
+    summary: NO_SALARY_LABEL,
     entries: [],
   };
 }
 
 export function extractSalaryText(text: string | null | undefined) {
   const resolved = resolveTextSalaryInfo(text);
-  return resolved.summary === NOT_DISCLOSED_LABEL ? null : resolved.summary;
+  return resolved.summary === NO_SALARY_LABEL ? null : resolved.summary;
 }
 
 export function resolveJobSalaryInfo({
@@ -723,7 +723,7 @@ export function resolveJobSalaryInfo({
 }): ResolvedSalaryInfo {
   for (const candidate of [pdfContent, content]) {
     const resolved = resolveTextSalaryInfo(candidate);
-    if (resolved.summary !== NOT_DISCLOSED_LABEL) {
+    if (resolved.summary !== NO_SALARY_LABEL) {
       return resolved;
     }
   }
@@ -731,7 +731,7 @@ export function resolveJobSalaryInfo({
   const storedSalary = typeof salary === "string" ? salary.trim() : "";
   if (storedSalary) {
     const resolved = resolveTextSalaryInfo(storedSalary);
-    if (resolved.summary !== NOT_DISCLOSED_LABEL) {
+    if (resolved.summary !== NO_SALARY_LABEL) {
       return resolved;
     }
 
@@ -742,7 +742,7 @@ export function resolveJobSalaryInfo({
   }
 
   return {
-    summary: NOT_DISCLOSED_LABEL,
+    summary: NO_SALARY_LABEL,
     entries: [],
   };
 }

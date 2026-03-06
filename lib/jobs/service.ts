@@ -10,7 +10,7 @@ import type {
 } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
 import { DEFAULT_JOB_LOCATION, resolveJobLocation } from "@/lib/jobs/location";
-import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
+import { NO_SALARY_LABEL, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
 import {
@@ -173,7 +173,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       const summary = resolveJobSalaryInfo({
         salary: rawSalary,
       }).summary;
-      return summary === "Not disclosed" ? null : summary;
+      return summary === NO_SALARY_LABEL ? null : summary;
     })(),
     source: toTrimmedString(row.source ?? null) || null,
     applicationLink,

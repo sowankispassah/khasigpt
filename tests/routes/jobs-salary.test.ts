@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { toJobListItem } from "@/lib/jobs/list-items";
 import {
   extractSalaryText,
+  NO_SALARY_LABEL,
   resolveJobSalaryInfo,
   type ResolvedSalaryInfo,
 } from "@/lib/jobs/salary";
@@ -146,6 +147,17 @@ test.describe("jobs salary parsing", () => {
     expect(
       extractSalaryText("Application fee: Rs 100/- to be paid online only.")
     ).toBeNull();
+  });
+
+  test("uses NA when no salary is available", () => {
+    const result = resolveJobSalaryInfo({
+      content: "Recruitment notice. Apply online. No salary details mentioned.",
+    });
+
+    expectSalaryInfo(result, {
+      summary: NO_SALARY_LABEL,
+      entries: [],
+    });
   });
 
   test("maps list item salary label to summary for multi-role postings", () => {
