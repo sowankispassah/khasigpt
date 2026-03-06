@@ -1,3 +1,4 @@
+import { resolveJobSalaryLabel } from "@/lib/jobs/salary";
 import type { JobListItem, JobPostingRecord } from "@/lib/jobs/types";
 
 function compactText(value: string) {
@@ -22,30 +23,6 @@ function getSourceHostLabel(sourceUrl: string | null) {
   } catch {
     return "Source available";
   }
-}
-
-function extractSalaryLabel(rawDescription: string) {
-  const description = compactText(rawDescription);
-  if (!description) {
-    return "Not disclosed";
-  }
-
-  const salaryMatch = description.match(
-    /(?:\u20b9|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:\u20b9|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?))?/i
-  );
-  if (salaryMatch?.[0]) {
-    return salaryMatch[0].trim();
-  }
-
-  if (/\bas per norms\b/i.test(description)) {
-    return "As per norms";
-  }
-
-  if (/\bnegotiable\b/i.test(description)) {
-    return "Negotiable";
-  }
-
-  return "Not disclosed";
 }
 
 function extractDateByKeywordLabel({
@@ -125,7 +102,11 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
     company: job.company,
     location: job.location,
     employmentType: job.employmentType,
-    salaryLabel: job.salary?.trim() || extractSalaryLabel(job.content),
+    salaryLabel: resolveJobSalaryLabel({
+      salary: job.salary,
+      content: job.content,
+      pdfContent: job.pdfContent,
+    }),
     deadlineLabel:
       extractDateByKeywordLabel({
         rawDescription: job.content,

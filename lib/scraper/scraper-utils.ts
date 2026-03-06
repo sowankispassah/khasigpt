@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { extractSalaryText as extractJobSalaryText } from "@/lib/jobs/salary";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -375,31 +376,7 @@ function extractDateByLabels(text: string, labels: string[]) {
 }
 
 export function extractSalaryText(text: string) {
-  const normalized = normalizeWhitespace(text);
-  if (!normalized) {
-    return null;
-  }
-  const fromLabel = extractFieldByLabels(normalized, [
-    "salary",
-    "pay scale",
-    "remuneration",
-    "emoluments",
-    "consolidated pay",
-  ]);
-  if (fromLabel) {
-    return fromLabel;
-  }
-
-  const currencyMatch = normalized.match(
-    /((?:₹|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:₹|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?))?)/i
-  );
-  if (currencyMatch?.[1]) {
-    return normalizeWhitespace(currencyMatch[1]);
-  }
-  if (/\bas per norms\b/i.test(normalized)) {
-    return "As per norms";
-  }
-  return null;
+  return extractJobSalaryText(text);
 }
 
 export function extractPdfStructuredFields(rawText: string): PdfStructuredFields {
@@ -544,4 +521,3 @@ export async function runWithConcurrency<T>(
 
   await Promise.all(runners);
 }
-

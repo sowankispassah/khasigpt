@@ -9,6 +9,7 @@ import type {
   RagEntry,
 } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
+import { extractSalaryText } from "@/lib/jobs/salary";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
 import {
@@ -139,6 +140,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   const createdAt = parseValidDate(row.created_at);
   const rawSourceUrl = toTrimmedString(row.source_url);
   const rawApplicationLink = toTrimmedString(row.application_link ?? null);
+  const rawSalary = toTrimmedString(row.salary ?? null);
   const sourceUrl =
     rawSourceUrl && !rawSourceUrl.startsWith("manual://") ? rawSourceUrl : null;
   const applicationLink =
@@ -162,7 +164,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       rawSourceUrl,
     }),
     location: toTrimmedString(row.location) || UNKNOWN_LABEL,
-    salary: toTrimmedString(row.salary ?? null) || null,
+    salary: (extractSalaryText(rawSalary) ?? rawSalary) || null,
     source: toTrimmedString(row.source ?? null) || null,
     applicationLink,
     pdfContent: toTrimmedString(row.pdf_content ?? null) || null,

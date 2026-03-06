@@ -58,6 +58,7 @@ import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { resolveJobsFilterConversation } from "@/lib/jobs/filtering";
+import { extractSalaryText } from "@/lib/jobs/salary";
 import {
   JOBS_CHAT_MODE,
   JOB_POSTING_RUNTIME_CONTEXT_CHARS,
@@ -492,14 +493,7 @@ function extractLabelledValueFromText({
 
 function extractJobFactsFromText(text: string) {
   const normalized = text.replace(/\r\n/g, "\n");
-  const salary =
-    extractLabelledValueFromText({
-      text: normalized,
-      labels: ["salary", "pay scale", "remuneration", "emoluments"],
-    }) ??
-    (normalized.match(
-      /((?:₹|rs\.?|inr)\s?\d[\d,]*(?:\s*(?:-|to)\s*(?:₹|rs\.?|inr)?\s?\d[\d,]*)?(?:\s*(?:per month|\/month|monthly|per annum|\/year|annum|lpa))?)/i
-    )?.[1] ?? null);
+  const salary = extractSalaryText(normalized);
 
   const qualification = extractLabelledValueFromText({
     text: normalized,
