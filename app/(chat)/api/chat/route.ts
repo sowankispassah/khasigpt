@@ -883,8 +883,6 @@ export async function POST(request: Request) {
       const fallbackTitle =
         resolvedChatMode === STUDY_CHAT_MODE
           ? "Study"
-          : resolvedChatMode === JOBS_CHAT_MODE
-            ? "Job Chat"
           : buildFallbackTitleFromMessage(message);
 
       await saveChat({
@@ -895,7 +893,10 @@ export async function POST(request: Request) {
         mode: resolvedChatMode,
       });
 
-      if (resolvedChatMode === "default") {
+      if (
+        resolvedChatMode === "default" ||
+        resolvedChatMode === JOBS_CHAT_MODE
+      ) {
         (async () => {
           try {
             const generatedTitle = await generateTitleFromUserMessage({
