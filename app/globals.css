@@ -346,3 +346,42 @@
     box-shadow: none !important;
   }
 }
+
+.pdf-preview-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+}
+
+.pdf-preview-text-layer :is(span, br) {
+  color: transparent;
+  cursor: text;
+  position: absolute;
+  transform-origin: 0 0;
+  white-space: pre;
+}
+
+.pdf-preview-text-layer > :not(.markedContent),
+.pdf-preview-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+}
+
+.pdf-preview-text-layer span.markedContent {
+  height: 0;
+  top: 0;
+}
+
+.pdf-preview-text-layer ::selection {
+  background: color-mix(in srgb, AccentColor, transparent 75%);
+}
+
+.pdf-preview-text-layer br::selection {
+  background: transparent;
+}

@@ -362,17 +362,6 @@ export function PdfCanvasPreview({
             pageNumber,
           });
 
-          if (cachedPreviewDataUrl) {
-            const previewImage = globalThis.document.createElement("img");
-            previewImage.className = "mb-3 block box-border w-full bg-white";
-            previewImage.alt = `PDF page ${pageNumber}`;
-            previewImage.loading = "lazy";
-            previewImage.src = cachedPreviewDataUrl;
-            container.appendChild(previewImage);
-            setPagesRendered((previous) => previous + 1);
-            continue;
-          }
-
           const page = await pdfDoc.getPage(pageNumber);
           const baseViewport = page.getViewport({ scale: 1 });
           const fitScale = effectiveWidth / baseViewport.width;
@@ -382,37 +371,64 @@ export function PdfCanvasPreview({
             scale: renderScale * deviceScale,
           });
 
-          const canvas = globalThis.document.createElement("canvas");
-          canvas.className = "mb-3 block box-border w-full bg-white";
-          canvas.style.width = "100%";
-          canvas.style.height = `${Math.floor(cssViewport.height)}px`;
-          canvas.width = Math.max(1, Math.floor(renderViewport.width));
-          canvas.height = Math.max(1, Math.floor(renderViewport.height));
+          const pageWrapper = globalThis.document.createElement("div");
+          pageWrapper.className = "relative mb-3 block box-border w-full bg-white";
+          pageWrapper.style.height = `${Math.floor(cssViewport.height)}px`;
+          container.appendChild(pageWrapper);
 
-          const context = canvas.getContext("2d", { alpha: false });
-          if (!context) {
-            continue;
+          if (cachedPreviewDataUrl) {
+            const previewImage = globalThis.document.createElement("img");
+            previewImage.className = "block h-full w-full bg-white";
+            previewImage.alt = `PDF page ${pageNumber}`;
+            previewImage.loading = "lazy";
+            previewImage.src = cachedPreviewDataUrl;
+            pageWrapper.appendChild(previewImage);
+          } else {
+            const canvas = globalThis.document.createElement("canvas");
+            canvas.className = "block box-border w-full bg-white";
+            canvas.style.width = "100%";
+            canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+            canvas.width = Math.max(1, Math.floor(renderViewport.width));
+            canvas.height = Math.max(1, Math.floor(renderViewport.height));
+
+            const context = canvas.getContext("2d", { alpha: false });
+            if (!context) {
+              continue;
+            }
+
+            await page.render({
+              canvasContext: context,
+              viewport: renderViewport,
+            }).promise;
+
+            if (cancelled) {
+              return;
+            }
+
+            pageWrapper.appendChild(canvas);
+            if (pageNumber <= MAX_CACHED_PREVIEW_PAGE_NUMBER) {
+              const previewDataUrl = canvas.toDataURL("image/webp", 0.82);
+              cachePagePreview({
+                src,
+                widthBucket,
+                pageNumber,
+                dataUrl: previewDataUrl,
+              });
+            }
           }
 
-          await page.render({
-            canvasContext: context,
-            viewport: renderViewport,
-          }).promise;
+          const textLayerDiv = globalThis.document.createElement("div");
+          textLayerDiv.className = "pdf-preview-text-layer textLayer";
+          textLayerDiv.setAttribute("data-main-rotation", String(cssViewport.rotation));
+          pageWrapper.appendChild(textLayerDiv);
 
-          if (cancelled) {
-            return;
-          }
+          const textLayer = new pdfjs.TextLayer({
+            textContentSource: await page.getTextContent(),
+            container: textLayerDiv,
+            viewport: cssViewport,
+          });
+          await textLayer.render();
 
-          container.appendChild(canvas);
-          if (pageNumber <= MAX_CACHED_PREVIEW_PAGE_NUMBER) {
-            const previewDataUrl = canvas.toDataURL("image/webp", 0.82);
-            cachePagePreview({
-              src,
-              widthBucket,
-              pageNumber,
-              dataUrl: previewDataUrl,
-            });
-          }
           setPagesRendered((previous) => previous + 1);
         }
 
