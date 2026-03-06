@@ -1,4 +1,5 @@
 export type JobSector = "government" | "private" | "unknown";
+export type JobType = Exclude<JobSector, "unknown">;
 
 type ResolveJobSectorInput = {
   title?: string | null;
@@ -128,14 +129,23 @@ export function isJobSector(value: unknown): value is JobSector {
   return value === "government" || value === "private" || value === "unknown";
 }
 
+export function isJobType(value: unknown): value is JobType {
+  return value === "government" || value === "private";
+}
+
+export function resolveJobType(sector: JobSector): JobType {
+  return sector === "government" ? "government" : "private";
+}
+
 export function getJobSectorLabel(sector: JobSector) {
   if (sector === "government") {
     return "Government";
   }
-  if (sector === "private") {
-    return "Private";
-  }
-  return "Unknown";
+  return "Private";
+}
+
+export function getJobTypeLabel(type: string) {
+  return type.trim().toLowerCase() === "government" ? "Government" : "Private";
 }
 
 export function resolveJobSector(input: ResolveJobSectorInput): JobSector {

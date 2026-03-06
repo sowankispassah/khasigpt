@@ -6,7 +6,7 @@ import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getJobSectorLabel } from "@/lib/jobs/sector";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type { JobListItem } from "@/lib/jobs/types";
 
 const JOBS_PAGE_SIZE = 10;
@@ -67,14 +67,6 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                   ) : null}
                 </div>
                 <p className="break-words text-muted-foreground text-sm">{job.company}</p>
-                <div className="flex flex-wrap gap-2 pt-1 text-xs">
-                  <span className="rounded-full border border-border/60 px-2 py-0.5">
-                    Sector: {getJobSectorLabel(job.sector)}
-                  </span>
-                  <span className="rounded-full border border-border/60 px-2 py-0.5">
-                    Employment type: {job.employmentType}
-                  </span>
-                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="line-clamp-3 break-words text-muted-foreground text-sm">
@@ -86,8 +78,8 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                     <span className="font-medium text-foreground">Location:</span> {job.location}
                   </p>
                   <p className="break-words">
-                    <span className="font-medium text-foreground">Employment type:</span>{" "}
-                    {job.employmentType}
+                    <span className="font-medium text-foreground">Type:</span>{" "}
+                    {getJobTypeLabel(job.employmentType)}
                   </p>
                   <p className="break-words">
                     <span className="font-medium text-foreground">Salary:</span> {job.salaryLabel}

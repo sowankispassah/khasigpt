@@ -44,7 +44,7 @@ import type {
   IconPromptAction,
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
-import { getJobSectorLabel } from "@/lib/jobs/sector";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type { JobCard } from "@/lib/jobs/types";
 import type { JobListItem } from "@/lib/jobs/types";
 import {
@@ -1525,10 +1525,7 @@ export function Chat({
             <div className="space-y-3 text-sm">
               <div className="flex flex-wrap gap-2 text-muted-foreground">
                 <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-                  {getJobSectorLabel(jobViewerPosting.sector)}
-                </span>
-                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-                  {jobViewerPosting.employmentType}
+                  {getJobTypeLabel(jobViewerPosting.employmentType)}
                 </span>
                 <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
                   {jobViewerPosting.studyExam}

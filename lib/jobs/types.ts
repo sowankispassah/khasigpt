@@ -63,7 +63,6 @@ export type JobCard = {
   salary?: string | null;
   source?: string | null;
   applicationLink?: string | null;
-  sector: JobSector;
   employmentType: string;
   studyExam: string;
   studyRole: string;
@@ -80,7 +79,6 @@ export type JobListItem = {
   title: string;
   company: string;
   location: string;
-  sector: JobSector;
   employmentType: string;
   salaryLabel: string;
   notificationDateLabel: string;

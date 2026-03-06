@@ -122,7 +122,11 @@ import {
   getJobPostingById,
   listJobPostingEntries,
 } from "@/lib/jobs/service";
-import { isJobSector, resolveJobSector } from "@/lib/jobs/sector";
+import {
+  isJobSector,
+  resolveJobSector,
+  resolveJobType,
+} from "@/lib/jobs/sector";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 import {
   buildQuestionPaperMetadata,
@@ -3499,7 +3503,17 @@ export async function createJobPostingAction(formData: FormData) {
             description: fileResult.content,
             tags,
           }),
-      employmentType,
+      employmentType: resolveJobType(
+        isJobSector(metadata.sector)
+          ? metadata.sector
+          : resolveJobSector({
+              title: jobTitle,
+              company,
+              sourceUrl: fileResult.sourceUrl,
+              description: fileResult.content,
+              tags,
+            })
+      ),
       studyExam,
       studyRole,
       studyYears,
@@ -3517,6 +3531,17 @@ export async function createJobPostingAction(formData: FormData) {
           ? createdEntry.updatedAt
           : new Date(createdEntry.updatedAt),
     } as JobPostingRecord);
+  const resolvedCreatedEmploymentType = resolveJobType(
+    isJobSector(metadata.sector)
+      ? metadata.sector
+      : resolveJobSector({
+          title: jobTitle,
+          company,
+          sourceUrl: fileResult.sourceUrl,
+          description: fileResult.content,
+          tags,
+        })
+  );
 
   await createAuditLogEntry({
     actorId: actor.id,
@@ -3525,7 +3550,7 @@ export async function createJobPostingAction(formData: FormData) {
     metadata: {
       company,
       location,
-      employmentType,
+      employmentType: resolvedCreatedEmploymentType,
       studyExam,
       studyRole,
       studyYears,
@@ -3721,7 +3746,17 @@ export async function updateJobPostingAction(formData: FormData) {
             description: content,
             tags,
           }),
-      employmentType,
+      employmentType: resolveJobType(
+        isJobSector(metadata.sector)
+          ? metadata.sector
+          : resolveJobSector({
+              title: jobTitle,
+              company,
+              sourceUrl,
+              description: content,
+              tags,
+            })
+      ),
       studyExam,
       studyRole,
       studyYears,
@@ -3747,7 +3782,7 @@ export async function updateJobPostingAction(formData: FormData) {
     metadata: {
       company,
       location,
-      employmentType,
+      employmentType: resolvedUpdated.employmentType,
       studyExam,
       studyRole,
       studyYears,

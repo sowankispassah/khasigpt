@@ -4,7 +4,9 @@ import { unstable_cache } from "next/cache";
 import { ragEntry } from "@/lib/db/schema";
 import {
   isJobSector,
+  isJobType,
   resolveJobSector,
+  resolveJobType,
   type JobSector,
 } from "@/lib/jobs/sector";
 import type {
@@ -203,7 +205,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
     pdfContent,
     contentHash: toTrimmedString(row.content_hash ?? null) || null,
     sector,
-    employmentType: UNKNOWN_LABEL,
+    employmentType: resolveJobType(sector),
     studyExam: UNKNOWN_LABEL,
     studyRole: UNKNOWN_LABEL,
     studyYears: [],
@@ -285,7 +287,6 @@ export function buildJobPostingMetadata(
 ): Record<string, unknown> {
   const company = input.company.trim() || UNKNOWN_LABEL;
   const location = input.location.trim() || DEFAULT_JOB_LOCATION;
-  const employmentType = input.employmentType.trim() || UNKNOWN_LABEL;
   const sector =
     input.sector && isJobSector(input.sector)
       ? input.sector
@@ -322,7 +323,7 @@ export function buildJobPostingMetadata(
     job_title: jobTitle,
     company,
     location,
-    employment_type: employmentType,
+    employment_type: resolveJobType(sector),
     sector,
     study_exam: studyExam,
     study_role: studyRole,
@@ -464,7 +465,6 @@ export function toJobCard(job: JobPostingRecord): JobCard {
     salary: job.salary,
     source: job.source,
     applicationLink: job.applicationLink,
-    sector: job.sector,
     employmentType: job.employmentType,
     studyExam: job.studyExam,
     studyRole: job.studyRole,
@@ -538,7 +538,7 @@ function applyRagStateToJob(
     ...job.metadata,
     ...metadata,
   };
-  const metadataEmploymentType = toTrimmedString(metadata.employment_type);
+  const metadataEmploymentType = toTrimmedString(metadata.employment_type).toLowerCase();
   const metadataSector = isJobSector(metadata.sector) ? metadata.sector : null;
   const metadataStudyExam = toTrimmedString(metadata.study_exam);
   const metadataStudyRole = toTrimmedString(metadata.study_role);
@@ -548,11 +548,14 @@ function applyRagStateToJob(
   const metadataParseError = toTrimmedString(metadata.parse_error) || null;
   const metadataSourceUrl = toTrimmedString(metadata.source_url) || null;
   mergedMetadata.sector = metadataSector ?? job.sector;
+  const resolvedEmploymentType = isJobType(metadataEmploymentType)
+    ? metadataEmploymentType
+    : resolveJobType(metadataSector ?? job.sector);
 
   return {
     ...job,
     sector: metadataSector ?? job.sector,
-    employmentType: metadataEmploymentType || job.employmentType,
+    employmentType: resolvedEmploymentType,
     studyExam: metadataStudyExam || job.studyExam,
     studyRole: metadataStudyRole || job.studyRole,
     studyYears: metadataStudyYears.length > 0 ? metadataStudyYears : job.studyYears,

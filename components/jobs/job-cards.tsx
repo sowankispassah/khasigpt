@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getJobSectorLabel } from "@/lib/jobs/sector";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type { JobCard } from "@/lib/jobs/types";
 import { cn } from "@/lib/utils";
 
@@ -40,10 +40,7 @@ export function JobCards({
               </div>
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-                  Sector: {getJobSectorLabel(job.sector)}
-                </span>
-                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
-                  Employment type: {job.employmentType}
+                  Type: {getJobTypeLabel(job.employmentType)}
                 </span>
                 {job.tags.map((tag) => (
                   <span

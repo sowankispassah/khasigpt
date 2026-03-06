@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { JobsInfiniteList } from "@/components/jobs/jobs-infinite-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getJobSectorLabel } from "@/lib/jobs/sector";
 import type { JobListItem } from "@/lib/jobs/types";
 
 type JobsModeListPanelProps = {
@@ -16,16 +15,14 @@ type JobsLocalFilters = {
   q: string;
   company: string;
   location: string;
-  sector: string;
-  employmentType: string;
+  type: string;
 };
 
 const EMPTY_FILTERS: JobsLocalFilters = {
   q: "",
   company: "",
   location: "",
-  sector: "",
-  employmentType: "",
+  type: "",
 };
 
 const normalizeFilter = (value: string) => value.trim().toLowerCase();
@@ -45,7 +42,7 @@ export function JobsModeListPanel({
     () => Array.from(new Set(jobs.map((job) => job.location.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [jobs]
   );
-  const employmentTypes = useMemo(
+  const types = useMemo(
     () =>
       Array.from(new Set(jobs.map((job) => job.employmentType.trim()).filter(Boolean))).sort((a, b) =>
         a.localeCompare(b)
@@ -57,8 +54,7 @@ export function JobsModeListPanel({
     const qFilter = normalizeFilter(appliedFilters.q);
     const companyFilter = normalizeFilter(appliedFilters.company);
     const locationFilter = normalizeFilter(appliedFilters.location);
-    const sectorFilter = normalizeFilter(appliedFilters.sector);
-    const employmentTypeFilter = normalizeFilter(appliedFilters.employmentType);
+    const typeFilter = normalizeFilter(appliedFilters.type);
 
     return jobs.filter((job) => {
       if (companyFilter && normalizeFilter(job.company) !== companyFilter) {
@@ -67,10 +63,7 @@ export function JobsModeListPanel({
       if (locationFilter && normalizeFilter(job.location) !== locationFilter) {
         return false;
       }
-      if (sectorFilter && normalizeFilter(job.sector) !== sectorFilter) {
-        return false;
-      }
-      if (employmentTypeFilter && normalizeFilter(job.employmentType) !== employmentTypeFilter) {
+      if (typeFilter && normalizeFilter(job.employmentType) !== typeFilter) {
         return false;
       }
       if (!qFilter) {
@@ -81,7 +74,6 @@ export function JobsModeListPanel({
         job.title,
         job.company,
         job.location,
-        getJobSectorLabel(job.sector),
         job.employmentType,
         job.descriptionSnippet,
         job.salaryLabel,
@@ -115,7 +107,7 @@ export function JobsModeListPanel({
         </CardHeader>
         <CardContent>
           <form
-            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7"
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6"
             onSubmit={(event) => {
               event.preventDefault();
               setAppliedFilters(draftFilters);
@@ -144,24 +136,13 @@ export function JobsModeListPanel({
               placeholder="Location"
               value={draftFilters.location}
             />
-            <select
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-              name="sector"
-              onChange={(event) => setDraftFilters((prev) => ({ ...prev, sector: event.target.value }))}
-              value={draftFilters.sector}
-            >
-              <option value="">All sectors</option>
-              <option value="government">Government</option>
-              <option value="private">Private</option>
-              <option value="unknown">Unknown</option>
-            </select>
             <input
               className="rounded-md border bg-background px-3 py-2 text-sm"
-              list="jobs-mode-employment-type-options"
-              name="employmentType"
-              onChange={(event) => setDraftFilters((prev) => ({ ...prev, employmentType: event.target.value }))}
-              placeholder="Employment type"
-              value={draftFilters.employmentType}
+              list="jobs-mode-type-options"
+              name="type"
+              onChange={(event) => setDraftFilters((prev) => ({ ...prev, type: event.target.value }))}
+              placeholder="Type"
+              value={draftFilters.type}
             />
             <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-6">
               <Button className="cursor-pointer" size="sm" type="submit">
@@ -192,9 +173,9 @@ export function JobsModeListPanel({
               <option key={location} value={location} />
             ))}
           </datalist>
-          <datalist id="jobs-mode-employment-type-options">
-            {employmentTypes.map((employmentType) => (
-              <option key={employmentType} value={employmentType} />
+          <datalist id="jobs-mode-type-options">
+            {types.map((type) => (
+              <option key={type} value={type} />
             ))}
           </datalist>
         </CardContent>

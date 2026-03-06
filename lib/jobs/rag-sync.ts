@@ -4,7 +4,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/queries";
 import { ragEntry, user } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import { resolveJobSector } from "@/lib/jobs/sector";
+import { resolveJobSector, resolveJobType } from "@/lib/jobs/sector";
 import {
   createRagEntry,
   deleteRagEntries,
@@ -141,7 +141,7 @@ function buildJobMetadata(row: SupabaseJobRow) {
     salary: toTrimmedString(row.salary ?? null) || null,
     source: sourceLabel,
     sector,
-    employment_type: UNKNOWN_LABEL,
+    employment_type: resolveJobType(sector),
     study_exam: UNKNOWN_LABEL,
     study_role: UNKNOWN_LABEL,
     study_years: [] as number[],

@@ -511,7 +511,7 @@ function describeState(state: JobsFilterState) {
   }
 
   if (state.employmentType) {
-    labels.push(`employment type: ${state.employmentType}`);
+    labels.push(`type: ${state.employmentType}`);
   }
 
   if (state.sector) {

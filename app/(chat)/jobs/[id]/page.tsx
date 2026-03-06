@@ -11,7 +11,7 @@ import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-detail";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
-import { getJobSectorLabel } from "@/lib/jobs/sector";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { getJobPostingById } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
@@ -197,10 +197,7 @@ export default async function JobPostingDetailPage(props: {
               <span className="font-medium">Location:</span> {job.location}
             </p>
             <p className="break-words">
-              <span className="font-medium">Sector:</span> {getJobSectorLabel(job.sector)}
-            </p>
-            <p className="break-words">
-              <span className="font-medium">Employment type:</span> {job.employmentType}
+              <span className="font-medium">Type:</span> {getJobTypeLabel(job.employmentType)}
             </p>
             <p className="break-words">
               <span className="font-medium">Salary:</span> {salaryLabel}

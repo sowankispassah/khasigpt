@@ -129,13 +129,14 @@ test.describe("job sector resolution", () => {
     expect(result.filteredJobs.map((job) => job.id)).toEqual(["gov-sector"]);
   });
 
-  test("list items preserve the canonical sector label", () => {
+  test("list items preserve the visible type label", () => {
     const item = toJobListItem(
       createJob({
         sector: "government",
+        employmentType: "government",
       })
     );
 
-    expect(item.sector).toBe("government");
+    expect(item.employmentType).toBe("government");
   });
 });

@@ -59,7 +59,7 @@ import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { resolveJobsFilterConversation } from "@/lib/jobs/filtering";
 import { extractSalaryText } from "@/lib/jobs/salary";
-import { getJobSectorLabel } from "@/lib/jobs/sector";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
   JOBS_CHAT_MODE,
   JOB_POSTING_RUNTIME_CONTEXT_CHARS,
@@ -1415,8 +1415,7 @@ export async function POST(request: Request) {
                 `Title: ${job.title}`,
                 `Company: ${job.company}`,
                 `Location: ${job.location}`,
-                `Sector: ${getJobSectorLabel(job.sector)}`,
-                `Employment Type: ${job.employmentType}`,
+                `Type: ${getJobTypeLabel(job.employmentType)}`,
                 `Source URL: ${job.sourceUrl ?? "Not available"}`,
                 `Description: ${job.content || "No description available."}`,
                 pdfSupplement ? `Supplemental PDF context:\n${pdfSupplement}` : "",
@@ -1566,7 +1565,7 @@ export async function POST(request: Request) {
         if (!filterResolution.hasActiveFilters) {
           return buildJobsResponse({
             text: withNotice(
-              "Tell me what you want to filter by (qualification, salary range, sector, employment type, or location). Here are the latest jobs."
+              "Tell me what you want to filter by (qualification, salary range, job type, or location). Here are the latest jobs."
             ),
             cards: visibleJobs.slice(0, 12).map(toJobCard),
           });
