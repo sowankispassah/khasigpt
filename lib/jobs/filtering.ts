@@ -92,6 +92,10 @@ const WORD_STOPLIST = new Set([
   "pass",
   "please",
   "private",
+  "approx",
+  "approximately",
+  "around",
+  "near",
   "qualification",
   "salary",
   "show",
@@ -216,6 +220,22 @@ function parseSalaryRangeFromQuery(text: string): SalaryRange | null {
       return {
         min: Math.min(first, second),
         max: Math.max(first, second),
+      };
+    }
+  }
+
+  const aroundExpression = new RegExp(
+    `\\b(?:around|about|approx(?:\\.|imately)?|near)\\s+${amountPattern}`,
+    "i"
+  );
+  const aroundMatch = normalized.match(aroundExpression);
+  if (aroundMatch) {
+    const amount = parseNumericValue(aroundMatch[1] ?? "", aroundMatch[2]);
+    if (amount !== null) {
+      const tolerance = Math.max(1_000, Math.round(amount * 0.2));
+      return {
+        min: Math.max(0, amount - tolerance),
+        max: amount + tolerance,
       };
     }
   }
@@ -662,7 +682,9 @@ function matchesKeywordsWithPrecision({
 }
 
 function matchesSalary(job: JobPostingRecord, state: JobsFilterState) {
-  const jobSalary = parseSalaryRangeFromJobText(`${job.title} ${job.content}`);
+  const jobSalary = parseSalaryRangeFromJobText(
+    [job.title, job.salary ?? "", job.content, job.pdfContent ?? ""].join(" ")
+  );
 
   if (state.salaryKnownOnly && !jobSalary) {
     return false;

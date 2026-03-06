@@ -11,6 +11,11 @@ function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {
     content: overrides.content ?? "12th pass required. Salary Rs 18000 to Rs 24000 per month.",
     company: overrides.company ?? "Acme Ltd",
     location: overrides.location ?? "Agartala",
+    salary: overrides.salary ?? null,
+    source: overrides.source ?? null,
+    applicationLink: overrides.applicationLink ?? null,
+    pdfContent: overrides.pdfContent ?? null,
+    contentHash: overrides.contentHash ?? null,
     sector: overrides.sector ?? "unknown",
     employmentType: overrides.employmentType ?? "Full-time",
     studyExam: overrides.studyExam ?? "Unknown",
@@ -118,5 +123,29 @@ test.describe("jobs filtering engine", () => {
     expect(result.clarification).toBeNull();
     expect(result.hasActiveFilters).toBe(false);
     expect(result.filteredJobs).toHaveLength(jobs.length);
+  });
+
+  test("matches around-salary queries using salary fields, not just content text", () => {
+    const jobsWithStoredSalary = [
+      ...jobs,
+      createJob({
+        id: "job-salary-field",
+        title: "Hospital Administrator",
+        company: "MBDA",
+        location: "Shillong",
+        content: "Graduate degree required.",
+        salary: "Rs. 50,000/- (Negotiable based on education & experience)",
+        sector: "government",
+      }),
+    ];
+
+    const result = resolveJobsFilterConversation({
+      jobs: jobsWithStoredSalary,
+      priorUserMessages: [],
+      latestUserMessage: "Any jobs around 50000 salary?",
+    });
+
+    expect(result.clarification).toBeNull();
+    expect(result.filteredJobs.map((job) => job.id)).toContain("job-salary-field");
   });
 });

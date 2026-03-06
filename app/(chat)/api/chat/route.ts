@@ -57,7 +57,7 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { extractSalaryText } from "@/lib/jobs/salary";
+import { extractSalaryText, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
   JOBS_CHAT_MODE,
@@ -1552,10 +1552,44 @@ export async function POST(request: Request) {
         ...entry,
         parts: entry.parts.filter((part) => part.type === "text"),
       }));
-      const jobsPromptText = jobsUserText.length > 0 ? jobsUserText : "Show me relevant jobs.";
+      const jobsPromptText =
+        jobsUserText.length > 0 ? jobsUserText : "Show me relevant jobs.";
+      const visibleJobsCatalog = visibleJobs
+        .slice(0, 200)
+        .map((job) => {
+          const salarySummary = resolveJobSalaryInfo({
+            salary: job.salary,
+            content: job.content,
+            pdfContent: job.pdfContent,
+          }).summary;
+          return [
+            job.id,
+            job.title,
+            job.company,
+            job.location,
+            getJobTypeLabel(job.employmentType),
+            salarySummary,
+          ].join(" | ");
+        })
+        .join("\n- ");
       const jobsPromptMessage: ChatMessage = {
         ...message,
-        parts: [{ type: "text", text: jobsPromptText }],
+        parts: [
+          {
+            type: "text",
+            text: [
+              `User search request: ${jobsPromptText}`,
+              visibleJobsCatalog
+                ? [
+                    "Available jobs catalog (use ONLY these IDs in jobIds):",
+                    `- ${visibleJobsCatalog}`,
+                  ].join("\n")
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          },
+        ],
       };
 
       try {
@@ -1567,6 +1601,7 @@ export async function POST(request: Request) {
             "Use ONLY retrieved File Search job documents. Do not invent jobs.",
             "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
+            "Use the provided jobs catalog only to map retrieved matches back to valid job IDs. Do not use it as a standalone search source.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
             "Use structured compensation details when present, including pay levels, allowances, and OCR-extracted PDF text.",
