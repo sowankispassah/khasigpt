@@ -322,18 +322,27 @@ export async function runJobsScraper(
       message: `All sources scraped. Indexing ${totalIndexedJobs} job${
         totalIndexedJobs === 1 ? "" : "s"
       } for chat responses...`,
+      failureDetails: [],
     });
 
     try {
       await withTimeout(
         syncJobPostingsToRag({
           jobIds: writtenJobIds,
-          onProgress: async ({ processed, total, created, updated, failed }) => {
+          onProgress: async ({
+            processed,
+            total,
+            created,
+            updated,
+            failed,
+            failureDetails,
+          }) => {
             await options.onFinalizeProgress?.({
               phase: "rag_sync",
               processed,
               total,
               message: `All sources scraped. Indexing jobs for chat (${processed}/${total}, created ${created}, updated ${updated}, failed ${failed}).`,
+              failureDetails,
             });
           },
         }),

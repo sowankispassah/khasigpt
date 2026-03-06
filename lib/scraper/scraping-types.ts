@@ -44,6 +44,11 @@ export type JobsScraperFinalizeProgressEvent = {
   processed: number;
   total: number;
   message: string;
+  failureDetails?: Array<{
+    id: string;
+    title: string;
+    reason: string;
+  }>;
 };
 
 export type JobsScraperRuntimeOptions = {

@@ -53,6 +53,12 @@ export type JobsScrapeProgressSnapshot = {
   updated: number | null;
   skippedDuplicates: number | null;
   message: string | null;
+  failureDetails: Array<{
+    scope: "rag_sync";
+    id: string;
+    title: string;
+    reason: string;
+  }>;
 };
 
 export type JobsScrapeHistoryEntry = {
@@ -266,6 +272,40 @@ function normalizeProgressSnapshot(rawValue: unknown): JobsScrapeProgressSnapsho
       typeof candidate.message === "string" && candidate.message.trim()
         ? candidate.message.trim()
         : null,
+    failureDetails: Array.isArray(candidate.failureDetails)
+      ? candidate.failureDetails
+          .map((item) => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) {
+              return null;
+            }
+            const value = item as Record<string, unknown>;
+            const scope = value.scope === "rag_sync" ? "rag_sync" : null;
+            const id =
+              typeof value.id === "string" && value.id.trim() ? value.id.trim() : "";
+            const title =
+              typeof value.title === "string" && value.title.trim()
+                ? value.title.trim()
+                : "";
+            const reason =
+              typeof value.reason === "string" && value.reason.trim()
+                ? value.reason.trim()
+                : "";
+            if (!scope || !id || !title || !reason) {
+              return null;
+            }
+            return { scope, id, title, reason };
+          })
+          .filter(
+            (
+              item
+            ): item is {
+              scope: "rag_sync";
+              id: string;
+              title: string;
+              reason: string;
+            } => item !== null
+          )
+      : [],
   };
 }
 
@@ -814,6 +854,7 @@ export async function runJobsScrapeWithScheduling({
         updated: null,
         skippedDuplicates: null,
         message: effectiveSkipReason ?? "Skipped",
+        failureDetails: [],
       });
     }
 
@@ -889,6 +930,7 @@ export async function runJobsScrapeWithScheduling({
     updated: null,
     skippedDuplicates: null,
     message: "Scrape started",
+    failureDetails: [],
   };
   await setProgressSafely(progressSnapshot);
 
@@ -1008,11 +1050,17 @@ export async function runJobsScrapeWithScheduling({
           message: `Saved so far: ${runningInserted} inserted, ${runningUpdated} updated`,
         });
       },
-      onFinalizeProgress: async ({ message }) => {
+      onFinalizeProgress: async ({ message, failureDetails = [] }) => {
         await updateProgress({
           currentSource: null,
           processedSources: completedSourcesCount,
           message,
+          failureDetails: failureDetails.map((detail) => ({
+            scope: "rag_sync",
+            id: detail.id,
+            title: detail.title,
+            reason: detail.reason,
+          })),
         });
       },
     });
@@ -1050,6 +1098,7 @@ export async function runJobsScrapeWithScheduling({
       oneTimeTriggered: oneTimeDue,
       oneTimeScheduledAt: runtime.oneTimeAt?.toISOString() ?? null,
       cancelled: wasCancelled,
+      ragSyncFailures: progressSnapshot.failureDetails,
     };
 
     const successEntries: AppSettingEntry[] = [

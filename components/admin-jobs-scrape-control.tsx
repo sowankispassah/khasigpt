@@ -24,6 +24,12 @@ type JobsScrapeProgressSnapshot = {
   updated: number | null;
   skippedDuplicates: number | null;
   message: string | null;
+  failureDetails: Array<{
+    scope: "rag_sync";
+    id: string;
+    title: string;
+    reason: string;
+  }>;
 };
 
 type StatusResponse = {
@@ -52,6 +58,7 @@ function createOptimisticRunningSnapshot(
     updated: null,
     skippedDuplicates: null,
     message: "Starting scrape...",
+    failureDetails: [],
   };
 }
 
@@ -344,6 +351,15 @@ export function AdminJobsScrapeControl({
       </div>
 
       <p className="text-muted-foreground text-xs">{statusText}</p>
+      {progress?.failureDetails?.length ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          {progress.failureDetails.map((detail) => (
+            <p key={`${detail.scope}:${detail.id}`} className="whitespace-normal">
+              <strong>{detail.title}</strong>: {detail.reason}
+            </p>
+          ))}
+        </div>
+      ) : null}
       {message ? <p className="text-xs">{message}</p> : null}
     </div>
   );

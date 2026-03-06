@@ -9,7 +9,11 @@ import {
   deleteRagEntries,
   updateRagEntry,
 } from "@/lib/rag/service";
-import { parsePositiveInt, runWithConcurrency } from "@/lib/scraper/scraper-utils";
+import {
+  parsePositiveInt,
+  runWithConcurrency,
+  sleep,
+} from "@/lib/scraper/scraper-utils";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type SupabaseJobRow = {
@@ -33,9 +37,31 @@ type SupabaseJobRow = {
 const UNKNOWN_LABEL = "Unknown";
 const JOBS_RAG_SYNC_VERSION = 1;
 const DEFAULT_JOBS_RAG_SYNC_CONCURRENCY = 4;
+const DEFAULT_JOBS_RAG_SYNC_RETRY_ATTEMPTS = 2;
+const DEFAULT_JOBS_RAG_SYNC_RETRY_DELAY_MS = 600;
+const MAX_RAG_SYNC_FAILURE_DETAILS = 8;
+const RAG_ENTRY_TITLE_MAX_CHARS = 160;
 
 function toTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function toRagSafeTitle(value: string) {
+  const normalized = value.trim() || "Job opening";
+  if (normalized.length <= RAG_ENTRY_TITLE_MAX_CHARS) {
+    return normalized;
+  }
+  return `${normalized.slice(0, RAG_ENTRY_TITLE_MAX_CHARS - 3).trimEnd()}...`;
+}
+
+function isRetryableRagSyncError(error: unknown) {
+  if (error instanceof ChatSDKError) {
+    return false;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /timeout|timed out|temporar|network|socket|fetch failed|429|5\d\d|deadlock|connection/i.test(
+    message
+  );
 }
 
 function normalizeJobStatus(
@@ -170,7 +196,7 @@ async function upsertJobRowToRag({
   actorId: string;
   row: SupabaseJobRow;
 }) {
-  const title = toTrimmedString(row.title) || "Job opening";
+  const title = toRagSafeTitle(toTrimmedString(row.title));
   const content = ensureRagContent(buildRagContent(row));
   const sourceUrl = normalizeSourceUrl(
     toTrimmedString(row.application_link ?? row.source_url)
@@ -210,6 +236,42 @@ async function upsertJobRowToRag({
   return "created" as const;
 }
 
+async function upsertJobRowToRagWithRetry({
+  actorId,
+  row,
+}: {
+  actorId: string;
+  row: SupabaseJobRow;
+}) {
+  const retryAttempts = parsePositiveInt(
+    process.env.JOBS_RAG_SYNC_RETRY_ATTEMPTS,
+    DEFAULT_JOBS_RAG_SYNC_RETRY_ATTEMPTS
+  );
+  const retryDelayMs = parsePositiveInt(
+    process.env.JOBS_RAG_SYNC_RETRY_DELAY_MS,
+    DEFAULT_JOBS_RAG_SYNC_RETRY_DELAY_MS
+  );
+
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
+    try {
+      return await upsertJobRowToRag({
+        actorId,
+        row,
+      });
+    } catch (error) {
+      lastError = error;
+      const shouldRetry = attempt < retryAttempts && isRetryableRagSyncError(error);
+      if (!shouldRetry) {
+        throw error;
+      }
+      await sleep(retryDelayMs * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 export async function syncJobPostingsToRag({
   jobIds,
   concurrency,
@@ -223,6 +285,11 @@ export async function syncJobPostingsToRag({
     created: number;
     updated: number;
     failed: number;
+    failureDetails: Array<{
+      id: string;
+      title: string;
+      reason: string;
+    }>;
   }) => void | Promise<void>;
 }) {
   const uniqueJobIds = Array.from(
@@ -271,23 +338,37 @@ export async function syncJobPostingsToRag({
   let updated = 0;
   let failed = 0;
   let processed = 0;
+  const failureDetails: Array<{
+    id: string;
+    title: string;
+    reason: string;
+  }> = [];
   await runWithConcurrency(uniqueJobIds, ragSyncConcurrency, async (jobId) => {
     const row = byId.get(jobId);
     if (!row) {
       failed += 1;
       processed += 1;
+      failureDetails.push({
+        id: jobId,
+        title: "Unknown job",
+        reason: "Job row not found in Supabase during chat indexing.",
+      });
+      if (failureDetails.length > MAX_RAG_SYNC_FAILURE_DETAILS) {
+        failureDetails.shift();
+      }
       await onProgress?.({
         processed,
         total,
         created,
         updated,
         failed,
+        failureDetails: [...failureDetails],
       });
       return;
     }
 
     try {
-      const outcome = await upsertJobRowToRag({
+      const outcome = await upsertJobRowToRagWithRetry({
         actorId,
         row,
       });
@@ -298,6 +379,14 @@ export async function syncJobPostingsToRag({
       }
     } catch (error) {
       failed += 1;
+      failureDetails.push({
+        id: row.id,
+        title: toRagSafeTitle(toTrimmedString(row.title)),
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      if (failureDetails.length > MAX_RAG_SYNC_FAILURE_DETAILS) {
+        failureDetails.shift();
+      }
       console.warn("[jobs-rag-sync] failed to sync job", {
         jobId,
         error: error instanceof Error ? error.message : String(error),
@@ -310,6 +399,7 @@ export async function syncJobPostingsToRag({
         created,
         updated,
         failed,
+        failureDetails: [...failureDetails],
       });
     }
   });
@@ -320,6 +410,7 @@ export async function syncJobPostingsToRag({
     created,
     updated,
     failed,
+    failureDetails,
     actorId,
   };
 }
