@@ -248,6 +248,8 @@ export async function GET(
       ? "private, max-age=86400, stale-while-revalidate=604800"
       : "private, max-age=1800, stale-while-revalidate=86400"
   );
+  headers.set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'self'");
+  headers.set("X-Frame-Options", "SAMEORIGIN");
   headers.set("X-Content-Type-Options", "nosniff");
 
   return new Response(upstream.body, {
