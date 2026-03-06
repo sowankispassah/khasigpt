@@ -1,13 +1,26 @@
 const SALARY_LABELS = [
   "salary",
+  "pay",
   "pay scale",
+  "pay band",
+  "pay level",
   "pay matrix",
+  "pay package",
   "remuneration",
+  "monthly remuneration",
+  "consolidated remuneration",
   "emoluments",
+  "monthly salary",
+  "monthly pay",
   "consolidated pay",
   "stipend",
   "honorarium",
   "compensation",
+  "compensation package",
+  "cost to company",
+  "ctc",
+  "wage",
+  "wages",
 ] as const;
 
 const NON_SALARY_SECTION_LABELS = [
@@ -59,10 +72,10 @@ const PAY_LEVEL_PATTERN =
   /^(?:pay\s*(?:scale|matrix|level)|level[-\s]*\d+[a-z]?|pb-\d+|grade pay)\b/i;
 
 const SALARY_AMOUNT_PATTERN =
-  /(?:\u20b9|rs\.?|inr)\s?\d[\d,]*(?:\s*\/-)?(?:\s*(?:-|to|\u2013)\s*(?:\u20b9|rs\.?|inr)?\s?\d[\d,]*(?:\s*\/-)?)?(?:\s*(?:\([^)]{1,40}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|including allowances))*/i;
+  /(?:\u20b9|rs\.?|inr)\s?\d[\d,]*(?:\s*\/-)?(?:\s*(?:-|to|\u2013)\s*(?:\u20b9|rs\.?|inr)?\s?\d[\d,]*(?:\s*\/-)?)?(?:\s*(?:\([^)]{1,80}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|including allowances|\+\s*[A-Z]{2,8}|plus\s+[A-Z]{2,8}))*/i;
 
 const SHORT_NUMERIC_SALARY_PATTERN =
-  /^\d[\d,]*(?:\s*\/-)?(?:\s*(?:-|to|\u2013)\s*\d[\d,]*(?:\s*\/-)?)?(?:\s*(?:\([^)]{1,40}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances))*$/i;
+  /^\d[\d,]*(?:\s*\/-)?(?:\s*(?:-|to|\u2013)\s*\d[\d,]*(?:\s*\/-)?)?(?:\s*(?:\([^)]{1,80}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|\+\s*[A-Z]{2,8}|plus\s+[A-Z]{2,8}))*$/i;
 
 const LABELLED_SALARY_PATTERN = new RegExp(
   `(?:${ESCAPED_SALARY_LABELS})\\s*[:\\-]?\\s*([\\s\\S]{1,220})`,
@@ -81,6 +94,11 @@ const CONTEXTUAL_PREFIX_SALARY_PATTERN = new RegExp(
 
 const CONTEXTUAL_SUFFIX_SALARY_PATTERN = new RegExp(
   `(${SALARY_AMOUNT_PATTERN.source})[^.!?\\n\\r]{0,50}\\b(?:per month|monthly|per annum|annum|lpa|lakhs? p\\.?a\\.?|consolidated|salary|stipend|honorarium)\\b`,
+  "i"
+);
+
+const TABLE_HEADER_SALARY_PATTERN = new RegExp(
+  `\\b(?:Pay|Remuneration|Salary)\\b[\\s\\S]{0,1500}?(${SALARY_AMOUNT_PATTERN.source})`,
   "i"
 );
 
@@ -164,7 +182,7 @@ function hasSalaryOnlyTail(value: string, amount: string) {
     return false;
   }
 
-  return /^(?:\([^)]{1,40}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|including allowances|\s)+$/i.test(
+  return /^(?:\([^)]{1,80}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|including allowances|\+\s*[A-Z]{2,8}|plus\s+[A-Z]{2,8}|\s)+$/i.test(
     tail
   );
 }
@@ -261,6 +279,11 @@ export function extractSalaryText(text: string | null | undefined) {
     if (extracted) {
       return extracted;
     }
+  }
+
+  const tableHeaderMatch = normalized.match(TABLE_HEADER_SALARY_PATTERN);
+  if (tableHeaderMatch?.[1]) {
+    return trimSalaryPunctuation(normalizeWhitespace(tableHeaderMatch[1]));
   }
 
   const contextualQualitative = normalized.match(CONTEXTUAL_QUALITATIVE_SALARY_PATTERN);
