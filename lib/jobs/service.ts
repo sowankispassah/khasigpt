@@ -9,6 +9,7 @@ import type {
   RagEntry,
 } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
+import { DEFAULT_JOB_LOCATION, resolveJobLocation } from "@/lib/jobs/location";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
@@ -163,7 +164,11 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       rawCompany: toTrimmedString(row.company),
       rawSourceUrl,
     }),
-    location: toTrimmedString(row.location) || UNKNOWN_LABEL,
+    location: resolveJobLocation({
+      location: toTrimmedString(row.location),
+      content: toTrimmedString(row.description),
+      pdfContent: toTrimmedString(row.pdf_content ?? null),
+    }),
     salary: (() => {
       const summary = resolveJobSalaryInfo({
         salary: rawSalary,
@@ -254,7 +259,7 @@ export function buildJobPostingMetadata(
   input: JobPostingMetadataInput
 ): Record<string, unknown> {
   const company = input.company.trim() || UNKNOWN_LABEL;
-  const location = input.location.trim() || UNKNOWN_LABEL;
+  const location = input.location.trim() || DEFAULT_JOB_LOCATION;
   const employmentType = input.employmentType.trim() || UNKNOWN_LABEL;
   const studyExam = input.studyExam.trim() || UNKNOWN_LABEL;
   const studyRole = input.studyRole.trim() || UNKNOWN_LABEL;

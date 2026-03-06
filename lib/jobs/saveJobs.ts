@@ -1,4 +1,5 @@
 import "server-only";
+import { DEFAULT_JOB_LOCATION } from "@/lib/jobs/location";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 
@@ -174,7 +175,7 @@ function normalizeJobRows(rows: NewJobRow[]) {
         company: row.company,
         sourceUrl,
       }),
-      location: row.location.trim() || "Unknown",
+      location: row.location.trim() || DEFAULT_JOB_LOCATION,
       salary: normalizeOptionalText(row.salary),
       description: row.description.trim(),
       source: normalizeOptionalText(row.source),

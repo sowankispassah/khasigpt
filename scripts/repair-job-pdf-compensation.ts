@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { resolveJobLocation } from "@/lib/jobs/location";
 import postgres from "postgres";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
@@ -6,6 +7,7 @@ import { extractDocumentText } from "@/lib/uploads/document-parser";
 type RepairableJobRow = {
   id: string;
   title: string;
+  location: string | null;
   salary: string | null;
   description: string | null;
   pdf_source_url: string | null;
@@ -28,12 +30,14 @@ async function main() {
 
   try {
     const rows = await sql<RepairableJobRow[]>`
-      select id, title, salary, description, pdf_source_url, pdf_content
+      select id, title, location, salary, description, pdf_source_url, pdf_content
       from jobs
       where pdf_source_url is not null
         and (
           coalesce(pdf_content, '') = ''
           or coalesce(salary, '') = ''
+          or coalesce(location, '') = ''
+          or lower(coalesce(location, '')) = 'unknown'
         )
       order by created_at desc
     `;
@@ -67,16 +71,24 @@ async function main() {
 
         const nextSalary =
           salaryInfo.summary === "Not disclosed" ? null : salaryInfo.summary;
+        const nextLocation = resolveJobLocation({
+          location: row.location,
+          pdfContent: parsed.text,
+          content: row.description,
+        });
 
         await sql`
           update jobs
           set pdf_content = ${parsed.text},
-              salary = ${nextSalary}
+              salary = ${nextSalary},
+              location = ${nextLocation}
           where id = ${row.id}
         `;
 
         repairedCount += 1;
-        console.log(`Repaired: ${row.title} -> ${nextSalary ?? "Not disclosed"}`);
+        console.log(
+          `Repaired: ${row.title} -> salary=${nextSalary ?? "Not disclosed"}, location=${nextLocation}`
+        );
       } catch (error) {
         console.warn(`Failed to repair ${row.title}`, error);
       }

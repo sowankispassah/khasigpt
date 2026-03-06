@@ -1,6 +1,7 @@
 import "server-only";
 import { load } from "cheerio";
 import type { JobSourceConfig } from "@/config/jobSources";
+import { resolveJobLocation } from "@/lib/jobs/location";
 import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
 import type { NewJobRow } from "@/lib/jobs/saveJobs";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -909,11 +910,16 @@ async function enrichCandidateJob({
   });
 
   const salary = pdfResult?.fields.salary ?? extractSalaryText(description);
+  const location = resolveJobLocation({
+    location: candidate.location,
+    content: normalizeMultiline([baseText, detailText ?? "", webText].filter(Boolean).join("\n\n")),
+    pdfContent: pdfResult?.pdfText ?? null,
+  });
   const normalizedDescription = normalizeMultiline(description);
   const dedupeSignature = [
     candidate.title.toLowerCase(),
     candidate.company.toLowerCase(),
-    candidate.location.toLowerCase(),
+    location.toLowerCase(),
     candidate.applicationUrl.toLowerCase(),
     normalizeWhitespace(normalizedDescription).slice(0, 25_000).toLowerCase(),
   ].join("|");
@@ -921,7 +927,7 @@ async function enrichCandidateJob({
   const row: NewJobRow = {
     title: candidate.title,
     company: candidate.company || "Unknown",
-    location: candidate.location || "Unknown",
+    location,
     salary: salary || null,
     description: normalizedDescription,
     source: source.name,
