@@ -57,7 +57,6 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { resolveJobsFilterConversation } from "@/lib/jobs/filtering";
 import { extractSalaryText } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
@@ -1520,73 +1519,6 @@ export async function POST(request: Request) {
         }
       }
 
-      const runFallbackFilterFlow = (fallbackNotice?: string) => {
-        const filterResolution = resolveJobsFilterConversation({
-          jobs: visibleJobs,
-          priorUserMessages,
-          latestUserMessage: jobsUserText,
-        });
-        const withNotice = (text: string) =>
-          fallbackNotice ? `${fallbackNotice}\n\n${text}` : text;
-        const onlyKeywordFilters =
-          filterResolution.state.keywords.length > 0 &&
-          !filterResolution.state.location &&
-          !filterResolution.state.employmentType &&
-          !filterResolution.state.sector &&
-          filterResolution.state.salaryMin === null &&
-          filterResolution.state.salaryMax === null &&
-          filterResolution.state.qualifications.length === 0;
-
-        const buildSuccessText = (count: number) => {
-          if (count <= 0) {
-            return "I could not find matching jobs right now. Try broadening your request.";
-          }
-
-          if (onlyKeywordFilters && filterResolution.state.keywords.length === 1) {
-            const keyword = filterResolution.state.keywords[0];
-            if (count === 1) {
-              return `Here is a ${keyword}-related job I found.`;
-            }
-            return `Here are some ${keyword}-related jobs I found.`;
-          }
-
-          if (count === 1) {
-            return "Here is one job that matches your request.";
-          }
-
-          return "Here are the jobs that best match your request.";
-        };
-
-        if (filterResolution.clarification) {
-          return buildJobsResponse({
-            text: withNotice(filterResolution.clarification),
-          });
-        }
-
-        if (!filterResolution.hasActiveFilters) {
-          return buildJobsResponse({
-            text: withNotice(
-              "Tell me what you want to filter by (qualification, salary range, job type, or location). Here are the latest jobs."
-            ),
-            cards: visibleJobs.slice(0, 12).map(toJobCard),
-          });
-        }
-
-        if (filterResolution.filteredJobs.length === 0) {
-          return buildJobsResponse({
-            text: withNotice(
-              "I could not find jobs matching that request. Try a broader keyword or fewer filters."
-            ),
-            cards: [],
-          });
-        }
-
-        return buildJobsResponse({
-          text: withNotice(buildSuccessText(filterResolution.filteredJobs.length)),
-          cards: filterResolution.filteredJobs.slice(0, 50).map(toJobCard),
-        });
-      };
-
       const fileSearchStoreName = getGeminiFileSearchStoreName();
       const preferredJobsRagModelId = process.env.JOBS_RAG_GEMINI_MODEL_ID?.trim();
       const jobsRagModelId =
@@ -1602,7 +1534,11 @@ export async function POST(request: Request) {
         supportsGeminiFileSearchModel(jobsRagModelId);
 
       if (!canUseJobsRagSelection || !fileSearchStoreName) {
-        return runFallbackFilterFlow();
+        return buildJobsResponse({
+          text:
+            "Jobs chat semantic search is temporarily unavailable. Use the filter controls above or try again later.",
+          cards: visibleJobs.slice(0, 12).map(toJobCard),
+        });
       }
 
       const jobsRagModelBase = createGeminiFileSearchLanguageModel({
@@ -1632,6 +1568,9 @@ export async function POST(request: Request) {
             "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
+            "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
+            "Use structured compensation details when present, including pay levels, allowances, and OCR-extracted PDF text.",
+            "Treat type, qualification, location, and deadline requests as search intent over the job documents, not as fixed keyword filtering.",
             "If uncertain, state what is missing instead of guessing.",
           ].join("\n"),
           messages: convertToModelMessages([
@@ -1680,7 +1619,10 @@ export async function POST(request: Request) {
 
         const parsedSelection = parseJobsRagSelection(ragSelectionResult.text);
         if (!parsedSelection) {
-          return runFallbackFilterFlow();
+          return buildJobsResponse({
+            text:
+              "I couldn't parse the semantic jobs search result. Please rephrase your request and try again.",
+          });
         }
 
         const visibleJobsById = new Map(
@@ -1693,7 +1635,13 @@ export async function POST(request: Request) {
           .map(toJobCard);
 
         if (selectedCards.length === 0) {
-          return runFallbackFilterFlow();
+          return buildJobsResponse({
+            text:
+              parsedSelection.answer?.trim().length > 0
+                ? parsedSelection.answer
+                : "I couldn't find semantically relevant jobs for that request right now.",
+            cards: [],
+          });
         }
 
         return buildJobsResponse({
@@ -1705,9 +1653,11 @@ export async function POST(request: Request) {
           chatId: id,
           error: error instanceof Error ? error.message : String(error),
         });
-        return runFallbackFilterFlow(
-          "I am temporarily using fallback matching while the jobs knowledge index refreshes."
-        );
+        return buildJobsResponse({
+          text:
+            "Jobs chat semantic search is temporarily unavailable right now. Use the filter controls above or try again later.",
+          cards: visibleJobs.slice(0, 12).map(toJobCard),
+        });
       }
     }
 
