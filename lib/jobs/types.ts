@@ -78,8 +78,8 @@ export type JobListItem = {
   location: string;
   employmentType: string;
   salaryLabel: string;
-  deadlineLabel: string;
   notificationDateLabel: string;
+  fetchedOnLabel: string;
   sourceLabel: string;
   descriptionSnippet: string;
   hasPdfFile: boolean;

@@ -41,6 +41,14 @@ function markdownToPlainText(value: string) {
   );
 }
 
+function formatDateLabel(value: Date) {
+  return value.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function getSourceHostLabel(sourceUrl: string | null) {
   if (!sourceUrl) {
     return "Source unavailable";
@@ -102,28 +110,6 @@ function resolvePdfUrl({
   return extractPdfUrlFromContent(content);
 }
 
-function extractDateByKeywordLabel({
-  rawDescription,
-  keywordPattern,
-}: {
-  rawDescription: string;
-  keywordPattern: RegExp;
-}) {
-  const description = compactText(rawDescription);
-  if (!description) {
-    return null;
-  }
-
-  const datePattern =
-    "(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4}|[A-Za-z]{3,9}\\s+\\d{1,2},?\\s+\\d{4})";
-  const expression = new RegExp(
-    `(?:${keywordPattern.source})\\s*(?:for\\s*application)?\\s*[:\\-]?\\s*(${datePattern})`,
-    "i"
-  );
-  const match = description.match(expression);
-  return match?.[1] ? match[1].trim() : null;
-}
-
 export default async function JobPostingDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -173,16 +159,11 @@ export default async function JobPostingDetailPage(props: {
     pdfContent: job.pdfContent,
   });
   const salaryLabel = salaryInfo.summary;
-  const deadlineLabel =
-    extractDateByKeywordLabel({
-      rawDescription: detailTextForMeta,
-      keywordPattern:
-        /last\s*date|last\s*date\s*of\s*receipt|closing\s*date|apply\s*before|application\s*deadline|submission\s*deadline|deadline/,
-    }) ?? "Not specified";
   const notificationDateLabel = resolveJobNotificationDateLabel({
     content: detailMarkdown,
     pdfContent: job.pdfContent,
   });
+  const fetchedOnLabel = formatDateLabel(job.createdAt);
   const sourceLabel = getSourceHostLabel(job.sourceUrl);
   const pdfUrl = resolvePdfUrl({
     sourceUrl: job.sourceUrl,
@@ -220,11 +201,11 @@ export default async function JobPostingDetailPage(props: {
               <span className="font-medium">Salary:</span> {salaryLabel}
             </p>
             <p className="break-words">
-              <span className="font-medium">Deadline:</span> {deadlineLabel}
-            </p>
-            <p className="break-words">
               <span className="font-medium">Notification date:</span>{" "}
               {notificationDateLabel}
+            </p>
+            <p className="break-words">
+              <span className="font-medium">Fetched on:</span> {fetchedOnLabel}
             </p>
             <p className="break-words">
               <span className="font-medium">Source:</span> {sourceLabel}

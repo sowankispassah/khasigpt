@@ -83,11 +83,12 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                     <span className="font-medium text-foreground">Salary:</span> {job.salaryLabel}
                   </p>
                   <p className="break-words">
-                    <span className="font-medium text-foreground">Deadline:</span> {job.deadlineLabel}
-                  </p>
-                  <p className="break-words">
                     <span className="font-medium text-foreground">Notification:</span>{" "}
                     {job.notificationDateLabel}
+                  </p>
+                  <p className="break-words">
+                    <span className="font-medium text-foreground">Fetched on:</span>{" "}
+                    {job.fetchedOnLabel}
                   </p>
                   <p className="break-words">
                     <span className="font-medium text-foreground">Source:</span> {job.sourceLabel}
