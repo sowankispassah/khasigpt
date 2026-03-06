@@ -804,6 +804,8 @@ export default async function AdminJobsPage() {
     redirect("/");
   }
 
+  const scrapeProgress = await withTimeoutFallback(getJobsScrapeProgressSnapshot(), null, 10_000);
+
   const [
     jobs,
     managedSources,
@@ -818,7 +820,6 @@ export default async function AdminJobsPage() {
     lastRunStatusRaw,
     lastSkipReasonRaw,
     lastRunSummaryRaw,
-    scrapeProgress,
     scrapeHistory,
   ] = await Promise.all([
     withTimeoutFallback(
@@ -838,7 +839,6 @@ export default async function AdminJobsPage() {
     withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus), null),
     withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason), null),
     withTimeoutFallback(getAppSetting<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY), null),
-    withTimeoutFallback(getJobsScrapeProgressSnapshot(), null, 10_000),
     withTimeoutFallback<Awaited<ReturnType<typeof getJobsScrapeHistory>> | null>(getJobsScrapeHistory({ limit: 50 }), null, 10_000),
   ]);
 
