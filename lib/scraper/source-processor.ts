@@ -65,6 +65,7 @@ const DEFAULT_SOURCE_LISTING_RETRY_ATTEMPTS = 1;
 const DEFAULT_DETAIL_RETRY_ATTEMPTS = 1;
 const DEFAULT_PDF_RETRY_ATTEMPTS = 2;
 const MBDA_HOST = "mbda.gov.in";
+let pdfParserRuntimeReady = false;
 
 const ROLE_TITLE_HINT_PATTERN =
   /\b(manager|officer|assistant|executive|engineer|teacher|tutor|nurse|staff|consultant|developer|analyst|specialist|coordinator|supervisor|clerk|technician|lecturer|faculty|professor|driver|operator|accountant|sales|marketing|recruitment|post|vacancy)\b/i;
@@ -572,6 +573,46 @@ type PdfProcessingOutcome = PdfExtractionResult & {
   fields: ReturnType<typeof extractPdfStructuredFields>;
 };
 
+async function ensurePdfParserRuntimeReady() {
+  if (pdfParserRuntimeReady) {
+    return;
+  }
+
+  const canvas = await import("@napi-rs/canvas");
+  if (!globalThis.DOMMatrix) {
+    globalThis.DOMMatrix = canvas.DOMMatrix as unknown as typeof DOMMatrix;
+  }
+  if (!globalThis.ImageData) {
+    globalThis.ImageData = canvas.ImageData as unknown as typeof ImageData;
+  }
+  if (!globalThis.Path2D) {
+    globalThis.Path2D = canvas.Path2D as unknown as typeof Path2D;
+  }
+
+  pdfParserRuntimeReady = true;
+}
+
+async function extractPdfTextDirectly(buffer: Buffer, maxPdfTextChars: number) {
+  await ensurePdfParserRuntimeReady();
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: buffer });
+
+  try {
+    const result = await parser.getText();
+    const normalized = normalizeMultiline(result.text ?? "");
+    return {
+      text: truncateText(normalized, maxPdfTextChars),
+      truncated: normalized.length > maxPdfTextChars,
+    };
+  } finally {
+    try {
+      await parser.destroy();
+    } catch {
+      // noop
+    }
+  }
+}
+
 function isPdfResponse({
   contentType,
   buffer,
@@ -741,7 +782,14 @@ async function processPdf({
       {
         maxTextChars: maxPdfTextChars,
       }
-    );
+    ).catch(async () => {
+      const fallback = await extractPdfTextDirectly(downloaded.buffer, maxPdfTextChars);
+      return {
+        name: "job-notification.pdf",
+        text: fallback.text,
+        truncated: fallback.truncated,
+      };
+    });
 
     const pdfText = truncateText(normalizeMultiline(parsed.text), maxPdfTextChars);
     if (!pdfText) {
