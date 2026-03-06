@@ -1,3 +1,4 @@
+import { isJobSector, resolveJobSector, type JobSector } from "@/lib/jobs/sector";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 
 type EmploymentTypeFilter =
@@ -6,7 +7,7 @@ type EmploymentTypeFilter =
   | "contract"
   | "internship";
 
-type SectorFilter = "government" | "private";
+type SectorFilter = Exclude<JobSector, "unknown">;
 
 type QualificationFilter =
   | "10th"
@@ -104,32 +105,6 @@ const WORD_STOPLIST = new Set([
   "where",
   "with",
 ]);
-
-const GOVERNMENT_HINTS = [
-  "government",
-  "govt",
-  "public sector",
-  "ministry",
-  "department",
-  "commission",
-  "state government",
-  "central government",
-  "municipal",
-  "panchayat",
-  "district",
-  "psu",
-];
-
-const PRIVATE_HINTS = [
-  "private",
-  "pvt",
-  "ltd",
-  "limited",
-  "llp",
-  "startup",
-  "corporate",
-  "company",
-];
 
 const QUALIFICATION_PATTERNS: Array<{
   id: QualificationFilter;
@@ -536,7 +511,7 @@ function describeState(state: JobsFilterState) {
   }
 
   if (state.employmentType) {
-    labels.push(`type: ${state.employmentType}`);
+    labels.push(`employment type: ${state.employmentType}`);
   }
 
   if (state.sector) {
@@ -554,21 +529,12 @@ function describeState(state: JobsFilterState) {
   return labels;
 }
 
-function isGovernmentJob(text: string) {
-  const normalized = normalize(text);
-  return GOVERNMENT_HINTS.some((hint) => normalized.includes(hint));
-}
-
-function isPrivateJob(text: string) {
-  const normalized = normalize(text);
-  return PRIVATE_HINTS.some((hint) => normalized.includes(hint));
-}
-
 function getJobHaystack(job: JobPostingRecord) {
   return normalize([
     job.title,
     job.company,
     job.location,
+    job.sector,
     job.employmentType,
     job.content,
     ...job.tags,
@@ -580,6 +546,7 @@ function getJobPrimaryHaystack(job: JobPostingRecord) {
     job.title,
     job.company,
     job.location,
+    job.sector,
     job.employmentType,
     ...job.tags,
   ].join(" "));
@@ -605,12 +572,25 @@ function matchesQualification(haystack: string, qualifications: QualificationFil
   });
 }
 
-function matchesSector(haystack: string, sector: SectorFilter) {
-  if (sector === "government") {
-    return isGovernmentJob(haystack);
+function resolveCanonicalSector(job: JobPostingRecord): JobSector {
+  if (isJobSector((job as JobPostingRecord & { sector?: unknown }).sector)) {
+    return job.sector;
   }
 
-  return isPrivateJob(haystack) && !isGovernmentJob(haystack);
+  return resolveJobSector({
+    title: job.title,
+    company: job.company,
+    source: job.source,
+    sourceUrl: job.sourceUrl,
+    applicationLink: job.applicationLink,
+    description: job.content,
+    pdfContent: job.pdfContent,
+    tags: job.tags,
+  });
+}
+
+function matchesSector(job: JobPostingRecord, sector: SectorFilter) {
+  return resolveCanonicalSector(job) === sector;
 }
 
 function matchesKeywords(haystack: string, keywords: string[]) {
@@ -743,7 +723,7 @@ function applyFilters(jobs: JobPostingRecord[], state: JobsFilterState) {
       return false;
     }
 
-    if (state.sector && !matchesSector(haystack, state.sector)) {
+    if (state.sector && !matchesSector(job, state.sector)) {
       return false;
     }
 

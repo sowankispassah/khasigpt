@@ -11,6 +11,7 @@ function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {
     content: overrides.content ?? "12th pass required. Salary Rs 18000 to Rs 24000 per month.",
     company: overrides.company ?? "Acme Ltd",
     location: overrides.location ?? "Agartala",
+    sector: overrides.sector ?? "unknown",
     employmentType: overrides.employmentType ?? "Full-time",
     studyExam: overrides.studyExam ?? "Unknown",
     studyRole: overrides.studyRole ?? "Unknown",
@@ -36,20 +37,22 @@ const jobs: JobPostingRecord[] = [
   createJob({
     id: "job-12th-govt",
     title: "Office Assistant",
-    company: "Tripura Public Service Commission",
+    company: "Public Hiring Board",
     location: "Agartala",
     content:
-      "Government recruitment. 12th pass required. Salary Rs 18000 to Rs 22000 per month.",
-    tags: ["government", "clerical"],
+      "Clerical opening. 12th pass required. Salary Rs 18000 to Rs 22000 per month.",
+    sector: "government",
+    tags: ["clerical"],
   }),
   createJob({
     id: "job-12th-private",
     title: "Store Helper",
-    company: "Retail Hub Pvt Ltd",
+    company: "Retail Hub",
     location: "Agartala",
     content:
-      "Private company opening. 12th pass required. Salary Rs 16000 to Rs 20000 per month. Part-time allowed.",
-    tags: ["private", "retail", "part-time"],
+      "Store operations role. 12th pass required. Salary Rs 16000 to Rs 20000 per month. Part-time allowed.",
+    sector: "private",
+    tags: ["retail", "part-time"],
   }),
   createJob({
     id: "job-grad",
@@ -58,6 +61,7 @@ const jobs: JobPostingRecord[] = [
     location: "Shillong",
     content:
       "Graduate degree required. Salary Rs 35000 to Rs 45000 per month. Full-time private role.",
+    sector: "private",
     tags: ["private", "analytics"],
   }),
 ];
@@ -94,7 +98,7 @@ test.describe("jobs filtering engine", () => {
     const result = resolveJobsFilterConversation({
       jobs,
       priorUserMessages: ["Show me 12th pass jobs"],
-      latestUserMessage: "Show me jobs with good salary",
+      latestUserMessage: "good salary",
     });
 
     expect(result.clarification).toContain("salary");

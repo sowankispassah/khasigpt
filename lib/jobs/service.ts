@@ -2,6 +2,11 @@ import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { ragEntry } from "@/lib/db/schema";
+import {
+  isJobSector,
+  resolveJobSector,
+  type JobSector,
+} from "@/lib/jobs/sector";
 import type {
   RagEmbeddingStatus,
   RagEntryApprovalStatus,
@@ -49,11 +54,16 @@ type JobPostingMetadataInput = {
   company: string;
   location: string;
   employmentType: string;
+  sector?: JobSector | null;
   studyExam: string;
   studyRole: string;
   studyYears: number[];
   studyTags: string[];
   tags: string[];
+  source?: string | null;
+  sourceUrl?: string | null;
+  description?: string | null;
+  pdfContent?: string | null;
   parseError?: string | null;
 };
 
@@ -142,6 +152,22 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   const rawSourceUrl = toTrimmedString(row.source_url);
   const rawApplicationLink = toTrimmedString(row.application_link ?? null);
   const rawSalary = toTrimmedString(row.salary ?? null);
+  const content = toTrimmedString(row.description);
+  const source = toTrimmedString(row.source ?? null) || null;
+  const pdfContent = toTrimmedString(row.pdf_content ?? null) || null;
+  const company = resolveCompanyName({
+    rawCompany: toTrimmedString(row.company),
+    rawSourceUrl,
+  });
+  const sector = resolveJobSector({
+    title: toTrimmedString(row.title),
+    company,
+    source,
+    sourceUrl: rawSourceUrl,
+    applicationLink: rawApplicationLink,
+    description: content,
+    pdfContent,
+  });
   const sourceUrl =
     rawSourceUrl && !rawSourceUrl.startsWith("manual://") ? rawSourceUrl : null;
   const applicationLink =
@@ -159,15 +185,12 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   return {
     id: row.id,
     title: toTrimmedString(row.title) || "Job opening",
-    content: toTrimmedString(row.description),
-    company: resolveCompanyName({
-      rawCompany: toTrimmedString(row.company),
-      rawSourceUrl,
-    }),
+    content,
+    company,
     location: resolveJobLocation({
       location: toTrimmedString(row.location),
-      content: toTrimmedString(row.description),
-      pdfContent: toTrimmedString(row.pdf_content ?? null),
+      content,
+      pdfContent,
     }),
     salary: (() => {
       const summary = resolveJobSalaryInfo({
@@ -175,10 +198,11 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       }).summary;
       return summary === NO_SALARY_LABEL ? null : summary;
     })(),
-    source: toTrimmedString(row.source ?? null) || null,
+    source,
     applicationLink,
-    pdfContent: toTrimmedString(row.pdf_content ?? null) || null,
+    pdfContent,
     contentHash: toTrimmedString(row.content_hash ?? null) || null,
+    sector,
     employmentType: UNKNOWN_LABEL,
     studyExam: UNKNOWN_LABEL,
     studyRole: UNKNOWN_LABEL,
@@ -195,6 +219,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
       jobs_kind: JOBS_RAG_KIND,
       jobs_source: JOBS_RAG_SOURCE,
       source: JOBS_RAG_SOURCE,
+      sector,
     },
     models: [],
     categoryId: null,
@@ -261,6 +286,18 @@ export function buildJobPostingMetadata(
   const company = input.company.trim() || UNKNOWN_LABEL;
   const location = input.location.trim() || DEFAULT_JOB_LOCATION;
   const employmentType = input.employmentType.trim() || UNKNOWN_LABEL;
+  const sector =
+    input.sector && isJobSector(input.sector)
+      ? input.sector
+      : resolveJobSector({
+          title: input.jobTitle,
+          company,
+          source: input.source,
+          sourceUrl: input.sourceUrl,
+          description: input.description,
+          pdfContent: input.pdfContent,
+          tags: input.tags,
+        });
   const studyExam = input.studyExam.trim() || UNKNOWN_LABEL;
   const studyRole = input.studyRole.trim() || UNKNOWN_LABEL;
   const studyYears = Array.from(
@@ -286,6 +323,7 @@ export function buildJobPostingMetadata(
     company,
     location,
     employment_type: employmentType,
+    sector,
     study_exam: studyExam,
     study_role: studyRole,
     study_years: studyYears,
@@ -426,6 +464,7 @@ export function toJobCard(job: JobPostingRecord): JobCard {
     salary: job.salary,
     source: job.source,
     applicationLink: job.applicationLink,
+    sector: job.sector,
     employmentType: job.employmentType,
     studyExam: job.studyExam,
     studyRole: job.studyRole,
@@ -495,7 +534,12 @@ function applyRagStateToJob(
   }
 
   const metadata = toMetadataRecord(ragState.metadata);
+  const mergedMetadata: Record<string, unknown> = {
+    ...job.metadata,
+    ...metadata,
+  };
   const metadataEmploymentType = toTrimmedString(metadata.employment_type);
+  const metadataSector = isJobSector(metadata.sector) ? metadata.sector : null;
   const metadataStudyExam = toTrimmedString(metadata.study_exam);
   const metadataStudyRole = toTrimmedString(metadata.study_role);
   const metadataTags = getMetadataStringList(metadata, "tags");
@@ -503,9 +547,11 @@ function applyRagStateToJob(
   const metadataStudyYears = getMetadataNumberList(metadata, "study_years");
   const metadataParseError = toTrimmedString(metadata.parse_error) || null;
   const metadataSourceUrl = toTrimmedString(metadata.source_url) || null;
+  mergedMetadata.sector = metadataSector ?? job.sector;
 
   return {
     ...job,
+    sector: metadataSector ?? job.sector,
     employmentType: metadataEmploymentType || job.employmentType,
     studyExam: metadataStudyExam || job.studyExam,
     studyRole: metadataStudyRole || job.studyRole,
@@ -517,7 +563,7 @@ function applyRagStateToJob(
     status: ragState.status,
     approvalStatus: ragState.approvalStatus,
     embeddingStatus: ragState.embeddingStatus,
-    metadata: metadata,
+    metadata: mergedMetadata,
     models: Array.isArray(ragState.models) ? ragState.models : [],
     categoryId: ragState.categoryId ?? null,
     createdAt:

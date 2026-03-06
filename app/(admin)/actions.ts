@@ -122,6 +122,7 @@ import {
   getJobPostingById,
   listJobPostingEntries,
 } from "@/lib/jobs/service";
+import { isJobSector, resolveJobSector } from "@/lib/jobs/sector";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 import {
   buildQuestionPaperMetadata,
@@ -3229,6 +3230,7 @@ type SerializedJobPosting = {
   title: string;
   company: string;
   location: string;
+  sector: "government" | "private" | "unknown";
   employmentType: string;
   studyExam: string;
   studyRole: string;
@@ -3313,6 +3315,7 @@ const serializeJobPosting = (job: JobPostingRecord): SerializedJobPosting => {
     title: job.title,
     company: job.company,
     location: job.location,
+    sector: job.sector,
     employmentType: job.employmentType,
     studyExam: job.studyExam,
     studyRole: job.studyRole,
@@ -3451,6 +3454,8 @@ export async function createJobPostingAction(formData: FormData) {
     company,
     location,
     employmentType,
+    sourceUrl: fileResult.sourceUrl,
+    description: fileResult.content,
     studyExam,
     studyRole,
     studyYears,
@@ -3485,6 +3490,15 @@ export async function createJobPostingAction(formData: FormData) {
       title: jobTitle,
       company,
       location,
+      sector: isJobSector(metadata.sector)
+        ? metadata.sector
+        : resolveJobSector({
+            title: jobTitle,
+            company,
+            sourceUrl: fileResult.sourceUrl,
+            description: fileResult.content,
+            tags,
+          }),
       employmentType,
       studyExam,
       studyRole,
@@ -3664,6 +3678,8 @@ export async function updateJobPostingAction(formData: FormData) {
     company,
     location,
     employmentType,
+    sourceUrl,
+    description: content,
     studyExam,
     studyRole,
     studyYears,
@@ -3696,6 +3712,15 @@ export async function updateJobPostingAction(formData: FormData) {
       title: jobTitle,
       company,
       location,
+      sector: isJobSector(metadata.sector)
+        ? metadata.sector
+        : resolveJobSector({
+            title: jobTitle,
+            company,
+            sourceUrl,
+            description: content,
+            tags,
+          }),
       employmentType,
       studyExam,
       studyRole,

@@ -3,6 +3,7 @@ import type {
   RagEntryApprovalStatus,
   RagEntryStatus,
 } from "@/lib/db/schema";
+import type { JobSector } from "@/lib/jobs/sector";
 import type { QuestionPaperRecord } from "@/lib/study/types";
 
 export type JobPostingMetadata = {
@@ -13,6 +14,7 @@ export type JobPostingMetadata = {
   company: string;
   location: string;
   employment_type: string;
+  sector: JobSector;
   study_exam: string;
   study_role: string;
   study_years: number[];
@@ -32,6 +34,7 @@ export type JobPostingRecord = {
   applicationLink?: string | null;
   pdfContent?: string | null;
   contentHash?: string | null;
+  sector: JobSector;
   employmentType: string;
   studyExam: string;
   studyRole: string;
@@ -60,6 +63,7 @@ export type JobCard = {
   salary?: string | null;
   source?: string | null;
   applicationLink?: string | null;
+  sector: JobSector;
   employmentType: string;
   studyExam: string;
   studyRole: string;
@@ -76,6 +80,7 @@ export type JobListItem = {
   title: string;
   company: string;
   location: string;
+  sector: JobSector;
   employmentType: string;
   salaryLabel: string;
   notificationDateLabel: string;

@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/queries";
 import { ragEntry, user } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { resolveJobSector } from "@/lib/jobs/sector";
 import {
   createRagEntry,
   deleteRagEntries,
@@ -119,6 +120,15 @@ function buildJobMetadata(row: SupabaseJobRow) {
   const sourceUrl = toTrimmedString(row.application_link ?? row.source_url);
   const normalizedSourceUrl = normalizeSourceUrl(sourceUrl);
   const sourceLabel = toTrimmedString(row.source ?? "") || UNKNOWN_LABEL;
+  const sector = resolveJobSector({
+    title,
+    company,
+    source: sourceLabel,
+    sourceUrl: toTrimmedString(row.source_url),
+    applicationLink: toTrimmedString(row.application_link ?? row.source_url),
+    description: toTrimmedString(row.description ?? null),
+    pdfContent: toTrimmedString(row.pdf_content ?? null),
+  });
 
   return {
     jobs_kind: "job_posting",
@@ -130,6 +140,7 @@ function buildJobMetadata(row: SupabaseJobRow) {
     location,
     salary: toTrimmedString(row.salary ?? null) || null,
     source: sourceLabel,
+    sector,
     employment_type: UNKNOWN_LABEL,
     study_exam: UNKNOWN_LABEL,
     study_role: UNKNOWN_LABEL,

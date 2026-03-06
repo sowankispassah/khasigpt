@@ -12,6 +12,7 @@ function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {
     content: overrides.content ?? "No description available.",
     company: overrides.company ?? "Acme Ltd",
     location: overrides.location ?? "Shillong",
+    sector: overrides.sector ?? "unknown",
     salary: overrides.salary ?? null,
     source: overrides.source ?? null,
     applicationLink: overrides.applicationLink ?? null,

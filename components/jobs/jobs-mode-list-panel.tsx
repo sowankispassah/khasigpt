@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { JobsInfiniteList } from "@/components/jobs/jobs-infinite-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getJobSectorLabel } from "@/lib/jobs/sector";
 import type { JobListItem } from "@/lib/jobs/types";
 
 type JobsModeListPanelProps = {
@@ -15,6 +16,7 @@ type JobsLocalFilters = {
   q: string;
   company: string;
   location: string;
+  sector: string;
   employmentType: string;
 };
 
@@ -22,6 +24,7 @@ const EMPTY_FILTERS: JobsLocalFilters = {
   q: "",
   company: "",
   location: "",
+  sector: "",
   employmentType: "",
 };
 
@@ -54,6 +57,7 @@ export function JobsModeListPanel({
     const qFilter = normalizeFilter(appliedFilters.q);
     const companyFilter = normalizeFilter(appliedFilters.company);
     const locationFilter = normalizeFilter(appliedFilters.location);
+    const sectorFilter = normalizeFilter(appliedFilters.sector);
     const employmentTypeFilter = normalizeFilter(appliedFilters.employmentType);
 
     return jobs.filter((job) => {
@@ -61,6 +65,9 @@ export function JobsModeListPanel({
         return false;
       }
       if (locationFilter && normalizeFilter(job.location) !== locationFilter) {
+        return false;
+      }
+      if (sectorFilter && normalizeFilter(job.sector) !== sectorFilter) {
         return false;
       }
       if (employmentTypeFilter && normalizeFilter(job.employmentType) !== employmentTypeFilter) {
@@ -74,6 +81,7 @@ export function JobsModeListPanel({
         job.title,
         job.company,
         job.location,
+        getJobSectorLabel(job.sector),
         job.employmentType,
         job.descriptionSnippet,
         job.salaryLabel,
@@ -107,7 +115,7 @@ export function JobsModeListPanel({
         </CardHeader>
         <CardContent>
           <form
-            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6"
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7"
             onSubmit={(event) => {
               event.preventDefault();
               setAppliedFilters(draftFilters);
@@ -136,6 +144,17 @@ export function JobsModeListPanel({
               placeholder="Location"
               value={draftFilters.location}
             />
+            <select
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              name="sector"
+              onChange={(event) => setDraftFilters((prev) => ({ ...prev, sector: event.target.value }))}
+              value={draftFilters.sector}
+            >
+              <option value="">All sectors</option>
+              <option value="government">Government</option>
+              <option value="private">Private</option>
+              <option value="unknown">Unknown</option>
+            </select>
             <input
               className="rounded-md border bg-background px-3 py-2 text-sm"
               list="jobs-mode-employment-type-options"

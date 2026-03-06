@@ -80,6 +80,7 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
     title: job.title,
     company: job.company,
     location: job.location,
+    sector: job.sector,
     employmentType: job.employmentType,
     salaryLabel: resolveJobSalaryInfo({
       salary: job.salary,
