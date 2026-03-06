@@ -1110,8 +1110,7 @@ export async function scrapeSource({
             return true;
           }
 
-          const missingPdfData =
-            !existingState.hasPdfSourceUrl && !existingState.hasPdfContent;
+          const missingPdfData = !existingState.hasPdfContent;
           if (missingPdfData && shouldRepairMissingPdfForCandidate(candidate)) {
             return true;
           }
