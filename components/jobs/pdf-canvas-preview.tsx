@@ -414,6 +414,9 @@ export function PdfCanvasPreview({
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [pagesRendered, setPagesRendered] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(0);
+  const [useBrowserFallback, setUseBrowserFallback] = useState(false);
+  const [browserPreviewLoading, setBrowserPreviewLoading] = useState(false);
+  const [browserPreviewFailed, setBrowserPreviewFailed] = useState(false);
 
   const normalizedMaxPages = useMemo<number | null>(() => {
     if (!Number.isFinite(maxPages) || (maxPages ?? 0) <= 0) {
@@ -421,6 +424,12 @@ export function PdfCanvasPreview({
     }
     return Math.max(1, Math.trunc(maxPages ?? 0));
   }, [maxPages]);
+
+  useEffect(() => {
+    setUseBrowserFallback(false);
+    setBrowserPreviewLoading(false);
+    setBrowserPreviewFailed(false);
+  }, [src]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -446,6 +455,9 @@ export function PdfCanvasPreview({
   }, []);
 
   useEffect(() => {
+    if (useBrowserFallback) {
+      return;
+    }
     if (containerWidth <= 0) {
       return;
     }
@@ -527,6 +539,7 @@ export function PdfCanvasPreview({
         const effectiveWidth = containerWidth;
         const widthBucket = getWidthBucket(effectiveWidth);
         const deviceScale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+        let totalTextItems = 0;
 
         for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
           if (cancelled) {
@@ -546,6 +559,15 @@ export function PdfCanvasPreview({
           const renderViewport = page.getViewport({
             scale: renderScale * deviceScale,
           });
+          const textContent = await page.getTextContent({
+            includeMarkedContent: true,
+            disableNormalization: true,
+          });
+          const textItems = textContent.items.filter(
+            (item: { str?: string }) =>
+              typeof item.str === "string" && item.str.trim().length > 0
+          ).length;
+          totalTextItems += textItems;
 
           const pageWrapper = globalThis.document.createElement("div");
           pageWrapper.className = "relative mb-3 block box-border w-full bg-white";
@@ -606,27 +628,29 @@ export function PdfCanvasPreview({
           pageWrapper.appendChild(textLayerDiv);
 
           const textLayer = new pdfjs.TextLayer({
-            textContentSource:
-              typeof page.streamTextContent === "function"
-                ? page.streamTextContent({
-                    includeMarkedContent: true,
-                    disableNormalization: true,
-                  })
-                : await page.getTextContent({
-                    includeMarkedContent: true,
-                    disableNormalization: true,
-                  }),
+            textContentSource: textContent,
             container: textLayerDiv,
             viewport: cssViewport,
           });
           await textLayer.render();
-          registerTextSelectionLayer(textLayerDiv);
-          registeredTextLayers.push(textLayerDiv);
+          if (textItems > 0) {
+            registerTextSelectionLayer(textLayerDiv);
+            registeredTextLayers.push(textLayerDiv);
+          }
 
           setPagesRendered((previous) => previous + 1);
         }
 
         if (!cancelled) {
+          if (totalTextItems === 0) {
+            clearMount();
+            setUseBrowserFallback(true);
+            setBrowserPreviewLoading(true);
+            setBrowserPreviewFailed(false);
+            setState("ready");
+            return;
+          }
+
           setState("ready");
         }
       } catch (error) {
@@ -658,7 +682,63 @@ export function PdfCanvasPreview({
         // noop
       }
     };
-  }, [containerWidth, normalizedMaxPages, src]);
+  }, [containerWidth, normalizedMaxPages, src, useBrowserFallback]);
+
+  if (useBrowserFallback) {
+    return (
+      <div className="relative min-h-[220px] w-full bg-muted/10">
+        {!browserPreviewFailed ? (
+          <>
+            <div className="px-3 py-2 text-muted-foreground text-xs">
+              This PDF has no extractable text layer in our custom preview. Switched to the
+              browser PDF viewer so text can still be selected.
+            </div>
+            <iframe
+              className={`h-[75vh] w-full bg-white ${
+                browserPreviewLoading ? "opacity-0" : "opacity-100"
+              }`}
+              loading="lazy"
+              onError={() => {
+                setBrowserPreviewLoading(false);
+                setBrowserPreviewFailed(true);
+              }}
+              onLoad={() => {
+                setBrowserPreviewLoading(false);
+                setBrowserPreviewFailed(false);
+              }}
+              src={src}
+              title={`${title} browser preview`}
+            />
+          </>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/95 p-4 text-center">
+            <p className="text-muted-foreground text-sm">
+              Browser PDF preview failed to load. Open it in a new tab.
+            </p>
+            <a
+              className="rounded-md border px-3 py-2 text-sm underline underline-offset-2"
+              href={src}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open in new tab
+            </a>
+          </div>
+        )}
+
+        {browserPreviewLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-muted/20">
+            <span className="flex items-center gap-2 text-muted-foreground text-sm">
+              <span className="h-4 w-4 animate-spin">
+                <LoaderIcon size={16} />
+              </span>
+              Loading selectable PDF preview...
+            </span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-[220px] w-full bg-muted/10">
