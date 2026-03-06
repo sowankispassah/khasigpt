@@ -90,6 +90,7 @@ export function toJobListItem(job: JobPostingRecord): JobListItem {
       resolveJobNotificationDateLabel({
         content: job.content,
         pdfContent: job.pdfContent,
+        referenceDate: job.createdAt,
       }),
     fetchedOnLabel: formatDateLabel(job.createdAt),
     sourceLabel: job.source?.trim() || getSourceHostLabel(job.sourceUrl),

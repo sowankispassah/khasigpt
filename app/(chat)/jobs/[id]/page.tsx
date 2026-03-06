@@ -162,6 +162,7 @@ export default async function JobPostingDetailPage(props: {
   const notificationDateLabel = resolveJobNotificationDateLabel({
     content: detailMarkdown,
     pdfContent: job.pdfContent,
+    referenceDate: job.createdAt,
   });
   const fetchedOnLabel = formatDateLabel(job.createdAt);
   const sourceLabel = getSourceHostLabel(job.sourceUrl);

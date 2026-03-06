@@ -64,6 +64,15 @@ test.describe("jobs notification date parsing", () => {
     ).toBe("Not specified");
   });
 
+  test("converts linkedin relative posted dates using fetched time as reference", () => {
+    expect(
+      resolveJobNotificationDateLabel({
+        content: "Web Content: Shillong, Meghalaya, India Actively Hiring 2 days ago",
+        referenceDate: new Date("2026-03-06T18:20:18.000Z"),
+      })
+    ).toBe("04 Mar 2026");
+  });
+
   test("list item does not fall back to createdAt for notification date", () => {
     const job = createJob({
       content: "Recruitment notice. Apply online.",
