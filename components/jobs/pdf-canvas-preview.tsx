@@ -409,7 +409,7 @@ export function PdfCanvasPreview({
   maxPages,
 }: PdfCanvasPreviewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [containerWidthBucket, setContainerWidthBucket] = useState<number>(0);
   const [state, setState] = useState<RenderState>("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [pagesRendered, setPagesRendered] = useState<number>(0);
@@ -431,7 +431,7 @@ export function PdfCanvasPreview({
     const updateWidth = () => {
       const width = Math.floor(container.clientWidth);
       if (Number.isFinite(width) && width > 0) {
-        setContainerWidth(width);
+        setContainerWidthBucket(getWidthBucket(width));
       }
     };
 
@@ -446,7 +446,7 @@ export function PdfCanvasPreview({
   }, []);
 
   useEffect(() => {
-    if (containerWidth <= 0) {
+    if (containerWidthBucket <= 0) {
       return;
     }
 
@@ -525,9 +525,10 @@ export function PdfCanvasPreview({
           return;
         }
 
-        const effectiveWidth = containerWidth;
-        const widthBucket = getWidthBucket(effectiveWidth);
+        const effectiveWidth = containerWidthBucket;
+        const widthBucket = containerWidthBucket;
         const deviceScale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+        let renderedPages = 0;
 
         for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
           if (cancelled) {
@@ -626,12 +627,13 @@ export function PdfCanvasPreview({
             registeredTextLayers.push(textLayerDiv);
           }
 
-          setPagesRendered((previous) => previous + 1);
+          renderedPages += 1;
         }
 
         if (!cancelled) {
           clearMount();
           mountRef.current?.appendChild(nextMount);
+          setPagesRendered(renderedPages);
           setState("ready");
         }
       } catch (error) {
@@ -663,7 +665,7 @@ export function PdfCanvasPreview({
         // noop
       }
     };
-  }, [containerWidth, normalizedMaxPages, src]);
+  }, [containerWidthBucket, normalizedMaxPages, src]);
 
   return (
     <div className="relative min-h-[220px] w-full bg-muted/10">
