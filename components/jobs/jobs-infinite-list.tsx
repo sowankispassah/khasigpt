@@ -103,14 +103,16 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                   </p>
                 </div>
 
-                <div className="mt-auto flex items-center justify-between gap-3 rounded-[20px] bg-muted/70 px-4 py-3">
+                <div className="mt-auto flex items-center gap-3">
+                  <div className="min-w-0 flex-1 rounded-[20px] bg-muted/70 px-4 py-3">
+                    <p className="truncate font-medium text-xs sm:text-sm">
+                      <span className="text-muted-foreground">
+                        Notification date:
+                      </span>{" "}
+                      {job.notificationDateLabel}
+                    </p>
+                  </div>
                   <ViewDetailsButton href={`/jobs/${job.id}`} />
-                  <p className="shrink-0 whitespace-nowrap font-medium text-xs sm:text-sm">
-                    <span className="text-muted-foreground">
-                      Notification date:
-                    </span>{" "}
-                    {job.notificationDateLabel}
-                  </p>
                 </div>
               </CardContent>
             </Card>
