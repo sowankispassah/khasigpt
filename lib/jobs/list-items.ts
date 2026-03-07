@@ -1,4 +1,3 @@
-import { resolveJobPdfMetaText } from "@/lib/jobs/pdf-meta";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import type { JobListItem, JobPostingRecord } from "@/lib/jobs/types";
@@ -79,7 +78,12 @@ function hasJobPdfFile(job: {
 }
 
 export async function toJobListItem(job: JobPostingRecord): Promise<JobListItem> {
-  const pdfMetaText = await resolveJobPdfMetaText(job);
+  // Keep the jobs list route fast by using only already-stored PDF text.
+  // The detail page can do slower enrichment when the user opens a specific job.
+  const pdfMetaText =
+    typeof job.pdfContent === "string" && job.pdfContent.trim().length > 0
+      ? job.pdfContent
+      : null;
 
   return {
     id: job.id,

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
-import { type MouseEvent, useCallback, useEffect, useState } from "react";
+import { startTransition, type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
 import { PlusIcon } from "@/components/icons";
 import {
@@ -139,6 +139,17 @@ export function AppSidebar({
         preloadChat();
       }
       setOpenMobile(false);
+
+      if (target === "home" || target === "chat" || target === "study" || target === "jobs") {
+        if (typeof window !== "undefined") {
+          window.history.pushState(null, "", href);
+        }
+        startTransition(() => {
+          router.refresh();
+        });
+        return;
+      }
+
       router.push(href, { scroll: false });
     },
     [pendingNavigation, router, setOpenMobile]

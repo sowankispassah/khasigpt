@@ -47,6 +47,14 @@ export default async function Page({
     redirect("/login?callbackUrl=/");
   }
 
+  const requestedMode =
+    typeof resolvedSearchParams?.mode === "string"
+      ? resolvedSearchParams.mode
+      : null;
+  const isStudyMode = requestedMode === "study";
+  const isJobsMode = requestedMode === "jobs";
+  const shouldLoadHomePrompts = !isStudyMode && !isJobsMode;
+
   const CHAT_HOME_QUERY_TIMEOUT_MS = 8_000;
   const IMAGE_ACCESS_TIMEOUT_MS = 6_000;
   const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
@@ -78,16 +86,20 @@ export default async function Page({
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
-    safeQuery(
-      "suggested prompts",
-      loadSuggestedPrompts(preferredLanguage, session.user.role),
-      []
-    ),
-    safeQuery(
-      "icon prompt actions",
-      loadIconPromptActions(preferredLanguage, session.user.role),
-      []
-    ),
+    shouldLoadHomePrompts
+      ? safeQuery(
+          "suggested prompts",
+          loadSuggestedPrompts(preferredLanguage, session.user.role),
+          []
+        )
+      : Promise.resolve([]),
+    shouldLoadHomePrompts
+      ? safeQuery(
+          "icon prompt actions",
+          loadIconPromptActions(preferredLanguage, session.user.role),
+          []
+        )
+      : Promise.resolve([]),
     safeQuery("languages", listLanguagesWithSettings(), []),
     safeAppSettingQuery(
       "custom knowledge flag",
@@ -180,17 +192,11 @@ export default async function Page({
   );
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
-  const requestedMode =
-    typeof resolvedSearchParams?.mode === "string"
-      ? resolvedSearchParams.mode
-      : null;
   const requestedJobId =
     typeof resolvedSearchParams?.jobId === "string" &&
     resolvedSearchParams.jobId.trim().length > 0
       ? resolvedSearchParams.jobId.trim()
       : null;
-  const isStudyMode = requestedMode === "study";
-  const isJobsMode = requestedMode === "jobs";
 
   if (isStudyMode && !studyModeEnabled) {
     redirect("/chat");

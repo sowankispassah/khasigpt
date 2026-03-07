@@ -8,6 +8,7 @@ import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
 import type { JobListItem } from "@/lib/jobs/types";
 import type { ChatMessage } from "@/lib/types";
+import { doneGlobalProgress } from "@/lib/ui/global-progress";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -89,6 +90,10 @@ export function ChatLoader(props: ChatLoaderProps) {
   useMemo(() => {
     loadChatModule().catch(() => undefined);
   }, [attempt]);
+
+  useEffect(() => {
+    doneGlobalProgress();
+  }, [props.id, props.chatMode]);
 
   useEffect(() => {
     let cancelled = false;
