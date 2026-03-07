@@ -16,6 +16,7 @@ import type { JobListItem } from "@/lib/jobs/types";
 import { cn } from "@/lib/utils";
 
 type JobsModeListPanelProps = {
+  isLoading?: boolean;
   jobs: JobListItem[];
 };
 
@@ -85,6 +86,7 @@ function JobsFilterSelect({
 }
 
 export function JobsModeListPanel({
+  isLoading = false,
   jobs,
 }: JobsModeListPanelProps) {
   const [filters, setFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
@@ -148,6 +150,38 @@ export function JobsModeListPanel({
       ),
     [filters]
   );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/35 p-3 shadow-sm sm:p-4">
+          <div className="flex flex-col gap-3">
+            <div className="h-12 animate-pulse rounded-[22px] bg-muted/70" />
+            <div className="flex gap-2">
+              <div className="h-10 w-32 animate-pulse rounded-full bg-muted/70" />
+              <div className="h-10 w-32 animate-pulse rounded-full bg-muted/70" />
+              <div className="h-10 w-32 animate-pulse rounded-full bg-muted/70" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[1, 2, 3, 4].map((item) => (
+            <div
+              className="rounded-[28px] border border-border/60 p-5 shadow-sm"
+              key={item}
+            >
+              <div className="space-y-3">
+                <div className="h-4 w-1/3 animate-pulse rounded bg-muted/70" />
+                <div className="h-6 w-4/5 animate-pulse rounded bg-muted/70" />
+                <div className="h-12 animate-pulse rounded-[20px] bg-muted/70" />
+                <div className="h-10 animate-pulse rounded-[20px] bg-muted/70" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

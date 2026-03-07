@@ -25,7 +25,10 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
+import {
+  doneGlobalProgress,
+  startGlobalProgress,
+} from "@/lib/ui/global-progress";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
 const SidebarHistory = dynamic(
@@ -60,6 +63,7 @@ const HOME_HREF = "/chat";
 const NEW_CHAT_HREF = "/chat?new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
+const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
 export function AppSidebar({
   calculatorEnabled = true,
@@ -89,6 +93,7 @@ export function AppSidebar({
     // Close the mobile sidebar after navigation completes (avoid delaying URL change).
     setOpenMobile(false);
     setPendingNavigation(null);
+    doneGlobalProgress();
   }, [navigationFingerprint, setOpenMobile]);
 
   const shouldHandleClientNavigation = useCallback(
@@ -127,6 +132,18 @@ export function AppSidebar({
     [prefetchRoute]
   );
 
+  const prefetchJobsModeData = useCallback(() => {
+    if (!shouldPrefetch()) {
+      return;
+    }
+
+    void fetch(JOBS_LIST_API_ROUTE, {
+      credentials: "same-origin",
+    }).catch((error) => {
+      console.warn("Prefetch jobs list failed", error);
+    });
+  }, []);
+
   const navigateWithFeedback = useCallback(
     (target: "home" | "chat" | "study" | "jobs" | "calculator", href: string) => {
       if (pendingNavigation) {
@@ -140,7 +157,19 @@ export function AppSidebar({
       }
       setOpenMobile(false);
 
-      if (target === "home" || target === "chat" || target === "study" || target === "jobs") {
+      if (target === "jobs" && pathname === "/chat") {
+        if (typeof window !== "undefined") {
+          window.history.pushState(null, "", href);
+        }
+        return;
+      }
+
+      if (
+        target === "home" ||
+        target === "chat" ||
+        target === "study" ||
+        target === "jobs"
+      ) {
         if (typeof window !== "undefined") {
           window.history.pushState(null, "", href);
         }
@@ -152,7 +181,7 @@ export function AppSidebar({
 
       router.push(href, { scroll: false });
     },
-    [pendingNavigation, router, setOpenMobile]
+    [pathname, pendingNavigation, router, setOpenMobile]
   );
 
   useEffect(() => {
@@ -167,6 +196,7 @@ export function AppSidebar({
       }
       if (jobsModeEnabled) {
         prefetchChatRoute(VIEW_JOBS_HREF);
+        prefetchJobsModeData();
       }
       if (calculatorEnabled) {
         prefetchRoute("/calculator");
@@ -180,6 +210,7 @@ export function AppSidebar({
     calculatorEnabled,
     jobsModeEnabled,
     prefetchChatRoute,
+    prefetchJobsModeData,
     prefetchRoute,
     studyModeEnabled,
   ]);
@@ -257,7 +288,8 @@ export function AppSidebar({
 
   const handleViewJobsPrefetch = useCallback(() => {
     prefetchChatRoute(VIEW_JOBS_HREF);
-  }, [prefetchChatRoute]);
+    prefetchJobsModeData();
+  }, [prefetchChatRoute, prefetchJobsModeData]);
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">

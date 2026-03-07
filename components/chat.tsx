@@ -68,6 +68,7 @@ const MODEL_STORAGE_KEY = "chat-model-preference";
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 const CHAT_MODEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
 const buildStudyQuestionReference = (
   paper: StudyPaperCard
@@ -120,8 +121,26 @@ export function Chat({
   documentUploadsEnabled: boolean;
   customKnowledgeEnabled: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const query = searchParams.get("query");
+  const newChatNonce = searchParams.get("new");
+  const requestedMode = searchParams.get("mode");
+  const resolvedChatMode =
+    pathname === "/chat"
+      ? requestedMode === "study"
+        ? "study"
+        : requestedMode === "jobs"
+          ? "jobs"
+          : "default"
+      : chatMode;
   const historyMode =
-    chatMode === "study" ? "study" : chatMode === "jobs" ? "jobs" : "default";
+    resolvedChatMode === "study"
+      ? "study"
+      : resolvedChatMode === "jobs"
+        ? "jobs"
+        : "default";
   const historyPaginationKey = useMemo(
     () => getChatHistoryPaginationKeyForMode(historyMode),
     [historyMode]
@@ -141,8 +160,8 @@ export function Chat({
 
   const { mutate } = useSWRConfig();
 
-  const isStudyMode = chatMode === "study";
-  const isJobsMode = chatMode === "jobs";
+  const isStudyMode = resolvedChatMode === "study";
+  const isJobsMode = resolvedChatMode === "jobs";
   const greetingSubtitle = isStudyMode
     ? translate("greeting.study.subtitle", "What would you like to study today?")
     : undefined;
@@ -192,6 +211,22 @@ export function Chat({
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
+  const shouldLoadJobsListFromApi =
+    pathname === "/chat" && isJobsMode && jobsListItems.length === 0;
+  const {
+    data: jobsModeListItemsData,
+    isLoading: isJobsModeListLoading,
+  } = useSWR<JobListItem[]>(
+    shouldLoadJobsListFromApi ? JOBS_LIST_API_ROUTE : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+    }
+  );
+  const resolvedJobsListItems =
+    jobsModeListItemsData && jobsModeListItemsData.length > 0
+      ? jobsModeListItemsData
+      : jobsListItems;
   const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -590,16 +625,16 @@ export function Chat({
       prepareSendMessagesRequest(request) {
         const modePayload = isStudyMode
           ? {
-              chatMode,
+              chatMode: resolvedChatMode,
               studyPaperId: studyContextIdRef.current,
               studyQuizActive: studyQuizActiveRef.current,
             }
           : isJobsMode
             ? {
-                chatMode,
+                chatMode: resolvedChatMode,
                 jobPostingId: jobContextIdRef.current,
               }
-          : { chatMode: "default" };
+            : { chatMode: "default" };
         return {
           body: {
             id: request.id,
@@ -807,12 +842,6 @@ export function Chat({
   const clearJobContext = useCallback(() => {
     setJobContext(null);
   }, []);
-
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const query = searchParams.get("query");
-  const newChatNonce = searchParams.get("new");
 
   const handleJobPrefetch = useCallback(
     (job: JobCard) => {
@@ -1193,7 +1222,7 @@ export function Chat({
   });
 
   const studyHeader = isStudyMode ? (
-    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
           <BookOpen className="h-3.5 w-3.5" />
@@ -1262,9 +1291,12 @@ export function Chat({
           </Button>
         </div>
       ) : null}
-      <JobsModeListPanel jobs={jobsListItems} />
-    </div>
-  ) : null;
+        <JobsModeListPanel
+          isLoading={isJobsModeListLoading && resolvedJobsListItems.length === 0}
+          jobs={resolvedJobsListItems}
+        />
+      </div>
+    ) : null;
   const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
 
   const studyActions = isStudyMode
@@ -1330,8 +1362,8 @@ export function Chat({
           sendMessage={sendMessage}
           setMessages={setMessages}
           status={status}
-          suggestedPrompts={suggestedPrompts}
-          iconPromptActions={iconPromptActions}
+          suggestedPrompts={isJobsMode || isStudyMode ? [] : suggestedPrompts}
+          iconPromptActions={isJobsMode || isStudyMode ? [] : iconPromptActions}
           onIconPromptSelect={handleIconPromptSelect}
           jobActions={jobActions}
           studyActions={studyActions}
