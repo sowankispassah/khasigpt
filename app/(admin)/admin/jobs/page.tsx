@@ -18,6 +18,8 @@ import {
   JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
   JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
   JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
+  JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY,
+  JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY,
   JOBS_SCRAPE_SOURCES_SETTING_KEY,
   JOBS_SCRAPE_START_TIME_SETTING_KEY,
   JOBS_SCRAPE_TIMEZONE_SETTING_KEY,
@@ -29,6 +31,11 @@ import {
   setAppSetting,
 } from "@/lib/db/queries";
 import { listJobPostingEntries } from "@/lib/jobs/service";
+import {
+  normalizeJobsPdfExtractionModelId,
+  resolveJobsPdfExtractionSettings,
+  type JobsPdfExtractionSettings,
+} from "@/lib/jobs/pdf-extraction-settings";
 import {
   archiveJobPostingFromRag,
   syncJobPostingsToRag,
@@ -73,6 +80,8 @@ const JOBS_SCRAPE_SETTINGS_KEYS = [
   JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
   JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
   JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
+  JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY,
+  JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY,
   JOBS_SCRAPE_SOURCES_SETTING_KEY,
 ];
 
@@ -141,6 +150,16 @@ function formatDurationMs(value: number) {
     return `${seconds}s`;
   }
   return `${minutes}m ${seconds}s`;
+}
+
+function formatPdfExtractionModeLabel(mode: JobsPdfExtractionSettings["mode"]) {
+  if (mode === "off") {
+    return "Off";
+  }
+  if (mode === "full") {
+    return "Full";
+  }
+  return "Hybrid";
 }
 
 function getHistoryStatusBadgeClasses(status: JobsScrapeHistoryEntry["status"]) {
@@ -579,6 +598,34 @@ async function clearOneTimeJobsScrapeAction() {
   revalidatePath("/admin/jobs");
 }
 
+async function saveJobsPdfExtractionSettingsAction(formData: FormData) {
+  "use server";
+
+  const session = await auth();
+  if (!session?.user || session.user.role !== "admin") {
+    redirect("/");
+  }
+
+  const settings = resolveJobsPdfExtractionSettings({
+    mode: formData.get("pdfExtractionMode"),
+    modelId: formData.get("pdfExtractionModelId"),
+  });
+
+  await persistAppSettingWithRetry({
+    key: JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY,
+    value: settings.mode,
+  });
+  await persistAppSettingWithRetry({
+    key: JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY,
+    value: normalizeJobsPdfExtractionModelId(
+      formData.get("pdfExtractionModelId")
+    ),
+  });
+
+  revalidateJobsScrapeSettingCaches();
+  revalidatePath("/admin/jobs");
+}
+
 async function addScrapeSourceAction(formData: FormData) {
   "use server";
 
@@ -814,6 +861,8 @@ export default async function AdminJobsPage() {
     startTimeRaw,
     timezoneRaw,
     oneTimeAtRaw,
+    pdfExtractionModeRaw,
+    pdfExtractionModelIdRaw,
     lastSuccessAtRaw,
     lockUntilRaw,
     lastRunStatusRaw,
@@ -833,6 +882,8 @@ export default async function AdminJobsPage() {
     withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.startTime), null),
     withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.timezone), null),
     withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY), null),
+    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY), null),
     withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt), null),
     withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lockUntil), null),
     withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus), null),
@@ -849,6 +900,10 @@ export default async function AdminJobsPage() {
   });
   const lookbackDays = parseLookbackDays(lookbackDaysRaw);
   const timezone = resolveScrapeTimezone(scheduleSettings.timezone);
+  const pdfExtractionSettings = resolveJobsPdfExtractionSettings({
+    mode: pdfExtractionModeRaw,
+    modelId: pdfExtractionModelIdRaw,
+  });
   const oneTimeAt = parseDateOrNull(oneTimeAtRaw);
   const oneTimeAtLocalDefault = formatUtcDateToLocalInput({
     value: oneTimeAt,
@@ -1265,6 +1320,73 @@ export default async function AdminJobsPage() {
             <div className="mt-2 border-t pt-2">
               <JobsAutoScrapeStatus />
             </div>
+          </div>
+      </CollapsibleSectionCard>
+
+      <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="PDF Extraction">
+          <form
+            action={saveJobsPdfExtractionSettingsAction}
+            className="grid gap-3 md:grid-cols-2"
+          >
+            <label className="flex flex-col gap-1">
+              Extraction mode
+              <select
+                className="rounded-md border bg-background px-3 py-2"
+                defaultValue={pdfExtractionSettings.mode}
+                name="pdfExtractionMode"
+              >
+                <option value="off">Off</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="full">Full</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              Model ID
+              <input
+                className="rounded-md border bg-background px-3 py-2"
+                defaultValue={pdfExtractionSettings.modelId ?? ""}
+                name="pdfExtractionModelId"
+                placeholder="gemini-2.5-flash or gemini-3-flash-preview"
+                type="text"
+              />
+            </label>
+            <p className="text-muted-foreground text-xs md:col-span-2">
+              Off disables LLM use for jobs PDF extraction. Hybrid only calls
+              the model when the raw parser looks weak or incomplete. Full
+              always attempts model-based extraction first. Leaving Model ID
+              blank uses the server default.
+            </p>
+            <div className="md:col-span-2">
+              <ActionSubmitButton
+                className="cursor-pointer"
+                pendingLabel="Saving..."
+                refreshOnSuccess
+                successMessage="PDF extraction settings saved."
+              >
+                Save PDF Extraction Settings
+              </ActionSubmitButton>
+            </div>
+          </form>
+
+          <div className="rounded-md border p-3 text-muted-foreground text-sm">
+            <p>
+              Current mode:{" "}
+              <span className="font-medium text-foreground">
+                {formatPdfExtractionModeLabel(pdfExtractionSettings.mode)}
+              </span>
+            </p>
+            <p>
+              Manual model:{" "}
+              <span className="font-medium text-foreground">
+                {pdfExtractionSettings.modelId ?? "Server default"}
+              </span>
+            </p>
+            <p>
+              Effective model:{" "}
+              <span className="font-medium text-foreground">
+                {pdfExtractionSettings.effectiveModelId}
+              </span>
+            </p>
           </div>
       </CollapsibleSectionCard>
 

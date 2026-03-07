@@ -1,4 +1,8 @@
 import crypto from "node:crypto";
+import {
+  buildJobsPdfExtractedSummaryLines,
+  type JobsPdfExtractedData,
+} from "@/lib/jobs/pdf-extraction";
 import { extractSalaryText as extractJobSalaryText } from "@/lib/jobs/salary";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -29,7 +33,7 @@ const MEGHALAYA_LOCATION_KEYWORDS = [
   "east khasi hills",
 ] as const;
 
-type PdfStructuredFields = {
+export type PdfStructuredFields = {
   salary: string | null;
   eligibility: string | null;
   instructions: string | null;
@@ -435,6 +439,7 @@ export function buildDescriptionFromSources({
   webText,
   pdfText,
   pdfFields,
+  pdfExtractedData,
   maxChars,
 }: {
   title: string;
@@ -445,6 +450,7 @@ export function buildDescriptionFromSources({
   webText: string;
   pdfText: string | null;
   pdfFields: PdfStructuredFields | null;
+  pdfExtractedData?: JobsPdfExtractedData | null;
   maxChars: number;
 }) {
   const sections: string[] = [];
@@ -485,6 +491,11 @@ export function buildDescriptionFromSources({
     if (extracted.length > 0) {
       sections.push(`Extracted Details:\n${extracted.join("\n")}`);
     }
+  }
+
+  const structuredLines = buildJobsPdfExtractedSummaryLines(pdfExtractedData);
+  if (structuredLines.length > 0) {
+    sections.push(`Structured PDF Details:\n${structuredLines.join("\n")}`);
   }
 
   if (pdfText) {

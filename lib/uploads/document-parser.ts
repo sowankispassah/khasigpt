@@ -21,6 +21,8 @@ type ParsedDocument = {
 type ParseDocumentOptions = {
   maxTextChars?: number;
   downloadTimeoutMs?: number;
+  pdfOcrMode?: "disabled" | "fallback";
+  pdfOcrModelId?: string | null;
 };
 
 let pdfRuntimeReady = false;
@@ -204,7 +206,10 @@ async function parsePdfViaLibrary(buffer: Buffer) {
   }
 }
 
-async function parsePdfViaOcr(buffer: Buffer) {
+async function parsePdfViaOcr(
+  buffer: Buffer,
+  options: Pick<ParseDocumentOptions, "pdfOcrModelId">
+) {
   if (!googlePdfOcrClient) {
     throw new Error("PDF OCR unavailable");
   }
@@ -230,7 +235,9 @@ async function parsePdfViaOcr(buffer: Buffer) {
       ? maxOutputTokensRaw
       : DEFAULT_PDF_OCR_MAX_OUTPUT_TOKENS;
   const modelId =
-    process.env.DOCUMENT_PDF_OCR_MODEL?.trim() || DEFAULT_PDF_OCR_MODEL;
+    options.pdfOcrModelId?.trim() ||
+    process.env.DOCUMENT_PDF_OCR_MODEL?.trim() ||
+    DEFAULT_PDF_OCR_MODEL;
 
   const result = await generateText({
     model: googlePdfOcrClient.languageModel(modelId),
@@ -351,7 +358,7 @@ function parsePdfTextFallback(buffer: Buffer) {
   return "";
 }
 
-async function parsePdf(buffer: Buffer) {
+async function parsePdf(buffer: Buffer, options: ParseDocumentOptions = {}) {
   try {
     const parsed = await parsePdfViaLibrary(buffer);
     if (hasUsefulExtractedText(parsed)) {
@@ -368,8 +375,12 @@ async function parsePdf(buffer: Buffer) {
     return fallback;
   }
 
+  if (options.pdfOcrMode === "disabled") {
+    throw new Error("PDF parser unavailable");
+  }
+
   try {
-    return await parsePdfViaOcr(buffer);
+    return await parsePdfViaOcr(buffer, options);
   } catch (ocrError) {
     console.warn("[document-parser] pdf_ocr_failed", {
       error: ocrError instanceof Error ? ocrError.message : String(ocrError),
@@ -458,7 +469,7 @@ export async function extractDocumentText(
 
   switch (attachment.mediaType) {
     case "application/pdf":
-      rawText = await parsePdf(buffer);
+      rawText = await parsePdf(buffer, options);
       break;
     case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
       rawText = await parseDocx(buffer);
@@ -503,7 +514,7 @@ export async function extractDocumentTextFromBuffer(
   let rawText = "";
   switch (attachment.mediaType) {
     case "application/pdf":
-      rawText = await parsePdf(attachment.buffer);
+      rawText = await parsePdf(attachment.buffer, options);
       break;
     case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
       rawText = await parseDocx(attachment.buffer);

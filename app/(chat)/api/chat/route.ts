@@ -57,6 +57,10 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import {
+  buildJobsPdfExtractedSummaryLines,
+  type JobsPdfExtractedData,
+} from "@/lib/jobs/pdf-extraction";
 import { extractSalaryText, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
@@ -578,7 +582,9 @@ async function resolveJobPdfSupplementalContext(job: {
   sourceUrl: string | null;
   pdfSourceUrl: string | null;
   pdfCachedUrl: string | null;
+  pdfExtractedData?: JobsPdfExtractedData | null;
 }) {
+  const structuredFacts = buildJobsPdfExtractedSummaryLines(job.pdfExtractedData);
   const candidateUrls = [job.pdfCachedUrl, job.pdfSourceUrl, job.sourceUrl]
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);
@@ -586,7 +592,9 @@ async function resolveJobPdfSupplementalContext(job: {
     value.toLowerCase().includes(".pdf")
   );
   if (!pdfUrl) {
-    return "";
+    return structuredFacts.length > 0
+      ? `Stored PDF extracted details:\n${structuredFacts.join("\n")}`
+      : "";
   }
 
   try {
@@ -603,10 +611,14 @@ async function resolveJobPdfSupplementalContext(job: {
     );
     const pdfText = parsed.text.trim();
     if (!pdfText) {
-      return "";
+      return structuredFacts.length > 0
+        ? `Stored PDF extracted details:\n${structuredFacts.join("\n")}`
+        : "";
     }
 
-    const facts = extractJobFactsFromText(pdfText);
+    const facts = Array.from(
+      new Set([...structuredFacts, ...extractJobFactsFromText(pdfText)])
+    );
     const excerpt = pdfText.replace(/\s+/g, " ").trim().slice(0, 1_200);
     const sections: string[] = [];
     if (facts.length > 0) {
@@ -1561,6 +1573,7 @@ export async function POST(request: Request) {
             salary: job.salary,
             content: job.content,
             pdfContent: job.pdfContent,
+            extractedData: job.pdfExtractedData,
           }).summary;
           return [
             job.id,

@@ -1,12 +1,13 @@
 import "server-only";
 import { jobSources, type JobSourceConfig } from "@/config/jobSources";
+import { getJobsPdfExtractionSettingsUncached } from "@/lib/jobs/pdf-extraction-settings";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { RobustHttpClient } from "./http-client";
 import { scrapeSource } from "./source-processor";
 import type {
+  CachedPdfExtractionResult,
   JobsScraperRuntimeOptions,
-  PdfExtractionResult,
   ProcessedSourceResult,
   RunJobsScraperResult,
   ScrapeJobsResult,
@@ -113,6 +114,7 @@ export async function scrapeJobsFromSources(
     process.env.JOBS_SCRAPE_PDF_MAX_TEXT_CHARS,
     DEFAULT_MAX_PDF_TEXT_CHARS
   );
+  const pdfExtractionSettings = await getJobsPdfExtractionSettingsUncached();
 
   const httpClient = new RobustHttpClient();
   const sourceStatsByIndex = Array.from(
@@ -135,7 +137,7 @@ export async function scrapeJobsFromSources(
 
   const sharedCaches = {
     detailMarkdownByUrl: new Map<string, string | null>(),
-    pdfByUrl: new Map<string, PdfExtractionResult | null>(),
+    pdfByUrl: new Map<string, CachedPdfExtractionResult | null>(),
   };
 
   await runWithConcurrency(
@@ -171,6 +173,7 @@ export async function scrapeJobsFromSources(
             sourceBudgetMs,
             maxDescriptionChars,
             maxPdfTextChars,
+            pdfExtractionSettings,
             includeKeywords: [],
             excludeKeywords: [],
             sharedCaches,

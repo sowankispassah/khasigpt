@@ -3,6 +3,7 @@ import type {
   RagEntryApprovalStatus,
   RagEntryStatus,
 } from "@/lib/db/schema";
+import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import type { JobSector } from "@/lib/jobs/sector";
 import type { QuestionPaperRecord } from "@/lib/study/types";
 
@@ -33,6 +34,7 @@ export type JobPostingRecord = {
   source?: string | null;
   applicationLink?: string | null;
   pdfContent?: string | null;
+  pdfExtractedData?: JobsPdfExtractedData | null;
   contentHash?: string | null;
   sector: JobSector;
   employmentType: string;

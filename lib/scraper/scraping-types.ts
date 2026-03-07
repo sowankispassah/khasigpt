@@ -1,4 +1,7 @@
 import type { JobSourceConfig } from "@/config/jobSources";
+import type { PdfStructuredFields } from "@/lib/scraper/scraper-utils";
+import type { JobsPdfExtractionSettings } from "@/lib/jobs/pdf-extraction-settings";
+import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import type { NewJobRow, SaveJobsResult } from "@/lib/jobs/saveJobs";
 
 export type SourceScrapeStats = {
@@ -90,7 +93,12 @@ export type PdfExtractionResult = {
   pdfSourceUrl: string;
   pdfCachedUrl: string | null;
   pdfText: string;
+  extractedData?: JobsPdfExtractedData | null;
   extractedFieldsCount: number;
+};
+
+export type CachedPdfExtractionResult = PdfExtractionResult & {
+  fields: PdfStructuredFields;
 };
 
 export type SourceProcessingContext = {
@@ -105,11 +113,12 @@ export type SourceProcessingContext = {
   sourceBudgetMs: number;
   maxDescriptionChars: number;
   maxPdfTextChars: number;
+  pdfExtractionSettings: JobsPdfExtractionSettings;
   includeKeywords: string[];
   excludeKeywords: string[];
   sharedCaches: {
     detailMarkdownByUrl: Map<string, string | null>;
-    pdfByUrl: Map<string, PdfExtractionResult | null>;
+    pdfByUrl: Map<string, CachedPdfExtractionResult | null>;
   };
 };
 

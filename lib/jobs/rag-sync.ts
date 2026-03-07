@@ -4,6 +4,10 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/queries";
 import { ragEntry, user } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import {
+  buildJobsPdfExtractedSummaryLines,
+  parseJobsPdfExtractedData,
+} from "@/lib/jobs/pdf-extraction";
 import { resolveJobSector, resolveJobType } from "@/lib/jobs/sector";
 import {
   createRagEntry,
@@ -27,6 +31,7 @@ type SupabaseJobRow = {
   application_link?: string | null;
   description: string | null;
   pdf_content?: string | null;
+  pdf_extracted_data?: unknown;
   content_hash?: string | null;
   status: string | null;
   source_url: string;
@@ -86,19 +91,27 @@ function normalizeSourceUrl(sourceUrl: string): string | null {
 function buildRagContent(row: SupabaseJobRow) {
   const description = toTrimmedString(row.description ?? "");
   const pdfContent = toTrimmedString(row.pdf_content ?? "");
+  const extractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
+  const structuredDetails = buildJobsPdfExtractedSummaryLines(extractedData);
+  const structuredBlock =
+    structuredDetails.length > 0
+      ? `PDF Extracted Details:\n${structuredDetails.join("\n")}`
+      : "";
   if (!pdfContent) {
-    return description;
+    return [description, structuredBlock].filter(Boolean).join("\n\n");
   }
 
   const normalizedDescription = description.toLowerCase();
   const normalizedPdf = pdfContent.toLowerCase();
   if (normalizedDescription && normalizedPdf.includes(normalizedDescription)) {
-    return pdfContent;
+    return [pdfContent, structuredBlock].filter(Boolean).join("\n\n");
   }
   if (normalizedDescription.includes(normalizedPdf)) {
-    return description;
+    return [description, structuredBlock].filter(Boolean).join("\n\n");
   }
-  return [description, `PDF Content:\n${pdfContent}`].filter(Boolean).join("\n\n");
+  return [description, structuredBlock, `PDF Content:\n${pdfContent}`]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function ensureRagContent(rawDescription: string) {
@@ -120,6 +133,7 @@ function buildJobMetadata(row: SupabaseJobRow) {
   const sourceUrl = toTrimmedString(row.application_link ?? row.source_url);
   const normalizedSourceUrl = normalizeSourceUrl(sourceUrl);
   const sourceLabel = toTrimmedString(row.source ?? "") || UNKNOWN_LABEL;
+  const extractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
   const sector = resolveJobSector({
     title,
     company,
@@ -155,6 +169,10 @@ function buildJobMetadata(row: SupabaseJobRow) {
     normalized_source_url: normalizedSourceUrl,
     application_link: toTrimmedString(row.application_link ?? row.source_url) || null,
     pdf_content_chars: toTrimmedString(row.pdf_content ?? "").length || 0,
+    pdf_extracted_roles_count: extractedData?.roles.length ?? 0,
+    pdf_extracted_notification_date: extractedData?.notificationDate ?? null,
+    pdf_extracted_application_last_date:
+      extractedData?.applicationLastDate ?? null,
     content_hash: toTrimmedString(row.content_hash ?? null) || null,
     pdf_source_url: toTrimmedString(row.pdf_source_url ?? null) || null,
     pdf_cached_url: toTrimmedString(row.pdf_cached_url ?? null) || null,

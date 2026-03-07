@@ -91,12 +91,14 @@ export async function toJobListItem(job: JobPostingRecord): Promise<JobListItem>
       salary: job.salary,
       content: job.content,
       pdfContent: pdfMetaText,
+      extractedData: job.pdfExtractedData,
     }).summary,
     notificationDateLabel:
       resolveJobNotificationDateLabel({
         content: job.content,
         pdfContent: pdfMetaText,
         referenceDate: job.createdAt,
+        extractedData: job.pdfExtractedData,
       }),
     fetchedOnLabel: formatDateLabel(job.createdAt),
     sourceLabel: job.source?.trim() || getSourceHostLabel(job.sourceUrl),

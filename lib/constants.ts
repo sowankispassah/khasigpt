@@ -66,6 +66,10 @@ export const JOBS_SCRAPE_SOURCES_SETTING_KEY = "jobs.scrape.sources";
 export const JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY =
   "jobs.scrape.lookbackDays";
 export const JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY = "jobs.scrape.oneTimeAt";
+export const JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY =
+  "jobs.scrape.pdfExtractionMode";
+export const JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY =
+  "jobs.scrape.pdfExtractionModelId";
 export const JOBS_SCRAPE_PROGRESS_SETTING_KEY = "jobs.scrape.progress";
 export const JOBS_SCRAPE_CANCEL_REQUESTED_SETTING_KEY =
   "jobs.scrape.cancelRequested";

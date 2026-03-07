@@ -17,6 +17,7 @@ import type {
 } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
 import { DEFAULT_JOB_LOCATION, resolveJobLocation } from "@/lib/jobs/location";
+import { parseJobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import { NO_SALARY_LABEL, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
@@ -80,6 +81,7 @@ type SupabaseJobRow = {
   application_link?: string | null;
   description: string | null;
   pdf_content?: string | null;
+  pdf_extracted_data?: unknown;
   content_hash?: string | null;
   status: string | null;
   source_url: string;
@@ -158,6 +160,7 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
   const content = toTrimmedString(row.description);
   const source = toTrimmedString(row.source ?? null) || null;
   const pdfContent = toTrimmedString(row.pdf_content ?? null) || null;
+  const pdfExtractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
   const company = resolveCompanyName({
     rawCompany: toTrimmedString(row.company),
     rawSourceUrl,
@@ -200,12 +203,16 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
     salary: (() => {
       const summary = resolveJobSalaryInfo({
         salary: rawSalary,
+        content,
+        pdfContent,
+        extractedData: pdfExtractedData,
       }).summary;
       return summary === NO_SALARY_LABEL ? null : summary;
     })(),
     source,
     applicationLink,
     pdfContent,
+    pdfExtractedData,
     contentHash: toTrimmedString(row.content_hash ?? null) || null,
     sector,
     employmentType: resolveJobType(sector),

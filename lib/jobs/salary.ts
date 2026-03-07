@@ -1,3 +1,8 @@
+import {
+  buildJobsPdfCompensationEntries,
+  type JobsPdfExtractedData,
+} from "@/lib/jobs/pdf-extraction";
+
 export type CompensationEntry = {
   role: string;
   salary: string;
@@ -725,6 +730,34 @@ function resolveTextSalaryInfo(text: string | null | undefined): ResolvedSalaryI
   };
 }
 
+function resolveExtractedDataSalaryInfo(
+  extractedData: JobsPdfExtractedData | null | undefined
+): ResolvedSalaryInfo | null {
+  if (!extractedData) {
+    return null;
+  }
+
+  const entries = dedupeCompensationEntries(
+    buildJobsPdfCompensationEntries(extractedData)
+  );
+  if (entries.length > 0) {
+    return {
+      summary:
+        extractedData.salarySummary || summarizeCompensationEntries(entries),
+      entries,
+    };
+  }
+
+  if (extractedData.salarySummary) {
+    return {
+      summary: extractedData.salarySummary,
+      entries: [],
+    };
+  }
+
+  return null;
+}
+
 export function extractSalaryText(text: string | null | undefined) {
   const resolved = resolveTextSalaryInfo(text);
   return resolved.summary === NO_SALARY_LABEL ? null : resolved.summary;
@@ -734,11 +767,18 @@ export function resolveJobSalaryInfo({
   salary,
   content,
   pdfContent,
+  extractedData,
 }: {
   salary?: string | null;
   content?: string | null;
   pdfContent?: string | null;
+  extractedData?: JobsPdfExtractedData | null;
 }): ResolvedSalaryInfo {
+  const extracted = resolveExtractedDataSalaryInfo(extractedData);
+  if (extracted) {
+    return extracted;
+  }
+
   for (const candidate of [pdfContent, content]) {
     const resolved = resolveTextSalaryInfo(candidate);
     if (resolved.summary !== NO_SALARY_LABEL) {
@@ -769,6 +809,7 @@ export function resolveJobSalaryLabel(args: {
   salary?: string | null;
   content?: string | null;
   pdfContent?: string | null;
+  extractedData?: JobsPdfExtractedData | null;
 }) {
   return resolveJobSalaryInfo(args).summary;
 }

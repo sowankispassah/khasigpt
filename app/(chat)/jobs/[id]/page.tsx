@@ -166,12 +166,14 @@ export default async function JobPostingDetailPage(props: {
     salary: job.salary,
     content: detailMarkdown,
     pdfContent: pdfMetaText,
+    extractedData: job.pdfExtractedData,
   });
   const salaryLabel = salaryInfo.summary;
   const notificationDateLabel = resolveJobNotificationDateLabel({
     content: detailMarkdown,
     pdfContent: pdfMetaText,
     referenceDate: job.createdAt,
+    extractedData: job.pdfExtractedData,
   });
   const fetchedOnLabel = formatDateLabel(job.createdAt);
   const sourceLabel = getSourceHostLabel(job.sourceUrl);

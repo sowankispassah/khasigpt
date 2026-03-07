@@ -1,5 +1,6 @@
 import "server-only";
 import { DEFAULT_JOB_LOCATION } from "@/lib/jobs/location";
+import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 
@@ -20,6 +21,7 @@ export type NewJobRow = {
   pdf_source_url?: string | null;
   pdf_cached_url?: string | null;
   pdf_content?: string | null;
+  pdf_extracted_data?: JobsPdfExtractedData | null;
   content_hash?: string | null;
 };
 
@@ -185,6 +187,7 @@ function normalizeJobRows(rows: NewJobRow[]) {
       pdf_source_url: normalizeOptionalUrl(row.pdf_source_url),
       pdf_cached_url: normalizeOptionalUrl(row.pdf_cached_url),
       pdf_content: normalizeOptionalText(row.pdf_content),
+      pdf_extracted_data: row.pdf_extracted_data ?? null,
       content_hash: contentHash,
     });
   }
@@ -200,6 +203,7 @@ function stripUnsupportedColumns({
   stripSourceColumn,
   stripApplicationLinkColumn,
   stripPdfContentColumn,
+  stripPdfExtractedDataColumn,
   stripContentHashColumn,
 }: {
   rows: NewJobRow[];
@@ -209,6 +213,7 @@ function stripUnsupportedColumns({
   stripSourceColumn: boolean;
   stripApplicationLinkColumn: boolean;
   stripPdfContentColumn: boolean;
+  stripPdfExtractedDataColumn: boolean;
   stripContentHashColumn: boolean;
 }) {
   return rows.map((row) => {
@@ -243,6 +248,10 @@ function stripUnsupportedColumns({
 
     if (!stripPdfContentColumn) {
       payload.pdf_content = row.pdf_content ?? null;
+    }
+
+    if (!stripPdfExtractedDataColumn) {
+      payload.pdf_extracted_data = row.pdf_extracted_data ?? null;
     }
 
     if (!stripContentHashColumn) {
@@ -421,6 +430,8 @@ export async function saveJobs(
         isMissingColumnError && /application_link/.test(errorMessage);
       const shouldStripPdfContentColumn =
         isMissingColumnError && /pdf_content/.test(errorMessage);
+      const shouldStripPdfExtractedDataColumn =
+        isMissingColumnError && /pdf_extracted_data/.test(errorMessage);
       const shouldStripContentHashColumn =
         isMissingColumnError && /content_hash/.test(errorMessage);
 
@@ -432,6 +443,7 @@ export async function saveJobs(
         shouldStripSourceColumn ||
         shouldStripApplicationLinkColumn ||
         shouldStripPdfContentColumn ||
+        shouldStripPdfExtractedDataColumn ||
         shouldStripContentHashColumn
       ) {
         const fallbackRows = stripUnsupportedColumns({
@@ -442,6 +454,7 @@ export async function saveJobs(
           stripSourceColumn: shouldStripSourceColumn,
           stripApplicationLinkColumn: shouldStripApplicationLinkColumn,
           stripPdfContentColumn: shouldStripPdfContentColumn,
+          stripPdfExtractedDataColumn: shouldStripPdfExtractedDataColumn,
           stripContentHashColumn: shouldStripContentHashColumn,
         });
         const insertWithoutStatus = await supabase

@@ -1,3 +1,5 @@
+import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
+
 const NOT_SPECIFIED_LABEL = "Not specified";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -128,15 +130,58 @@ function extractFirstAbsoluteDate(text: string, maxChars = 3000) {
   return normalizeExtractedDate(match[0]);
 }
 
+export function resolveJobApplicationLastDateLabel({
+  content,
+  pdfContent,
+  extractedData,
+}: {
+  content?: string | null;
+  pdfContent?: string | null;
+  extractedData?: JobsPdfExtractedData | null;
+}) {
+  const structuredDate = extractedData?.applicationLastDate?.trim();
+  if (structuredDate) {
+    return structuredDate;
+  }
+
+  for (const candidate of [pdfContent, content]) {
+    const normalized = normalizeSearchText(candidate);
+    if (!normalized) {
+      continue;
+    }
+
+    const labelled = extractDateByLabels(normalized, [
+      "last date",
+      "last date of receipt",
+      "application deadline",
+      "submission deadline",
+      "closing date",
+      "apply before",
+    ]);
+    if (labelled) {
+      return labelled;
+    }
+  }
+
+  return NOT_SPECIFIED_LABEL;
+}
+
 export function resolveJobNotificationDateLabel({
   content,
   pdfContent,
   referenceDate,
+  extractedData,
 }: {
   content?: string | null;
   pdfContent?: string | null;
   referenceDate?: Date | null;
+  extractedData?: JobsPdfExtractedData | null;
 }) {
+  const structuredDate = extractedData?.notificationDate?.trim();
+  if (structuredDate) {
+    return structuredDate;
+  }
+
   for (const candidate of [pdfContent, content]) {
     const normalized = normalizeSearchText(candidate);
     if (!normalized) {
