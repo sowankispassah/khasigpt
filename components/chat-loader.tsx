@@ -1,14 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
 import type { JobListItem } from "@/lib/jobs/types";
 import type { ChatMessage } from "@/lib/types";
 import { doneGlobalProgress } from "@/lib/ui/global-progress";
+import { generateUUID } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import type { VisibilityType } from "./visibility-selector";
 
@@ -79,12 +80,66 @@ export function preloadChat() {
 }
 
 export function ChatLoader(props: ChatLoaderProps) {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [attempt, setAttempt] = useState(0);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [ChatClient, setChatClient] = useState<ComponentType<ChatLoaderProps> | null>(
     null
   );
+  const [optimisticSession, setOptimisticSession] = useState<{
+    chatMode: ChatLoaderProps["chatMode"];
+    id: string;
+  } | null>(null);
+  const lastOptimisticRouteRef = useRef<string | null>(null);
+
+  const requestedMode = searchParams.get("mode");
+  const newChatFlag = searchParams.get("new");
+  const optimisticChatMode =
+    pathname === "/chat"
+      ? requestedMode === "study"
+        ? "study"
+        : requestedMode === "jobs"
+          ? "jobs"
+          : "default"
+      : props.chatMode;
+
+  useEffect(() => {
+    if (pathname !== "/chat") {
+      lastOptimisticRouteRef.current = null;
+      setOptimisticSession(null);
+      return;
+    }
+
+    if (!newChatFlag) {
+      return;
+    }
+
+    const routeKey = `${pathname}?${searchParams.toString()}`;
+    if (lastOptimisticRouteRef.current === routeKey) {
+      return;
+    }
+
+    lastOptimisticRouteRef.current = routeKey;
+    setOptimisticSession({
+      chatMode: optimisticChatMode,
+      id: generateUUID(),
+    });
+  }, [newChatFlag, optimisticChatMode, pathname, searchParams]);
+
+  const activeProps = optimisticSession
+    ? {
+        ...props,
+        autoResume: false,
+        chatMode: optimisticSession.chatMode,
+        id: optimisticSession.id,
+        initialHasMoreHistory: false,
+        initialJobContext: null,
+        initialMessages: [],
+        initialOldestMessageAt: null,
+      }
+    : props;
 
   // Start loading as early as possible (during render), then resolve in an effect.
   useMemo(() => {
@@ -93,7 +148,7 @@ export function ChatLoader(props: ChatLoaderProps) {
 
   useEffect(() => {
     doneGlobalProgress();
-  }, [props.id, props.chatMode]);
+  }, [activeProps.chatMode, activeProps.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,5 +245,5 @@ export function ChatLoader(props: ChatLoaderProps) {
     return <ChatSkeleton />;
   }
 
-  return <ChatClient {...props} />;
+  return <ChatClient key={`${activeProps.id}:${activeProps.chatMode}`} {...activeProps} />;
 }

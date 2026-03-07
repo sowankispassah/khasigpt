@@ -44,8 +44,12 @@ function PureChatHeader({
     }
     setIsOpeningNewChat(true);
     startGlobalProgress();
+    if (typeof window !== "undefined" && pathname.startsWith("/chat")) {
+      window.history.pushState(null, "", "/chat?new=1");
+      return;
+    }
     router.push("/chat?new=1", { scroll: false });
-  }, [isOpeningNewChat, router]);
+  }, [isOpeningNewChat, pathname, router]);
 
   return (
     <header className="sticky top-0 flex items-center gap-2 bg-background px-2 py-1.5 pr-[5rem] md:px-2 md:pr-[5rem]">

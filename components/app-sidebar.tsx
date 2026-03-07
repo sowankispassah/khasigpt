@@ -156,9 +156,17 @@ export function AppSidebar({
         preloadChat();
       }
       setOpenMobile(false);
+
+      if (target !== "calculator" && pathname.startsWith("/chat")) {
+        if (typeof window !== "undefined") {
+          window.history.pushState(null, "", href);
+        }
+        return;
+      }
+
       router.push(href, { scroll: false });
     },
-    [pendingNavigation, router, setOpenMobile]
+    [pathname, pendingNavigation, router, setOpenMobile]
   );
 
   useEffect(() => {
