@@ -53,7 +53,7 @@ import {
 } from "@/lib/study/context-store";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
-import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import {
@@ -1324,18 +1324,19 @@ export function Chat({
         />
 
         <div
-          className={`sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 px-2 pb-3 md:px-4 md:pb-4 ${
+          className={cn(
+            "sticky bottom-0 z-1 mx-auto w-full max-w-4xl border-t-0 px-2 md:px-4",
             isJobsMode
               ? isJobsComposerVisible
-                ? "bg-transparent"
-                : "pointer-events-none bg-transparent"
-              : "bg-background"
-          }`}
+                ? "bg-transparent pb-3 md:pb-4"
+                : "pointer-events-none h-0 bg-transparent pb-0"
+              : "bg-background pb-3 md:pb-4"
+          )}
         >
           {isReadonly ? null : isJobsMode && !isJobsComposerVisible ? (
-            <div className="pointer-events-auto flex w-full justify-end">
+            <div className="relative h-0 w-full">
               <Button
-                className="h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted"
+                className="pointer-events-auto absolute right-0 -top-11 h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium shadow-sm hover:bg-muted"
                 onClick={() => setIsJobsComposerVisible(true)}
                 size="sm"
                 type="button"
@@ -1345,93 +1346,97 @@ export function Chat({
               </Button>
             </div>
           ) : (
-            <div className="flex w-full flex-col gap-2">
+            <div className={cn("w-full", isJobsMode && "relative")}>
               {isJobsMode ? (
-                <Button
-                  className="h-8 w-fit self-end cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted"
-                  onClick={() => setIsJobsComposerVisible(false)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Hide
-                </Button>
-              ) : null}
-              {iconPromptSuggestions.length > 0 ? (
-                <div className="rounded-lg bg-background p-2">
-                  {iconPromptSuggestions.map((suggestion, index) => (
-                    <button
-                      className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
-                      key={`${suggestion.label}-${index}`}
-                      onClick={() => handleIconPromptSuggestionSelect(suggestion)}
-                      type="button"
-                    >
-                      {suggestion.label}
-                    </button>
-                  ))}
+                <div className="pointer-events-none absolute right-0 -top-11 z-10">
+                  <Button
+                    className="pointer-events-auto h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium shadow-sm hover:bg-muted"
+                    onClick={() => setIsJobsComposerVisible(false)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Hide
+                  </Button>
                 </div>
               ) : null}
-              <MultimodalInput
-                attachments={attachments}
-                chatId={id}
-                documentUploadsEnabled={documentUploadsEnabled}
-                imageGenerationCanGenerate={
-                  imageGeneration.canGenerate && !isStudyMode
-                }
-                imageGenerationEnabled={imageGeneration.enabled && !isStudyMode}
-                imageGenerationRequiresPaidCredits={
-                  imageGeneration.requiresPaidCredits
-                }
-                imageGenerationSelected={isImageMode && !isStudyMode}
-                isGeneratingImage={isGeneratingImage}
-                input={input}
-                messages={messages}
-                onLanguageChange={handleLanguageChangeFromInput}
-                onModelChange={handleModelChange}
-                selectedLanguageCode={currentLanguageCode}
-                selectedModelId={currentModelId}
-                selectedVisibilityType={visibilityType}
-                onGenerateImage={() => {
-                  void generateImageFromPrompt(input);
-                }}
-                onClearStudyQuestionReference={() =>
-                  setStudyQuestionReference(null)
-                }
-                onJumpToQuestionPaper={handleJumpToQuestionPaper}
-                onBeforeSubmit={handleSubmitScrollToBottom}
-                sendMessage={sendMessage}
-                setAttachments={setAttachments}
-                setInput={setInput}
-                setMessages={setMessages}
-                status={status}
-                stop={stop}
-                studyQuestionReference={studyQuestionReference}
-                onToggleImageMode={() => {
-                  if (!imageGeneration.enabled || isStudyMode) {
-                    return;
+              <div className="flex w-full flex-col gap-2">
+                {iconPromptSuggestions.length > 0 ? (
+                  <div className="rounded-lg bg-background p-2">
+                    {iconPromptSuggestions.map((suggestion, index) => (
+                      <button
+                        className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                        key={`${suggestion.label}-${index}`}
+                        onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                        type="button"
+                      >
+                        {suggestion.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <MultimodalInput
+                  attachments={attachments}
+                  chatId={id}
+                  documentUploadsEnabled={documentUploadsEnabled}
+                  imageGenerationCanGenerate={
+                    imageGeneration.canGenerate && !isStudyMode
                   }
-                  if (!imageGeneration.canGenerate) {
-                    setShowImageUpgradeDialog(true);
-                    return;
+                  imageGenerationEnabled={imageGeneration.enabled && !isStudyMode}
+                  imageGenerationRequiresPaidCredits={
+                    imageGeneration.requiresPaidCredits
                   }
-                  setIsImageMode((prev) => !prev);
-                }}
-              />
-              <p className="px-2 text-center text-muted-foreground text-xs">
-                {translate(
-                  "chat.disclaimer.text",
-                  "KhasiGPT or other AI Models can make mistakes. Check important details."
-                )}{" "}
-                <Link className="underline" href="/privacy-policy">
+                  imageGenerationSelected={isImageMode && !isStudyMode}
+                  isGeneratingImage={isGeneratingImage}
+                  input={input}
+                  messages={messages}
+                  onLanguageChange={handleLanguageChangeFromInput}
+                  onModelChange={handleModelChange}
+                  selectedLanguageCode={currentLanguageCode}
+                  selectedModelId={currentModelId}
+                  selectedVisibilityType={visibilityType}
+                  onGenerateImage={() => {
+                    void generateImageFromPrompt(input);
+                  }}
+                  onClearStudyQuestionReference={() =>
+                    setStudyQuestionReference(null)
+                  }
+                  onJumpToQuestionPaper={handleJumpToQuestionPaper}
+                  onBeforeSubmit={handleSubmitScrollToBottom}
+                  sendMessage={sendMessage}
+                  setAttachments={setAttachments}
+                  setInput={setInput}
+                  setMessages={setMessages}
+                  status={status}
+                  stop={stop}
+                  studyQuestionReference={studyQuestionReference}
+                  onToggleImageMode={() => {
+                    if (!imageGeneration.enabled || isStudyMode) {
+                      return;
+                    }
+                    if (!imageGeneration.canGenerate) {
+                      setShowImageUpgradeDialog(true);
+                      return;
+                    }
+                    setIsImageMode((prev) => !prev);
+                  }}
+                />
+                <p className="px-2 text-center text-muted-foreground text-xs">
                   {translate(
-                    "chat.disclaimer.privacy_link",
-                    "See privacy policy."
-                  )}
-                </Link>
-              </p>
+                    "chat.disclaimer.text",
+                    "KhasiGPT or other AI Models can make mistakes. Check important details."
+                  )}{" "}
+                  <Link className="underline" href="/privacy-policy">
+                    {translate(
+                      "chat.disclaimer.privacy_link",
+                      "See privacy policy."
+                    )}
+                  </Link>
+                </p>
+              </div>
             </div>
           )}
-      </div>
+        </div>
       </div>
 
       <Dialog
