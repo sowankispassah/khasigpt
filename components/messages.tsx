@@ -585,7 +585,7 @@ function PureMessages({
         ref={messagesContainerRef}
         style={{ overflowAnchor: "none" }}
       >
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-1 flex-col px-2 py-6 md:px-4">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-1 flex-col px-2 pb-6 pt-[10px] md:px-4">
           {header ? (
             <div
               className={cn(
@@ -630,7 +630,7 @@ function PureMessages({
       style={{ overflowAnchor: "none" }}
     >
       <div className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
-        <div className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
+        <div className="flex flex-col gap-4 px-2 pb-4 pt-[10px] md:gap-6 md:px-4">
           {header ? <div className="w-full">{header}</div> : null}
           {hasMoreHistory && onLoadMoreHistory ? (
             <div className="flex justify-center">

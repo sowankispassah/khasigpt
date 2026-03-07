@@ -1323,9 +1323,17 @@ export function Chat({
           votes={votes}
         />
 
-        <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
+        <div
+          className={`sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 px-2 pb-3 md:px-4 md:pb-4 ${
+            isJobsMode
+              ? isJobsComposerVisible
+                ? "bg-transparent"
+                : "pointer-events-none bg-transparent"
+              : "bg-background"
+          }`}
+        >
           {isReadonly ? null : isJobsMode && !isJobsComposerVisible ? (
-            <div className="flex w-full justify-end">
+            <div className="pointer-events-auto flex w-full justify-end">
               <Button
                 className="h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted"
                 onClick={() => setIsJobsComposerVisible(true)}
