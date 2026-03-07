@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
-import { startTransition, type MouseEvent, useCallback, useEffect, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
 import { PlusIcon } from "@/components/icons";
 import {
@@ -57,8 +57,8 @@ const SidebarHistory = dynamic(
   }
 );
 
-// These force a server rerender so `/chat` generates a fresh chat id, then the
-// Chat UI strips `new` back out via router.replace.
+// These request a fresh `/chat` render so a new chat id is generated, then the
+// Chat UI strips `new` back out of the URL.
 const HOME_HREF = "/chat";
 const NEW_CHAT_HREF = "/chat?new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
@@ -156,32 +156,9 @@ export function AppSidebar({
         preloadChat();
       }
       setOpenMobile(false);
-
-      if (target === "jobs" && pathname === "/chat") {
-        if (typeof window !== "undefined") {
-          window.history.pushState(null, "", href);
-        }
-        return;
-      }
-
-      if (
-        target === "home" ||
-        target === "chat" ||
-        target === "study" ||
-        target === "jobs"
-      ) {
-        if (typeof window !== "undefined") {
-          window.history.pushState(null, "", href);
-        }
-        startTransition(() => {
-          router.refresh();
-        });
-        return;
-      }
-
       router.push(href, { scroll: false });
     },
-    [pathname, pendingNavigation, router, setOpenMobile]
+    [pendingNavigation, router, setOpenMobile]
   );
 
   useEffect(() => {
