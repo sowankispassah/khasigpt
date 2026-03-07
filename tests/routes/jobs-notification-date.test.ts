@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { toJobListItem } from "@/lib/jobs/list-items";
+import { toJobListItem, toJobListItems } from "@/lib/jobs/list-items";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 
@@ -100,5 +100,31 @@ test.describe("jobs notification date parsing", () => {
     const item = await toJobListItem(job);
 
     expect(item.notificationDateLabel).toBe("Not specified");
+  });
+
+  test("list items sort by notification date with fetched date as fallback", async () => {
+    const sorted = await toJobListItems([
+      createJob({
+        id: "fallback-newer",
+        content: "Recruitment notice. Apply online.",
+        createdAt: new Date("2026-03-20T00:00:00.000Z"),
+      }),
+      createJob({
+        id: "notification-mid",
+        content: "Notification Date: 06 Mar 2026",
+        createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      }),
+      createJob({
+        id: "notification-old",
+        content: "Notification Date: 15 Feb 2026",
+        createdAt: new Date("2026-03-25T00:00:00.000Z"),
+      }),
+    ]);
+
+    expect(sorted.map((job) => job.id)).toEqual([
+      "fallback-newer",
+      "notification-mid",
+      "notification-old",
+    ]);
   });
 });

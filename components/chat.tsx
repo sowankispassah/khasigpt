@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { type DataUIPart, DefaultChatTransport } from "ai";
-import { BookOpen } from "lucide-react";
+import { BookOpen, MessageSquareText, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -148,7 +148,7 @@ export function Chat({
     : undefined;
   const [input, setInput] = useState<string>("");
   const [jobsSubmitScrollSignal, setJobsSubmitScrollSignal] = useState(0);
-  const [isJobsComposerVisible, setIsJobsComposerVisible] = useState(true);
+  const [isJobsComposerVisible, setIsJobsComposerVisible] = useState(false);
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
@@ -484,7 +484,7 @@ export function Chat({
     if (!isJobsMode) {
       return;
     }
-    setIsJobsComposerVisible(true);
+    setIsJobsComposerVisible(false);
   }, [id, isJobsMode]);
 
   useEffect(() => {
@@ -1336,13 +1336,14 @@ export function Chat({
           {isReadonly ? null : isJobsMode && !isJobsComposerVisible ? (
             <div className="relative h-0 w-full">
               <Button
-                className="pointer-events-auto absolute right-0 -top-11 h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium shadow-sm hover:bg-muted"
+                className="pointer-events-auto absolute right-0 -top-11 h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
                 onClick={() => setIsJobsComposerVisible(true)}
                 size="sm"
                 type="button"
                 variant="outline"
               >
-                Show chat box
+                <MessageSquareText className="h-4 w-4" />
+                <span className="sr-only">Show chat box</span>
               </Button>
             </div>
           ) : (
@@ -1350,13 +1351,14 @@ export function Chat({
               {isJobsMode ? (
                 <div className="pointer-events-none absolute right-0 -top-11 z-10">
                   <Button
-                    className="pointer-events-auto h-8 w-fit cursor-pointer rounded-md border border-border bg-background px-3 text-xs font-medium shadow-sm hover:bg-muted"
+                    className="pointer-events-auto h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
                     onClick={() => setIsJobsComposerVisible(false)}
                     size="sm"
                     type="button"
                     variant="outline"
                   >
-                    Hide
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Hide chat box</span>
                   </Button>
                 </div>
               ) : null}

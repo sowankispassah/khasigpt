@@ -38,16 +38,9 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-muted-foreground text-sm">
-          Showing {visibleJobs.length} of {jobs.length} job
-          {jobs.length === 1 ? "" : "s"}
-        </div>
-        {jobs.length > 0 ? (
-          <div className="text-muted-foreground text-xs">
-            Open any role to see the full listing.
-          </div>
-        ) : null}
+      <div className="text-muted-foreground text-sm">
+        Showing {visibleJobs.length} of {jobs.length} job
+        {jobs.length === 1 ? "" : "s"}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

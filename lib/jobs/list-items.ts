@@ -15,6 +15,35 @@ function formatDateLabel(value: Date) {
   });
 }
 
+function parseSortableDateLabel(label: string) {
+  const normalized = label.trim();
+  if (!normalized || normalized.toLowerCase() === "not specified") {
+    return null;
+  }
+
+  const dottedMatch = normalized.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (dottedMatch) {
+    const day = Number.parseInt(dottedMatch[1] ?? "", 10);
+    const month = Number.parseInt(dottedMatch[2] ?? "", 10);
+    const yearRaw = Number.parseInt(dottedMatch[3] ?? "", 10);
+    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const ordinalNormalized = normalized.replace(
+    /\b(\d{1,2})(st|nd|rd|th)\b/gi,
+    "$1"
+  );
+  const ordinalParsed = new Date(ordinalNormalized);
+  return Number.isNaN(ordinalParsed.getTime()) ? null : ordinalParsed;
+}
+
 function getSourceHostLabel(sourceUrl: string | null) {
   if (!sourceUrl) {
     return "Source unavailable";
@@ -77,5 +106,25 @@ export async function toJobListItem(job: JobPostingRecord): Promise<JobListItem>
 }
 
 export async function toJobListItems(jobs: JobPostingRecord[]): Promise<JobListItem[]> {
-  return Promise.all(jobs.map((job) => toJobListItem(job)));
+  const items = await Promise.all(
+    jobs.map(async (job) => {
+      const item = await toJobListItem(job);
+      const notificationDate =
+        parseSortableDateLabel(item.notificationDateLabel) ?? job.createdAt;
+      return {
+        item,
+        sortTime: notificationDate.getTime(),
+        fetchedTime: job.createdAt.getTime(),
+      };
+    })
+  );
+
+  return items
+    .sort((left, right) => {
+      if (right.sortTime !== left.sortTime) {
+        return right.sortTime - left.sortTime;
+      }
+      return right.fetchedTime - left.fetchedTime;
+    })
+    .map(({ item }) => item);
 }
