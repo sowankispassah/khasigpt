@@ -96,26 +96,21 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                   </div>
                 </div>
 
-                <div className="rounded-[22px] border border-border/60 bg-background/85 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Salary
-                  </p>
-                  <p className="mt-2 break-words font-semibold text-base leading-relaxed sm:text-lg">
+                <div className="rounded-[20px] border border-border/60 bg-background/85 px-4 py-3">
+                  <p className="break-words font-medium text-sm sm:text-[15px]">
+                    <span className="text-muted-foreground">Salary:</span>{" "}
                     {job.salaryLabel}
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 rounded-[20px] bg-muted/70 px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Notification date
-                  </p>
-                  <p className="shrink-0 whitespace-nowrap font-medium text-sm sm:text-[15px]">
+                <div className="mt-auto flex items-center justify-between gap-3 rounded-[20px] bg-muted/70 px-4 py-3">
+                  <ViewDetailsButton href={`/jobs/${job.id}`} />
+                  <p className="shrink-0 whitespace-nowrap font-medium text-xs sm:text-sm">
+                    <span className="text-muted-foreground">
+                      Notification date:
+                    </span>{" "}
                     {job.notificationDateLabel}
                   </p>
-                </div>
-
-                <div className="mt-auto pt-1">
-                  <ViewDetailsButton href={`/jobs/${job.id}`} />
                 </div>
               </CardContent>
             </Card>

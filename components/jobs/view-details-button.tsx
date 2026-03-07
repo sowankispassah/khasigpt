@@ -23,7 +23,7 @@ export function ViewDetailsButton({ href }: ViewDetailsButtonProps) {
   return (
     <Button
       asChild
-      className={cn("w-full sm:w-auto", isNavigating && "pointer-events-none")}
+      className={cn("shrink-0", isNavigating && "pointer-events-none")}
       size="sm"
     >
       <Link
