@@ -93,11 +93,12 @@ export function ChatLoader(props: ChatLoaderProps) {
     id: string;
   } | null>(null);
   const lastOptimisticRouteRef = useRef<string | null>(null);
+  const isChatShellPath = pathname === "/" || pathname === "/chat";
 
   const requestedMode = searchParams.get("mode");
   const newChatFlag = searchParams.get("new");
   const optimisticChatMode =
-    pathname === "/chat"
+    isChatShellPath
       ? requestedMode === "study"
         ? "study"
         : requestedMode === "jobs"
@@ -106,7 +107,7 @@ export function ChatLoader(props: ChatLoaderProps) {
       : props.chatMode;
 
   useEffect(() => {
-    if (pathname !== "/chat") {
+    if (!isChatShellPath) {
       lastOptimisticRouteRef.current = null;
       setOptimisticSession(null);
       return;
@@ -126,7 +127,7 @@ export function ChatLoader(props: ChatLoaderProps) {
       chatMode: optimisticChatMode,
       id: generateUUID(),
     });
-  }, [newChatFlag, optimisticChatMode, pathname, searchParams]);
+  }, [isChatShellPath, newChatFlag, optimisticChatMode, pathname, searchParams]);
 
   const activeProps = optimisticSession
     ? {

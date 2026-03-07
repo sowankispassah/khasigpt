@@ -65,6 +65,10 @@ const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
+function isChatShellPath(pathname: string) {
+  return pathname === "/" || pathname.startsWith("/chat");
+}
+
 export function AppSidebar({
   calculatorEnabled = true,
   jobsModeEnabled = false,
@@ -157,7 +161,7 @@ export function AppSidebar({
       }
       setOpenMobile(false);
 
-      if (target !== "calculator" && pathname.startsWith("/chat")) {
+      if (target !== "calculator" && isChatShellPath(pathname)) {
         if (typeof window !== "undefined") {
           window.history.pushState(null, "", href);
         }
