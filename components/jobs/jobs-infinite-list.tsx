@@ -1,15 +1,15 @@
 "use client";
 
-import { FileText } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { BriefcaseBusiness, Building2, FileText, MapPin } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type { JobListItem } from "@/lib/jobs/types";
 
-const JOBS_PAGE_SIZE = 10;
+const JOBS_PAGE_SIZE = 12;
 
 export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
   const [visibleCount, setVisibleCount] = useState(Math.min(JOBS_PAGE_SIZE, jobs.length));
@@ -23,7 +23,7 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
   const visibleJobs = useMemo(() => jobs.slice(0, visibleCount), [jobs, visibleCount]);
   const hasMoreJobs = visibleCount < jobs.length;
 
-  const handleManualLoadMore = () => {
+  const handleManualLoadMore = useCallback(() => {
     if (isLoadingMore) {
       return;
     }
@@ -34,72 +34,100 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
       );
       setIsLoadingMore(false);
     }, 120);
-  };
+  }, [isLoadingMore, jobs.length]);
 
   return (
     <>
-      <div className="text-muted-foreground text-sm">
-        Showing {visibleJobs.length} of {jobs.length} job
-        {jobs.length === 1 ? "" : "s"}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-muted-foreground text-sm">
+          Showing {visibleJobs.length} of {jobs.length} job
+          {jobs.length === 1 ? "" : "s"}
+        </div>
+        {jobs.length > 0 ? (
+          <div className="text-muted-foreground text-xs">
+            Open any role to see the full listing.
+          </div>
+        ) : null}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         {visibleJobs.length === 0 ? (
-          <Card className="md:col-span-2">
-            <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          <Card className="rounded-[28px] border-dashed md:col-span-2">
+            <CardContent className="py-10 text-center text-muted-foreground text-sm">
               No jobs match the current filters.
             </CardContent>
           </Card>
         ) : (
           visibleJobs.map((job) => (
-            <Card className="min-w-0 border-border/60" key={job.id}>
-              <CardHeader className="space-y-1 pb-2">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="line-clamp-2 text-base">{job.title}</CardTitle>
+            <Card
+              className="group min-w-0 overflow-hidden rounded-[28px] border-border/60 bg-gradient-to-br from-background via-background to-muted/30 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              key={job.id}
+            >
+              <CardContent className="flex h-full flex-col gap-4 p-5 sm:p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-2">
+                    <div className="inline-flex max-w-full items-center gap-2 text-muted-foreground text-sm">
+                      <Building2 className="h-4 w-4 shrink-0" />
+                      <p className="line-clamp-1 break-words font-medium">{job.company}</p>
+                    </div>
+                    <h3 className="line-clamp-2 break-words font-semibold text-lg leading-snug">
+                      {job.title}
+                    </h3>
+                  </div>
                   {job.hasPdfFile ? (
                     <span
                       aria-label="PDF available"
-                      className="shrink-0 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-1 text-emerald-700"
+                      className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-700"
                       title="PDF file available"
                     >
-                      <FileText className="h-3.5 w-3.5" />
+                      <FileText className="h-4 w-4" />
                     </span>
                   ) : null}
                 </div>
-                <p className="break-words text-muted-foreground text-sm">{job.company}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="line-clamp-3 break-words text-muted-foreground text-sm">
-                  {job.descriptionSnippet}
-                </p>
 
-                <div className="grid grid-cols-1 gap-x-3 gap-y-1 text-[13px] sm:grid-cols-2 sm:text-xs">
-                  <p className="break-words">
-                    <span className="font-medium text-foreground">Location:</span> {job.location}
+                <div className="flex flex-wrap gap-2">
+                  <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-muted-foreground text-xs">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="line-clamp-1 break-words">{job.location}</span>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-muted-foreground text-xs">
+                    <BriefcaseBusiness className="h-3.5 w-3.5 shrink-0" />
+                    <span>{getJobTypeLabel(job.employmentType)}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-border/60 bg-background/85 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Salary
                   </p>
-                  <p className="break-words">
-                    <span className="font-medium text-foreground">Type:</span>{" "}
-                    {getJobTypeLabel(job.employmentType)}
-                  </p>
-                  <p className="break-words">
-                    <span className="font-medium text-foreground">Salary:</span> {job.salaryLabel}
-                  </p>
-                  <p className="break-words">
-                    <span className="font-medium text-foreground">Notification:</span>{" "}
-                    {job.notificationDateLabel}
-                  </p>
-                  <p className="break-words">
-                    <span className="font-medium text-foreground">Fetched on:</span>{" "}
-                    {job.fetchedOnLabel}
-                  </p>
-                  <p className="break-words">
-                    <span className="font-medium text-foreground">Source:</span> {job.sourceLabel}
+                  <p className="mt-2 break-words font-semibold text-base leading-relaxed sm:text-lg">
+                    {job.salaryLabel}
                   </p>
                 </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[20px] bg-muted/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Notification date
+                    </p>
+                    <p className="mt-1 font-medium text-sm sm:text-[15px]">
+                      {job.notificationDateLabel}
+                    </p>
+                  </div>
+                  <div className="rounded-[20px] bg-muted/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Fetched on
+                    </p>
+                    <p className="mt-1 font-medium text-sm sm:text-[15px]">
+                      {job.fetchedOnLabel}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-auto pt-1">
+                  <ViewDetailsButton href={`/jobs/${job.id}`} />
+                </div>
               </CardContent>
-              <CardFooter className="justify-end pt-0">
-                <ViewDetailsButton href={`/jobs/${job.id}`} />
-              </CardFooter>
             </Card>
           ))
         )}
@@ -127,7 +155,7 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
             )}
           </Button>
           <p className="max-w-xl text-center font-medium text-base text-muted-foreground md:text-lg">
-            What jobs are you interested in? Ask in the chat box
+            Need a shorter shortlist? Ask in the chat box.
           </p>
         </div>
       ) : jobs.length > 0 ? (

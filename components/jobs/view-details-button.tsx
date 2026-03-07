@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
+import { cn } from "@/lib/utils";
 
 type ViewDetailsButtonProps = {
   href: string;
@@ -19,9 +21,19 @@ export function ViewDetailsButton({ href }: ViewDetailsButtonProps) {
   };
 
   return (
-    <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
+    <Button
+      asChild
+      className={cn("w-full sm:w-auto", isNavigating && "pointer-events-none")}
+      size="sm"
+    >
       <Link
         aria-disabled={isNavigating}
+        className={cn(
+          "transition-opacity",
+          isNavigating && "pointer-events-none opacity-90"
+        )}
+        data-disabled={isNavigating || undefined}
+        data-nav
         href={href}
         onClick={(event) => {
           if (isNavigating) {
@@ -29,6 +41,7 @@ export function ViewDetailsButton({ href }: ViewDetailsButtonProps) {
             return;
           }
           setIsNavigating(true);
+          startGlobalProgress();
         }}
         onFocus={prefetchDetailsRoute}
         onMouseEnter={prefetchDetailsRoute}
@@ -43,7 +56,7 @@ export function ViewDetailsButton({ href }: ViewDetailsButtonProps) {
             <span>Opening...</span>
           </span>
         ) : (
-          "View Details"
+          "View details"
         )}
       </Link>
     </Button>
