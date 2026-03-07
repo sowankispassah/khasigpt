@@ -105,23 +105,13 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                   </p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[20px] bg-muted/70 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Notification date
-                    </p>
-                    <p className="mt-1 font-medium text-sm sm:text-[15px]">
-                      {job.notificationDateLabel}
-                    </p>
-                  </div>
-                  <div className="rounded-[20px] bg-muted/70 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Fetched on
-                    </p>
-                    <p className="mt-1 font-medium text-sm sm:text-[15px]">
-                      {job.fetchedOnLabel}
-                    </p>
-                  </div>
+                <div className="flex items-center justify-between gap-3 rounded-[20px] bg-muted/70 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Notification date
+                  </p>
+                  <p className="shrink-0 whitespace-nowrap font-medium text-sm sm:text-[15px]">
+                    {job.notificationDateLabel}
+                  </p>
                 </div>
 
                 <div className="mt-auto pt-1">
