@@ -864,6 +864,20 @@ export function Chat({
   );
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
+  const getCurrentChatHref = useCallback(
+    (chatId: string) => {
+      const params = new URLSearchParams();
+      if (isStudyMode) {
+        params.set("mode", "study");
+      } else if (isJobsMode) {
+        params.set("mode", "jobs");
+      }
+
+      const queryString = params.toString();
+      return queryString ? `/chat/${chatId}?${queryString}` : `/chat/${chatId}`;
+    },
+    [isJobsMode, isStudyMode]
+  );
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {
@@ -873,9 +887,9 @@ export function Chat({
       });
 
       setHasAppendedQuery(true);
-      window.history.replaceState({}, "", `/chat/${id}`);
+      window.history.replaceState({}, "", getCurrentChatHref(id));
     }
-  }, [query, sendMessage, hasAppendedQuery, id]);
+  }, [getCurrentChatHref, query, sendMessage, hasAppendedQuery, id]);
 
   useEffect(() => {
     if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
@@ -970,7 +984,7 @@ export function Chat({
         attachment.contentType?.startsWith("image/")
       );
 
-      window.history.replaceState({}, "", `/chat/${id}`);
+      window.history.replaceState({}, "", getCurrentChatHref(id));
 
       const userMessageId = generateUUID();
       const userParts = [
@@ -1101,7 +1115,7 @@ export function Chat({
         return;
       }
 
-      window.history.replaceState({}, "", `/chat/${id}`);
+      window.history.replaceState({}, "", getCurrentChatHref(id));
 
       const messageParts = [
         ...attachments.map((attachment) => ({

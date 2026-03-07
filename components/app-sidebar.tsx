@@ -282,7 +282,11 @@ export function AppSidebar({
 
       const currentMode = searchParams.get("mode");
       const currentJobId = searchParams.get("jobId");
-      if (pathname === "/chat" && currentMode === "jobs" && !currentJobId) {
+      if (
+        pathname.startsWith("/chat") &&
+        currentMode === "jobs" &&
+        !currentJobId
+      ) {
         setOpenMobile(false);
         return;
       }
