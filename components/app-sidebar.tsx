@@ -200,7 +200,7 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      const href = `${HOME_HREF}?new=1&nonce=${Date.now()}`;
+      const href = NEW_CHAT_HREF;
       navigateWithFeedback("home", href);
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
@@ -214,8 +214,7 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      const href = `${NEW_CHAT_HREF}&nonce=${Date.now()}`;
-      navigateWithFeedback("chat", href);
+      navigateWithFeedback("chat", NEW_CHAT_HREF);
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
@@ -228,8 +227,7 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      const href = `${NEW_STUDY_HREF}&nonce=${Date.now()}`;
-      navigateWithFeedback("study", href);
+      navigateWithFeedback("study", NEW_STUDY_HREF);
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
@@ -268,8 +266,7 @@ export function AppSidebar({
         return;
       }
 
-      const href = `${VIEW_JOBS_HREF}&nonce=${Date.now()}`;
-      navigateWithFeedback("jobs", href);
+      navigateWithFeedback("jobs", VIEW_JOBS_HREF);
     },
     [
       navigateWithFeedback,

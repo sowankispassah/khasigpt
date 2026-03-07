@@ -44,7 +44,7 @@ function PureChatHeader({
     }
     setIsOpeningNewChat(true);
     startGlobalProgress();
-    router.push(`/chat?new=1&nonce=${Date.now()}`, { scroll: false });
+    router.push("/chat?new=1", { scroll: false });
   }, [isOpeningNewChat, router]);
 
   return (
