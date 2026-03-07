@@ -74,6 +74,14 @@ test.describe("jobs notification date parsing", () => {
     ).toBe("19th September, 2024");
   });
 
+  test("extracts dated month-name labels with optional of", () => {
+    expect(
+      resolveJobNotificationDateLabel({
+        content: "Dated, Shillong, 3rd of March 2026",
+      })
+    ).toBe("3rd of March 2026");
+  });
+
   test("uses Not specified when no notification date is available", () => {
     expect(
       resolveJobNotificationDateLabel({
