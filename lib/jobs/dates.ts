@@ -115,6 +115,17 @@ function extractRelativeDateLabel(text: string, referenceDate: Date | null) {
   return formatDateLabel(targetDate);
 }
 
+function extractFirstAbsoluteDate(text: string, maxChars = 1500) {
+  const searchText = text.slice(0, Math.max(200, maxChars));
+  const expression = new RegExp(DATE_PATTERN, "i");
+  const match = searchText.match(expression);
+  if (!match?.[0]) {
+    return null;
+  }
+
+  return normalizeExtractedDate(match[0]);
+}
+
 export function resolveJobNotificationDateLabel({
   content,
   pdfContent,
@@ -138,6 +149,13 @@ export function resolveJobNotificationDateLabel({
     const dated = extractDatedDate(normalized);
     if (dated) {
       return dated;
+    }
+
+    if (candidate === pdfContent) {
+      const firstAbsoluteDate = extractFirstAbsoluteDate(normalized);
+      if (firstAbsoluteDate) {
+        return firstAbsoluteDate;
+      }
     }
 
     const relative = extractRelativeDateLabel(normalized, referenceDate ?? null);

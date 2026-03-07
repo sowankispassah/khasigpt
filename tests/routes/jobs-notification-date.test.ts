@@ -82,6 +82,15 @@ test.describe("jobs notification date parsing", () => {
     ).toBe("3rd of March 2026");
   });
 
+  test("falls back to first absolute date near the top of OCR pdf text", () => {
+    expect(
+      resolveJobNotificationDateLabel({
+        pdfContent:
+          "MEGHALAYA BASIN MANAGEMENT AGENCY File No. MBMA/666/2025/ _ Dated, Shillons, INTERNAL JOB POSTING 149 3rd of March 2026 Last Date: 17th of March 2026",
+      })
+    ).toBe("3rd of March 2026");
+  });
+
   test("uses Not specified when no notification date is available", () => {
     expect(
       resolveJobNotificationDateLabel({
