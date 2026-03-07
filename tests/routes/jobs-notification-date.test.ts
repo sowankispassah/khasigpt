@@ -66,6 +66,14 @@ test.describe("jobs notification date parsing", () => {
     ).toBe("06.03.2026");
   });
 
+  test("extracts dated month-name labels with place prefixes", () => {
+    expect(
+      resolveJobNotificationDateLabel({
+        content: "Dated Shillong, the 19th September, 2024.",
+      })
+    ).toBe("19th September, 2024");
+  });
+
   test("uses Not specified when no notification date is available", () => {
     expect(
       resolveJobNotificationDateLabel({

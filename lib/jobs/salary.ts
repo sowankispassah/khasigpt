@@ -107,6 +107,9 @@ const QUALITATIVE_SALARY_PATTERN =
 const PAY_LEVEL_PATTERN =
   /^(?:pay\s*(?:scale|matrix|level)|level[-\s]*\d+[a-z]?|pb-\d+|grade pay)\b/i;
 
+const PAY_LEVEL_TEXT_PATTERN =
+  /\(?(level[-\s]*\d+[a-z]?(?:\s+of\s+(?:the\s+)?(?:revised\s+)?pay\s+structure)?\.?)\)?/i;
+
 const SALARY_AMOUNT_PATTERN =
   /(?:\u20b9|rs\.?|inr)\s?\d[\d,]*(?:\s*\/-)?(?:\s*(?:-|to|\u2013)\s*(?:\u20b9|rs\.?|inr)?\s?\d[\d,]*(?:\s*\/-)?)?(?:\s*(?:\([^)]{1,80}\)|per month|\/month|monthly|per annum|\/year|annum|lpa|lakhs? p\.?a\.?|consolidated|fixed(?: pay)?|stipend|honorarium|plus allowances|including allowances|\+\s*[A-Z]{2,8}|plus\s+[A-Z]{2,8}))*/i;
 
@@ -247,6 +250,11 @@ function extractQualitativeSalary(value: string) {
   return match?.[1] ? trimSalaryPunctuation(normalizeWhitespace(match[1])) : null;
 }
 
+function extractPayLevelText(value: string) {
+  const match = value.match(PAY_LEVEL_TEXT_PATTERN);
+  return match?.[1] ? trimSalaryPunctuation(normalizeWhitespace(match[1])) : null;
+}
+
 function appendSalaryTail(value: string, baseSalary: string) {
   const index = value.indexOf(baseSalary);
   if (index < 0) {
@@ -336,7 +344,7 @@ function extractShortSalary(value: string) {
     return null;
   }
 
-  if (PAY_LEVEL_PATTERN.test(cleaned) && SALARY_AMOUNT_PATTERN.test(cleaned)) {
+  if (PAY_LEVEL_PATTERN.test(cleaned)) {
     return cleaned;
   }
 
@@ -359,6 +367,11 @@ function extractShortSalary(value: string) {
   const qualitative = extractQualitativeSalary(cleaned);
   if (qualitative) {
     return qualitative;
+  }
+
+  const payLevelText = extractPayLevelText(cleaned);
+  if (payLevelText) {
+    return payLevelText;
   }
 
   if (
@@ -459,6 +472,11 @@ function extractSingleSalaryText(text: string | null | undefined) {
       normalized,
       trimSalaryPunctuation(normalizeWhitespace(contextualSuffix[1]))
     );
+  }
+
+  const payLevelText = extractPayLevelText(normalized);
+  if (payLevelText) {
+    return payLevelText;
   }
 
   return null;

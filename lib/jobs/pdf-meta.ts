@@ -19,6 +19,27 @@ type PdfMetaCacheEntry = {
 
 const pdfMetaTextCache = new Map<string, PdfMetaCacheEntry>();
 
+function hasUsefulPdfMetaText(value: string | null | undefined) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const withoutPageMarkers = normalized
+    .replace(/--\s*\d+\s*of\s*\d+\s*--/gi, " ")
+    .replace(/\bpage\s+\d+\s+of\s+\d+\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutPageMarkers.length >= 40;
+}
+
 function isPdfUrl(url: string | null) {
   if (!url) {
     return false;
@@ -94,7 +115,7 @@ function getCachedPdfMetaText(pdfUrl: string) {
 }
 
 export async function resolveJobPdfMetaText(job: JobPdfFields) {
-  if (typeof job.pdfContent === "string" && job.pdfContent.trim().length > 0) {
+  if (hasUsefulPdfMetaText(job.pdfContent)) {
     return job.pdfContent;
   }
 

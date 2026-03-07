@@ -102,6 +102,18 @@ test.describe("jobs salary parsing", () => {
     });
   });
 
+  test("keeps pay level text when no rupee amount is present", () => {
+    const result = resolveJobSalaryInfo({
+      pdfContent:
+        "Name of the Post & Scale of Pay Assistant Conservator of Forest under Forest & Environment Department (Level 15 of Revised Pay Structure.)",
+    });
+
+    expectSalaryInfo(result, {
+      summary: "Level 15 of Revised Pay Structure",
+      entries: [],
+    });
+  });
+
   test("summarizes multiple role salaries as a range", () => {
     const result = resolveJobSalaryInfo({
       pdfContent:

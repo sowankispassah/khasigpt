@@ -36,6 +36,34 @@ const googlePdfOcrClient =
 const normalizeText = (value: string) =>
   value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 
+function hasUsefulExtractedText(value: string | null | undefined) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  const withoutPageMarkers = normalized
+    .replace(/--\s*\d+\s*of\s*\d+\s*--/gi, " ")
+    .replace(/\bpage\s+\d+\s+of\s+\d+\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!withoutPageMarkers) {
+    return false;
+  }
+
+  const words = withoutPageMarkers.split(/\s+/).filter(Boolean);
+  if (words.length < 8) {
+    return false;
+  }
+
+  const alphaWordCount = words.filter((word) => /[A-Za-z]{3,}/.test(word)).length;
+  return alphaWordCount >= Math.max(4, Math.ceil(words.length * 0.35));
+}
+
 const truncateText = (value: string, maxTextChars: number) => {
   if (value.length <= maxTextChars) {
     return { text: value, truncated: false };
@@ -325,26 +353,30 @@ function parsePdfTextFallback(buffer: Buffer) {
 
 async function parsePdf(buffer: Buffer) {
   try {
-    return await parsePdfViaLibrary(buffer);
+    const parsed = await parsePdfViaLibrary(buffer);
+    if (hasUsefulExtractedText(parsed)) {
+      return parsed;
+    }
   } catch (error) {
     console.warn("[document-parser] pdf_parse_failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    const fallback = parsePdfTextFallback(buffer);
-    if (fallback.trim()) {
-      return fallback;
-    }
-
-    try {
-      return await parsePdfViaOcr(buffer);
-    } catch (ocrError) {
-      console.warn("[document-parser] pdf_ocr_failed", {
-        error: ocrError instanceof Error ? ocrError.message : String(ocrError),
-      });
-    }
-
-    throw new Error("PDF parser unavailable");
   }
+
+  const fallback = parsePdfTextFallback(buffer);
+  if (hasUsefulExtractedText(fallback)) {
+    return fallback;
+  }
+
+  try {
+    return await parsePdfViaOcr(buffer);
+  } catch (ocrError) {
+    console.warn("[document-parser] pdf_ocr_failed", {
+      error: ocrError instanceof Error ? ocrError.message : String(ocrError),
+    });
+  }
+
+  throw new Error("PDF parser unavailable");
 }
 
 async function parseDocx(buffer: Buffer) {
