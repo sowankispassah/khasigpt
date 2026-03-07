@@ -468,6 +468,8 @@ export function PdfCanvasPreview({
       setErrorMessage("");
       setPagesRendered(0);
       setTotalPages(0);
+      const nextMount = globalThis.document.createElement("div");
+      nextMount.className = "w-full";
 
       try {
         const pdfjs = await import("pdfjs-dist");
@@ -519,8 +521,7 @@ export function PdfCanvasPreview({
           normalizedMaxPages === null
             ? pageCount
             : Math.min(pageCount, normalizedMaxPages);
-        const container = mountRef.current;
-        if (!container) {
+        if (!mountRef.current) {
           return;
         }
 
@@ -556,9 +557,10 @@ export function PdfCanvasPreview({
           ).length;
 
           const pageWrapper = globalThis.document.createElement("div");
-          pageWrapper.className = "relative mb-3 block box-border w-full bg-white";
+          pageWrapper.className =
+            "relative mb-3 block box-border w-full overflow-hidden bg-white";
           pageWrapper.style.height = `${Math.floor(cssViewport.height)}px`;
-          container.appendChild(pageWrapper);
+          nextMount.appendChild(pageWrapper);
 
           if (cachedPreviewDataUrl) {
             const previewImage = globalThis.document.createElement("img");
@@ -628,6 +630,8 @@ export function PdfCanvasPreview({
         }
 
         if (!cancelled) {
+          clearMount();
+          mountRef.current?.appendChild(nextMount);
           setState("ready");
         }
       } catch (error) {
