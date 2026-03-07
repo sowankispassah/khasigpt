@@ -115,7 +115,7 @@ function extractRelativeDateLabel(text: string, referenceDate: Date | null) {
   return formatDateLabel(targetDate);
 }
 
-function extractFirstAbsoluteDate(text: string, maxChars = 1500) {
+function extractFirstAbsoluteDate(text: string, maxChars = 3000) {
   const searchText = text
     .slice(0, Math.max(200, maxChars))
     .replace(/\b\d{2,4}\s+(?=\d{1,2}(?:st|nd|rd|th)\b)/gi, "");
