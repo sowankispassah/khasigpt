@@ -1591,6 +1591,66 @@ export async function POST(request: Request) {
           },
         ],
       };
+      const runCatalogSemanticSelection = async () => {
+        const catalogSelectionResult = await generateText({
+          model: resolveLanguageModel(modelConfig),
+          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          system: [
+            "You are helping with Meghalaya jobs search.",
+            "Use ONLY the provided jobs catalog. Do not invent jobs or IDs.",
+            "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
+            "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
+            "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
+            "Use the salary summaries in the catalog, and consider structured compensation values, pay scales, and OCR-derived amounts when available.",
+            "If no matches, return an empty jobIds array and explain briefly in answer.",
+          ].join("\n"),
+          messages: convertToModelMessages([
+            ...jobsHistoryMessages,
+            jobsPromptMessage,
+          ]),
+        });
+
+        const catalogUsage = catalogSelectionResult.usage as
+          | {
+              inputTokens?: number;
+              outputTokens?: number;
+              promptTokens?: number;
+              completionTokens?: number;
+            }
+          | undefined;
+        const catalogInputTokens =
+          typeof catalogUsage?.inputTokens === "number"
+            ? catalogUsage.inputTokens
+            : typeof catalogUsage?.promptTokens === "number"
+              ? catalogUsage.promptTokens
+              : 0;
+        const catalogOutputTokens =
+          typeof catalogUsage?.outputTokens === "number"
+            ? catalogUsage.outputTokens
+            : typeof catalogUsage?.completionTokens === "number"
+              ? catalogUsage.completionTokens
+              : 0;
+        if (catalogInputTokens > 0 || catalogOutputTokens > 0) {
+          await recordTokenUsage({
+            userId: session.user.id,
+            chatId: id,
+            modelConfigId: modelConfig.id,
+            inputTokens: catalogInputTokens,
+            outputTokens: catalogOutputTokens,
+            deductCredits: hasActiveCredits,
+          }).catch((tokenError) => {
+            console.warn("[jobs-chat] failed to record catalog token usage", {
+              chatId: id,
+              error:
+                tokenError instanceof Error
+                  ? tokenError.message
+                  : String(tokenError),
+            });
+          });
+        }
+
+        return parseJobsRagSelection(catalogSelectionResult.text);
+      };
 
       try {
         const ragSelectionResult = await generateText({
@@ -1654,9 +1714,28 @@ export async function POST(request: Request) {
 
         const parsedSelection = parseJobsRagSelection(ragSelectionResult.text);
         if (!parsedSelection) {
+          const catalogSelection = await runCatalogSemanticSelection().catch(
+            () => null
+          );
+          if (!catalogSelection) {
+            return buildJobsResponse({
+              text:
+                "I couldn't parse the semantic jobs search result. Please rephrase your request and try again.",
+            });
+          }
+
+          const visibleJobsById = new Map(
+            visibleJobs.map((job) => [job.id, job] as const)
+          );
+          const catalogCards = catalogSelection.jobIds
+            .map((jobId) => visibleJobsById.get(jobId))
+            .filter((job): job is (typeof visibleJobs)[number] => Boolean(job))
+            .slice(0, 12)
+            .map(toJobCard);
+
           return buildJobsResponse({
-            text:
-              "I couldn't parse the semantic jobs search result. Please rephrase your request and try again.",
+            text: catalogSelection.answer,
+            cards: catalogCards,
           });
         }
 
@@ -1670,6 +1749,21 @@ export async function POST(request: Request) {
           .map(toJobCard);
 
         if (selectedCards.length === 0) {
+          const catalogSelection = await runCatalogSemanticSelection().catch(
+            () => null
+          );
+          if (catalogSelection) {
+            const catalogCards = catalogSelection.jobIds
+              .map((jobId) => visibleJobsById.get(jobId))
+              .filter((job): job is (typeof visibleJobs)[number] => Boolean(job))
+              .slice(0, 12)
+              .map(toJobCard);
+            return buildJobsResponse({
+              text: catalogSelection.answer,
+              cards: catalogCards,
+            });
+          }
+
           return buildJobsResponse({
             text:
               parsedSelection.answer?.trim().length > 0
