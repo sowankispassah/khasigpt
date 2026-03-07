@@ -1,0 +1,343 @@
+import Link from "next/link";
+import { unstable_cache } from "next/cache";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/app/(auth)/auth";
+import { Response } from "@/components/elements/response";
+import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
+import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
+import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-detail";
+import { resolveJobPdfMetaText, resolveJobPdfUrl } from "@/lib/jobs/pdf-meta";
+import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
+import { getJobPostingById } from "@/lib/jobs/service";
+
+export const dynamic = "force-dynamic";
+const SOURCE_DETAIL_MIN_CHARS = 700;
+const SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS = 2_500;
+const SOURCE_DETAIL_FETCH_TIMEOUT_MS = 2_500;
+const SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS = 300;
+
+const getCachedSourceDetailMarkdown = unstable_cache(
+  async (sourceUrl: string) =>
+    fetchSourceDetailMarkdown(sourceUrl, {
+      timeoutMs: SOURCE_DETAIL_FETCH_TIMEOUT_MS,
+    }),
+  ["jobs-detail:source-markdown"],
+  { revalidate: SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS }
+);
+
+function compactText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function markdownToPlainText(value: string) {
+  return compactText(
+    value
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+      .replace(/[#>*`_~|-]/g, " ")
+  );
+}
+
+function formatDateLabel(value: Date) {
+  return value.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getSourceHostLabel(sourceUrl: string | null) {
+  if (!sourceUrl) {
+    return "Source unavailable";
+  }
+
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./i, "");
+  } catch {
+    return "Source available";
+  }
+}
+
+function isPdfUrl(url: string | null) {
+  if (!url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.toLowerCase().endsWith(".pdf");
+  } catch {
+    return false;
+  }
+}
+
+function extractPdfUrlFromContent(content: string) {
+  const match = content.match(/PDF Source:\s*(https?:\/\/\S+)/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const candidate = match[1].replace(/[),.;]+$/g, "");
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolvePdfUrl({
+  sourceUrl,
+  pdfSourceUrl,
+  pdfCachedUrl,
+  content,
+}: {
+  sourceUrl: string | null;
+  pdfSourceUrl: string | null;
+  pdfCachedUrl: string | null;
+  content: string;
+}) {
+  if (isPdfUrl(pdfCachedUrl)) {
+    return pdfCachedUrl;
+  }
+  if (isPdfUrl(pdfSourceUrl)) {
+    return pdfSourceUrl;
+  }
+  if (isPdfUrl(sourceUrl)) {
+    return sourceUrl;
+  }
+  return extractPdfUrlFromContent(content);
+}
+
+export default async function JobPostingDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await props.params;
+  const session = await auth();
+  const jobsEnabled = await isJobsEnabledForRole(session?.user?.role ?? null);
+
+  if (!jobsEnabled) {
+    notFound();
+  }
+
+  if (!session?.user) {
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/jobs/${id}`)}`);
+  }
+
+  const job = await getJobPostingById({
+    id,
+    includeInactive: false,
+  });
+
+  if (!job) {
+    notFound();
+  }
+
+  let detailMarkdown = job.content.trim();
+  const currentDetailLength = markdownToPlainText(detailMarkdown).length;
+  const shouldFetchSourceDetail =
+    Boolean(job.sourceUrl) &&
+    !isPdfUrl(job.sourceUrl) &&
+    isLinkedInUrl(job.sourceUrl) &&
+    currentDetailLength < SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS;
+
+  if (job.sourceUrl && shouldFetchSourceDetail) {
+    const currentLength = markdownToPlainText(detailMarkdown).length;
+    const sourceDetail = await getCachedSourceDetailMarkdown(job.sourceUrl);
+    const sourceDetailLength = sourceDetail ? markdownToPlainText(sourceDetail).length : 0;
+    if (sourceDetail && sourceDetailLength >= Math.max(SOURCE_DETAIL_MIN_CHARS, currentLength + 80)) {
+      detailMarkdown = sourceDetail;
+    }
+  }
+
+  const pdfUrl = resolveJobPdfUrl({
+    sourceUrl: job.sourceUrl,
+    pdfSourceUrl: job.pdfSourceUrl,
+    pdfCachedUrl: job.pdfCachedUrl,
+    content: job.content,
+  });
+  const pdfMetaText = await resolveJobPdfMetaText(job);
+  const detailTextForMeta = markdownToPlainText(detailMarkdown);
+
+  const salaryInfo = resolveJobSalaryInfo({
+    salary: job.salary,
+    content: detailMarkdown,
+    pdfContent: pdfMetaText,
+    extractedData: job.pdfExtractedData,
+  });
+  const salaryLabel = salaryInfo.summary;
+  const notificationDateLabel = resolveJobNotificationDateLabel({
+    content: detailMarkdown,
+    pdfContent: pdfMetaText,
+    referenceDate: job.createdAt,
+    extractedData: job.pdfExtractedData,
+  });
+  const fetchedOnLabel = formatDateLabel(job.createdAt);
+  const sourceLabel = getSourceHostLabel(job.sourceUrl);
+  const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
+  const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
+  const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
+  const showDescriptionText = !proxiedPdfUrl && detailTextForMeta.length > 0;
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+      <div className="flex items-center justify-between gap-2">
+        <BackToJobsButton />
+      </div>
+
+      <Card>
+        <CardHeader className="space-y-2">
+          <CardTitle className="break-words text-xl sm:text-2xl">{job.title}</CardTitle>
+          <CardDescription className="text-sm">
+            {job.company} / {job.location}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 text-sm md:grid-cols-2">
+            <p className="break-words">
+              <span className="font-medium">Location:</span> {job.location}
+            </p>
+            <p className="break-words">
+              <span className="font-medium">Type:</span> {getJobTypeLabel(job.employmentType)}
+            </p>
+            <p className="break-words">
+              <span className="font-medium">Salary:</span> {salaryLabel}
+            </p>
+            <p className="break-words">
+              <span className="font-medium">Notification date:</span>{" "}
+              {notificationDateLabel}
+            </p>
+            <p className="break-words">
+              <span className="font-medium">Fetched on:</span> {fetchedOnLabel}
+            </p>
+            <p className="break-words">
+              <span className="font-medium">Source:</span> {sourceLabel}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
+              <Link href={`/chat?mode=jobs&new=1&jobId=${job.id}`}>Ask about this job</Link>
+            </Button>
+            {job.sourceUrl ? (
+              <Button
+                asChild
+                className="w-full cursor-pointer sm:w-auto"
+                size="sm"
+                variant="outline"
+              >
+                <a href={job.sourceUrl} rel="noreferrer" target="_blank">
+                  Open source listing
+                </a>
+              </Button>
+            ) : null}
+            {proxiedPdfUrl ? (
+              <Button
+                asChild
+                className="w-full cursor-pointer sm:w-auto"
+                size="sm"
+                variant="outline"
+              >
+                <a href={proxiedPdfUrl} rel="noreferrer" target="_blank">
+                  Open PDF file
+                </a>
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      {salaryInfo.entries.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Compensation by role</CardTitle>
+            <CardDescription>Role-wise compensation extracted from the listing or PDF.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-hidden rounded-md border">
+              <table className="min-w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr className="border-b">
+                    <th className="px-4 py-2 text-left font-medium">Role</th>
+                    <th className="px-4 py-2 text-left font-medium">Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salaryInfo.entries.map((entry) => (
+                    <tr className="border-b last:border-b-0" key={`${entry.role}-${entry.salary}`}>
+                      <td className="px-4 py-2 align-top">{entry.role}</td>
+                      <td className="px-4 py-2 align-top">{entry.salary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {showDescriptionText ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">About the job</CardTitle>
+            <CardDescription>Detailed description extracted from the source listing.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Response className="prose prose-zinc max-w-none text-sm leading-relaxed [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_li]:my-1 [&_ol]:pl-5 [&_p]:my-3 [&_ul]:pl-5">
+              {detailMarkdown}
+            </Response>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {proxiedPdfUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Relevant file</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-0 pb-0">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-6">
+                <a
+                  className="cursor-pointer text-primary text-sm underline underline-offset-2"
+                  href={proxiedPdfUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open PDF in new tab
+                </a>
+              </div>
+              <ExternalPreviewFrame
+                format="pdf"
+                src={proxiedPdfUrl}
+                title={`${job.title} PDF`}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {hasAnyFileLinks && sourcePreviewUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Original source page</CardTitle>
+            <CardDescription>Open the original listing in a new tab.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <a
+              className="cursor-pointer break-all text-primary text-sm underline underline-offset-2"
+              href={sourcePreviewUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open source page in new tab
+            </a>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}

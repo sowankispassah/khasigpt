@@ -1,6 +1,11 @@
+import Link from "next/link";
 import { memo } from "react";
+import { useCallback, useRef } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
+import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
+import type { ChatHistoryMode } from "./sidebar-history";
+import { preloadChat } from "./chat-loader";
 import {
   CheckCircleFillIcon,
   GlobeIcon,
@@ -9,7 +14,6 @@ import {
   ShareIcon,
   TrashIcon,
 } from "./icons";
-import { LoaderIcon } from "./icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,51 +29,101 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "./ui/sidebar";
-import { preloadChat } from "./chat-loader";
 
 const PureChatItem = ({
   chat,
+  historyKey,
+  historyMode,
   isActive,
-  isNavigating,
   onDelete,
   onOpen,
+  onPrefetch,
 }: {
   chat: Chat;
+  historyKey?: string;
+  historyMode?: ChatHistoryMode;
   isActive: boolean;
-  isNavigating: boolean;
   onDelete: (chatId: string) => void;
-  onOpen: (chatId: string) => void;
+  onOpen: (chatId: string) => boolean;
+  onPrefetch?: (chatId: string) => void;
 }) => {
+  const href = `/chat/${chat.id}`;
+  const hasPrefetchedRef = useRef(false);
+
+  const maybePrefetch = useCallback(() => {
+    if (hasPrefetchedRef.current) {
+      return;
+    }
+    hasPrefetchedRef.current = true;
+    onPrefetch?.(chat.id);
+  }, [onPrefetch, chat.id]);
+
+  const studyContextSummary = useStudyContextSummary(
+    historyMode === "study" ? chat.id : null
+  );
+  const studyTitle =
+    historyMode === "study"
+      ? [studyContextSummary?.exam, studyContextSummary?.role, studyContextSummary?.year]
+          .map((part) =>
+            typeof part === "string" ? part.trim() : `${part ?? ""}`.trim()
+          )
+          .filter((part) => part.length > 0)
+          .join(" / ")
+      : "";
+  const displayTitle =
+    studyTitle || studyContextSummary?.title?.trim() || chat.title;
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId: chat.id,
     initialVisibilityType: chat.visibility,
+    historyKey,
+    historyMode,
   });
 
   return (
-    <SidebarMenuItem>
+      <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
-        <button
-          aria-busy={isNavigating}
+        <Link
           className="flex w-full items-center gap-2 truncate text-left"
-          onFocus={preloadChat}
-          onClick={() => {
-            onOpen(chat.id);
+          href={href}
+          prefetch={false}
+          scroll={false}
+          onPointerDown={() => {
+            preloadChat();
+            maybePrefetch();
           }}
-          onMouseEnter={preloadChat}
-          onTouchStart={preloadChat}
-          type="button"
+          onClick={(event) => {
+            if (
+              event.defaultPrevented ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey ||
+              event.button !== 0
+            ) {
+              return;
+            }
+
+            const shouldNavigate = onOpen(chat.id);
+            if (!shouldNavigate) {
+              event.preventDefault();
+              return;
+            }
+          }}
+          onFocus={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
+          onMouseEnter={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
+          onTouchStart={() => {
+            preloadChat();
+            maybePrefetch();
+          }}
         >
-          <span className="flex-1 truncate">
-            {chat.title}
-          </span>
-          {isNavigating ? (
-            <span className="text-sidebar-foreground/70">
-              <span className="flex h-3.5 w-3.5 items-center justify-center animate-spin">
-                <LoaderIcon size={14} />
-              </span>
-            </span>
-          ) : null}
-        </button>
+          <span className="flex-1 truncate">{displayTitle}</span>
+        </Link>
       </SidebarMenuButton>
 
       <DropdownMenu modal={true}>
@@ -136,9 +190,6 @@ const PureChatItem = ({
 
 export const ChatItem = memo(PureChatItem, (prevProps, nextProps) => {
   if (prevProps.isActive !== nextProps.isActive) {
-    return false;
-  }
-  if (prevProps.isNavigating !== nextProps.isNavigating) {
     return false;
   }
   return true;
