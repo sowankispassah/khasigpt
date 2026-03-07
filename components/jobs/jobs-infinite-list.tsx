@@ -99,10 +99,12 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                 <div className="mt-auto flex items-center gap-3">
                   <div className="min-w-0 flex-1 rounded-[20px] bg-muted/70 px-4 py-3">
                     <p className="truncate font-medium text-xs sm:text-sm">
-                      <span className="text-muted-foreground">
-                        Notification date:
-                      </span>{" "}
+                      <span className="text-muted-foreground">Notification:</span>{" "}
                       {job.notificationDateLabel}
+                    </p>
+                    <p className="mt-1 truncate text-muted-foreground text-xs sm:text-sm">
+                      <span className="font-medium text-foreground/80">Fetched:</span>{" "}
+                      {job.fetchedOnLabel}
                     </p>
                   </div>
                   <ViewDetailsButton href={`/jobs/${job.id}`} />
@@ -134,9 +136,6 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
               "Load more jobs"
             )}
           </Button>
-          <p className="max-w-xl text-center font-medium text-base text-muted-foreground md:text-lg">
-            Need a shorter shortlist? Ask in the chat box.
-          </p>
         </div>
       ) : jobs.length > 0 ? (
         <div className="py-2 text-center text-muted-foreground text-xs">
