@@ -53,6 +53,7 @@ type MessagesProps = {
     isQuizActive?: boolean;
   };
   jobActions?: {
+    onPrefetch?: (job: JobCard) => void;
     onView: (job: JobCard) => void;
     onAsk: (job: JobCard) => void;
     activeJobId?: string | null;

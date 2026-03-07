@@ -45,6 +45,7 @@ const PurePreviewMessage = ({
     isQuizActive?: boolean;
   };
   jobActions?: {
+    onPrefetch?: (job: JobCard) => void;
     onView: (job: JobCard) => void;
     onAsk: (job: JobCard) => void;
     activeJobId?: string | null;
@@ -189,6 +190,7 @@ const PurePreviewMessage = ({
                     activeJobId={jobActions.activeJobId}
                     jobs={jobs}
                     onAsk={jobActions.onAsk}
+                    onPrefetch={jobActions.onPrefetch}
                     onView={jobActions.onView}
                   />
                 </div>

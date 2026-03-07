@@ -10,6 +10,7 @@ type JobCardsProps = {
   jobs: JobCard[];
   onView: (job: JobCard) => void;
   onAsk: (job: JobCard) => void;
+  onPrefetch?: (job: JobCard) => void;
   activeJobId?: string | null;
 };
 
@@ -17,6 +18,7 @@ export function JobCards({
   jobs,
   onView,
   onAsk,
+  onPrefetch,
   activeJobId = null,
 }: JobCardsProps) {
   return (
@@ -56,6 +58,9 @@ export function JobCards({
               <Button
                 className="cursor-pointer"
                 onClick={() => onView(job)}
+                onFocus={() => onPrefetch?.(job)}
+                onMouseEnter={() => onPrefetch?.(job)}
+                onTouchStart={() => onPrefetch?.(job)}
                 size="sm"
                 type="button"
                 variant="outline"

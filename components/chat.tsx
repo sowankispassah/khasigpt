@@ -800,12 +800,6 @@ export function Chat({
     setStudyQuestionReference(null);
   }, []);
 
-  const handleJobView = useCallback((job: JobCard) => {
-    if (typeof window !== "undefined") {
-      window.location.href = `/jobs/${job.id}`;
-    }
-  }, []);
-
   const handleJobAsk = useCallback((job: JobCard) => {
     setJobContext(job);
   }, []);
@@ -819,6 +813,26 @@ export function Chat({
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
   const newChatNonce = searchParams.get("new");
+
+  const handleJobPrefetch = useCallback(
+    (job: JobCard) => {
+      try {
+        router.prefetch(`/jobs/${job.id}`);
+      } catch (error) {
+        console.warn("Prefetch job details failed", error);
+      }
+    },
+    [router]
+  );
+
+  const handleJobView = useCallback(
+    (job: JobCard) => {
+      startActionProgress();
+      handleJobPrefetch(job);
+      router.push(`/jobs/${job.id}`, { scroll: false });
+    },
+    [handleJobPrefetch, router, startActionProgress]
+  );
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
 
@@ -1266,6 +1280,7 @@ export function Chat({
   const jobActions = isJobsMode
     ? {
         activeJobId: jobContext?.id ?? null,
+        onPrefetch: handleJobPrefetch,
         onView: handleJobView,
         onAsk: handleJobAsk,
       }

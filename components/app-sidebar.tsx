@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
 import { type MouseEvent, useCallback, useEffect, useState } from "react";
+import { preloadChat } from "@/components/chat-loader";
 import { PlusIcon } from "@/components/icons";
 import {
   Collapsible,
@@ -25,6 +26,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
+import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
 const SidebarHistory = dynamic(
   () =>
@@ -102,6 +104,29 @@ export function AppSidebar({
     []
   );
 
+  const prefetchRoute = useCallback(
+    (href: string) => {
+      if (!shouldPrefetch()) {
+        return;
+      }
+
+      try {
+        router.prefetch(href);
+      } catch (error) {
+        console.warn("Prefetch route failed", error);
+      }
+    },
+    [router]
+  );
+
+  const prefetchChatRoute = useCallback(
+    (href: string) => {
+      prefetchRoute(href);
+      preloadChat();
+    },
+    [prefetchRoute]
+  );
+
   const navigateWithFeedback = useCallback(
     (target: "home" | "chat" | "study" | "jobs" | "calculator", href: string) => {
       if (pendingNavigation) {
@@ -110,11 +135,43 @@ export function AppSidebar({
 
       setPendingNavigation(target);
       startGlobalProgress();
+      if (target !== "calculator") {
+        preloadChat();
+      }
       setOpenMobile(false);
       router.push(href, { scroll: false });
     },
     [pendingNavigation, router, setOpenMobile]
   );
+
+  useEffect(() => {
+    if (!shouldPrefetch()) {
+      return;
+    }
+
+    const idleHandle = runWhenIdle(() => {
+      prefetchChatRoute(NEW_CHAT_HREF);
+      if (studyModeEnabled) {
+        prefetchChatRoute(NEW_STUDY_HREF);
+      }
+      if (jobsModeEnabled) {
+        prefetchChatRoute(VIEW_JOBS_HREF);
+      }
+      if (calculatorEnabled) {
+        prefetchRoute("/calculator");
+      }
+    }, 300);
+
+    return () => {
+      cancelIdle(idleHandle);
+    };
+  }, [
+    calculatorEnabled,
+    jobsModeEnabled,
+    prefetchChatRoute,
+    prefetchRoute,
+    studyModeEnabled,
+  ]);
 
   const handleHomeClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -186,6 +243,10 @@ export function AppSidebar({
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
+
+  const handleViewJobsPrefetch = useCallback(() => {
+    prefetchChatRoute(VIEW_JOBS_HREF);
+  }, [prefetchChatRoute]);
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
@@ -287,6 +348,9 @@ export function AppSidebar({
                               aria-disabled={pendingNavigation !== null}
                               href={VIEW_JOBS_HREF}
                               onClick={handleViewJobsClick}
+                              onFocus={handleViewJobsPrefetch}
+                              onMouseEnter={handleViewJobsPrefetch}
+                              onTouchStart={handleViewJobsPrefetch}
                             >
                               <Eye />
                               <span>
