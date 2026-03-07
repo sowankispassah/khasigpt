@@ -280,10 +280,23 @@ export function AppSidebar({
 
       event.preventDefault();
 
+      const currentMode = searchParams.get("mode");
+      const currentJobId = searchParams.get("jobId");
+      if (pathname === "/chat" && currentMode === "jobs" && !currentJobId) {
+        setOpenMobile(false);
+        return;
+      }
+
       const href = `${VIEW_JOBS_HREF}&nonce=${Date.now()}`;
       navigateWithFeedback("jobs", href);
     },
-    [navigateWithFeedback, shouldHandleClientNavigation]
+    [
+      navigateWithFeedback,
+      pathname,
+      searchParams,
+      setOpenMobile,
+      shouldHandleClientNavigation,
+    ]
   );
 
   const handleViewJobsPrefetch = useCallback(() => {
