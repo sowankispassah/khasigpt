@@ -11,7 +11,11 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { getAppSetting, listLanguagesWithSettings } from "@/lib/db/queries";
+import {
+  getAppSetting,
+  getLastKnownAppSetting,
+  listLanguagesWithSettings,
+} from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { toJobListItems } from "@/lib/jobs/list-items";
@@ -50,6 +54,17 @@ export default async function Page({
       console.error(`[chat/home] ${label} query timed out or failed.`, error);
       return fallback;
     });
+  const safeAppSettingQuery = <T,>(
+    label: string,
+    key: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
+    withTimeout(promise, CHAT_HOME_QUERY_TIMEOUT_MS).catch((error) => {
+      console.error(`[chat/home] ${label} query timed out or failed.`, error);
+      const remembered = getLastKnownAppSetting<T>(key);
+      return remembered ?? fallback;
+    });
 
   const [
     modelsResult,
@@ -74,23 +89,27 @@ export default async function Page({
       []
     ),
     safeQuery("languages", listLanguagesWithSettings(), []),
-    safeQuery(
+    safeAppSettingQuery(
       "custom knowledge flag",
+      CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
       getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
       null
     ),
-    safeQuery(
+    safeAppSettingQuery(
       "document uploads flag",
+      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
       getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
       null
     ),
-    safeQuery(
+    safeAppSettingQuery(
       "study mode flag",
+      STUDY_MODE_FEATURE_FLAG_KEY,
       getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
       null
     ),
-    safeQuery(
+    safeAppSettingQuery(
       "jobs mode flag",
+      JOBS_FEATURE_FLAG_KEY,
       getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
       null
     ),

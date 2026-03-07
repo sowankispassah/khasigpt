@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import {
   grantUserCreditsAction,
   setUserActiveStateAction,
@@ -8,18 +7,10 @@ import {
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
-import { InfoIcon } from "@/components/icons";
+import { AdminUserCreditHistoryMenu } from "@/components/admin-user-credit-history-menu";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  type CreditHistoryEntry,
-  getUserBalanceSummary,
+  getUserBalanceSummaries,
   listActiveSubscriptionSummaries,
-  listPricingPlans,
-  listUserCreditHistory,
   listUsers,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
@@ -27,34 +18,30 @@ import type { UserRole } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
+const EMPTY_USER_BALANCE: UserBalanceSummary = {
+  subscription: null,
+  plan: null,
+  tokensRemaining: 0,
+  tokensTotal: 0,
+  creditsRemaining: 0,
+  creditsTotal: 0,
+  allocatedCredits: 0,
+  rechargedCredits: 0,
+  expiresAt: null,
+  startedAt: null,
+};
+
 export default async function AdminUsersPage() {
   const session = await auth();
   const currentUserId = session?.user?.id;
 
-  const [users, plans, activeSubscriptions] = await Promise.all([
+  const [users, activeSubscriptions] = await Promise.all([
     listUsers({ limit: 100 }),
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
     listActiveSubscriptionSummaries({ limit: 20 }),
   ]);
-
-  const planNameById = new Map(plans.map((plan) => [plan.id, plan.name]));
-  const userEmailById = new Map(users.map((user) => [user.id, user.email]));
-
-  const usersWithData = await Promise.all(
-    users.map(async (user) => {
-      const [balance, history] = await Promise.all([
-        getUserBalanceSummary(user.id),
-        listUserCreditHistory({ userId: user.id, limit: 8 }),
-      ]);
-
-      return { user, balance, history };
-    })
+  const balanceByUserId = await getUserBalanceSummaries(
+    users.map((user) => user.id)
   );
-
-  const getPlanName = (planId: string | null | undefined) =>
-    planId ? (planNameById.get(planId) ?? null) : null;
-  const getUserEmail = (userId: string | null | undefined) =>
-    userId ? (userEmailById.get(userId) ?? null) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -78,7 +65,7 @@ export default async function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {usersWithData.map(({ user, balance, history }) => (
+            {users.map((user) => (
               <tr className="border-t text-sm" key={user.id}>
                 <td className="py-3">{user.email}</td>
                 <td className="py-3 capitalize">{user.role}</td>
@@ -126,10 +113,7 @@ export default async function AdminUsersPage() {
                       userId={user.id}
                     />
                     <AddCreditsForm
-                      balance={balance}
-                      getPlanName={getPlanName}
-                      getUserEmail={getUserEmail}
-                      history={history}
+                      balance={balanceByUserId.get(user.id) ?? EMPTY_USER_BALANCE}
                       userId={user.id}
                     />
                   </div>
@@ -203,15 +187,9 @@ export default async function AdminUsersPage() {
 function AddCreditsForm({
   userId,
   balance,
-  history,
-  getPlanName,
-  getUserEmail,
 }: {
   userId: string;
   balance: UserBalanceSummary;
-  history: CreditHistoryEntry[];
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
 }) {
   const creditsRemaining = balance.creditsRemaining;
   const creditsLabel = `${creditsRemaining.toLocaleString("en-IN", {
@@ -228,11 +206,7 @@ function AddCreditsForm({
       <input name="billingCycleDays" type="hidden" value="90" />
       <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-muted-foreground text-xs">
         <span>{creditsLabel}</span>
-        <CreditHistoryButton
-          getPlanName={getPlanName}
-          getUserEmail={getUserEmail}
-          history={history}
-        />
+        <AdminUserCreditHistoryMenu userId={userId} />
       </div>
       <input
         aria-label="Credits to grant"
@@ -253,107 +227,5 @@ function AddCreditsForm({
         Add credits
       </ActionSubmitButton>
     </form>
-  );
-}
-
-function CreditHistoryButton({
-  history,
-  getPlanName,
-  getUserEmail,
-}: {
-  history: CreditHistoryEntry[];
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const hasHistory = history.length > 0;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-background/60 hover:text-foreground"
-          type="button"
-        >
-          <InfoIcon size={10} />
-          <span className="sr-only">View credit history</span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="max-h-64 w-80 space-y-2 overflow-y-auto p-3"
-        side="top"
-      >
-        {hasHistory ? (
-          history.map((entry) => (
-            <CreditHistoryItem
-              entry={entry}
-              getPlanName={getPlanName}
-              getUserEmail={getUserEmail}
-              key={entry.id}
-            />
-          ))
-        ) : (
-          <p className="text-muted-foreground text-xs">
-            No credit activity recorded yet.
-          </p>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function CreditHistoryItem({
-  entry,
-  getPlanName,
-  getUserEmail,
-}: {
-  entry: CreditHistoryEntry;
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const createdAt =
-    entry.createdAt instanceof Date
-      ? entry.createdAt
-      : new Date(entry.createdAt);
-  const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
-  const target = (entry.target ?? {}) as Record<string, unknown>;
-
-  let description = entry.action;
-
-  if (entry.action === "billing.manual_credit.grant") {
-    const credits =
-      typeof metadata.credits === "number" ? metadata.credits : null;
-    const tokens = typeof metadata.tokens === "number" ? metadata.tokens : null;
-    const expiresInDays =
-      typeof metadata.expiresInDays === "number"
-        ? metadata.expiresInDays
-        : null;
-    const actor = getUserEmail(entry.actorId) ?? "Admin";
-
-    const parts = [
-      `${actor} granted${credits !== null ? ` ${credits.toLocaleString()} credits` : ""}`,
-    ];
-    if (tokens !== null) {
-      parts.push(`(${tokens.toLocaleString()} tokens)`);
-    }
-    if (expiresInDays !== null) {
-      parts.push(
-        `expires in ${expiresInDays} day${expiresInDays === 1 ? "" : "s"}`
-      );
-    }
-    description = parts.join(" • ");
-  } else if (entry.action === "billing.recharge") {
-    const planId = (metadata.planId ?? target.planId) as string | undefined;
-    const planName = getPlanName(planId) ?? planId ?? "Plan";
-    description = `User activated ${planName}`;
-  }
-
-  return (
-    <div className="rounded-md border bg-background p-2 shadow-sm">
-      <p className="font-medium text-foreground text-xs">{description}</p>
-      <p className="text-[11px] text-muted-foreground">
-        {formatDistanceToNow(createdAt, { addSuffix: true })}
-      </p>
-    </div>
   );
 }

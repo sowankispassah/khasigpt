@@ -108,7 +108,15 @@ async function saveFeatureAccessModeWithRetry({
   throw lastError ?? new Error("save_failed");
 }
 
-function AccessModeBadge({ mode }: { mode: FeatureAccessMode }) {
+function AccessModeBadge({ mode }: { mode: FeatureAccessMode | null }) {
+  if (mode === null) {
+    return (
+      <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 text-xs">
+        Unavailable
+      </span>
+    );
+  }
+
   if (mode === "enabled") {
     return (
       <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
@@ -149,27 +157,29 @@ export function FeatureAccessModeControl({
   successMessage,
   title,
 }: {
-  currentMode: FeatureAccessMode;
+  currentMode: FeatureAccessMode | null;
   description: string;
   fieldName: string;
   successMessage: string;
   title: string;
 }) {
-  const [mode, setMode] = useState<FeatureAccessMode>(currentMode);
+  const [mode, setMode] = useState<FeatureAccessMode | null>(currentMode);
   const [pendingTarget, setPendingTarget] = useState<FeatureAccessMode | null>(
     null
   );
   const [isSaving, setIsSaving] = useState(false);
 
   const currentModeSummary =
-    mode === "enabled"
+    mode === null
+      ? "Current: unavailable because the setting could not be loaded."
+      : mode === "enabled"
       ? "Current: everyone can access."
       : mode === "admin_only"
         ? "Current: only admin users can access."
         : "Current: access is disabled for everyone.";
 
   const submitMode = async (nextMode: FeatureAccessMode) => {
-    if (isSaving || nextMode === mode) {
+    if (isSaving || mode === null || nextMode === mode) {
       return;
     }
 
@@ -207,7 +217,7 @@ export function FeatureAccessModeControl({
       const requestTimedOut =
         error instanceof Error && error.message === "request_timeout";
 
-      setMode(previousMode);
+      setMode(previousMode ?? currentMode);
       toast({
         type: "error",
         description: requestTimedOut
@@ -245,7 +255,7 @@ export function FeatureAccessModeControl({
 
             return (
               <Button
-                disabled={isSaving}
+                disabled={isSaving || mode === null}
                 key={button.mode}
                 onClick={() => {
                   void submitMode(button.mode);
@@ -274,6 +284,12 @@ export function FeatureAccessModeControl({
           access. Enable for all: everyone can access.
         </p>
         <p className="text-muted-foreground text-xs">{currentModeSummary}</p>
+        {mode === null ? (
+          <p className="text-amber-700 text-xs">
+            Reload this page after the settings read recovers before changing
+            this control.
+          </p>
+        ) : null}
       </div>
     </div>
   );

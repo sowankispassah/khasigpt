@@ -12,7 +12,11 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
-import { getAppSetting, getUserById } from "@/lib/db/queries";
+import {
+  getAppSetting,
+  getLastKnownAppSetting,
+  getUserById,
+} from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
@@ -68,30 +72,40 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
-  const safeSettingRead = <T,>(label: string, promise: Promise<T>, fallback: T) =>
+  const safeSettingRead = <T,>(
+    label: string,
+    key: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
     withTimeout(promise, CHAT_LAYOUT_QUERY_TIMEOUT_MS).catch((error) => {
       console.error(`[chat/layout] ${label} timed out or failed.`, error);
-      return fallback;
+      const remembered = getLastKnownAppSetting<T>(key);
+      return remembered ?? fallback;
     });
   const [studyModeSetting, forumSetting, calculatorSetting, jobsSetting] = session
     ? await Promise.all([
         safeSettingRead(
           "study mode setting",
+          STUDY_MODE_FEATURE_FLAG_KEY,
           getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
           null
         ),
         safeSettingRead(
           "forum setting",
+          FORUM_FEATURE_FLAG_KEY,
           getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
           null
         ),
         safeSettingRead(
           "calculator setting",
+          CALCULATOR_FEATURE_FLAG_KEY,
           getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
           null
         ),
         safeSettingRead(
           "jobs setting",
+          JOBS_FEATURE_FLAG_KEY,
           getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
           null
         ),

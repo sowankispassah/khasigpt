@@ -67,6 +67,7 @@ import {
 } from "@/lib/constants";
 import {
   getAppSettingsByKeysUncached,
+  getLastKnownAppSettingsByKeys,
   getTranslationValuesForKeys,
   listActivePrelaunchInviteAccess,
   listImageModelConfigs,
@@ -227,13 +228,13 @@ async function loadAppSettingValuesByKey() {
       return await loadEssentialFallbackSettingMap();
     } catch (retryError) {
       console.error(
-        "[admin/settings] Per-key app setting retry failed. Using defaults for missing values.",
+        "[admin/settings] Per-key app setting retry failed. Using last known values or defaults for missing values.",
         retryError
       );
     }
   }
 
-  return new Map<string, unknown>();
+  return getLastKnownAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]);
 }
 
 function SettingsSubmitButton(
@@ -761,12 +762,14 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsEnabledSetting
   );
-  const suggestedPromptsAccessMode = parseSuggestedPromptsAccessModeSetting(
-    suggestedPromptsEnabledSetting
-  );
-  const iconPromptsAccessMode = parseIconPromptsAccessModeSetting(
-    iconPromptsEnabledSetting
-  );
+  const suggestedPromptsAccessMode =
+    settingsLoadFailed && suggestedPromptsEnabledSetting === null
+      ? null
+      : parseSuggestedPromptsAccessModeSetting(suggestedPromptsEnabledSetting);
+  const iconPromptsAccessMode =
+    settingsLoadFailed && iconPromptsEnabledSetting === null
+      ? null
+      : parseIconPromptsAccessModeSetting(iconPromptsEnabledSetting);
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -891,7 +894,10 @@ export default async function AdminSettingsPage({
       }
     }
   }
-  const forumAccessMode = parseForumAccessModeSetting(forumEnabledSetting);
+  const forumAccessMode =
+    settingsLoadFailed && forumEnabledSetting === null
+      ? null
+      : parseForumAccessModeSetting(forumEnabledSetting);
   const sitePublicLaunched = parseBooleanSetting(
     sitePublicLaunchedSetting,
     true
@@ -917,19 +923,26 @@ export default async function AdminSettingsPage({
   const comingSoonContent =
     normalizeComingSoonContentSetting(comingSoonContentSetting);
   const comingSoonTimer = normalizeComingSoonTimerSetting(comingSoonTimerSetting);
-  const calculatorAccessMode = parseCalculatorAccessModeSetting(
-    calculatorEnabledSetting
-  );
-  const studyModeAccessMode = parseStudyModeAccessModeSetting(
-    studyModeEnabledSetting
-  );
-  const jobsAccessMode = parseJobsAccessModeSetting(jobsEnabledSetting);
-  const imageGenerationAccessMode = parseImageGenerationAccessModeSetting(
-    imageGenerationEnabledSetting
-  );
-  const documentUploadsAccessMode = parseDocumentUploadsAccessModeSetting(
-    documentUploadsEnabledSetting
-  );
+  const calculatorAccessMode =
+    settingsLoadFailed && calculatorEnabledSetting === null
+      ? null
+      : parseCalculatorAccessModeSetting(calculatorEnabledSetting);
+  const studyModeAccessMode =
+    settingsLoadFailed && studyModeEnabledSetting === null
+      ? null
+      : parseStudyModeAccessModeSetting(studyModeEnabledSetting);
+  const jobsAccessMode =
+    settingsLoadFailed && jobsEnabledSetting === null
+      ? null
+      : parseJobsAccessModeSetting(jobsEnabledSetting);
+  const imageGenerationAccessMode =
+    settingsLoadFailed && imageGenerationEnabledSetting === null
+      ? null
+      : parseImageGenerationAccessModeSetting(imageGenerationEnabledSetting);
+  const documentUploadsAccessMode =
+    settingsLoadFailed && documentUploadsEnabledSetting === null
+      ? null
+      : parseDocumentUploadsAccessModeSetting(documentUploadsEnabledSetting);
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -1095,9 +1108,10 @@ export default async function AdminSettingsPage({
             Settings loaded in fallback mode.
           </p>
           <p className="mt-1 text-muted-foreground">
-            A production settings query timed out, so default values are shown
-            for fields that could not be loaded. Retry in a few seconds and
-            check server logs for
+            A production settings query timed out, so last known values or safe
+            defaults are shown where possible, and unreadable feature toggles
+            stay unavailable instead of flipping to disabled. Retry in a few
+            seconds and check server logs for
             <span className="mx-1 font-mono text-xs">[admin/settings]</span>
             entries if this persists.
           </p>

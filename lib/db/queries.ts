@@ -3249,6 +3249,32 @@ export async function getChatCount({
 
 export const APP_SETTING_CACHE_TAG = "app-settings";
 
+const lastKnownAppSettingValues = new Map<string, unknown>();
+
+function rememberAppSettingValue(key: string, value: unknown) {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    return;
+  }
+
+  lastKnownAppSettingValues.set(normalizedKey, value);
+}
+
+function rememberAppSettings(settings: AppSetting[]) {
+  for (const setting of settings) {
+    rememberAppSettingValue(setting.key, setting.value);
+  }
+}
+
+function clearRememberedAppSetting(key: string) {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    return;
+  }
+
+  lastKnownAppSettingValues.delete(normalizedKey);
+}
+
 export function appSettingCacheTagForKey(key: string) {
   return `app-setting:${key}`;
 }
@@ -3268,7 +3294,9 @@ function shouldUseAppSettingCache(key: string) {
 
 async function getAppSettingsRaw(): Promise<AppSetting[]> {
   try {
-    return await db.select().from(appSetting);
+    const settings = await db.select().from(appSetting);
+    rememberAppSettings(settings);
+    return settings;
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -3288,7 +3316,13 @@ async function getAppSettingRaw<T>(key: string): Promise<T | null> {
       .where(eq(appSetting.key, key))
       .limit(1);
 
-    return setting ? (setting.value as T) : null;
+    if (!setting) {
+      clearRememberedAppSetting(key);
+      return null;
+    }
+
+    rememberAppSettingValue(key, setting.value);
+    return setting.value as T;
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return null;
@@ -3314,7 +3348,9 @@ export async function getAppSettings(): Promise<AppSetting[]> {
     }
   );
 
-  return cached();
+  const settings = await cached();
+  rememberAppSettings(settings);
+  return settings;
 }
 
 export async function getAppSettingsUncached(): Promise<AppSetting[]> {
@@ -3337,10 +3373,20 @@ export async function getAppSettingsByKeysUncached(
   }
 
   try {
-    return await db
+    const settings = await db
       .select()
       .from(appSetting)
       .where(inArray(appSetting.key, uniqueKeys));
+    rememberAppSettings(settings);
+
+    const foundKeys = new Set(settings.map((setting) => setting.key));
+    for (const key of uniqueKeys) {
+      if (!foundKeys.has(key)) {
+        clearRememberedAppSetting(key);
+      }
+    }
+
+    return settings;
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -3366,11 +3412,42 @@ export async function getAppSetting<T>(key: string): Promise<T | null> {
     }
   );
 
-  return cached();
+  const value = await cached();
+  if (value === null) {
+    clearRememberedAppSetting(key);
+    return null;
+  }
+
+  rememberAppSettingValue(key, value);
+  return value;
 }
 
 export async function getAppSettingUncached<T>(key: string): Promise<T | null> {
   return getAppSettingRaw<T>(key);
+}
+
+export function getLastKnownAppSetting<T>(key: string): T | null {
+  const normalizedKey = key.trim();
+  if (!normalizedKey || !lastKnownAppSettingValues.has(normalizedKey)) {
+    return null;
+  }
+
+  return lastKnownAppSettingValues.get(normalizedKey) as T;
+}
+
+export function getLastKnownAppSettingsByKeys(keys: string[]) {
+  const remembered = new Map<string, unknown>();
+
+  for (const rawKey of keys) {
+    const key = rawKey.trim();
+    if (!key || !lastKnownAppSettingValues.has(key)) {
+      continue;
+    }
+
+    remembered.set(key, lastKnownAppSettingValues.get(key));
+  }
+
+  return remembered;
 }
 
 export async function setAppSetting<T>({
@@ -3400,6 +3477,8 @@ export async function setAppSetting<T>({
     );
   }
 
+  rememberAppSettingValue(key, value);
+
   revalidateTag(APP_SETTING_CACHE_TAG, "max");
   revalidateTag(appSettingCacheTagForKey(key), "max");
 }
@@ -3413,6 +3492,8 @@ export async function deleteAppSetting(key: string) {
       "Failed to delete application setting"
     );
   }
+
+  clearRememberedAppSetting(key);
 
   revalidateTag(APP_SETTING_CACHE_TAG, "max");
   revalidateTag(appSettingCacheTagForKey(key), "max");
@@ -6403,6 +6484,133 @@ export async function getUserBalanceSummary(
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load user balance summary"
+    );
+  }
+}
+
+export async function getUserBalanceSummaries(
+  userIds: string[]
+): Promise<Map<string, UserBalanceSummary>> {
+  const validUserIds = Array.from(
+    new Set(userIds.filter((userId) => isValidUUID(userId)))
+  );
+  const summaries = new Map<string, UserBalanceSummary>();
+
+  for (const userId of validUserIds) {
+    summaries.set(userId, { ...EMPTY_BALANCE });
+  }
+
+  if (validUserIds.length === 0) {
+    return summaries;
+  }
+
+  const now = new Date();
+
+  try {
+    const [activeSubscriptions, latestSubscriptions] = await Promise.all([
+      db
+        .selectDistinctOn([userSubscription.userId])
+        .from(userSubscription)
+        .where(
+          and(
+            inArray(userSubscription.userId, validUserIds),
+            eq(userSubscription.status, "active"),
+            gt(userSubscription.expiresAt, now),
+            gt(userSubscription.tokenBalance, 0)
+          )
+        )
+        .orderBy(userSubscription.userId, desc(userSubscription.expiresAt)),
+      db
+        .selectDistinctOn([userSubscription.userId])
+        .from(userSubscription)
+        .where(inArray(userSubscription.userId, validUserIds))
+        .orderBy(userSubscription.userId, desc(userSubscription.updatedAt)),
+    ]);
+
+    const planIds = Array.from(
+      new Set(
+        latestSubscriptions
+          .map((subscription) => subscription.planId)
+          .filter((planId): planId is string => typeof planId === "string")
+      )
+    );
+    const plans =
+      planIds.length > 0
+        ? await db
+            .select()
+            .from(pricingPlan)
+            .where(
+              and(
+                inArray(pricingPlan.id, planIds),
+                isNull(pricingPlan.deletedAt)
+              )
+            )
+        : [];
+
+    const activeByUserId = new Map(
+      activeSubscriptions.map((subscription) => [subscription.userId, subscription])
+    );
+    const latestByUserId = new Map(
+      latestSubscriptions.map((subscription) => [subscription.userId, subscription])
+    );
+    const planById = new Map(plans.map((plan) => [plan.id, plan]));
+
+    for (const userId of validUserIds) {
+      const activeSubscription = activeByUserId.get(userId) ?? null;
+      const latestSubscription =
+        activeSubscription ?? latestByUserId.get(userId) ?? null;
+
+      if (!latestSubscription) {
+        continue;
+      }
+
+      const plan = planById.get(latestSubscription.planId) ?? null;
+
+      if (!activeSubscription) {
+        summaries.set(userId, {
+          subscription: null,
+          plan,
+          tokensRemaining: 0,
+          tokensTotal: 0,
+          creditsRemaining: 0,
+          creditsTotal: 0,
+          allocatedCredits: 0,
+          rechargedCredits: 0,
+          expiresAt: latestSubscription.expiresAt,
+          startedAt: latestSubscription.startedAt,
+        });
+        continue;
+      }
+
+      const tokensRemaining = Math.max(0, activeSubscription.tokenBalance);
+      const tokensTotal = Math.max(0, activeSubscription.tokenAllowance);
+      const creditsRemaining = tokensRemaining / TOKENS_PER_CREDIT;
+      const creditsTotal = tokensTotal / TOKENS_PER_CREDIT;
+      const manualTokens = Math.max(0, activeSubscription.manualTokenBalance ?? 0);
+      const paidTokens = Math.max(0, activeSubscription.paidTokenBalance ?? 0);
+
+      summaries.set(userId, {
+        subscription: activeSubscription,
+        plan,
+        tokensRemaining,
+        tokensTotal,
+        creditsRemaining,
+        creditsTotal,
+        allocatedCredits: manualTokens / TOKENS_PER_CREDIT,
+        rechargedCredits: paidTokens / TOKENS_PER_CREDIT,
+        expiresAt: activeSubscription.expiresAt,
+        startedAt: activeSubscription.startedAt,
+      });
+    }
+
+    return summaries;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return summaries;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load user balance summaries"
     );
   }
 }
