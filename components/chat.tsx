@@ -211,8 +211,7 @@ export function Chat({
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
-  const shouldLoadJobsListFromApi =
-    pathname === "/chat" && isJobsMode && jobsListItems.length === 0;
+  const shouldLoadJobsListFromApi = isJobsMode && jobsListItems.length === 0;
   const {
     data: jobsModeListItemsData,
     isLoading: isJobsModeListLoading,
