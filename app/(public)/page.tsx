@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function PublicLandingPage() {
-  redirect("/login?callbackUrl=/");
+  redirect("/login?callbackUrl=/chat");
 }

@@ -654,11 +654,11 @@ export async function proxy(request: NextRequest) {
     if (hasAuthenticatedSession) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/chat";
-      return NextResponse.rewrite(redirectUrl);
+      return NextResponse.redirect(redirectUrl);
     }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("callbackUrl", "/");
+    loginUrl.searchParams.set("callbackUrl", "/chat");
     return NextResponse.redirect(loginUrl);
   }
 
