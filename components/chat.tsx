@@ -517,10 +517,10 @@ export function Chat({
 
   useEffect(() => {
     if (!isJobsMode) {
+      setIsJobsComposerVisible(false);
       return;
     }
-    setIsJobsComposerVisible(false);
-  }, [id, isJobsMode]);
+  }, [isJobsMode]);
 
   useEffect(() => {
     void id;

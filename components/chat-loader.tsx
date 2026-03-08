@@ -93,27 +93,30 @@ export function ChatLoader(props: ChatLoaderProps) {
     id: string;
   } | null>(null);
   const lastOptimisticRouteRef = useRef<string | null>(null);
-  const isChatShellPath = pathname === "/" || pathname === "/chat";
+  const isRootChatShellPath = pathname === "/" || pathname === "/chat";
+  const optimisticChatPath = optimisticSession ? `/chat/${optimisticSession.id}` : null;
+  const isOptimisticChatPath =
+    typeof optimisticChatPath === "string" && pathname === optimisticChatPath;
+  const canContinueOptimisticSession =
+    isRootChatShellPath || isOptimisticChatPath;
 
   const requestedMode = searchParams.get("mode");
   const newChatFlag = searchParams.get("new");
-  const optimisticChatMode =
-    isChatShellPath
-      ? requestedMode === "study"
-        ? "study"
-        : requestedMode === "jobs"
-          ? "jobs"
-          : "default"
-      : props.chatMode;
+  const requestedChatMode =
+    requestedMode === "study"
+      ? "study"
+      : requestedMode === "jobs"
+        ? "jobs"
+        : "default";
 
   useEffect(() => {
-    if (!isChatShellPath) {
+    if (!canContinueOptimisticSession) {
       lastOptimisticRouteRef.current = null;
       setOptimisticSession(null);
       return;
     }
 
-    if (!newChatFlag) {
+    if (!isRootChatShellPath || !newChatFlag) {
       return;
     }
 
@@ -124,12 +127,19 @@ export function ChatLoader(props: ChatLoaderProps) {
 
     lastOptimisticRouteRef.current = routeKey;
     setOptimisticSession({
-      chatMode: optimisticChatMode,
+      chatMode: requestedChatMode,
       id: generateUUID(),
     });
-  }, [isChatShellPath, newChatFlag, optimisticChatMode, pathname, searchParams]);
+  }, [
+    canContinueOptimisticSession,
+    isRootChatShellPath,
+    newChatFlag,
+    pathname,
+    requestedChatMode,
+    searchParams,
+  ]);
 
-  const activeProps = optimisticSession
+  const activeProps = optimisticSession && canContinueOptimisticSession
     ? {
         ...props,
         autoResume: false,
