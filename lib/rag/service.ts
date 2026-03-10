@@ -117,14 +117,37 @@ export async function createRagCategory({ name }: { name: string }) {
 }
 
 function buildIndexableText(entry: RagEntryModel) {
+  const metadata =
+    (entry.metadata as Record<string, unknown> | null | undefined) ?? {};
   const tags =
     Array.isArray(entry.tags) && entry.tags.length
       ? `Tags: ${entry.tags.join(", ")}`
+      : "";
+  const company =
+    typeof metadata.company === "string" && metadata.company.trim().length > 0
+      ? `Company: ${metadata.company.trim()}`
+      : "";
+  const location =
+    typeof metadata.location === "string" && metadata.location.trim().length > 0
+      ? `Location: ${metadata.location.trim()}`
+      : "";
+  const employmentType =
+    typeof metadata.employment_type === "string" &&
+    metadata.employment_type.trim().length > 0
+      ? `Employment Type: ${metadata.employment_type.trim()}`
+      : "";
+  const salary =
+    typeof metadata.salary === "string" && metadata.salary.trim().length > 0
+      ? `Salary: ${metadata.salary.trim()}`
       : "";
   const source = entry.sourceUrl ? `Source: ${entry.sourceUrl}` : "";
   return [
     `Title: ${entry.title}`,
     `Type: ${entry.type}`,
+    company,
+    location,
+    employmentType,
+    salary,
     tags,
     source,
     "\n",

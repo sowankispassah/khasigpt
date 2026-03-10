@@ -62,6 +62,7 @@ import {
   buildJobsPdfExtractedSummaryLines,
   type JobsPdfExtractedData,
 } from "@/lib/jobs/pdf-extraction";
+import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 import { extractSalaryText, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
@@ -312,6 +313,37 @@ const jobsRagSelectionSchema = z.object({
 const JOB_UUID_PATTERN =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 
+function sanitizeJobsAnswerText(value: string) {
+  return value
+    .replace(/\s*\[cite:[^\]]+\]/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
+function findMentionedJobsLocation(
+  text: string,
+  jobs: Array<{ location: string }>
+): string | null {
+  const normalizedText = text.trim().toLowerCase();
+  if (!normalizedText) {
+    return null;
+  }
+
+  const knownLocations = Array.from(
+    new Set(jobs.map((job) => job.location.trim()).filter(Boolean))
+  ).sort((a, b) => b.length - a.length);
+
+  for (const location of knownLocations) {
+    const normalizedLocation = location.toLowerCase();
+    if (normalizedLocation && normalizedText.includes(normalizedLocation)) {
+      return location;
+    }
+  }
+
+  return null;
+}
+
 function supportsGeminiFileSearchModel(providerModelId: string) {
   const normalized = providerModelId.includes("/")
     ? providerModelId.split("/").at(-1) ?? providerModelId
@@ -347,7 +379,11 @@ function parseJobsRagSelection(rawText: string) {
   const parseCandidate = (candidate: string) => {
     try {
       const parsedJson = JSON.parse(sanitizeCandidate(candidate));
-      return jobsRagSelectionSchema.parse(parsedJson);
+      const parsed = jobsRagSelectionSchema.parse(parsedJson);
+      return {
+        ...parsed,
+        answer: sanitizeJobsAnswerText(parsed.answer),
+      };
     } catch {
       return null;
     }
@@ -390,7 +426,7 @@ function parseJobsRagSelection(rawText: string) {
 
   const fallbackAnswer =
     recoveredAnswer.length > 0
-      ? recoveredAnswer
+      ? sanitizeJobsAnswerText(recoveredAnswer)
       : "Here are the most relevant jobs I found.";
 
   return jobsRagSelectionSchema.parse({
@@ -1382,10 +1418,41 @@ export async function POST(request: Request) {
     }
 
     if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
-      const availableIds = jobPostingIdsForModel ?? [];
-      const activeJobs = await listJobPostings({
+      let availableIds = jobPostingIdsForModel ?? [];
+      let activeJobs = await listJobPostings({
         includeInactive: false,
       });
+      const requestedLocation = findMentionedJobsLocation(jobsUserText, activeJobs);
+      if (requestedLocation) {
+        const repairJobIds = activeJobs
+          .filter(
+            (job) =>
+              job.embeddingStatus !== "ready" &&
+              job.location.trim().toLowerCase().includes(requestedLocation.toLowerCase())
+          )
+          .map((job) => job.id)
+          .slice(0, 25);
+
+        if (repairJobIds.length > 0) {
+          try {
+            await syncJobPostingsToRag({
+              jobIds: repairJobIds,
+            });
+            activeJobs = await listJobPostings({
+              includeInactive: false,
+            });
+            availableIds = await listActiveJobPostingIdsForModel({
+              modelConfigId: modelConfig.id,
+              modelKey: modelConfig.key,
+            });
+          } catch (error) {
+            console.warn("[jobs-chat] location_rag_repair_failed", {
+              location: requestedLocation,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
       const applyModelScope = (jobs: typeof activeJobs) =>
         availableIds.length > 0
           ? jobs.filter((job) => availableIds.includes(job.id))
@@ -1657,6 +1724,7 @@ export async function POST(request: Request) {
             "Use ONLY the provided jobs catalog. Do not invent jobs or IDs.",
             "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
+            "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
             "Use the salary summaries in the catalog, and consider structured compensation values, pay scales, and OCR-derived amounts when available.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
@@ -1718,6 +1786,7 @@ export async function POST(request: Request) {
             "Use ONLY retrieved File Search job documents. Do not invent jobs.",
             "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
+            "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
             "Use the provided jobs catalog only to map retrieved matches back to valid job IDs. Do not use it as a standalone search source.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
