@@ -353,6 +353,10 @@ function parseSalaryAnchorValues(value: string) {
   return matches;
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function findRequestedSalaryRange(text: string) {
   const normalized = text.trim().toLowerCase();
   if (!normalized) {
@@ -545,6 +549,74 @@ function buildJobsCatalogCandidates({
     })
     .slice(0, limit)
     .map((entry) => entry.job);
+}
+
+function normalizeJobsSelectionAnswer({
+  query,
+  answer,
+  matchedCards,
+}: {
+  query: string;
+  answer: string;
+  matchedCards: JobCard[];
+}) {
+  let normalized = sanitizeJobsAnswerText(answer);
+  if (!normalized) {
+    return normalized;
+  }
+
+  if (matchedCards.length === 0) {
+    return normalized;
+  }
+
+  const approximateQuery =
+    /\b(?:around|about|near|approx(?:imately)?|close to)\b/i.test(query);
+  const requestedLocation = findMentionedJobsLocation(query, matchedCards);
+  const sentences =
+    normalized
+      .match(/[^.!?]+[.!?]?/g)
+      ?.map((sentence) => sentence.trim())
+      .filter(Boolean) ?? [];
+
+  if (sentences.length > 1) {
+    const firstSentence = sentences[0] ?? "";
+    const isNegativeLead = [
+      /\bI (?:couldn't|could not|didn't|did not|can't|cannot) find\b/i,
+      /\bThere (?:are|were) no\b/i,
+      /\bI found no\b/i,
+      /\bI did not find\b/i,
+    ].some((pattern) => pattern.test(firstSentence));
+    const mentionsExact = /\bexact\b/i.test(firstSentence);
+    const mentionsSpecificity = /\bspecifically\b/i.test(firstSentence);
+    const mentionsRequestedLocation =
+      requestedLocation &&
+      new RegExp(`\\b${escapeRegExp(requestedLocation)}\\b`, "i").test(firstSentence);
+
+    if (
+      isNegativeLead &&
+      (approximateQuery || mentionsExact || mentionsSpecificity || mentionsRequestedLocation)
+    ) {
+      sentences.shift();
+      if (sentences.length > 0) {
+        sentences[0] = sentences[0].replace(/^(however|but|still|instead)\s*,?\s*/i, "");
+      }
+      normalized = sentences.join(" ").replace(/\s{2,}/g, " ").trim();
+    }
+  }
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  if (requestedLocation) {
+    return `I found ${matchedCards.length} job${matchedCards.length === 1 ? "" : "s"} in ${requestedLocation}.`;
+  }
+
+  if (approximateQuery) {
+    return `I found ${matchedCards.length} job${matchedCards.length === 1 ? "" : "s"} close to that amount.`;
+  }
+
+  return `I found ${matchedCards.length} relevant job${matchedCards.length === 1 ? "" : "s"}.`;
 }
 
 function supportsGeminiFileSearchModel(providerModelId: string) {
@@ -1944,7 +2016,9 @@ export async function POST(request: Request) {
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
             "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
             "Answer naturally. Do not mention the catalog, summaries, internal search process, or provided data.",
+            "If jobIds is non-empty, your answer must clearly say matches were found. Do not start with phrases like 'I couldn't find' or 'There are no jobs'.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
+            "When the user asks for jobs around/about/near an amount, do not talk about exact salary matching unless the user explicitly asked for exact salary.",
             "Use the salary summaries in the catalog, and consider structured compensation values, pay scales, and OCR-derived amounts when available.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
           ].join("\n"),
@@ -2008,8 +2082,10 @@ export async function POST(request: Request) {
             "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
             "Use the provided jobs catalog only to map retrieved matches back to valid job IDs. Do not use it as a standalone search source.",
             "Answer naturally. Do not mention the catalog, summaries, internal search process, or provided data.",
+            "If jobIds is non-empty, your answer must clearly say matches were found. Do not start with phrases like 'I couldn't find' or 'There are no jobs'.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
+            "When the user asks for jobs around/about/near an amount, do not talk about exact salary matching unless the user explicitly asked for exact salary.",
             "Use structured compensation details when present, including pay levels, allowances, and OCR-extracted PDF text.",
             "Treat type, qualification, location, and deadline requests as search intent over the job documents, not as fixed keyword filtering.",
             "If uncertain, state what is missing instead of guessing.",
@@ -2077,7 +2153,11 @@ export async function POST(request: Request) {
             .map(toJobCard);
 
           return buildJobsResponse({
-            text: catalogSelection.answer,
+            text: normalizeJobsSelectionAnswer({
+              query: jobsPromptText,
+              answer: catalogSelection.answer,
+              matchedCards: catalogCards,
+            }),
             cards: catalogCards,
           });
         }
@@ -2099,7 +2179,11 @@ export async function POST(request: Request) {
               .slice(0, 12)
               .map(toJobCard);
             return buildJobsResponse({
-              text: catalogSelection.answer,
+              text: normalizeJobsSelectionAnswer({
+                query: jobsPromptText,
+                answer: catalogSelection.answer,
+                matchedCards: catalogCards,
+              }),
               cards: catalogCards,
             });
           }
@@ -2114,7 +2198,11 @@ export async function POST(request: Request) {
         }
 
         return buildJobsResponse({
-          text: parsedSelection.answer,
+          text: normalizeJobsSelectionAnswer({
+            query: jobsPromptText,
+            answer: parsedSelection.answer,
+            matchedCards: selectedCards,
+          }),
           cards: selectedCards,
         });
       } catch (error) {
