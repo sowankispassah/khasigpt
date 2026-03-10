@@ -27,6 +27,7 @@ import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
+import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -57,6 +58,10 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import {
+  hasStructuredJobsFilters,
+  resolveJobsFilterConversation,
+} from "@/lib/jobs/filtering";
 import {
   buildJobsPdfExtractedSummaryLines,
   type JobsPdfExtractedData,
@@ -302,6 +307,28 @@ function wantsDirectExamAnswer(text: string) {
   return /\b(just answer|only answer|direct answer|final answer)\b/.test(
     normalized
   );
+}
+
+function formatStructuredJobsMatchText({
+  summary,
+  totalMatches,
+}: {
+  summary: string;
+  totalMatches: number;
+}) {
+  if (totalMatches <= 0) {
+    return `I couldn't find any active jobs matching ${summary} in the current jobs data.`;
+  }
+
+  if (totalMatches === 1) {
+    return `I found 1 active job matching ${summary}.`;
+  }
+
+  if (totalMatches > 12) {
+    return `I found ${totalMatches} active jobs matching ${summary}. Showing the first 12.`;
+  }
+
+  return `I found ${totalMatches} active jobs matching ${summary}.`;
 }
 
 const jobsRagSelectionSchema = z.object({
@@ -870,6 +897,7 @@ export async function POST(request: Request) {
 
     const chat = await getChatById({ id });
     const resolvedChatMode = chat?.mode ?? requestedChatMode;
+    let persistedChatLastContext = chat?.lastContext ?? null;
 
     if (resolvedChatMode === STUDY_CHAT_MODE && !studyModeEnabled) {
       return new ChatSDKError(
@@ -951,6 +979,27 @@ export async function POST(request: Request) {
       const assistantMessageId = generateUUID();
       const assistantParts: ChatMessage["parts"] = [];
 
+      const nextContext = mergeChatUiContext({
+        currentContext: persistedChatLastContext,
+        uiContext: {
+          jobPostingId:
+            resolvedChatMode === JOBS_CHAT_MODE ? effectiveJobPostingId ?? null : null,
+          studyPaperId: null,
+        },
+      });
+      const previousUiContext = readChatUiContext(persistedChatLastContext);
+      const nextUiContext = readChatUiContext(nextContext);
+      if (
+        previousUiContext.jobPostingId !== nextUiContext.jobPostingId ||
+        previousUiContext.studyPaperId !== nextUiContext.studyPaperId
+      ) {
+        await updateChatLastContextById({
+          chatId: id,
+          context: nextContext,
+        });
+        persistedChatLastContext = nextContext;
+      }
+
       if (text) {
         assistantParts.push({ type: "text", text });
       }
@@ -1031,6 +1080,27 @@ export async function POST(request: Request) {
       const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
       const assistantMessageId = generateUUID();
       const assistantParts: ChatMessage["parts"] = [];
+
+      const nextContext = mergeChatUiContext({
+        currentContext: persistedChatLastContext,
+        uiContext: {
+          jobPostingId: null,
+          studyPaperId:
+            resolvedChatMode === STUDY_CHAT_MODE ? effectiveStudyPaperId ?? null : null,
+        },
+      });
+      const previousUiContext = readChatUiContext(persistedChatLastContext);
+      const nextUiContext = readChatUiContext(nextContext);
+      if (
+        previousUiContext.jobPostingId !== nextUiContext.jobPostingId ||
+        previousUiContext.studyPaperId !== nextUiContext.studyPaperId
+      ) {
+        await updateChatLastContextById({
+          chatId: id,
+          context: nextContext,
+        });
+        persistedChatLastContext = nextContext;
+      }
 
       if (text) {
         assistantParts.push({ type: "text", text });
@@ -1529,6 +1599,41 @@ export async function POST(request: Request) {
             });
           }
         }
+      }
+
+      const structuredJobsFilter = resolveJobsFilterConversation({
+        jobs: activeJobs,
+        priorUserMessages,
+        latestUserMessage: jobsUserText,
+      });
+      const shouldUseStructuredJobsFilter =
+        structuredJobsFilter.clarification !== null ||
+        hasStructuredJobsFilters(structuredJobsFilter.state);
+
+      if (shouldUseStructuredJobsFilter) {
+        const structuredCards = structuredJobsFilter.filteredJobs
+          .slice(0, 12)
+          .map(toJobCard);
+        const structuredText = structuredJobsFilter.clarification
+          ? structuredJobsFilter.filteredJobs.length > 0
+            ? [
+                structuredJobsFilter.clarification,
+                "",
+                formatStructuredJobsMatchText({
+                  summary: structuredJobsFilter.summary,
+                  totalMatches: structuredJobsFilter.filteredJobs.length,
+                }),
+              ].join("\n")
+            : structuredJobsFilter.clarification
+          : formatStructuredJobsMatchText({
+              summary: structuredJobsFilter.summary,
+              totalMatches: structuredJobsFilter.filteredJobs.length,
+            });
+
+        return buildJobsResponse({
+          text: structuredText,
+          cards: structuredCards,
+        });
       }
 
       const fileSearchStoreName = getGeminiFileSearchStoreName();
@@ -2554,10 +2659,25 @@ export async function POST(request: Request) {
 
       if (persistContext) {
         try {
+          const nextContext = mergeChatUiContext({
+            currentContext: persistedChatLastContext,
+            usageContext: usage,
+            uiContext: {
+              jobPostingId:
+                resolvedChatMode === JOBS_CHAT_MODE
+                  ? effectiveJobPostingId ?? null
+                  : null,
+              studyPaperId:
+                resolvedChatMode === STUDY_CHAT_MODE
+                  ? effectiveStudyPaperId ?? null
+                  : null,
+            },
+          });
           await updateChatLastContextById({
             chatId: id,
-            context: usage,
+            context: nextContext,
           });
+          persistedChatLastContext = nextContext;
         } catch (err) {
           console.warn("Unable to persist last usage for chat", id, err);
         }

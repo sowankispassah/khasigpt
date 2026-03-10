@@ -36,6 +36,18 @@ export type JobsFilterResolution = {
   clarification: string | null;
 };
 
+export function hasStructuredJobsFilters(state: JobsFilterState) {
+  return (
+    Boolean(state.location) ||
+    Boolean(state.employmentType) ||
+    Boolean(state.sector) ||
+    state.salaryMin !== null ||
+    state.salaryMax !== null ||
+    state.salaryKnownOnly ||
+    state.qualifications.length > 0
+  );
+}
+
 type SalaryRange = {
   min: number | null;
   max: number | null;

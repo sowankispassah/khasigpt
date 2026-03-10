@@ -148,4 +148,28 @@ test.describe("jobs filtering engine", () => {
     expect(result.clarification).toBeNull();
     expect(result.filteredJobs.map((job) => job.id)).toContain("job-salary-field");
   });
+
+  test("filters by explicit location phrasing like jobs in Jowai", () => {
+    const jobsWithJowai = [
+      ...jobs,
+      createJob({
+        id: "job-jowai",
+        title: "District Programme Assistant",
+        company: "West Jaintia Hills Office",
+        location: "Jowai",
+        content: "Graduate degree required. Walk-in interview in Jowai.",
+        sector: "government",
+      }),
+    ];
+
+    const result = resolveJobsFilterConversation({
+      jobs: jobsWithJowai,
+      priorUserMessages: [],
+      latestUserMessage: "Any jobs in Jowai?",
+    });
+
+    expect(result.clarification).toBeNull();
+    expect(result.state.location).toBe("Jowai");
+    expect(result.filteredJobs.map((job) => job.id)).toEqual(["job-jowai"]);
+  });
 });
