@@ -344,6 +344,209 @@ function findMentionedJobsLocation(
   return null;
 }
 
+function parseSalaryAnchorValues(value: string) {
+  const matches = Array.from(
+    value.matchAll(/\b\d[\d,]{3,}\b/g),
+    (match) => Number.parseInt(match[0].replace(/,/g, ""), 10)
+  ).filter((amount) => Number.isFinite(amount) && amount >= 1_000 && amount <= 10_000_000);
+
+  return matches;
+}
+
+function findRequestedSalaryRange(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const amountValues = parseSalaryAnchorValues(normalized);
+  if (amountValues.length === 0) {
+    return null;
+  }
+
+  const [firstValue, secondValue] = amountValues;
+  if (/\bbetween\b/.test(normalized) && typeof secondValue === "number") {
+    return {
+      min: Math.min(firstValue, secondValue),
+      max: Math.max(firstValue, secondValue),
+    };
+  }
+
+  if (/\b(?:around|about|near|approx(?:imately)?)\b/.test(normalized)) {
+    const tolerance = Math.max(1_000, Math.round(firstValue * 0.2));
+    return {
+      min: Math.max(0, firstValue - tolerance),
+      max: firstValue + tolerance,
+    };
+  }
+
+  if (/\b(?:under|below|less than|up to|upto)\b/.test(normalized)) {
+    return {
+      min: 0,
+      max: firstValue,
+    };
+  }
+
+  if (/\b(?:above|over|more than|at least|minimum)\b/.test(normalized)) {
+    return {
+      min: firstValue,
+      max: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
+  if (/\b(?:salary|pay|stipend|ctc|remuneration|emoluments?)\b/.test(normalized)) {
+    const tolerance = Math.max(1_000, Math.round(firstValue * 0.2));
+    return {
+      min: Math.max(0, firstValue - tolerance),
+      max: firstValue + tolerance,
+    };
+  }
+
+  return null;
+}
+
+function jobMayMatchRequestedSalary({
+  job,
+  salaryRange,
+}: {
+  job: {
+    salary?: string | null;
+    content?: string | null;
+    pdfContent?: string | null;
+    pdfExtractedData?: JobsPdfExtractedData | null;
+  };
+  salaryRange: { min: number; max: number };
+}) {
+  const salarySummary = resolveJobSalaryInfo({
+    salary: job.salary,
+    content: job.content ?? null,
+    pdfContent: job.pdfContent ?? null,
+    extractedData: job.pdfExtractedData,
+  }).summary;
+  const anchors = parseSalaryAnchorValues(salarySummary);
+  if (anchors.length === 0) {
+    return false;
+  }
+
+  const min = Math.min(...anchors);
+  const max = Math.max(...anchors);
+  return max >= salaryRange.min && min <= salaryRange.max;
+}
+
+function buildJobsCatalogCandidates({
+  jobs,
+  text,
+  requestedLocation,
+  requestedSalaryRange,
+  limit = 250,
+}: {
+  jobs: Array<{
+    id: string;
+    title: string;
+    company: string;
+    location: string;
+    salary?: string | null;
+    content?: string | null;
+    pdfContent?: string | null;
+    pdfExtractedData?: JobsPdfExtractedData | null;
+    employmentType: string;
+  }>;
+  text: string;
+  requestedLocation: string | null;
+  requestedSalaryRange: { min: number; max: number } | null;
+  limit?: number;
+}) {
+  const normalizedQuery = text.trim().toLowerCase();
+  const terms = Array.from(
+    new Set(
+      (normalizedQuery.match(/[a-z]{3,}/g) ?? []).filter(
+        (term) =>
+          ![
+            "any",
+            "jobs",
+            "job",
+            "around",
+            "about",
+            "near",
+            "salary",
+            "salaries",
+            "pay",
+            "roles",
+            "role",
+            "show",
+            "find",
+            "list",
+            "there",
+            "with",
+            "from",
+            "that",
+            "this",
+            "can",
+            "get",
+          ].includes(term)
+      )
+    )
+  );
+
+  return jobs
+    .map((job, index) => {
+      let score = 0;
+      if (
+        requestedLocation &&
+        job.location.trim().toLowerCase().includes(requestedLocation.toLowerCase())
+      ) {
+        score += 120;
+      }
+      if (
+        requestedSalaryRange &&
+        jobMayMatchRequestedSalary({
+          job,
+          salaryRange: requestedSalaryRange,
+        })
+      ) {
+        score += 90;
+      }
+
+      const primaryHaystack = [
+        job.title,
+        job.company,
+        job.location,
+        job.salary ?? "",
+        getJobTypeLabel(job.employmentType),
+      ]
+        .join(" ")
+        .toLowerCase();
+      const secondaryHaystack = [job.content ?? "", job.pdfContent ?? ""]
+        .join(" ")
+        .toLowerCase();
+
+      for (const term of terms) {
+        if (primaryHaystack.includes(term)) {
+          score += 8;
+        } else if (secondaryHaystack.includes(term)) {
+          score += 3;
+        }
+      }
+
+      // Prefer more recent jobs when query-specific signals tie.
+      score += Math.max(0, 20 - Math.floor(index / 20));
+
+      return {
+        job,
+        index,
+        score,
+      };
+    })
+    .sort((a, b) => {
+      if (a.score !== b.score) {
+        return b.score - a.score;
+      }
+      return a.index - b.index;
+    })
+    .slice(0, limit)
+    .map((entry) => entry.job);
+}
+
 function supportsGeminiFileSearchModel(providerModelId: string) {
   const normalized = providerModelId.includes("/")
     ? providerModelId.split("/").at(-1) ?? providerModelId
@@ -1423,40 +1626,53 @@ export async function POST(request: Request) {
         includeInactive: false,
       });
       const requestedLocation = findMentionedJobsLocation(jobsUserText, activeJobs);
-      if (requestedLocation) {
-        const repairJobIds = activeJobs
-          .filter(
-            (job) =>
-              job.embeddingStatus !== "ready" &&
-              job.location.trim().toLowerCase().includes(requestedLocation.toLowerCase())
-          )
-          .map((job) => job.id)
-          .slice(0, 25);
-
-        if (repairJobIds.length > 0) {
-          try {
-            await syncJobPostingsToRag({
-              jobIds: repairJobIds,
-            });
-            activeJobs = await listJobPostings({
-              includeInactive: false,
-            });
-            availableIds = await listActiveJobPostingIdsForModel({
-              modelConfigId: modelConfig.id,
-              modelKey: modelConfig.key,
-            });
-          } catch (error) {
-            console.warn("[jobs-chat] location_rag_repair_failed", {
-              location: requestedLocation,
-              error: error instanceof Error ? error.message : String(error),
-            });
+      const requestedSalaryRange = findRequestedSalaryRange(jobsUserText);
+      const repairJobIds = activeJobs
+        .filter((job) => {
+          if (job.embeddingStatus === "ready") {
+            return false;
           }
+
+          const matchesLocation =
+            requestedLocation &&
+            job.location.trim().toLowerCase().includes(requestedLocation.toLowerCase());
+          const matchesSalary =
+            requestedSalaryRange &&
+            jobMayMatchRequestedSalary({
+              job,
+              salaryRange: requestedSalaryRange,
+            });
+
+          return Boolean(matchesLocation || matchesSalary);
+        })
+        .map((job) => job.id)
+        .slice(0, 25);
+
+      if (repairJobIds.length > 0) {
+        try {
+          await syncJobPostingsToRag({
+            jobIds: repairJobIds,
+          });
+          activeJobs = await listJobPostings({
+            includeInactive: false,
+          });
+          availableIds = await listActiveJobPostingIdsForModel({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+          });
+        } catch (error) {
+          console.warn("[jobs-chat] targeted_rag_repair_failed", {
+            location: requestedLocation,
+            salaryRange: requestedSalaryRange,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
       const applyModelScope = (jobs: typeof activeJobs) =>
         availableIds.length > 0
           ? jobs.filter((job) => availableIds.includes(job.id))
           : jobs;
+      const activeJobsById = new Map(activeJobs.map((job) => [job.id, job] as const));
 
       const scopedActiveJobs = applyModelScope(activeJobs);
       let visibleJobs =
@@ -1517,12 +1733,9 @@ export async function POST(request: Request) {
           isImplicitJobDetailFollowup(jobsUserText)) &&
         lastReturnedJobIds.length > 0
       ) {
-        const visibleJobsById = new Map(
-          visibleJobs.map((job) => [job.id, job] as const)
-        );
         const referencedJobs = lastReturnedJobIds
-          .map((jobId) => visibleJobsById.get(jobId))
-          .filter((job): job is (typeof visibleJobs)[number] => Boolean(job));
+          .map((jobId) => activeJobsById.get(jobId))
+          .filter((job): job is (typeof activeJobs)[number] => Boolean(job));
 
         if (referencedJobs.length > 0) {
           const needsPdfSupplement =
@@ -1677,8 +1890,13 @@ export async function POST(request: Request) {
       }));
       const jobsPromptText =
         jobsUserText.length > 0 ? jobsUserText : "Show me relevant jobs.";
-      const visibleJobsCatalog = visibleJobs
-        .slice(0, 200)
+      const catalogJobs = buildJobsCatalogCandidates({
+        jobs: activeJobs,
+        text: jobsPromptText,
+        requestedLocation,
+        requestedSalaryRange,
+      });
+      const visibleJobsCatalog = catalogJobs
         .map((job) => {
           const salarySummary = resolveJobSalaryInfo({
             salary: job.salary,
@@ -1725,6 +1943,7 @@ export async function POST(request: Request) {
             "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
             "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
+            "Answer naturally. Do not mention the catalog, summaries, internal search process, or provided data.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
             "Use the salary summaries in the catalog, and consider structured compensation values, pay scales, and OCR-derived amounts when available.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
@@ -1788,6 +2007,7 @@ export async function POST(request: Request) {
             "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
             "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
             "Use the provided jobs catalog only to map retrieved matches back to valid job IDs. Do not use it as a standalone search source.",
+            "Answer naturally. Do not mention the catalog, summaries, internal search process, or provided data.",
             "If no matches, return an empty jobIds array and explain briefly in answer.",
             "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
             "Use structured compensation details when present, including pay levels, allowances, and OCR-extracted PDF text.",
@@ -1850,12 +2070,9 @@ export async function POST(request: Request) {
             });
           }
 
-          const visibleJobsById = new Map(
-            visibleJobs.map((job) => [job.id, job] as const)
-          );
           const catalogCards = catalogSelection.jobIds
-            .map((jobId) => visibleJobsById.get(jobId))
-            .filter((job): job is (typeof visibleJobs)[number] => Boolean(job))
+            .map((jobId) => activeJobsById.get(jobId))
+            .filter((job): job is (typeof activeJobs)[number] => Boolean(job))
             .slice(0, 12)
             .map(toJobCard);
 
@@ -1865,12 +2082,9 @@ export async function POST(request: Request) {
           });
         }
 
-        const visibleJobsById = new Map(
-          visibleJobs.map((job) => [job.id, job] as const)
-        );
         const selectedCards = parsedSelection.jobIds
-          .map((jobId) => visibleJobsById.get(jobId))
-          .filter((job): job is (typeof visibleJobs)[number] => Boolean(job))
+          .map((jobId) => activeJobsById.get(jobId))
+          .filter((job): job is (typeof activeJobs)[number] => Boolean(job))
           .slice(0, 12)
           .map(toJobCard);
 
@@ -1880,8 +2094,8 @@ export async function POST(request: Request) {
           );
           if (catalogSelection) {
             const catalogCards = catalogSelection.jobIds
-              .map((jobId) => visibleJobsById.get(jobId))
-              .filter((job): job is (typeof visibleJobs)[number] => Boolean(job))
+              .map((jobId) => activeJobsById.get(jobId))
+              .filter((job): job is (typeof activeJobs)[number] => Boolean(job))
               .slice(0, 12)
               .map(toJobCard);
             return buildJobsResponse({
