@@ -5,11 +5,14 @@ import { upsertUserPresence } from "@/lib/db/queries";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { withTimeout } from "@/lib/utils/async";
 
 const HEARTBEAT_RATE_LIMIT = {
   limit: 90,
   windowMs: 60 * 1000,
 };
+const HEARTBEAT_AUTH_TIMEOUT_MS = 2_000;
+const HEARTBEAT_DB_TIMEOUT_MS = 1_500;
 
 const UUID_SEGMENT_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -59,7 +62,9 @@ function normalizeText(value: unknown, maxLength: number) {
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
+  const session = await withTimeout(auth(), HEARTBEAT_AUTH_TIMEOUT_MS).catch(
+    () => null
+  );
   if (!session?.user?.id) {
     return NextResponse.json(
       { code: "unauthorized:presence", message: "Not signed in." },
@@ -108,15 +113,21 @@ export async function POST(request: NextRequest) {
   );
   const city = normalizeText(request.headers.get("x-vercel-ip-city"), 128);
 
-  await upsertUserPresence({
-    userId: session.user.id,
-    lastPath: path,
-    device,
-    locale,
-    timezone,
-    city,
-    region,
-    country,
+  await withTimeout(
+    upsertUserPresence({
+      userId: session.user.id,
+      lastPath: path,
+      device,
+      locale,
+      timezone,
+      city,
+      region,
+      country,
+    }),
+    HEARTBEAT_DB_TIMEOUT_MS
+  ).catch((error) => {
+    console.warn("[presence] Heartbeat update skipped.", error);
+    return null;
   });
 
   return NextResponse.json(

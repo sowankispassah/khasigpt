@@ -311,23 +311,40 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-const poolConfig = {
-  max: parseOr(process.env.POSTGRES_POOL_SIZE, 3),
-  idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
-  max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
-  connect_timeout: parseOr(
-    process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
-    5
-  ),
-};
-
+const defaultPoolSize = 3;
+const defaultStatementTimeout =
+  process.env.NODE_ENV === "development" ? 15_000 : 0;
 const postgresUrl = process.env.POSTGRES_URL;
+
 if (!postgresUrl) {
   throw new ChatSDKError(
     "bad_request:configuration",
     "POSTGRES_URL is not configured"
   );
 }
+
+const poolConfig = {
+  max: parseOr(process.env.POSTGRES_POOL_SIZE, defaultPoolSize),
+  idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
+  max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
+  connect_timeout: parseOr(
+    process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
+    5
+  ),
+  statement_timeout: parseOr(
+    process.env.POSTGRES_STATEMENT_TIMEOUT,
+    defaultStatementTimeout
+  ),
+  application_name:
+    process.env.POSTGRES_APPLICATION_NAME ??
+    `ai-chatbot-${process.env.NODE_ENV ?? "development"}`,
+  prepare:
+    process.env.POSTGRES_PREPARE === "true"
+      ? true
+      : process.env.POSTGRES_PREPARE === "false"
+        ? false
+        : !postgresUrl?.includes(".pooler.supabase.com"),
+};
 
 const client =
   globalDbState.postgresClient ?? postgres(postgresUrl, poolConfig);
@@ -3456,6 +3473,9 @@ export async function setAppSetting<T>({
 }: {
   key: string;
   value: T;
+},
+options?: {
+  revalidateCache?: boolean;
 }) {
   const now = new Date();
 
@@ -3479,11 +3499,18 @@ export async function setAppSetting<T>({
 
   rememberAppSettingValue(key, value);
 
-  revalidateTag(APP_SETTING_CACHE_TAG, "max");
-  revalidateTag(appSettingCacheTagForKey(key), "max");
+  if (options?.revalidateCache !== false) {
+    revalidateTag(APP_SETTING_CACHE_TAG, "max");
+    revalidateTag(appSettingCacheTagForKey(key), "max");
+  }
 }
 
-export async function deleteAppSetting(key: string) {
+export async function deleteAppSetting(
+  key: string,
+  options?: {
+    revalidateCache?: boolean;
+  }
+) {
   try {
     await db.delete(appSetting).where(eq(appSetting.key, key));
   } catch (_error) {
@@ -3495,8 +3522,10 @@ export async function deleteAppSetting(key: string) {
 
   clearRememberedAppSetting(key);
 
-  revalidateTag(APP_SETTING_CACHE_TAG, "max");
-  revalidateTag(appSettingCacheTagForKey(key), "max");
+  if (options?.revalidateCache !== false) {
+    revalidateTag(APP_SETTING_CACHE_TAG, "max");
+    revalidateTag(appSettingCacheTagForKey(key), "max");
+  }
 }
 
 export async function createAuditLogEntry({

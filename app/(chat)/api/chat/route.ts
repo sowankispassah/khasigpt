@@ -123,7 +123,15 @@ export const runtime = "nodejs";
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
 
-const rawRedisUrl = process.env.REDIS_URL ?? process.env.KV_URL ?? null;
+const shouldUseRemoteRedis =
+  process.env.DISABLE_REMOTE_REDIS === "1"
+    ? false
+    : process.env.NODE_ENV === "development"
+      ? process.env.ENABLE_REMOTE_REDIS_IN_DEV === "1"
+      : true;
+const rawRedisUrl = shouldUseRemoteRedis
+  ? process.env.REDIS_URL ?? process.env.KV_URL ?? null
+  : null;
 const redisUrl = (() => {
   if (!rawRedisUrl) {
     return null;

@@ -3,6 +3,8 @@ import { fetchWithTimeout } from "@/lib/utils/async";
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_LIMIT = 100;
 const KV_FETCH_TIMEOUT_MS = 1500;
+const REDIS_CONNECT_TIMEOUT_MS = 750;
+const REDIS_FAILURE_COOLDOWN_MS = 30_000;
 
 type RedisClientType = import("redis").RedisClientType;
 declare const EdgeRuntime: string | undefined;
@@ -17,7 +19,15 @@ const buckets = new Map<string, Bucket>();
 type RateLimitOptions = { windowMs?: number; limit?: number };
 type RateLimitResult = { allowed: boolean; remaining: number; resetAt: number };
 
-const rawRedisUrl = process.env.REDIS_URL ?? process.env.KV_URL ?? null;
+const shouldUseRemoteRedis =
+  process.env.DISABLE_REMOTE_REDIS === "1"
+    ? false
+    : process.env.NODE_ENV === "development"
+      ? process.env.ENABLE_REMOTE_REDIS_IN_DEV === "1"
+      : true;
+const rawRedisUrl = shouldUseRemoteRedis
+  ? process.env.REDIS_URL ?? process.env.KV_URL ?? null
+  : null;
 const redisUrl = (() => {
   if (!rawRedisUrl) {
     return null;
@@ -33,20 +43,35 @@ const redisUrl = (() => {
     return null;
   }
 })();
-const kvRestUrl =
-  process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
-const kvRestToken =
-  process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null;
+const kvRestUrl = shouldUseRemoteRedis
+  ? process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null
+  : null;
+const kvRestToken = shouldUseRemoteRedis
+  ? process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? null
+  : null;
 let redisClient: RedisClientType | null = null;
 let redisReady = false;
 let redisConnectPromise: Promise<void> | null = null;
+let redisBlockedUntil = 0;
 const hasRestKv = Boolean(kvRestUrl && kvRestToken);
+
+function isRedisBlocked() {
+  return Date.now() < redisBlockedUntil;
+}
+
+function blockRedisTemporarily() {
+  redisBlockedUntil = Date.now() + REDIS_FAILURE_COOLDOWN_MS;
+}
+
+function clearRedisBlock() {
+  redisBlockedUntil = 0;
+}
 
 async function getRedisClient(): Promise<RedisClientType | null> {
   if (typeof EdgeRuntime !== "undefined") {
     return null;
   }
-  if (!redisUrl) {
+  if (!redisUrl || isRedisBlocked()) {
     return null;
   }
   if (redisClient && redisReady) {
@@ -56,22 +81,30 @@ async function getRedisClient(): Promise<RedisClientType | null> {
   try {
     if (!redisClient) {
       const { createClient } = await import("redis");
-      redisClient = createClient({ url: redisUrl });
+      redisClient = createClient({
+        url: redisUrl,
+        socket: {
+          connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+        },
+      });
       redisClient.on("error", (error) => {
         console.error("[rate-limit] Redis error", error);
         redisReady = false;
+        blockRedisTemporarily();
       });
     }
 
     if (!redisReady) {
       if ((redisClient as { isOpen?: boolean }).isOpen) {
         redisReady = true;
+        clearRedisBlock();
       } else {
         if (!redisConnectPromise) {
           redisConnectPromise = redisClient
             .connect()
             .then(() => {
               redisReady = true;
+              clearRedisBlock();
             })
             .finally(() => {
               redisConnectPromise = null;
@@ -86,6 +119,7 @@ async function getRedisClient(): Promise<RedisClientType | null> {
     console.error("[rate-limit] Failed to connect to Redis", error);
     redisReady = false;
     redisConnectPromise = null;
+    blockRedisTemporarily();
     return null;
   }
 }

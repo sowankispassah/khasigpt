@@ -9,6 +9,7 @@ export function withTimeout<T>(
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
+    const cancelable = promise as Promise<T> & { cancel?: () => void };
 
     const timer = setTimeout(() => {
       if (settled) {
@@ -20,6 +21,11 @@ export function withTimeout<T>(
         onTimeout?.();
       } catch {
         // ignore errors inside timeout callback
+      }
+      try {
+        cancelable.cancel?.();
+      } catch {
+        // ignore cancellation failures
       }
       reject(new Error("timeout"));
     }, timeoutMs);

@@ -3,7 +3,8 @@
   "version": "3.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "next dev",
+    "dev:turbo": "next dev --turbo",
     "build": "node scripts/next-build.cjs",
     "start": "next start",
     "lint": "pnpm exec ultracite check",
