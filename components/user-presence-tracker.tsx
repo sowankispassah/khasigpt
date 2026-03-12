@@ -6,6 +6,9 @@ import { useEffect, useRef } from "react";
 
 const HEARTBEAT_INTERVAL_MS = 60_000;
 const HEARTBEAT_JITTER_MS = 5_000;
+const PRESENCE_DISABLED_IN_DEV =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_ENABLE_PRESENCE_IN_DEV !== "1";
 const PRESENCE_TRACKED_PATH_SEGMENTS = new Set([
   "chat",
   "forum",
@@ -52,6 +55,10 @@ export function UserPresenceTracker() {
   const trackedPath = shouldTrackPresencePath(pathname);
 
   useEffect(() => {
+    if (PRESENCE_DISABLED_IN_DEV) {
+      return undefined;
+    }
+
     if (!session?.user?.id || !trackedPath) {
       return undefined;
     }

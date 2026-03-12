@@ -210,6 +210,7 @@ export default async function Page({
           getJobPostingById({
             id: requestedJobId,
             includeInactive: false,
+            includeRagState: false,
           }),
           CHAT_HOME_QUERY_TIMEOUT_MS
         ).catch((error) => {

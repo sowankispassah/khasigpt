@@ -92,6 +92,7 @@ const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
 const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
 const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
 const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 12_000;
+const MAX_ADMIN_JOBS_RENDERED = 100;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
   "Asia/Kolkata": 330,
@@ -871,7 +872,11 @@ export default async function AdminJobsPage() {
     scrapeHistory,
   ] = await Promise.all([
     withTimeoutFallback(
-      listJobPostingEntries({ includeInactive: true }),
+      listJobPostingEntries({
+        includeInactive: true,
+        includeRagState: false,
+        limit: MAX_ADMIN_JOBS_RENDERED,
+      }),
       [],
       20_000
     ),
@@ -1725,9 +1730,14 @@ export default async function AdminJobsPage() {
           />
           )}
           {jobs.length > 0 ? (
-            <p className="text-muted-foreground mt-2 text-xs">
-              Action buttons are pinned in the right-most column (Set active/inactive, Delete).
-            </p>
+            <div className="text-muted-foreground mt-2 space-y-1 text-xs">
+              <p>
+                Showing the latest {MAX_ADMIN_JOBS_RENDERED} jobs to keep the admin page responsive.
+              </p>
+              <p>
+                Action buttons are pinned in the right-most column (Set active/inactive, Delete).
+              </p>
+            </div>
           ) : null}
       </CollapsibleSectionCard>
     </div>

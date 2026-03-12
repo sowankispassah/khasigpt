@@ -25,6 +25,10 @@ import {
   listQuestionPapers,
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
+import {
+  buildJobKnowledgeUnit,
+  type JobKnowledgeUnit,
+} from "./knowledge";
 import { toJobListItems } from "./list-items";
 import type {
   JobCard,
@@ -44,7 +48,7 @@ const JOBS_SERVICE_CACHE_REVALIDATE_SECONDS = 30;
 const JOBS_RAG_KIND = "job_posting";
 const JOBS_RAG_SOURCE = "supabase_jobs_table";
 const DEFAULT_JOBS_RAG_LOOKUP_TIMEOUT_MS =
-  process.env.NODE_ENV === "development" ? 750 : 2_500;
+  process.env.NODE_ENV === "development" ? 2_000 : 2_500;
 const jobsRagLookupTimeoutRaw = Number.parseInt(
   process.env.JOBS_RAG_LOOKUP_TIMEOUT_MS ?? "",
   10
@@ -71,8 +75,8 @@ function clearJobsRagLookupFailure() {
 
 type JobsServiceCacheState = {
   jobsByIdFetchedAt: number;
-  jobsByIdPromise: Promise<SupabaseJobRow[]> | null;
-  jobsByIdRows: SupabaseJobRow[] | null;
+  jobsByIdPromise: Promise<JobsSupabaseRow[]> | null;
+  jobsByIdRows: JobsSupabaseRow[] | null;
   jobListItemsFetchedAt: number;
   jobListItemsPromise: Promise<JobListItem[]> | null;
   jobListItems: JobListItem[] | null;
@@ -102,7 +106,7 @@ type JobPostingMetadataInput = {
   parseError?: string | null;
 };
 
-type SupabaseJobRow = {
+export type JobsSupabaseRow = {
   id: string;
   title: string;
   company: string;
@@ -122,7 +126,7 @@ type SupabaseJobRow = {
 };
 
 type SupabaseJobListRow = Pick<
-  SupabaseJobRow,
+  JobsSupabaseRow,
   | "id"
   | "title"
   | "company"
@@ -221,7 +225,7 @@ function resolveCompanyName({
   return resolveSourceNameFallback(rawSourceUrl);
 }
 
-function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
+export function normalizeJobPostingRecord(row: JobsSupabaseRow): JobPostingRecord {
   const createdAt = parseValidDate(row.created_at);
   const rawSourceUrl = toTrimmedString(row.source_url);
   const rawApplicationLink = toTrimmedString(row.application_link ?? null);
@@ -312,16 +316,16 @@ function normalizeJobPostingRecord(row: SupabaseJobRow): JobPostingRecord {
 
 async function listJobsFromSupabaseUncached() {
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("jobs")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const query = supabase.from("jobs").select("*").order("created_at", {
+    ascending: false,
+  });
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`[jobs-service] Failed to fetch jobs: ${error.message}`);
   }
 
-  return (data ?? []) as SupabaseJobRow[];
+  return (data ?? []) as JobsSupabaseRow[];
 }
 
 async function listJobListRowsFromSupabaseUncached() {
@@ -356,7 +360,7 @@ async function getJobFromSupabaseByIdUncached(id: string) {
     return null;
   }
 
-  return data as SupabaseJobRow;
+  return data as JobsSupabaseRow;
 }
 
 async function listJobsFromSupabaseCached() {
@@ -453,31 +457,69 @@ export function buildJobPostingMetadata(
 
 export async function listJobPostingEntries({
   includeInactive = false,
+  includeRagState = true,
+  limit,
 }: {
   includeInactive?: boolean;
+  includeRagState?: boolean;
+  limit?: number;
 } = {}): Promise<JobPostingRecord[]> {
+  const normalizedLimit =
+    typeof limit === "number" && Number.isFinite(limit) && limit > 0
+      ? Math.trunc(limit)
+      : null;
+
   const rows = includeInactive
-    ? await listJobsFromSupabaseUncached()
+    ? await (() => {
+        const supabase = createSupabaseAdminClient();
+        let query = supabase
+          .from("jobs")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (normalizedLimit !== null) {
+          query = query.limit(normalizedLimit);
+        }
+
+        return query.then(({ data, error }) => {
+          if (error) {
+            throw new Error(`[jobs-service] Failed to fetch jobs: ${error.message}`);
+          }
+          return (data ?? []) as JobsSupabaseRow[];
+        });
+      })()
     : await listJobsFromSupabaseCached();
   const normalized = rows.map(normalizeJobPostingRecord);
-  const ragStateById = await getJobRagStateByIds(normalized.map((job) => job.id));
-  const hydrated = normalized.map((job) =>
-    applyRagStateToJob(job, ragStateById.get(job.id) ?? null)
-  );
+  const hydrated = includeRagState
+    ? (() => {
+        const ragStateById = getJobRagStateByIds(normalized.map((job) => job.id));
+        return ragStateById.then((stateMap) =>
+          normalized.map((job) => applyRagStateToJob(job, stateMap.get(job.id) ?? null))
+        );
+      })()
+    : Promise.resolve(normalized);
+  const resolvedJobs = await hydrated;
 
   if (includeInactive) {
-    return hydrated;
+    return resolvedJobs;
   }
 
-  return hydrated.filter((job) => job.status === "active");
+  const activeJobs = resolvedJobs.filter((job) => job.status === "active");
+  if (normalizedLimit === null) {
+    return activeJobs;
+  }
+
+  return activeJobs.slice(0, normalizedLimit);
 }
 
 export async function getJobPostingById({
   id,
   includeInactive = false,
+  includeRagState = true,
 }: {
   id: string;
   includeInactive?: boolean;
+  includeRagState?: boolean;
 }): Promise<JobPostingRecord | null> {
   const row = includeInactive
     ? await getJobFromSupabaseByIdUncached(id)
@@ -487,6 +529,14 @@ export async function getJobPostingById({
   }
 
   const normalized = normalizeJobPostingRecord(row);
+  if (!includeRagState) {
+    if (!includeInactive && normalized.status !== "active") {
+      return null;
+    }
+
+    return normalized;
+  }
+
   const ragStateById = await getJobRagStateByIds([normalized.id]);
   const hydrated = applyRagStateToJob(
     normalized,
@@ -507,16 +557,48 @@ export async function getJobPostingEntryById({
   return getJobPostingById({ id, includeInactive: true });
 }
 
+export async function listJobKnowledgeUnits({
+  includeInactive = false,
+  includeRagState = true,
+}: {
+  includeInactive?: boolean;
+  includeRagState?: boolean;
+} = {}): Promise<JobKnowledgeUnit[]> {
+  const jobs = await listJobPostingEntries({
+    includeInactive,
+    includeRagState,
+  });
+
+  return jobs.map((job) => buildJobKnowledgeUnit(job));
+}
+
+export async function getJobKnowledgeUnitById({
+  id,
+  includeInactive = false,
+}: {
+  id: string;
+  includeInactive?: boolean;
+}): Promise<JobKnowledgeUnit | null> {
+  const job = await getJobPostingById({
+    id,
+    includeInactive,
+  });
+
+  return job ? buildJobKnowledgeUnit(job) : null;
+}
+
 export async function listJobPostings({
   includeInactive = false,
+  includeRagState = true,
   company,
   location,
 }: {
   includeInactive?: boolean;
+  includeRagState?: boolean;
   company?: string | null;
   location?: string | null;
 } = {}): Promise<JobPostingRecord[]> {
-  const jobs = await listJobPostingEntries({ includeInactive });
+  const jobs = await listJobPostingEntries({ includeInactive, includeRagState });
   const normalizedCompany = company?.trim().toLowerCase() ?? null;
   const normalizedLocation = location?.trim().toLowerCase() ?? null;
 
@@ -791,6 +873,10 @@ async function getJobRagStateByIds(ids: string[]) {
   }
 
   try {
+    const lookupTimeoutMs =
+      normalizedIds.length === 1
+        ? Math.max(JOBS_RAG_LOOKUP_TIMEOUT_MS, 2_000)
+        : JOBS_RAG_LOOKUP_TIMEOUT_MS;
     const rows = await withTimeout(
       db
         .select()
@@ -803,10 +889,10 @@ async function getJobRagStateByIds(ids: string[]) {
             sql`(${ragEntry.metadata} ->> 'jobs_source') = ${JOBS_RAG_SOURCE}`
           )
         ),
-      JOBS_RAG_LOOKUP_TIMEOUT_MS,
+      lookupTimeoutMs,
       () => {
         console.warn(
-          `[jobs-service] RAG state lookup timed out after ${JOBS_RAG_LOOKUP_TIMEOUT_MS}ms for ${normalizedIds.length} job id(s).`
+          `[jobs-service] RAG state lookup timed out after ${lookupTimeoutMs}ms for ${normalizedIds.length} job id(s).`
         );
       }
     );

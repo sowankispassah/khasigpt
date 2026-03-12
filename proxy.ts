@@ -69,10 +69,13 @@ const SITE_COMING_SOON_PATH = "/coming-soon";
 const SITE_MAINTENANCE_PATH = "/maintenance";
 const SITE_ADMIN_ENTRY_PATH = "/admin-entry";
 const SITE_INVITE_PATH_PREFIX = "/invite/";
+const BYPASS_SITE_STATUS_GATE_IN_DEV =
+  process.env.NODE_ENV === "development" &&
+  process.env.ENABLE_SITE_STATUS_GATE_IN_DEV !== "1";
 const SITE_STATUS_CACHE_WINDOW_MS =
-  process.env.NODE_ENV === "development" ? 1000 : 15 * 1000;
+  process.env.NODE_ENV === "development" ? 10 * 1000 : 15 * 1000;
 const SITE_STATUS_STALE_GRACE_MS =
-  process.env.NODE_ENV === "development" ? 10 * 1000 : 60 * 1000;
+  process.env.NODE_ENV === "development" ? 60 * 1000 : 60 * 1000;
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
   process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "6000",
   10
@@ -290,6 +293,16 @@ async function resolveSiteStatus(
   adminAccessEnabled: boolean;
   adminEntryPath: string;
 }> {
+  if (BYPASS_SITE_STATUS_GATE_IN_DEV) {
+    return {
+      publicLaunched: true,
+      underMaintenance: false,
+      inviteOnlyPrelaunch: false,
+      adminAccessEnabled: false,
+      adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
+    };
+  }
+
   const now = Date.now();
   if (siteStatusCache && now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS) {
     return {

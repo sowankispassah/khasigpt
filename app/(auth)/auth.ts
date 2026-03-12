@@ -378,16 +378,13 @@ export const {
         | undefined;
       let dbLookupTimedOut = false;
       let dbLookupFailed = false;
-      const isMissingField = (value: unknown) =>
-        value === null ||
-        typeof value === "undefined" ||
-        (typeof value === "string" && value.trim().length === 0);
+      const isUndefinedField = (value: unknown) => typeof value === "undefined";
       const needsDbFields =
         Boolean(token.id) &&
-        (isMissingField(token.dateOfBirth) ||
-          typeof token.imageVersion === "undefined" ||
-          isMissingField(token.firstName) ||
-          isMissingField(token.lastName));
+        (isUndefinedField(token.dateOfBirth) ||
+          isUndefinedField(token.imageVersion) ||
+          isUndefinedField(token.firstName) ||
+          isUndefinedField(token.lastName));
       const lastDbRefresh =
         typeof token.dbRefreshedAt === "number" ? token.dbRefreshedAt : 0;
       const lastDbFailure =
@@ -400,8 +397,8 @@ export const {
       const shouldRefreshDb =
         needsDbFields ||
         trigger === "update" ||
-        !lastDbRefresh ||
-        Date.now() - lastDbRefresh > AUTH_DB_REFRESH_MS;
+        (lastDbRefresh > 0 &&
+          Date.now() - lastDbRefresh > AUTH_DB_REFRESH_MS);
       const ensureDbUser = async () => {
         if (!token.id) {
           cachedDbUser = null;
@@ -482,19 +479,21 @@ export const {
       if (needsDbFields) {
         const record = await ensureDbUser();
         if (record) {
-          if (isMissingField(token.dateOfBirth)) {
+          if (isUndefinedField(token.dateOfBirth)) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
-          token.imageVersion =
-            record.image && record.updatedAt instanceof Date
-              ? record.updatedAt.toISOString()
-              : record.image
-                ? new Date().toISOString()
-                : null;
-          if (isMissingField(token.firstName)) {
+          if (isUndefinedField(token.imageVersion)) {
+            token.imageVersion =
+              record.image && record.updatedAt instanceof Date
+                ? record.updatedAt.toISOString()
+                : record.image
+                  ? new Date().toISOString()
+                  : null;
+          }
+          if (isUndefinedField(token.firstName)) {
             token.firstName = record.firstName ?? null;
           }
-          if (isMissingField(token.lastName)) {
+          if (isUndefinedField(token.lastName)) {
             token.lastName = record.lastName ?? null;
           }
           if (typeof token.allowPersonalKnowledge === "undefined") {
@@ -502,10 +501,16 @@ export const {
               record.allowPersonalKnowledge ?? false;
           }
         }
-      } else if (typeof token.imageVersion === "undefined") {
-        token.imageVersion = null;
+      } else if (!lastDbRefresh && token.id) {
+        token.dbRefreshedAt = Date.now();
       }
 
+      if (typeof token.dateOfBirth === "undefined") {
+        token.dateOfBirth = null;
+      }
+      if (typeof token.imageVersion === "undefined") {
+        token.imageVersion = null;
+      }
       if (typeof token.firstName === "undefined") {
         token.firstName = null;
       }
@@ -513,8 +518,7 @@ export const {
         token.lastName = null;
       }
       if (typeof token.allowPersonalKnowledge === "undefined") {
-        const record = await ensureDbUser();
-        token.allowPersonalKnowledge = record?.allowPersonalKnowledge ?? false;
+        token.allowPersonalKnowledge = false;
       }
 
       if (token.id && (trigger === "update" || shouldRefreshDb)) {

@@ -3,7 +3,7 @@
   "version": "3.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "dev:turbo": "next dev --turbo",
     "build": "node scripts/next-build.cjs",
     "start": "next start",
@@ -12,6 +12,7 @@
     "typecheck": "pnpm exec tsc --noEmit",
     "translations:publish": "tsx scripts/publish-translations.ts",
     "jobs:repair-pdf-compensation": "tsx scripts/repair-job-pdf-compensation.ts",
+    "jobs:rebuild-rag": "pnpm dlx tsx scripts/rebuild-jobs-rag.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx lib/db/migrate.ts",
     "db:studio": "drizzle-kit studio",

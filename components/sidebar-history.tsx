@@ -1,6 +1,6 @@
 "use client";
 
-import { isToday, isYesterday, subMonths, subWeeks } from "date-fns";
+import { subMonths, subWeeks } from "date-fns";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -53,14 +53,16 @@ const groupChatsByDate = (chats: Chat[]): GroupedChats => {
   const now = new Date();
   const oneWeekAgo = subWeeks(now, 1);
   const oneMonthAgo = subMonths(now, 1);
+  const oneDayMs = 24 * 60 * 60 * 1000;
 
   return chats.reduce(
     (groups, chat) => {
       const chatDate = new Date(chat.createdAt);
+      const ageMs = now.getTime() - chatDate.getTime();
 
-      if (isToday(chatDate)) {
+      if (ageMs < oneDayMs) {
         groups.today.push(chat);
-      } else if (isYesterday(chatDate)) {
+      } else if (ageMs < oneDayMs * 2) {
         groups.yesterday.push(chat);
       } else if (chatDate > oneWeekAgo) {
         groups.lastWeek.push(chat);

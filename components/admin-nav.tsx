@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   type MouseEvent,
   useCallback,
-  useEffect,
+  useRef,
 } from "react";
 
 import { startGlobalProgress } from "@/lib/ui/global-progress";
@@ -29,12 +29,23 @@ const ADMIN_LINKS = [
 export function AdminNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const prefetchedRoutesRef = useRef(new Set<string>());
 
-  useEffect(() => {
-    for (const link of ADMIN_LINKS) {
-      router.prefetch(link.href);
-    }
-  }, [router]);
+  const prefetchRoute = useCallback(
+    (href: string) => {
+      if (prefetchedRoutesRef.current.has(href)) {
+        return;
+      }
+
+      prefetchedRoutesRef.current.add(href);
+      try {
+        void router.prefetch(href);
+      } catch {
+        prefetchedRoutesRef.current.delete(href);
+      }
+    },
+    [router]
+  );
 
   const handleLinkClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -52,11 +63,9 @@ export function AdminNav({ className }: { className?: string }) {
         event.preventDefault();
         return;
       }
-      event.preventDefault();
       startGlobalProgress();
-      router.push(href);
     },
-    [pathname, router]
+    [pathname]
   );
 
   return (
@@ -77,7 +86,10 @@ export function AdminNav({ className }: { className?: string }) {
             href={link.href}
             key={link.href}
             onClick={(event) => handleLinkClick(event, link.href)}
-            prefetch
+            onFocus={() => prefetchRoute(link.href)}
+            onMouseEnter={() => prefetchRoute(link.href)}
+            onTouchStart={() => prefetchRoute(link.href)}
+            prefetch={false}
           >
             {link.label}
           </Link>

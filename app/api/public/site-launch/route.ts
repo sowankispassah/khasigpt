@@ -17,6 +17,10 @@ import { withTimeout } from "@/lib/utils/async";
 export const runtime = "nodejs";
 const SITE_LAUNCH_SETTINGS_TIMEOUT_MS = 6000;
 const SITE_LAUNCH_RETRY_TIMEOUT_MS = 2000;
+const SITE_LAUNCH_CACHE_WINDOW_MS =
+  process.env.NODE_ENV === "development" ? 10_000 : 30_000;
+const SITE_LAUNCH_CACHE_STALE_GRACE_MS =
+  process.env.NODE_ENV === "development" ? 60_000 : 5 * 60_000;
 const SITE_LAUNCH_SETTING_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
@@ -24,14 +28,69 @@ const SITE_LAUNCH_SETTING_KEYS = [
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
 ] as const;
+let siteLaunchSettingsCache:
+  | {
+      fetchedAt: number;
+      map: Map<string, unknown>;
+    }
+  | null = null;
+
+function cloneSettingsMap(map: Map<string, unknown>) {
+  return new Map<string, unknown>(map);
+}
+
+function getCachedSettingsMap() {
+  if (!siteLaunchSettingsCache) {
+    return null;
+  }
+
+  if (
+    Date.now() - siteLaunchSettingsCache.fetchedAt >
+    SITE_LAUNCH_CACHE_WINDOW_MS
+  ) {
+    return null;
+  }
+
+  return cloneSettingsMap(siteLaunchSettingsCache.map);
+}
+
+function getStaleSettingsMap() {
+  if (!siteLaunchSettingsCache) {
+    return null;
+  }
+
+  if (
+    Date.now() - siteLaunchSettingsCache.fetchedAt >
+    SITE_LAUNCH_CACHE_STALE_GRACE_MS
+  ) {
+    return null;
+  }
+
+  return cloneSettingsMap(siteLaunchSettingsCache.map);
+}
+
+function cacheSettingsMap(map: Map<string, unknown>) {
+  siteLaunchSettingsCache = {
+    fetchedAt: Date.now(),
+    map: cloneSettingsMap(map),
+  };
+  return cloneSettingsMap(map);
+}
 
 async function loadSiteLaunchSettingsMap() {
+  const cached = getCachedSettingsMap();
+  if (cached) {
+    return cached;
+  }
+
   try {
     const settings = await withTimeout(
       getAppSettingsByKeysUncached([...SITE_LAUNCH_SETTING_KEYS]),
       SITE_LAUNCH_SETTINGS_TIMEOUT_MS
     );
-    return new Map(settings.map((entry) => [entry.key, entry.value]));
+    return cacheSettingsMap(
+      new Map(settings.map((entry) => [entry.key, entry.value]))
+    );
   } catch (error) {
     console.error(
       "[api/public/site-launch] Batched settings query timed out or failed. Retrying with per-key reads.",
@@ -57,6 +116,15 @@ async function loadSiteLaunchSettingsMap() {
     if (value !== null && value !== undefined) {
       map.set(key, value);
     }
+  }
+
+  if (map.size > 0) {
+    return cacheSettingsMap(map);
+  }
+
+  const stale = getStaleSettingsMap();
+  if (stale) {
+    return stale;
   }
 
   return map;

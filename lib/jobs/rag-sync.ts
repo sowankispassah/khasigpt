@@ -1,14 +1,13 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/queries";
 import { ragEntry, user } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import {
-  buildJobsPdfExtractedSummaryLines,
-  parseJobsPdfExtractedData,
-} from "@/lib/jobs/pdf-extraction";
-import { resolveJobSector, resolveJobType } from "@/lib/jobs/sector";
+import { parseJobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
+import { buildJobKnowledgeUnit } from "@/lib/jobs/knowledge";
+import { normalizeJobPostingRecord } from "@/lib/jobs/service";
 import {
   createRagEntry,
   deleteRagEntries,
@@ -41,7 +40,8 @@ type SupabaseJobRow = {
 };
 
 const UNKNOWN_LABEL = "Unknown";
-const JOBS_RAG_SYNC_VERSION = 1;
+const JOBS_RAG_SYNC_VERSION = 2;
+const JOBS_KNOWLEDGE_COLLATION_VERSION = 2;
 const DEFAULT_JOBS_RAG_SYNC_CONCURRENCY = 4;
 const DEFAULT_JOBS_RAG_SYNC_RETRY_ATTEMPTS = 2;
 const DEFAULT_JOBS_RAG_SYNC_RETRY_DELAY_MS = 600;
@@ -88,32 +88,6 @@ function normalizeSourceUrl(sourceUrl: string): string | null {
   }
 }
 
-function buildRagContent(row: SupabaseJobRow) {
-  const description = toTrimmedString(row.description ?? "");
-  const pdfContent = toTrimmedString(row.pdf_content ?? "");
-  const extractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
-  const structuredDetails = buildJobsPdfExtractedSummaryLines(extractedData);
-  const structuredBlock =
-    structuredDetails.length > 0
-      ? `PDF Extracted Details:\n${structuredDetails.join("\n")}`
-      : "";
-  if (!pdfContent) {
-    return [description, structuredBlock].filter(Boolean).join("\n\n");
-  }
-
-  const normalizedDescription = description.toLowerCase();
-  const normalizedPdf = pdfContent.toLowerCase();
-  if (normalizedDescription && normalizedPdf.includes(normalizedDescription)) {
-    return [pdfContent, structuredBlock].filter(Boolean).join("\n\n");
-  }
-  if (normalizedDescription.includes(normalizedPdf)) {
-    return [description, structuredBlock].filter(Boolean).join("\n\n");
-  }
-  return [description, structuredBlock, `PDF Content:\n${pdfContent}`]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
 function ensureRagContent(rawDescription: string) {
   const description = rawDescription.trim();
   if (description.length >= 16) {
@@ -126,48 +100,51 @@ function ensureRagContent(rawDescription: string) {
   return merged.length >= 16 ? merged : `${merged} Please check source URL.`;
 }
 
-function buildJobMetadata(row: SupabaseJobRow) {
-  const title = toTrimmedString(row.title) || "Job opening";
-  const company = toTrimmedString(row.company) || UNKNOWN_LABEL;
-  const location = toTrimmedString(row.location) || UNKNOWN_LABEL;
-  const sourceUrl = toTrimmedString(row.application_link ?? row.source_url);
-  const normalizedSourceUrl = normalizeSourceUrl(sourceUrl);
-  const sourceLabel = toTrimmedString(row.source ?? "") || UNKNOWN_LABEL;
-  const extractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
-  const sector = resolveJobSector({
-    title,
-    company,
-    source: sourceLabel,
-    sourceUrl: toTrimmedString(row.source_url),
-    applicationLink: toTrimmedString(row.application_link ?? row.source_url),
-    pdfSourceUrl: toTrimmedString(row.pdf_source_url ?? null),
-    pdfCachedUrl: toTrimmedString(row.pdf_cached_url ?? null),
-    description: toTrimmedString(row.description ?? null),
-    pdfContent: toTrimmedString(row.pdf_content ?? null),
-  });
+function computeJobsRagHash(value: {
+  title: string;
+  content: string;
+  sourceUrl: string | null;
+  status: "active" | "inactive";
+  metadata: Record<string, unknown>;
+}) {
+  const serialized = JSON.stringify(value);
+  return createHash("sha256").update(serialized).digest("hex");
+}
 
-  return {
+function buildIndexedJobDocument(row: SupabaseJobRow) {
+  const normalizedJob = normalizeJobPostingRecord(row);
+  const knowledge = buildJobKnowledgeUnit(normalizedJob);
+  const title = toRagSafeTitle(normalizedJob.title);
+  const content = ensureRagContent(knowledge.retrievalText);
+  const sourceUrl = normalizeSourceUrl(
+    toTrimmedString(row.application_link ?? row.source_url)
+  );
+  const status = normalizeJobStatus(row.status);
+  const extractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
+  const metadata = {
     jobs_kind: "job_posting",
     jobs_source: "supabase_jobs_table",
     jobs_sync_version: JOBS_RAG_SYNC_VERSION,
-    job_id: row.id,
-    job_title: title,
-    company,
-    location,
-    salary: toTrimmedString(row.salary ?? null) || null,
-    source: sourceLabel,
-    sector,
-    employment_type: resolveJobType(sector),
-    study_exam: UNKNOWN_LABEL,
-    study_role: UNKNOWN_LABEL,
-    study_years: [] as number[],
-    study_tags: [] as string[],
-    tags: [] as string[],
-    parse_error: null,
+    jobs_collation_version: JOBS_KNOWLEDGE_COLLATION_VERSION,
+    job_id: normalizedJob.id,
+    job_title: normalizedJob.title,
+    company: normalizedJob.company,
+    location: knowledge.location,
+    salary: knowledge.salary,
+    source: normalizedJob.source ?? UNKNOWN_LABEL,
+    sector: normalizedJob.sector,
+    employment_type: normalizedJob.employmentType,
+    study_exam: normalizedJob.studyExam,
+    study_role: normalizedJob.studyRole,
+    study_years: normalizedJob.studyYears,
+    study_tags: normalizedJob.studyTags,
+    tags: normalizedJob.tags,
+    parse_error: normalizedJob.parseError ?? null,
     source_url: sourceUrl || null,
     source_page_url: toTrimmedString(row.source_url) || null,
-    normalized_source_url: normalizedSourceUrl,
-    application_link: toTrimmedString(row.application_link ?? row.source_url) || null,
+    normalized_source_url: sourceUrl,
+    application_link:
+      toTrimmedString(row.application_link ?? row.source_url) || null,
     pdf_content_chars: toTrimmedString(row.pdf_content ?? "").length || 0,
     pdf_extracted_roles_count: extractedData?.roles.length ?? 0,
     pdf_extracted_notification_date: extractedData?.notificationDate ?? null,
@@ -177,6 +154,41 @@ function buildJobMetadata(row: SupabaseJobRow) {
     pdf_source_url: toTrimmedString(row.pdf_source_url ?? null) || null,
     pdf_cached_url: toTrimmedString(row.pdf_cached_url ?? null) || null,
     imported_from_jobs_created_at: toTrimmedString(row.created_at) || null,
+    has_pdf: knowledge.hasPdf,
+    has_salary: knowledge.hasSalary,
+    eligibility: knowledge.facts.eligibility,
+    qualification: knowledge.facts.qualification,
+    experience: knowledge.facts.experience,
+    age_limit: knowledge.facts.ageLimit,
+    application_fee: knowledge.facts.applicationFee,
+    selection_process: knowledge.facts.selectionProcess,
+    instructions: knowledge.facts.instructions,
+    requirements: knowledge.facts.requirements,
+    application_last_date: knowledge.dates.applicationLastDateLabel,
+    application_last_date_iso: knowledge.dates.applicationLastDateIso,
+    notification_date: knowledge.dates.notificationDateLabel,
+    notification_date_iso: knowledge.dates.notificationDateIso,
+    location_entries: knowledge.locationEntries,
+    salary_entries: knowledge.salaryEntries,
+    pdf_summary_lines: knowledge.pdfSummaryLines,
+  } satisfies Record<string, unknown>;
+  const jobsRagHash = computeJobsRagHash({
+    title,
+    content,
+    sourceUrl,
+    status,
+    metadata,
+  });
+
+  return {
+    title,
+    content,
+    sourceUrl,
+    status,
+    metadata: {
+      ...metadata,
+      jobs_rag_hash: jobsRagHash,
+    },
   };
 }
 
@@ -220,44 +232,104 @@ async function getJobsByIds(jobIds: string[]) {
   return (data ?? []) as SupabaseJobRow[];
 }
 
+type ExistingJobsRagEntry = {
+  id: string;
+  title: string;
+  status: "active" | "inactive" | "archived";
+  sourceUrl: string | null;
+  embeddingStatus: "pending" | "ready" | "failed" | "queued";
+  metadata: Record<string, unknown>;
+};
+
+async function getExistingJobsRagEntries(jobIds: string[]) {
+  if (jobIds.length === 0) {
+    return new Map<string, ExistingJobsRagEntry>();
+  }
+
+  const rows = await db
+    .select({
+      id: ragEntry.id,
+      title: ragEntry.title,
+      status: ragEntry.status,
+      sourceUrl: ragEntry.sourceUrl,
+      embeddingStatus: ragEntry.embeddingStatus,
+      metadata: ragEntry.metadata,
+    })
+    .from(ragEntry)
+    .where(
+      and(
+        inArray(ragEntry.id, jobIds),
+        isNull(ragEntry.deletedAt),
+        sql`(${ragEntry.metadata} ->> 'jobs_kind') = 'job_posting'`,
+        sql`(${ragEntry.metadata} ->> 'jobs_source') = 'supabase_jobs_table'`
+      )
+    );
+
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        ...row,
+        metadata:
+          row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+            ? (row.metadata as Record<string, unknown>)
+            : {},
+      } satisfies ExistingJobsRagEntry,
+    ])
+  );
+}
+
 async function upsertJobRowToRag({
   actorId,
   row,
+  existingEntry,
 }: {
   actorId: string;
   row: SupabaseJobRow;
+  existingEntry: ExistingJobsRagEntry | null;
 }) {
-  const title = toRagSafeTitle(toTrimmedString(row.title));
-  const content = ensureRagContent(buildRagContent(row));
-  const sourceUrl = normalizeSourceUrl(
-    toTrimmedString(row.application_link ?? row.source_url)
-  );
-  const status = normalizeJobStatus(row.status);
-  const metadata = buildJobMetadata(row);
+  const indexed = buildIndexedJobDocument(row);
+  const existingHash =
+    typeof existingEntry?.metadata?.jobs_rag_hash === "string"
+      ? existingEntry.metadata.jobs_rag_hash
+      : null;
+  const nextHash =
+    typeof indexed.metadata.jobs_rag_hash === "string"
+      ? indexed.metadata.jobs_rag_hash
+      : null;
+
+  if (
+    existingEntry &&
+    existingHash &&
+    nextHash &&
+    existingHash === nextHash &&
+    existingEntry.title === indexed.title &&
+    existingEntry.status === indexed.status &&
+    (existingEntry.sourceUrl ?? null) === indexed.sourceUrl &&
+    existingEntry.embeddingStatus !== "failed"
+  ) {
+    return "unchanged" as const;
+  }
 
   const input = {
     id: row.id,
-    title,
-    content,
+    title: indexed.title,
+    content: indexed.content,
     type: "document" as const,
-    status,
+    status: indexed.status,
     tags: [] as string[],
     models: [] as string[],
-    sourceUrl,
-    metadata,
+    sourceUrl: indexed.sourceUrl,
+    metadata: indexed.metadata,
   };
 
-  try {
+  if (existingEntry) {
     await updateRagEntry({
       id: row.id,
       actorId,
       input,
     });
     return "updated" as const;
-  } catch (error) {
-    if (!(error instanceof ChatSDKError) || error.type !== "not_found") {
-      throw error;
-    }
   }
 
   await createRagEntry({
@@ -270,9 +342,11 @@ async function upsertJobRowToRag({
 async function upsertJobRowToRagWithRetry({
   actorId,
   row,
+  existingEntry,
 }: {
   actorId: string;
   row: SupabaseJobRow;
+  existingEntry: ExistingJobsRagEntry | null;
 }) {
   const retryAttempts = parsePositiveInt(
     process.env.JOBS_RAG_SYNC_RETRY_ATTEMPTS,
@@ -289,6 +363,7 @@ async function upsertJobRowToRagWithRetry({
       return await upsertJobRowToRag({
         actorId,
         row,
+        existingEntry,
       });
     } catch (error) {
       lastError = error;
@@ -356,6 +431,7 @@ export async function syncJobPostingsToRag({
 
   const rows = await getJobsByIds(uniqueJobIds);
   const byId = new Map(rows.map((row) => [row.id, row] as const));
+  const existingEntriesById = await getExistingJobsRagEntries(uniqueJobIds);
   const total = uniqueJobIds.length;
   const ragSyncConcurrency = parsePositiveInt(
     concurrency,
@@ -402,10 +478,11 @@ export async function syncJobPostingsToRag({
       const outcome = await upsertJobRowToRagWithRetry({
         actorId,
         row,
+        existingEntry: existingEntriesById.get(jobId) ?? null,
       });
       if (outcome === "created") {
         created += 1;
-      } else {
+      } else if (outcome === "updated") {
         updated += 1;
       }
     } catch (error) {

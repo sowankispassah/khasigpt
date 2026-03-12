@@ -15,8 +15,10 @@ import {
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
+const ADMIN_USERS_QUERY_TIMEOUT_MS = 10_000;
 
 const EMPTY_USER_BALANCE: UserBalanceSummary = {
   subscription: null,
@@ -35,12 +37,21 @@ export default async function AdminUsersPage() {
   const session = await auth();
   const currentUserId = session?.user?.id;
 
+  const withQueryFallback = async <T,>(promise: Promise<T>, fallback: T) => {
+    try {
+      return await withTimeout(promise, ADMIN_USERS_QUERY_TIMEOUT_MS);
+    } catch {
+      return fallback;
+    }
+  };
+
   const [users, activeSubscriptions] = await Promise.all([
-    listUsers({ limit: 100 }),
-    listActiveSubscriptionSummaries({ limit: 20 }),
+    withQueryFallback(listUsers({ limit: 100 }), []),
+    withQueryFallback(listActiveSubscriptionSummaries({ limit: 20 }), []),
   ]);
-  const balanceByUserId = await getUserBalanceSummaries(
-    users.map((user) => user.id)
+  const balanceByUserId = await withQueryFallback(
+    getUserBalanceSummaries(users.map((user) => user.id)),
+    new Map<string, UserBalanceSummary>()
   );
 
   return (

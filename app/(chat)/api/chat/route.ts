@@ -62,12 +62,17 @@ import {
   buildJobsPdfExtractedSummaryLines,
   type JobsPdfExtractedData,
 } from "@/lib/jobs/pdf-extraction";
-import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
+import {
+  isJobsMetaConversationQuery,
+  logJobRetrieval,
+  retrieveJobsForConversation,
+} from "@/lib/jobs/retrieval";
 import { extractSalaryText, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
   JOBS_CHAT_MODE,
   JOB_POSTING_RUNTIME_CONTEXT_CHARS,
+  getJobKnowledgeUnitById,
   getJobPostingEntryById,
   listActiveJobPostingIdsForModel,
   listJobPostings,
@@ -477,6 +482,9 @@ function buildJobsCatalogCandidates({
             "any",
             "jobs",
             "job",
+            "latest",
+            "recent",
+            "new",
             "around",
             "about",
             "near",
@@ -541,13 +549,23 @@ function buildJobsCatalogCandidates({
       }
 
       // Prefer more recent jobs when query-specific signals tie.
-      score += Math.max(0, 20 - Math.floor(index / 20));
+      const baseScore = Math.max(0, 20 - Math.floor(index / 20));
+      score += baseScore;
 
       return {
         job,
         index,
         score,
+        baseScore,
       };
+    })
+    .filter((entry) => {
+      const hasSearchSignals =
+        Boolean(requestedLocation || requestedSalaryRange) || terms.length > 0;
+      if (!hasSearchSignals) {
+        return true;
+      }
+      return entry.score > entry.baseScore;
     })
     .sort((a, b) => {
       if (a.score !== b.score) {
@@ -627,6 +645,56 @@ function normalizeJobsSelectionAnswer({
   return `I found ${matchedCards.length} relevant job${matchedCards.length === 1 ? "" : "s"}.`;
 }
 
+function formatJobsSalaryAnchor(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function buildStructuredJobsListingText({
+  matchedCards,
+  requestedLocation,
+  requestedSalaryRange,
+}: {
+  matchedCards: JobCard[];
+  requestedLocation: string | null;
+  requestedSalaryRange: { min: number; max: number } | null;
+}) {
+  if (matchedCards.length === 0) {
+    if (requestedSalaryRange) {
+      if (requestedSalaryRange.min === requestedSalaryRange.max) {
+        return `I couldn't find any jobs around ${formatJobsSalaryAnchor(requestedSalaryRange.min)} in the current listings.`;
+      }
+
+      return `I couldn't find any jobs in the ${formatJobsSalaryAnchor(requestedSalaryRange.min)}-${formatJobsSalaryAnchor(requestedSalaryRange.max)} range in the current listings.`;
+    }
+
+    if (requestedLocation) {
+      return `I couldn't find any current jobs for ${requestedLocation}.`;
+    }
+
+    return "I couldn't find any matching jobs in the current listings.";
+  }
+
+  if (requestedSalaryRange && requestedLocation) {
+    return `I found ${matchedCards.length} job${matchedCards.length === 1 ? "" : "s"} around that salary in ${requestedLocation}.`;
+  }
+
+  if (requestedSalaryRange) {
+    const anchor =
+      requestedSalaryRange.min === requestedSalaryRange.max
+        ? formatJobsSalaryAnchor(requestedSalaryRange.min)
+        : `${formatJobsSalaryAnchor(requestedSalaryRange.min)}-${formatJobsSalaryAnchor(requestedSalaryRange.max)}`;
+    return `I found ${matchedCards.length} job${matchedCards.length === 1 ? "" : "s"} around ${anchor}.`;
+  }
+
+  if (requestedLocation) {
+    return `I found ${matchedCards.length} job${matchedCards.length === 1 ? "" : "s"} in ${requestedLocation}.`;
+  }
+
+  return `I found ${matchedCards.length} matching job${matchedCards.length === 1 ? "" : "s"}.`;
+}
+
 function supportsGeminiFileSearchModel(providerModelId: string) {
   const normalized = providerModelId.includes("/")
     ? providerModelId.split("/").at(-1) ?? providerModelId
@@ -644,6 +712,21 @@ function supportsGeminiFileSearchModel(providerModelId: string) {
     normalized === "gemini-2.5-flash-lite" ||
     normalized.startsWith("gemini-2.5-flash-lite-")
   );
+}
+
+const DEFAULT_GEMINI_FILE_SEARCH_MODEL_ID = "gemini-2.5-flash";
+
+function resolveGeminiFileSearchModelId(
+  ...candidates: Array<string | null | undefined>
+) {
+  for (const candidate of candidates) {
+    const normalized = candidate?.trim();
+    if (normalized && supportsGeminiFileSearchModel(normalized)) {
+      return normalized;
+    }
+  }
+
+  return DEFAULT_GEMINI_FILE_SEARCH_MODEL_ID;
 }
 
 function parseJobsRagSelection(rawText: string) {
@@ -716,64 +799,6 @@ function parseJobsRagSelection(rawText: string) {
     answer: fallbackAnswer,
     jobIds: recoveredJobIds,
   });
-}
-
-function isReferentialJobsFollowup(text: string) {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-
-  return /\b(those|these|them|above|previous|last|earlier|same)\b/.test(
-    normalized
-  );
-}
-
-function isImplicitJobDetailFollowup(text: string) {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-
-  const asksDetail = /\b(salary|pay|stipend|qualification|eligibility|deadline|last date|location|company|type|source|link|apply|experience|responsibilit|role detail|details)\b/.test(
-    normalized
-  );
-  if (!asksDetail) {
-    return false;
-  }
-
-  const asksFreshSearch = /\b(show|list|find|search|jobs?|openings?|vacanc)\b/.test(
-    normalized
-  );
-  if (asksFreshSearch) {
-    return false;
-  }
-
-  const hasExplicitFilterPattern =
-    /\bbetween|under|upto|up to|above|over|minimum|at least|less than|more than\b/.test(
-      normalized
-    ) ||
-    /\b(part[\s-]?time|full[\s-]?time|contract|internship|government|private)\b/.test(
-      normalized
-    );
-
-  return !hasExplicitFilterPattern;
-}
-
-function wantsJobCardsInFollowup(text: string) {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-
-  const asksToShow = /\b(show|list|display|see|view|repeat|again)\b/.test(
-    normalized
-  );
-  const asksForListings = /\b(job|jobs|listing|listings|card|cards|result|results)\b/.test(
-    normalized
-  );
-
-  return asksToShow && asksForListings;
 }
 
 function resolveDocumentMediaTypeFromUrl(url: string) {
@@ -1204,6 +1229,12 @@ export async function POST(request: Request) {
         "Jobs mode is disabled"
       ).toResponse();
     }
+    const resolvedLanguageConfig = await resolveLanguageConfig(selectedLanguage);
+    const selectedLanguageSystemPrompt =
+      typeof resolvedLanguageConfig?.systemPrompt === "string" &&
+      resolvedLanguageConfig.systemPrompt.trim().length > 0
+        ? resolvedLanguageConfig.systemPrompt.trim()
+        : null;
 
     if (chat) {
       if (chat.userId !== session.user.id) {
@@ -1263,9 +1294,11 @@ export async function POST(request: Request) {
     const buildJobsResponse = async ({
       text,
       cards,
+      jobPostingIdOverride,
     }: {
       text?: string;
       cards?: JobCard[];
+      jobPostingIdOverride?: string | null;
     }) => {
       const userCreatedAt = new Date();
       const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
@@ -1276,7 +1309,11 @@ export async function POST(request: Request) {
         currentContext: persistedChatLastContext,
         uiContext: {
           jobPostingId:
-            resolvedChatMode === JOBS_CHAT_MODE ? effectiveJobPostingId ?? null : null,
+            resolvedChatMode === JOBS_CHAT_MODE
+              ? jobPostingIdOverride !== undefined
+                ? jobPostingIdOverride
+                : effectiveJobPostingId ?? null
+              : null,
           studyPaperId: null,
         },
       });
@@ -1495,14 +1532,27 @@ export async function POST(request: Request) {
       resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
         ? await getJobPostingEntryById({ id: effectiveJobPostingId })
         : null;
+    const jobKnowledge =
+      resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
+        ? await getJobKnowledgeUnitById({
+            id: effectiveJobPostingId,
+            includeInactive: true,
+          })
+        : null;
     const jobContentRaw =
-      typeof jobEntry?.content === "string" ? jobEntry.content.trim() : "";
+      typeof jobKnowledge?.retrievalText === "string" &&
+      jobKnowledge.retrievalText.trim().length > 0
+        ? jobKnowledge.retrievalText.trim()
+        : typeof jobEntry?.content === "string"
+          ? jobEntry.content.trim()
+          : "";
     const hasJobPlaceholderContent =
       jobContentRaw.startsWith("Job posting uploaded") || jobContentRaw.length === 0;
     const hasThinJobContent = jobContentRaw.length > 0 && jobContentRaw.length < 900;
     let resolvedJobContent = jobContentRaw;
 
     const shouldExtractJobDocumentContent =
+      !jobKnowledge &&
       (hasJobPlaceholderContent || hasThinJobContent) &&
       resolvedChatMode === JOBS_CHAT_MODE &&
       Boolean(jobEntry);
@@ -1625,6 +1675,7 @@ export async function POST(request: Request) {
     const canUseSelectedJobPosting =
       resolvedChatMode !== JOBS_CHAT_MODE ||
       !effectiveJobPostingId ||
+      (jobPostingIdsForModel ?? []).length === 0 ||
       (jobPostingIdsForModel ?? []).includes(effectiveJobPostingId);
 
     let jobsLinkedStudyPapers: QuestionPaperRecord[] = [];
@@ -1701,58 +1752,24 @@ export async function POST(request: Request) {
     }
 
     if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
-      let availableIds = jobPostingIdsForModel ?? [];
-      let activeJobs = await listJobPostings({
-        includeInactive: false,
+      const { messages: jobsMessagesFromDb } = await getMessagesByChatIdPage({
+        id,
+        limit: CHAT_CONTEXT_MESSAGE_LIMIT,
       });
-      const requestedLocation = findMentionedJobsLocation(jobsUserText, activeJobs);
-      const requestedSalaryRange = findRequestedSalaryRange(jobsUserText);
-      const repairJobIds = activeJobs
-        .filter((job) => {
-          if (job.embeddingStatus === "ready") {
-            return false;
-          }
+      const jobsUiMessagesFromDb = convertToUIMessages(jobsMessagesFromDb);
+      const jobsHistoryMessages = jobsUiMessagesFromDb.map((entry) => ({
+        ...entry,
+        parts: entry.parts.filter((part) => part.type === "text"),
+      }));
 
-          const matchesLocation =
-            requestedLocation &&
-            job.location.trim().toLowerCase().includes(requestedLocation.toLowerCase());
-          const matchesSalary =
-            requestedSalaryRange &&
-            jobMayMatchRequestedSalary({
-              job,
-              salaryRange: requestedSalaryRange,
-            });
-
-          return Boolean(matchesLocation || matchesSalary);
-        })
-        .map((job) => job.id)
-        .slice(0, 25);
-
-      if (repairJobIds.length > 0) {
-        try {
-          await syncJobPostingsToRag({
-            jobIds: repairJobIds,
-          });
-          activeJobs = await listJobPostings({
-            includeInactive: false,
-          });
-          availableIds = await listActiveJobPostingIdsForModel({
-            modelConfigId: modelConfig.id,
-            modelKey: modelConfig.key,
-          });
-        } catch (error) {
-          console.warn("[jobs-chat] targeted_rag_repair_failed", {
-            location: requestedLocation,
-            salaryRange: requestedSalaryRange,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
+      const activeJobs = await listJobPostings({
+        includeInactive: false,
+        includeRagState: false,
+      });
       const applyModelScope = (jobs: typeof activeJobs) =>
-        availableIds.length > 0
-          ? jobs.filter((job) => availableIds.includes(job.id))
+        (jobPostingIdsForModel ?? []).length > 0
+          ? jobs.filter((job) => (jobPostingIdsForModel ?? []).includes(job.id))
           : jobs;
-      const activeJobsById = new Map(activeJobs.map((job) => [job.id, job] as const));
 
       const scopedActiveJobs = applyModelScope(activeJobs);
       let visibleJobs =
@@ -1761,6 +1778,7 @@ export async function POST(request: Request) {
       if (visibleJobs.length === 0) {
         const allJobs = await listJobPostings({
           includeInactive: true,
+          includeRagState: false,
         });
         const scopedAllJobs = applyModelScope(allJobs);
         visibleJobs = scopedAllJobs.length > 0 ? scopedAllJobs : allJobs;
@@ -1772,271 +1790,30 @@ export async function POST(request: Request) {
         });
       }
 
-      const { messages: jobsMessagesFromDb } = await getMessagesByChatIdPage({
-        id,
-        limit: CHAT_CONTEXT_MESSAGE_LIMIT,
-      });
-      const jobsUiMessagesFromDb = convertToUIMessages(jobsMessagesFromDb);
-      const priorUserMessages = jobsUiMessagesFromDb
-        .filter((entry) => entry.role === "user")
-        .map((entry) => getTextFromMessage(entry).trim())
-        .filter((entry) => entry.length > 0);
-
-      let lastReturnedJobIds: string[] = [];
-      for (let index = jobsUiMessagesFromDb.length - 1; index >= 0; index -= 1) {
-        const entry = jobsUiMessagesFromDb[index];
-        if (entry.role !== "assistant") {
-          continue;
-        }
-
-        const cardsPart = entry.parts.find(
-          (part) => part.type === "data-jobCards"
-        ) as
-          | Extract<
-              ChatMessage["parts"][number],
-              { type: "data-jobCards" }
-            >
-          | undefined;
-
-        const candidateIds =
-          cardsPart?.data?.jobs
-            ?.map((job) => (typeof job.id === "string" ? job.id.trim() : ""))
-            .filter((jobId) => jobId.length > 0) ?? [];
-        if (candidateIds.length > 0) {
-          lastReturnedJobIds = Array.from(new Set(candidateIds));
-          break;
-        }
-      }
-
-      if (
-        (isReferentialJobsFollowup(jobsUserText) ||
-          isImplicitJobDetailFollowup(jobsUserText)) &&
-        lastReturnedJobIds.length > 0
-      ) {
-        const referencedJobs = lastReturnedJobIds
-          .map((jobId) => activeJobsById.get(jobId))
-          .filter((job): job is (typeof activeJobs)[number] => Boolean(job));
-
-        if (referencedJobs.length > 0) {
-          const needsPdfSupplement =
-            isImplicitJobDetailFollowup(jobsUserText) ||
-            /\b(pdf|document|notification)\b/i.test(jobsUserText);
-          const referencedContextBlocks = await Promise.all(
-            referencedJobs.slice(0, 12).map(async (job) => {
-              const pdfSupplement = needsPdfSupplement
-                ? await resolveJobPdfSupplementalContext(job)
-                : "";
-              return [
-                `Job ID: ${job.id}`,
-                `Title: ${job.title}`,
-                `Company: ${job.company}`,
-                `Location: ${job.location}`,
-                `Type: ${getJobTypeLabel(job.employmentType)}`,
-                `Source URL: ${job.sourceUrl ?? "Not available"}`,
-                `Description: ${job.content || "No description available."}`,
-                pdfSupplement ? `Supplemental PDF context:\n${pdfSupplement}` : "",
-              ]
-                .filter((value) => value.length > 0)
-                .join("\n");
-            })
-          );
-          const referencedContext = referencedContextBlocks.join("\n\n---\n\n");
-
-          try {
-            const followupResult = await generateText({
-              model: resolveLanguageModel(modelConfig),
-              ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
-              system: [
-                "You are in Jobs mode.",
-                "Answer ONLY using the provided referenced jobs context.",
-                "Format responses in clean Markdown with short headings and bullet points when listing multiple jobs.",
-                "If a requested detail is missing, respond naturally (for example: The salary details are not mentioned in the listing). Do not reply with only 'I don't know.'",
-                "Do not repeat the job list unless the user explicitly asks to show/list jobs again.",
-                "When asked about salary/eligibility/deadline for previously shown jobs, answer directly for each referenced job title.",
-                "Keep the response concise and directly answer the follow-up question.",
-              ].join("\n"),
-              messages: convertToModelMessages([
-                ...jobsUiMessagesFromDb
-                  .slice(-8)
-                  .map((entry) => ({
-                    ...entry,
-                    parts: entry.parts.filter((part) => part.type === "text"),
-                  })),
-                {
-                  ...message,
-                  parts: [
-                    {
-                      type: "text" as const,
-                      text: [
-                        "Referenced jobs context:",
-                        referencedContext,
-                        `Follow-up question: ${jobsUserText}`,
-                      ].join("\n\n"),
-                    },
-                  ],
-                },
-              ]),
-            });
-
-            const followupUsage = followupResult.usage as
-              | {
-                  inputTokens?: number;
-                  outputTokens?: number;
-                  promptTokens?: number;
-                  completionTokens?: number;
-                }
-              | undefined;
-            const followupInputTokens =
-              typeof followupUsage?.inputTokens === "number"
-                ? followupUsage.inputTokens
-                : typeof followupUsage?.promptTokens === "number"
-                  ? followupUsage.promptTokens
-                  : 0;
-            const followupOutputTokens =
-              typeof followupUsage?.outputTokens === "number"
-                ? followupUsage.outputTokens
-                : typeof followupUsage?.completionTokens === "number"
-                  ? followupUsage.completionTokens
-                  : 0;
-            if (followupInputTokens > 0 || followupOutputTokens > 0) {
-              await recordTokenUsage({
-                userId: session.user.id,
-                chatId: id,
-                modelConfigId: modelConfig.id,
-                inputTokens: followupInputTokens,
-                outputTokens: followupOutputTokens,
-                deductCredits: hasActiveCredits,
-              }).catch((tokenError) => {
-                console.warn("[jobs-chat] failed to record followup token usage", {
-                  chatId: id,
-                  error:
-                    tokenError instanceof Error
-                      ? tokenError.message
-                      : String(tokenError),
-                });
-              });
-            }
-
-            const followupText = followupResult.text.trim();
-            const includeCards = wantsJobCardsInFollowup(jobsUserText);
-            return buildJobsResponse({
-              text:
-                followupText.length > 0
-                  ? followupText
-                  : "The requested detail is not mentioned in the available job listings.",
-              cards: includeCards ? referencedJobs.map(toJobCard) : undefined,
-            });
-          } catch (error) {
-            console.warn("[jobs-chat] referential_followup_failed", {
-              chatId: id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
-      }
-
-      const fileSearchStoreName = getGeminiFileSearchStoreName();
-      const preferredJobsRagModelId = process.env.JOBS_RAG_GEMINI_MODEL_ID?.trim();
-      const jobsRagModelId =
-        modelConfig.provider === "google" &&
-        supportsGeminiFileSearchModel(modelConfig.providerModelId)
-          ? modelConfig.providerModelId
-          : preferredJobsRagModelId &&
-              supportsGeminiFileSearchModel(preferredJobsRagModelId)
-            ? preferredJobsRagModelId
-            : "gemini-2.5-flash";
-      const canUseJobsRagSelection =
-        typeof fileSearchStoreName === "string" &&
-        supportsGeminiFileSearchModel(jobsRagModelId);
-
-      if (!canUseJobsRagSelection || !fileSearchStoreName) {
-        return buildJobsResponse({
-          text:
-            "Jobs chat semantic search is temporarily unavailable. Use the filter controls above or try again later.",
-          cards: visibleJobs.slice(0, 12).map(toJobCard),
-        });
-      }
-
-      const jobsRagModelBase = createGeminiFileSearchLanguageModel({
-        modelId: jobsRagModelId,
-        storeName: fileSearchStoreName,
-        metadataFilter: 'jobs_kind = "job_posting" AND jobs_source = "supabase_jobs_table"',
-      });
-      const jobsRagModel = jobsRagModelBase;
-
-      const jobsHistoryMessages = jobsUiMessagesFromDb.map((entry) => ({
-        ...entry,
-        parts: entry.parts.filter((part) => part.type === "text"),
-      }));
+      const persistedJobsUiContext = readChatUiContext(persistedChatLastContext);
       const jobsPromptText =
         jobsUserText.length > 0 ? jobsUserText : "Show me relevant jobs.";
-      const catalogJobs = buildJobsCatalogCandidates({
-        jobs: activeJobs,
-        text: jobsPromptText,
-        requestedLocation,
-        requestedSalaryRange,
-      });
-      const visibleJobsCatalog = catalogJobs
-        .map((job) => {
-          const salarySummary = resolveJobSalaryInfo({
-            salary: job.salary,
-            content: job.content,
-            pdfContent: job.pdfContent,
-            extractedData: job.pdfExtractedData,
-          }).summary;
-          return [
-            job.id,
-            job.title,
-            job.company,
-            job.location,
-            getJobTypeLabel(job.employmentType),
-            salarySummary,
-          ].join(" | ");
-        })
-        .join("\n- ");
-      const jobsPromptMessage: ChatMessage = {
-        ...message,
-        parts: [
-          {
-            type: "text",
-            text: [
-              `User search request: ${jobsPromptText}`,
-              visibleJobsCatalog
-                ? [
-                    "Available jobs catalog (use ONLY these IDs in jobIds):",
-                    `- ${visibleJobsCatalog}`,
-                  ].join("\n")
-                : "",
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
-          },
-        ],
-      };
-      const runCatalogSemanticSelection = async () => {
-        const catalogSelectionResult = await generateText({
+      if (isJobsMetaConversationQuery(jobsPromptText)) {
+        const metaConversationResult = await generateText({
           model: resolveLanguageModel(modelConfig),
           ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
           system: [
-            "You are helping with Meghalaya jobs search.",
-            "Use ONLY the provided jobs catalog. Do not invent jobs or IDs.",
-            "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
-            "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
-            "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
-            "Answer naturally. Do not mention the catalog, summaries, internal search process, or provided data.",
-            "If jobIds is non-empty, your answer must clearly say matches were found. Do not start with phrases like 'I couldn't find' or 'There are no jobs'.",
-            "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
-            "When the user asks for jobs around/about/near an amount, do not talk about exact salary matching unless the user explicitly asked for exact salary.",
-            "Use the salary summaries in the catalog, and consider structured compensation values, pay scales, and OCR-derived amounts when available.",
-            "If no matches, return an empty jobIds array and explain briefly in answer.",
+            selectedLanguageSystemPrompt ?? "",
+            "You are a modern conversational assistant inside Meghalaya Jobs mode.",
+            "Reply naturally and briefly like a normal LLM assistant.",
+            "Do not return job cards for greetings or meta conversation.",
+            "You may mention that you can help search Meghalaya jobs by place, salary, qualification, deadline, or source when relevant.",
+            "Always answer in the user's selected language unless the user explicitly asks for a different one.",
           ].join("\n"),
           messages: convertToModelMessages([
             ...jobsHistoryMessages,
-            jobsPromptMessage,
+            {
+              ...message,
+              parts: [{ type: "text", text: jobsPromptText }],
+            },
           ]),
         });
-
-        const catalogUsage = catalogSelectionResult.usage as
+        const metaUsage = metaConversationResult.usage as
           | {
               inputTokens?: number;
               outputTokens?: number;
@@ -2044,28 +1821,28 @@ export async function POST(request: Request) {
               completionTokens?: number;
             }
           | undefined;
-        const catalogInputTokens =
-          typeof catalogUsage?.inputTokens === "number"
-            ? catalogUsage.inputTokens
-            : typeof catalogUsage?.promptTokens === "number"
-              ? catalogUsage.promptTokens
+        const metaInputTokens =
+          typeof metaUsage?.inputTokens === "number"
+            ? metaUsage.inputTokens
+            : typeof metaUsage?.promptTokens === "number"
+              ? metaUsage.promptTokens
               : 0;
-        const catalogOutputTokens =
-          typeof catalogUsage?.outputTokens === "number"
-            ? catalogUsage.outputTokens
-            : typeof catalogUsage?.completionTokens === "number"
-              ? catalogUsage.completionTokens
+        const metaOutputTokens =
+          typeof metaUsage?.outputTokens === "number"
+            ? metaUsage.outputTokens
+            : typeof metaUsage?.completionTokens === "number"
+              ? metaUsage.completionTokens
               : 0;
-        if (catalogInputTokens > 0 || catalogOutputTokens > 0) {
+        if (metaInputTokens > 0 || metaOutputTokens > 0) {
           await recordTokenUsage({
             userId: session.user.id,
             chatId: id,
             modelConfigId: modelConfig.id,
-            inputTokens: catalogInputTokens,
-            outputTokens: catalogOutputTokens,
+            inputTokens: metaInputTokens,
+            outputTokens: metaOutputTokens,
             deductCredits: hasActiveCredits,
           }).catch((tokenError) => {
-            console.warn("[jobs-chat] failed to record catalog token usage", {
+            console.warn("[jobs-chat] failed to record meta conversation usage", {
               chatId: id,
               error:
                 tokenError instanceof Error
@@ -2075,155 +1852,240 @@ export async function POST(request: Request) {
           });
         }
 
-        return parseJobsRagSelection(catalogSelectionResult.text);
-      };
-
-      try {
-        const ragSelectionResult = await generateText({
-          model: jobsRagModel,
-          maxRetries: 0,
-          system: [
-            "You are helping with Meghalaya jobs search.",
-            "Use ONLY retrieved File Search job documents. Do not invent jobs.",
-            "Return strictly valid JSON with keys: answer (string), jobIds (array of UUID strings).",
-            "Include up to 12 most relevant job IDs in jobIds, ordered by relevance.",
-            "Do not include citations, UUIDs, internal IDs, or bracketed citation markers in answer.",
-            "Use the provided jobs catalog only to map retrieved matches back to valid job IDs. Do not use it as a standalone search source.",
-            "Answer naturally. Do not mention the catalog, summaries, internal search process, or provided data.",
-            "If jobIds is non-empty, your answer must clearly say matches were found. Do not start with phrases like 'I couldn't find' or 'There are no jobs'.",
-            "If no matches, return an empty jobIds array and explain briefly in answer.",
-            "Interpret salary requests semantically. Phrases like around/about/near 50000 should match jobs reasonably close to that amount, not only exact literal matches.",
-            "When the user asks for jobs around/about/near an amount, do not talk about exact salary matching unless the user explicitly asked for exact salary.",
-            "Use structured compensation details when present, including pay levels, allowances, and OCR-extracted PDF text.",
-            "Treat type, qualification, location, and deadline requests as search intent over the job documents, not as fixed keyword filtering.",
-            "If uncertain, state what is missing instead of guessing.",
-          ].join("\n"),
-          messages: convertToModelMessages([
-            ...jobsHistoryMessages,
-            jobsPromptMessage,
-          ]),
-        });
-        const ragUsage = ragSelectionResult.usage as
-          | {
-              inputTokens?: number;
-              outputTokens?: number;
-              promptTokens?: number;
-              completionTokens?: number;
-            }
-          | undefined;
-        const ragInputTokens =
-          typeof ragUsage?.inputTokens === "number"
-            ? ragUsage.inputTokens
-            : typeof ragUsage?.promptTokens === "number"
-              ? ragUsage.promptTokens
-              : 0;
-        const ragOutputTokens =
-          typeof ragUsage?.outputTokens === "number"
-            ? ragUsage.outputTokens
-            : typeof ragUsage?.completionTokens === "number"
-              ? ragUsage.completionTokens
-              : 0;
-        if (ragInputTokens > 0 || ragOutputTokens > 0) {
-          await recordTokenUsage({
-            userId: session.user.id,
-            chatId: id,
-            modelConfigId: modelConfig.id,
-            inputTokens: ragInputTokens,
-            outputTokens: ragOutputTokens,
-            deductCredits: hasActiveCredits,
-          }).catch((tokenError) => {
-            console.warn("[jobs-chat] failed to record rag token usage", {
-              chatId: id,
-              error:
-                tokenError instanceof Error
-                  ? tokenError.message
-                  : String(tokenError),
-            });
-          });
-        }
-
-        const parsedSelection = parseJobsRagSelection(ragSelectionResult.text);
-        if (!parsedSelection) {
-          const catalogSelection = await runCatalogSemanticSelection().catch(
-            () => null
-          );
-          if (!catalogSelection) {
-            return buildJobsResponse({
-              text:
-                "I couldn't parse the semantic jobs search result. Please rephrase your request and try again.",
-            });
-          }
-
-          const catalogCards = catalogSelection.jobIds
-            .map((jobId) => activeJobsById.get(jobId))
-            .filter((job): job is (typeof activeJobs)[number] => Boolean(job))
-            .slice(0, 12)
-            .map(toJobCard);
-
-          return buildJobsResponse({
-            text: normalizeJobsSelectionAnswer({
-              query: jobsPromptText,
-              answer: catalogSelection.answer,
-              matchedCards: catalogCards,
-            }),
-            cards: catalogCards,
-          });
-        }
-
-        const selectedCards = parsedSelection.jobIds
-          .map((jobId) => activeJobsById.get(jobId))
-          .filter((job): job is (typeof activeJobs)[number] => Boolean(job))
-          .slice(0, 12)
-          .map(toJobCard);
-
-        if (selectedCards.length === 0) {
-          const catalogSelection = await runCatalogSemanticSelection().catch(
-            () => null
-          );
-          if (catalogSelection) {
-            const catalogCards = catalogSelection.jobIds
-              .map((jobId) => activeJobsById.get(jobId))
-              .filter((job): job is (typeof activeJobs)[number] => Boolean(job))
-              .slice(0, 12)
-              .map(toJobCard);
-            return buildJobsResponse({
-              text: normalizeJobsSelectionAnswer({
-                query: jobsPromptText,
-                answer: catalogSelection.answer,
-                matchedCards: catalogCards,
-              }),
-              cards: catalogCards,
-            });
-          }
-
-          return buildJobsResponse({
-            text:
-              parsedSelection.answer?.trim().length > 0
-                ? parsedSelection.answer
-                : "I couldn't find semantically relevant jobs for that request right now.",
-            cards: [],
-          });
-        }
-
         return buildJobsResponse({
-          text: normalizeJobsSelectionAnswer({
-            query: jobsPromptText,
-            answer: parsedSelection.answer,
-            matchedCards: selectedCards,
-          }),
-          cards: selectedCards,
-        });
-      } catch (error) {
-        console.warn("[jobs-chat] rag_selection_failed", {
-          chatId: id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return buildJobsResponse({
-          text:
-            "Jobs chat semantic search is temporarily unavailable right now. Use the filter controls above or try again later.",
-          cards: visibleJobs.slice(0, 12).map(toJobCard),
+          text: sanitizeJobsAnswerText(metaConversationResult.text),
+          cards: undefined,
+          jobPostingIdOverride: null,
         });
       }
+      const retrieval = retrieveJobsForConversation({
+        query: jobsPromptText,
+        jobs: visibleJobs,
+        messages: jobsUiMessagesFromDb,
+        persistedJobId: persistedJobsUiContext.jobPostingId,
+        limit: 8,
+      });
+
+      await logJobRetrieval({
+        chatId: id,
+        userId: session.user.id,
+        modelConfigId: modelConfig.id,
+        modelKey: modelConfig.key,
+        queryText: jobsPromptText,
+        matches: retrieval.matches,
+      });
+
+      const singleRetrievedJobId =
+        retrieval.cards.length === 1 ? retrieval.cards[0]?.id ?? null : null;
+      const isDetailStyleJobsFollowUp =
+        /\b(details?|detail|more about|overview|responsibilit(?:y|ies)|description|summary|information|info|tell me more|about that job|about this job|what(?:'s| is) the post|role)\b/i.test(
+          jobsPromptText
+        );
+      const generateLocalizedJobsListingText = async () => {
+        const listingCardsSummary =
+          retrieval.cards.length > 0
+            ? retrieval.cards
+                .slice(0, 6)
+                .map((card) =>
+                  [
+                    `Title: ${card.title}`,
+                    `Company: ${card.company}`,
+                    `Location: ${card.location}`,
+                    card.salary ? `Salary: ${card.salary}` : "",
+                    card.source ? `Source: ${card.source}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" | ")
+                )
+                .join("\n")
+            : "No job cards were returned.";
+
+        const listingSummaryResult = await generateText({
+          model: resolveLanguageModel(modelConfig),
+          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          system: [
+            selectedLanguageSystemPrompt ?? "",
+            "You are summarizing Meghalaya job search results for a chat UI.",
+            "Always answer in the user's selected language unless the user explicitly asks for another one.",
+            "Keep the response concise, natural, and human.",
+            "Do not translate or rewrite job titles, company names, source names, or locations from the result cards unless necessary.",
+            "Do not mention internal retrieval, ranking, filtering, or system behavior.",
+            "If there are no direct matches but statewide or all-district jobs are suggested, explain that naturally.",
+            "Do not invent salary, location, or eligibility details.",
+          ].join("\n"),
+          messages: convertToModelMessages([
+            ...jobsHistoryMessages,
+            {
+              ...message,
+              parts: [
+                {
+                  type: "text",
+                  text: [
+                    `User request: ${jobsPromptText}`,
+                    `Base retrieval summary: ${retrieval.answerText}`,
+                    "Visible result cards:",
+                    listingCardsSummary,
+                  ].join("\n\n"),
+                },
+              ],
+            },
+          ]),
+        });
+        const listingUsage = listingSummaryResult.usage as
+          | {
+              inputTokens?: number;
+              outputTokens?: number;
+              promptTokens?: number;
+              completionTokens?: number;
+            }
+          | undefined;
+        const listingInputTokens =
+          typeof listingUsage?.inputTokens === "number"
+            ? listingUsage.inputTokens
+            : typeof listingUsage?.promptTokens === "number"
+              ? listingUsage.promptTokens
+              : 0;
+        const listingOutputTokens =
+          typeof listingUsage?.outputTokens === "number"
+            ? listingUsage.outputTokens
+            : typeof listingUsage?.completionTokens === "number"
+              ? listingUsage.completionTokens
+              : 0;
+        if (listingInputTokens > 0 || listingOutputTokens > 0) {
+          await recordTokenUsage({
+            userId: session.user.id,
+            chatId: id,
+            modelConfigId: modelConfig.id,
+            inputTokens: listingInputTokens,
+            outputTokens: listingOutputTokens,
+            deductCredits: hasActiveCredits,
+          }).catch((tokenError) => {
+            console.warn("[jobs-chat] failed to record listing summary usage", {
+              chatId: id,
+              error:
+                tokenError instanceof Error
+                  ? tokenError.message
+                  : String(tokenError),
+            });
+          });
+        }
+
+        return sanitizeJobsAnswerText(listingSummaryResult.text);
+      };
+      const shouldGenerateFollowUpAnswer =
+        retrieval.conversationState.reason !== null &&
+        retrieval.matches.length > 0 &&
+        (
+          isDetailStyleJobsFollowUp ||
+          /\b(what|which|when|why|how|can|does|is|are|eligibility|qualification|salary|deadline|apply|experience|instructions|requirement)\b/i.test(
+            jobsPromptText
+          )
+        );
+
+      if (shouldGenerateFollowUpAnswer) {
+        const knowledgeBlocks = retrieval.matches.slice(0, 3).map((match) =>
+          [
+            `Job: ${match.job.title}`,
+            `Company: ${match.job.company}`,
+            `Location: ${match.job.location}`,
+            match.knowledge.retrievalText,
+          ].join("\n")
+        );
+        const followUpPrompt: ChatMessage = {
+          ...message,
+          parts: [
+            {
+              type: "text",
+              text: [
+                `User request: ${jobsPromptText}`,
+                "Use only the retrieved job knowledge below.",
+                knowledgeBlocks.join("\n\n---\n\n"),
+              ].join("\n\n"),
+            },
+          ],
+        };
+
+        const followUpResult = await generateText({
+          model: resolveLanguageModel(modelConfig),
+          ...(modelConfig.provider === "google" ? { maxRetries: 0 } : {}),
+          system: [
+            selectedLanguageSystemPrompt ?? "",
+            "You are answering a jobs question from retrieved Meghalaya job knowledge.",
+            "Use only the provided job knowledge.",
+            "If a requested detail is missing, say the listing does not mention it.",
+            "Do not mention retrieval, search, or internal ranking.",
+            "Format the answer in concise Markdown.",
+            "Always answer in the user's selected language unless the user explicitly asks for a different one.",
+          ].join("\n"),
+          messages: convertToModelMessages([
+            ...jobsHistoryMessages,
+            followUpPrompt,
+          ]),
+        });
+        const followUpUsage = followUpResult.usage as
+          | {
+              inputTokens?: number;
+              outputTokens?: number;
+              promptTokens?: number;
+              completionTokens?: number;
+            }
+          | undefined;
+        const followUpInputTokens =
+          typeof followUpUsage?.inputTokens === "number"
+            ? followUpUsage.inputTokens
+            : typeof followUpUsage?.promptTokens === "number"
+              ? followUpUsage.promptTokens
+              : 0;
+        const followUpOutputTokens =
+          typeof followUpUsage?.outputTokens === "number"
+            ? followUpUsage.outputTokens
+            : typeof followUpUsage?.completionTokens === "number"
+              ? followUpUsage.completionTokens
+              : 0;
+        if (followUpInputTokens > 0 || followUpOutputTokens > 0) {
+          await recordTokenUsage({
+            userId: session.user.id,
+            chatId: id,
+            modelConfigId: modelConfig.id,
+            inputTokens: followUpInputTokens,
+            outputTokens: followUpOutputTokens,
+            deductCredits: hasActiveCredits,
+          }).catch((tokenError) => {
+            console.warn("[jobs-chat] failed to record retrieval follow-up usage", {
+              chatId: id,
+              error:
+                tokenError instanceof Error
+                  ? tokenError.message
+                  : String(tokenError),
+            });
+          });
+        }
+
+        return buildJobsResponse({
+          text: sanitizeJobsAnswerText(followUpResult.text),
+          cards:
+            singleRetrievedJobId !== null && isDetailStyleJobsFollowUp
+              ? undefined
+              : retrieval.cards.slice(0, 6),
+          jobPostingIdOverride: singleRetrievedJobId,
+        });
+      }
+
+      const localizedListingText = await generateLocalizedJobsListingText().catch(
+        (error) => {
+          console.warn("[jobs-chat] localized_listing_summary_failed", {
+            chatId: id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return retrieval.answerText;
+        }
+      );
+
+      return buildJobsResponse({
+        text: localizedListingText,
+        cards: retrieval.cards.slice(0, 12),
+        jobPostingIdOverride: singleRetrievedJobId,
+      });
     }
 
     if (resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId) {
@@ -2724,11 +2586,10 @@ export async function POST(request: Request) {
       country,
     };
 
-    const languageConfig = await resolveLanguageConfig(selectedLanguage);
     const languageSystemPrompt =
-      typeof languageConfig?.systemPrompt === "string" &&
-      languageConfig.systemPrompt.trim().length > 0
-        ? languageConfig.systemPrompt.trim()
+      typeof resolvedLanguageConfig?.systemPrompt === "string" &&
+      resolvedLanguageConfig.systemPrompt.trim().length > 0
+        ? resolvedLanguageConfig.systemPrompt.trim()
         : null;
 
     const baseInstruction = systemPrompt({
@@ -2756,7 +2617,7 @@ export async function POST(request: Request) {
         ? "Quiz mode is active. Ask one question at a time from the selected paper, wait for the user's answer, then provide feedback and a brief explanation grounded in the paper. Keep score within this session."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE
-        ? "You are in Jobs mode. Use only the uploaded job posting documents as the primary source for eligibility, responsibilities, requirements, and role details."
+        ? "You are in Jobs mode. Use only the retrieved job knowledge and selected job posting context as the source for eligibility, responsibilities, requirements, salary, location, and important dates."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE
         ? "Format job responses in clean Markdown with clear sections (for example: Overview, Eligibility, Salary, Location, Important dates) and consistent bullet points."
@@ -2765,7 +2626,7 @@ export async function POST(request: Request) {
         ? "When job details are missing, respond naturally (for example: The listing does not mention salary details) instead of replying with only: I don't know."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
-        ? "Answer using the selected job posting. If a detail is not present in the posting, clearly say the listing does not mention it instead of guessing."
+        ? "Answer using the selected job posting knowledge unit. If a detail is not present in the posting, clearly say the listing does not mention it instead of guessing."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE && jobsIntent === "exam_prep"
         ? "The user is asking exam-prep questions for the selected job. Prefer matched study papers as the source for expected question types, preparation topics, and exam strategy."
@@ -2798,13 +2659,20 @@ export async function POST(request: Request) {
       value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
     const fileSearchStoreName = getGeminiFileSearchStoreName();
+    const geminiFileSearchModelId = resolveGeminiFileSearchModelId(
+      modelConfig.provider === "google" ? modelConfig.providerModelId : null,
+      process.env.RAG_GEMINI_MODEL_ID,
+      process.env.GEMINI_FILE_SEARCH_MODEL_ID,
+      resolvedChatMode === JOBS_CHAT_MODE
+        ? process.env.JOBS_RAG_GEMINI_MODEL_ID
+        : null
+    );
     const allowModeSpecificFileSearch =
       resolvedChatMode === STUDY_CHAT_MODE || resolvedChatMode === JOBS_CHAT_MODE;
     const canUseGeminiFileSearch =
       (customKnowledgeEnabled || allowModeSpecificFileSearch) &&
-      modelConfig.provider === "google" &&
       typeof fileSearchStoreName === "string" &&
-      supportsGeminiFileSearchModel(modelConfig.providerModelId);
+      supportsGeminiFileSearchModel(geminiFileSearchModelId);
 
     const activeEntryIds = canUseGeminiFileSearch
       ? resolvedChatMode === STUDY_CHAT_MODE
@@ -2858,13 +2726,19 @@ export async function POST(request: Request) {
 
     let languageModel = geminiFileSearchStoreName
       ? createGeminiFileSearchLanguageModel({
-          modelId: modelConfig.providerModelId,
+          modelId: geminiFileSearchModelId,
           storeName: geminiFileSearchStoreName,
           metadataFilter,
         })
       : resolveLanguageModel(modelConfig);
 
-    if (useGeminiFileSearch && modelConfig.supportsReasoning && modelConfig.reasoningTag) {
+    if (
+      useGeminiFileSearch &&
+      modelConfig.provider === "google" &&
+      geminiFileSearchModelId === modelConfig.providerModelId &&
+      modelConfig.supportsReasoning &&
+      modelConfig.reasoningTag
+    ) {
       languageModel = wrapLanguageModel({
         model: languageModel,
         middleware: extractReasoningMiddleware({

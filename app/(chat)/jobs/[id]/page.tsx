@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { unstable_cache } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { Response } from "@/components/elements/response";
@@ -9,39 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
-import { fetchSourceDetailMarkdown, isLinkedInUrl } from "@/lib/jobs/linkedin-detail";
-import { resolveJobPdfMetaText, resolveJobPdfUrl } from "@/lib/jobs/pdf-meta";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { getJobPostingById } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
-const SOURCE_DETAIL_MIN_CHARS = 700;
-const SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS = 2_500;
-const SOURCE_DETAIL_FETCH_TIMEOUT_MS = 2_500;
-const SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS = 300;
-
-const getCachedSourceDetailMarkdown = unstable_cache(
-  async (sourceUrl: string) =>
-    fetchSourceDetailMarkdown(sourceUrl, {
-      timeoutMs: SOURCE_DETAIL_FETCH_TIMEOUT_MS,
-    }),
-  ["jobs-detail:source-markdown"],
-  { revalidate: SOURCE_DETAIL_CACHE_REVALIDATE_SECONDS }
-);
-
-function compactText(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function markdownToPlainText(value: string) {
-  return compactText(
-    value
-      .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
-      .replace(/[#>*`_~|-]/g, " ")
-  );
-}
 
 function formatDateLabel(value: Date) {
   return value.toLocaleDateString("en-IN", {
@@ -130,37 +101,21 @@ export default async function JobPostingDetailPage(props: {
   const job = await getJobPostingById({
     id,
     includeInactive: false,
+    includeRagState: false,
   });
 
   if (!job) {
     notFound();
   }
 
-  let detailMarkdown = job.content.trim();
-  const currentDetailLength = markdownToPlainText(detailMarkdown).length;
-  const shouldFetchSourceDetail =
-    Boolean(job.sourceUrl) &&
-    !isPdfUrl(job.sourceUrl) &&
-    isLinkedInUrl(job.sourceUrl) &&
-    currentDetailLength < SOURCE_DETAIL_FETCH_TRIGGER_MAX_CHARS;
-
-  if (job.sourceUrl && shouldFetchSourceDetail) {
-    const currentLength = markdownToPlainText(detailMarkdown).length;
-    const sourceDetail = await getCachedSourceDetailMarkdown(job.sourceUrl);
-    const sourceDetailLength = sourceDetail ? markdownToPlainText(sourceDetail).length : 0;
-    if (sourceDetail && sourceDetailLength >= Math.max(SOURCE_DETAIL_MIN_CHARS, currentLength + 80)) {
-      detailMarkdown = sourceDetail;
-    }
-  }
-
-  const pdfUrl = resolveJobPdfUrl({
+  const detailMarkdown = job.content.trim() || job.pdfContent?.trim() || "";
+  const pdfUrl = resolvePdfUrl({
     sourceUrl: job.sourceUrl,
     pdfSourceUrl: job.pdfSourceUrl,
     pdfCachedUrl: job.pdfCachedUrl,
     content: job.content,
   });
-  const pdfMetaText = await resolveJobPdfMetaText(job);
-  const detailTextForMeta = markdownToPlainText(detailMarkdown);
+  const pdfMetaText = job.pdfContent?.trim() || null;
 
   const salaryInfo = resolveJobSalaryInfo({
     salary: job.salary,
@@ -180,7 +135,7 @@ export default async function JobPostingDetailPage(props: {
   const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
   const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
-  const showDescriptionText = !proxiedPdfUrl && detailTextForMeta.length > 0;
+  const showDescriptionText = !proxiedPdfUrl && detailMarkdown.length > 0;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">

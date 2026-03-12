@@ -62,7 +62,7 @@ const SidebarHistory = dynamic(
 const HOME_HREF = "/chat";
 const NEW_CHAT_HREF = "/chat?new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
-const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
+const VIEW_JOBS_HREF = "/chat?mode=jobs";
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
 function isChatShellPath(pathname: string) {

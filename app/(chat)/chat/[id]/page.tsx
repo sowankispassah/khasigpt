@@ -15,7 +15,6 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { readChatUiContext } from "@/lib/chat/ui-context";
 import {
   getAppSetting,
   getChatById,
@@ -26,7 +25,7 @@ import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
+import { listJobListItems } from "@/lib/jobs/service";
 import { getSiteUrl } from "@/lib/seo/site";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -198,34 +197,12 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }
 
   const chatMode = chat.mode ?? "default";
-  const persistedUiContext = readChatUiContext(chat.lastContext);
   if (chatMode === "study" && !studyModeEnabled) {
     return <StudyModeDisabledNotice />;
   }
   if (chatMode === "jobs" && !jobsModeEnabled) {
     return notFound();
   }
-  const initialJobEntry =
-    chatMode === "jobs" && persistedUiContext.jobPostingId
-      ? await withTimeout(
-          getJobPostingById({
-            id: persistedUiContext.jobPostingId,
-            includeInactive: false,
-          }),
-          CHAT_PAGE_LOAD_TIMEOUT_MS,
-          () => {
-            console.warn(
-              `[chat] getJobPostingById timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`
-            );
-          }
-        ).catch((error) => {
-          if (!isTimeoutError(error)) {
-            console.error("[chat] Failed to load persisted jobs context", error);
-          }
-          return null;
-        })
-      : null;
-  const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
   const jobsListItems =
     chatMode === "jobs"
       ? await withTimeout(
@@ -323,7 +300,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         initialChatLanguage={initialChatLanguage}
         initialChatModel={fallbackModelId}
         jobsListItems={jobsListItems}
-        initialJobContext={initialJobContext}
+        initialJobContext={null}
         initialMessages={uiMessages}
         initialHasMoreHistory={hasMoreMessages}
         initialOldestMessageAt={oldestMessageAt}

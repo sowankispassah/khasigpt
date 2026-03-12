@@ -654,6 +654,7 @@ export function Chat({
     },
     
     onFinish: () => {
+      syncCurrentChatUrl();
       refreshAndPromoteHistory();
     },
     onError: (error) => {
@@ -877,6 +878,26 @@ export function Chat({
     },
     [isJobsMode, isStudyMode]
   );
+
+  const syncCurrentChatUrl = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    // Keep Jobs mode launched from the root jobs page on the same route to avoid
+    // a visible remount after the first response.
+    if (isJobsMode && (pathname === "/" || pathname === "/chat")) {
+      return;
+    }
+
+    const nextHref = getCurrentChatHref(id);
+    const currentHref = `${window.location.pathname}${window.location.search}`;
+    if (currentHref === nextHref) {
+      return;
+    }
+
+    window.history.replaceState({}, "", nextHref);
+  }, [getCurrentChatHref, id, isJobsMode, pathname]);
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {

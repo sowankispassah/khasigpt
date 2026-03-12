@@ -140,6 +140,36 @@ function buildIndexableText(entry: RagEntryModel) {
     typeof metadata.salary === "string" && metadata.salary.trim().length > 0
       ? `Salary: ${metadata.salary.trim()}`
       : "";
+  const qualification =
+    typeof metadata.qualification === "string" &&
+    metadata.qualification.trim().length > 0
+      ? `Qualification: ${metadata.qualification.trim()}`
+      : "";
+  const eligibility =
+    typeof metadata.eligibility === "string" &&
+    metadata.eligibility.trim().length > 0
+      ? `Eligibility: ${metadata.eligibility.trim()}`
+      : "";
+  const instructions =
+    typeof metadata.instructions === "string" &&
+    metadata.instructions.trim().length > 0
+      ? `Instructions: ${metadata.instructions.trim()}`
+      : "";
+  const requirements =
+    typeof metadata.requirements === "string" &&
+    metadata.requirements.trim().length > 0
+      ? `Requirements: ${metadata.requirements.trim()}`
+      : "";
+  const applicationLastDate =
+    typeof metadata.application_last_date === "string" &&
+    metadata.application_last_date.trim().length > 0
+      ? `Application Last Date: ${metadata.application_last_date.trim()}`
+      : "";
+  const notificationDate =
+    typeof metadata.notification_date === "string" &&
+    metadata.notification_date.trim().length > 0
+      ? `Notification Date: ${metadata.notification_date.trim()}`
+      : "";
   const source = entry.sourceUrl ? `Source: ${entry.sourceUrl}` : "";
   return [
     `Title: ${entry.title}`,
@@ -148,6 +178,12 @@ function buildIndexableText(entry: RagEntryModel) {
     location,
     employmentType,
     salary,
+    qualification,
+    eligibility,
+    instructions,
+    requirements,
+    applicationLastDate,
+    notificationDate,
     tags,
     source,
     "\n",
@@ -492,6 +528,7 @@ export async function createRagEntry({
   const [created] = await db
     .insert(ragEntry)
     .values({
+      ...(parsed.id ? { id: parsed.id } : {}),
       title,
       content,
       type: parsed.type,
@@ -586,7 +623,14 @@ export async function updateRagEntry({
   const content = sanitizeRagContent(parsed.content);
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
   const metadata = parsed.metadata ?? {};
-  const shouldReembed = existing.content !== content;
+  const shouldReembed =
+    existing.title !== title ||
+    existing.content !== content ||
+    existing.type !== parsed.type ||
+    existing.sourceUrl !== sourceUrl ||
+    existing.status !== parsed.status ||
+    JSON.stringify(existing.tags) !== JSON.stringify(tags) ||
+    JSON.stringify(existing.metadata ?? {}) !== JSON.stringify(metadata ?? {});
 
   const [updated] = await db
     .update(ragEntry)

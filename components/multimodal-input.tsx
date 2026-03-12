@@ -204,7 +204,6 @@ function PureMultimodalInput({
   );
 
   const submitForm = useCallback(() => {
-    window.history.replaceState({}, "", `/chat/${chatId}`);
     onBeforeSubmit?.();
 
     const parts: ChatMessage["parts"] = [
@@ -248,7 +247,6 @@ function PureMultimodalInput({
     sendMessage,
     setAttachments,
     width,
-    chatId,
     onBeforeSubmit,
     onClearStudyQuestionReference,
     studyQuestionReference,

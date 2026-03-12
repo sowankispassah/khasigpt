@@ -2,7 +2,7 @@
 import Link from "next/link";
 
 import { AdminDataPanel } from "@/components/admin-data-panel";
-import { AdminLiveActivityPanel } from "@/components/admin-live-activity-panel";
+import { AdminLiveActivityPanelDeferred } from "@/components/admin-live-activity-panel-deferred";
 import {
   getChatCount,
   getContactMessageCount,
@@ -107,7 +107,7 @@ export default async function AdminOverviewPage() {
         />
       </section>
 
-      <AdminLiveActivityPanel />
+      <AdminLiveActivityPanelDeferred />
 
       <section className="grid items-stretch gap-8 xl:grid-cols-2">
         <AdminDataPanel title="Newest users">
