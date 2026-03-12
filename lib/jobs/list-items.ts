@@ -2,6 +2,24 @@ import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import type { JobListItem, JobPostingRecord } from "@/lib/jobs/types";
 
+export type JobListItemSource = Pick<
+  JobPostingRecord,
+  | "id"
+  | "title"
+  | "content"
+  | "company"
+  | "location"
+  | "salary"
+  | "source"
+  | "pdfContent"
+  | "pdfExtractedData"
+  | "employmentType"
+  | "sourceUrl"
+  | "pdfSourceUrl"
+  | "pdfCachedUrl"
+  | "createdAt"
+>;
+
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -77,7 +95,7 @@ function hasJobPdfFile(job: {
   );
 }
 
-export async function toJobListItem(job: JobPostingRecord): Promise<JobListItem> {
+export async function toJobListItem(job: JobListItemSource): Promise<JobListItem> {
   // Keep the jobs list route fast by using only already-stored PDF text.
   // The detail page can do slower enrichment when the user opens a specific job.
   const pdfMetaText =
@@ -111,7 +129,9 @@ export async function toJobListItem(job: JobPostingRecord): Promise<JobListItem>
   };
 }
 
-export async function toJobListItems(jobs: JobPostingRecord[]): Promise<JobListItem[]> {
+export async function toJobListItems(
+  jobs: JobListItemSource[]
+): Promise<JobListItem[]> {
   const items = await Promise.all(
     jobs.map(async (job) => {
       const item = await toJobListItem(job);

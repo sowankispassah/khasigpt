@@ -1,6 +1,5 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { unstable_cache } from "next/cache";
 import { ragEntry } from "@/lib/db/schema";
 import {
   isJobSector,
@@ -26,8 +25,10 @@ import {
   listQuestionPapers,
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
+import { toJobListItems } from "./list-items";
 import type {
   JobCard,
+  JobListItem,
   JobPostingRecord,
   JobStudyLinkResult,
 } from "./types";
@@ -42,6 +43,8 @@ const DEFAULT_JOB_EMBEDDING_STATUS: RagEmbeddingStatus = "pending";
 const JOBS_SERVICE_CACHE_REVALIDATE_SECONDS = 30;
 const JOBS_RAG_KIND = "job_posting";
 const JOBS_RAG_SOURCE = "supabase_jobs_table";
+const DEFAULT_JOBS_RAG_LOOKUP_TIMEOUT_MS =
+  process.env.NODE_ENV === "development" ? 750 : 2_500;
 const jobsRagLookupTimeoutRaw = Number.parseInt(
   process.env.JOBS_RAG_LOOKUP_TIMEOUT_MS ?? "",
   10
@@ -49,7 +52,35 @@ const jobsRagLookupTimeoutRaw = Number.parseInt(
 const JOBS_RAG_LOOKUP_TIMEOUT_MS =
   Number.isFinite(jobsRagLookupTimeoutRaw) && jobsRagLookupTimeoutRaw > 0
     ? Math.max(500, Math.min(jobsRagLookupTimeoutRaw, 10_000))
-    : 2_500;
+    : DEFAULT_JOBS_RAG_LOOKUP_TIMEOUT_MS;
+const JOBS_RAG_FAILURE_COOLDOWN_MS =
+  process.env.NODE_ENV === "development" ? 30_000 : 10_000;
+let jobsRagBlockedUntil = 0;
+
+function shouldSkipJobsRagLookup() {
+  return Date.now() < jobsRagBlockedUntil;
+}
+
+function markJobsRagLookupFailure() {
+  jobsRagBlockedUntil = Date.now() + JOBS_RAG_FAILURE_COOLDOWN_MS;
+}
+
+function clearJobsRagLookupFailure() {
+  jobsRagBlockedUntil = 0;
+}
+
+type JobsServiceCacheState = {
+  jobsByIdFetchedAt: number;
+  jobsByIdPromise: Promise<SupabaseJobRow[]> | null;
+  jobsByIdRows: SupabaseJobRow[] | null;
+  jobListItemsFetchedAt: number;
+  jobListItemsPromise: Promise<JobListItem[]> | null;
+  jobListItems: JobListItem[] | null;
+};
+
+type GlobalJobsServiceState = typeof globalThis & {
+  __jobsServiceCacheState?: JobsServiceCacheState;
+};
 
 type JobPostingMetadataInput = {
   jobId: string;
@@ -90,6 +121,37 @@ type SupabaseJobRow = {
   created_at: string;
 };
 
+type SupabaseJobListRow = Pick<
+  SupabaseJobRow,
+  | "id"
+  | "title"
+  | "company"
+  | "location"
+  | "salary"
+  | "source"
+  | "description"
+  | "pdf_extracted_data"
+  | "source_url"
+  | "pdf_source_url"
+  | "pdf_cached_url"
+  | "created_at"
+>;
+
+const globalJobsServiceState = globalThis as GlobalJobsServiceState;
+
+const jobsServiceCacheState =
+  globalJobsServiceState.__jobsServiceCacheState ??
+  ({
+    jobsByIdFetchedAt: 0,
+    jobsByIdPromise: null,
+    jobsByIdRows: null,
+    jobListItemsFetchedAt: 0,
+    jobListItemsPromise: null,
+    jobListItems: null,
+  } satisfies JobsServiceCacheState);
+
+globalJobsServiceState.__jobsServiceCacheState ??= jobsServiceCacheState;
+
 function toTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -101,6 +163,13 @@ function parseValidDate(value: string | null | undefined) {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function isJobsServiceCacheFresh(fetchedAt: number) {
+  return (
+    fetchedAt > 0 &&
+    Date.now() - fetchedAt < JOBS_SERVICE_CACHE_REVALIDATE_SECONDS * 1000
+  );
 }
 
 function resolveSourceNameFallback(rawSourceUrl: string) {
@@ -255,6 +324,22 @@ async function listJobsFromSupabaseUncached() {
   return (data ?? []) as SupabaseJobRow[];
 }
 
+async function listJobListRowsFromSupabaseUncached() {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("jobs")
+    .select(
+      "id,title,company,location,salary,source,description,pdf_extracted_data,source_url,pdf_source_url,pdf_cached_url,created_at"
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`[jobs-service] Failed to fetch jobs list: ${error.message}`);
+  }
+
+  return (data ?? []) as SupabaseJobListRow[];
+}
+
 async function getJobFromSupabaseByIdUncached(id: string) {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
@@ -274,23 +359,44 @@ async function getJobFromSupabaseByIdUncached(id: string) {
   return data as SupabaseJobRow;
 }
 
-const listJobsFromSupabaseCached = unstable_cache(
-  async () => listJobsFromSupabaseUncached(),
-  ["jobs-service:list-jobs"],
-  {
-    revalidate: JOBS_SERVICE_CACHE_REVALIDATE_SECONDS,
-    tags: ["jobs:list"],
+async function listJobsFromSupabaseCached() {
+  if (
+    jobsServiceCacheState.jobsByIdRows &&
+    isJobsServiceCacheFresh(jobsServiceCacheState.jobsByIdFetchedAt)
+  ) {
+    return jobsServiceCacheState.jobsByIdRows;
   }
-);
 
-const getJobFromSupabaseByIdCached = unstable_cache(
-  async (id: string) => getJobFromSupabaseByIdUncached(id),
-  ["jobs-service:get-job-by-id"],
-  {
-    revalidate: JOBS_SERVICE_CACHE_REVALIDATE_SECONDS,
-    tags: ["jobs:list"],
+  if (jobsServiceCacheState.jobsByIdPromise) {
+    return jobsServiceCacheState.jobsByIdPromise;
   }
-);
+
+  jobsServiceCacheState.jobsByIdPromise = listJobsFromSupabaseUncached()
+    .then((rows) => {
+      jobsServiceCacheState.jobsByIdRows = rows;
+      jobsServiceCacheState.jobsByIdFetchedAt = Date.now();
+      return rows;
+    })
+    .finally(() => {
+      jobsServiceCacheState.jobsByIdPromise = null;
+    });
+
+  return jobsServiceCacheState.jobsByIdPromise;
+}
+
+async function getJobFromSupabaseByIdCached(id: string) {
+  if (
+    jobsServiceCacheState.jobsByIdRows &&
+    isJobsServiceCacheFresh(jobsServiceCacheState.jobsByIdFetchedAt)
+  ) {
+    const cached = jobsServiceCacheState.jobsByIdRows.find((row) => row.id === id);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  return getJobFromSupabaseByIdUncached(id);
+}
 
 export function buildJobPostingMetadata(
   input: JobPostingMetadataInput
@@ -425,6 +531,33 @@ export async function listJobPostings({
   });
 }
 
+export async function listJobListItems(): Promise<JobListItem[]> {
+  if (
+    jobsServiceCacheState.jobListItems &&
+    isJobsServiceCacheFresh(jobsServiceCacheState.jobListItemsFetchedAt)
+  ) {
+    return jobsServiceCacheState.jobListItems;
+  }
+
+  if (jobsServiceCacheState.jobListItemsPromise) {
+    return jobsServiceCacheState.jobListItemsPromise;
+  }
+
+  jobsServiceCacheState.jobListItemsPromise = listJobListRowsFromSupabaseUncached()
+    .then((rows) => rows.map(normalizeJobListItemSource))
+    .then((rows) => toJobListItems(rows))
+    .then((items) => {
+      jobsServiceCacheState.jobListItems = items;
+      jobsServiceCacheState.jobListItemsFetchedAt = Date.now();
+      return items;
+    })
+    .finally(() => {
+      jobsServiceCacheState.jobListItemsPromise = null;
+    });
+
+  return jobsServiceCacheState.jobListItemsPromise;
+}
+
 export async function listActiveJobPostingIdsForModel({
   modelConfigId,
   modelKey,
@@ -485,6 +618,62 @@ export function toJobCard(job: JobPostingRecord): JobCard {
     sourceUrl: job.sourceUrl,
     pdfSourceUrl: job.pdfSourceUrl,
     pdfCachedUrl: job.pdfCachedUrl,
+  };
+}
+
+function normalizeJobListItemSource(row: SupabaseJobListRow) {
+  const createdAt = parseValidDate(row.created_at);
+  const rawSourceUrl = toTrimmedString(row.source_url);
+  const rawSalary = toTrimmedString(row.salary ?? null);
+  const content = toTrimmedString(row.description);
+  const source = toTrimmedString(row.source ?? null) || null;
+  const pdfExtractedData = parseJobsPdfExtractedData(row.pdf_extracted_data);
+  const company = resolveCompanyName({
+    rawCompany: toTrimmedString(row.company),
+    rawSourceUrl,
+  });
+  const pdfSourceUrl = toTrimmedString(row.pdf_source_url ?? null) || null;
+  const pdfCachedUrl = toTrimmedString(row.pdf_cached_url ?? null) || null;
+  const sector = resolveJobSector({
+    title: toTrimmedString(row.title),
+    company,
+    source,
+    sourceUrl: rawSourceUrl,
+    pdfSourceUrl,
+    pdfCachedUrl,
+    description: content,
+    pdfContent: null,
+  });
+  const sourceUrl =
+    rawSourceUrl && !rawSourceUrl.startsWith("manual://") ? rawSourceUrl : null;
+
+  return {
+    id: row.id,
+    title: toTrimmedString(row.title) || "Job opening",
+    content,
+    company,
+    location: resolveJobLocation({
+      location: toTrimmedString(row.location),
+      content,
+      pdfContent: null,
+    }),
+    salary: (() => {
+      const summary = resolveJobSalaryInfo({
+        salary: rawSalary,
+        content,
+        pdfContent: null,
+        extractedData: pdfExtractedData,
+      }).summary;
+      return summary === NO_SALARY_LABEL ? null : summary;
+    })(),
+    source,
+    pdfContent: null,
+    pdfExtractedData,
+    employmentType: resolveJobType(sector),
+    sourceUrl,
+    pdfSourceUrl,
+    pdfCachedUrl,
+    createdAt,
   };
 }
 
@@ -597,6 +786,9 @@ async function getJobRagStateByIds(ids: string[]) {
   if (normalizedIds.length === 0) {
     return new Map<string, RagEntry>();
   }
+  if (shouldSkipJobsRagLookup()) {
+    return new Map<string, RagEntry>();
+  }
 
   try {
     const rows = await withTimeout(
@@ -619,8 +811,10 @@ async function getJobRagStateByIds(ids: string[]) {
       }
     );
 
+    clearJobsRagLookupFailure();
     return new Map(rows.map((row) => [row.id, row] as const));
   } catch (error) {
+    markJobsRagLookupFailure();
     console.error(
       `[jobs-service] Failed to load RAG state for ${normalizedIds.length} job id(s). Falling back to Supabase jobs data only.`,
       error

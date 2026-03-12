@@ -18,9 +18,8 @@ import {
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
-import { toJobListItems } from "@/lib/jobs/list-items";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { getJobPostingById, listJobPostings, toJobCard } from "@/lib/jobs/service";
+import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -222,10 +221,9 @@ export default async function Page({
   const jobsListItems =
     chatMode === "jobs"
       ? await withTimeout(
-          listJobPostings({ includeInactive: false }),
+          listJobListItems(),
           CHAT_HOME_QUERY_TIMEOUT_MS
         )
-          .then((jobs) => toJobListItems(jobs))
           .catch((error) => {
             console.error("[chat/home] jobs listing query timed out or failed.", error);
             return [];

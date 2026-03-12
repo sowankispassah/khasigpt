@@ -25,9 +25,8 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
-import { toJobListItems } from "@/lib/jobs/list-items";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { getJobPostingById, listJobPostings, toJobCard } from "@/lib/jobs/service";
+import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
 import { getSiteUrl } from "@/lib/seo/site";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -230,7 +229,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const jobsListItems =
     chatMode === "jobs"
       ? await withTimeout(
-          listJobPostings({ includeInactive: false }),
+          listJobListItems(),
           CHAT_PAGE_LOAD_TIMEOUT_MS,
           () => {
             console.warn(
@@ -238,7 +237,6 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             );
           }
         )
-          .then((jobs) => toJobListItems(jobs))
           .catch((error) => {
             if (!isTimeoutError(error)) {
               console.error("[chat] Failed to load jobs list for jobs mode", error);

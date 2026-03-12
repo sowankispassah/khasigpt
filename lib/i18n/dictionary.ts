@@ -338,6 +338,8 @@ async function persistBundle(key: string, bundle: TranslationBundle) {
       ...bundle,
       cachedAt: new Date().toISOString(),
     } satisfies PersistedBundle,
+  }, {
+    revalidateCache: false,
   });
 }
 
@@ -557,7 +559,9 @@ export async function invalidateTranslationBundleCache(
   await Promise.all(
     targets.map((key) => {
       const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
-      return deleteAppSetting(persistedKey)
+      return deleteAppSetting(persistedKey, {
+        revalidateCache: false,
+      })
         .catch((error) => {
           console.error(
             `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
