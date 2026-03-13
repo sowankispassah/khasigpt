@@ -87,6 +87,8 @@ import {
   passwordResetToken,
   paymentTransaction,
   pricingPlan,
+  type RagEntry,
+  ragEntry,
   type Suggestion,
   stream,
   suggestion,
@@ -8016,6 +8018,594 @@ export async function getDailyFinancialMetrics(
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load financial metrics"
+    );
+  }
+}
+
+const EMBEDDING_ESTIMATED_CHARS_PER_TOKEN = 4;
+
+function toFiniteNumber(value: unknown) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeRagMetadataForCost(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function buildRagIndexableTextForCost(entry: {
+  title: string;
+  content: string;
+  type: RagEntry["type"];
+  tags: string[];
+  sourceUrl: string | null;
+  metadata: Record<string, unknown>;
+}) {
+  const metadata = normalizeRagMetadataForCost(entry.metadata);
+  const tags =
+    Array.isArray(entry.tags) && entry.tags.length
+      ? `Tags: ${entry.tags.join(", ")}`
+      : "";
+  const company =
+    typeof metadata.company === "string" && metadata.company.trim().length > 0
+      ? `Company: ${metadata.company.trim()}`
+      : "";
+  const location =
+    typeof metadata.location === "string" && metadata.location.trim().length > 0
+      ? `Location: ${metadata.location.trim()}`
+      : "";
+  const employmentType =
+    typeof metadata.employment_type === "string" &&
+    metadata.employment_type.trim().length > 0
+      ? `Employment Type: ${metadata.employment_type.trim()}`
+      : "";
+  const salary =
+    typeof metadata.salary === "string" && metadata.salary.trim().length > 0
+      ? `Salary: ${metadata.salary.trim()}`
+      : "";
+  const qualification =
+    typeof metadata.qualification === "string" &&
+    metadata.qualification.trim().length > 0
+      ? `Qualification: ${metadata.qualification.trim()}`
+      : "";
+  const eligibility =
+    typeof metadata.eligibility === "string" &&
+    metadata.eligibility.trim().length > 0
+      ? `Eligibility: ${metadata.eligibility.trim()}`
+      : "";
+  const instructions =
+    typeof metadata.instructions === "string" &&
+    metadata.instructions.trim().length > 0
+      ? `Instructions: ${metadata.instructions.trim()}`
+      : "";
+  const requirements =
+    typeof metadata.requirements === "string" &&
+    metadata.requirements.trim().length > 0
+      ? `Requirements: ${metadata.requirements.trim()}`
+      : "";
+  const applicationLastDate =
+    typeof metadata.application_last_date === "string" &&
+    metadata.application_last_date.trim().length > 0
+      ? `Application Last Date: ${metadata.application_last_date.trim()}`
+      : "";
+  const notificationDate =
+    typeof metadata.notification_date === "string" &&
+    metadata.notification_date.trim().length > 0
+      ? `Notification Date: ${metadata.notification_date.trim()}`
+      : "";
+  const source = entry.sourceUrl ? `Source: ${entry.sourceUrl}` : "";
+
+  return [
+    `Title: ${entry.title}`,
+    `Type: ${entry.type}`,
+    company,
+    location,
+    employmentType,
+    salary,
+    qualification,
+    eligibility,
+    instructions,
+    requirements,
+    applicationLastDate,
+    notificationDate,
+    tags,
+    source,
+    "\n",
+    entry.content,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getEstimatedEmbeddingCostUsdPerMillion(model: string | null | undefined) {
+  const normalized = model?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    normalized === "gemini-file-search" ||
+    normalized.includes("gemini-embedding-001") ||
+    normalized.includes("gemini embedding 1")
+  ) {
+    return 0.15;
+  }
+
+  if (
+    normalized.includes("gemini-embedding-2") ||
+    normalized.includes("gemini embedding 2")
+  ) {
+    return 0.2;
+  }
+
+  return null;
+}
+
+export type AdminApiCostMethod = "exact" | "estimated" | "untracked";
+
+export type AdminApiCostFeatureSummary = {
+  featureKey: "chat_completions" | "embeddings" | "other_api_usage";
+  featureLabel: string;
+  method: AdminApiCostMethod;
+  totalCostUsd: number | null;
+  usageCount: number;
+  modelCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  indexedEntries: number;
+  indexedChars: number;
+  note: string | null;
+};
+
+export type AdminApiCostModelSummary = {
+  featureKey: "chat_completions" | "embeddings";
+  featureLabel: string;
+  modelKey: string;
+  modelLabel: string;
+  providerLabel: string | null;
+  method: AdminApiCostMethod;
+  totalCostUsd: number | null;
+  usageCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  indexedEntries: number;
+  indexedChars: number;
+  note: string | null;
+};
+
+export type AdminApiCostDailySummary = {
+  date: string;
+  totalCostUsd: number;
+  chatCostUsd: number;
+  embeddingCostUsd: number;
+  otherUsageCount: number;
+};
+
+export type AdminTrackedOtherApiUsageSummary = {
+  featureKey: string;
+  featureLabel: string;
+  usageCount: number;
+  totalTokens: number;
+  note: string;
+};
+
+export type AdminApiCostBreakdown = {
+  totalCostUsd: number;
+  exactCostUsd: number;
+  estimatedCostUsd: number;
+  featureSummaries: AdminApiCostFeatureSummary[];
+  modelSummaries: AdminApiCostModelSummary[];
+  dailySummaries: AdminApiCostDailySummary[];
+  otherUsageSummaries: AdminTrackedOtherApiUsageSummary[];
+};
+
+export async function getAdminApiCostBreakdown({
+  range,
+}: {
+  range?: DateRange;
+} = {}): Promise<AdminApiCostBreakdown> {
+  try {
+    const chatConditions = buildDateRangeConditions(tokenUsage.createdAt, range);
+    const chatWhere =
+      chatConditions.length > 0 ? and(...chatConditions) : undefined;
+
+    const chatModelRows = await (chatWhere
+      ? db
+          .select({
+            modelConfigId: modelConfig.id,
+            displayName: modelConfig.displayName,
+            provider: modelConfig.provider,
+            providerModelId: modelConfig.providerModelId,
+            usageCount: sql<number>`COUNT(*)`,
+            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+          .where(chatWhere)
+      : db
+          .select({
+            modelConfigId: modelConfig.id,
+            displayName: modelConfig.displayName,
+            provider: modelConfig.provider,
+            providerModelId: modelConfig.providerModelId,
+            usageCount: sql<number>`COUNT(*)`,
+            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id)))
+      .groupBy(
+        modelConfig.id,
+        modelConfig.displayName,
+        modelConfig.provider,
+        modelConfig.providerModelId
+      )
+      .orderBy(desc(sql<number>`
+        COALESCE(SUM(
+          (
+            ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+            ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+          ) / 1000000.0
+        ), 0)
+      `));
+
+    const chatDailyRows = await (chatWhere
+      ? db
+          .select({
+            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+          .where(chatWhere)
+      : db
+          .select({
+            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id)))
+      .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
+      .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
+
+    const embeddingConditions: SQL<boolean>[] = [
+      isNull(ragEntry.deletedAt) as SQL<boolean>,
+      isNotNull(ragEntry.embeddingUpdatedAt) as SQL<boolean>,
+      isNotNull(ragEntry.embeddingModel) as SQL<boolean>,
+      eq(ragEntry.embeddingStatus, "ready") as SQL<boolean>,
+      ...buildDateRangeConditions(ragEntry.embeddingUpdatedAt, range),
+    ];
+
+    const embeddingRows = await db
+      .select({
+        id: ragEntry.id,
+        title: ragEntry.title,
+        content: ragEntry.content,
+        type: ragEntry.type,
+        tags: ragEntry.tags,
+        sourceUrl: ragEntry.sourceUrl,
+        metadata: ragEntry.metadata,
+        embeddingModel: ragEntry.embeddingModel,
+        embeddingUpdatedAt: ragEntry.embeddingUpdatedAt,
+      })
+      .from(ragEntry)
+      .where(and(...embeddingConditions))
+      .orderBy(desc(ragEntry.embeddingUpdatedAt));
+
+    const otherUsageConditions: SQL<boolean>[] = [
+      isNull(tokenUsage.modelConfigId) as SQL<boolean>,
+      ...buildDateRangeConditions(tokenUsage.createdAt, range),
+    ];
+
+    const otherUsageRows = await db
+      .select({
+        date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
+        usageCount: sql<number>`COUNT(*)`,
+        totalTokens: sql<number>`COALESCE(SUM(${tokenUsage.totalTokens}), 0)`,
+      })
+      .from(tokenUsage)
+      .where(and(...otherUsageConditions))
+      .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
+      .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
+
+    const chatCostUsd = chatModelRows.reduce(
+      (total, row) => total + toFiniteNumber(row.totalCostUsd),
+      0
+    );
+
+    const modelSummaries: AdminApiCostModelSummary[] = chatModelRows.map((row) => ({
+      featureKey: "chat_completions",
+      featureLabel: "Chat completions",
+      modelKey: row.modelConfigId,
+      modelLabel: row.displayName,
+      providerLabel: `${row.provider}/${row.providerModelId}`,
+      method: "exact",
+      totalCostUsd: toFiniteNumber(row.totalCostUsd),
+      usageCount: toFiniteNumber(row.usageCount),
+      inputTokens: toFiniteNumber(row.inputTokens),
+      outputTokens: toFiniteNumber(row.outputTokens),
+      indexedEntries: 0,
+      indexedChars: 0,
+      note: "Exact provider cost from token usage records.",
+    }));
+
+    const embeddingModelMap = new Map<
+      string,
+      AdminApiCostModelSummary
+    >();
+    const embeddingDailyMap = new Map<
+      string,
+      { embeddingCostUsd: number }
+    >();
+
+    for (const row of embeddingRows) {
+      const embeddingModel = row.embeddingModel?.trim() || "unknown-embedding-model";
+      const estimatedRateUsdPerMillion = getEstimatedEmbeddingCostUsdPerMillion(
+        embeddingModel
+      );
+      const indexableText = buildRagIndexableTextForCost({
+        title: row.title,
+        content: row.content,
+        type: row.type,
+        tags: Array.isArray(row.tags) ? row.tags : [],
+        sourceUrl: row.sourceUrl ?? null,
+        metadata: normalizeRagMetadataForCost(row.metadata),
+      });
+      const indexedChars = indexableText.length;
+      const estimatedTokens = indexedChars / EMBEDDING_ESTIMATED_CHARS_PER_TOKEN;
+      const estimatedCostUsd = estimatedRateUsdPerMillion
+        ? (estimatedTokens / 1_000_000) * estimatedRateUsdPerMillion
+        : 0;
+      const method: AdminApiCostMethod = estimatedRateUsdPerMillion
+        ? "estimated"
+        : "untracked";
+      const modelKey = `embedding:${embeddingModel}`;
+      const existingModel = embeddingModelMap.get(modelKey);
+
+      if (existingModel) {
+        existingModel.usageCount += 1;
+        existingModel.indexedEntries += 1;
+        existingModel.indexedChars += indexedChars;
+        existingModel.totalCostUsd =
+          (existingModel.totalCostUsd ?? 0) + estimatedCostUsd;
+      } else {
+        embeddingModelMap.set(modelKey, {
+          featureKey: "embeddings",
+          featureLabel: "Embeddings",
+          modelKey,
+          modelLabel: embeddingModel,
+          providerLabel: "embedding/indexing",
+          method,
+          totalCostUsd: method === "untracked" ? null : estimatedCostUsd,
+          usageCount: 1,
+          inputTokens: 0,
+          outputTokens: 0,
+          indexedEntries: 1,
+          indexedChars,
+          note:
+            method === "estimated"
+              ? "Estimated from indexed content size because provider-reported embedding token usage is not stored."
+              : "Historical embedding cost is not mapped for this embedding model.",
+        });
+      }
+
+      const dayKey = row.embeddingUpdatedAt
+        ? row.embeddingUpdatedAt.toISOString().slice(0, 10)
+        : null;
+      if (dayKey) {
+        const existingDay = embeddingDailyMap.get(dayKey) ?? {
+          embeddingCostUsd: 0,
+        };
+        existingDay.embeddingCostUsd += estimatedCostUsd;
+        embeddingDailyMap.set(dayKey, existingDay);
+      }
+    }
+
+    const embeddingModelSummaries = Array.from(embeddingModelMap.values()).map(
+      (row) => ({
+        ...row,
+        totalCostUsd:
+          row.totalCostUsd === null ? null : toFiniteNumber(row.totalCostUsd),
+      })
+    );
+    embeddingModelSummaries.sort(
+      (a, b) =>
+        toFiniteNumber(b.totalCostUsd) - toFiniteNumber(a.totalCostUsd) ||
+        b.indexedEntries - a.indexedEntries
+    );
+
+    const embeddingCostUsd = embeddingModelSummaries.reduce(
+      (total, row) => total + toFiniteNumber(row.totalCostUsd),
+      0
+    );
+
+    const otherUsageCount = otherUsageRows.reduce(
+      (total, row) => total + toFiniteNumber(row.usageCount),
+      0
+    );
+    const otherUsageTokens = otherUsageRows.reduce(
+      (total, row) => total + toFiniteNumber(row.totalTokens),
+      0
+    );
+
+    const featureSummaries: AdminApiCostFeatureSummary[] = [
+      {
+        featureKey: "chat_completions",
+        featureLabel: "Chat completions",
+        method: "exact",
+        totalCostUsd: chatCostUsd,
+        usageCount: chatModelRows.reduce(
+          (total, row) => total + toFiniteNumber(row.usageCount),
+          0
+        ),
+        modelCount: chatModelRows.length,
+        inputTokens: chatModelRows.reduce(
+          (total, row) => total + toFiniteNumber(row.inputTokens),
+          0
+        ),
+        outputTokens: chatModelRows.reduce(
+          (total, row) => total + toFiniteNumber(row.outputTokens),
+          0
+        ),
+        indexedEntries: 0,
+        indexedChars: 0,
+        note: "Exact provider cost from token usage records.",
+      },
+      {
+        featureKey: "embeddings",
+        featureLabel: "Embeddings",
+        method: "estimated",
+        totalCostUsd: embeddingCostUsd,
+        usageCount: embeddingModelSummaries.reduce(
+          (total, row) => total + row.usageCount,
+          0
+        ),
+        modelCount: embeddingModelSummaries.length,
+        inputTokens: 0,
+        outputTokens: 0,
+        indexedEntries: embeddingModelSummaries.reduce(
+          (total, row) => total + row.indexedEntries,
+          0
+        ),
+        indexedChars: embeddingModelSummaries.reduce(
+          (total, row) => total + row.indexedChars,
+          0
+        ),
+        note:
+          "Estimated from indexed content size because provider-reported embedding token usage is not stored.",
+      },
+    ];
+
+    const otherUsageSummaries: AdminTrackedOtherApiUsageSummary[] = [];
+    if (otherUsageCount > 0) {
+      featureSummaries.push({
+        featureKey: "other_api_usage",
+        featureLabel: "Other API usage",
+        method: "untracked",
+        totalCostUsd: null,
+        usageCount: otherUsageCount,
+        modelCount: 0,
+        inputTokens: otherUsageTokens,
+        outputTokens: 0,
+        indexedEntries: 0,
+        indexedChars: 0,
+        note:
+          "Tracked usage exists, but historical provider cost is not stored for this feature in the current schema.",
+      });
+      otherUsageSummaries.push({
+        featureKey: "other_api_usage",
+        featureLabel: "Other API usage",
+        usageCount: otherUsageCount,
+        totalTokens: otherUsageTokens,
+        note:
+          "These events are currently unattributed token usage rows, typically image generation credits.",
+      });
+    }
+
+    const dailyMap = new Map<string, AdminApiCostDailySummary>();
+    const ensureDailySummary = (date: string) => {
+      const existing = dailyMap.get(date);
+      if (existing) {
+        return existing;
+      }
+      const initial: AdminApiCostDailySummary = {
+        date,
+        totalCostUsd: 0,
+        chatCostUsd: 0,
+        embeddingCostUsd: 0,
+        otherUsageCount: 0,
+      };
+      dailyMap.set(date, initial);
+      return initial;
+    };
+
+    for (const row of chatDailyRows) {
+      const daily = ensureDailySummary(row.date);
+      daily.chatCostUsd += toFiniteNumber(row.totalCostUsd);
+    }
+
+    for (const [date, row] of embeddingDailyMap.entries()) {
+      const daily = ensureDailySummary(date);
+      daily.embeddingCostUsd += toFiniteNumber(row.embeddingCostUsd);
+    }
+
+    for (const row of otherUsageRows) {
+      const daily = ensureDailySummary(row.date);
+      daily.otherUsageCount += toFiniteNumber(row.usageCount);
+    }
+
+    const dailySummaries = Array.from(dailyMap.values())
+      .map((row) => ({
+        ...row,
+        totalCostUsd: row.chatCostUsd + row.embeddingCostUsd,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    return {
+      totalCostUsd: chatCostUsd + embeddingCostUsd,
+      exactCostUsd: chatCostUsd,
+      estimatedCostUsd: embeddingCostUsd,
+      featureSummaries,
+      modelSummaries: [...modelSummaries, ...embeddingModelSummaries].sort(
+        (a, b) =>
+          toFiniteNumber(b.totalCostUsd) - toFiniteNumber(a.totalCostUsd) ||
+          b.usageCount - a.usageCount
+      ),
+      dailySummaries,
+      otherUsageSummaries,
+    };
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return {
+        totalCostUsd: 0,
+        exactCostUsd: 0,
+        estimatedCostUsd: 0,
+        featureSummaries: [],
+        modelSummaries: [],
+        dailySummaries: [],
+        otherUsageSummaries: [],
+      };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load API cost breakdown"
     );
   }
 }

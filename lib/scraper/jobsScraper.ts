@@ -284,6 +284,7 @@ export async function runJobsScraper(
   let updatedCount = 0;
   let skippedDuplicateCount = 0;
   const persistedJobIds = new Set<string>();
+  const insertedJobIds = new Set<string>();
 
   const scraped = await scrapeJobsFromSources(sources, {
     ...options,
@@ -305,6 +306,9 @@ export async function runJobsScraper(
       for (const jobId of persisted.writtenJobIds) {
         persistedJobIds.add(jobId);
       }
+      for (const jobId of persisted.insertedJobIds) {
+        insertedJobIds.add(jobId);
+      }
 
       await options.onSourcePersisted?.({
         source: event.source,
@@ -316,13 +320,14 @@ export async function runJobsScraper(
   });
 
   const writtenJobIds = Array.from(persistedJobIds);
-  if (writtenJobIds.length > 0) {
-    const totalIndexedJobs = writtenJobIds.length;
+  const jobsToIndex = Array.from(insertedJobIds);
+  if (jobsToIndex.length > 0) {
+    const totalIndexedJobs = jobsToIndex.length;
     await options.onFinalizeProgress?.({
       phase: "rag_sync",
       processed: 0,
       total: totalIndexedJobs,
-      message: `All sources scraped. Indexing ${totalIndexedJobs} job${
+      message: `All sources scraped. Indexing ${totalIndexedJobs} new job${
         totalIndexedJobs === 1 ? "" : "s"
       } for chat responses...`,
       failureDetails: [],
@@ -331,7 +336,8 @@ export async function runJobsScraper(
     try {
       await withTimeout(
         syncJobPostingsToRag({
-          jobIds: writtenJobIds,
+          jobIds: jobsToIndex,
+          createMissing: true,
           onProgress: async ({
             processed,
             total,
@@ -344,7 +350,7 @@ export async function runJobsScraper(
               phase: "rag_sync",
               processed,
               total,
-              message: `All sources scraped. Indexing jobs for chat (${processed}/${total}, created ${created}, updated ${updated}, failed ${failed}).`,
+              message: `All sources scraped. Indexing new jobs for chat (${processed}/${total}, created ${created}, updated ${updated}, failed ${failed}).`,
               failureDetails,
             });
           },
@@ -353,7 +359,7 @@ export async function runJobsScraper(
       );
     } catch (error) {
       console.warn("[jobs-scraper] rag_sync_failed", {
-        count: writtenJobIds.length,
+        count: jobsToIndex.length,
         error: error instanceof Error ? error.message : String(error),
       });
       await options.onFinalizeProgress?.({
@@ -361,7 +367,7 @@ export async function runJobsScraper(
         processed: totalIndexedJobs,
         total: totalIndexedJobs,
         message:
-          "All sources scraped. Chat indexing timed out or failed; job rows were still saved.",
+          "All sources scraped. New job indexing timed out or failed; job rows were still saved.",
       });
     }
   }
@@ -372,6 +378,7 @@ export async function runJobsScraper(
     updatedCount,
     skippedDuplicateCount,
     writtenJobIds,
+    insertedJobIds: jobsToIndex,
   };
 
   console.info("[jobs-scraper] run_complete", {

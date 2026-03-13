@@ -283,10 +283,12 @@ async function upsertJobRowToRag({
   actorId,
   row,
   existingEntry,
+  createMissing,
 }: {
   actorId: string;
   row: SupabaseJobRow;
   existingEntry: ExistingJobsRagEntry | null;
+  createMissing: boolean;
 }) {
   const indexed = buildIndexedJobDocument(row);
   const existingHash =
@@ -332,6 +334,10 @@ async function upsertJobRowToRag({
     return "updated" as const;
   }
 
+  if (!createMissing) {
+    return "skipped_missing" as const;
+  }
+
   await createRagEntry({
     actorId,
     input,
@@ -343,10 +349,12 @@ async function upsertJobRowToRagWithRetry({
   actorId,
   row,
   existingEntry,
+  createMissing,
 }: {
   actorId: string;
   row: SupabaseJobRow;
   existingEntry: ExistingJobsRagEntry | null;
+  createMissing: boolean;
 }) {
   const retryAttempts = parsePositiveInt(
     process.env.JOBS_RAG_SYNC_RETRY_ATTEMPTS,
@@ -364,6 +372,7 @@ async function upsertJobRowToRagWithRetry({
         actorId,
         row,
         existingEntry,
+        createMissing,
       });
     } catch (error) {
       lastError = error;
@@ -382,9 +391,11 @@ export async function syncJobPostingsToRag({
   jobIds,
   concurrency,
   onProgress,
+  createMissing = false,
 }: {
   jobIds: string[];
   concurrency?: number;
+  createMissing?: boolean;
   onProgress?: (event: {
     processed: number;
     total: number;
@@ -479,6 +490,7 @@ export async function syncJobPostingsToRag({
         actorId,
         row,
         existingEntry: existingEntriesById.get(jobId) ?? null,
+        createMissing,
       });
       if (outcome === "created") {
         created += 1;

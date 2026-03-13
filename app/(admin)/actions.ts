@@ -829,8 +829,14 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
 
 export async function rebuildRagFileSearchIndexAction() {
   "use server";
-  await requireAdmin();
-  await rebuildAllRagFileSearchIndexes();
+  const actor = await requireAdmin();
+  const summary = await rebuildAllRagFileSearchIndexes();
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.file_search.rebuild",
+    target: { feature: "rag.file_search" },
+    metadata: summary,
+  });
   revalidatePath("/admin/rag");
 }
 

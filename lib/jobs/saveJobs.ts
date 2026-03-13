@@ -31,6 +31,7 @@ export type SaveJobsResult = {
   updatedCount: number;
   skippedDuplicateCount: number;
   writtenJobIds: string[];
+  insertedJobIds: string[];
 };
 
 export type SaveJobsDuplicateMode = "skip" | "update";
@@ -274,6 +275,7 @@ export async function saveJobs(
       updatedCount: 0,
       skippedDuplicateCount: 0,
       writtenJobIds: [],
+      insertedJobIds: [],
     };
   }
 
@@ -284,6 +286,7 @@ export async function saveJobs(
   let updatedCount = 0;
   let skippedDuplicateCount = 0;
   const writtenJobIds = new Set<string>();
+  const insertedJobIds = new Set<string>();
 
   for (const batch of chunkArray(normalizedRows, BATCH_SIZE)) {
     const sourceUrls = batch.map((job) => job.source_url);
@@ -478,6 +481,18 @@ export async function saveJobs(
         .map((row) => (typeof row.source_url === "string" ? row.source_url.trim() : ""))
         .filter(Boolean)
     );
+    const writtenIdByUrl = new Map(
+      writtenRows
+        .map((row) => {
+          const sourceUrl =
+            typeof row.source_url === "string" ? row.source_url.trim() : "";
+          const id = typeof row.id === "string" ? row.id.trim() : "";
+          return sourceUrl && id ? ([sourceUrl, id] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, string] => Array.isArray(entry)
+        )
+    );
     for (const row of writtenRows) {
       if (typeof row.id === "string" && row.id.trim().length > 0) {
         writtenJobIds.add(row.id.trim());
@@ -494,20 +509,26 @@ export async function saveJobs(
         updatedCount += 1;
       } else {
         insertedCount += 1;
+        const insertedId = writtenIdByUrl.get(row.source_url);
+        if (insertedId) {
+          insertedJobIds.add(insertedId);
+        }
       }
     }
   }
 
   const syncedJobIds = Array.from(writtenJobIds);
+  const syncedInsertedJobIds = Array.from(insertedJobIds);
   const shouldSyncRag = options.syncRag !== false;
-  if (shouldSyncRag && syncedJobIds.length > 0) {
+  if (shouldSyncRag && syncedInsertedJobIds.length > 0) {
     try {
       await syncJobPostingsToRag({
-        jobIds: syncedJobIds,
+        jobIds: syncedInsertedJobIds,
+        createMissing: true,
       });
     } catch (error) {
       console.warn("[jobs-save] rag_sync_failed", {
-        count: syncedJobIds.length,
+        count: syncedInsertedJobIds.length,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -519,5 +540,6 @@ export async function saveJobs(
     updatedCount,
     skippedDuplicateCount,
     writtenJobIds: syncedJobIds,
+    insertedJobIds: syncedInsertedJobIds,
   };
 }

@@ -23,6 +23,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
 import {
   deleteFileSearchDocument,
@@ -53,6 +54,91 @@ import { ragEntrySchema } from "./validation";
 
 const diffEngine = new diff_match_patch();
 const GEMINI_FILE_SEARCH_METADATA_KEY = "geminiFileSearch";
+const JOBS_RAG_KIND = "job_posting";
+const JOBS_RAG_SOURCE = "supabase_jobs_table";
+const JOBS_REBUILD_PAGE_SIZE = 1000;
+
+function toMetadataRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function isSupabaseJobPostingEntry(entry: RagEntryModel) {
+  const metadata = toMetadataRecord(entry.metadata);
+  return (
+    metadata.jobs_kind === JOBS_RAG_KIND &&
+    metadata.jobs_source === JOBS_RAG_SOURCE
+  );
+}
+
+async function listLiveJobIds() {
+  const supabase = createSupabaseAdminClient();
+  const ids = new Set<string>();
+  let from = 0;
+
+  while (true) {
+    const to = from + JOBS_REBUILD_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("jobs")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`[rag] Failed to load live jobs: ${error.message}`);
+    }
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      if (typeof row.id === "string" && row.id.trim().length > 0) {
+        ids.add(row.id.trim());
+      }
+    }
+
+    if (rows.length < JOBS_REBUILD_PAGE_SIZE) {
+      break;
+    }
+
+    from += JOBS_REBUILD_PAGE_SIZE;
+  }
+
+  return ids;
+}
+
+async function archiveOrphanedJobEntry(entry: RagEntryModel) {
+  const now = new Date();
+  const metadata = toMetadataRecord(entry.metadata);
+  const {
+    [GEMINI_FILE_SEARCH_METADATA_KEY]: _omitGeminiFileSearch,
+    ...restMetadata
+  } = metadata;
+
+  // Force the sync path down the de-index branch before marking the entry archived.
+  await syncGeminiFileSearchIndex({
+    ...entry,
+    status: "archived",
+  });
+
+  await db
+    .update(ragEntry)
+    .set({
+      status: "archived",
+      metadata: {
+        ...restMetadata,
+        jobs_orphaned_at: now.toISOString(),
+        jobs_orphaned_reason: "missing_jobs_row",
+      },
+      updatedAt: now,
+      embeddingStatus: "ready",
+      embeddingModel: "gemini-file-search",
+      embeddingDimensions: null,
+      embeddingError: null,
+      embeddingUpdatedAt: now,
+      supabaseVectorId: null,
+    })
+    .where(eq(ragEntry.id, entry.id));
+}
 
 function toSanitizedEntry(
   entry: RagEntryModel,
@@ -1277,11 +1363,37 @@ export async function rebuildAllRagFileSearchIndexes() {
     .select()
     .from(ragEntry)
     .where(isNull(ragEntry.deletedAt));
+  const liveJobIds = await listLiveJobIds();
+  let reindexed = 0;
+  let archivedOrphanJobs = 0;
+  let skippedLiveJobEntries = 0;
+  let failed = 0;
 
   for (const entry of entries) {
+    if (isSupabaseJobPostingEntry(entry)) {
+      if (!liveJobIds.has(entry.id)) {
+        try {
+          await archiveOrphanedJobEntry(entry);
+          archivedOrphanJobs += 1;
+        } catch (error) {
+          failed += 1;
+          console.warn("[rag] orphaned job cleanup failed during File Search rebuild", {
+            entryId: entry.id,
+            error,
+          });
+        }
+        continue;
+      }
+
+      skippedLiveJobEntries += 1;
+      continue;
+    }
+
     try {
       await syncGeminiFileSearchIndex(entry);
+      reindexed += 1;
     } catch (error) {
+      failed += 1;
       await db
         .update(ragEntry)
         .set({
@@ -1298,4 +1410,12 @@ export async function rebuildAllRagFileSearchIndexes() {
       });
     }
   }
+
+  return {
+    processed: entries.length,
+    reindexed,
+    archivedOrphanJobs,
+    skippedLiveJobEntries,
+    failed,
+  };
 }

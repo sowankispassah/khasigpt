@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
+  getAdminApiCostBreakdown,
   type ChatFinancialSummary,
   listChatFinancialSummaries,
   listModelConfigs,
@@ -24,7 +25,12 @@ type SearchParams = {
   to?: string;
   page?: string;
   pageSize?: string;
+  costFrom?: string;
+  costTo?: string;
+  costCurrency?: string;
 };
+
+type CostCurrency = "USD" | "INR";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
@@ -87,6 +93,10 @@ function parseDate(value?: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+function parseCostCurrency(value?: string): CostCurrency {
+  return value === "USD" ? "USD" : "INR";
+}
+
 function formatCurrency(value: number, currency: "USD" | "INR") {
   return value.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
     style: "currency",
@@ -94,6 +104,19 @@ function formatCurrency(value: number, currency: "USD" | "INR") {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function formatCostInCurrency({
+  valueUsd,
+  currency,
+  usdToInr,
+}: {
+  valueUsd: number;
+  currency: CostCurrency;
+  usdToInr: number;
+}) {
+  const converted = currency === "USD" ? valueUsd : valueUsd * usdToInr;
+  return formatCurrency(converted, currency);
 }
 
 function formatNumber(value: number, fractionDigits = 0) {
@@ -271,6 +294,58 @@ function mapModelPricingRows(
   });
 }
 
+function buildSearchHref(
+  searchParams: SearchParams | undefined,
+  updates: Partial<Record<keyof SearchParams, string | null | undefined>>
+) {
+  const params = new URLSearchParams();
+  if (searchParams) {
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (typeof value === "string" && value.length > 0) {
+        params.set(key, value);
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (typeof value === "string" && value.length > 0) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+  }
+
+  const query = params.toString();
+  return query.length > 0 ? `?${query}` : "?";
+}
+
+function PreservedSearchParamsInputs({
+  searchParams,
+  exclude,
+}: {
+  searchParams?: SearchParams;
+  exclude: Array<keyof SearchParams>;
+}) {
+  if (!searchParams) {
+    return null;
+  }
+
+  return (
+    <>
+      {Object.entries(searchParams)
+        .filter(
+          ([key, value]) =>
+            typeof value === "string" &&
+            value.length > 0 &&
+            !exclude.includes(key as keyof SearchParams)
+        )
+        .map(([key, value]) => (
+          <input key={key} name={key} type="hidden" value={value} />
+        ))}
+    </>
+  );
+}
+
 export default async function AdminAccountPage({
   searchParams,
 }: {
@@ -280,6 +355,9 @@ export default async function AdminAccountPage({
 
   const from = parseDate(resolvedSearchParams?.from);
   const to = parseDate(resolvedSearchParams?.to);
+  const costFrom = parseDate(resolvedSearchParams?.costFrom);
+  const costTo = parseDate(resolvedSearchParams?.costTo);
+  const costCurrency = parseCostCurrency(resolvedSearchParams?.costCurrency);
   const page = Math.max(
     1,
     Number.parseInt(resolvedSearchParams?.page ?? "1", 10)
@@ -297,12 +375,19 @@ export default async function AdminAccountPage({
 
   const [
     { rate, fetchedAt: _fetchedAt },
+    costBreakdown,
     chatSummaries,
     rechargeSummaries,
     rechargeRecords,
     modelConfigs,
   ] = await Promise.all([
     getUsdToInrRate(),
+    getAdminApiCostBreakdown({
+      range:
+        costFrom || costTo
+          ? { start: costFrom, end: costTo }
+          : undefined,
+    }),
     listChatFinancialSummaries({
       range: { start: from, end: to },
       limit: pageSize,
@@ -337,6 +422,10 @@ export default async function AdminAccountPage({
     1,
     Math.ceil(rechargeRecords.total / pageSize)
   );
+  const costFeatureRows = costBreakdown.featureSummaries;
+  const costModelRows = costBreakdown.modelSummaries;
+  const costDailyRows = costBreakdown.dailySummaries;
+  const otherUsageRows = costBreakdown.otherUsageSummaries;
 
   const chatExportRows = chatRows.map((row) => ({
     chatId: row.chatId,
@@ -377,6 +466,363 @@ export default async function AdminAccountPage({
         </p>
       </header>
 
+      <section className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-lg">Cost</h2>
+            <p className="text-muted-foreground text-sm">
+              API cost dashboard by feature, model, and day. Chat completion
+              costs are exact. Embedding costs are estimated from indexed
+              content size. Other tracked usage is shown separately when
+              historical provider cost is unavailable.
+            </p>
+          </div>
+          <Link
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            href={buildSearchHref(resolvedSearchParams, {
+              costFrom: null,
+              costTo: null,
+              costCurrency,
+            })}
+          >
+            View all-time
+          </Link>
+        </div>
+
+        <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
+          <PreservedSearchParamsInputs
+            exclude={["costFrom", "costTo", "costCurrency"]}
+            searchParams={resolvedSearchParams}
+          />
+          <div className="flex flex-col">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor="costFrom"
+            >
+              Start date
+            </label>
+            <input
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              defaultValue={costFrom ? format(costFrom, "yyyy-MM-dd") : ""}
+              id="costFrom"
+              name="costFrom"
+              type="date"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor="costTo"
+            >
+              End date
+            </label>
+            <input
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              defaultValue={costTo ? format(costTo, "yyyy-MM-dd") : ""}
+              id="costTo"
+              name="costTo"
+              type="date"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor="costCurrency"
+            >
+              Currency
+            </label>
+            <select
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              defaultValue={costCurrency}
+              id="costCurrency"
+              name="costCurrency"
+            >
+              <option value="INR">INR</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <Button type="submit" variant="secondary">
+            Apply
+          </Button>
+        </form>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <article className="flex flex-col gap-2 rounded-lg border bg-background p-4">
+            <span className="font-medium text-muted-foreground text-sm">
+              Total cost
+            </span>
+            <span className="font-semibold text-lg">
+              {formatCostInCurrency({
+                valueUsd: costBreakdown.totalCostUsd,
+                currency: costCurrency,
+                usdToInr,
+              })}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              Selected range
+            </span>
+          </article>
+          <article className="flex flex-col gap-2 rounded-lg border bg-background p-4">
+            <span className="font-medium text-muted-foreground text-sm">
+              Exact tracked cost
+            </span>
+            <span className="font-semibold text-lg">
+              {formatCostInCurrency({
+                valueUsd: costBreakdown.exactCostUsd,
+                currency: costCurrency,
+                usdToInr,
+              })}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              Chat completion token usage
+            </span>
+          </article>
+          <article className="flex flex-col gap-2 rounded-lg border bg-background p-4">
+            <span className="font-medium text-muted-foreground text-sm">
+              Estimated embedding cost
+            </span>
+            <span className="font-semibold text-lg">
+              {formatCostInCurrency({
+                valueUsd: costBreakdown.estimatedCostUsd,
+                currency: costCurrency,
+                usdToInr,
+              })}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              File Search / embedding index updates
+            </span>
+          </article>
+          <article className="flex flex-col gap-2 rounded-lg border bg-background p-4">
+            <span className="font-medium text-muted-foreground text-sm">
+              Untracked API usage
+            </span>
+            <span className="font-semibold text-lg">
+              {formatNumber(
+                otherUsageRows.reduce((total, row) => total + row.usageCount, 0)
+              )}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              Tracked events with no stored provider cost
+            </span>
+          </article>
+        </div>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="py-3 text-left">Feature</th>
+                <th className="py-3 text-left">Method</th>
+                <th className="py-3 text-left">Usage</th>
+                <th className="py-3 text-right">Models</th>
+                <th className="py-3 text-right">Cost</th>
+                <th className="py-3 text-left">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {costFeatureRows.length === 0 ? (
+                <tr>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={6}
+                  >
+                    No API cost data found for the selected range.
+                  </td>
+                </tr>
+              ) : (
+                costFeatureRows.map((row) => {
+                  const usageLabel =
+                    row.featureKey === "chat_completions"
+                      ? `${formatNumber(row.usageCount)} usage rows, ${formatNumber(
+                          row.inputTokens
+                        )} in / ${formatNumber(row.outputTokens)} out`
+                      : row.featureKey === "embeddings"
+                        ? `${formatNumber(
+                            row.indexedEntries
+                          )} indexed entries, ${formatNumber(row.indexedChars)} chars`
+                        : `${formatNumber(row.usageCount)} events, ${formatNumber(
+                            row.inputTokens
+                          )} tokens`;
+
+                  return (
+                    <tr className="border-t text-sm" key={row.featureKey}>
+                      <td className="py-2 font-medium">{row.featureLabel}</td>
+                      <td className="py-2 capitalize">
+                        {row.method.replaceAll("_", " ")}
+                      </td>
+                      <td className="py-2">{usageLabel}</td>
+                      <td className="py-2 text-right">
+                        {formatNumber(row.modelCount)}
+                      </td>
+                      <td className="py-2 text-right">
+                        {row.totalCostUsd === null
+                          ? "—"
+                          : formatCostInCurrency({
+                              valueUsd: row.totalCostUsd,
+                              currency: costCurrency,
+                              usdToInr,
+                            })}
+                      </td>
+                      <td className="py-2 text-muted-foreground text-xs">
+                        {row.note ?? "—"}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="py-3 text-left">Feature</th>
+                <th className="py-3 text-left">Model</th>
+                <th className="py-3 text-left">Provider</th>
+                <th className="py-3 text-left">Method</th>
+                <th className="py-3 text-left">Usage</th>
+                <th className="py-3 text-right">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {costModelRows.length === 0 ? (
+                <tr>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={6}
+                  >
+                    No per-model cost data found for the selected range.
+                  </td>
+                </tr>
+              ) : (
+                costModelRows.map((row) => {
+                  const usageLabel =
+                    row.featureKey === "chat_completions"
+                      ? `${formatNumber(row.usageCount)} usage rows, ${formatNumber(
+                          row.inputTokens
+                        )} in / ${formatNumber(row.outputTokens)} out`
+                      : `${formatNumber(row.indexedEntries)} indexed entries, ${formatNumber(
+                          row.indexedChars
+                        )} chars`;
+
+                  return (
+                    <tr className="border-t text-sm" key={row.modelKey}>
+                      <td className="py-2">{row.featureLabel}</td>
+                      <td className="py-2 font-medium">{row.modelLabel}</td>
+                      <td className="py-2 text-muted-foreground text-xs">
+                        {row.providerLabel ?? "—"}
+                      </td>
+                      <td className="py-2 capitalize">
+                        {row.method.replaceAll("_", " ")}
+                      </td>
+                      <td className="py-2">{usageLabel}</td>
+                      <td className="py-2 text-right">
+                        {row.totalCostUsd === null
+                          ? "—"
+                          : formatCostInCurrency({
+                              valueUsd: row.totalCostUsd,
+                              currency: costCurrency,
+                              usdToInr,
+                            })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="py-3 text-left">Date</th>
+                <th className="py-3 text-right">Chat</th>
+                <th className="py-3 text-right">Embeddings</th>
+                <th className="py-3 text-right">Total</th>
+                <th className="py-3 text-right">Other usage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {costDailyRows.length === 0 ? (
+                <tr>
+                  <td
+                    className="py-6 text-center text-muted-foreground"
+                    colSpan={5}
+                  >
+                    No daily cost data found for the selected range.
+                  </td>
+                </tr>
+              ) : (
+                costDailyRows.map((row) => (
+                  <tr className="border-t text-sm" key={row.date}>
+                    <td className="py-2">{row.date}</td>
+                    <td className="py-2 text-right">
+                      {formatCostInCurrency({
+                        valueUsd: row.chatCostUsd,
+                        currency: costCurrency,
+                        usdToInr,
+                      })}
+                    </td>
+                    <td className="py-2 text-right">
+                      {formatCostInCurrency({
+                        valueUsd: row.embeddingCostUsd,
+                        currency: costCurrency,
+                        usdToInr,
+                      })}
+                    </td>
+                    <td className="py-2 text-right font-medium">
+                      {formatCostInCurrency({
+                        valueUsd: row.totalCostUsd,
+                        currency: costCurrency,
+                        usdToInr,
+                      })}
+                    </td>
+                    <td className="py-2 text-right">
+                      {formatNumber(row.otherUsageCount)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {otherUsageRows.length > 0 ? (
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-muted-foreground text-xs uppercase">
+                <tr>
+                  <th className="py-3 text-left">Tracked usage</th>
+                  <th className="py-3 text-right">Events</th>
+                  <th className="py-3 text-right">Tokens</th>
+                  <th className="py-3 text-left">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {otherUsageRows.map((row) => (
+                  <tr className="border-t text-sm" key={row.featureKey}>
+                    <td className="py-2 font-medium">{row.featureLabel}</td>
+                    <td className="py-2 text-right">
+                      {formatNumber(row.usageCount)}
+                    </td>
+                    <td className="py-2 text-right">
+                      {formatNumber(row.totalTokens)}
+                    </td>
+                    <td className="py-2 text-muted-foreground text-xs">
+                      {row.note}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
       <section className="grid gap-4 md:grid-cols-3">
         {summaryCards.map((card) => (
           <article
@@ -407,6 +853,10 @@ export default async function AdminAccountPage({
         </div>
 
         <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
+          <PreservedSearchParamsInputs
+            exclude={["from", "to", "page", "pageSize"]}
+            searchParams={resolvedSearchParams}
+          />
           <div className="flex flex-col">
             <label
               className="font-medium text-muted-foreground text-xs"
