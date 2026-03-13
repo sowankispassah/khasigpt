@@ -31,15 +31,12 @@ export default async function AdminLayout({
       session={session}
     >
       <div className="flex min-h-screen flex-col">
-        <header className="border-b bg-background px-6 py-4">
-          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-col">
+        <header className="border-b bg-background px-4 py-4 sm:px-6">
+          <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="flex flex-col pr-16 sm:pr-0">
               <h1 className="font-semibold text-lg">Admin Console</h1>
-              <p className="text-muted-foreground text-sm">
-                Manage users, models, and infrastructure activity
-              </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex w-full items-center justify-between sm:w-auto sm:flex-wrap sm:justify-end sm:gap-3">
               <AdminNav />
               <AdminSearch />
             </div>
