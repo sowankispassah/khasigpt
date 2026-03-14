@@ -65,6 +65,7 @@ type MessagesProps = {
   submitScrollSignal?: number;
   greetingTitle?: string;
   greetingSubtitle?: string;
+  showScrollbar?: boolean;
 };
 
 const MAX_RENDERED_MESSAGES = 200;
@@ -96,6 +97,7 @@ function PureMessages({
   submitScrollSignal = 0,
   greetingTitle,
   greetingSubtitle,
+  showScrollbar = false,
 }: MessagesProps) {
   const lastMessage = messages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
@@ -582,7 +584,12 @@ function PureMessages({
   if (messages.length === 0) {
     return (
       <div
-        className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={cn(
+          "overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y [scrollbar-gutter:stable_both-edges]",
+          showScrollbar
+            ? "overflow-y-auto [scrollbar-width:auto] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80"
+            : "overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        )}
         ref={messagesContainerRef}
         style={{ overflowAnchor: "none" }}
       >
@@ -626,7 +633,12 @@ function PureMessages({
 
   return (
     <div
-      className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className={cn(
+        "overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y [scrollbar-gutter:stable_both-edges]",
+        showScrollbar
+          ? "overflow-y-auto [scrollbar-width:auto] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80"
+          : "overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      )}
       ref={messagesContainerRef}
       style={{ overflowAnchor: "none" }}
     >

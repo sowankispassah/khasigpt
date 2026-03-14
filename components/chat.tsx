@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { type DataUIPart, DefaultChatTransport } from "ai";
-import { BookOpen, MessageSquareText, X } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -15,6 +15,7 @@ import {
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
+import { FloatingChatPopup } from "@/components/jobs/floating-chat-popup";
 import { JobsModeListPanel } from "@/components/jobs/jobs-mode-list-panel";
 import { useTranslation } from "@/components/language-provider";
 import {
@@ -530,7 +531,8 @@ export function Chat({
       setIsJobsComposerVisible(false);
       return;
     }
-  }, [isJobsMode]);
+    setIsJobsComposerVisible(initialMessages.length > 0);
+  }, [id, initialMessages.length, isJobsMode]);
 
   useEffect(() => {
     void id;
@@ -1331,6 +1333,101 @@ export function Chat({
         onAsk: handleJobAsk,
       }
     : undefined;
+  const jobsPopupEmptyState = isJobsMode ? (
+    <div className="rounded-[20px] border border-dashed border-border/60 bg-muted/20 px-5 py-8 text-center text-muted-foreground text-sm">
+      Send a message to get started.
+    </div>
+  ) : null;
+  const jobsPopup = isJobsMode && !isReadonly ? (
+    <FloatingChatPopup
+      isVisible={isJobsComposerVisible}
+      onClose={() => setIsJobsComposerVisible(false)}
+      onOpen={() => setIsJobsComposerVisible(true)}
+    >
+      <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex flex-1 overflow-hidden">
+          <Messages
+            chatId={id}
+            key={`${id}:jobs-popup`}
+            enableGenerationAutoFollow={true}
+            submitScrollSignal={jobsSubmitScrollSignal}
+            hasMoreHistory={hasMoreHistory}
+            header={messages.length === 0 ? jobsPopupEmptyState : undefined}
+            headerFullWidth={false}
+            isArtifactVisible={isArtifactVisible}
+            isGeneratingImage={isGeneratingImage}
+            isLoadingHistory={isLoadingHistory}
+            isReadonly={false}
+            messages={messages}
+            onLoadMoreHistory={loadOlderMessages}
+            regenerate={regenerate}
+            selectedModelId={currentModelId}
+            selectedVisibilityType={visibilityType}
+            sendMessage={sendMessage}
+            setMessages={setMessages}
+            showGreeting={false}
+            showScrollbar={true}
+            status={status}
+            suggestedPrompts={[]}
+            jobActions={jobActions}
+            studyActions={studyActions}
+            votes={votes}
+          />
+        </div>
+        <div className="shrink-0 border-t border-border/60 bg-background/95 p-3 md:p-4">
+          <div className="flex w-full flex-col gap-2">
+            {iconPromptSuggestions.length > 0 ? (
+              <div className="rounded-lg bg-background p-2">
+                {iconPromptSuggestions.map((suggestion, index) => (
+                  <button
+                    className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                    key={`${suggestion.label}-${index}`}
+                    onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                    type="button"
+                  >
+                    {suggestion.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <MultimodalInput
+              attachments={attachments}
+              chatId={id}
+              documentUploadsEnabled={documentUploadsEnabled}
+              imageGenerationCanGenerate={false}
+              imageGenerationEnabled={false}
+              imageGenerationRequiresPaidCredits={false}
+              imageGenerationSelected={false}
+              isGeneratingImage={false}
+              input={input}
+              messages={messages}
+              onLanguageChange={handleLanguageChangeFromInput}
+              onModelChange={handleModelChange}
+              selectedLanguageCode={currentLanguageCode}
+              selectedModelId={currentModelId}
+              selectedVisibilityType={visibilityType}
+              onGenerateImage={() => {}}
+              jobTitleReference={jobTitleReference}
+              onClearJobTitleReference={clearJobContext}
+              onClearStudyQuestionReference={() =>
+                setStudyQuestionReference(null)
+              }
+              onJumpToQuestionPaper={handleJumpToQuestionPaper}
+              onBeforeSubmit={handleSubmitScrollToBottom}
+              sendMessage={sendMessage}
+              setAttachments={setAttachments}
+              setInput={setInput}
+              setMessages={setMessages}
+              status={status}
+              stop={stop}
+              studyQuestionReference={studyQuestionReference}
+              onToggleImageMode={() => {}}
+            />
+          </div>
+        </div>
+      </div>
+    </FloatingChatPopup>
+  ) : null;
 
   return (
     <>
@@ -1354,154 +1451,132 @@ export function Chat({
           selectedVisibilityType={initialVisibilityType}
         />
 
-        <Messages
-          chatId={id}
-          key={id}
-          enableGenerationAutoFollow={isJobsMode}
-          submitScrollSignal={jobsSubmitScrollSignal}
-          greetingSubtitle={greetingSubtitle}
-          showGreeting={!isJobsMode}
-          hasMoreHistory={hasMoreHistory}
-          header={modeHeader}
-          headerFullWidth={isJobsMode}
-          isArtifactVisible={isArtifactVisible}
-          isGeneratingImage={isGeneratingImage}
-          isLoadingHistory={isLoadingHistory}
-          isReadonly={isReadonly}
-          messages={messages}
-          onLoadMoreHistory={loadOlderMessages}
-          regenerate={regenerate}
-          selectedModelId={currentModelId}
-          selectedVisibilityType={visibilityType}
-          sendMessage={sendMessage}
-          setMessages={setMessages}
-          status={status}
-          suggestedPrompts={isJobsMode || isStudyMode ? [] : suggestedPrompts}
-          iconPromptActions={isJobsMode || isStudyMode ? [] : iconPromptActions}
-          onIconPromptSelect={handleIconPromptSelect}
-          jobActions={jobActions}
-          studyActions={studyActions}
-          votes={votes}
-        />
+        {isJobsMode && !isReadonly ? (
+          <div className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-2 pb-6 pt-[10px] md:px-4">
+              {jobsHeader}
+            </div>
+          </div>
+        ) : (
+          <>
+            <Messages
+              chatId={id}
+              key={id}
+              enableGenerationAutoFollow={isJobsMode}
+              submitScrollSignal={jobsSubmitScrollSignal}
+              greetingSubtitle={greetingSubtitle}
+              showGreeting={!isJobsMode}
+              hasMoreHistory={hasMoreHistory}
+              header={modeHeader}
+              headerFullWidth={isJobsMode}
+              isArtifactVisible={isArtifactVisible}
+              isGeneratingImage={isGeneratingImage}
+              isLoadingHistory={isLoadingHistory}
+              isReadonly={isReadonly}
+              messages={messages}
+              onLoadMoreHistory={loadOlderMessages}
+              regenerate={regenerate}
+              selectedModelId={currentModelId}
+              selectedVisibilityType={visibilityType}
+              sendMessage={sendMessage}
+              setMessages={setMessages}
+              status={status}
+              suggestedPrompts={isJobsMode || isStudyMode ? [] : suggestedPrompts}
+              iconPromptActions={isJobsMode || isStudyMode ? [] : iconPromptActions}
+              onIconPromptSelect={handleIconPromptSelect}
+              jobActions={jobActions}
+              studyActions={studyActions}
+              votes={votes}
+            />
 
-        <div
-          className={cn(
-            "sticky bottom-0 z-1 mx-auto w-full max-w-4xl border-t-0 px-2 md:px-4",
-            isJobsMode
-              ? isJobsComposerVisible
-                ? "bg-transparent pb-3 md:pb-4"
-                : "pointer-events-none h-0 bg-transparent pb-0"
-              : "bg-background pb-3 md:pb-4"
-          )}
-        >
-          {isReadonly ? null : isJobsMode && !isJobsComposerVisible ? (
-            <div className="relative h-0 w-full">
-              <Button
-                className="pointer-events-auto absolute right-0 -top-11 h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
-                onClick={() => setIsJobsComposerVisible(true)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <MessageSquareText className="h-4 w-4" />
-                <span className="sr-only">Show chat box</span>
-              </Button>
-            </div>
-          ) : (
-            <div className={cn("w-full", isJobsMode && "relative")}>
-              {isJobsMode ? (
-                <div className="pointer-events-none absolute right-0 -top-11 z-10">
-                  <Button
-                    className="pointer-events-auto h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
-                    onClick={() => setIsJobsComposerVisible(false)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Hide chat box</span>
-                  </Button>
-                </div>
-              ) : null}
-              <div className="flex w-full flex-col gap-2">
-                {iconPromptSuggestions.length > 0 ? (
-                  <div className="rounded-lg bg-background p-2">
-                    {iconPromptSuggestions.map((suggestion, index) => (
-                      <button
-                        className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
-                        key={`${suggestion.label}-${index}`}
-                        onClick={() => handleIconPromptSuggestionSelect(suggestion)}
-                        type="button"
-                      >
-                        {suggestion.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <MultimodalInput
-                  attachments={attachments}
-                  chatId={id}
-                  documentUploadsEnabled={documentUploadsEnabled}
-                  imageGenerationCanGenerate={
-                    imageGeneration.canGenerate && !isStudyMode
-                  }
-                  imageGenerationEnabled={imageGeneration.enabled && !isStudyMode}
-                  imageGenerationRequiresPaidCredits={
-                    imageGeneration.requiresPaidCredits
-                  }
-                  imageGenerationSelected={isImageMode && !isStudyMode}
-                  isGeneratingImage={isGeneratingImage}
-                  input={input}
-                  messages={messages}
-                  onLanguageChange={handleLanguageChangeFromInput}
-                  onModelChange={handleModelChange}
-                  selectedLanguageCode={currentLanguageCode}
-                  selectedModelId={currentModelId}
-                  selectedVisibilityType={visibilityType}
-                  onGenerateImage={() => {
-                    void generateImageFromPrompt(input);
-                  }}
-                  jobTitleReference={jobTitleReference}
-                  onClearJobTitleReference={clearJobContext}
-                  onClearStudyQuestionReference={() =>
-                    setStudyQuestionReference(null)
-                  }
-                  onJumpToQuestionPaper={handleJumpToQuestionPaper}
-                  onBeforeSubmit={handleSubmitScrollToBottom}
-                  sendMessage={sendMessage}
-                  setAttachments={setAttachments}
-                  setInput={setInput}
-                  setMessages={setMessages}
-                  status={status}
-                  stop={stop}
-                  studyQuestionReference={studyQuestionReference}
-                  onToggleImageMode={() => {
-                    if (!imageGeneration.enabled || isStudyMode) {
-                      return;
+            <div
+              className={cn(
+                "sticky bottom-0 z-1 mx-auto w-full max-w-4xl border-t-0 px-2 md:px-4",
+                "bg-background pb-3 md:pb-4"
+              )}
+            >
+              {isReadonly ? null : (
+                <div className="flex w-full flex-col gap-2">
+                  {iconPromptSuggestions.length > 0 ? (
+                    <div className="rounded-lg bg-background p-2">
+                      {iconPromptSuggestions.map((suggestion, index) => (
+                        <button
+                          className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                          key={`${suggestion.label}-${index}`}
+                          onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                          type="button"
+                        >
+                          {suggestion.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <MultimodalInput
+                    attachments={attachments}
+                    chatId={id}
+                    documentUploadsEnabled={documentUploadsEnabled}
+                    imageGenerationCanGenerate={
+                      imageGeneration.canGenerate && !isStudyMode
                     }
-                    if (!imageGeneration.canGenerate) {
-                      setShowImageUpgradeDialog(true);
-                      return;
+                    imageGenerationEnabled={imageGeneration.enabled && !isStudyMode}
+                    imageGenerationRequiresPaidCredits={
+                      imageGeneration.requiresPaidCredits
                     }
-                    setIsImageMode((prev) => !prev);
-                  }}
-                />
-                <p className="px-2 text-center text-muted-foreground text-xs">
-                  {translate(
-                    "chat.disclaimer.text",
-                    "KhasiGPT or other AI Models can make mistakes. Check important details."
-                  )}{" "}
-                  <Link className="underline" href="/privacy-policy">
+                    imageGenerationSelected={isImageMode && !isStudyMode}
+                    isGeneratingImage={isGeneratingImage}
+                    input={input}
+                    messages={messages}
+                    onLanguageChange={handleLanguageChangeFromInput}
+                    onModelChange={handleModelChange}
+                    selectedLanguageCode={currentLanguageCode}
+                    selectedModelId={currentModelId}
+                    selectedVisibilityType={visibilityType}
+                    onGenerateImage={() => {
+                      void generateImageFromPrompt(input);
+                    }}
+                    jobTitleReference={jobTitleReference}
+                    onClearJobTitleReference={clearJobContext}
+                    onClearStudyQuestionReference={() =>
+                      setStudyQuestionReference(null)
+                    }
+                    onJumpToQuestionPaper={handleJumpToQuestionPaper}
+                    onBeforeSubmit={handleSubmitScrollToBottom}
+                    sendMessage={sendMessage}
+                    setAttachments={setAttachments}
+                    setInput={setInput}
+                    setMessages={setMessages}
+                    status={status}
+                    stop={stop}
+                    studyQuestionReference={studyQuestionReference}
+                    onToggleImageMode={() => {
+                      if (!imageGeneration.enabled || isStudyMode) {
+                        return;
+                      }
+                      if (!imageGeneration.canGenerate) {
+                        setShowImageUpgradeDialog(true);
+                        return;
+                      }
+                      setIsImageMode((prev) => !prev);
+                    }}
+                  />
+                  <p className="px-2 text-center text-muted-foreground text-xs">
                     {translate(
-                      "chat.disclaimer.privacy_link",
-                      "See privacy policy."
-                    )}
-                  </Link>
-                </p>
-              </div>
+                      "chat.disclaimer.text",
+                      "KhasiGPT or other AI Models can make mistakes. Check important details."
+                    )}{" "}
+                    <Link className="underline" href="/privacy-policy">
+                      {translate(
+                        "chat.disclaimer.privacy_link",
+                        "See privacy policy."
+                      )}
+                    </Link>
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
+        {jobsPopup}
       </div>
 
       <Dialog
