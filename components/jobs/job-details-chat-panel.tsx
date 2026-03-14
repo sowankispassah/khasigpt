@@ -97,13 +97,13 @@ export function JobDetailsChatPanel({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
-      <div className="w-full px-1 pb-3 sm:px-2 md:px-3 md:pb-4">
+      <div className="w-full px-1 pb-1 sm:px-2 sm:pb-2 md:px-3 md:pb-3">
         <div className="flex justify-end">
           <div className="relative">
             <div
               aria-hidden={!isVisible}
               className={cn(
-                "pointer-events-auto absolute right-0 bottom-11 flex w-[min(33.8rem,calc(100vw-0.5rem))] origin-bottom-right flex-col overflow-hidden rounded-[28px] border border-border/60 bg-background/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out sm:w-[33.8rem]",
+                "pointer-events-auto absolute right-0 bottom-0 flex w-[min(33.8rem,calc(100vw-0.5rem))] origin-bottom-right flex-col overflow-hidden rounded-[28px] border border-border/60 bg-background/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out sm:w-[33.8rem]",
                 "max-h-[min(82vh,46.8rem)] min-h-[36rem]",
                 isVisible
                   ? "translate-y-0 scale-100 opacity-100"
@@ -184,7 +184,7 @@ export function JobDetailsChatPanel({
             >
               <div className="relative h-0 w-full">
                 <Button
-                  className="absolute right-0 -top-11 h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
+                  className="absolute right-0 -top-9 h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
                   onClick={handleShow}
                   size="sm"
                   title="Open chat"
