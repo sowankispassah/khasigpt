@@ -45,8 +45,11 @@ import type {
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
-import type { JobCard } from "@/lib/jobs/types";
-import type { JobListItem } from "@/lib/jobs/types";
+import type {
+  JobCard,
+  JobListItem,
+  JobTitleReference,
+} from "@/lib/jobs/types";
 import {
   getStudyContextForChat,
   setStudyContextForChat,
@@ -76,6 +79,11 @@ const buildStudyQuestionReference = (
   paperId: paper.id,
   title: paper.title,
   preview: `${paper.exam} / ${paper.role} / ${paper.year}`,
+});
+
+const buildJobTitleReference = (job: JobCard): JobTitleReference => ({
+  title: job.title,
+  preview: [job.company, job.location].filter(Boolean).join(" / "),
 });
 
 export function Chat({
@@ -178,7 +186,6 @@ export function Chat({
   );
   const currentLanguageCodeRef = useRef(currentLanguageCode);
   const studyContextIdRef = useRef<string | null>(null);
-  const jobContextIdRef = useRef<string | null>(null);
   const studyQuizActiveRef = useRef(false);
   const [pendingUiLanguage, setPendingUiLanguage] = useState<{
     code: string;
@@ -206,6 +213,10 @@ export function Chat({
   const [studyQuizActive, setStudyQuizActive] = useState(false);
   const [studyQuestionReference, setStudyQuestionReference] =
     useState<StudyQuestionReference | null>(null);
+  const [jobTitleReference, setJobTitleReference] =
+    useState<JobTitleReference | null>(
+      initialJobContext ? buildJobTitleReference(initialJobContext) : null
+    );
   const [resumeDataPart, setResumeDataPart] =
     useState<DataUIPart<CustomUIDataTypes> | null>(null);
   const [studyViewerPaper, setStudyViewerPaper] =
@@ -328,10 +339,6 @@ export function Chat({
   useEffect(() => {
     studyContextIdRef.current = studyContext?.id ?? null;
   }, [studyContext]);
-
-  useEffect(() => {
-    jobContextIdRef.current = jobContext?.id ?? null;
-  }, [jobContext]);
 
   useEffect(() => {
     if (!isStudyMode) {
@@ -507,10 +514,14 @@ export function Chat({
 
     if (!isJobsMode) {
       setJobContext(null);
+      setJobTitleReference(null);
       setJobViewerPosting(null);
       return;
     }
     setJobContext(initialJobContext ?? null);
+    setJobTitleReference(
+      initialJobContext ? buildJobTitleReference(initialJobContext) : null
+    );
     setJobViewerPosting(null);
   }, [id, initialJobContext, isStudyMode, isJobsMode]);
 
@@ -631,7 +642,6 @@ export function Chat({
           : isJobsMode
             ? {
                 chatMode: resolvedChatMode,
-                jobPostingId: jobContextIdRef.current,
               }
             : { chatMode: "default" };
         return {
@@ -837,10 +847,13 @@ export function Chat({
 
   const handleJobAsk = useCallback((job: JobCard) => {
     setJobContext(job);
+    setJobTitleReference(buildJobTitleReference(job));
+    setIsJobsComposerVisible(true);
   }, []);
 
   const clearJobContext = useCallback(() => {
     setJobContext(null);
+    setJobTitleReference(null);
   }, []);
 
   const handleJobPrefetch = useCallback(
@@ -1292,39 +1305,12 @@ export function Chat({
   ) : null;
   const jobsHeader = isJobsMode ? (
     <div className="flex flex-col gap-3">
-      {jobContext ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-background px-3 py-2 text-xs">
-          <div className="min-w-0 space-y-0.5">
-            <div className="truncate font-semibold text-foreground">
-              {jobContext.title}
-            </div>
-            <div className="truncate text-muted-foreground">
-              {jobContext.company} / {jobContext.location}
-            </div>
-            <div className="truncate text-muted-foreground">
-              {jobContext.studyExam} / {jobContext.studyRole}
-              {jobContext.studyYears.length > 0
-                ? ` / ${jobContext.studyYears.join(", ")}`
-                : ""}
-            </div>
-          </div>
-          <Button
-            className="cursor-pointer"
-            onClick={clearJobContext}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            Clear
-          </Button>
-        </div>
-      ) : null}
-        <JobsModeListPanel
-          isLoading={isJobsModeListLoading && resolvedJobsListItems.length === 0}
-          jobs={resolvedJobsListItems}
-        />
-      </div>
-    ) : null;
+      <JobsModeListPanel
+        isLoading={isJobsModeListLoading && resolvedJobsListItems.length === 0}
+        jobs={resolvedJobsListItems}
+      />
+    </div>
+  ) : null;
   const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
 
   const studyActions = isStudyMode
@@ -1475,6 +1461,8 @@ export function Chat({
                   onGenerateImage={() => {
                     void generateImageFromPrompt(input);
                   }}
+                  jobTitleReference={jobTitleReference}
+                  onClearJobTitleReference={clearJobContext}
                   onClearStudyQuestionReference={() =>
                     setStudyQuestionReference(null)
                   }

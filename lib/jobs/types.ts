@@ -76,6 +76,11 @@ export type JobCard = {
   pdfCachedUrl: string | null;
 };
 
+export type JobTitleReference = {
+  title: string;
+  preview: string;
+};
+
 export type JobListItem = {
   id: string;
   title: string;

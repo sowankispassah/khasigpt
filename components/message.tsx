@@ -2,7 +2,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
-import type { JobCard } from "@/lib/jobs/types";
+import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -236,6 +236,35 @@ const PurePreviewMessage = ({
                   ) : (
                     referenceBody
                   )}
+                </div>
+              );
+            }
+
+            if (type === "data-jobTitleReference") {
+              const data = (part as { data?: JobTitleReference }).data;
+              if (!data?.title || !data?.preview) {
+                return null;
+              }
+
+              return (
+                <div
+                  className={cn(
+                    "max-w-full rounded-lg border px-3 py-2 text-left",
+                    message.role === "user"
+                      ? "border-border/60 bg-muted/60"
+                      : "border-border/50 bg-muted/40"
+                  )}
+                  key={key}
+                >
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Replying about
+                  </div>
+                  <div className="truncate font-medium text-foreground text-sm">
+                    {data.title}
+                  </div>
+                  <div className="truncate text-muted-foreground text-xs">
+                    {data.preview}
+                  </div>
                 </div>
               );
             }

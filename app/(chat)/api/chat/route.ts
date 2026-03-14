@@ -70,6 +70,7 @@ import {
 import { extractSalaryText, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
+  findJobPostingByReference,
   JOBS_CHAT_MODE,
   JOB_POSTING_RUNTIME_CONTEXT_CHARS,
   getJobKnowledgeUnitById,
@@ -1290,6 +1291,25 @@ export async function POST(request: Request) {
         ? studyPaperId.trim()
         : null;
     const isStudyQuizActive = Boolean(studyQuizActive);
+    const jobTitleReferencePart = message.parts.find(
+      (
+        part
+      ): part is Extract<
+        ChatMessage["parts"][number],
+        { type: "data-jobTitleReference" }
+      > => part.type === "data-jobTitleReference"
+    );
+    const jobTitleReferenceData = jobTitleReferencePart?.data;
+    const normalizedJobReferenceTitle =
+      typeof jobTitleReferenceData?.title === "string" &&
+      jobTitleReferenceData.title.trim().length > 0
+        ? jobTitleReferenceData.title.trim()
+        : null;
+    const normalizedJobReferencePreview =
+      typeof jobTitleReferenceData?.preview === "string" &&
+      jobTitleReferenceData.preview.trim().length > 0
+        ? jobTitleReferenceData.preview.trim()
+        : null;
 
     const buildJobsResponse = async ({
       text,
@@ -1519,15 +1539,26 @@ export async function POST(request: Request) {
             modelKey: modelConfig.key,
           })
         : null;
+    const referencedJobEntry =
+      resolvedChatMode === JOBS_CHAT_MODE && normalizedJobReferenceTitle
+        ? await findJobPostingByReference({
+            title: normalizedJobReferenceTitle,
+            preview: normalizedJobReferencePreview,
+            includeInactive: false,
+            includeRagState: false,
+            allowedIds: jobPostingIdsForModel,
+          })
+        : null;
     const implicitJobPostingId =
       !normalizedJobPostingId &&
+      !referencedJobEntry &&
       resolvedChatMode === JOBS_CHAT_MODE &&
       jobPostingIdsForModel &&
       jobPostingIdsForModel.length === 1
         ? jobPostingIdsForModel[0]
         : null;
     const effectiveJobPostingId =
-      normalizedJobPostingId ?? implicitJobPostingId;
+      referencedJobEntry?.id ?? normalizedJobPostingId ?? implicitJobPostingId;
     const jobEntry =
       resolvedChatMode === JOBS_CHAT_MODE && effectiveJobPostingId
         ? await getJobPostingEntryById({ id: effectiveJobPostingId })
@@ -1749,6 +1780,17 @@ export async function POST(request: Request) {
           ].join("\n\n");
         }
       }
+    }
+
+    if (
+      resolvedChatMode === JOBS_CHAT_MODE &&
+      normalizedJobReferenceTitle &&
+      !effectiveJobPostingId
+    ) {
+      return buildJobsResponse({
+        text: `The selected job "${normalizedJobReferenceTitle}" is no longer available in the current jobs list.`,
+        jobPostingIdOverride: null,
+      });
     }
 
     if (resolvedChatMode === JOBS_CHAT_MODE && !effectiveJobPostingId) {
@@ -2490,6 +2532,18 @@ export async function POST(request: Request) {
             `Reference preview: ${studyQuestionReferenceData.preview}`,
           ].join("\n")
         : "";
+    const jobTitleReferenceText =
+      resolvedChatMode === JOBS_CHAT_MODE && normalizedJobReferenceTitle
+        ? [
+            "The user referenced a specific job while asking this question.",
+            `Reference title: ${normalizedJobReferenceTitle}`,
+            normalizedJobReferencePreview
+              ? `Reference preview: ${normalizedJobReferencePreview}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : "";
 
     const baseParts = message.parts.filter((part) => {
       if (part.type === "text") {
@@ -2525,6 +2579,15 @@ export async function POST(request: Request) {
         {
           type: "text" as const,
           text: studyQuestionReferenceText,
+        },
+      ];
+    }
+    if (jobTitleReferenceText) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: jobTitleReferenceText,
         },
       ];
     }

@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { useWindowSize } from "usehooks-ts";
 import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
+import type { JobTitleReference } from "@/lib/jobs/types";
 import { SelectItem } from "@/components/ui/select";
 import type { StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
@@ -75,6 +76,8 @@ function PureMultimodalInput({
   imageGenerationCanGenerate,
   imageGenerationRequiresPaidCredits,
   isGeneratingImage,
+  jobTitleReference,
+  onClearJobTitleReference,
   studyQuestionReference,
   onClearStudyQuestionReference,
   onJumpToQuestionPaper,
@@ -104,6 +107,8 @@ function PureMultimodalInput({
   imageGenerationCanGenerate: boolean;
   imageGenerationRequiresPaidCredits: boolean;
   isGeneratingImage: boolean;
+  jobTitleReference?: JobTitleReference | null;
+  onClearJobTitleReference?: () => void;
   studyQuestionReference?: StudyQuestionReference | null;
   onClearStudyQuestionReference?: () => void;
   onJumpToQuestionPaper?: (paperId: string) => void;
@@ -221,6 +226,14 @@ function PureMultimodalInput({
             },
           ]
         : []),
+      ...(jobTitleReference
+        ? [
+            {
+              type: "data-jobTitleReference" as const,
+              data: jobTitleReference,
+            },
+          ]
+        : []),
       {
         type: "text",
         text: input,
@@ -233,6 +246,7 @@ function PureMultimodalInput({
     });
 
     setAttachments([]);
+    onClearJobTitleReference?.();
     onClearStudyQuestionReference?.();
     resetHeight();
     setInput("");
@@ -248,7 +262,9 @@ function PureMultimodalInput({
     setAttachments,
     width,
     onBeforeSubmit,
+    onClearJobTitleReference,
     onClearStudyQuestionReference,
+    jobTitleReference,
     studyQuestionReference,
     resetHeight,
   ]);
@@ -336,6 +352,71 @@ function PureMultimodalInput({
         type="file"
       />
 
+      {studyQuestionReference ? (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/70 bg-muted/40 px-3 py-2 shadow-xs">
+          <button
+            className="min-w-0 flex-1 cursor-pointer space-y-0.5 text-left"
+            onClick={(event) => {
+              event.preventDefault();
+              onJumpToQuestionPaper?.(studyQuestionReference.paperId);
+            }}
+            type="button"
+          >
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <MessageIcon size={12} />
+              Question reference
+            </div>
+            <div className="truncate font-medium text-sm">
+              {studyQuestionReference.title}
+            </div>
+            <div className="truncate text-muted-foreground text-xs">
+              {studyQuestionReference.preview}
+            </div>
+          </button>
+          <Button
+            aria-label="Remove question reference"
+            className="h-7 w-7 shrink-0 rounded-md p-0"
+            onClick={(event) => {
+              event.preventDefault();
+              onClearStudyQuestionReference?.();
+            }}
+            type="button"
+            variant="ghost"
+          >
+            <CrossSmallIcon size={14} />
+          </Button>
+        </div>
+      ) : null}
+
+      {jobTitleReference ? (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border/70 bg-muted/40 px-3 py-2 shadow-xs">
+          <div className="min-w-0 flex-1 space-y-0.5 text-left">
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <MessageIcon size={12} />
+              Replying about
+            </div>
+            <div className="truncate font-medium text-sm">
+              {jobTitleReference.title}
+            </div>
+            <div className="truncate text-muted-foreground text-xs">
+              {jobTitleReference.preview}
+            </div>
+          </div>
+          <Button
+            aria-label="Remove job reference"
+            className="h-7 w-7 shrink-0 rounded-md p-0"
+            onClick={(event) => {
+              event.preventDefault();
+              onClearJobTitleReference?.();
+            }}
+            type="button"
+            variant="ghost"
+          >
+            <CrossSmallIcon size={14} />
+          </Button>
+        </div>
+      ) : null}
+
       <PromptInput
         className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
         onSubmit={(event) => {
@@ -389,41 +470,6 @@ function PureMultimodalInput({
             ))}
           </div>
         )}
-        {studyQuestionReference ? (
-          <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
-            <button
-              className="min-w-0 flex-1 cursor-pointer space-y-0.5 text-left"
-              onClick={(event) => {
-                event.preventDefault();
-                onJumpToQuestionPaper?.(studyQuestionReference.paperId);
-              }}
-              type="button"
-            >
-              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                <MessageIcon size={12} />
-                Question reference
-              </div>
-              <div className="truncate font-medium text-sm">
-                {studyQuestionReference.title}
-              </div>
-              <div className="truncate text-muted-foreground text-xs">
-                {studyQuestionReference.preview}
-              </div>
-            </button>
-            <Button
-              aria-label="Remove question reference"
-              className="h-7 w-7 shrink-0 rounded-md p-0"
-              onClick={(event) => {
-                event.preventDefault();
-                onClearStudyQuestionReference?.();
-              }}
-              type="button"
-              variant="ghost"
-            >
-              <CrossSmallIcon size={14} />
-            </Button>
-          </div>
-        ) : null}
         <div className="flex flex-row items-start gap-1 sm:gap-2">
           <PromptInputTextarea
             autoFocus
@@ -534,6 +580,9 @@ export const MultimodalInput = memo(
         nextProps.studyQuestionReference
       )
     ) {
+      return false;
+    }
+    if (!equal(prevProps.jobTitleReference, nextProps.jobTitleReference)) {
       return false;
     }
 

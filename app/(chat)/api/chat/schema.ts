@@ -30,10 +30,19 @@ const studyQuestionReferencePartSchema = z.object({
   }),
 });
 
+const jobTitleReferencePartSchema = z.object({
+  type: z.enum(["data-jobTitleReference"]),
+  data: z.object({
+    title: z.string().trim().min(1).max(180),
+    preview: z.string().trim().min(1).max(320),
+  }),
+});
+
 const partSchema = z.union([
   textPartSchema,
   filePartSchema,
   studyQuestionReferencePartSchema,
+  jobTitleReferencePartSchema,
 ]);
 
 export const postRequestBodySchema = z.object({

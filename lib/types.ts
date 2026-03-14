@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import type { ArtifactKind } from "@/components/artifact";
-import type { JobCard } from "@/lib/jobs/types";
+import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Suggestion } from "./db/schema";
 import type { AppUsage } from "./usage";
@@ -50,6 +50,7 @@ export type CustomUIDataTypes = {
     chips: string[];
   };
   studyQuestionReference: StudyQuestionReference;
+  jobTitleReference: JobTitleReference;
   jobCards: {
     jobs: JobCard[];
   };

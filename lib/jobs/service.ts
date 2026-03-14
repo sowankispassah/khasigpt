@@ -328,6 +328,86 @@ async function listJobsFromSupabaseUncached() {
   return (data ?? []) as JobsSupabaseRow[];
 }
 
+function normalizeJobReferenceValue(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resolveJobReferenceMatch({
+  jobs,
+  title,
+  preview,
+}: {
+  jobs: JobPostingRecord[];
+  title: string;
+  preview?: string | null;
+}) {
+  const normalizedTitle = normalizeJobReferenceValue(title);
+  if (!normalizedTitle) {
+    return null;
+  }
+
+  const normalizedPreview = normalizeJobReferenceValue(preview);
+  const scorePreview = (job: JobPostingRecord) => {
+    if (!normalizedPreview) {
+      return 0;
+    }
+
+    const previewCandidates = [
+      job.company,
+      job.location,
+      `${job.company} / ${job.location}`,
+    ].map((value) => normalizeJobReferenceValue(value));
+
+    if (previewCandidates.some((value) => value === normalizedPreview)) {
+      return 3;
+    }
+    if (
+      previewCandidates.some(
+        (value) =>
+          value.includes(normalizedPreview) || normalizedPreview.includes(value)
+      )
+    ) {
+      return 2;
+    }
+    return 0;
+  };
+
+  const exactMatches = jobs.filter(
+    (job) => normalizeJobReferenceValue(job.title) === normalizedTitle
+  );
+  if (exactMatches.length === 1) {
+    return exactMatches[0];
+  }
+  if (exactMatches.length > 1) {
+    return [...exactMatches].sort((left, right) => {
+      const previewScoreDelta = scorePreview(right) - scorePreview(left);
+      if (previewScoreDelta !== 0) {
+        return previewScoreDelta;
+      }
+      return right.createdAt.getTime() - left.createdAt.getTime();
+    })[0] ?? null;
+  }
+
+  const partialMatches = jobs.filter((job) => {
+    const normalizedJobTitle = normalizeJobReferenceValue(job.title);
+    return (
+      normalizedJobTitle.includes(normalizedTitle) ||
+      normalizedTitle.includes(normalizedJobTitle)
+    );
+  });
+  if (partialMatches.length === 0) {
+    return null;
+  }
+
+  return [...partialMatches].sort((left, right) => {
+    const previewScoreDelta = scorePreview(right) - scorePreview(left);
+    if (previewScoreDelta !== 0) {
+      return previewScoreDelta;
+    }
+    return right.createdAt.getTime() - left.createdAt.getTime();
+  })[0] ?? null;
+}
+
 async function listJobListRowsFromSupabaseUncached() {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
@@ -611,6 +691,49 @@ export async function listJobPostings({
       job.location.trim().toLowerCase().includes(normalizedLocation);
     return companyMatch && locationMatch;
   });
+}
+
+export async function findJobPostingByReference({
+  title,
+  preview,
+  includeInactive = false,
+  includeRagState = false,
+  allowedIds,
+}: {
+  title: string;
+  preview?: string | null;
+  includeInactive?: boolean;
+  includeRagState?: boolean;
+  allowedIds?: string[] | null;
+}): Promise<JobPostingRecord | null> {
+  const normalizedAllowedIds = Array.from(
+    new Set(
+      (allowedIds ?? [])
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0)
+    )
+  );
+
+  const jobs = await listJobPostingEntries({ includeInactive, includeRagState });
+  const scopedJobs =
+    normalizedAllowedIds.length > 0
+      ? jobs.filter((job) => normalizedAllowedIds.includes(job.id))
+      : jobs;
+
+  return (
+    resolveJobReferenceMatch({
+      jobs: scopedJobs,
+      title,
+      preview,
+    }) ??
+    (normalizedAllowedIds.length > 0
+      ? resolveJobReferenceMatch({
+          jobs,
+          title,
+          preview,
+        })
+      : null)
+  );
 }
 
 export async function listJobListItems(): Promise<JobListItem[]> {
