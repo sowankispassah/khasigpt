@@ -11,6 +11,7 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 export function PwaInstallBanner() {
+  const isPwaEnabled = process.env.NODE_ENV === "production";
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -41,6 +42,35 @@ export function PwaInstallBanner() {
     if (!("serviceWorker" in navigator)) {
       return;
     }
+
+    if (!isPwaEnabled) {
+      void navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) =>
+          Promise.all(registrations.map((registration) => registration.unregister()))
+        )
+        .catch((error) =>
+          console.warn("[pwa] failed to unregister dev service workers", error)
+        );
+
+      if ("caches" in window) {
+        void caches
+          .keys()
+          .then((cacheKeys) =>
+            Promise.all(
+              cacheKeys
+                .filter((cacheKey) => cacheKey.startsWith("khasigpt-cache-"))
+                .map((cacheKey) => caches.delete(cacheKey))
+            )
+          )
+          .catch((error) =>
+            console.warn("[pwa] failed to clear dev caches", error)
+          );
+      }
+
+      return;
+    }
+
     const register = () => {
       navigator.serviceWorker
         .register("/sw.js")
@@ -52,9 +82,12 @@ export function PwaInstallBanner() {
       window.addEventListener("load", register);
     }
     return () => window.removeEventListener("load", register);
-  }, []);
+  }, [isPwaEnabled]);
 
   useEffect(() => {
+    if (!isPwaEnabled) {
+      return;
+    }
     const listener = (event: Event) => {
       const promptEvent = event as BeforeInstallPromptEvent;
       if (typeof promptEvent.prompt !== "function") {
@@ -66,9 +99,12 @@ export function PwaInstallBanner() {
 
     window.addEventListener("beforeinstallprompt", listener);
     return () => window.removeEventListener("beforeinstallprompt", listener);
-  }, []);
+  }, [isPwaEnabled]);
 
   useEffect(() => {
+    if (!isPwaEnabled) {
+      return;
+    }
     const mediaQuery = window.matchMedia("(display-mode: standalone)");
     const updateStandalone = () =>
       setIsStandalone(
@@ -84,11 +120,11 @@ export function PwaInstallBanner() {
     }
     mediaQuery.addListener(handler);
     return () => mediaQuery.removeListener(handler);
-  }, []);
+  }, [isPwaEnabled]);
 
   const canShow = useMemo(() => {
-    return !isStandalone && !dismissed && deferredPrompt;
-  }, [deferredPrompt, dismissed, isStandalone]);
+    return isPwaEnabled && !isStandalone && !dismissed && deferredPrompt;
+  }, [deferredPrompt, dismissed, isPwaEnabled, isStandalone]);
 
   const handleInstall = useCallback(async () => {
     if (!deferredPrompt) {

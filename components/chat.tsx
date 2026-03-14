@@ -884,12 +884,6 @@ export function Chat({
       return;
     }
 
-    // Keep Jobs mode launched from the root jobs page on the same route to avoid
-    // a visible remount after the first response.
-    if (isJobsMode && (pathname === "/" || pathname === "/chat")) {
-      return;
-    }
-
     const nextHref = getCurrentChatHref(id);
     const currentHref = `${window.location.pathname}${window.location.search}`;
     if (currentHref === nextHref) {
@@ -897,7 +891,7 @@ export function Chat({
     }
 
     window.history.replaceState({}, "", nextHref);
-  }, [getCurrentChatHref, id, isJobsMode, pathname]);
+  }, [getCurrentChatHref, id]);
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {
