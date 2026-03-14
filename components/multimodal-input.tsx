@@ -77,6 +77,7 @@ function PureMultimodalInput({
   imageGenerationRequiresPaidCredits,
   isGeneratingImage,
   jobTitleReference,
+  lockJobTitleReference = false,
   onClearJobTitleReference,
   studyQuestionReference,
   onClearStudyQuestionReference,
@@ -108,6 +109,7 @@ function PureMultimodalInput({
   imageGenerationRequiresPaidCredits: boolean;
   isGeneratingImage: boolean;
   jobTitleReference?: JobTitleReference | null;
+  lockJobTitleReference?: boolean;
   onClearJobTitleReference?: () => void;
   studyQuestionReference?: StudyQuestionReference | null;
   onClearStudyQuestionReference?: () => void;
@@ -246,7 +248,9 @@ function PureMultimodalInput({
     });
 
     setAttachments([]);
-    onClearJobTitleReference?.();
+    if (!lockJobTitleReference) {
+      onClearJobTitleReference?.();
+    }
     onClearStudyQuestionReference?.();
     resetHeight();
     setInput("");
@@ -265,6 +269,7 @@ function PureMultimodalInput({
     onClearJobTitleReference,
     onClearStudyQuestionReference,
     jobTitleReference,
+    lockJobTitleReference,
     studyQuestionReference,
     resetHeight,
   ]);
@@ -393,7 +398,7 @@ function PureMultimodalInput({
           <div className="min-w-0 flex-1 space-y-0.5 text-left">
             <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
               <MessageIcon size={12} />
-              Replying about
+              {lockJobTitleReference ? "Chat about this job" : "Replying about"}
             </div>
             <div className="truncate font-medium text-sm">
               {jobTitleReference.title}
@@ -402,18 +407,20 @@ function PureMultimodalInput({
               {jobTitleReference.preview}
             </div>
           </div>
-          <Button
-            aria-label="Remove job reference"
-            className="h-7 w-7 shrink-0 rounded-md p-0"
-            onClick={(event) => {
-              event.preventDefault();
-              onClearJobTitleReference?.();
-            }}
-            type="button"
-            variant="ghost"
-          >
-            <CrossSmallIcon size={14} />
-          </Button>
+          {lockJobTitleReference ? null : (
+            <Button
+              aria-label="Remove job reference"
+              className="h-7 w-7 shrink-0 rounded-md p-0"
+              onClick={(event) => {
+                event.preventDefault();
+                onClearJobTitleReference?.();
+              }}
+              type="button"
+              variant="ghost"
+            >
+              <CrossSmallIcon size={14} />
+            </Button>
+          )}
         </div>
       ) : null}
 
@@ -583,6 +590,9 @@ export const MultimodalInput = memo(
       return false;
     }
     if (!equal(prevProps.jobTitleReference, nextProps.jobTitleReference)) {
+      return false;
+    }
+    if (prevProps.lockJobTitleReference !== nextProps.lockJobTitleReference) {
       return false;
     }
 

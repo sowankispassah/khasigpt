@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { Response } from "@/components/elements/response";
 import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
+import { JobDetailsChatShell } from "@/components/jobs/job-details-chat-shell";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
-import { getJobPostingById } from "@/lib/jobs/service";
+import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +136,7 @@ export default async function JobPostingDetailPage(props: {
   const sourcePreviewUrl = job.sourceUrl && !isPdfUrl(job.sourceUrl) ? job.sourceUrl : null;
   const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
   const showDescriptionText = !proxiedPdfUrl && detailMarkdown.length > 0;
+  const jobCard = toJobCard(job);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
@@ -174,9 +175,6 @@ export default async function JobPostingDetailPage(props: {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button asChild className="w-full cursor-pointer sm:w-auto" size="sm">
-              <Link href={`/chat?mode=jobs&new=1&jobId=${job.id}`}>Ask about this job</Link>
-            </Button>
             {job.sourceUrl ? (
               <Button
                 asChild
@@ -293,6 +291,11 @@ export default async function JobPostingDetailPage(props: {
           </CardContent>
         </Card>
       ) : null}
+
+      <JobDetailsChatShell
+        jobContext={jobCard}
+        userRole={session.user.role ?? null}
+      />
     </div>
   );
 }
