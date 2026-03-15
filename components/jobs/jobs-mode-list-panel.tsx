@@ -68,7 +68,7 @@ function JobsFilterSelect({
         aria-label={label}
         className={cn(
           "h-8 min-w-[112px] rounded-full border-border/70 bg-background/90 px-2.5 text-[11px] shadow-none sm:h-10 sm:min-w-[152px] sm:px-4 sm:text-sm",
-          "focus:ring-1 focus:ring-ring focus:ring-offset-0"
+          "focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0"
         )}
       >
         <SelectValue placeholder={allLabel} />
