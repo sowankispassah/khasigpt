@@ -61,13 +61,14 @@ export function FloatingChatPopup({
         )}
       >
         <Button
-          className="h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted [&_svg]:!h-6 [&_svg]:!w-6"
+          className="h-[42px] cursor-pointer rounded-full border border-border bg-background px-3 shadow-sm hover:bg-muted [&_svg]:!h-[31px] [&_svg]:!w-[31px]"
           onClick={onOpen}
           size="sm"
           title="Open chat"
           type="button"
           variant="outline"
         >
+          <span className="text-base">Ask</span>
           <MessageSquareText />
           <span className="sr-only">Open chat</span>
         </Button>
