@@ -18,6 +18,7 @@ import { ChatHeader } from "@/components/chat-header";
 import { FloatingChatPopup } from "@/components/jobs/floating-chat-popup";
 import { JobsModeListPanel } from "@/components/jobs/jobs-mode-list-panel";
 import { useTranslation } from "@/components/language-provider";
+import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,7 +67,10 @@ import {
 } from "./sidebar-history";
 import { StudyPromptChips } from "./study/study-prompt-chips";
 import { toast } from "./toast";
-import type { VisibilityType } from "./visibility-selector";
+import {
+  VisibilitySelector,
+  type VisibilityType,
+} from "./visibility-selector";
 
 const MODEL_STORAGE_KEY = "chat-model-preference";
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
@@ -1340,6 +1344,19 @@ export function Chat({
   ) : null;
   const jobsPopup = isJobsMode && !isReadonly ? (
     <FloatingChatPopup
+      controls={
+        <>
+          <VisibilitySelector
+            chatId={id}
+            selectedVisibilityType={visibilityType}
+          />
+          <ModelSelectorCompact
+            className="shrink-0"
+            onModelChange={handleModelChange}
+            selectedModelId={currentModelId}
+          />
+        </>
+      }
       isVisible={isJobsComposerVisible}
       onClose={() => setIsJobsComposerVisible(false)}
       onOpen={() => setIsJobsComposerVisible(true)}

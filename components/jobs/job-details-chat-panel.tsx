@@ -4,8 +4,10 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useState } from "react";
 import { Messages } from "@/components/messages";
+import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { MultimodalInput } from "@/components/multimodal-input";
 import { toast } from "@/components/toast";
+import { VisibilitySelector } from "@/components/visibility-selector";
 import type { JobCard } from "@/lib/jobs/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -179,6 +181,21 @@ export function JobDetailsChatPanel({
 
   return (
     <FloatingChatPopup
+      controls={
+        isReadonly ? null : (
+          <>
+            <VisibilitySelector
+              chatId={resolvedChatId}
+              selectedVisibilityType={initialVisibilityType}
+            />
+            <ModelSelectorCompact
+              className="shrink-0"
+              onModelChange={setCurrentModelId}
+              selectedModelId={currentModelId}
+            />
+          </>
+        )
+      }
       isVisible={isVisible}
       onClose={handleHide}
       onOpen={handleShow}

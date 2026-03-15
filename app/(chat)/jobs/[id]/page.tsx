@@ -4,6 +4,7 @@ import { Response } from "@/components/elements/response";
 import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
 import { JobDetailsChatShell } from "@/components/jobs/job-details-chat-shell";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
+import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 import { readChatOriginUiContext } from "@/lib/chat/ui-context";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
@@ -212,171 +213,177 @@ export default async function JobPostingDetailPage(props: {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
-      <div className="flex items-center justify-between gap-2">
-        <BackToJobsButton />
-      </div>
+    <>
+      <header className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
+        <SidebarToggle />
+      </header>
 
-      <Card>
-        <CardHeader className="space-y-2">
-          <CardTitle className="break-words text-xl sm:text-2xl">{job.title}</CardTitle>
-          <CardDescription className="text-sm">
-            {job.company} / {job.location}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2 text-sm md:grid-cols-2">
-            <p className="break-words">
-              <span className="font-medium">Location:</span> {job.location}
-            </p>
-            <p className="break-words">
-              <span className="font-medium">Type:</span> {getJobTypeLabel(job.employmentType)}
-            </p>
-            <p className="break-words">
-              <span className="font-medium">Salary:</span> {salaryLabel}
-            </p>
-            <p className="break-words">
-              <span className="font-medium">Notification date:</span>{" "}
-              {notificationDateLabel}
-            </p>
-            <p className="break-words">
-              <span className="font-medium">Fetched on:</span> {fetchedOnLabel}
-            </p>
-            <p className="break-words">
-              <span className="font-medium">Source:</span> {sourceLabel}
-            </p>
-          </div>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+        <div className="flex items-center justify-between gap-2">
+          <BackToJobsButton />
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            {job.sourceUrl ? (
-              <Button
-                asChild
-                className="w-full cursor-pointer sm:w-auto"
-                size="sm"
-                variant="outline"
-              >
-                <a href={job.sourceUrl} rel="noreferrer" target="_blank">
-                  Open source listing
-                </a>
-              </Button>
-            ) : null}
-            {proxiedPdfUrl ? (
-              <Button
-                asChild
-                className="w-full cursor-pointer sm:w-auto"
-                size="sm"
-                variant="outline"
-              >
-                <a href={proxiedPdfUrl} rel="noreferrer" target="_blank">
-                  Open PDF file
-                </a>
-              </Button>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      {salaryInfo.entries.length > 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Compensation by role</CardTitle>
-            <CardDescription>Role-wise compensation extracted from the listing or PDF.</CardDescription>
+          <CardHeader className="space-y-2">
+            <CardTitle className="break-words text-xl sm:text-2xl">{job.title}</CardTitle>
+            <CardDescription className="text-sm">
+              {job.company} / {job.location}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-hidden rounded-md border">
-              <table className="min-w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr className="border-b">
-                    <th className="px-4 py-2 text-left font-medium">Role</th>
-                    <th className="px-4 py-2 text-left font-medium">Salary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {salaryInfo.entries.map((entry) => (
-                    <tr className="border-b last:border-b-0" key={`${entry.role}-${entry.salary}`}>
-                      <td className="px-4 py-2 align-top">{entry.role}</td>
-                      <td className="px-4 py-2 align-top">{entry.salary}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 text-sm md:grid-cols-2">
+              <p className="break-words">
+                <span className="font-medium">Location:</span> {job.location}
+              </p>
+              <p className="break-words">
+                <span className="font-medium">Type:</span> {getJobTypeLabel(job.employmentType)}
+              </p>
+              <p className="break-words">
+                <span className="font-medium">Salary:</span> {salaryLabel}
+              </p>
+              <p className="break-words">
+                <span className="font-medium">Notification date:</span>{" "}
+                {notificationDateLabel}
+              </p>
+              <p className="break-words">
+                <span className="font-medium">Fetched on:</span> {fetchedOnLabel}
+              </p>
+              <p className="break-words">
+                <span className="font-medium">Source:</span> {sourceLabel}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
-      {showDescriptionText ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">About the job</CardTitle>
-            <CardDescription>Detailed description extracted from the source listing.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Response className="prose prose-zinc max-w-none text-sm leading-relaxed [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_li]:my-1 [&_ol]:pl-5 [&_p]:my-3 [&_ul]:pl-5">
-              {detailMarkdown}
-            </Response>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {proxiedPdfUrl ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Relevant file</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 px-0 pb-0">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-6">
-                <a
-                  className="cursor-pointer text-primary text-sm underline underline-offset-2"
-                  href={proxiedPdfUrl}
-                  rel="noreferrer"
-                  target="_blank"
+            <div className="flex flex-wrap gap-2">
+              {job.sourceUrl ? (
+                <Button
+                  asChild
+                  className="w-full cursor-pointer sm:w-auto"
+                  size="sm"
+                  variant="outline"
                 >
-                  Open PDF in new tab
-                </a>
-              </div>
-              <ExternalPreviewFrame
-                format="pdf"
-                src={proxiedPdfUrl}
-                title={`${job.title} PDF`}
-              />
+                  <a href={job.sourceUrl} rel="noreferrer" target="_blank">
+                    Open source listing
+                  </a>
+                </Button>
+              ) : null}
+              {proxiedPdfUrl ? (
+                <Button
+                  asChild
+                  className="w-full cursor-pointer sm:w-auto"
+                  size="sm"
+                  variant="outline"
+                >
+                  <a href={proxiedPdfUrl} rel="noreferrer" target="_blank">
+                    Open PDF file
+                  </a>
+                </Button>
+              ) : null}
             </div>
           </CardContent>
         </Card>
-      ) : null}
 
-      {hasAnyFileLinks && sourcePreviewUrl ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Original source page</CardTitle>
-            <CardDescription>Open the original listing in a new tab.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <a
-              className="cursor-pointer break-all text-primary text-sm underline underline-offset-2"
-              href={sourcePreviewUrl}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Open source page in new tab
-            </a>
-          </CardContent>
-        </Card>
-      ) : null}
+        {salaryInfo.entries.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Compensation by role</CardTitle>
+              <CardDescription>Role-wise compensation extracted from the listing or PDF.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-hidden rounded-md border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr className="border-b">
+                      <th className="px-4 py-2 text-left font-medium">Role</th>
+                      <th className="px-4 py-2 text-left font-medium">Salary</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salaryInfo.entries.map((entry) => (
+                      <tr className="border-b last:border-b-0" key={`${entry.role}-${entry.salary}`}>
+                        <td className="px-4 py-2 align-top">{entry.role}</td>
+                        <td className="px-4 py-2 align-top">{entry.salary}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
-      <JobDetailsChatShell
-        chatId={jobChatSession?.chatId ?? null}
-        defaultOpen={jobChatSession?.defaultOpen ?? false}
-        initialHasMoreHistory={jobChatSession?.initialHasMoreHistory ?? false}
-        initialMessages={jobChatSession?.initialMessages ?? []}
-        initialOldestMessageAt={jobChatSession?.initialOldestMessageAt ?? null}
-        initialVisibilityType={jobChatSession?.initialVisibilityType ?? "private"}
-        isReadonly={jobChatSession?.isReadonly ?? false}
-        jobContext={jobCard}
-        key={jobChatSession?.chatId ?? job.id}
-        userRole={session.user.role ?? null}
-      />
-    </div>
+        {showDescriptionText ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">About the job</CardTitle>
+              <CardDescription>Detailed description extracted from the source listing.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Response className="prose prose-zinc max-w-none text-sm leading-relaxed [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_li]:my-1 [&_ol]:pl-5 [&_p]:my-3 [&_ul]:pl-5">
+                {detailMarkdown}
+              </Response>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {proxiedPdfUrl ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Relevant file</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 px-0 pb-0">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-6">
+                  <a
+                    className="cursor-pointer text-primary text-sm underline underline-offset-2"
+                    href={proxiedPdfUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Open PDF in new tab
+                  </a>
+                </div>
+                <ExternalPreviewFrame
+                  format="pdf"
+                  src={proxiedPdfUrl}
+                  title={`${job.title} PDF`}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {hasAnyFileLinks && sourcePreviewUrl ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Original source page</CardTitle>
+              <CardDescription>Open the original listing in a new tab.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <a
+                className="cursor-pointer break-all text-primary text-sm underline underline-offset-2"
+                href={sourcePreviewUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open source page in new tab
+              </a>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <JobDetailsChatShell
+          chatId={jobChatSession?.chatId ?? null}
+          defaultOpen={jobChatSession?.defaultOpen ?? false}
+          initialHasMoreHistory={jobChatSession?.initialHasMoreHistory ?? false}
+          initialMessages={jobChatSession?.initialMessages ?? []}
+          initialOldestMessageAt={jobChatSession?.initialOldestMessageAt ?? null}
+          initialVisibilityType={jobChatSession?.initialVisibilityType ?? "private"}
+          isReadonly={jobChatSession?.isReadonly ?? false}
+          jobContext={jobCard}
+          key={jobChatSession?.chatId ?? job.id}
+          userRole={session.user.role ?? null}
+        />
+      </div>
+    </>
   );
 }

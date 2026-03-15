@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 type FloatingChatPopupProps = {
   children: ReactNode;
+  controls?: ReactNode;
   isVisible: boolean;
   onClose: () => void;
   onOpen: () => void;
@@ -15,10 +16,11 @@ type FloatingChatPopupProps = {
 
 export function FloatingChatPopup({
   children,
+  controls = null,
   isVisible,
   onClose,
   onOpen,
-  title = "Chat",
+  title = "",
 }: FloatingChatPopupProps) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
@@ -35,7 +37,12 @@ export function FloatingChatPopup({
         )}
       >
         <div className="flex items-center justify-between border-border/60 border-b px-4 py-3">
-          <div className="font-medium text-sm">{title}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            {title ? <div className="font-medium text-sm">{title}</div> : null}
+            {controls ? (
+              <div className="flex min-w-0 items-center gap-2">{controls}</div>
+            ) : null}
+          </div>
           <Button
             className="h-8 w-8 cursor-pointer rounded-full border border-border bg-background p-0 shadow-sm hover:bg-muted"
             onClick={onClose}
