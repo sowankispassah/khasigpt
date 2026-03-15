@@ -15,8 +15,8 @@ import { ChatSDKError } from "@/lib/errors";
 import { getGeminiApiKey } from "@/lib/rag/gemini-file-search";
 
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const FILE_SEARCH_HEADERS_TIMEOUT_MS = 25_000;
-const FALLBACK_HEADERS_TIMEOUT_MS = 20_000;
+const FILE_SEARCH_HEADERS_TIMEOUT_MS = 6_000;
+const FALLBACK_HEADERS_TIMEOUT_MS = 8_000;
 const FILE_SEARCH_SYSTEM_INSTRUCTION =
   "You have access to a File Search store containing optional custom knowledge. Use file_search only when it improves correctness (e.g., questions about our product, policies, internal docs, or other curated content). If retrieved content is irrelevant or does not contain the needed information, ignore it and answer normally. Never invent facts; if you are unsure, say you don't know.";
 

@@ -27,6 +27,7 @@ import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
+import { shouldUseDefaultModeRag } from "@/lib/chat/default-mode-rag";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
@@ -177,6 +178,8 @@ const CHAT_CONTEXT_MESSAGE_LIMIT =
   Number.isFinite(rawContextMessageLimit) && rawContextMessageLimit > 0
     ? Math.min(Math.max(rawContextMessageLimit, 20), 400)
     : 120;
+const PRE_MODEL_LATENCY_LOG_THRESHOLD_MS = 1_000;
+const FIRST_CHUNK_LATENCY_LOG_THRESHOLD_MS = 2_000;
 
 const getUsageNumber = (value: unknown): number =>
   typeof value === "number" ? value : 0;
@@ -195,6 +198,12 @@ const getTokenlensCatalog = cache(
   },
   ["tokenlens-catalog"],
   { revalidate: 24 * 60 * 60 } // 24 hours
+);
+
+const getLanguageConfigByCodeCached = cache(
+  async (code: string) => getLanguageByCodeRaw(code),
+  ["chat-language-config"],
+  { tags: ["languages"] }
 );
 
 function hasRedisConnection() {
@@ -241,7 +250,7 @@ function getStartOfTodayInIST() {
 async function resolveLanguageConfig(code?: string | null) {
   const normalized = typeof code === "string" ? code.trim().toLowerCase() : "";
   const languageConfig = normalized
-    ? await getLanguageByCodeRaw(normalized)
+    ? await getLanguageConfigByCodeCached(normalized)
     : null;
 
   if (languageConfig?.isActive) {
@@ -253,7 +262,7 @@ async function resolveLanguageConfig(code?: string | null) {
     return null;
   }
 
-  const fallbackConfig = await getLanguageByCodeRaw(fallback.code);
+  const fallbackConfig = await getLanguageConfigByCodeCached(fallback.code);
   return fallbackConfig?.isActive ? fallbackConfig : null;
 }
 
@@ -1085,6 +1094,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    const requestStartedAt = performance.now();
+    const preModelTimingEntries: Array<{ step: string; ms: number }> = [];
+    const measurePreModelStep = async <T,>(
+      step: string,
+      action: () => Promise<T>
+    ): Promise<T> => {
+      const startedAt = performance.now();
+      try {
+        return await action();
+      } finally {
+        preModelTimingEntries.push({
+          step,
+          ms: Math.round(performance.now() - startedAt),
+        });
+      }
+    };
     const {
       id,
       message,
@@ -1111,7 +1136,7 @@ export async function POST(request: Request) {
       originJobPostingId?: string | null;
     } = requestBody;
 
-    const session = await auth();
+    const session = await measurePreModelStep("auth", () => auth());
 
     if (!session?.user) {
       return new ChatSDKError("unauthorized:chat").toResponse();
@@ -1119,31 +1144,63 @@ export async function POST(request: Request) {
 
     const userRole: UserRole = session.user.role;
     const { maxMessagesPerDay } = entitlementsByUserRole[userRole];
-
-    const messageCount = await getMessageCountByUserId({
-      id: session.user.id,
-      since: getStartOfTodayInIST(),
-    });
+    const messageCountPromise = measurePreModelStep("get_message_count", () =>
+      getMessageCountByUserId({
+        id: session.user.id,
+        since: getStartOfTodayInIST(),
+      })
+    );
+    const settingsPromise = Promise.all([
+      measurePreModelStep("load_free_message_settings", () =>
+        loadFreeMessageSettings()
+      ),
+      measurePreModelStep("get_model_registry", () => getModelRegistry()),
+      measurePreModelStep("get_setting_custom_knowledge", () =>
+        getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY)
+      ),
+      measurePreModelStep("get_setting_document_uploads", () =>
+        getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY)
+      ),
+      measurePreModelStep("get_setting_study_mode", () =>
+        getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY)
+      ),
+      measurePreModelStep("get_setting_jobs_mode", () =>
+        getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY)
+      ),
+    ]);
+    const activeSubscriptionPromise = measurePreModelStep(
+      "get_active_subscription",
+      () => getActiveSubscriptionForUser(session.user.id)
+    );
+    const chatPromise = measurePreModelStep("get_chat", () => getChatById({ id }));
+    const resolvedLanguageConfigPromise = measurePreModelStep(
+      "resolve_language_config",
+      () => resolveLanguageConfig(selectedLanguage)
+    );
+    const [
+      messageCount,
+      [
+        freeMessageSettings,
+        registry,
+        customKnowledgeSetting,
+        documentUploadsSetting,
+        studyModeSetting,
+        jobsModeSetting,
+      ],
+      activeSubscription,
+      chat,
+      resolvedLanguageConfig,
+    ] = await Promise.all([
+      messageCountPromise,
+      settingsPromise,
+      activeSubscriptionPromise,
+      chatPromise,
+      resolvedLanguageConfigPromise,
+    ]);
 
     if (maxMessagesPerDay !== null && messageCount >= maxMessagesPerDay) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
-
-    const [
-      freeMessageSettings,
-      registry,
-      customKnowledgeSetting,
-      documentUploadsSetting,
-      studyModeSetting,
-      jobsModeSetting,
-    ] = await Promise.all([
-      loadFreeMessageSettings(),
-      getModelRegistry(),
-      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-    ]);
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
     );
@@ -1162,10 +1219,6 @@ export async function POST(request: Request) {
         "No chat models are enabled. Please contact an administrator."
       ).toResponse();
     }
-
-    const activeSubscription = await getActiveSubscriptionForUser(
-      session.user.id
-    );
 
     const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
     const hasActiveCredits = activeTokenBalance > 0;
@@ -1216,7 +1269,6 @@ export async function POST(request: Request) {
           ? JOBS_CHAT_MODE
           : "default";
 
-    const chat = await getChatById({ id });
     const resolvedChatMode = chat?.mode ?? requestedChatMode;
     let persistedChatLastContext = chat?.lastContext ?? null;
 
@@ -1232,7 +1284,6 @@ export async function POST(request: Request) {
         "Jobs mode is disabled"
       ).toResponse();
     }
-    const resolvedLanguageConfig = await resolveLanguageConfig(selectedLanguage);
     const selectedLanguageSystemPrompt =
       typeof resolvedLanguageConfig?.systemPrompt === "string" &&
       resolvedLanguageConfig.systemPrompt.trim().length > 0
@@ -1244,20 +1295,24 @@ export async function POST(request: Request) {
         return new ChatSDKError("forbidden:chat").toResponse();
       }
 
-      await touchChatActivityById({ chatId: chat.id });
+      await measurePreModelStep("touch_chat_activity", () =>
+        touchChatActivityById({ chatId: chat.id })
+      );
     } else {
       const fallbackTitle =
         resolvedChatMode === STUDY_CHAT_MODE
           ? "Study"
           : buildFallbackTitleFromMessage(message);
 
-      await saveChat({
-        id,
-        userId: session.user.id,
-        title: fallbackTitle,
-        visibility: selectedVisibilityType,
-        mode: resolvedChatMode,
-      });
+      await measurePreModelStep("save_chat", () =>
+        saveChat({
+          id,
+          userId: session.user.id,
+          title: fallbackTitle,
+          visibility: selectedVisibilityType,
+          mode: resolvedChatMode,
+        })
+      );
 
       if (
         resolvedChatMode === "default" ||
@@ -2302,10 +2357,14 @@ export async function POST(request: Request) {
       }
     }
 
-    const { messages: messagesFromDb } = await getMessagesByChatIdPage({
-      id,
-      limit: CHAT_CONTEXT_MESSAGE_LIMIT,
-    });
+    const { messages: messagesFromDb } = chat
+      ? await measurePreModelStep("load_chat_messages", () =>
+          getMessagesByChatIdPage({
+            id,
+            limit: CHAT_CONTEXT_MESSAGE_LIMIT,
+          })
+        )
+      : { messages: [] };
     const stripDocumentParts = (entry: ChatMessage) => ({
       ...entry,
       parts: entry.parts.filter(
@@ -2745,8 +2804,16 @@ export async function POST(request: Request) {
     );
     const allowModeSpecificFileSearch =
       resolvedChatMode === STUDY_CHAT_MODE || resolvedChatMode === JOBS_CHAT_MODE;
+    const shouldEnableDefaultModeRag =
+      resolvedChatMode === "default" &&
+      customKnowledgeEnabled &&
+      shouldUseDefaultModeRag({
+        userText: getTextFromMessage(message),
+        hasDocumentContext: documentContextText.length > 0,
+        hasHiddenPrompt: normalizedHiddenPrompt.length > 0,
+      });
     const canUseGeminiFileSearch =
-      (customKnowledgeEnabled || allowModeSpecificFileSearch) &&
+      (shouldEnableDefaultModeRag || allowModeSpecificFileSearch) &&
       typeof fileSearchStoreName === "string" &&
       supportsGeminiFileSearchModel(geminiFileSearchModelId);
 
@@ -2794,6 +2861,8 @@ export async function POST(request: Request) {
       canUseGeminiFileSearch &&
       typeof metadataFilter === "string" &&
       metadataFilter.trim().length > 0;
+    const activeEntryCount = activeEntryIds.length;
+    const filteredEntryCount = filteredEntryIds.length;
 
     const geminiFileSearchStoreName =
       useGeminiFileSearch && typeof fileSearchStoreName === "string"
@@ -2894,7 +2963,9 @@ export async function POST(request: Request) {
     });
 
     const streamId = generateUUID();
-    await createStreamId({ streamId, chatId: id });
+    await measurePreModelStep("create_stream_id", () =>
+      createStreamId({ streamId, chatId: id })
+    );
 
     let finalMergedUsage: AppUsage | undefined;
     let latestStepUsage: LanguageModelUsage | null = null;
@@ -3149,6 +3220,58 @@ export async function POST(request: Request) {
       },
       { once: true }
     );
+    const preModelMs = Math.round(performance.now() - requestStartedAt);
+    let firstTextDeltaMs: number | null = null;
+    let latencyLogEmitted = false;
+    let firstChunkLogEmitted = false;
+    const maybeLogLatency = () => {
+      if (latencyLogEmitted) {
+        return;
+      }
+      const shouldLog =
+        preModelMs > PRE_MODEL_LATENCY_LOG_THRESHOLD_MS ||
+        (typeof firstTextDeltaMs === "number" &&
+          firstTextDeltaMs > FIRST_CHUNK_LATENCY_LOG_THRESHOLD_MS);
+      if (!shouldLog) {
+        return;
+      }
+      latencyLogEmitted = true;
+      console.info("[chat] latency", {
+        chatId: id,
+        mode: resolvedChatMode,
+        provider: modelConfig.provider,
+        modelId: modelConfig.providerModelId,
+        used_gemini_file_search: useGeminiFileSearch,
+        active_entry_count: activeEntryCount,
+        filtered_entry_count: filteredEntryCount,
+        default_mode_rag_enabled: shouldEnableDefaultModeRag,
+        pre_model_ms: preModelMs,
+        first_chunk_ms: firstTextDeltaMs,
+        pre_model_breakdown_ms: [...preModelTimingEntries].sort(
+          (left, right) => right.ms - left.ms
+        ),
+      });
+    };
+    const maybeLogFirstChunk = () => {
+      if (
+        firstChunkLogEmitted ||
+        typeof firstTextDeltaMs !== "number" ||
+        firstTextDeltaMs <= FIRST_CHUNK_LATENCY_LOG_THRESHOLD_MS
+      ) {
+        return;
+      }
+      firstChunkLogEmitted = true;
+      console.info("[chat] first_chunk", {
+        chatId: id,
+        mode: resolvedChatMode,
+        provider: modelConfig.provider,
+        modelId: modelConfig.providerModelId,
+        used_gemini_file_search: useGeminiFileSearch,
+        pre_model_ms: preModelMs,
+        first_chunk_ms: firstTextDeltaMs,
+      });
+    };
+    maybeLogLatency();
 
     const result = streamText({
       model: languageModel,
@@ -3162,6 +3285,11 @@ export async function POST(request: Request) {
       },
       onChunk: ({ chunk }) => {
         if (chunk.type === "text-delta") {
+          if (firstTextDeltaMs === null) {
+            firstTextDeltaMs = Math.round(performance.now() - requestStartedAt);
+            maybeLogLatency();
+            maybeLogFirstChunk();
+          }
           streamedText += chunk.text;
         }
       },
@@ -3268,9 +3396,18 @@ export async function POST(request: Request) {
       },
     });
 
+    const responseHeaders =
+      process.env.PLAYWRIGHT === "true"
+        ? {
+            ...STREAM_HEADERS,
+            "x-chat-debug-rag-path": useGeminiFileSearch
+              ? "gemini-file-search"
+              : "direct-model",
+          }
+        : STREAM_HEADERS;
     const streamResponse = createUIMessageStreamResponse({
       stream: combinedStream,
-      headers: STREAM_HEADERS,
+      headers: responseHeaders,
     });
 
     return streamResponse;

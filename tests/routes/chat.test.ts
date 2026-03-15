@@ -1,6 +1,7 @@
 import { config as loadEnv } from "dotenv";
 import { getMessageByErrorCode } from "@/lib/errors";
 import {
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
@@ -25,9 +26,11 @@ const sql = postgres(postgresUrl, {
 
 const chatIdsCreatedByAda: string[] = [];
 const createdJobIds: string[] = [];
+const createdRagEntryIds: string[] = [];
 const previousSettings = new Map<string, unknown>();
 const hadSettings = new Set<string>();
 const overriddenSettings = new Map<string, unknown>([
+  [CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY, true],
   [JOBS_FEATURE_FLAG_KEY, "enabled"],
   [SITE_PUBLIC_LAUNCHED_SETTING_KEY, true],
   [SITE_UNDER_MAINTENANCE_SETTING_KEY, false],
@@ -107,6 +110,59 @@ async function createJobPostingFixture(title: string) {
   return id;
 }
 
+async function createGlobalRagEntryFixture(title: string) {
+  const [actor] = await sql<{ id: string }[]>`
+    select id
+    from "User"
+    order by "createdAt" asc
+    limit 1
+  `;
+
+  if (!actor?.id) {
+    throw new Error("Expected at least one user to exist for rag fixture creation");
+  }
+
+  const id = generateUUID();
+  await sql`
+    insert into "RagEntry" (
+      "id",
+      "title",
+      "content",
+      "type",
+      "tags",
+      "models",
+      "status",
+      "addedBy",
+      "approvalStatus",
+      "approvedBy",
+      "createdAt",
+      "updatedAt",
+      "version",
+      "metadata",
+      "embeddingStatus"
+    ) values (
+      ${id},
+      ${title},
+      ${`${title} knowledge fixture for default-mode rag tests.`},
+      ${"text"},
+      ARRAY[${"playwright"}, ${"custom-knowledge"}]::text[],
+      ARRAY[]::text[],
+      ${"active"},
+      ${actor.id},
+      ${"approved"},
+      ${actor.id},
+      now(),
+      now(),
+      1,
+      ${JSON.stringify({ source: "playwright" })}::jsonb,
+      ${"ready"}
+    )
+  `;
+  createdRagEntryIds.push(id);
+
+  return id;
+}
+
 async function getPersistedChat(chatId: string) {
   const rows = await sql<{ id: string; title: string; mode: string }[]>`
     select id, title, mode
@@ -149,9 +205,17 @@ test.describe
 
       // Middleware caches site-launch state briefly in development.
       await new Promise((resolve) => setTimeout(resolve, 1500));
+      await createGlobalRagEntryFixture("Playwright default chat knowledge");
     });
 
     test.afterAll(async () => {
+      if (createdRagEntryIds.length > 0) {
+        await sql`
+          delete from "RagEntry"
+          where id in ${sql(createdRagEntryIds)}
+        `;
+      }
+
       if (createdJobIds.length > 0) {
         await sql`
           delete from public.jobs
@@ -217,6 +281,27 @@ test.describe
       expect(actualNormalized).toEqual(expectedNormalized);
 
       chatIdsCreatedByAda.push(chatId);
+    });
+
+    test("Ada bypasses global custom knowledge for greetings in default mode", async ({
+      adaContext,
+    }) => {
+      const chatId = generateUUID();
+
+      const response = await adaContext.request.post("/api/chat", {
+        data: {
+          id: chatId,
+          message: createUserMessage("Hi"),
+          selectedChatModel: "chat-model",
+          selectedVisibilityType: "private",
+        },
+      });
+
+      expect(response.status()).toBe(200);
+      expect(response.headers()["x-chat-debug-rag-path"]).toBe("direct-model");
+
+      const body = await response.text();
+      expect(body).toContain('"type":"text-start"');
     });
 
     test("Ada creates a jobs chat with a contextual title", async ({
