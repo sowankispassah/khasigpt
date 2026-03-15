@@ -54,7 +54,7 @@ export function FloatingChatPopup({
       </div>
       <div
         className={cn(
-          "pointer-events-auto fixed right-[10px] bottom-[10px] transition-all duration-200 ease-out",
+          "pointer-events-auto fixed right-[20px] bottom-[20px] transition-all duration-200 ease-out md:right-[100px]",
           isVisible
             ? "translate-y-2 scale-95 opacity-0 pointer-events-none"
             : "translate-y-0 scale-100 opacity-100"
