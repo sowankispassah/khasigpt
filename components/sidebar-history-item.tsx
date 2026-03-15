@@ -1,3 +1,4 @@
+import { BookOpen, BriefcaseBusiness, MessageSquareText } from "lucide-react";
 import Link from "next/link";
 import { memo } from "react";
 import { useCallback, useRef } from "react";
@@ -59,10 +60,10 @@ const PureChatItem = ({
   }, [onPrefetch, chat.id]);
 
   const studyContextSummary = useStudyContextSummary(
-    historyMode === "study" ? chat.id : null
+    chat.mode === "study" ? chat.id : null
   );
   const studyTitle =
-    historyMode === "study"
+    chat.mode === "study"
       ? [studyContextSummary?.exam, studyContextSummary?.role, studyContextSummary?.year]
           .map((part) =>
             typeof part === "string" ? part.trim() : `${part ?? ""}`.trim()
@@ -72,6 +73,12 @@ const PureChatItem = ({
       : "";
   const displayTitle =
     studyTitle || studyContextSummary?.title?.trim() || chat.title;
+  const ChatModeIcon =
+    chat.mode === "jobs"
+      ? BriefcaseBusiness
+      : chat.mode === "study"
+        ? BookOpen
+        : MessageSquareText;
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId: chat.id,
     initialVisibilityType: chat.visibility,
@@ -83,7 +90,7 @@ const PureChatItem = ({
       <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
         <Link
-          className="flex w-full items-center gap-2 truncate text-left"
+          className="flex w-full items-center truncate text-left"
           href={href}
           prefetch={false}
           scroll={false}
@@ -122,7 +129,12 @@ const PureChatItem = ({
             maybePrefetch();
           }}
         >
-          <span className="flex-1 truncate">{displayTitle}</span>
+          <span className="flex min-w-0 flex-1 items-center gap-1">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+              <ChatModeIcon className="h-[11px] w-[11px] text-muted-foreground" />
+            </span>
+            <span className="flex-1 truncate">{displayTitle}</span>
+          </span>
         </Link>
       </SidebarMenuButton>
 

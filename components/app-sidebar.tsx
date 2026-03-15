@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, BriefcaseBusiness, Calculator, Eye } from "lucide-react";
+import { BookOpen, BriefcaseBusiness, Calculator } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -10,11 +10,6 @@ import { useSession } from "next-auth/react";
 import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
 import { PlusIcon } from "@/components/icons";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -340,79 +335,39 @@ export function AppSidebar({
 
             {studyModeEnabled ? (
               <SidebarMenuItem>
-                <Collapsible defaultOpen={false}>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton className="cursor-pointer text-sm" type="button">
-                      <BookOpen />
-                      <span>Study</span>
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-1">
-                    <div className="flex flex-col gap-1">
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                            <Link
-                              aria-disabled={pendingNavigation !== null}
-                              href={NEW_STUDY_HREF}
-                              onClick={handleNewStudyClick}
-                            >
-                              <PlusIcon />
-                              <span>
-                                {pendingNavigation === "study"
-                                  ? "Opening..."
-                                  : "New Study"}
-                              </span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-
-                      <div className="ml-[5px]">
-                        <SidebarHistory mode="study" user={activeUser ?? user} />
-                      </div>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={NEW_STUDY_HREF}
+                    onClick={handleNewStudyClick}
+                  >
+                    <BookOpen />
+                    <span>
+                      {pendingNavigation === "study"
+                        ? "Opening..."
+                        : "Study Mode"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             ) : null}
             {jobsModeEnabled ? (
               <SidebarMenuItem>
-                <Collapsible defaultOpen={false}>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton className="cursor-pointer text-sm" type="button">
-                      <BriefcaseBusiness />
-                      <span>Jobs</span>
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-1">
-                    <div className="flex flex-col gap-1">
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton asChild className="cursor-pointer text-sm">
-                            <Link
-                              aria-disabled={pendingNavigation !== null}
-                              href={VIEW_JOBS_HREF}
-                              onClick={handleViewJobsClick}
-                              onFocus={handleViewJobsPrefetch}
-                              onMouseEnter={handleViewJobsPrefetch}
-                              onTouchStart={handleViewJobsPrefetch}
-                            >
-                              <Eye />
-                              <span>
-                                {pendingNavigation === "jobs" ? "Opening..." : "View Jobs"}
-                              </span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-
-                      <div className="ml-[5px]">
-                        <SidebarHistory mode="jobs" user={activeUser ?? user} />
-                      </div>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={VIEW_JOBS_HREF}
+                    onClick={handleViewJobsClick}
+                    onFocus={handleViewJobsPrefetch}
+                    onMouseEnter={handleViewJobsPrefetch}
+                    onTouchStart={handleViewJobsPrefetch}
+                  >
+                    <BriefcaseBusiness />
+                    <span>
+                      {pendingNavigation === "jobs" ? "Opening..." : "Jobs"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             ) : null}
             {calculatorEnabled ? (
@@ -436,7 +391,7 @@ export function AppSidebar({
           </SidebarMenu>
         </div>
         <SidebarSeparator />
-        <SidebarHistory user={activeUser ?? user} />
+        <SidebarHistory label="Chat History" mode="all" user={activeUser ?? user} />
       </SidebarContent>
     </Sidebar>
   );

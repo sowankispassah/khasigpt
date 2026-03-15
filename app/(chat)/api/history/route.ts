@@ -41,7 +41,9 @@ export async function GET(request: NextRequest) {
         ? "study"
         : normalizedMode === "jobs"
           ? "jobs"
-          : "default";
+          : normalizedMode === "default"
+            ? "default"
+            : null;
 
     if (
       normalizedMode &&

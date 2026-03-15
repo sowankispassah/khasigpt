@@ -44,7 +44,7 @@ export type ChatHistory = {
   hasMore: boolean;
 };
 
-export type ChatHistoryMode = "default" | "study" | "jobs";
+export type ChatHistoryMode = "all" | "default" | "study" | "jobs";
 
 const PAGE_SIZE = 20;
 const STUDY_INITIAL_HISTORY_LIMIT = 5;
@@ -84,14 +84,14 @@ const groupChatsByDate = (chats: Chat[]): GroupedChats => {
   );
 };
 
-export function getChatHistoryBaseKey(mode: ChatHistoryMode = "default") {
+export function getChatHistoryBaseKey(mode: ChatHistoryMode = "all") {
   const modeParam =
     mode === "study" ? "mode=study&" : mode === "jobs" ? "mode=jobs&" : "";
   return `/api/history?${modeParam}limit=${PAGE_SIZE}`;
 }
 
 export function getChatHistoryPaginationKeyForMode(
-  mode: ChatHistoryMode = "default"
+  mode: ChatHistoryMode = "all"
 ) {
   return (pageIndex: number, previousPageData: ChatHistory) => {
     if (previousPageData && previousPageData.hasMore === false) {
@@ -126,7 +126,7 @@ export function getChatHistoryPaginationKey(
 
 export function SidebarHistory({
   user,
-  mode = "default",
+  mode = "all",
   label,
   historyKey,
 }: {
@@ -145,15 +145,10 @@ export function SidebarHistory({
       : Array.isArray(idParam)
         ? (idParam[0] ?? null)
         : null;
-  const queryChatId =
-    mode === "jobs"
-      ? (() => {
-          const candidate = searchParams.get("chatId");
-          return candidate && candidate.trim().length > 0
-            ? candidate.trim()
-            : null;
-        })()
-      : null;
+  const queryChatId = (() => {
+    const candidate = searchParams.get("chatId");
+    return candidate && candidate.trim().length > 0 ? candidate.trim() : null;
+  })();
   const activeChatId = queryChatId ?? activePathChatId;
   const studyContextSummary = useStudyContextSummary(
     mode === "study" ? activeChatId : null
