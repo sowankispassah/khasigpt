@@ -67,7 +67,7 @@ function JobsFilterSelect({
       <SelectTrigger
         aria-label={label}
         className={cn(
-          "h-9 min-w-[132px] rounded-full border-border/70 bg-background/90 px-3 text-xs shadow-none sm:h-10 sm:min-w-[152px] sm:px-4 sm:text-sm",
+          "h-8 min-w-[112px] rounded-full border-border/70 bg-background/90 px-2.5 text-[11px] shadow-none sm:h-10 sm:min-w-[152px] sm:px-4 sm:text-sm",
           "focus:ring-1 focus:ring-ring focus:ring-offset-0"
         )}
       >
@@ -186,7 +186,7 @@ export function JobsModeListPanel({
   return (
     <div className="space-y-4">
       <div className="rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/35 p-3 shadow-sm sm:p-4">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5 sm:gap-3">
           <label
             className={cn(
               "group flex items-center gap-3 rounded-[22px] border border-border/70 bg-background/90 px-4 py-3 shadow-sm",
@@ -210,23 +210,8 @@ export function JobsModeListPanel({
             />
           </label>
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {hasActiveFilters ? (
-              <Button
-                className="ml-auto rounded-full border-border/70 px-4"
-                onClick={() => setFilters(EMPTY_FILTERS)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <X className="h-3.5 w-3.5" />
-                Reset
-              </Button>
-            ) : null}
-          </div>
-
           <div className="-mx-1 overflow-x-auto pb-1">
-            <div className="flex min-w-max items-center gap-1.5 px-1 sm:gap-2">
+            <div className="flex min-w-max items-center gap-1 px-1 sm:gap-2">
               <JobsFilterSelect
                 allLabel="All companies"
                 allValue={ALL_COMPANIES_VALUE}
@@ -257,6 +242,18 @@ export function JobsModeListPanel({
                 options={types}
                 value={filters.type}
               />
+              {hasActiveFilters ? (
+                <Button
+                  className="h-8 rounded-full border-border/70 px-3 text-[11px] sm:h-9 sm:px-4 sm:text-xs"
+                  onClick={() => setFilters(EMPTY_FILTERS)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Reset
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
