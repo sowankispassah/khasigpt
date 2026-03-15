@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { JobsInfiniteList } from "@/components/jobs/jobs-infinite-list";
 import { Button } from "@/components/ui/button";
@@ -67,7 +67,7 @@ function JobsFilterSelect({
       <SelectTrigger
         aria-label={label}
         className={cn(
-          "h-10 min-w-[152px] rounded-full border-border/70 bg-background/90 px-4 text-sm shadow-none",
+          "h-9 min-w-[132px] rounded-full border-border/70 bg-background/90 px-3 text-xs shadow-none sm:h-10 sm:min-w-[152px] sm:px-4 sm:text-sm",
           "focus:ring-1 focus:ring-ring focus:ring-offset-0"
         )}
       >
@@ -211,18 +211,9 @@ export function JobsModeListPanel({
           </label>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                Filters
-              </span>
-              <span>
-                {filteredJobs.length} of {jobs.length} jobs
-              </span>
-            </div>
             {hasActiveFilters ? (
               <Button
-                className="rounded-full border-border/70 px-4"
+                className="ml-auto rounded-full border-border/70 px-4"
                 onClick={() => setFilters(EMPTY_FILTERS)}
                 size="sm"
                 type="button"
@@ -235,7 +226,7 @@ export function JobsModeListPanel({
           </div>
 
           <div className="-mx-1 overflow-x-auto pb-1">
-            <div className="flex min-w-max items-center gap-2 px-1">
+            <div className="flex min-w-max items-center gap-1.5 px-1 sm:gap-2">
               <JobsFilterSelect
                 allLabel="All companies"
                 allValue={ALL_COMPANIES_VALUE}

@@ -1468,6 +1468,7 @@ export function Chat({
           onModelChange={handleModelChange}
           selectedModelId={currentModelId}
           selectedVisibilityType={initialVisibilityType}
+          showInlineControls={!isJobsMode}
         />
 
         {isJobsMode && !isReadonly ? (

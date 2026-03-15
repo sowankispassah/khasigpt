@@ -19,12 +19,14 @@ function PureChatHeader({
   selectedModelId,
   onModelChange,
   isReadonly,
+  showInlineControls = true,
 }: {
   chatId: string;
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
   isReadonly: boolean;
+  showInlineControls?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -56,7 +58,7 @@ function PureChatHeader({
     <header className="sticky top-0 flex items-center gap-2 bg-background px-2 py-1.5 pr-[5rem] md:px-2 md:pr-[5rem]">
       <SidebarToggle />
 
-      {!isReadonly && (
+      {!isReadonly && showInlineControls && (
         <div className="flex items-center gap-2">
           <VisibilitySelector
             chatId={chatId}
@@ -94,6 +96,7 @@ export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
     prevProps.chatId === nextProps.chatId &&
     prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
     prevProps.selectedModelId === nextProps.selectedModelId &&
-    prevProps.isReadonly === nextProps.isReadonly
+    prevProps.isReadonly === nextProps.isReadonly &&
+    prevProps.showInlineControls === nextProps.showInlineControls
   );
 });
