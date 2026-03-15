@@ -1,0 +1,281 @@
+import { cookies } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/app/(auth)/auth";
+import { ChatLoader } from "@/components/chat-loader";
+import { ModelConfigProvider } from "@/components/model-config-provider";
+import { getImageGenerationAccess } from "@/lib/ai/image-generation";
+import { loadChatModels } from "@/lib/ai/models";
+import {
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+} from "@/lib/constants";
+import {
+  getAppSetting,
+  getLastKnownAppSetting,
+  listLanguagesWithSettings,
+} from "@/lib/db/queries";
+import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { loadIconPromptActions } from "@/lib/icon-prompts";
+import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
+import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
+import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
+import {
+  parseDocumentUploadsAccessModeSetting,
+} from "@/lib/uploads/document-uploads";
+import { generateUUID } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
+
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && error.message === "timeout";
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Promise<{ mode?: string; jobId?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const cookieStore = await cookies();
+  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+
+  const session = await auth();
+  if (!session) {
+    redirect("/login?callbackUrl=/");
+  }
+
+  const requestedMode =
+    typeof resolvedSearchParams?.mode === "string"
+      ? resolvedSearchParams.mode
+      : null;
+  const isStudyMode = requestedMode === "study";
+  const isJobsMode = requestedMode === "jobs";
+  const shouldLoadHomePrompts = !isStudyMode && !isJobsMode;
+
+  const CHAT_HOME_QUERY_TIMEOUT_MS = 8_000;
+  const IMAGE_ACCESS_TIMEOUT_MS = 6_000;
+  const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
+    withTimeout(promise, CHAT_HOME_QUERY_TIMEOUT_MS).catch((error) => {
+      console.error(`[chat/home] ${label} query timed out or failed.`, error);
+      return fallback;
+    });
+  const safeAppSettingQuery = <T,>(
+    label: string,
+    key: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
+    withTimeout(promise, CHAT_HOME_QUERY_TIMEOUT_MS).catch((error) => {
+      console.error(`[chat/home] ${label} query timed out or failed.`, error);
+      const remembered = getLastKnownAppSetting<T>(key);
+      return remembered ?? fallback;
+    });
+
+  const [
+    modelsResult,
+    suggestedPrompts,
+    iconPromptActions,
+    languageSettings,
+    customKnowledgeSetting,
+    documentUploadsSetting,
+    studyModeSetting,
+    jobsModeSetting,
+    imageGenerationAccess,
+  ] = await Promise.all([
+    loadChatModels(),
+    shouldLoadHomePrompts
+      ? safeQuery(
+          "suggested prompts",
+          loadSuggestedPrompts(preferredLanguage, session.user.role),
+          []
+        )
+      : Promise.resolve([]),
+    shouldLoadHomePrompts
+      ? safeQuery(
+          "icon prompt actions",
+          loadIconPromptActions(preferredLanguage, session.user.role),
+          []
+        )
+      : Promise.resolve([]),
+    safeQuery("languages", listLanguagesWithSettings(), []),
+    safeAppSettingQuery(
+      "custom knowledge flag",
+      CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+      null
+    ),
+    safeAppSettingQuery(
+      "document uploads flag",
+      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeAppSettingQuery(
+      "study mode flag",
+      STUDY_MODE_FEATURE_FLAG_KEY,
+      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeAppSettingQuery(
+      "jobs mode flag",
+      JOBS_FEATURE_FLAG_KEY,
+      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
+      null
+    ),
+    withTimeout(
+      getImageGenerationAccess({
+        userId: session.user.id,
+        userRole: session.user.role,
+      }),
+      IMAGE_ACCESS_TIMEOUT_MS
+    ).catch((error) => {
+      if (!isTimeoutError(error)) {
+        console.error("[chat/home] image generation access failed.", error);
+      }
+      return {
+        enabled: false,
+        canGenerate: false,
+        hasCredits: false,
+        hasPaidPlan: false,
+        hasPaidCredits: false,
+        hasManualCredits: false,
+        requiresPaidCredits: false,
+        isAdmin: session.user.role === "admin",
+        tokensPerImage: 1,
+        model: null,
+      };
+    }),
+  ]);
+
+  const { defaultModel, models } = modelsResult;
+
+  const id = generateUUID();
+
+  const modelIdFromCookie = cookieStore.get("chat-model");
+  const cookieModelValue =
+    typeof modelIdFromCookie?.value === "string" ? modelIdFromCookie.value : "";
+  const resolvedCookieModelId =
+    cookieModelValue &&
+    (models.some((model) => model.id === cookieModelValue)
+      ? cookieModelValue
+      : models.find((model) => model.key === cookieModelValue)?.id ??
+        models.find((model) => model.providerModelId === cookieModelValue)?.id ??
+        "");
+  const fallbackModelId =
+    resolvedCookieModelId || defaultModel?.id || models[0]?.id || "";
+  const chatLanguageFromCookie = cookieStore.get("chat-language");
+  const initialChatLanguage =
+    typeof chatLanguageFromCookie?.value === "string"
+      ? chatLanguageFromCookie.value
+      : preferredLanguage ?? "";
+
+  const customKnowledgeEnabled =
+    typeof customKnowledgeSetting === "boolean"
+      ? customKnowledgeSetting
+      : typeof customKnowledgeSetting === "string"
+        ? customKnowledgeSetting.toLowerCase() === "true"
+        : false;
+  const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
+    documentUploadsSetting
+  );
+  const documentUploadsEnabled = isFeatureEnabledForRole(
+    documentUploadsMode,
+    session.user.role
+  );
+  const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
+  const studyModeEnabled = isFeatureEnabledForRole(
+    studyModeMode,
+    session.user.role
+  );
+  const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
+  const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
+  const requestedJobId =
+    typeof resolvedSearchParams?.jobId === "string" &&
+    resolvedSearchParams.jobId.trim().length > 0
+      ? resolvedSearchParams.jobId.trim()
+      : null;
+
+  if (isStudyMode && !studyModeEnabled) {
+    redirect("/chat");
+  }
+  if (isJobsMode && !jobsModeEnabled) {
+    notFound();
+  }
+  const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
+  const initialJobEntry =
+    chatMode === "jobs" && requestedJobId
+      ? await withTimeout(
+          getJobPostingById({
+            id: requestedJobId,
+            includeInactive: false,
+            includeRagState: false,
+          }),
+          CHAT_HOME_QUERY_TIMEOUT_MS
+        ).catch((error) => {
+          console.error("[chat/home] job lookup timed out or failed.", error);
+          return null;
+        })
+      : null;
+  const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
+  const jobsListItems =
+    chatMode === "jobs"
+      ? await withTimeout(
+          listJobListItems(),
+          CHAT_HOME_QUERY_TIMEOUT_MS
+        )
+          .catch((error) => {
+            console.error("[chat/home] jobs listing query timed out or failed.", error);
+            return [];
+          })
+      : [];
+  const activeLanguageSettings = languageSettings
+    .filter((language) => language.isActive)
+    .map((language) => ({
+      id: language.id,
+      code: language.code,
+      name: language.name,
+      isDefault: language.isDefault,
+      isActive: language.isActive,
+      syncUiLanguage: language.syncUiLanguage,
+    }));
+
+  return (
+    <ModelConfigProvider
+      defaultModelId={defaultModel?.id ?? null}
+      models={models.map((model) => ({
+        id: model.id,
+        name: model.name,
+        description: model.description,
+        supportsReasoning: model.supportsReasoning,
+      }))}
+    >
+      <ChatLoader
+        autoResume={false}
+        customKnowledgeEnabled={customKnowledgeEnabled}
+        chatMode={chatMode}
+        id={id}
+        imageGeneration={{
+          enabled: imageGenerationAccess.enabled,
+          canGenerate: imageGenerationAccess.canGenerate,
+          requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
+        }}
+        documentUploadsEnabled={documentUploadsEnabled}
+        initialChatLanguage={initialChatLanguage}
+        initialChatModel={fallbackModelId}
+        initialJobContext={initialJobContext}
+        jobsListItems={jobsListItems}
+        initialMessages={[]}
+        initialHasMoreHistory={false}
+        initialOldestMessageAt={null}
+        initialVisibilityType="private"
+        isReadonly={false}
+        key={id}
+        languageSettings={activeLanguageSettings}
+        suggestedPrompts={chatMode === "default" ? suggestedPrompts : []}
+        iconPromptActions={chatMode === "default" ? iconPromptActions : []}
+      />
+    </ModelConfigProvider>
+  );
+}

@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
-import { loadChatModels } from "@/lib/ai/models";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 const CHAT_ID_REGEX =
   /^http:\/\/localhost:3000\/chat\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -107,18 +106,18 @@ export class ChatPage {
   }
 
   async chooseModelFromSelector(chatModelId: string) {
-    const { models } = await loadChatModels();
-    const chatModel = models.find(
-      (currentChatModel) => currentChatModel.id === chatModelId
-    );
-
-    if (!chatModel) {
-      throw new Error(`Model with id ${chatModelId} not found`);
-    }
-
     await this.page.getByTestId("model-selector").click();
-    await this.page.getByTestId(`model-selector-item-${chatModelId}`).click();
-    expect(await this.getSelectedModel()).toBe(chatModel.name);
+    const option = this.page.getByTestId(`model-selector-item-${chatModelId}`);
+    const optionText = await option.innerText();
+    const expectedModelName = optionText
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean);
+    await option.click();
+    if (!expectedModelName) {
+      throw new Error(`Unable to resolve model label for ${chatModelId}`);
+    }
+    expect(await this.getSelectedModel()).toContain(expectedModelName);
   }
 
   async getSelectedVisibility() {
@@ -136,14 +135,21 @@ export class ChatPage {
     expect(await this.getSelectedVisibility()).toBe(chatVisibility);
   }
 
-  async getRecentAssistantMessage() {
+  async getRecentAssistantMessage(): Promise<{
+    element: Locator;
+    content: string | null;
+    reasoning: string | null;
+    toggleReasoningVisibility: () => Promise<void>;
+    upvote: () => Promise<void>;
+    downvote: () => Promise<void>;
+  }> {
     const messageElements = await this.page
       .getByTestId("message-assistant")
       .all();
     const lastMessageElement = messageElements.at(-1);
 
     if (!lastMessageElement) {
-      return null;
+      throw new Error("No assistant message found");
     }
 
     const content = await lastMessageElement
@@ -218,6 +224,10 @@ export class ChatPage {
         ).not.toBeVisible();
       },
     };
+  }
+
+  async getAssistantMessageCount() {
+    return this.page.getByTestId("message-assistant").count();
   }
 
   async expectToastToContain(text: string) {

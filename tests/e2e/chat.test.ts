@@ -74,6 +74,33 @@ test.describe("Chat activity", () => {
     expect(updatedAssistantMessage.content).toContain("It's just blue duh!");
   });
 
+  test("Preserve chat history while switching model mid-conversation", async () => {
+    await chatPage.sendUserMessage("Why is grass green?");
+    await chatPage.isGenerationComplete();
+
+    const firstAssistantMessage = await chatPage.getRecentAssistantMessage();
+    expect(firstAssistantMessage.content).toContain("It's just green duh!");
+    const assistantMessageCountBeforeModelSwitch =
+      await chatPage.getAssistantMessageCount();
+
+    await chatPage.chooseModelFromSelector("chat-model-reasoning");
+
+    const retainedAssistantMessage = await chatPage.getRecentAssistantMessage();
+    expect(retainedAssistantMessage.content).toContain("It's just green duh!");
+
+    await chatPage.sendUserMessage("Why is the sky blue?");
+    await chatPage.isGenerationComplete();
+
+    const latestAssistantMessage = await chatPage.getRecentAssistantMessage();
+    expect(latestAssistantMessage.content).toContain("It's just blue duh!");
+    await expect(
+      latestAssistantMessage.element.getByTestId("message-reasoning")
+    ).toBeVisible();
+    expect(await chatPage.getAssistantMessageCount()).toBe(
+      assistantMessageCountBeforeModelSwitch + 1
+    );
+  });
+
   test("Hide suggested actions after sending message", async () => {
     await chatPage.isElementVisible("suggested-actions");
     await chatPage.sendUserMessageFromSuggestion();
@@ -125,6 +152,22 @@ test.describe("Chat activity", () => {
     const assistantMessage = await chatPage.getRecentAssistantMessage();
     await assistantMessage.downvote();
     await chatPage.isVoteComplete();
+  });
+
+  test("Show vote actions immediately after streaming completes", async () => {
+    await chatPage.sendUserMessage("Why is the sky blue?");
+    await chatPage.isGenerationComplete();
+
+    const assistantMessage = await chatPage.getRecentAssistantMessage();
+
+    await expect(chatPage.stopButton).not.toBeVisible({ timeout: 1000 });
+    await expect(chatPage.sendButton).toBeVisible({ timeout: 1000 });
+    await expect(
+      assistantMessage.element.getByTestId("message-upvote")
+    ).toBeVisible({ timeout: 1000 });
+    await expect(
+      assistantMessage.element.getByTestId("message-downvote")
+    ).toBeVisible({ timeout: 1000 });
   });
 
   test("Update vote", async () => {

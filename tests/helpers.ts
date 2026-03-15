@@ -39,11 +39,23 @@ export async function createAuthenticatedContext({
   const password = generateId();
 
   await page.goto("http://localhost:3000/register");
+  const emailSignupButton = page.getByRole("button", {
+    name: "Sign up with Email",
+  });
+  if (await emailSignupButton.isVisible().catch(() => false)) {
+    await emailSignupButton.click();
+  }
   await page.getByPlaceholder("Your Email Address").click();
   await page.getByPlaceholder("Your Email Address").fill(email);
   await page.getByLabel("Password").click();
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign Up" }).click();
+  const termsCheckbox = page.getByRole("checkbox", {
+    name: "I agree to the Terms of Service and Privacy Policy.",
+  });
+  if (await termsCheckbox.isVisible().catch(() => false)) {
+    await termsCheckbox.check();
+  }
+  await page.getByRole("button", { name: "Sign Up", exact: true }).click();
 
   await expect(page.getByTestId("toast")).toContainText(
     "Account created successfully!"
