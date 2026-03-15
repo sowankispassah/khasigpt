@@ -14,13 +14,19 @@ function normalizeOptionalId(value: unknown) {
   return normalized.length > 0 ? normalized : null;
 }
 
-export function readChatUiContext(context: unknown): Required<ChatUiContext> {
+function readNamedChatUiContext(
+  context: unknown,
+  key: "uiContext" | "originUiContext"
+): Required<ChatUiContext> {
   if (!context || typeof context !== "object" || Array.isArray(context)) {
     return EMPTY_UI_CONTEXT;
   }
 
-  const rawContext = context as { uiContext?: unknown };
-  const rawUiContext = rawContext.uiContext ?? null;
+  const rawContext = context as {
+    originUiContext?: unknown;
+    uiContext?: unknown;
+  };
+  const rawUiContext = rawContext[key] ?? null;
   if (!rawUiContext || typeof rawUiContext !== "object" || Array.isArray(rawUiContext)) {
     return EMPTY_UI_CONTEXT;
   }
@@ -33,13 +39,25 @@ export function readChatUiContext(context: unknown): Required<ChatUiContext> {
   };
 }
 
+export function readChatUiContext(context: unknown): Required<ChatUiContext> {
+  return readNamedChatUiContext(context, "uiContext");
+}
+
+export function readChatOriginUiContext(
+  context: unknown
+): Required<ChatUiContext> {
+  return readNamedChatUiContext(context, "originUiContext");
+}
+
 export function mergeChatUiContext({
   currentContext,
   usageContext,
+  originUiContext,
   uiContext,
 }: {
   currentContext: AppUsage | null | undefined;
   usageContext?: Partial<AppUsage> | null;
+  originUiContext?: Partial<ChatUiContext>;
   uiContext: Partial<ChatUiContext>;
 }): AppUsage {
   const baseContext =
@@ -47,6 +65,7 @@ export function mergeChatUiContext({
       ? currentContext
       : ({} as AppUsage);
   const currentUiContext = readChatUiContext(baseContext);
+  const currentOriginUiContext = readChatOriginUiContext(baseContext);
 
   return {
     ...baseContext,
@@ -60,6 +79,18 @@ export function mergeChatUiContext({
         uiContext.studyPaperId !== undefined
           ? normalizeOptionalId(uiContext.studyPaperId)
           : currentUiContext.studyPaperId,
+    },
+    originUiContext: {
+      jobPostingId:
+        originUiContext?.jobPostingId !== undefined
+          ? currentOriginUiContext.jobPostingId ??
+            normalizeOptionalId(originUiContext.jobPostingId)
+          : currentOriginUiContext.jobPostingId,
+      studyPaperId:
+        originUiContext?.studyPaperId !== undefined
+          ? currentOriginUiContext.studyPaperId ??
+            normalizeOptionalId(originUiContext.studyPaperId)
+          : currentOriginUiContext.studyPaperId,
     },
   };
 }

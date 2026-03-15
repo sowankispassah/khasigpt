@@ -5,12 +5,19 @@ import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
 import { JobDetailsChatShell } from "@/components/jobs/job-details-chat-shell";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { Button } from "@/components/ui/button";
+import { readChatOriginUiContext } from "@/lib/chat/ui-context";
+import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
+import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
+import { getSiteUrl } from "@/lib/seo/site";
+import type { ChatMessage } from "@/lib/types";
+import { convertToUIMessages } from "@/lib/utils";
+import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 
 export const dynamic = "force-dynamic";
 
@@ -85,8 +92,12 @@ function resolvePdfUrl({
 
 export default async function JobPostingDetailPage(props: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ chatId?: string }>;
 }) {
   const { id } = await props.params;
+  const resolvedSearchParams = props.searchParams
+    ? await props.searchParams
+    : undefined;
   const session = await auth();
   const jobsEnabled = await isJobsEnabledForRole(session?.user?.role ?? null);
 
@@ -137,6 +148,68 @@ export default async function JobPostingDetailPage(props: {
   const hasAnyFileLinks = Boolean(proxiedPdfUrl || sourcePreviewUrl);
   const showDescriptionText = !proxiedPdfUrl && detailMarkdown.length > 0;
   const jobCard = toJobCard(job);
+  const requestedChatId =
+    typeof resolvedSearchParams?.chatId === "string" &&
+    resolvedSearchParams.chatId.trim().length > 0
+      ? resolvedSearchParams.chatId.trim()
+      : null;
+  const isAdmin = session.user.role === "admin";
+  let jobChatSession:
+    | {
+        chatId: string;
+        defaultOpen: true;
+        initialHasMoreHistory: boolean;
+        initialMessages: ChatMessage[];
+        initialOldestMessageAt: string | null;
+        initialVisibilityType: "public" | "private";
+        isReadonly: boolean;
+      }
+    | null = null;
+
+  if (requestedChatId) {
+    const savedChat = await getChatById({
+      id: requestedChatId,
+      includeDeleted: true,
+    });
+    const originUiContext = readChatOriginUiContext(savedChat?.lastContext ?? null);
+    const originJobPostingId = originUiContext.jobPostingId;
+    if (
+      savedChat &&
+      savedChat.mode === "jobs" &&
+      originJobPostingId === job.id &&
+      (!savedChat.deletedAt || isAdmin) &&
+      (savedChat.visibility !== "private" ||
+        isAdmin ||
+        savedChat.userId === session.user.id)
+    ) {
+      const { messages: messagesFromDb, hasMore } = await getMessagesByChatIdPage({
+        id: savedChat.id,
+        limit: CHAT_HISTORY_PAGE_SIZE,
+      });
+      const initialMessages = rewriteDocumentUrlsForViewer({
+        messages: convertToUIMessages(messagesFromDb),
+        viewerUserId: session.user.id,
+        isAdmin,
+        baseUrl: getSiteUrl(),
+      });
+      const oldestMessageAt =
+        messagesFromDb[0]?.createdAt instanceof Date
+          ? messagesFromDb[0].createdAt.toISOString()
+          : messagesFromDb[0]?.createdAt
+            ? new Date(messagesFromDb[0].createdAt as unknown as string).toISOString()
+            : null;
+
+      jobChatSession = {
+        chatId: savedChat.id,
+        defaultOpen: true,
+        initialHasMoreHistory: hasMore,
+        initialMessages,
+        initialOldestMessageAt: oldestMessageAt,
+        initialVisibilityType: savedChat.visibility,
+        isReadonly: session.user.id !== savedChat.userId,
+      };
+    }
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
@@ -293,7 +366,15 @@ export default async function JobPostingDetailPage(props: {
       ) : null}
 
       <JobDetailsChatShell
+        chatId={jobChatSession?.chatId ?? null}
+        defaultOpen={jobChatSession?.defaultOpen ?? false}
+        initialHasMoreHistory={jobChatSession?.initialHasMoreHistory ?? false}
+        initialMessages={jobChatSession?.initialMessages ?? []}
+        initialOldestMessageAt={jobChatSession?.initialOldestMessageAt ?? null}
+        initialVisibilityType={jobChatSession?.initialVisibilityType ?? "private"}
+        isReadonly={jobChatSession?.isReadonly ?? false}
         jobContext={jobCard}
+        key={jobChatSession?.chatId ?? job.id}
         userRole={session.user.role ?? null}
       />
     </div>

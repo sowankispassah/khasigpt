@@ -57,6 +57,7 @@ export const postRequestBodySchema = z.object({
   studyPaperId: z.string().uuid().optional().nullable(),
   studyQuizActive: z.boolean().optional(),
   jobPostingId: z.string().uuid().optional().nullable(),
+  originJobPostingId: z.string().uuid().optional().nullable(),
   // Historically this cookie stored a model `key` (not the UUID id).
   // Accept both so older clients/cookies don't hard-fail requests.
   selectedChatModel: z.string().min(1).max(128),

@@ -11,6 +11,7 @@ export type AppUsage = LanguageModelUsage &
   UsageData & {
     modelId?: string;
     uiContext?: ChatUiContext;
+    originUiContext?: ChatUiContext;
     costINR?: {
       inputINR: number;
       outputINR: number;

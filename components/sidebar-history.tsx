@@ -1,7 +1,7 @@
 "use client";
 
 import { subMonths, subWeeks } from "date-fns";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "next-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -137,13 +137,24 @@ export function SidebarHistory({
 }) {
   const { setOpenMobile } = useSidebar();
   const params = useParams();
+  const searchParams = useSearchParams();
   const idParam = params?.id;
-  const activeChatId =
+  const activePathChatId =
     typeof idParam === "string"
       ? idParam
       : Array.isArray(idParam)
         ? (idParam[0] ?? null)
         : null;
+  const queryChatId =
+    mode === "jobs"
+      ? (() => {
+          const candidate = searchParams.get("chatId");
+          return candidate && candidate.trim().length > 0
+            ? candidate.trim()
+            : null;
+        })()
+      : null;
+  const activeChatId = queryChatId ?? activePathChatId;
   const studyContextSummary = useStudyContextSummary(
     mode === "study" ? activeChatId : null
   );

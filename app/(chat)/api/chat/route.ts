@@ -1096,6 +1096,7 @@ export async function POST(request: Request) {
       studyPaperId,
       studyQuizActive,
       jobPostingId,
+      originJobPostingId,
     }: {
       id: string;
       message: ChatMessage;
@@ -1107,6 +1108,7 @@ export async function POST(request: Request) {
       studyPaperId?: string | null;
       studyQuizActive?: boolean;
       jobPostingId?: string | null;
+      originJobPostingId?: string | null;
     } = requestBody;
 
     const session = await auth();
@@ -1286,6 +1288,11 @@ export async function POST(request: Request) {
       typeof jobPostingId === "string" && jobPostingId.trim().length > 0
         ? jobPostingId.trim()
         : null;
+    const normalizedOriginJobPostingId =
+      typeof originJobPostingId === "string" &&
+      originJobPostingId.trim().length > 0
+        ? originJobPostingId.trim()
+        : null;
     const normalizedStudyPaperId =
       typeof studyPaperId === "string" && studyPaperId.trim().length > 0
         ? studyPaperId.trim()
@@ -1327,6 +1334,12 @@ export async function POST(request: Request) {
 
       const nextContext = mergeChatUiContext({
         currentContext: persistedChatLastContext,
+        originUiContext:
+          resolvedChatMode === JOBS_CHAT_MODE
+            ? {
+                jobPostingId: normalizedOriginJobPostingId,
+              }
+            : undefined,
         uiContext: {
           jobPostingId:
             resolvedChatMode === JOBS_CHAT_MODE
@@ -2917,6 +2930,12 @@ export async function POST(request: Request) {
           const nextContext = mergeChatUiContext({
             currentContext: persistedChatLastContext,
             usageContext: usage,
+            originUiContext:
+              resolvedChatMode === JOBS_CHAT_MODE
+                ? {
+                    jobPostingId: normalizedOriginJobPostingId,
+                  }
+                : undefined,
             uiContext: {
               jobPostingId:
                 resolvedChatMode === JOBS_CHAT_MODE

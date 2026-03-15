@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { ModelConfigProvider } from "@/components/model-config-provider";
+import type { VisibilityType } from "@/components/visibility-selector";
 import { loadChatModels } from "@/lib/ai/models";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
@@ -8,16 +9,31 @@ import {
   type FeatureAccessRole,
 } from "@/lib/feature-access";
 import type { JobCard } from "@/lib/jobs/types";
+import type { ChatMessage } from "@/lib/types";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { JobDetailsChatPanel } from "./job-details-chat-panel";
 
 type JobDetailsChatShellProps = {
+  chatId?: string | null;
+  defaultOpen?: boolean;
   jobContext: JobCard;
+  initialHasMoreHistory?: boolean;
+  initialMessages?: ChatMessage[];
+  initialOldestMessageAt?: string | null;
+  initialVisibilityType?: VisibilityType;
+  isReadonly?: boolean;
   userRole: FeatureAccessRole;
 };
 
 export async function JobDetailsChatShell({
+  chatId = null,
+  defaultOpen = false,
   jobContext,
+  initialHasMoreHistory = false,
+  initialMessages = [],
+  initialOldestMessageAt = null,
+  initialVisibilityType = "private",
+  isReadonly = false,
   userRole,
 }: JobDetailsChatShellProps) {
   const cookieStore = await cookies();
@@ -63,9 +79,16 @@ export async function JobDetailsChatShell({
       }))}
     >
       <JobDetailsChatPanel
+        chatId={chatId}
+        defaultOpen={defaultOpen}
         documentUploadsEnabled={documentUploadsEnabled}
+        initialHasMoreHistory={initialHasMoreHistory}
         initialChatLanguage={initialChatLanguage}
         initialChatModel={fallbackModelId}
+        initialMessages={initialMessages}
+        initialOldestMessageAt={initialOldestMessageAt}
+        initialVisibilityType={initialVisibilityType}
+        isReadonly={isReadonly}
         jobContext={jobContext}
       />
     </ModelConfigProvider>
