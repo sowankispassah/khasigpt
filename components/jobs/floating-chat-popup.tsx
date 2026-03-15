@@ -27,7 +27,7 @@ export function FloatingChatPopup({
       <div
         aria-hidden={!isVisible}
         className={cn(
-          "pointer-events-auto fixed right-1 bottom-1 flex origin-bottom-right flex-col overflow-hidden rounded-[28px] border border-border/60 bg-background/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out",
+          "pointer-events-auto fixed right-1 bottom-0 flex origin-bottom-right flex-col overflow-hidden rounded-[28px] border border-border/60 bg-background/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out",
           "w-[calc(100vw-0.5rem)] h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)] min-h-[calc(100dvh-0.5rem)]",
           "sm:right-2 sm:bottom-2 sm:w-[min(33.8rem,calc(100vw-1rem))] sm:h-[min(82vh,46.8rem)] sm:max-h-[min(82vh,46.8rem)] sm:min-h-[min(82vh,46.8rem)]",
           "lg:right-3 lg:bottom-3 lg:w-[min(44rem,calc(100vw-1.5rem))] lg:h-[min(96vh,79rem)] lg:max-h-[min(96vh,79rem)] lg:min-h-[min(96vh,79rem)]",

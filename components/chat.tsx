@@ -1348,6 +1348,7 @@ export function Chat({
         <>
           <VisibilitySelector
             chatId={id}
+            showOnMobile={true}
             selectedVisibilityType={visibilityType}
           />
           <ModelSelectorCompact

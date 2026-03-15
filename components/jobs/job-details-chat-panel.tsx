@@ -186,6 +186,7 @@ export function JobDetailsChatPanel({
           <>
             <VisibilitySelector
               chatId={resolvedChatId}
+              showOnMobile={true}
               selectedVisibilityType={initialVisibilityType}
             />
             <ModelSelectorCompact

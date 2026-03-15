@@ -216,13 +216,10 @@ export default async function JobPostingDetailPage(props: {
     <>
       <header className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
         <SidebarToggle />
+        <BackToJobsButton />
       </header>
 
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
-        <div className="flex items-center justify-between gap-2">
-          <BackToJobsButton />
-        </div>
-
         <Card>
           <CardHeader className="space-y-2">
             <CardTitle className="break-words text-xl sm:text-2xl">{job.title}</CardTitle>
