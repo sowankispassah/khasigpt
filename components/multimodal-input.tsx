@@ -287,6 +287,8 @@ function PureMultimodalInput({
     resetHeight,
   ]);
 
+  const isResponsePending =
+    status === "submitted" || status === "streaming";
   const isBusy = (status !== "ready" && status !== "error") || isGeneratingImage;
 
   const uploadFile = useCallback(
@@ -527,7 +529,7 @@ function PureMultimodalInput({
             />
           </PromptInputTools>
 
-          {status === "streaming" ? (
+          {isResponsePending ? (
             <StopButton setMessages={setMessages} stop={stop} />
           ) : (
             <PromptInputSubmit
@@ -821,13 +823,16 @@ function PureStopButton({
 }) {
   return (
     <Button
-      className="size-7 rounded-full bg-foreground p-1 text-background transition-colors duration-200 hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground"
+      aria-label="Stop generating response"
+      className="size-8 rounded-lg bg-black p-0 text-white shadow-xs transition-colors duration-200 hover:bg-black/90 disabled:bg-muted disabled:text-muted-foreground"
       data-testid="stop-button"
       onClick={(event) => {
         event.preventDefault();
         stop();
         setMessages((messages) => messages);
       }}
+      title="Stop generating response"
+      type="button"
     >
       <StopIcon size={14} />
     </Button>

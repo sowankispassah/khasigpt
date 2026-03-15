@@ -914,15 +914,15 @@ export function Chat({
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {
+      syncCurrentChatUrl();
       sendMessage({
         role: "user" as const,
         parts: [{ type: "text", text: query }],
       });
 
       setHasAppendedQuery(true);
-      window.history.replaceState({}, "", getCurrentChatHref(id));
     }
-  }, [getCurrentChatHref, query, sendMessage, hasAppendedQuery, id]);
+  }, [query, sendMessage, hasAppendedQuery, syncCurrentChatUrl]);
 
   useEffect(() => {
     if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
@@ -1017,7 +1017,7 @@ export function Chat({
         attachment.contentType?.startsWith("image/")
       );
 
-      window.history.replaceState({}, "", getCurrentChatHref(id));
+      syncCurrentChatUrl();
 
       const userMessageId = generateUUID();
       const userParts = [
@@ -1148,7 +1148,7 @@ export function Chat({
         return;
       }
 
-      window.history.replaceState({}, "", getCurrentChatHref(id));
+      syncCurrentChatUrl();
 
       const messageParts = [
         ...attachments.map((attachment) => ({
@@ -1184,13 +1184,14 @@ export function Chat({
     ]
   );
 
-  const handleSubmitScrollToBottom = useCallback(() => {
+  const handleBeforeSubmit = useCallback(() => {
+    syncCurrentChatUrl();
     if (!isJobsMode) {
       return;
     }
     setJobsSubmitScrollSignal((current) => current + 1);
     void mutate("messages:should-scroll", "auto", { revalidate: false });
-  }, [isJobsMode, mutate]);
+  }, [isJobsMode, mutate, syncCurrentChatUrl]);
 
   useEffect(() => {
     setIconPromptSuggestions([]);
@@ -1432,7 +1433,7 @@ export function Chat({
                 setStudyQuestionReference(null)
               }
               onJumpToQuestionPaper={handleJumpToQuestionPaper}
-              onBeforeSubmit={handleSubmitScrollToBottom}
+              onBeforeSubmit={handleBeforeSubmit}
               sendMessage={sendMessage}
               setAttachments={setAttachments}
               setInput={setInput}
@@ -1560,7 +1561,7 @@ export function Chat({
                       setStudyQuestionReference(null)
                     }
                     onJumpToQuestionPaper={handleJumpToQuestionPaper}
-                    onBeforeSubmit={handleSubmitScrollToBottom}
+                    onBeforeSubmit={handleBeforeSubmit}
                     sendMessage={sendMessage}
                     setAttachments={setAttachments}
                     setInput={setInput}
