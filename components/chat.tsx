@@ -1392,6 +1392,7 @@ export function Chat({
             ) : null}
             <MultimodalInput
               attachments={attachments}
+              autoFocus={isJobsComposerVisible}
               chatId={id}
               documentUploadsEnabled={documentUploadsEnabled}
               imageGenerationCanGenerate={false}

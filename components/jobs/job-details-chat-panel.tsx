@@ -212,6 +212,7 @@ export function JobDetailsChatPanel({
           <div className="shrink-0 border-t border-border/60 bg-background/95 p-3 md:p-4">
             <MultimodalInput
               attachments={attachments}
+              autoFocus={isVisible}
               chatId={resolvedChatId}
               documentUploadsEnabled={documentUploadsEnabled}
               imageGenerationCanGenerate={false}
