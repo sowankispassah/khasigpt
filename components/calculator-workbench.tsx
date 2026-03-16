@@ -607,7 +607,7 @@ export function CalculatorWorkbench() {
           </p>
         ) : null}
 
-        <div className="mt-[clamp(1.2rem,3dvh,2.4rem)] min-h-[clamp(2rem,4.5dvh,3.8rem)] sm:mt-20 sm:min-h-24">
+        <div className="mt-[clamp(1.2rem,3dvh,2.4rem)] min-h-[clamp(1.6rem,3.6dvh,3.04rem)] sm:mt-20 sm:min-h-[4.8rem]">
           {shouldShowInWords ? (
             isInWordsOpen ? (
               <>
