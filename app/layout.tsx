@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { GlobalProgressBar } from "@/components/global-progress-bar";
-import { PwaInstallBanner } from "@/components/pwa-install-banner";
+import { RootClientExtras } from "@/components/root-client-extras";
 import { ThemeProvider } from "@/components/theme-provider";
 import {
   PRELOAD_PROGRESS_SCRIPT,
@@ -165,7 +165,7 @@ export default function RootLayout({
           {children}
           <Toaster position="top-center" />
           <SpeedInsights />
-          <PwaInstallBanner />
+          <RootClientExtras />
         </ThemeProvider>
       </body>
     </html>

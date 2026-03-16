@@ -1,9 +1,8 @@
 import type { Session } from "next-auth";
 import { HtmlLangSync } from "@/components/html-lang-sync";
 import { LanguageProvider } from "@/components/language-provider";
-import { PageUserMenu } from "@/components/page-user-menu";
 import { SessionShell } from "@/components/session-shell";
-import { UserPresenceTracker } from "@/components/user-presence-tracker";
+import { SiteShellExtras } from "@/components/site-shell-extras";
 import type { LanguageOption } from "@/lib/i18n/languages";
 
 type SiteShellProps = {
@@ -31,8 +30,10 @@ export function SiteShell({
         languages={languages}
       >
         <HtmlLangSync />
-        <PageUserMenu forumEnabled={forumEnabled} />
-        <UserPresenceTracker />
+        <SiteShellExtras
+          forumEnabled={forumEnabled}
+          hasSession={Boolean(session?.user?.id)}
+        />
         {children}
       </LanguageProvider>
     </SessionShell>

@@ -58,6 +58,7 @@ const HOME_HREF = "/chat";
 const NEW_CHAT_HREF = "/chat?new=1";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
+const CALCULATOR_HREF = "/calculator";
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
 function isChatShellPath(pathname: string) {
@@ -183,7 +184,7 @@ export function AppSidebar({
         prefetchJobsModeData();
       }
       if (calculatorEnabled) {
-        prefetchRoute("/calculator");
+        prefetchRoute(CALCULATOR_HREF);
       }
     }, 300);
 
@@ -245,14 +246,18 @@ export function AppSidebar({
         return;
       }
       event.preventDefault();
-      if (pathname === "/calculator") {
+      if (pathname === CALCULATOR_HREF) {
         setOpenMobile(false);
         return;
       }
-      navigateWithFeedback("calculator", "/calculator");
+      navigateWithFeedback("calculator", CALCULATOR_HREF);
     },
     [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
   );
+
+  const handleCalculatorPrefetch = useCallback(() => {
+    prefetchRoute(CALCULATOR_HREF);
+  }, [prefetchRoute]);
 
   const handleViewJobsClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -375,8 +380,11 @@ export function AppSidebar({
                 <SidebarMenuButton asChild className="cursor-pointer text-sm">
                   <Link
                     aria-disabled={pendingNavigation !== null}
-                    href="/calculator"
+                    href={CALCULATOR_HREF}
                     onClick={handleCalculatorClick}
+                    onFocus={handleCalculatorPrefetch}
+                    onMouseEnter={handleCalculatorPrefetch}
+                    onTouchStart={handleCalculatorPrefetch}
                   >
                     <Calculator />
                     <span>

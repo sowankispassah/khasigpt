@@ -72,8 +72,17 @@ const SITE_INVITE_PATH_PREFIX = "/invite/";
 const BYPASS_SITE_STATUS_GATE_IN_DEV =
   process.env.NODE_ENV === "development" &&
   process.env.ENABLE_SITE_STATUS_GATE_IN_DEV !== "1";
+const siteStatusCacheWindowRaw = Number.parseInt(
+  process.env.MIDDLEWARE_SITE_STATUS_CACHE_WINDOW_MS ??
+    (process.env.NODE_ENV === "development" ? "10000" : "60000"),
+  10
+);
 const SITE_STATUS_CACHE_WINDOW_MS =
-  process.env.NODE_ENV === "development" ? 10 * 1000 : 15 * 1000;
+  Number.isFinite(siteStatusCacheWindowRaw) && siteStatusCacheWindowRaw > 0
+    ? siteStatusCacheWindowRaw
+    : process.env.NODE_ENV === "development"
+      ? 10 * 1000
+      : 60 * 1000;
 const SITE_STATUS_STALE_GRACE_MS =
   process.env.NODE_ENV === "development" ? 60 * 1000 : 60 * 1000;
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
@@ -577,7 +586,11 @@ export async function proxy(request: NextRequest) {
       return NextResponse.rewrite(rewriteUrl);
     }
 
-    const isAdmin = await resolveIsAdmin(request);
+    const shouldResolveAdminForSiteGate =
+      siteStatus.underMaintenance || !siteStatus.publicLaunched;
+    const isAdmin = shouldResolveAdminForSiteGate
+      ? await resolveIsAdmin(request)
+      : false;
 
     if (!isAdmin) {
       const isAuthRoute = isAuthRoutePath(pathname);

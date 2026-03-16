@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { type DataUIPart, DefaultChatTransport } from "ai";
 import { BookOpen } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -15,8 +16,6 @@ import {
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
-import { FloatingChatPopup } from "@/components/jobs/floating-chat-popup";
-import { JobsModeListPanel } from "@/components/jobs/jobs-mode-list-panel";
 import { useTranslation } from "@/components/language-provider";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import {
@@ -78,6 +77,26 @@ const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 const CHAT_MODEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
+
+const FloatingChatPopup = dynamic(
+  () =>
+    import("@/components/jobs/floating-chat-popup").then(
+      (module) => module.FloatingChatPopup
+    ),
+  {
+    loading: () => null,
+  }
+);
+
+const JobsModeListPanel = dynamic(
+  () =>
+    import("@/components/jobs/jobs-mode-list-panel").then(
+      (module) => module.JobsModeListPanel
+    ),
+  {
+    loading: () => null,
+  }
+);
 
 const buildStudyQuestionReference = (
   paper: StudyPaperCard

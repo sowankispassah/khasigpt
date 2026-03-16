@@ -1,5 +1,6 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import dynamic from "next/dynamic";
 import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
@@ -9,12 +10,27 @@ import { cn } from "@/lib/utils";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
 import { LoaderIcon } from "./icons";
-import { JobCards } from "./jobs/job-cards";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
-import { StudyPaperCards } from "./study/study-paper-cards";
+
+const JobCards = dynamic(
+  () => import("./jobs/job-cards").then((module) => module.JobCards),
+  {
+    loading: () => null,
+  }
+);
+
+const StudyPaperCards = dynamic(
+  () =>
+    import("./study/study-paper-cards").then(
+      (module) => module.StudyPaperCards
+    ),
+  {
+    loading: () => null,
+  }
+);
 
 const PurePreviewMessage = ({
   chatId,

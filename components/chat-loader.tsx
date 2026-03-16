@@ -10,7 +10,6 @@ import type { JobListItem } from "@/lib/jobs/types";
 import type { ChatMessage } from "@/lib/types";
 import { doneGlobalProgress } from "@/lib/ui/global-progress";
 import { generateUUID } from "@/lib/utils";
-import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import type { VisibilityType } from "./visibility-selector";
 
 const ChatSkeleton = () => (
@@ -186,23 +185,6 @@ export function ChatLoader(props: ChatLoaderProps) {
       cancelled = true;
     };
   }, [attempt]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (!shouldPrefetch()) {
-      return;
-    }
-
-    const idleHandle = runWhenIdle(() => {
-      preloadChat();
-    }, 400);
-
-    return () => {
-      cancelIdle(idleHandle);
-    };
-  }, []);
 
   if (loadError) {
     const message =
