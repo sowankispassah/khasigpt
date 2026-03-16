@@ -25,6 +25,8 @@ import {
 import { ChatSDKError } from "@/lib/errors";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
+import { isStrongDefaultModeRagTitleMatch } from "@/lib/chat/default-mode-rag";
+import { isDefaultChatRagScope } from "./chat-scope";
 import {
   deleteFileSearchDocument,
   deleteGeminiFile,
@@ -608,7 +610,7 @@ export async function createRagEntry({
   const title = parsed.title.trim();
   const content = sanitizeRagContent(parsed.content);
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
-  const metadata = parsed.metadata ?? {};
+  const metadata = input.metadata !== undefined ? parsed.metadata ?? {} : {};
   const now = new Date();
 
   const [created] = await db
@@ -708,7 +710,13 @@ export async function updateRagEntry({
   const title = parsed.title.trim();
   const content = sanitizeRagContent(parsed.content);
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
-  const metadata = parsed.metadata ?? {};
+  const metadata =
+    input.metadata !== undefined
+      ? {
+          ...toMetadataRecord(existing.metadata),
+          ...(parsed.metadata ?? {}),
+        }
+      : toMetadataRecord(existing.metadata);
   const shouldReembed =
     existing.title !== title ||
     existing.content !== content ||
@@ -1356,6 +1364,115 @@ export async function listActiveRagEntryIdsForModel({
       return false;
     })
     .map((row) => row.id);
+}
+
+export async function listActiveDefaultChatRagEntryIdsForModel({
+  modelConfigId,
+  modelKey,
+}: {
+  modelConfigId: string;
+  modelKey?: string | null;
+}): Promise<string[]> {
+  const rows = await db
+    .select({
+      id: ragEntry.id,
+      models: ragEntry.models,
+      metadata: ragEntry.metadata,
+    })
+    .from(ragEntry)
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        eq(ragEntry.status, "active"),
+        eq(ragEntry.approvalStatus, "approved")
+      )
+    )
+    .orderBy(desc(ragEntry.updatedAt));
+
+  const normalizedKey = modelKey?.trim() ?? null;
+
+  return rows
+    .filter((row) => {
+      if (!isDefaultChatRagScope(toMetadataRecord(row.metadata))) {
+        return false;
+      }
+
+      const models = Array.isArray(row.models) ? row.models : [];
+      if (models.length === 0) {
+        return true;
+      }
+      if (models.includes(modelConfigId)) {
+        return true;
+      }
+      if (normalizedKey && models.includes(normalizedKey)) {
+        return true;
+      }
+      return false;
+    })
+    .map((row) => row.id);
+}
+
+export async function findBestDefaultChatRagEntryTitleMatch({
+  modelConfigId,
+  modelKey,
+  queryText,
+}: {
+  modelConfigId: string;
+  modelKey?: string | null;
+  queryText: string;
+}): Promise<{ id: string; title: string; content: string } | null> {
+  const normalizedKey = modelKey?.trim() ?? null;
+  const rows = await db
+    .select({
+      id: ragEntry.id,
+      title: ragEntry.title,
+      content: ragEntry.content,
+      models: ragEntry.models,
+      metadata: ragEntry.metadata,
+    })
+    .from(ragEntry)
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        eq(ragEntry.status, "active"),
+        eq(ragEntry.approvalStatus, "approved")
+      )
+    )
+    .orderBy(desc(ragEntry.updatedAt))
+    .limit(200);
+
+  const scopedRows = rows.filter((row) => {
+    if (!isDefaultChatRagScope(toMetadataRecord(row.metadata))) {
+      return false;
+    }
+
+    const models = Array.isArray(row.models) ? row.models : [];
+    if (models.length === 0) {
+      return true;
+    }
+    if (models.includes(modelConfigId)) {
+      return true;
+    }
+    if (normalizedKey && models.includes(normalizedKey)) {
+      return true;
+    }
+    return false;
+  });
+
+  const match = scopedRows.find((row) =>
+    isStrongDefaultModeRagTitleMatch({
+      userText: queryText,
+      entryTitle: row.title,
+    })
+  );
+
+  return match
+    ? {
+        id: match.id,
+        title: match.title,
+        content: match.content,
+      }
+    : null;
 }
 
 export async function rebuildAllRagFileSearchIndexes() {

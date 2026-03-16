@@ -59,6 +59,7 @@ import {
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import {
@@ -227,6 +228,9 @@ export function Chat({
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
+  const chatPersistenceConfirmedRef = useRef(
+    (pathname !== "/" && pathname !== "/chat") || initialMessages.length > 0
+  );
   const shouldLoadJobsListFromApi = isJobsMode && jobsListItems.length === 0;
   const {
     data: jobsModeListItemsData,
@@ -340,6 +344,12 @@ export function Chat({
   useEffect(() => {
     currentLanguageCodeRef.current = currentLanguageCode;
   }, [currentLanguageCode]);
+
+  useEffect(() => {
+    if (pathname !== "/" && pathname !== "/chat" && !newChatNonce) {
+      chatPersistenceConfirmedRef.current = true;
+    }
+  }, [newChatNonce, pathname]);
 
   useEffect(() => {
     studyContextIdRef.current = studyContext?.id ?? null;
@@ -903,6 +913,10 @@ export function Chat({
       return;
     }
 
+    document.cookie = `recent-chat-id=${encodeURIComponent(
+      `${id}|${Date.now()}`
+    )}; path=/; max-age=30; samesite=lax`;
+
     const nextHref = getCurrentChatHref(id);
     const currentHref = `${window.location.pathname}${window.location.search}`;
     if (currentHref === nextHref) {
@@ -1184,14 +1198,38 @@ export function Chat({
     ]
   );
 
-  const handleBeforeSubmit = useCallback(() => {
+  const ensureChatExistsBeforeNavigation = useCallback(
+    async (firstMessageText: string) => {
+      if (chatPersistenceConfirmedRef.current) {
+        return;
+      }
+
+      await ensureChatExistsAction({
+        chatId: id,
+        visibility: visibilityType,
+        mode: resolvedChatMode,
+        firstMessageText,
+      });
+      chatPersistenceConfirmedRef.current = true;
+    },
+    [id, resolvedChatMode, visibilityType]
+  );
+
+  const handleBeforeSubmit = useCallback(async () => {
+    await ensureChatExistsBeforeNavigation(input);
     syncCurrentChatUrl();
     if (!isJobsMode) {
       return;
     }
     setJobsSubmitScrollSignal((current) => current + 1);
     void mutate("messages:should-scroll", "auto", { revalidate: false });
-  }, [isJobsMode, mutate, syncCurrentChatUrl]);
+  }, [
+    ensureChatExistsBeforeNavigation,
+    input,
+    isJobsMode,
+    mutate,
+    syncCurrentChatUrl,
+  ]);
 
   useEffect(() => {
     setIconPromptSuggestions([]);

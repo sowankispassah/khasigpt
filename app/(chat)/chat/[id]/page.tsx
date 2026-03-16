@@ -56,7 +56,7 @@ const CHAT_PAGE_INITIAL_MESSAGE_LIMIT =
     ? Math.max(10, Math.min(chatPageInitialLimitRaw, CHAT_HISTORY_PAGE_SIZE))
     : CHAT_HISTORY_PAGE_SIZE;
 const CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS = 15;
-const CHAT_PAGE_MESSAGE_CACHE_REVALIDATE_SECONDS = 10;
+const CHAT_PAGE_PENDING_WINDOW_MS = 15_000;
 
 const getChatByIdCached = unstable_cache(
   async (chatId: string) => getChatById({ id: chatId, includeDeleted: true }),
@@ -64,25 +64,42 @@ const getChatByIdCached = unstable_cache(
   { revalidate: CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS }
 );
 
-const getInitialMessagesByChatIdCached = unstable_cache(
-  async ({ chatId, limit }: { chatId: string; limit: number }) =>
-    getMessagesByChatIdPage({
-      id: chatId,
-      limit,
-    }),
-  ["chat-page:get-messages-by-chat-id"],
-  { revalidate: CHAT_PAGE_MESSAGE_CACHE_REVALIDATE_SECONDS }
-);
-
 function isTimeoutError(error: unknown) {
   return error instanceof Error && error.message === "timeout";
 }
 
-export default async function Page(props: { params: Promise<{ id: string }> }) {
+function parseRecentChatIdCookieValue(value: string | undefined) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const [chatId, timestampRaw] = value.split("|");
+  const timestamp = Number(timestampRaw);
+  if (!chatId || !Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  return { chatId, timestamp };
+}
+
+export default async function Page(props: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ mode?: string }>;
+}) {
   const params = await props.params;
+  const resolvedSearchParams = props.searchParams
+    ? await props.searchParams
+    : undefined;
   const { id } = params;
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
+  const recentChatCookie = parseRecentChatIdCookieValue(
+    cookieStore.get("recent-chat-id")?.value
+  );
+  const requestedMode =
+    typeof resolvedSearchParams?.mode === "string"
+      ? resolvedSearchParams.mode
+      : null;
   const session = await auth();
 
   // Avoid hitting the database at all for logged-out users.
@@ -103,9 +120,9 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     throw error;
   });
 
-  if (!chat) {
-    redirect("/chat");
-  }
+  const isPendingRecentChat =
+    recentChatCookie?.chatId === id &&
+    Date.now() - recentChatCookie.timestamp <= CHAT_PAGE_PENDING_WINDOW_MS;
   const [
     modelsResult,
     translationBundle,
@@ -181,13 +198,17 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }));
   const isAdmin = session.user?.role === "admin";
 
-  if (chat.deletedAt && !isAdmin) {
+  if (!chat && !isPendingRecentChat) {
+    redirect("/chat");
+  }
+
+  if (chat?.deletedAt && !isAdmin) {
     redirect("/");
   }
 
   const { defaultModel, models } = modelsResult;
 
-  if (chat.visibility === "private" && !isAdmin) {
+  if (chat?.visibility === "private" && !isAdmin) {
     if (!session.user) {
       return notFound();
     }
@@ -197,14 +218,20 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     }
   }
 
-  const chatMode = chat.mode ?? "default";
+  const fallbackChatMode =
+    requestedMode === "study"
+      ? "study"
+      : requestedMode === "jobs"
+        ? "jobs"
+        : "default";
+  const chatMode = chat?.mode ?? fallbackChatMode;
   if (chatMode === "study" && !studyModeEnabled) {
     return <StudyModeDisabledNotice />;
   }
   if (chatMode === "jobs" && !jobsModeEnabled) {
     return notFound();
   }
-  if (chatMode === "jobs") {
+  if (chat && chatMode === "jobs") {
     const originUiContext = readChatOriginUiContext(chat.lastContext);
     const originJobPostingId = originUiContext.jobPostingId;
 
@@ -252,24 +279,25 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           })
       : [];
 
-  const { messages: messagesFromDb, hasMore: hasMoreMessages } =
-    await withTimeout(
-      getInitialMessagesByChatIdCached({
-        chatId: id,
-        limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
-      }),
-      CHAT_PAGE_LOAD_TIMEOUT_MS,
-      () => {
-        console.warn(
-          `[chat] getMessagesByChatIdPage timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms (limit=${CHAT_PAGE_INITIAL_MESSAGE_LIMIT})`
-        );
-      }
-    ).catch((error) => {
-      if (isTimeoutError(error)) {
-        return { messages: [], hasMore: false };
-      }
-      throw error;
-    });
+  const { messages: messagesFromDb, hasMore: hasMoreMessages } = chat
+    ? await withTimeout(
+        getMessagesByChatIdPage({
+          id,
+          limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
+        }),
+        CHAT_PAGE_LOAD_TIMEOUT_MS,
+        () => {
+          console.warn(
+            `[chat] getMessagesByChatIdPage timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms (limit=${CHAT_PAGE_INITIAL_MESSAGE_LIMIT})`
+          );
+        }
+      ).catch((error) => {
+        if (isTimeoutError(error)) {
+          return { messages: [], hasMore: false };
+        }
+        throw error;
+      })
+    : { messages: [], hasMore: false };
 
   const uiMessages = rewriteDocumentUrlsForViewer({
     messages: convertToUIMessages(messagesFromDb),
@@ -303,7 +331,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       ? chatLanguageFromCookie.value
       : preferredLanguage ?? "";
 
-  const deletedBanner = chat.deletedAt && isAdmin;
+  const deletedBanner = Boolean(chat?.deletedAt) && isAdmin;
 
   return (
     <ModelConfigProvider
@@ -317,10 +345,10 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     >
       {deletedBanner && <DeletedNotice dictionary={dictionary} />}
       <ChatLoader
-        autoResume={true}
+        autoResume={Boolean(chat)}
         customKnowledgeEnabled={customKnowledgeEnabled}
         chatMode={chatMode}
-        id={chat.id}
+        id={chat?.id ?? id}
         imageGeneration={{
           enabled: imageGenerationAccess.enabled,
           canGenerate: imageGenerationAccess.canGenerate,
@@ -334,8 +362,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         initialMessages={uiMessages}
         initialHasMoreHistory={hasMoreMessages}
         initialOldestMessageAt={oldestMessageAt}
-        initialVisibilityType={chat.visibility}
-        isReadonly={session?.user?.id !== chat.userId}
+        initialVisibilityType={chat?.visibility ?? "private"}
+        isReadonly={chat ? session?.user?.id !== chat.userId : false}
         languageSettings={activeLanguageSettings}
         suggestedPrompts={chatMode === "default" ? suggestedPrompts : []}
         iconPromptActions={chatMode === "default" ? iconPromptActions : []}

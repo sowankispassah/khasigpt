@@ -115,7 +115,7 @@ function PureMultimodalInput({
   studyQuestionReference?: StudyQuestionReference | null;
   onClearStudyQuestionReference?: () => void;
   onJumpToQuestionPaper?: (paperId: string) => void;
-  onBeforeSubmit?: () => void;
+  onBeforeSubmit?: () => void | Promise<void>;
   onGenerateImage: () => void;
   onToggleImageMode: () => void;
   autoFocus?: boolean;
@@ -223,8 +223,18 @@ function PureMultimodalInput({
     [documentUploadsEnabled]
   );
 
-  const submitForm = useCallback(() => {
-    onBeforeSubmit?.();
+  const submitForm = useCallback(async () => {
+    try {
+      await onBeforeSubmit?.();
+    } catch (_error) {
+      toast.error(
+        translate(
+          "chat.submit.failed",
+          "Unable to start the chat right now. Please try again."
+        )
+      );
+      return;
+    }
 
     const parts: ChatMessage["parts"] = [
       ...attachments.map((attachment) => ({
@@ -443,21 +453,21 @@ function PureMultimodalInput({
         className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
         onSubmit={(event) => {
           event.preventDefault();
-          if (isBusy) {
-            toast.error(
-              translate(
-                "chat.input.wait_for_response",
-                "Please wait for the model to finish its response!"
-              )
-            );
+        if (isBusy) {
+          toast.error(
+            translate(
+              "chat.input.wait_for_response",
+              "Please wait for the model to finish its response!"
+            )
+          );
+        } else {
+          if (imageGenerationSelected) {
+            onGenerateImage();
           } else {
-            if (imageGenerationSelected) {
-              onGenerateImage();
-            } else {
-              submitForm();
-            }
+            void submitForm();
           }
-        }}
+        }
+      }}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
           <div

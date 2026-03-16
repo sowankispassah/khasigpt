@@ -47,6 +47,11 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import type { RagEntryStatus } from "@/lib/db/schema";
+import {
+  getRagChatScope,
+  type RagChatScope,
+  RAG_CHAT_SCOPE_OPTIONS,
+} from "@/lib/rag/chat-scope";
 import type {
   AdminRagEntry,
   RagAnalyticsSummary,
@@ -63,6 +68,7 @@ export type SerializedAdminRagEntry = {
     status: RagEntryStatus;
     tags: string[];
     models: string[];
+    chatScope: RagChatScope | null;
     sourceUrl: string | null;
     categoryId: string | null;
     categoryName: string | null;
@@ -106,15 +112,35 @@ const RAG_TYPES = [
 ] as const;
 const STATUS_OPTIONS: RagEntryStatus[] = ["active", "inactive", "archived"];
 
-const DEFAULT_FORM = {
+type RagFormState = {
+  title: string;
+  content: string;
+  type: (typeof RAG_TYPES)[number];
+  status: RagEntryStatus;
+  tags: string[];
+  models: string[];
+  chatScope: RagChatScope | "";
+  sourceUrl: string;
+  categoryId: string;
+};
+
+const DEFAULT_FORM: RagFormState = {
   title: "",
   content: "",
   type: "text" as (typeof RAG_TYPES)[number],
   status: "inactive" as RagEntryStatus,
   tags: [] as string[],
   models: [] as string[],
+  chatScope: "default" as RagChatScope,
   sourceUrl: "",
   categoryId: "",
+};
+
+const CHAT_SCOPE_LABELS: Record<RagChatScope, string> = {
+  default: "Default chat",
+  jobs: "Jobs only",
+  study: "Study only",
+  shared: "Shared",
 };
 
 const sortCategories = (list: Array<{ id: string; name: string }>) =>
@@ -278,6 +304,7 @@ export function AdminRagManager({
           status: entry.status,
           tags: entry.tags,
           models: entry.models,
+          chatScope: getRagChatScope(entry.metadata),
           sourceUrl: entry.sourceUrl ?? null,
           categoryId: entry.categoryId ?? null,
           categoryName: entry.categoryName ?? null,
@@ -340,6 +367,7 @@ export function AdminRagManager({
       status: entry.entry.status,
       tags: entry.entry.tags,
       models: entry.entry.models,
+      chatScope: entry.entry.chatScope ?? "",
       sourceUrl: entry.entry.sourceUrl ?? "",
       categoryId: entry.entry.categoryId ?? "",
     });
@@ -355,6 +383,7 @@ export function AdminRagManager({
       status: formState.status,
       tags: formState.tags,
       models: formState.models,
+      metadata: formState.chatScope ? { chatScope: formState.chatScope } : {},
       sourceUrl: formState.sourceUrl.trim() || null,
       categoryId: formState.categoryId ? formState.categoryId : null,
     };
@@ -669,6 +698,7 @@ export function AdminRagManager({
                   />
                 </th>
                 <th className="px-2 py-2">Title</th>
+                <th className="px-2 py-2">Scope</th>
                 <th className="px-2 py-2">Category</th>
                 <th className="px-2 py-2">Status</th>
                 <th className="px-2 py-2">Models</th>
@@ -682,10 +712,10 @@ export function AdminRagManager({
                 <tr>
                   <td
                     className="px-2 py-6 text-center text-muted-foreground"
-                    colSpan={8}
-                  >
-                    No entries match your filters.
-                  </td>
+                      colSpan={9}
+                    >
+                      No entries match your filters.
+                    </td>
                 </tr>
               ) : (
                 filteredEntries.map((item) => (
@@ -702,6 +732,17 @@ export function AdminRagManager({
                       <p className="line-clamp-2 text-muted-foreground text-xs">
                         {item.entry.content}
                       </p>
+                    </td>
+                    <td className="px-2 py-3">
+                      {item.entry.chatScope ? (
+                        <Badge variant="outline">
+                          {CHAT_SCOPE_LABELS[item.entry.chatScope]}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">
+                          Legacy / unscoped
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-3">
                       {item.entry.categoryName ? (
@@ -805,6 +846,30 @@ export function AdminRagManager({
             </SheetDescription>
           </SheetHeader>
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <Label htmlFor="rag-chat-scope">Chat scope</Label>
+              <select
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                id="rag-chat-scope"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    chatScope: event.target.value as RagChatScope | "",
+                  }))
+                }
+                value={formState.chatScope}
+              >
+                <option value="">Legacy / unscoped</option>
+                {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
+                  <option key={scope} value={scope}>
+                    {CHAT_SCOPE_LABELS[scope]}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-muted-foreground text-xs">
+                Default chat only retrieves entries scoped to Default chat or Shared.
+              </p>
+            </div>
             <div>
               <Label htmlFor="rag-category">Category</Label>
               <div className="mt-1 flex flex-wrap items-center gap-2">

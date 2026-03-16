@@ -10,7 +10,9 @@ import {
   createAuditLogEntry,
   createUserSubscription,
   deleteMessagesByChatIdAfterTimestamp,
+  getChatById,
   getMessageById,
+  saveChat,
   updateChatVisiblityById,
 } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
@@ -93,6 +95,61 @@ export async function updateChatVisibility({
   visibility: VisibilityType;
 }) {
   await updateChatVisiblityById({ chatId, visibility });
+}
+
+function buildPendingChatTitle({
+  firstMessageText,
+  mode,
+}: {
+  firstMessageText: string;
+  mode: "default" | "study" | "jobs";
+}) {
+  if (mode === "study") {
+    return "Study";
+  }
+
+  const normalized = firstMessageText.trim().replace(/\s+/g, " ");
+  if (!normalized.length) {
+    return "New Chat";
+  }
+
+  return normalized.length <= 80 ? normalized : normalized.slice(0, 80);
+}
+
+export async function ensureChatExistsAction({
+  chatId,
+  visibility,
+  mode,
+  firstMessageText,
+}: {
+  chatId: string;
+  visibility: VisibilityType;
+  mode: "default" | "study" | "jobs";
+  firstMessageText: string;
+}) {
+  const session = await auth();
+
+  if (!session?.user) {
+    throw new Error("unauthorized");
+  }
+
+  const existing = await getChatById({ id: chatId });
+  if (existing) {
+    if (existing.userId !== session.user.id) {
+      throw new Error("forbidden");
+    }
+    return { id: existing.id, existed: true };
+  }
+
+  await saveChat({
+    id: chatId,
+    userId: session.user.id,
+    title: buildPendingChatTitle({ firstMessageText, mode }),
+    visibility,
+    mode,
+  });
+
+  return { id: chatId, existed: false };
 }
 
 export async function rechargeSubscriptionAction(formData: FormData) {

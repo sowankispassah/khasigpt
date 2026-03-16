@@ -35,7 +35,7 @@ function isTimeoutError(error: unknown) {
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: Promise<{ mode?: string; jobId?: string }>;
+  searchParams?: Promise<{ mode?: string; jobId?: string; pendingChatId?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const cookieStore = await cookies();
@@ -151,7 +151,12 @@ export default async function Page({
 
   const { defaultModel, models } = modelsResult;
 
-  const id = generateUUID();
+  const pendingChatId =
+    typeof resolvedSearchParams?.pendingChatId === "string" &&
+    resolvedSearchParams.pendingChatId.trim().length > 0
+      ? resolvedSearchParams.pendingChatId.trim()
+      : null;
+  const id = pendingChatId ?? generateUUID();
 
   const modelIdFromCookie = cookieStore.get("chat-model");
   const cookieModelValue =

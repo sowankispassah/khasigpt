@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { shouldUseDefaultModeRag } from "@/lib/chat/default-mode-rag";
+import {
+  isStrongDefaultModeRagTitleMatch,
+  shouldUseDefaultModeRag,
+} from "@/lib/chat/default-mode-rag";
 
 test.describe("default mode rag gating", () => {
   test("bypasses rag for short social messages", () => {
@@ -70,6 +73,29 @@ test.describe("default mode rag gating", () => {
         userText: "Write a haiku about the sea",
         hasDocumentContext: false,
         hasHiddenPrompt: false,
+      })
+    ).toBe(false);
+  });
+
+  test("detects strong title matches for default-scoped entity entries", () => {
+    expect(
+      isStrongDefaultModeRagTitleMatch({
+        userText: "who is soowanki s passah",
+        entryTitle: "Who is Soowanki S Passah",
+      })
+    ).toBe(true);
+
+    expect(
+      isStrongDefaultModeRagTitleMatch({
+        userText: "tell me about soowanki passah",
+        entryTitle: "Who is Soowanki S Passah",
+      })
+    ).toBe(true);
+
+    expect(
+      isStrongDefaultModeRagTitleMatch({
+        userText: "write a poem about the ocean",
+        entryTitle: "Who is Soowanki S Passah",
       })
     ).toBe(false);
   });

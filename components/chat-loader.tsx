@@ -102,6 +102,7 @@ export function ChatLoader(props: ChatLoaderProps) {
 
   const requestedMode = searchParams.get("mode");
   const newChatFlag = searchParams.get("new");
+  const pendingChatId = searchParams.get("pendingChatId");
   const requestedChatMode =
     requestedMode === "study"
       ? "study"
@@ -128,12 +129,13 @@ export function ChatLoader(props: ChatLoaderProps) {
     lastOptimisticRouteRef.current = routeKey;
     setOptimisticSession({
       chatMode: requestedChatMode,
-      id: generateUUID(),
+      id: pendingChatId?.trim() || generateUUID(),
     });
   }, [
     canContinueOptimisticSession,
     isRootChatShellPath,
     newChatFlag,
+    pendingChatId,
     pathname,
     requestedChatMode,
     searchParams,

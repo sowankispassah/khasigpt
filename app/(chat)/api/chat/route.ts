@@ -83,7 +83,10 @@ import {
 } from "@/lib/jobs/service";
 import type { JobCard } from "@/lib/jobs/types";
 import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
-import { listActiveRagEntryIdsForModel } from "@/lib/rag/service";
+import {
+  findBestDefaultChatRagEntryTitleMatch,
+  listActiveDefaultChatRagEntryIdsForModel,
+} from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
@@ -2804,14 +2807,23 @@ export async function POST(request: Request) {
     );
     const allowModeSpecificFileSearch =
       resolvedChatMode === STUDY_CHAT_MODE || resolvedChatMode === JOBS_CHAT_MODE;
+    const defaultChatTitleMatchEntry =
+      resolvedChatMode === "default" && customKnowledgeEnabled
+        ? await findBestDefaultChatRagEntryTitleMatch({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+            queryText: getTextFromMessage(message),
+          })
+        : null;
     const shouldEnableDefaultModeRag =
       resolvedChatMode === "default" &&
       customKnowledgeEnabled &&
-      shouldUseDefaultModeRag({
-        userText: getTextFromMessage(message),
-        hasDocumentContext: documentContextText.length > 0,
-        hasHiddenPrompt: normalizedHiddenPrompt.length > 0,
-      });
+      (Boolean(defaultChatTitleMatchEntry) ||
+        shouldUseDefaultModeRag({
+          userText: getTextFromMessage(message),
+          hasDocumentContext: documentContextText.length > 0,
+          hasHiddenPrompt: normalizedHiddenPrompt.length > 0,
+        }));
     const canUseGeminiFileSearch =
       (shouldEnableDefaultModeRag || allowModeSpecificFileSearch) &&
       typeof fileSearchStoreName === "string" &&
@@ -2827,7 +2839,7 @@ export async function POST(request: Request) {
                 ...(studyPaperIdsForModel ?? []),
               ])
             )
-        : await listActiveRagEntryIdsForModel({
+        : await listActiveDefaultChatRagEntryIdsForModel({
             modelConfigId: modelConfig.id,
             modelKey: modelConfig.key,
           })
@@ -2848,6 +2860,8 @@ export async function POST(request: Request) {
                 new Set([effectiveJobPostingId, ...jobsLinkedStudyPaperIds])
               )
             : []
+        : defaultChatTitleMatchEntry
+          ? [defaultChatTitleMatchEntry.id]
         : activeEntryIds;
 
     const metadataFilter =
@@ -2929,6 +2943,20 @@ export async function POST(request: Request) {
         {
           type: "text" as const,
           text: jobsLinkedStudyContextText,
+        },
+      ];
+    }
+    if (resolvedChatMode === "default" && defaultChatTitleMatchEntry) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: [
+            "Authoritative custom knowledge entry matched this request.",
+            `Title: ${defaultChatTitleMatchEntry.title}`,
+            "Use the following content as the primary source for the answer:",
+            defaultChatTitleMatchEntry.content,
+          ].join("\n\n"),
         },
       ];
     }

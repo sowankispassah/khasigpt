@@ -10,6 +10,21 @@ const DEFAULT_MODE_RAG_NEGATIVE_PATTERNS = [
   /\bgood (?:morning|afternoon|evening|night)\b/i,
 ] as const;
 
+export function normalizeDefaultModeRagMatchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripDefaultModeRagQueryLead(value: string) {
+  return value.replace(
+    /^(?:who is|what is|tell me about|tell me who is|can you tell me about|do you know|please tell me about)\s+/i,
+    ""
+  );
+}
+
 export function shouldUseDefaultModeRag({
   userText,
   hasDocumentContext,
@@ -37,4 +52,55 @@ export function shouldUseDefaultModeRag({
   }
 
   return false;
+}
+
+export function isStrongDefaultModeRagTitleMatch({
+  userText,
+  entryTitle,
+}: {
+  userText: string;
+  entryTitle: string;
+}) {
+  const normalizedQuery = normalizeDefaultModeRagMatchText(userText);
+  const normalizedTitle = normalizeDefaultModeRagMatchText(entryTitle);
+  const normalizedQueryCore = normalizeDefaultModeRagMatchText(
+    stripDefaultModeRagQueryLead(userText)
+  );
+  const normalizedTitleCore = normalizeDefaultModeRagMatchText(
+    stripDefaultModeRagQueryLead(entryTitle)
+  );
+
+  if (!normalizedQuery || !normalizedTitle) {
+    return false;
+  }
+
+  if (
+    normalizedQuery === normalizedTitle ||
+    normalizedQuery.includes(normalizedTitle) ||
+    normalizedTitle.includes(normalizedQuery) ||
+    (normalizedQueryCore.length > 0 &&
+      (normalizedQueryCore === normalizedTitle ||
+        normalizedTitle.includes(normalizedQueryCore) ||
+        normalizedQueryCore.includes(normalizedTitle))) ||
+    (normalizedQueryCore.length > 0 &&
+      normalizedTitleCore.length > 0 &&
+      (normalizedQueryCore === normalizedTitleCore ||
+        normalizedTitleCore.includes(normalizedQueryCore) ||
+        normalizedQueryCore.includes(normalizedTitleCore)))
+  ) {
+    return true;
+  }
+
+  const queryTokens = new Set(
+    (normalizedQueryCore || normalizedQuery).split(" ").filter(Boolean)
+  );
+  const titleTokens = (normalizedTitleCore || normalizedTitle)
+    .split(" ")
+    .filter(Boolean);
+  if (!queryTokens.size || titleTokens.length === 0) {
+    return false;
+  }
+
+  const overlapCount = titleTokens.filter((token) => queryTokens.has(token)).length;
+  return overlapCount >= 2 && overlapCount / titleTokens.length >= 0.6;
 }

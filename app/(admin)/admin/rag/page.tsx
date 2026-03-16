@@ -22,6 +22,7 @@ import {
   listRagCategories,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
+import { getRagChatScope } from "@/lib/rag/chat-scope";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +114,7 @@ export default async function AdminRagPage() {
       status: entry.entry.status,
       tags: entry.entry.tags,
       models: entry.entry.models,
+      chatScope: getRagChatScope(entry.entry.metadata),
       sourceUrl: entry.entry.sourceUrl ?? null,
       categoryId: entry.entry.categoryId ?? null,
       categoryName: entry.entry.categoryName ?? null,
