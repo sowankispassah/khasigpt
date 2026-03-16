@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { getJobPostingById } from "@/lib/jobs/service";
+import { parseSupabaseStorageObjectUrl, resolveServerFetchableSupabaseUrl } from "@/lib/supabase/storage-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,17 +70,7 @@ function isInternalCachedPdfUrl(url: string | null) {
   if (!url) {
     return false;
   }
-
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return (
-      hostname.includes("vercel-storage.com") ||
-      hostname.includes("supabase.co") ||
-      hostname.includes("supabase.net")
-    );
-  } catch {
-    return false;
-  }
+  return parseSupabaseStorageObjectUrl(url) !== null;
 }
 
 export async function GET(
@@ -169,7 +160,8 @@ export async function GET(
 
   let upstream: Response;
   try {
-    upstream = await fetch(pdfUrl, {
+    const fetchUrl = await resolveServerFetchableSupabaseUrl(pdfUrl, 120);
+    upstream = await fetch(fetchUrl, {
       method: "GET",
       headers: forwardHeaders,
       redirect: "follow",

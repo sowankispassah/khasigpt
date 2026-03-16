@@ -245,6 +245,19 @@ async function ensurePdfBucket(
 
   const { data: existingBucket, error: getBucketError } = await supabase.storage.getBucket(bucket);
   if (existingBucket && !getBucketError) {
+    if (existingBucket.public !== false) {
+      const { error: updateBucketError } = await supabase.storage.updateBucket(bucket, {
+        public: false,
+        fileSizeLimit: `${DEFAULT_MAX_BYTES}`,
+        allowedMimeTypes: ["application/pdf"],
+      });
+
+      if (updateBucketError) {
+        throw new Error(
+          `Failed to update storage bucket "${bucket}": ${updateBucketError.message}`
+        );
+      }
+    }
     ensuredBucketName = bucket;
     return;
   }
@@ -255,8 +268,9 @@ async function ensurePdfBucket(
   }
 
   const createResult = await supabase.storage.createBucket(bucket, {
-    public: true,
+    public: false,
     fileSizeLimit: `${DEFAULT_MAX_BYTES}`,
+    allowedMimeTypes: ["application/pdf"],
   });
 
   if (createResult.error && !/already exists|duplicate/i.test(createResult.error.message)) {

@@ -1,5 +1,7 @@
+import "server-only";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
+import { resolveServerFetchableSupabaseUrl } from "@/lib/supabase/storage-url";
 import {
   DOCUMENT_UPLOADS_MAX_BYTES,
   DOCUMENT_UPLOADS_MAX_TEXT_CHARS,
@@ -90,7 +92,8 @@ async function fetchFileBuffer(
       : null;
 
   try {
-    const response = await fetch(url, {
+    const fetchUrl = await resolveServerFetchableSupabaseUrl(url);
+    const response = await fetch(fetchUrl, {
       cache: "no-store",
       signal: controller.signal,
       headers: {
