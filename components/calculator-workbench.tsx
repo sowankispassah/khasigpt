@@ -569,8 +569,8 @@ export function CalculatorWorkbench() {
   }, [appendToExpression, handleBackspace, handleClear, handleEvaluate]);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-md flex-col gap-0.5 rounded-3xl border bg-card p-3 shadow-sm sm:h-auto sm:gap-4 sm:p-4">
-      <div className="relative min-h-[clamp(11rem,25dvh,16rem)] flex-[1.55] rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-0.5 self-start rounded-3xl border bg-card p-3 shadow-sm sm:gap-4 sm:p-4">
+      <div className="relative min-h-[clamp(9.9rem,22.5dvh,14.4rem)] flex-none rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
         <input
           className="min-h-9 w-full bg-transparent text-right font-medium text-3xl outline-none placeholder:text-foreground/70 sm:min-h-10 sm:text-4xl"
           inputMode="decimal"
