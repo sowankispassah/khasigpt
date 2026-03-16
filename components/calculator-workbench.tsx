@@ -570,7 +570,7 @@ export function CalculatorWorkbench() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-0.5 self-start rounded-3xl border bg-card p-3 shadow-sm sm:gap-4 sm:p-4">
-      <div className="relative min-h-[clamp(9.9rem,22.5dvh,14.4rem)] flex-none rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
+      <div className="relative min-h-[clamp(11.314rem,25.713dvh,16.456rem)] flex-none rounded-2xl bg-muted/40 p-3 sm:h-auto sm:flex-none sm:p-4">
         <input
           className="min-h-9 w-full bg-transparent text-right font-medium text-3xl outline-none placeholder:text-foreground/70 sm:min-h-10 sm:text-4xl"
           inputMode="decimal"

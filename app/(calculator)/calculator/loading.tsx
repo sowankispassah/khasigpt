@@ -8,7 +8,7 @@ function CalculatorLoadingSkeleton() {
       <div className="mx-auto flex h-[100svh] w-full max-w-5xl flex-col overflow-hidden px-3 py-3 sm:h-auto sm:overflow-visible sm:px-4 sm:py-5 md:py-8">
         <div className="min-h-0 flex-1 rounded-3xl border bg-card p-3 shadow-sm sm:p-4">
         <div className="flex h-full w-full flex-col gap-3 sm:gap-4">
-          <div className="min-h-[clamp(9.9rem,22.5dvh,14.4rem)] rounded-2xl bg-muted/40 p-4">
+          <div className="min-h-[clamp(11.314rem,25.713dvh,16.456rem)] rounded-2xl bg-muted/40 p-4">
             <div className="ml-auto h-10 w-40 animate-pulse rounded bg-muted" />
             <div className="mt-3 ml-auto h-10 w-56 animate-pulse rounded bg-muted/80" />
             <div className="mt-16 ml-auto h-8 w-28 animate-pulse rounded bg-muted" />
