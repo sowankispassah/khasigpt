@@ -222,6 +222,7 @@ function PureMultimodalInput({
     () => getAttachmentAcceptValue(documentUploadsEnabled),
     [documentUploadsEnabled]
   );
+  const shouldSubmitOnEnter = !(width && width <= 768);
 
   const submitForm = useCallback(async () => {
     try {
@@ -515,6 +516,7 @@ function PureMultimodalInput({
             }
             ref={textareaRef}
             rows={1}
+            submitOnEnter={shouldSubmitOnEnter}
             value={input}
           />
         </div>

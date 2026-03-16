@@ -36,6 +36,7 @@ export type PromptInputTextareaProps = ComponentProps<typeof Textarea> & {
   maxHeight?: number;
   disableAutoResize?: boolean;
   resizeOnNewLinesOnly?: boolean;
+  submitOnEnter?: boolean;
 };
 
 export const PromptInputTextarea = ({
@@ -46,9 +47,14 @@ export const PromptInputTextarea = ({
   maxHeight = 164,
   disableAutoResize = false,
   resizeOnNewLinesOnly = false,
+  submitOnEnter = true,
   ...props
 }: PromptInputTextareaProps) => {
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    if (!submitOnEnter) {
+      return;
+    }
+
     if (e.key === "Enter") {
       // Don't submit if IME composition is in progress
       if (e.nativeEvent.isComposing) {
@@ -83,6 +89,7 @@ export const PromptInputTextarea = ({
         className
       )}
       name="message"
+      enterKeyHint={submitOnEnter ? "send" : "enter"}
       onChange={(e) => {
         onChange?.(e);
       }}
