@@ -27,6 +27,7 @@ import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
 import { fetcher } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
+import { deleteCachedChatPagePayload } from "./chat-page-cache";
 import { preloadChat } from "./chat-loader";
 import { LoaderIcon } from "./icons";
 import { ChatItem } from "./sidebar-history-item";
@@ -373,6 +374,9 @@ export function SidebarHistory({
     toast.promise(deletePromise, {
       loading: translate("sidebar.history.toast.loading", "Deleting chat..."),
       success: () => {
+        if (deleteId) {
+          deleteCachedChatPagePayload(deleteId);
+        }
         mutate((chatHistories) => {
           if (chatHistories) {
             return chatHistories.map((chatHistory) => ({

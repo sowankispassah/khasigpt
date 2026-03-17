@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChatPageLoaderPayload } from "@/lib/chat/page-payload";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
@@ -26,47 +27,32 @@ const ChatSkeleton = () => (
   </div>
 );
 
-type ChatLoaderProps = {
-  id: string;
-  initialMessages: ChatMessage[];
-  initialHasMoreHistory: boolean;
-  initialOldestMessageAt: string | null;
-  initialChatModel: string;
-  initialChatLanguage: string;
-  initialJobContext?: JobCard | null;
-  jobsListItems?: JobListItem[];
-  initialVisibilityType: VisibilityType;
-  chatMode: "default" | "study" | "jobs";
-  languageSettings?: LanguageOption[];
-  isReadonly: boolean;
-  autoResume: boolean;
-  suggestedPrompts: string[];
-  iconPromptActions?: IconPromptAction[];
-  imageGeneration: {
-    enabled: boolean;
-    canGenerate: boolean;
-    requiresPaidCredits: boolean;
-  };
-  documentUploadsEnabled: boolean;
-  customKnowledgeEnabled: boolean;
-};
+export type ChatLoaderProps = ChatPageLoaderPayload;
 
+let resolvedChatClient: ComponentType<ChatLoaderProps> | null = null;
 let chatModulePromise: Promise<typeof import("./chat")> | null = null;
 
 function loadChatModule() {
   if (!chatModulePromise) {
     // If a chunk fails to load (deploy mismatch / transient network), don't
     // cache the rejected promise forever. Allow retries.
-    chatModulePromise = import("./chat").catch((error) => {
-      chatModulePromise = null;
-      throw error;
-    });
+    chatModulePromise = import("./chat")
+      .then((module) => {
+        resolvedChatClient = module.Chat;
+        return module;
+      })
+      .catch((error) => {
+        chatModulePromise = null;
+        resolvedChatClient = null;
+        throw error;
+      });
   }
   return chatModulePromise;
 }
 
 function resetChatModule() {
   chatModulePromise = null;
+  resolvedChatClient = null;
 }
 
 export function preloadChat() {
@@ -85,7 +71,7 @@ export function ChatLoader(props: ChatLoaderProps) {
   const [attempt, setAttempt] = useState(0);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [ChatClient, setChatClient] = useState<ComponentType<ChatLoaderProps> | null>(
-    null
+    () => resolvedChatClient
   );
   const [optimisticSession, setOptimisticSession] = useState<{
     chatMode: ChatLoaderProps["chatMode"];

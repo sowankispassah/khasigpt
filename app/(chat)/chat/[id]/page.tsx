@@ -4,10 +4,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { ChatLoader } from "@/components/chat-loader";
-import { ModelConfigProvider } from "@/components/model-config-provider";
+import { ChatPageClient } from "@/components/chat-page-client";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
+import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
 import {
   CHAT_HISTORY_PAGE_SIZE,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -333,42 +333,49 @@ export default async function Page(props: {
 
   const deletedBanner = Boolean(chat?.deletedAt) && isAdmin;
 
-  return (
-    <ModelConfigProvider
-      defaultModelId={defaultModel?.id ?? null}
-      models={models.map((model) => ({
+  const resolvedChatId = chat?.id ?? id;
+  const payload: CachedChatPagePayload = {
+    chatId: resolvedChatId,
+    modelConfig: {
+      defaultModelId: defaultModel?.id ?? null,
+      models: models.map((model) => ({
         id: model.id,
         name: model.name,
         description: model.description,
         supportsReasoning: model.supportsReasoning,
-      }))}
-    >
+      })),
+    },
+    chatLoader: {
+      autoResume: Boolean(chat),
+      customKnowledgeEnabled,
+      chatMode,
+      id: resolvedChatId,
+      imageGeneration: {
+        enabled: imageGenerationAccess.enabled,
+        canGenerate: imageGenerationAccess.canGenerate,
+        requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
+      },
+      documentUploadsEnabled,
+      initialChatLanguage,
+      initialChatModel: fallbackModelId,
+      jobsListItems,
+      initialJobContext: null,
+      initialMessages: uiMessages,
+      initialHasMoreHistory: hasMoreMessages,
+      initialOldestMessageAt: oldestMessageAt,
+      initialVisibilityType: chat?.visibility ?? "private",
+      isReadonly: chat ? session?.user?.id !== chat.userId : false,
+      languageSettings: activeLanguageSettings,
+      suggestedPrompts: chatMode === "default" ? suggestedPrompts : [],
+      iconPromptActions: chatMode === "default" ? iconPromptActions : [],
+    },
+  };
+
+  return (
+    <>
       {deletedBanner && <DeletedNotice dictionary={dictionary} />}
-      <ChatLoader
-        autoResume={Boolean(chat)}
-        customKnowledgeEnabled={customKnowledgeEnabled}
-        chatMode={chatMode}
-        id={chat?.id ?? id}
-        imageGeneration={{
-          enabled: imageGenerationAccess.enabled,
-          canGenerate: imageGenerationAccess.canGenerate,
-          requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
-        }}
-        documentUploadsEnabled={documentUploadsEnabled}
-        initialChatLanguage={initialChatLanguage}
-        initialChatModel={fallbackModelId}
-        jobsListItems={jobsListItems}
-        initialJobContext={null}
-        initialMessages={uiMessages}
-        initialHasMoreHistory={hasMoreMessages}
-        initialOldestMessageAt={oldestMessageAt}
-        initialVisibilityType={chat?.visibility ?? "private"}
-        isReadonly={chat ? session?.user?.id !== chat.userId : false}
-        languageSettings={activeLanguageSettings}
-        suggestedPrompts={chatMode === "default" ? suggestedPrompts : []}
-        iconPromptActions={chatMode === "default" ? iconPromptActions : []}
-      />
-    </ModelConfigProvider>
+      <ChatPageClient payload={payload} cacheChatId={resolvedChatId} />
+    </>
   );
 }
 

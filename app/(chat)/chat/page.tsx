@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
-import { ChatLoader } from "@/components/chat-loader";
-import { ModelConfigProvider } from "@/components/model-config-provider";
+import { ChatPageClient } from "@/components/chat-page-client";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
+import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -246,41 +246,42 @@ export default async function Page({
       syncUiLanguage: language.syncUiLanguage,
     }));
 
-  return (
-    <ModelConfigProvider
-      defaultModelId={defaultModel?.id ?? null}
-      models={models.map((model) => ({
+  const payload: CachedChatPagePayload = {
+    chatId: id,
+    modelConfig: {
+      defaultModelId: defaultModel?.id ?? null,
+      models: models.map((model) => ({
         id: model.id,
         name: model.name,
         description: model.description,
         supportsReasoning: model.supportsReasoning,
-      }))}
-    >
-      <ChatLoader
-        autoResume={false}
-        customKnowledgeEnabled={customKnowledgeEnabled}
-        chatMode={chatMode}
-        id={id}
-        imageGeneration={{
-          enabled: imageGenerationAccess.enabled,
-          canGenerate: imageGenerationAccess.canGenerate,
-          requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
-        }}
-        documentUploadsEnabled={documentUploadsEnabled}
-        initialChatLanguage={initialChatLanguage}
-        initialChatModel={fallbackModelId}
-        initialJobContext={initialJobContext}
-        jobsListItems={jobsListItems}
-        initialMessages={[]}
-        initialHasMoreHistory={false}
-        initialOldestMessageAt={null}
-        initialVisibilityType="private"
-        isReadonly={false}
-        key={id}
-        languageSettings={activeLanguageSettings}
-        suggestedPrompts={chatMode === "default" ? suggestedPrompts : []}
-        iconPromptActions={chatMode === "default" ? iconPromptActions : []}
-      />
-    </ModelConfigProvider>
-  );
+      })),
+    },
+    chatLoader: {
+      autoResume: false,
+      customKnowledgeEnabled,
+      chatMode,
+      id,
+      imageGeneration: {
+        enabled: imageGenerationAccess.enabled,
+        canGenerate: imageGenerationAccess.canGenerate,
+        requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
+      },
+      documentUploadsEnabled,
+      initialChatLanguage,
+      initialChatModel: fallbackModelId,
+      initialJobContext: initialJobContext ?? null,
+      jobsListItems,
+      initialMessages: [],
+      initialHasMoreHistory: false,
+      initialOldestMessageAt: null,
+      initialVisibilityType: "private",
+      isReadonly: false,
+      languageSettings: activeLanguageSettings,
+      suggestedPrompts: chatMode === "default" ? suggestedPrompts : [],
+      iconPromptActions: chatMode === "default" ? iconPromptActions : [],
+    },
+  };
+
+  return <ChatPageClient payload={payload} />;
 }

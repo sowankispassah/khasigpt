@@ -1,7 +1,5 @@
-import { ChatLoadingShellDelayed } from "@/components/chat-loading-shell-delayed";
+import { ChatRouteLoadingBoundary } from "@/components/chat-route-loading-boundary";
 
 export default function Loading() {
-  // Route-level loading so URL updates instantly on click while the server
-  // fetches chat/messages for /chat/[id].
-  return <ChatLoadingShellDelayed />;
+  return <ChatRouteLoadingBoundary />;
 }
