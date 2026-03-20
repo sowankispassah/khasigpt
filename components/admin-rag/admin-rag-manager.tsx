@@ -112,6 +112,7 @@ const RAG_TYPES = [
   "data",
 ] as const;
 const STATUS_OPTIONS: RagEntryStatus[] = ["active", "inactive", "archived"];
+const INITIAL_VISIBLE_RAG_ENTRIES = 10;
 
 type RagFormState = {
   title: string;
@@ -185,6 +186,7 @@ export function AdminRagManager({
   const [progress, setProgress] = useState(0);
   const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const deferredSearchTerm = useDeferredValue(searchTerm);
+  const [showAllEntries, setShowAllEntries] = useState(false);
 
   useEffect(() => {
     setEntriesState(entries);
@@ -265,6 +267,13 @@ export function AdminRagManager({
   const allSelected =
     filteredEntries.length > 0 &&
     filteredEntries.every((entry) => selectedIds.includes(entry.entry.id));
+  const visibleEntries = showAllEntries
+    ? filteredEntries
+    : filteredEntries.slice(0, INITIAL_VISIBLE_RAG_ENTRIES);
+  const hiddenEntryCount = Math.max(
+    filteredEntries.length - visibleEntries.length,
+    0
+  );
 
   const toggleSelection = (id: string) => {
     setSelectedIds((prev) =>
@@ -608,14 +617,20 @@ export function AdminRagManager({
         <div className="flex flex-wrap items-center gap-3">
           <Input
             className="max-w-xs"
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              setShowAllEntries(false);
+            }}
             placeholder="Search title or content"
             value={searchTerm}
           />
           <FilterGroup
             label="Status"
             onChange={(value) =>
-              setStatusFilter(value as RagEntryStatus | "all")
+              {
+                setStatusFilter(value as RagEntryStatus | "all");
+                setShowAllEntries(false);
+              }
             }
             options={["all", ...STATUS_OPTIONS]}
             value={statusFilter}
@@ -623,14 +638,20 @@ export function AdminRagManager({
           <FilterGroup
             label="Type"
             onChange={(value) =>
-              setTypeFilter(value as (typeof RAG_TYPES)[number] | "all")
+              {
+                setTypeFilter(value as (typeof RAG_TYPES)[number] | "all");
+                setShowAllEntries(false);
+              }
             }
             options={["all", ...RAG_TYPES]}
             value={typeFilter}
           />
           <select
             className="rounded-full border px-3 py-1 text-sm"
-            onChange={(event) => setModelFilter(event.target.value)}
+            onChange={(event) => {
+              setModelFilter(event.target.value);
+              setShowAllEntries(false);
+            }}
             value={modelFilter}
           >
             <option value="all">All models</option>
@@ -642,7 +663,10 @@ export function AdminRagManager({
           </select>
           <select
             className="rounded-full border px-3 py-1 text-sm"
-            onChange={(event) => setTagFilter(event.target.value)}
+            onChange={(event) => {
+              setTagFilter(event.target.value);
+              setShowAllEntries(false);
+            }}
             value={tagFilter}
           >
             <option value="all">All tags</option>
@@ -720,7 +744,7 @@ export function AdminRagManager({
                     </td>
                 </tr>
               ) : (
-                filteredEntries.map((item) => (
+                visibleEntries.map((item) => (
                   <tr className="align-top" key={item.entry.id}>
                     <td className="px-2 py-3">
                       <input
@@ -826,6 +850,21 @@ export function AdminRagManager({
             </tbody>
           </table>
         </div>
+        {hiddenEntryCount > 0 ? (
+          <div className="mt-4 flex justify-end">
+            <Button
+              className="cursor-pointer"
+              onClick={() => setShowAllEntries((current) => !current)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {showAllEntries
+                ? "Show less"
+                : `Show more (${hiddenEntryCount})`}
+            </Button>
+          </div>
+        ) : null}
       </section>
 
       <Sheet
