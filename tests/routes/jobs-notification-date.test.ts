@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { toJobListItem, toJobListItems } from "@/lib/jobs/list-items";
+import { expect, test } from "@playwright/test";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
+import { toJobListItem, toJobListItems } from "@/lib/jobs/list-items";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 
 function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {

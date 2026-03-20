@@ -3,12 +3,12 @@ import {
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
 } from "@/lib/constants";
-import type { UserRole } from "@/lib/db/schema";
 import { getAppSetting } from "@/lib/db/queries";
+import type { UserRole } from "@/lib/db/schema";
 import {
+  type FeatureAccessMode,
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
-  type FeatureAccessMode,
 } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 

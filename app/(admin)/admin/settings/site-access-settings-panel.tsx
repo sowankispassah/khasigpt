@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -110,14 +110,14 @@ export function SiteAccessSettingsPanel({
   initialState: SiteAccessState;
 }) {
   const [state, setState] = useState<SiteAccessState>(initialState);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [savingField, setSavingField] = useState<string | null>(null);
   const [pathInput, setPathInput] = useState(initialState.adminEntryPath);
   const [codeInput, setCodeInput] = useState("");
-  const [syncedAt, setSyncedAt] = useState<Date | null>(null);
+  const [syncedAt, setSyncedAt] = useState<Date | null>(new Date());
   const [currentOrigin, setCurrentOrigin] = useState("");
 
-  const syncFromServer = async () => {
+  const syncFromServer = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchJsonWithTimeout<SiteAccessState>(
@@ -139,13 +139,12 @@ export function SiteAccessSettingsPanel({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setCurrentOrigin(window.location.origin);
     }
-    void syncFromServer();
   }, []);
 
   const saveToggle = async (field: ToggleField, enabled: boolean) => {
@@ -402,11 +401,25 @@ export function SiteAccessSettingsPanel({
         </div>
       </div>
 
-      <p className="text-muted-foreground text-xs">
-        {syncedAt
-          ? `Last synced: ${syncedAt.toLocaleString()}`
-          : "Loading current values from server..."}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted-foreground text-xs">
+          {syncedAt
+            ? `Last synced: ${syncedAt.toLocaleString()}`
+            : "Loaded from the server-rendered settings snapshot."}
+        </p>
+        <Button
+          className="cursor-pointer"
+          disabled={isLoading || Boolean(savingField)}
+          onClick={() => {
+            void syncFromServer();
+          }}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {isLoading ? "Refreshing..." : "Refresh settings"}
+        </Button>
+      </div>
     </div>
   );
 }

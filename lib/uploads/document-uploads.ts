@@ -1,6 +1,6 @@
 import {
-  parseFeatureAccessMode,
   type FeatureAccessMode,
+  parseFeatureAccessMode,
 } from "@/lib/feature-access";
 
 export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png"] as const;

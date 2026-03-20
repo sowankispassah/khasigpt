@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { PdfCanvasPreview } from "@/components/jobs/pdf-canvas-preview";
 
@@ -13,31 +13,22 @@ type ExternalPreviewFrameProps = {
 
 const PREVIEW_LOAD_TIMEOUT_MS = 12000;
 
-export function ExternalPreviewFrame({
+function HtmlExternalPreviewFrame({
   src,
   title,
   heightClassName = "h-[75vh]",
-  format = "html",
 }: ExternalPreviewFrameProps) {
-  if (format === "pdf") {
-    return (
-      <div className="relative rounded-lg border">
-        <PdfCanvasPreview src={src} title={title} />
-      </div>
-    );
-  }
-
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
-  const clearLoadTimeout = () => {
+  const clearLoadTimeout = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
     setIsLoading(true);
@@ -52,7 +43,7 @@ export function ExternalPreviewFrame({
     return () => {
       clearLoadTimeout();
     };
-  }, [src]);
+  }, [clearLoadTimeout]);
 
   return (
     <div className={`relative overflow-hidden rounded-lg border ${heightClassName}`}>
@@ -102,5 +93,28 @@ export function ExternalPreviewFrame({
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function ExternalPreviewFrame({
+  src,
+  title,
+  heightClassName = "h-[75vh]",
+  format = "html",
+}: ExternalPreviewFrameProps) {
+  if (format === "pdf") {
+    return (
+      <div className="relative rounded-lg border">
+        <PdfCanvasPreview src={src} title={title} />
+      </div>
+    );
+  }
+
+  return (
+    <HtmlExternalPreviewFrame
+      heightClassName={heightClassName}
+      src={src}
+      title={title}
+    />
   );
 }

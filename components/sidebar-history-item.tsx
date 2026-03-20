@@ -1,11 +1,9 @@
 import { BookOpen, BriefcaseBusiness, MessageSquareText } from "lucide-react";
 import Link from "next/link";
-import { memo } from "react";
-import { useCallback, useRef } from "react";
+import { memo, useCallback, useRef } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
-import type { ChatHistoryMode } from "./sidebar-history";
 import { preloadChat } from "./chat-loader";
 import {
   CheckCircleFillIcon,
@@ -15,6 +13,7 @@ import {
   ShareIcon,
   TrashIcon,
 } from "./icons";
+import type { ChatHistoryMode } from "./sidebar-history";
 import {
   DropdownMenu,
   DropdownMenuContent,

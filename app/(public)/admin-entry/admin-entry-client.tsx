@@ -1,8 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { ADMIN_ENTRY_PASS_COOKIE_MAX_AGE_SECONDS } from "@/lib/constants";
 import styles from "./admin-entry.module.css";
 

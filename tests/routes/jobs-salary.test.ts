@@ -1,11 +1,11 @@
-import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { expect, test } from "@playwright/test";
 import { toJobListItem } from "@/lib/jobs/list-items";
 import {
   extractSalaryText,
   NO_SALARY_LABEL,
-  resolveJobSalaryInfo,
   type ResolvedSalaryInfo,
+  resolveJobSalaryInfo,
 } from "@/lib/jobs/salary";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 

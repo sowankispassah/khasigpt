@@ -15,6 +15,7 @@ import {
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
+import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
@@ -58,7 +59,6 @@ import {
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import {
@@ -565,7 +565,7 @@ export function Chat({
       return;
     }
     setIsJobsComposerVisible(initialMessages.length > 0);
-  }, [id, initialMessages.length, isJobsMode]);
+  }, [initialMessages.length, isJobsMode]);
 
   useEffect(() => {
     void id;
@@ -1145,14 +1145,14 @@ export function Chat({
       }
     },
     [
-      attachments,
-      id,
-      imageGeneration.canGenerate,
-      imageGeneration.enabled,
-      refreshAndPromoteHistory,
-      setMessages,
-      translate,
-      visibilityType,
+      attachments, 
+      id, 
+      imageGeneration.canGenerate, 
+      imageGeneration.enabled, 
+      refreshAndPromoteHistory, 
+      setMessages, 
+      translate, 
+      visibilityType, syncCurrentChatUrl
     ]
   );
 
@@ -1207,13 +1207,12 @@ export function Chat({
       setAttachments([]);
     },
     [
-      attachments,
-      generateImageFromPrompt,
-      id,
-      isGeneratingImage,
-      isImageMode,
-      sendMessage,
-      status,
+      attachments, 
+      generateImageFromPrompt, 
+      isGeneratingImage, 
+      isImageMode, 
+      sendMessage, 
+      status, syncCurrentChatUrl
     ]
   );
 
@@ -1979,21 +1978,20 @@ export function Chat({
         </AlertDialogContent>
       </AlertDialog>
       {uiLanguageTarget ? (
-        <div
+        <output
           aria-live="polite"
           className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
-          role="status"
         >
-          <div className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm font-medium">
+          <span className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm font-medium">
               {translate(
                 "chat.language.ui_prompt.loading",
                 "Switching interface language..."
               )}
-            </p>
-          </div>
-        </div>
+            </span>
+          </span>
+        </output>
       ) : null}
     </>
   );

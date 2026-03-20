@@ -1,31 +1,48 @@
+import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import {
   rebuildRagFileSearchIndexAction,
   updateCustomKnowledgeSettingsAction,
 } from "@/app/(admin)/actions";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
-import {
-  AdminRagManager,
-  type SerializedAdminRagEntry,
-} from "@/components/admin-rag/admin-rag-manager";
-import {
-  AdminUserKnowledgeTable,
-  type SerializedUserKnowledgeEntry,
-} from "@/components/admin-user-knowledge-table";
+import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
+import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
+import { getRagChatScope } from "@/lib/rag/chat-scope";
 import {
   getRagAnalyticsSummary,
   listAdminRagEntries,
   listRagCategories,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
-import { getRagChatScope } from "@/lib/rag/chat-scope";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
+
+const AdminRagManager = nextDynamic(
+  () =>
+    import("@/components/admin-rag/admin-rag-manager").then(
+      (module) => module.AdminRagManager
+    ),
+  {
+    loading: () => <AdminPageLoading rows={6} summaryCards={4} titleWidth="w-28" />,
+  }
+);
+
+const AdminUserKnowledgeTable = nextDynamic(
+  () =>
+    import("@/components/admin-user-knowledge-table").then(
+      (module) => module.AdminUserKnowledgeTable
+    ),
+  {
+    loading: () => <AdminPageLoading rows={5} titleWidth="w-52" />,
+  }
+);
 
 const queryTimeoutRaw = Number.parseInt(
   process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
@@ -82,74 +99,23 @@ export default async function AdminRagPage() {
     getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
     null
   );
-
-  const categories = await safeQuery("RAG categories", listRagCategories(), []);
-
-  const modelConfigs = await safeQuery(
+  const categoriesPromise = safeQuery("RAG categories", listRagCategories(), []);
+  const modelConfigsPromise = safeQuery(
     "model registry",
     getModelRegistry().then((registry) => registry.configs),
     []
   );
-
-  const entries = await safeQuery("RAG entries", listAdminRagEntries(), []);
-
-  const analytics = await safeQuery(
+  const entriesPromise = safeQuery("RAG entries", listAdminRagEntries(), []);
+  const analyticsPromise = safeQuery(
     "RAG analytics",
     getRagAnalyticsSummary(),
     fallbackAnalytics
   );
-
-  const userAddedKnowledge = await safeQuery(
+  const userAddedKnowledgePromise = safeQuery(
     "user added knowledge",
     listUserAddedKnowledgeEntries({ limit: 240 }),
     []
   );
-
-  const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
-    entry: {
-      id: entry.entry.id,
-      title: entry.entry.title,
-      content: entry.entry.content,
-      type: entry.entry.type,
-      status: entry.entry.status,
-      tags: entry.entry.tags,
-      models: entry.entry.models,
-      chatScope: getRagChatScope(entry.entry.metadata),
-      sourceUrl: entry.entry.sourceUrl ?? null,
-      categoryId: entry.entry.categoryId ?? null,
-      categoryName: entry.entry.categoryName ?? null,
-      createdAt: serializeDate(entry.entry.createdAt),
-      updatedAt: serializeDate(entry.entry.updatedAt),
-    },
-    creator: entry.creator,
-  }));
-
-  const serializedUserKnowledge: SerializedUserKnowledgeEntry[] =
-    userAddedKnowledge.map((row) => ({
-      entry: {
-        id: row.entry.id,
-        title: row.entry.title,
-        content: row.entry.content,
-        approvalStatus: row.entry.approvalStatus,
-        status: row.entry.status,
-        createdAt: serializeDate(row.entry.createdAt),
-        updatedAt: serializeDate(row.entry.updatedAt),
-        personalForUserId: row.entry.personalForUserId ?? null,
-      },
-      creator: row.creator,
-    }));
-
-  const modelOptions = modelConfigs
-    .filter((config) => config.isEnabled)
-    .map((config) => ({
-      id: config.id,
-      label: config.displayName,
-      provider: config.provider,
-    }));
-
-  const tagOptions = Array.from(
-    new Set(serializedEntries.flatMap((entry) => entry.entry.tags))
-  ).sort();
 
   const currentUser = {
     id: session.user.id,
@@ -210,14 +176,15 @@ export default async function AdminRagPage() {
         </div>
       </section>
 
-      <AdminRagManager
-        analytics={analytics}
-        categories={categories}
-        currentUser={currentUser}
-        entries={serializedEntries}
-        modelOptions={modelOptions}
-        tagOptions={tagOptions}
-      />
+      <Suspense fallback={<AdminPageLoading rows={6} summaryCards={4} titleWidth="w-28" />}>
+        <RagManagerSection
+          analyticsPromise={analyticsPromise}
+          categoriesPromise={categoriesPromise}
+          currentUser={currentUser}
+          entriesPromise={entriesPromise}
+          modelConfigsPromise={modelConfigsPromise}
+        />
+      </Suspense>
 
       <section className="rounded-lg border bg-card p-6 shadow-sm">
         <div className="mb-4">
@@ -227,8 +194,107 @@ export default async function AdminRagPage() {
             become retrievable.
           </p>
         </div>
-        <AdminUserKnowledgeTable entries={serializedUserKnowledge} />
+        <Suspense fallback={<AdminPageLoading rows={5} titleWidth="w-52" />}>
+          <UserKnowledgeSection
+            userAddedKnowledgePromise={userAddedKnowledgePromise}
+          />
+        </Suspense>
       </section>
     </div>
   );
+}
+
+async function RagManagerSection({
+  analyticsPromise,
+  categoriesPromise,
+  currentUser,
+  entriesPromise,
+  modelConfigsPromise,
+}: {
+  analyticsPromise: Promise<Awaited<ReturnType<typeof getRagAnalyticsSummary>>>;
+  categoriesPromise: Promise<Awaited<ReturnType<typeof listRagCategories>>>;
+  currentUser: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
+  entriesPromise: Promise<Awaited<ReturnType<typeof listAdminRagEntries>>>;
+  modelConfigsPromise: Promise<
+    Awaited<ReturnType<typeof getModelRegistry>>["configs"]
+  >;
+}) {
+  const [categories, modelConfigs, entries, analytics] = await Promise.all([
+    categoriesPromise,
+    modelConfigsPromise,
+    entriesPromise,
+    analyticsPromise,
+  ]);
+
+  const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
+    entry: {
+      id: entry.entry.id,
+      title: entry.entry.title,
+      content: entry.entry.content,
+      type: entry.entry.type,
+      status: entry.entry.status,
+      tags: entry.entry.tags,
+      models: entry.entry.models,
+      chatScope: getRagChatScope(entry.entry.metadata),
+      sourceUrl: entry.entry.sourceUrl ?? null,
+      categoryId: entry.entry.categoryId ?? null,
+      categoryName: entry.entry.categoryName ?? null,
+      createdAt: serializeDate(entry.entry.createdAt),
+      updatedAt: serializeDate(entry.entry.updatedAt),
+    },
+    creator: entry.creator,
+  }));
+
+  const modelOptions = modelConfigs
+    .filter((config) => config.isEnabled)
+    .map((config) => ({
+      id: config.id,
+      label: config.displayName,
+      provider: config.provider,
+    }));
+
+  const tagOptions = Array.from(
+    new Set(serializedEntries.flatMap((entry) => entry.entry.tags))
+  ).sort();
+
+  return (
+    <AdminRagManager
+      analytics={analytics}
+      categories={categories}
+      currentUser={currentUser}
+      entries={serializedEntries}
+      modelOptions={modelOptions}
+      tagOptions={tagOptions}
+    />
+  );
+}
+
+async function UserKnowledgeSection({
+  userAddedKnowledgePromise,
+}: {
+  userAddedKnowledgePromise: Promise<
+    Awaited<ReturnType<typeof listUserAddedKnowledgeEntries>>
+  >;
+}) {
+  const userAddedKnowledge = await userAddedKnowledgePromise;
+  const serializedUserKnowledge: SerializedUserKnowledgeEntry[] =
+    userAddedKnowledge.map((row) => ({
+      entry: {
+        id: row.entry.id,
+        title: row.entry.title,
+        content: row.entry.content,
+        approvalStatus: row.entry.approvalStatus,
+        status: row.entry.status,
+        createdAt: serializeDate(row.entry.createdAt),
+        updatedAt: serializeDate(row.entry.updatedAt),
+        personalForUserId: row.entry.personalForUserId ?? null,
+      },
+      creator: row.creator,
+    }));
+
+  return <AdminUserKnowledgeTable entries={serializedUserKnowledge} />;
 }

@@ -206,7 +206,7 @@ function cachePagePreview({
 }
 
 function removeNullCharacters(value: string) {
-  return value.replace(/\u0000/g, "");
+  return value.replaceAll("\0", "");
 }
 
 function unregisterTextSelectionLayer(textLayerDiv: HTMLDivElement) {
@@ -699,11 +699,7 @@ export function PdfCanvasPreview({
         </div>
       ) : null}
 
-      <div
-        aria-label={title}
-        className="w-full"
-        ref={mountRef}
-      />
+      <div className="w-full" ref={mountRef} title={title} />
 
       {state === "ready" &&
       normalizedMaxPages !== null &&

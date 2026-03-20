@@ -156,10 +156,7 @@ const CONTEXTUAL_SUFFIX_SALARY_PATTERN = new RegExp(
   "i"
 );
 
-const ROLE_ROW_PATTERN = new RegExp(
-  String.raw`(?:^|\s)(\d+(?:\.\d+){0,2})\s+([A-Z][A-Za-z0-9/&(),+'.\- ]{2,180}?)(?=\s+(?:Essential|Educational|Qualifications?|Experience|Requirement(?:s)?(?:\s+and\s+Skills)?|No\.?\s*of\s*Vacancy|Place\s+of\s+Posting|Monthly\s+(?:Emolument|Remuneration|Salary|Pay)|Remuneration|Emoluments?|Pay|Salary|Rs\.?|INR|All\s+Districts|Interested|For\s+applying|To\s+apply|Last\s+date|$))`,
-  "g"
-);
+const ROLE_ROW_PATTERN = /(?:^|\s)(\d+(?:\.\d+){0,2})\s+([A-Z][A-Za-z0-9/&(),+'.\- ]{2,180}?)(?=\s+(?:Essential|Educational|Qualifications?|Experience|Requirement(?:s)?(?:\s+and\s+Skills)?|No\.?\s*of\s*Vacancy|Place\s+of\s+Posting|Monthly\s+(?:Emolument|Remuneration|Salary|Pay)|Remuneration|Emoluments?|Pay|Salary|Rs\.?|INR|All\s+Districts|Interested|For\s+applying|To\s+apply|Last\s+date|$))/g;
 
 const NON_SALARY_PREFIX_PATTERN =
   /^(?:application fee|exam fee|registration fee|fee|age limit|last date|deadline|notification date|qualification|essential qualification|eligibility|experience)\b/i;

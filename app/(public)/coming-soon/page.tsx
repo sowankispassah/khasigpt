@@ -1,5 +1,3 @@
-import { ComingSoonCountdown } from "./coming-soon-countdown";
-import styles from "./coming-soon.module.css";
 import {
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
@@ -9,6 +7,8 @@ import {
   normalizeComingSoonContentSetting,
   normalizeComingSoonTimerSetting,
 } from "@/lib/settings/coming-soon";
+import styles from "./coming-soon.module.css";
+import { ComingSoonCountdown } from "./coming-soon-countdown";
 
 export const dynamic = "force-dynamic";
 

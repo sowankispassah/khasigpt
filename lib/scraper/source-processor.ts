@@ -1,23 +1,17 @@
 import "server-only";
 import { load } from "cheerio";
 import type { JobSourceConfig } from "@/config/jobSources";
-import { extractJobPdfData } from "@/lib/jobs/pdf-extraction-service";
+import { extractSourceDetailMarkdownFromHtml } from "@/lib/jobs/linkedin-detail";
 import { resolveJobLocation } from "@/lib/jobs/location";
 import { cacheJobPdfAsset } from "@/lib/jobs/pdf-cache";
+import { extractJobPdfData } from "@/lib/jobs/pdf-extraction-service";
 import type { NewJobRow } from "@/lib/jobs/saveJobs";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { fetchWithTimeout } from "@/lib/utils/async";
-import { RobustHttpClient } from "./http-client";
-import type {
-  CachedPdfExtractionResult,
-  PdfExtractionResult,
-  ProcessedSourceResult,
-  SourceProcessingContext,
-  SourceScrapeStats,
-} from "./scraping-types";
+import type { RobustHttpClient } from "./http-client";
 import {
   buildDescriptionFromSources,
-  extractPdfStructuredFields,
+  type extractPdfStructuredFields,
   extractSalaryText,
   hashText,
   hostnameFromUrl,
@@ -27,13 +21,19 @@ import {
   matchKeywords,
   normalizeMultiline,
   normalizeWhitespace,
-  parsePositiveInt,
   parseBoolean,
+  parsePositiveInt,
   parsePublishedDate,
   resolveUrl,
   runWithConcurrency,
 } from "./scraper-utils";
-import { extractSourceDetailMarkdownFromHtml } from "@/lib/jobs/linkedin-detail";
+import type {
+  CachedPdfExtractionResult,
+  PdfExtractionResult,
+  ProcessedSourceResult,
+  SourceProcessingContext,
+  SourceScrapeStats,
+} from "./scraping-types";
 
 type CheerioRoot = ReturnType<typeof load>;
 type CheerioSelection = ReturnType<CheerioRoot>;

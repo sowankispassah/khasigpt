@@ -1,10 +1,10 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
 import { upsertUserPresence } from "@/lib/db/queries";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
-import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
 
 const HEARTBEAT_RATE_LIMIT = {

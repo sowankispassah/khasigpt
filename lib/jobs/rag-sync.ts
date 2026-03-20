@@ -5,8 +5,8 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/queries";
 import { ragEntry, user } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import { parseJobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import { buildJobKnowledgeUnit } from "@/lib/jobs/knowledge";
+import { parseJobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import { normalizeJobPostingRecord } from "@/lib/jobs/service";
 import {
   createRagEntry,

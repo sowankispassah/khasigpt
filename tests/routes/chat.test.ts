@@ -1,5 +1,5 @@
 import { config as loadEnv } from "dotenv";
-import { getMessageByErrorCode } from "@/lib/errors";
+import postgres from "postgres";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
@@ -7,8 +7,8 @@ import {
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
+import { getMessageByErrorCode } from "@/lib/errors";
 import { generateUUID } from "@/lib/utils";
-import postgres from "postgres";
 import { expect, test } from "../fixtures";
 import { TEST_PROMPTS } from "../prompts/routes";
 
@@ -223,7 +223,7 @@ test.describe
         `;
       }
 
-      for (const [key, value] of overriddenSettings) {
+      for (const [key, _value] of overriddenSettings) {
         if (hadSettings.has(key)) {
           await sql`
             update "AppSetting"

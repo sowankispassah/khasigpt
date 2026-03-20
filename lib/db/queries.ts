@@ -68,9 +68,7 @@ import {
   type ImageModelConfig,
   type ImpersonationToken,
   type InviteRedeemerBlock,
-  type InviteRedemption,
   type InviteToken,
-  type UserInviteAccess,
   imageModelConfig,
   impersonationToken,
   inviteRedeemerBlock,
@@ -313,9 +311,11 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-const defaultPoolSize = 3;
+const defaultPoolSize = process.env.NODE_ENV === "development" ? 1 : 3;
 const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 0;
+const defaultConnectTimeout =
+  process.env.NODE_ENV === "development" ? 12 : 5;
 const postgresUrl = process.env.POSTGRES_URL;
 
 if (!postgresUrl) {
@@ -331,7 +331,7 @@ const poolConfig = {
   max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
   connect_timeout: parseOr(
     process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
-    5
+    defaultConnectTimeout
   ),
   statement_timeout: parseOr(
     process.env.POSTGRES_STATEMENT_TIMEOUT,
@@ -345,8 +345,19 @@ const poolConfig = {
       ? true
       : process.env.POSTGRES_PREPARE === "false"
         ? false
-        : !postgresUrl?.includes(".pooler.supabase.com"),
+        : process.env.NODE_ENV === "development"
+          ? false
+          : !postgresUrl?.includes(".pooler.supabase.com"),
 };
+
+if (
+  process.env.NODE_ENV === "development" &&
+  postgresUrl.includes(".supabase.co:5432")
+) {
+  console.warn(
+    "[db] Using the direct Supabase Postgres endpoint on port 5432 in development. This is prone to CONNECT_TIMEOUT under Next dev load. Prefer the Supabase pooler URL on port 6543 when possible."
+  );
+}
 
 const client =
   globalDbState.postgresClient ?? postgres(postgresUrl, poolConfig);
@@ -3625,6 +3636,38 @@ export async function listAuditLog({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to list audit log entries"
+    );
+  }
+}
+
+export async function getAuditLogCount({
+  userId,
+}: {
+  userId?: string | null;
+} = {}): Promise<number> {
+  try {
+    const conditions: SQL<boolean>[] = [];
+    if (userId && isValidUUID(userId)) {
+      conditions.push(
+        or(
+          eq(auditLog.actorId, userId),
+          eq(auditLog.subjectUserId, userId)
+        ) as SQL<boolean>
+      );
+    }
+
+    const builder = db.select({ total: count() }).from(auditLog);
+    const query =
+      conditions.length > 0 ? builder.where(and(...conditions)) : builder;
+    const [result] = await query;
+    return Number(result?.total ?? 0);
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return 0;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to count audit log entries"
     );
   }
 }
@@ -8828,6 +8871,77 @@ export async function listChatFinancialSummaries({
       tokenUsage.createdAt,
       range
     );
+    const whereClause =
+      usageConditions.length > 0 ? and(...usageConditions) : undefined;
+
+    const [totalsRow] = await (whereClause
+      ? db
+          .select({
+            total: sql<number>`COUNT(DISTINCT ${tokenUsage.chatId})`,
+            totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+            totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+            userChargeInr: sql<number>`
+              COALESCE(SUM(
+                CASE
+                  WHEN ${tokenUsage.subscriptionId} IS NULL
+                    OR ${pricingPlan.tokenAllowance} IS NULL
+                    OR ${pricingPlan.tokenAllowance} <= 0
+                  THEN 0
+                  ELSE ${tokenUsage.paidTokens} *
+                    ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
+                END
+              ), 0)
+            `,
+            providerCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+          .leftJoin(
+            userSubscription,
+            eq(tokenUsage.subscriptionId, userSubscription.id)
+          )
+          .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id))
+          .where(whereClause)
+      : db
+          .select({
+            total: sql<number>`COUNT(DISTINCT ${tokenUsage.chatId})`,
+            totalInputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+            totalOutputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+            userChargeInr: sql<number>`
+              COALESCE(SUM(
+                CASE
+                  WHEN ${tokenUsage.subscriptionId} IS NULL
+                    OR ${pricingPlan.tokenAllowance} IS NULL
+                    OR ${pricingPlan.tokenAllowance} <= 0
+                  THEN 0
+                  ELSE ${tokenUsage.paidTokens} *
+                    ((${pricingPlan.priceInPaise} / 100.0) / ${pricingPlan.tokenAllowance})
+                END
+              ), 0)
+            `,
+            providerCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+          .leftJoin(
+            userSubscription,
+            eq(tokenUsage.subscriptionId, userSubscription.id)
+          )
+          .leftJoin(pricingPlan, eq(userSubscription.planId, pricingPlan.id)));
 
     const query = db
       .select({
@@ -8875,12 +8989,12 @@ export async function listChatFinancialSummaries({
         chat.createdAt
       );
 
-    const usageRows = await (usageConditions.length > 0
-      ? query.where(and(...usageConditions))
-      : query
-    ).orderBy(desc(sql<Date>`MIN(${tokenUsage.createdAt})`));
+    const usageRows = await (whereClause ? query.where(whereClause) : query)
+      .orderBy(desc(sql<Date>`MIN(${tokenUsage.createdAt})`))
+      .limit(limit)
+      .offset(offset);
 
-    const normalizedRows = usageRows.map((row) => ({
+    const records = usageRows.map((row) => ({
       ...row,
       totalInputTokens: toNumber(row.totalInputTokens),
       totalOutputTokens: toNumber(row.totalOutputTokens),
@@ -8888,29 +9002,14 @@ export async function listChatFinancialSummaries({
       providerCostUsd: toNumber(row.providerCostUsd),
     }));
 
-    const total = normalizedRows.length;
-
-    const aggregates = normalizedRows.reduce(
-      (acc, row) => {
-        acc.totalInputTokens += row.totalInputTokens ?? 0;
-        acc.totalOutputTokens += row.totalOutputTokens ?? 0;
-        acc.userChargeInr += row.userChargeInr ?? 0;
-        acc.providerCostUsd += row.providerCostUsd ?? 0;
-        return acc;
-      },
-      {
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        userChargeInr: 0,
-        providerCostUsd: 0,
-      }
-    );
-
-    const records = normalizedRows.slice(offset, offset + limit);
-
     return {
-      total,
-      totals: aggregates,
+      total: toNumber(totalsRow?.total),
+      totals: {
+        totalInputTokens: toNumber(totalsRow?.totalInputTokens),
+        totalOutputTokens: toNumber(totalsRow?.totalOutputTokens),
+        userChargeInr: toNumber(totalsRow?.userChargeInr),
+        providerCostUsd: toNumber(totalsRow?.providerCostUsd),
+      },
       records,
     };
   } catch (error) {
@@ -8976,6 +9075,13 @@ export async function listRechargeRecords({
           )
         : eq(paymentTransaction.status, PAYMENT_STATUS_PAID);
 
+    const [countRow] = await db
+      .select({
+        total: count(),
+      })
+      .from(paymentTransaction)
+      .where(whereClause);
+
     const rows = await db
       .select({
         orderId: paymentTransaction.orderId,
@@ -9013,14 +9119,13 @@ export async function listRechargeRecords({
         paymentTransaction.createdAt,
         paymentTransaction.updatedAt
       )
-      .orderBy(desc(paymentTransaction.createdAt));
-
-    const total = rows.length;
-    const paged = rows.slice(offset, offset + limit);
+      .orderBy(desc(paymentTransaction.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     return {
-      total,
-      records: paged.map((row) => ({
+      total: Number(countRow?.total ?? 0),
+      records: rows.map((row) => ({
         orderId: row.orderId,
         userId: row.userId,
         email: row.email ?? null,

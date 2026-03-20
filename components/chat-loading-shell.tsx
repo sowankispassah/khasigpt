@@ -1,7 +1,7 @@
 "use client";
 
-import { SidebarToggle } from "@/components/sidebar-toggle";
 import { ChevronDownIcon, GlobeIcon } from "@/components/icons";
+import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 
 export function ChatLoadingShell() {
@@ -15,7 +15,6 @@ export function ChatLoadingShell() {
             <span className="text-xs">Private</span>
           </Button>
           <button
-            aria-hidden="true"
             className="flex h-8 items-center gap-2 rounded-lg border-0 bg-background px-2 text-foreground shadow-none"
             disabled
             type="button"

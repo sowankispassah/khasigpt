@@ -541,12 +541,10 @@ function PureMessages({
       }
     };
   }, [
-    enableGenerationAutoFollow,
-    followLiveGenerationTail,
-    isGenerationActive,
-    isSubmitBottomLockActive,
-    messages.length,
-    streamingSignature,
+    enableGenerationAutoFollow, 
+    followLiveGenerationTail, 
+    isGenerationActive, 
+    isSubmitBottomLockActive
   ]);
 
   useEffect(() => {

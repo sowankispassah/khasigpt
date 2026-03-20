@@ -5,8 +5,8 @@ import { loadChatModels } from "@/lib/ai/models";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import {
-  isFeatureEnabledForRole,
   type FeatureAccessRole,
+  isFeatureEnabledForRole,
 } from "@/lib/feature-access";
 import type { JobCard } from "@/lib/jobs/types";
 import type { ChatMessage } from "@/lib/types";

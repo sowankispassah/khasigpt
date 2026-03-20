@@ -82,6 +82,7 @@ export function LanguageProvider({
 
       setIsPending(true);
       void (async () => {
+        let nextLocalizedPath: string | null = null;
         try {
           if (typeof document !== "undefined") {
             const encoded = encodeURIComponent(normalized);
@@ -101,17 +102,21 @@ export function LanguageProvider({
               const nextPath = `/${segments.join("/")}`;
               const querySuffix =
                 typeof window !== "undefined" ? window.location.search ?? "" : "";
-              router.replace(`${nextPath}${querySuffix}`);
-              setIsPending(false);
-              return;
+              nextLocalizedPath = `${nextPath}${querySuffix}`;
             }
           }
-
-          router.refresh();
-          window.setTimeout(() => {
-            setIsPending(false);
-          }, 300);
         }
+
+        if (nextLocalizedPath) {
+          router.replace(nextLocalizedPath);
+          setIsPending(false);
+          return;
+        }
+
+        router.refresh();
+        window.setTimeout(() => {
+          setIsPending(false);
+        }, 300);
       })();
     },
     [activeLanguage.code, languageCodeSet, pathname, router]

@@ -1,9 +1,9 @@
 import "server-only";
 import {
-  jobSources,
   type JobSourceConfig,
   type JobSourceLocationScope,
   type JobSourceSelectors,
+  jobSources,
 } from "@/config/jobSources";
 import { JOBS_SCRAPE_SOURCES_SETTING_KEY } from "@/lib/constants";
 import { getAppSetting, getAppSettingUncached, setAppSetting } from "@/lib/db/queries";
@@ -252,7 +252,6 @@ function selectorsForSourceType(type: ManagedJobSourceType): JobSourceSelectors 
       return LINKEDIN_SELECTORS;
     case "generic":
       return GENERIC_SELECTORS;
-    case "auto":
     default:
       return GENERIC_SELECTORS;
   }

@@ -4,14 +4,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatPageLoaderPayload } from "@/lib/chat/page-payload";
-import type { LanguageOption } from "@/lib/i18n/languages";
-import type { IconPromptAction } from "@/lib/icon-prompts";
-import type { JobCard } from "@/lib/jobs/types";
-import type { JobListItem } from "@/lib/jobs/types";
-import type { ChatMessage } from "@/lib/types";
 import { doneGlobalProgress } from "@/lib/ui/global-progress";
 import { generateUUID } from "@/lib/utils";
-import type { VisibilityType } from "./visibility-selector";
 
 const ChatSkeleton = () => (
   <div className="flex h-dvh flex-col gap-4 px-3 py-6 md:px-6">
@@ -68,7 +62,7 @@ export function ChatLoader(props: ChatLoaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [attempt, setAttempt] = useState(0);
+  const [_attempt, setAttempt] = useState(0);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [ChatClient, setChatClient] = useState<ComponentType<ChatLoaderProps> | null>(
     () => resolvedChatClient
@@ -142,11 +136,11 @@ export function ChatLoader(props: ChatLoaderProps) {
   // Start loading as early as possible (during render), then resolve in an effect.
   useMemo(() => {
     loadChatModule().catch(() => undefined);
-  }, [attempt]);
+  }, []);
 
   useEffect(() => {
     doneGlobalProgress();
-  }, [activeProps.chatMode, activeProps.id]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,7 +164,7 @@ export function ChatLoader(props: ChatLoaderProps) {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, []);
 
   if (loadError) {
     const message =

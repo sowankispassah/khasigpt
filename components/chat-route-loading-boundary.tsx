@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { getCachedChatPagePayload } from "@/components/chat-page-cache";
 import { ChatLoadingShellDelayed } from "@/components/chat-loading-shell-delayed";
+import { getCachedChatPagePayload } from "@/components/chat-page-cache";
 import { ChatPageClient } from "@/components/chat-page-client";
 
 function getChatIdFromPathname(pathname: string | null) {

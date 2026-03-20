@@ -1,5 +1,5 @@
-import { cookies } from "next/headers";
 import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -8,6 +8,7 @@ import { ChatPageClient } from "@/components/chat-page-client";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
+import { readChatOriginUiContext } from "@/lib/chat/ui-context";
 import {
   CHAT_HISTORY_PAGE_SIZE,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -24,7 +25,6 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
-import { readChatOriginUiContext } from "@/lib/chat/ui-context";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getJobPostingById, listJobListItems } from "@/lib/jobs/service";
 import { getSiteUrl } from "@/lib/seo/site";
@@ -34,8 +34,8 @@ import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
-import { withTimeout } from "@/lib/utils/async";
 import { convertToUIMessages } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 const chatPageTimeoutRaw = Number.parseInt(
   process.env.CHAT_PAGE_LOAD_TIMEOUT_MS ?? "",

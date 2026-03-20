@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
-import { listChats } from "@/lib/db/queries";
+import { getChatCount, listChats } from "@/lib/db/queries";
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -19,11 +19,16 @@ export async function GET(request: Request) {
   const safeLimit =
     Number.isFinite(limit) && limit > 0 && limit <= 100 ? limit : 10;
 
-  const chats = await listChats({
-    limit: safeLimit,
-    offset: safeOffset,
-    onlyDeleted: deleted,
-  });
+  const [chats, total] = await Promise.all([
+    listChats({
+      limit: safeLimit,
+      offset: safeOffset,
+      onlyDeleted: deleted,
+    }),
+    getChatCount({
+      onlyDeleted: deleted,
+    }),
+  ]);
 
-  return NextResponse.json({ items: chats });
+  return NextResponse.json({ items: chats, total });
 }

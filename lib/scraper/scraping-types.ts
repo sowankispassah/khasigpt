@@ -1,8 +1,8 @@
 import type { JobSourceConfig } from "@/config/jobSources";
-import type { PdfStructuredFields } from "@/lib/scraper/scraper-utils";
-import type { JobsPdfExtractionSettings } from "@/lib/jobs/pdf-extraction-settings";
 import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
+import type { JobsPdfExtractionSettings } from "@/lib/jobs/pdf-extraction-settings";
 import type { NewJobRow, SaveJobsResult } from "@/lib/jobs/saveJobs";
+import type { PdfStructuredFields } from "@/lib/scraper/scraper-utils";
 
 export type SourceScrapeStats = {
   source: string;

@@ -6,11 +6,11 @@ import {
   PRELAUNCH_INVITE_COOKIE_NAME,
 } from "@/lib/constants";
 import { verifyAdminEntryPassToken } from "@/lib/security/admin-entry-pass";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
   DEFAULT_ADMIN_ENTRY_PATH,
   normalizeAdminEntryPathSetting,
 } from "@/lib/settings/admin-entry";
-import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const isProduction = process.env.NODE_ENV === "production";
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -122,6 +122,26 @@ const KV_REST_TIMEOUT_MS =
   Number.isFinite(kvRestTimeoutRaw) && kvRestTimeoutRaw > 0
     ? kvRestTimeoutRaw
     : 800;
+
+function getSafeSiteStatusFallback() {
+  if (process.env.NODE_ENV === "production") {
+    return {
+      publicLaunched: false,
+      underMaintenance: false,
+      inviteOnlyPrelaunch: false,
+      adminAccessEnabled: false,
+      adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
+    };
+  }
+
+  return {
+    publicLaunched: true,
+    underMaintenance: false,
+    inviteOnlyPrelaunch: false,
+    adminAccessEnabled: false,
+    adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
+  };
+}
 
 async function fetchWithTimeout(
   input: string,
@@ -347,6 +367,7 @@ async function resolveSiteStatus(
     );
 
     if (!response || !response.ok) {
+      const fallbackState = getSafeSiteStatusFallback();
       if (staleStatusAllowed && siteStatusCache) {
         return {
           publicLaunched: siteStatusCache.publicLaunched,
@@ -359,29 +380,19 @@ async function resolveSiteStatus(
 
       if (response?.ok === false) {
         console.error(
-          `[middleware] Failed to fetch site status. Status=${response.status}. Falling back to permissive defaults.`
+          `[middleware] Failed to fetch site status. Status=${response.status}. Falling back to safe defaults.`
         );
       } else {
         console.error(
-          "[middleware] Site status internal fetch timed out. Falling back to permissive defaults."
+          "[middleware] Site status internal fetch timed out. Falling back to safe defaults."
         );
       }
 
       siteStatusCache = {
         fetchedAt: now,
-        publicLaunched: true,
-        underMaintenance: false,
-        inviteOnlyPrelaunch: false,
-        adminAccessEnabled: false,
-        adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
+        ...fallbackState,
       };
-      return {
-        publicLaunched: true,
-        underMaintenance: false,
-        inviteOnlyPrelaunch: false,
-        adminAccessEnabled: false,
-        adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
-      };
+      return fallbackState;
     }
 
     const body = (await response.json()) as
@@ -393,7 +404,7 @@ async function resolveSiteStatus(
           adminEntryPath?: unknown;
         }
       | null;
-    const publicLaunched = body?.publicLaunched === false ? false : true;
+    const publicLaunched = body?.publicLaunched !==false;
     const underMaintenance = body?.underMaintenance === true;
     const inviteOnlyPrelaunch = body?.inviteOnlyPrelaunch === true;
     const adminAccessEnabled = body?.adminAccessEnabled === true;
@@ -415,6 +426,7 @@ async function resolveSiteStatus(
       adminEntryPath,
     };
   } catch (error) {
+    const fallbackState = getSafeSiteStatusFallback();
     if (staleStatusAllowed && siteStatusCache) {
       return {
         publicLaunched: siteStatusCache.publicLaunched,
@@ -426,25 +438,15 @@ async function resolveSiteStatus(
     }
 
     console.error(
-      "[middleware] Site status internal fetch failed. Falling back to permissive defaults.",
+      "[middleware] Site status internal fetch failed. Falling back to safe defaults.",
       error
     );
 
     siteStatusCache = {
       fetchedAt: now,
-      publicLaunched: true,
-      underMaintenance: false,
-      inviteOnlyPrelaunch: false,
-      adminAccessEnabled: false,
-      adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
+      ...fallbackState,
     };
-    return {
-      publicLaunched: true,
-      underMaintenance: false,
-      inviteOnlyPrelaunch: false,
-      adminAccessEnabled: false,
-      adminEntryPath: DEFAULT_ADMIN_ENTRY_PATH,
-    };
+    return fallbackState;
   }
 }
 

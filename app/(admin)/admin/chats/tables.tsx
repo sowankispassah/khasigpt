@@ -16,6 +16,8 @@ import type { ChatListItem } from "@/lib/db/queries";
 type Props = {
   initialActiveChats: ChatListItem[];
   initialDeletedChats: ChatListItem[];
+  initialActiveTotal: number;
+  initialDeletedTotal: number;
   pageSize?: number;
 };
 
@@ -24,21 +26,29 @@ type ChatRow = ChatListItem;
 export function AdminChatTables({
   initialActiveChats,
   initialDeletedChats,
+  initialActiveTotal,
+  initialDeletedTotal,
   pageSize = 10,
 }: Props) {
   const [activeChats, setActiveChats] = useState<ChatRow[]>(initialActiveChats);
   const [deletedChats, setDeletedChats] =
     useState<ChatRow[]>(initialDeletedChats);
+  const [activeTotal, setActiveTotal] = useState(initialActiveTotal);
+  const [deletedTotal, setDeletedTotal] = useState(initialDeletedTotal);
   const [loadingActive, setLoadingActive] = useState(false);
   const [loadingDeleted, setLoadingDeleted] = useState(false);
   const [hasNextActive, setHasNextActive] = useState(
-    initialActiveChats.length === pageSize
+    initialActiveChats.length < initialActiveTotal
   );
   const [hasNextDeleted, setHasNextDeleted] = useState(
-    initialDeletedChats.length === pageSize
+    initialDeletedChats.length < initialDeletedTotal
   );
   const [pageActive, setPageActive] = useState(0);
   const [pageDeleted, setPageDeleted] = useState(0);
+  const [pendingAction, setPendingAction] = useState<{
+    chatId: string;
+    type: "delete" | "restore" | "hard-delete";
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const loadPage = async (opts: { deleted: boolean; page: number }) => {
@@ -46,6 +56,7 @@ export function AdminChatTables({
     const setHasNext = opts.deleted ? setHasNextDeleted : setHasNextActive;
     const setLoading = opts.deleted ? setLoadingDeleted : setLoadingActive;
     const setPage = opts.deleted ? setPageDeleted : setPageActive;
+    const setTotal = opts.deleted ? setDeletedTotal : setActiveTotal;
     const offset = opts.page * pageSize;
 
     setLoading(true);
@@ -61,11 +72,13 @@ export function AdminChatTables({
       if (!response.ok) {
         throw new Error("Failed to load chats");
       }
-      const json = (await response.json()) as { items: ChatRow[] };
+      const json = (await response.json()) as { items: ChatRow[]; total?: number };
       const items = Array.isArray(json.items) ? json.items : [];
+      const total = Number.isFinite(json.total) ? Number(json.total) : items.length;
       setter(items);
       setPage(opts.page);
-      setHasNext(items.length === pageSize);
+      setTotal(total);
+      setHasNext(offset + items.length < total);
     } catch (error) {
       console.error(error);
     } finally {
@@ -74,23 +87,44 @@ export function AdminChatTables({
   };
 
   const handleSoftDelete = (chatId: string) => {
+    setPendingAction({ chatId, type: "delete" });
     startTransition(async () => {
-      await deleteChatAction({ chatId });
-      await loadPage({ deleted: false, page: pageActive });
+      try {
+        await deleteChatAction({ chatId });
+        await Promise.all([
+          loadPage({ deleted: false, page: pageActive }),
+          loadPage({ deleted: true, page: pageDeleted }),
+        ]);
+      } finally {
+        setPendingAction(null);
+      }
     });
   };
 
   const handleRestore = (chatId: string) => {
+    setPendingAction({ chatId, type: "restore" });
     startTransition(async () => {
-      await restoreChatAction({ chatId });
-      await loadPage({ deleted: true, page: pageDeleted });
+      try {
+        await restoreChatAction({ chatId });
+        await Promise.all([
+          loadPage({ deleted: false, page: pageActive }),
+          loadPage({ deleted: true, page: pageDeleted }),
+        ]);
+      } finally {
+        setPendingAction(null);
+      }
     });
   };
 
   const handleHardDelete = (chatId: string) => {
+    setPendingAction({ chatId, type: "hard-delete" });
     startTransition(async () => {
-      await hardDeleteChatAction({ chatId });
-      await loadPage({ deleted: true, page: pageDeleted });
+      try {
+        await hardDeleteChatAction({ chatId });
+        await loadPage({ deleted: true, page: pageDeleted });
+      } finally {
+        setPendingAction(null);
+      }
     });
   };
 
@@ -121,7 +155,7 @@ export function AdminChatTables({
                   <td className="px-3 py-3">
                     <div className="flex flex-col gap-1">
                       <Link
-                        className="font-medium text-primary text-sm hover:underline"
+                        className="cursor-pointer font-medium text-primary text-sm hover:underline"
                         href={`/chat/${chat.id}?admin=1`}
                       >
                         {chat.title || "Untitled chat"}
@@ -150,7 +184,10 @@ export function AdminChatTables({
                       size="sm"
                       variant="secondary"
                     >
-                      Soft delete
+                      {pendingAction?.chatId === chat.id &&
+                      pendingAction.type === "delete"
+                        ? "Deleting..."
+                        : "Soft delete"}
                     </Button>
                   </td>
                 </tr>
@@ -166,6 +203,10 @@ export function AdminChatTables({
           </table>
         </div>
         <div className="flex items-center justify-end gap-3">
+          <span className="text-muted-foreground text-xs">
+            Showing {activeChats.length === 0 ? 0 : pageActive * pageSize + 1}-
+            {Math.min((pageActive + 1) * pageSize, activeTotal)} of {activeTotal}
+          </span>
           <span className="text-muted-foreground text-xs">
             Page {pageActive + 1}
           </span>
@@ -221,7 +262,7 @@ export function AdminChatTables({
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <Link
-                          className="font-medium text-primary text-sm hover:underline"
+                          className="cursor-pointer font-medium text-primary text-sm hover:underline"
                           href={`/chat/${chat.id}?admin=1`}
                         >
                           {chat.title || "Untitled chat"}
@@ -256,13 +297,16 @@ export function AdminChatTables({
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        disabled={isPending}
-                        onClick={() => handleRestore(chat.id)}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        Restore
+                    <Button
+                      disabled={isPending}
+                      onClick={() => handleRestore(chat.id)}
+                      size="sm"
+                      variant="secondary"
+                    >
+                        {pendingAction?.chatId === chat.id &&
+                        pendingAction.type === "restore"
+                          ? "Restoring..."
+                          : "Restore"}
                       </Button>
                       <Button
                         disabled={isPending}
@@ -270,7 +314,10 @@ export function AdminChatTables({
                         size="sm"
                         variant="destructive"
                       >
-                        Permanent delete
+                        {pendingAction?.chatId === chat.id &&
+                        pendingAction.type === "hard-delete"
+                          ? "Deleting..."
+                          : "Permanent delete"}
                       </Button>
                     </div>
                   </td>
@@ -287,6 +334,10 @@ export function AdminChatTables({
           </table>
         </div>
         <div className="flex items-center justify-end gap-3">
+          <span className="text-muted-foreground text-xs">
+            Showing {deletedChats.length === 0 ? 0 : pageDeleted * pageSize + 1}-
+            {Math.min((pageDeleted + 1) * pageSize, deletedTotal)} of {deletedTotal}
+          </span>
           <span className="text-muted-foreground text-xs">
             Page {pageDeleted + 1}
           </span>

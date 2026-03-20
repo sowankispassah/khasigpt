@@ -286,7 +286,6 @@ function toRpn(tokens: RawToken[]): RpnToken[] {
 
       stack.push({ kind: "operator", value: operator });
       previous = operator === "!" ? "number" : "operator";
-      continue;
     }
   }
 

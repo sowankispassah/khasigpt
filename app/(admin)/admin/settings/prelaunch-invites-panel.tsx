@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { Eye } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -119,17 +119,19 @@ async function requestWithTimeout<T>(url: string, init: RequestInit): Promise<T>
 
 export function PrelaunchInvitesPanel({
   appBaseUrl,
-  initialAccess,
-  initialInvites,
-  initialJoinedUsers,
+  initialAccess = [],
+  initialInvites = [],
+  initialJoinedUsers = [],
+  loadOnMount = false,
 }: {
   appBaseUrl: string | null;
-  initialAccess: InviteAccessItem[];
-  initialInvites: InviteListItem[];
-  initialJoinedUsers: InviteJoinedUserItem[];
+  initialAccess?: InviteAccessItem[];
+  initialInvites?: InviteListItem[];
+  initialJoinedUsers?: InviteJoinedUserItem[];
+  loadOnMount?: boolean;
 }) {
   const [invites, setInvites] = useState<InviteListItem[]>(initialInvites);
-  const [access, setAccess] = useState<InviteAccessItem[]>(initialAccess);
+  const [_access, setAccess] = useState<InviteAccessItem[]>(initialAccess);
   const [joinedUsers, setJoinedUsers] =
     useState<InviteJoinedUserItem[]>(initialJoinedUsers);
   const [inviteLabel, setInviteLabel] = useState("");
@@ -147,12 +149,17 @@ export function PrelaunchInvitesPanel({
   const [joinedUserPageByInvite, setJoinedUserPageByInvite] = useState<
     Record<string, number>
   >({});
+  const pendingActionRef = useRef<string | null>(pendingAction);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOrigin(window.location.origin);
     }
   }, []);
+
+  useEffect(() => {
+    pendingActionRef.current = pendingAction;
+  }, [pendingAction]);
 
   const resolvedBaseUrl = useMemo(() => {
     const normalized =
@@ -215,14 +222,14 @@ export function PrelaunchInvitesPanel({
     viewerPageStart + JOINED_USERS_PAGE_SIZE
   );
 
-  const applyState = (state: InviteStateResponse) => {
+  const applyState = useCallback((state: InviteStateResponse) => {
     setInvites(state.invites);
     setAccess(state.access);
     setJoinedUsers(state.joinedUsers);
-  };
+  }, []);
 
-  const refreshState = async () => {
-    if (pendingAction) {
+  const refreshState = useCallback(async () => {
+    if (pendingActionRef.current) {
       return;
     }
 
@@ -240,11 +247,14 @@ export function PrelaunchInvitesPanel({
     } finally {
       setPendingAction(null);
     }
-  };
+  }, [applyState]);
 
   useEffect(() => {
+    if (!loadOnMount) {
+      return;
+    }
     void refreshState();
-  }, []);
+  }, [loadOnMount, refreshState]);
 
   const runMutation = async (
     actionKey: string,

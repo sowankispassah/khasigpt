@@ -1,10 +1,10 @@
 import "server-only";
-import { jobSources, type JobSourceConfig } from "@/config/jobSources";
+import { type JobSourceConfig, jobSources } from "@/config/jobSources";
 import { getJobsPdfExtractionSettingsUncached } from "@/lib/jobs/pdf-extraction-settings";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
 import { type NewJobRow, saveJobs } from "@/lib/jobs/saveJobs";
 import { RobustHttpClient } from "./http-client";
-import { scrapeSource } from "./source-processor";
+import { parsePositiveInt, runWithConcurrency } from "./scraper-utils";
 import type {
   CachedPdfExtractionResult,
   JobsScraperRuntimeOptions,
@@ -13,7 +13,7 @@ import type {
   ScrapeJobsResult,
   SourceScrapeStats,
 } from "./scraping-types";
-import { parsePositiveInt, runWithConcurrency } from "./scraper-utils";
+import { scrapeSource } from "./source-processor";
 
 const DEFAULT_LOOKBACK_DAYS = 10;
 const DEFAULT_SOURCE_CONCURRENCY = 3;

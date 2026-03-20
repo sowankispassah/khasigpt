@@ -32,7 +32,7 @@ export function SiteShell({
         <HtmlLangSync />
         <SiteShellExtras
           forumEnabled={forumEnabled}
-          hasSession={Boolean(session?.user?.id)}
+          sessionUser={session?.user ?? null}
         />
         {children}
       </LanguageProvider>

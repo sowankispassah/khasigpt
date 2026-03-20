@@ -3,11 +3,11 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import { Suggestions, Suggestion } from "@/components/elements/suggestion";
+import { Suggestion, Suggestions } from "@/components/elements/suggestion";
 import { Button } from "@/components/ui/button";
+import type { StudyChipGroup } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { fetcher } from "@/lib/utils";
-import type { StudyChipGroup } from "@/lib/study/types";
 
 const DEFAULT_ACTIONS = [
   "Previous year papers",
@@ -32,7 +32,7 @@ export function StudyPromptChips({
   useEffect(() => {
     setSelectedExam(null);
     setSelectedRole(null);
-  }, [chatId]);
+  }, []);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();

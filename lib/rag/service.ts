@@ -12,6 +12,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { getModelRegistry } from "@/lib/ai/model-registry";
+import { isStrongDefaultModeRagTitleMatch } from "@/lib/chat/default-mode-rag";
 import { db } from "@/lib/db/queries";
 import {
   type RagEntryApprovalStatus,
@@ -24,9 +25,8 @@ import {
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
-import { isStrongDefaultModeRagTitleMatch } from "@/lib/chat/default-mode-rag";
 import { isDefaultChatRagScope } from "./chat-scope";
+import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
 import {
   deleteFileSearchDocument,
   deleteGeminiFile,

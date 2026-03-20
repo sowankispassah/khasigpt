@@ -24,9 +24,9 @@ import {
 import type { UserRole } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import {
+  type FeatureAccessMode,
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
-  type FeatureAccessMode,
 } from "@/lib/feature-access";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";

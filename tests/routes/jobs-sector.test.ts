@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { resolveJobSector } from "@/lib/jobs/sector";
+import { expect, test } from "@playwright/test";
 import { resolveJobsFilterConversation } from "@/lib/jobs/filtering";
 import { toJobListItem } from "@/lib/jobs/list-items";
+import { resolveJobSector } from "@/lib/jobs/sector";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 
 function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {

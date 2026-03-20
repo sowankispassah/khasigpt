@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:webpack": "next dev --webpack",
     "dev:turbo": "next dev --turbo",
     "build": "node scripts/next-build.cjs",
     "start": "next start",
-    "lint": "pnpm exec ultracite check",
+    "lint": "pnpm exec biome check .",
     "format": "pnpm exec ultracite fix",
     "typecheck": "pnpm exec tsc --noEmit",
     "translations:publish": "tsx scripts/publish-translations.ts",

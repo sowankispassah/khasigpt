@@ -12,11 +12,11 @@ import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { startGlobalProgress } from "@/lib/ui/global-progress";
 import type {
   ForumOverviewPayload,
   ForumThreadListItemPayload,
 } from "@/lib/forum/types";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { fetchWithErrorHandlers } from "@/lib/utils";
 
 const ForumComposer = dynamic(() =>

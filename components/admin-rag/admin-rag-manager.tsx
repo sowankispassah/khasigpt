@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -49,8 +50,8 @@ import { Textarea } from "@/components/ui/textarea";
 import type { RagEntryStatus } from "@/lib/db/schema";
 import {
   getRagChatScope,
-  type RagChatScope,
   RAG_CHAT_SCOPE_OPTIONS,
+  type RagChatScope,
 } from "@/lib/rag/chat-scope";
 import type {
   AdminRagEntry,
@@ -183,6 +184,7 @@ export function AdminRagManager({
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   useEffect(() => {
     setEntriesState(entries);
@@ -226,7 +228,7 @@ export function AdminRagManager({
   useEffect(() => () => clearProgressTimers(), [clearProgressTimers]);
 
   const filteredEntries = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const query = deferredSearchTerm.trim().toLowerCase();
     return entriesState.filter((row) => {
       const matchesStatus =
         statusFilter === "all" ? true : row.entry.status === statusFilter;
@@ -255,10 +257,10 @@ export function AdminRagManager({
     entriesState,
     statusFilter,
     typeFilter,
-    modelFilter,
-    tagFilter,
-    searchTerm,
-  ]);
+      modelFilter,
+      tagFilter,
+      deferredSearchTerm,
+    ]);
 
   const allSelected =
     filteredEntries.length > 0 &&

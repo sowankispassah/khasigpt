@@ -5,10 +5,18 @@ import {
   type ChangeEvent,
   type ReactNode,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CALCULATOR_MAX_SUPPORTED_ABSOLUTE } from "@/lib/calculator/constants";
 import {
   evaluateExpression,
@@ -19,13 +27,6 @@ import {
   formatNumericResult,
   type NumberWordLanguage,
 } from "@/lib/calculator/number-to-words";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const LANGUAGE_OPTIONS: Array<{
@@ -492,73 +493,77 @@ export function CalculatorWorkbench() {
     }
   };
 
+  const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      const tagName = target.tagName;
+      if (
+        target.isContentEditable ||
+        tagName === "INPUT" ||
+        tagName === "TEXTAREA" ||
+        tagName === "SELECT"
+      ) {
+        return;
+      }
+    }
+
+    const key = event.key;
+
+    if (/^[0-9]$/.test(key)) {
+      event.preventDefault();
+      appendToExpression(key);
+      return;
+    }
+
+    if (key === "." || key === ",") {
+      event.preventDefault();
+      appendToExpression(".");
+      return;
+    }
+
+    if (
+      key === "+" ||
+      key === "-" ||
+      key === "*" ||
+      key === "/" ||
+      key === "%" ||
+      key === "^" ||
+      key === "(" ||
+      key === ")" ||
+      key === "!" ||
+      key === "x" ||
+      key === "X"
+    ) {
+      event.preventDefault();
+      appendToExpression(key === "x" || key === "X" ? "*" : key);
+      return;
+    }
+
+    if (key === "Enter" || key === "=") {
+      event.preventDefault();
+      handleEvaluate();
+      return;
+    }
+
+    if (key === "Backspace") {
+      event.preventDefault();
+      handleBackspace();
+      return;
+    }
+
+    if (key === "Escape") {
+      event.preventDefault();
+      handleClear();
+    }
+  });
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) {
-        return;
-      }
-
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        const tagName = target.tagName;
-        if (
-          target.isContentEditable ||
-          tagName === "INPUT" ||
-          tagName === "TEXTAREA" ||
-          tagName === "SELECT"
-        ) {
-          return;
-        }
-      }
-
-      const key = event.key;
-
-      if (/^[0-9]$/.test(key)) {
-        event.preventDefault();
-        appendToExpression(key);
-        return;
-      }
-
-      if (key === "." || key === ",") {
-        event.preventDefault();
-        appendToExpression(".");
-        return;
-      }
-
-      if (
-        key === "+" ||
-        key === "-" ||
-        key === "*" ||
-        key === "/" ||
-        key === "%" ||
-        key === "^" ||
-        key === "(" ||
-        key === ")" ||
-        key === "!" ||
-        key === "x" ||
-        key === "X"
-      ) {
-        event.preventDefault();
-        appendToExpression(key === "x" || key === "X" ? "*" : key);
-        return;
-      }
-
-      if (key === "Enter" || key === "=") {
-        event.preventDefault();
-        handleEvaluate();
-        return;
-      }
-
-      if (key === "Backspace") {
-        event.preventDefault();
-        handleBackspace();
-        return;
-      }
-
-      if (key === "Escape") {
-        event.preventDefault();
-        handleClear();
-      }
+      handleWindowKeyDown(event);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -566,7 +571,7 @@ export function CalculatorWorkbench() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [appendToExpression, handleBackspace, handleClear, handleEvaluate]);
+  }, [handleWindowKeyDown]);
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-0.5 self-start rounded-3xl border bg-card p-3 shadow-sm sm:gap-4 sm:p-4">

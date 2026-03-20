@@ -77,6 +77,9 @@ function persistAutoTriggerResponse(snapshot: AutoTriggerResponseSnapshot) {
 
 export function JobsAutoScrapeTrigger() {
   useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      return;
+    }
     if (!shouldRunAutoTriggerNow()) {
       return;
     }

@@ -3,7 +3,7 @@ import {
   buildCharacterReference,
   MAX_CHARACTER_REFS,
   MAX_TOTAL_CHARACTER_REFS,
-} from "@/lib/ai/character-reference";
+} from "@/lib/ai/character-reference-core";
 import type { CharacterRefImage } from "@/lib/db/schema";
 
 test("buildCharacterReference caps refs and uses only matched character images", async () => {

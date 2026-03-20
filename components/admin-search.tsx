@@ -12,6 +12,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
 
 type AdminSearchEntry = {
@@ -116,6 +117,16 @@ export function AdminSearch() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    for (const entry of ADMIN_SEARCH_ENTRIES) {
+      void router.prefetch(entry.href);
+    }
+  }, [isOpen, router]);
+
   const filteredEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
@@ -135,6 +146,7 @@ export function AdminSearch() {
   const handleNavigate = (href: string) => {
     setIsOpen(false);
     setQuery("");
+    startGlobalProgress();
     router.push(href);
   };
 
@@ -193,7 +205,7 @@ export function AdminSearch() {
                   <li key={entry.id}>
                     <button
                       className={cn(
-                        "w-full rounded-xl border border-transparent px-4 py-3 text-left transition",
+                        "w-full cursor-pointer rounded-xl border border-transparent px-4 py-3 text-left transition",
                         "hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       )}
                       onClick={() => handleNavigate(entry.href)}

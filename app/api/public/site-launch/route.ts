@@ -35,6 +35,26 @@ let siteLaunchSettingsCache:
     }
   | null = null;
 
+function getSafeSiteLaunchFallbackState() {
+  if (process.env.NODE_ENV === "production") {
+    return {
+      publicLaunched: false,
+      underMaintenance: false,
+      inviteOnlyPrelaunch: false,
+      adminAccessEnabled: false,
+      adminEntryPath: normalizeAdminEntryPathSetting(null),
+    };
+  }
+
+  return {
+    publicLaunched: true,
+    underMaintenance: false,
+    inviteOnlyPrelaunch: false,
+    adminAccessEnabled: false,
+    adminEntryPath: normalizeAdminEntryPathSetting(null),
+  };
+}
+
 function cloneSettingsMap(map: Map<string, unknown>) {
   return new Map<string, unknown>(map);
 }
@@ -132,6 +152,7 @@ async function loadSiteLaunchSettingsMap() {
 
 export async function GET() {
   try {
+    const fallbackState = getSafeSiteLaunchFallbackState();
     const settingsMap = await loadSiteLaunchSettingsMap();
     const publicLaunchedSetting = settingsMap.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY);
     const underMaintenanceSetting = settingsMap.get(
@@ -144,17 +165,26 @@ export async function GET() {
       SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY
     );
     const adminEntryPathSetting = settingsMap.get(SITE_ADMIN_ENTRY_PATH_SETTING_KEY);
-    const publicLaunched = parseBooleanSetting(publicLaunchedSetting, true);
-    const underMaintenance = parseBooleanSetting(underMaintenanceSetting, false);
+    const publicLaunched = parseBooleanSetting(
+      publicLaunchedSetting,
+      fallbackState.publicLaunched
+    );
+    const underMaintenance = parseBooleanSetting(
+      underMaintenanceSetting,
+      fallbackState.underMaintenance
+    );
     const inviteOnlyPrelaunch = parseBooleanSetting(
       inviteOnlyPrelaunchSetting,
-      false
+      fallbackState.inviteOnlyPrelaunch
     );
     const adminAccessEnabled = parseBooleanSetting(
       adminAccessEnabledSetting,
-      false
+      fallbackState.adminAccessEnabled
     );
-    const adminEntryPath = normalizeAdminEntryPathSetting(adminEntryPathSetting);
+    const adminEntryPath =
+      adminEntryPathSetting === null || typeof adminEntryPathSetting === "undefined"
+        ? fallbackState.adminEntryPath
+        : normalizeAdminEntryPathSetting(adminEntryPathSetting);
 
     const payload: {
       publicLaunched: boolean;
@@ -179,18 +209,14 @@ export async function GET() {
       }
     );
   } catch (error) {
+    const fallbackState = getSafeSiteLaunchFallbackState();
     console.error(
-      "[api/public/site-launch] Failed to resolve site availability. Falling back to defaults.",
+      "[api/public/site-launch] Failed to resolve site availability. Falling back to safe defaults.",
       error
     );
 
     return NextResponse.json(
-      {
-        publicLaunched: true,
-        underMaintenance: false,
-        inviteOnlyPrelaunch: false,
-        adminAccessEnabled: false,
-      },
+      fallbackState,
       {
         headers: {
           "Cache-Control": "no-store",

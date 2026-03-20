@@ -4,6 +4,7 @@ import { auth } from "@/app/(auth)/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
@@ -14,7 +15,6 @@ import { getAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
-import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 

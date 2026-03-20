@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { resolveJobLocation } from "@/lib/jobs/location";
 import postgres from "postgres";
+import { resolveJobLocation } from "@/lib/jobs/location";
 import { NO_SALARY_LABEL, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { extractDocumentText } from "@/lib/uploads/document-parser";
 

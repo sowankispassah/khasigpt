@@ -1,10 +1,10 @@
 import { CALCULATOR_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import {
-  isFeatureEnabledForRole,
-  parseFeatureAccessMode,
   type FeatureAccessMode,
   type FeatureAccessRole,
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
 } from "@/lib/feature-access";
 
 export const CALCULATOR_ACCESS_MODE_FALLBACK: FeatureAccessMode = "enabled";

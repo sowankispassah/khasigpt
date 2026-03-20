@@ -1,8 +1,8 @@
 import "server-only";
 import { DEFAULT_JOB_LOCATION } from "@/lib/jobs/location";
 import type { JobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 const BATCH_SIZE = 100;
 const DB_RETRY_ATTEMPTS = 3;

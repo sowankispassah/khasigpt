@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
-import { setCachedChatPagePayload } from "@/components/chat-page-cache";
 import { ChatLoader } from "@/components/chat-loader";
+import { setCachedChatPagePayload } from "@/components/chat-page-cache";
 import { ModelConfigProvider } from "@/components/model-config-provider";
+import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
 
 export function ChatPageClient({
   payload,

@@ -1,8 +1,8 @@
 import { fetchWithTimeout } from "@/lib/utils/async";
 import {
   looksBlockedHtml,
-  parseRetryAfterMs,
   parsePositiveInt,
+  parseRetryAfterMs,
   sleep,
 } from "./scraper-utils";
 

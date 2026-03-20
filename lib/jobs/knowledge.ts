@@ -5,17 +5,17 @@ import {
   resolveJobNotificationDateLabel,
 } from "@/lib/jobs/dates";
 import {
+  type LocationEntry,
+  resolveJobLocationInfo,
+} from "@/lib/jobs/location";
+import {
   buildJobsPdfExtractedSummaryLines,
   type JobsPdfExtractedData,
 } from "@/lib/jobs/pdf-extraction";
 import {
-  resolveJobLocationInfo,
-  type LocationEntry,
-} from "@/lib/jobs/location";
-import {
+  type CompensationEntry,
   NO_SALARY_LABEL,
   resolveJobSalaryInfo,
-  type CompensationEntry,
 } from "@/lib/jobs/salary";
 import { getJobSectorLabel, getJobTypeLabel } from "@/lib/jobs/sector";
 import { extractPdfStructuredFields } from "@/lib/scraper/scraper-utils";
@@ -477,7 +477,7 @@ export function buildJobKnowledgeUnit(job: JobPostingRecord): JobKnowledgeUnit {
   );
 
   const fullTextSections = [
-    "Overview:\n" + overviewLines.join("\n"),
+    `Overview:\n${overviewLines.join("\n")}`,
     facts.instructions
       ? `Instructions / How to Apply:\n${facts.instructions}`
       : "",

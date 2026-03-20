@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 const CHAT_ID_REGEX =
-  /^http:\/\/localhost:3000\/chat\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  /\/chat\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export class ChatPage {
   private readonly page: Page;

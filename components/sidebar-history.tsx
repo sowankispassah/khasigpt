@@ -27,8 +27,8 @@ import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
 import { fetcher } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
-import { deleteCachedChatPagePayload } from "./chat-page-cache";
 import { preloadChat } from "./chat-loader";
+import { deleteCachedChatPagePayload } from "./chat-page-cache";
 import { LoaderIcon } from "./icons";
 import { ChatItem } from "./sidebar-history-item";
 

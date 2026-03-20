@@ -4,13 +4,13 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   getAppSetting,
   getLastKnownAppSetting,

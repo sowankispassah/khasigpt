@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ComponentProps } from "react";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminPagination } from "@/components/admin/admin-pagination";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -18,6 +19,7 @@ import {
 import { TranslationSearchForm } from "./translation-search-form";
 
 const TRANSLATION_PENDING_TIMEOUT_MS = 12000;
+const TRANSLATION_PAGE_SIZE = 25;
 
 function TranslationSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
@@ -127,6 +129,38 @@ export default async function AdminTranslationsPage({
       : entries;
   const sectionGroups =
     filteredEntries.length > 0 ? organizeEntriesBySection(filteredEntries) : [];
+  const sectionParam = resolvedSearchParams?.section;
+  const rawSectionId = Array.isArray(sectionParam)
+    ? (sectionParam[0] ?? "")
+    : typeof sectionParam === "string"
+      ? sectionParam
+      : "";
+  const pageParam = resolvedSearchParams?.page;
+  const requestedPage = Math.max(
+    1,
+    Number.parseInt(
+      Array.isArray(pageParam)
+        ? (pageParam[0] ?? "1")
+        : (pageParam ?? "1"),
+      10
+    ) || 1
+  );
+  const selectedSection =
+    sectionGroups.find((section) => section.id === rawSectionId) ??
+    sectionGroups[0] ??
+    null;
+  const totalSectionEntries = selectedSection?.entries.length ?? 0;
+  const totalSectionPages = Math.max(
+    1,
+    Math.ceil(totalSectionEntries / TRANSLATION_PAGE_SIZE)
+  );
+  const sectionPage = Math.min(requestedPage, totalSectionPages);
+  const pagedSectionEntries = selectedSection
+    ? selectedSection.entries.slice(
+        (sectionPage - 1) * TRANSLATION_PAGE_SIZE,
+        sectionPage * TRANSLATION_PAGE_SIZE
+      )
+    : [];
 
   return (
     <div className="space-y-6">
@@ -166,10 +200,17 @@ export default async function AdminTranslationsPage({
         </div>
       ) : (
         <>
-          <TranslationSectionNavigation sections={sectionGroups} />
-          <TranslationSections
-            nonDefaultLanguages={nonDefaultLanguages}
+          <TranslationSectionNavigation
+            activeSectionId={selectedSection?.id ?? null}
+            searchQuery={rawQuery}
             sections={sectionGroups}
+          />
+          <SelectedTranslationSection
+            nonDefaultLanguages={nonDefaultLanguages}
+            page={sectionPage}
+            searchParams={resolvedSearchParams}
+            section={selectedSection}
+            visibleEntries={pagedSectionEntries}
           />
         </>
       )}
@@ -414,8 +455,12 @@ function organizeEntriesBySection(
 }
 
 function TranslationSectionNavigation({
+  activeSectionId,
+  searchQuery,
   sections,
 }: {
+  activeSectionId: string | null;
+  searchQuery: string;
   sections: TranslationSectionGroup[];
 }) {
   return (
@@ -425,80 +470,116 @@ function TranslationSectionNavigation({
       </p>
       <div className="flex flex-wrap gap-2">
         {sections.map((section) => (
-          <a
-            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3 py-1 font-medium text-foreground text-xs transition hover:border-primary/40 hover:text-primary"
-            href={`#translation-section-${section.id}`}
+          <Link
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border bg-background px-3 py-1 font-medium text-xs transition hover:border-primary/40 hover:text-primary ${
+              section.id === activeSectionId
+                ? "border-primary text-primary"
+                : "border-border text-foreground"
+            }`}
+            data-nav
+            href={buildTranslationsHref({
+              page: 1,
+              query: searchQuery,
+              sectionId: section.id,
+            })}
             key={section.id}
+            prefetch
           >
             {section.label}
             <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] text-muted-foreground uppercase">
               {section.entries.length}
             </span>
-          </a>
+          </Link>
         ))}
       </div>
     </nav>
   );
 }
 
-function TranslationSections({
-  sections,
+function SelectedTranslationSection({
   nonDefaultLanguages,
+  section,
+  visibleEntries,
+  page,
+  searchParams,
 }: {
-  sections: TranslationSectionGroup[];
   nonDefaultLanguages: LanguageOption[];
+  section: TranslationSectionGroup | null;
+  visibleEntries: TranslationTableEntry[];
+  page: number;
+  searchParams?: { [key: string]: string | string[] | undefined };
 }) {
-  return (
-    <div className="space-y-4">
-      {sections.map((section) => {
-        const isForumSection = section.id === "forum";
-        const hasEntries = section.entries.length > 0;
+  if (!section) {
+    return null;
+  }
 
-        return (
-          <details
-            className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
-            id={`translation-section-${section.id}`}
-            key={section.id}
-            {...(isForumSection ? { open: true } : {})}
-          >
-            <summary className="flex cursor-pointer flex-col gap-1 bg-muted/40 px-4 py-3 font-semibold text-foreground text-sm outline-none transition hover:bg-muted">
-              <div className="flex items-center justify-between gap-2">
-                <span>{section.label}</span>
-                <span className="font-normal text-muted-foreground text-xs">
-                  {section.entries.length}{" "}
-                  {section.entries.length === 1 ? "string" : "strings"}
-                </span>
-              </div>
-              {section.description ? (
-                <span className="font-normal text-muted-foreground text-xs">
-                  {section.description}
-                </span>
-              ) : null}
-            </summary>
-            <div className="border-border border-t">
-              {hasEntries ? (
-                <div className="p-4">
-                  <TranslationTable
-                    entries={section.entries}
-                    nonDefaultLanguages={nonDefaultLanguages}
-                  />
-                </div>
-              ) : (
-                <p className="px-4 py-6 text-muted-foreground text-sm">
-                  No translations have been registered for this section yet.
-                  Wrap copy in the translation helper using the suggested prefix{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 text-foreground text-xs">
-                    {section.prefixes[0] ?? "general."}
-                  </code>{" "}
-                  to populate this table.
-                </p>
-              )}
-            </div>
-          </details>
-        );
-      })}
-    </div>
+  const hasEntries = section.entries.length > 0;
+
+  return (
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+      id={`translation-section-${section.id}`}
+    >
+      <div className="flex flex-col gap-1 bg-muted/40 px-4 py-3 font-semibold text-foreground text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <span>{section.label}</span>
+          <span className="font-normal text-muted-foreground text-xs">
+            {section.entries.length} {section.entries.length === 1 ? "string" : "strings"}
+          </span>
+        </div>
+        {section.description ? (
+          <span className="font-normal text-muted-foreground text-xs">
+            {section.description}
+          </span>
+        ) : null}
+      </div>
+      <div className="border-border border-t">
+        {hasEntries ? (
+          <div className="space-y-4 p-4">
+            <TranslationTable
+              entries={visibleEntries}
+              nonDefaultLanguages={nonDefaultLanguages}
+            />
+            <AdminPagination
+              itemLabel="translations"
+              page={page}
+              pageSize={TRANSLATION_PAGE_SIZE}
+              pathname="/admin/translations"
+              searchParams={searchParams}
+              totalItems={section.entries.length}
+            />
+          </div>
+        ) : (
+          <p className="px-4 py-6 text-muted-foreground text-sm">
+            No translations have been registered for this section yet. Wrap copy
+            in the translation helper using the suggested prefix{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-foreground text-xs">
+              {section.prefixes[0] ?? "general."}
+            </code>{" "}
+            to populate this table.
+          </p>
+        )}
+      </div>
+    </section>
   );
+}
+
+function buildTranslationsHref({
+  sectionId,
+  query,
+  page,
+}: {
+  sectionId: string;
+  query: string;
+  page: number;
+}) {
+  const params = new URLSearchParams();
+  if (query.trim().length > 0) {
+    params.set("q", query.trim());
+  }
+  params.set("section", sectionId);
+  params.set("page", String(page));
+  return `/admin/translations?${params.toString()}`;
 }
 
 function matchesQuery(entry: TranslationTableEntry, query: string): boolean {

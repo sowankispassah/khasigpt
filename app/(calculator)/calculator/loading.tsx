@@ -1,3 +1,8 @@
+const CALCULATOR_LOADING_KEYS = Array.from(
+  { length: 20 },
+  (_, index) => `calculator-loading-key-${index + 1}`
+);
+
 function CalculatorLoadingSkeleton() {
   return (
     <>
@@ -15,10 +20,10 @@ function CalculatorLoadingSkeleton() {
           </div>
           <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
           <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
-            {Array.from({ length: 20 }).map((_, index) => (
+            {CALCULATOR_LOADING_KEYS.map((key) => (
               <div
                 className="aspect-[10/9] animate-pulse rounded-full bg-muted"
-                key={`calculator-loading-key-${index}`}
+                key={key}
               />
             ))}
           </div>

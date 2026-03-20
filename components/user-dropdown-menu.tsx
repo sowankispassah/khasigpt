@@ -457,7 +457,7 @@ export function UserDropdownMenu({
       : null) ??
     userEmail ??
     null;
-  const shouldSkipPathProgress = React.useCallback(
+  const _shouldSkipPathProgress = React.useCallback(
     (path: string | null | undefined) =>
       path && currentPathname ? currentPathname === path : false,
     [currentPathname]

@@ -2,8 +2,8 @@
 
 import { BriefcaseBusiness, Building2, FileText, MapPin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { LoaderIcon } from "@/components/icons";
+import { ViewDetailsButton } from "@/components/jobs/view-details-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
@@ -69,7 +69,6 @@ export function JobsInfiniteList({ jobs }: { jobs: JobListItem[] }) {
                   </div>
                   {job.hasPdfFile ? (
                     <span
-                      aria-label="PDF available"
                       className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-700"
                       title="PDF file available"
                     >

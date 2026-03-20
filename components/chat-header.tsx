@@ -3,10 +3,9 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useState } from "react";
 import { useWindowSize } from "usehooks-ts";
-
+import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
-import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
 
 import { PlusIcon } from "./icons";
@@ -30,7 +29,7 @@ function PureChatHeader({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const _searchParams = useSearchParams();
   const { open } = useSidebar();
   const [isOpeningNewChat, setIsOpeningNewChat] = useState(false);
 
@@ -39,7 +38,7 @@ function PureChatHeader({
 
   useEffect(() => {
     setIsOpeningNewChat(false);
-  }, [pathname, searchParams]);
+  }, []);
 
   const handleNewChatClick = useCallback(() => {
     if (isOpeningNewChat) {

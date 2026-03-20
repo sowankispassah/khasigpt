@@ -352,7 +352,7 @@ function parsePdfTextFallback(buffer: Buffer) {
     return literalText;
   }
 
-  const tokenMatches = raw.match(/[A-Za-z0-9][A-Za-z0-9 ,.;:'"()/%+\-]{3,}/g) ?? [];
+  const tokenMatches = raw.match(/[A-Za-z0-9][A-Za-z0-9 ,.;:'"()/%+-]{3,}/g) ?? [];
   const tokenText = tokenMatches.slice(0, 8_000).join(" ");
   if (isLikelyReadableText(tokenText)) {
     return tokenText;

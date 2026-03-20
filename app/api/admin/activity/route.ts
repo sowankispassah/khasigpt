@@ -1,9 +1,9 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
 import { getPresenceDetails, getPresenceSummary } from "@/lib/db/queries";
-import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const ADMIN_ACTIVITY_RATE_LIMIT = {
   limit: 60,

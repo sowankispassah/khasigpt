@@ -108,10 +108,7 @@ const ROLE_HINT_PATTERN =
 const NON_ROLE_PREFIX_PATTERN =
   /^(?:for|to|the|last|interested|office|current office address|advertisement|notification|general manager|sd|shillong)\b/i;
 
-const ROLE_ROW_PATTERN = new RegExp(
-  String.raw`(?:^|\s)(\d+(?:\.\d+){0,2})\s+([A-Z][A-Za-z0-9/&(),+'.\- ]{2,180}?)(?=\s+(?:Essential|Educational|Qualifications?|Experience|Requirement(?:s)?(?:\s+and\s+Skills)?|No\.?\s*of\s*Vacancy|Place\s+of\s+Posting|Monthly\s+(?:Emolument|Remuneration|Salary|Pay)|Remuneration|Emoluments?|Pay|Salary|Rs\.?|INR|All\s+Districts|Interested|For\s+applying|To\s+apply|Last\s+date|$))`,
-  "g"
-);
+const ROLE_ROW_PATTERN = /(?:^|\s)(\d+(?:\.\d+){0,2})\s+([A-Z][A-Za-z0-9/&(),+'.\- ]{2,180}?)(?=\s+(?:Essential|Educational|Qualifications?|Experience|Requirement(?:s)?(?:\s+and\s+Skills)?|No\.?\s*of\s*Vacancy|Place\s+of\s+Posting|Monthly\s+(?:Emolument|Remuneration|Salary|Pay)|Remuneration|Emoluments?|Pay|Salary|Rs\.?|INR|All\s+Districts|Interested|For\s+applying|To\s+apply|Last\s+date|$))/g;
 
 const TABLE_SECTION_END_PATTERN =
   /--\s*\d+\s*of\s*\d+\s*--|\b(?:How to Apply|For applying|To apply|Age Limit|Duration of Contract|Selection Process|General Information|Last date|Interested and eligible candidates)\b/i;

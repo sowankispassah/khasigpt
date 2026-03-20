@@ -1,7 +1,7 @@
+import { cookies } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 import { GET as authGET, POST as authPOST } from "@/app/(auth)/auth";
 import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
-import { cookies } from "next/headers";
-import { NextResponse, type NextRequest } from "next/server";
 
 const CALLBACK_CODE_TTL_MS = 60 * 1000;
 const CALLBACK_CODE_COOKIE = "__auth_callback_code";

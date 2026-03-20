@@ -1,7 +1,8 @@
+import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { AdminCouponsManager } from "@/components/admin-coupons-manager";
+import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import {
   getCouponPayoutsForAdmin,
   getCouponRedemptionsForAdmin,
@@ -10,6 +11,16 @@ import {
 } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
+
+const AdminCouponsManager = nextDynamic(
+  () =>
+    import("@/components/admin-coupons-manager").then(
+      (module) => module.AdminCouponsManager
+    ),
+  {
+    loading: () => <AdminPageLoading rows={7} summaryCards={2} titleWidth="w-36" />,
+  }
+);
 
 export default async function AdminCouponsPage() {
   const session = await auth();

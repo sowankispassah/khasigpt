@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { useEffect, useRef } from "react";
 
 const HEARTBEAT_INTERVAL_MS = 60_000;
@@ -48,8 +47,7 @@ function shouldTrackPresencePath(pathname: string | null) {
   return false;
 }
 
-export function UserPresenceTracker() {
-  const { data: session } = useSession();
+export function UserPresenceTracker({ userId }: { userId: string }) {
   const pathname = usePathname();
   const timerRef = useRef<number | null>(null);
   const trackedPath = shouldTrackPresencePath(pathname);
@@ -59,7 +57,7 @@ export function UserPresenceTracker() {
       return undefined;
     }
 
-    if (!session?.user?.id || !trackedPath) {
+    if (!userId || !trackedPath) {
       return undefined;
     }
 
@@ -123,7 +121,7 @@ export function UserPresenceTracker() {
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [pathname, session?.user?.id, trackedPath]);
+  }, [pathname, trackedPath, userId]);
 
   return null;
 }

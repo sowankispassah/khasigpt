@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-export default function Error({
+export default function ChatError({
   error,
   reset,
 }: {
@@ -48,4 +48,3 @@ export default function Error({
     </div>
   );
 }
-

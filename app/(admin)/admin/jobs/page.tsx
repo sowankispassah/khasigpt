@@ -1,22 +1,23 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
+import { ActionSubmitButton } from "@/components/action-submit-button";
+import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminJobEditDialog } from "@/components/admin-job-edit-dialog";
 import { AdminJobsExpandableTable } from "@/components/admin-jobs-expandable-table";
-import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
   JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
-  JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_LAST_RUN_STATUS_SETTING_KEY,
   JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY,
   JOBS_SCRAPE_LAST_SKIP_REASON_SETTING_KEY,
   JOBS_SCRAPE_LAST_SUCCESS_AT_SETTING_KEY,
   JOBS_SCRAPE_LOCK_UNTIL_SETTING_KEY,
+  JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY,
   JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY,
   JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY,
   JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY,
@@ -27,14 +28,14 @@ import {
 import {
   appSettingCacheTagForKey,
   deleteAppSetting,
+  getAppSettingsByKeysUncached,
   getAppSettingUncached,
   setAppSetting,
 } from "@/lib/db/queries";
-import { listJobPostingEntries } from "@/lib/jobs/service";
 import {
+  type JobsPdfExtractionSettings,
   normalizeJobsPdfExtractionModelId,
   resolveJobsPdfExtractionSettings,
-  type JobsPdfExtractionSettings,
 } from "@/lib/jobs/pdf-extraction-settings";
 import {
   archiveJobPostingFromRag,
@@ -42,26 +43,27 @@ import {
 } from "@/lib/jobs/rag-sync";
 import { saveJobs } from "@/lib/jobs/saveJobs";
 import {
+  getNextJobsScrapeDueAt,
+  JOBS_SCRAPE_SETTING_KEYS,
+  parseBoolean,
+  parseDateOrNull,
+  resolveJobsScrapeScheduleSettings,
+  resolveJobsScrapeScheduleState,
+} from "@/lib/jobs/schedule";
+import {
   getJobsScrapeHistory,
   getJobsScrapeProgressSnapshot,
   type JobsScrapeHistoryEntry,
 } from "@/lib/jobs/scrape-orchestrator";
-import {
-  JOBS_SCRAPE_SETTING_KEYS,
-  getNextJobsScrapeDueAt,
-  parseDateOrNull,
-  parseBoolean,
-  resolveJobsScrapeScheduleSettings,
-  resolveJobsScrapeScheduleState,
-} from "@/lib/jobs/schedule";
+import { getJobPostingCount, listJobPostingEntries } from "@/lib/jobs/service";
 import {
   addManagedJobSource,
   deleteManagedJobSource,
   listManagedJobSources,
   type ManagedJobSourceLocationScope,
   type ManagedJobSourceType,
-  setManagedJobSourceLocationScope,
   setManagedJobSourceEnabled,
+  setManagedJobSourceLocationScope,
 } from "@/lib/jobs/source-registry";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/utils/async";
@@ -92,7 +94,7 @@ const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
 const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
 const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
 const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 12_000;
-const MAX_ADMIN_JOBS_RENDERED = 100;
+const ADMIN_JOBS_PAGE_SIZE = 25;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
   "Asia/Kolkata": 330,
@@ -845,57 +847,92 @@ async function withTimeoutFallback<T>(
   }
 }
 
-export default async function AdminJobsPage() {
+function parsePage(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(rawValue ?? "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+export default async function AdminJobsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await auth();
   if (!session?.user || session.user.role !== "admin") {
     redirect("/");
   }
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedPage = parsePage(resolvedSearchParams?.page);
+  const jobsOffset = (requestedPage - 1) * ADMIN_JOBS_PAGE_SIZE;
 
-  const scrapeProgress = await withTimeoutFallback(getJobsScrapeProgressSnapshot(), null, 10_000);
+  const scrapeProgressPromise = withTimeoutFallback(
+    getJobsScrapeProgressSnapshot(),
+    null,
+    10_000
+  );
+  const jobsPageRowsPromise = withTimeoutFallback(
+    listJobPostingEntries({
+      includeInactive: true,
+      includeRagState: false,
+      limit: ADMIN_JOBS_PAGE_SIZE,
+      offset: jobsOffset,
+    }),
+    [],
+    20_000
+  );
+  const totalJobsPromise = withTimeoutFallback(
+    getJobPostingCount({ includeInactive: true }),
+    0,
+    20_000
+  );
+  const managedSourcesPromise = withTimeoutFallback(listManagedJobSources(), [], 10_000);
+  const jobSettingsPromise = withTimeoutFallback(
+    getAppSettingsByKeysUncached([...JOBS_SCRAPE_SETTINGS_KEYS]),
+    [],
+    10_000
+  );
+  const scrapeHistoryPromise = withTimeoutFallback<
+    Awaited<ReturnType<typeof getJobsScrapeHistory>> | null
+  >(getJobsScrapeHistory({ limit: 50 }), null, 10_000);
 
-  const [
-    jobs,
-    managedSources,
-    enabledRaw,
-    intervalHoursRaw,
-    lookbackDaysRaw,
-    startTimeRaw,
-    timezoneRaw,
-    oneTimeAtRaw,
-    pdfExtractionModeRaw,
-    pdfExtractionModelIdRaw,
-    lastSuccessAtRaw,
-    lockUntilRaw,
-    lastRunStatusRaw,
-    lastSkipReasonRaw,
-    lastRunSummaryRaw,
-    scrapeHistory,
-  ] = await Promise.all([
-    withTimeoutFallback(
-      listJobPostingEntries({
-        includeInactive: true,
-        includeRagState: false,
-        limit: MAX_ADMIN_JOBS_RENDERED,
-      }),
-      [],
-      20_000
-    ),
-    withTimeoutFallback(listManagedJobSources(), [], 10_000),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.enabled), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.intervalHours), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.startTime), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.timezone), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lockUntil), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason), null),
-    withTimeoutFallback(getAppSettingUncached<unknown>(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY), null),
-    withTimeoutFallback<Awaited<ReturnType<typeof getJobsScrapeHistory>> | null>(getJobsScrapeHistory({ limit: 50 }), null, 10_000),
+  const [jobsPageRows, totalJobs, jobSettings] = await Promise.all([
+    jobsPageRowsPromise,
+    totalJobsPromise,
+    jobSettingsPromise,
   ]);
+
+  const totalJobPages = Math.max(1, Math.ceil(totalJobs / ADMIN_JOBS_PAGE_SIZE));
+  const jobsPage = Math.min(requestedPage, totalJobPages);
+  const jobs =
+    jobsPage === requestedPage
+      ? jobsPageRows
+      : await withTimeoutFallback(
+          listJobPostingEntries({
+            includeInactive: true,
+            includeRagState: false,
+            limit: ADMIN_JOBS_PAGE_SIZE,
+            offset: (jobsPage - 1) * ADMIN_JOBS_PAGE_SIZE,
+          }),
+          [],
+          20_000
+        );
+  const jobSettingsByKey = new Map(jobSettings.map((setting) => [setting.key, setting.value]));
+  const enabledRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.enabled) ?? null;
+  const intervalHoursRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.intervalHours) ?? null;
+  const lookbackDaysRaw = jobSettingsByKey.get(JOBS_SCRAPE_LOOKBACK_DAYS_SETTING_KEY) ?? null;
+  const startTimeRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.startTime) ?? null;
+  const timezoneRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.timezone) ?? null;
+  const oneTimeAtRaw = jobSettingsByKey.get(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY) ?? null;
+  const pdfExtractionModeRaw =
+    jobSettingsByKey.get(JOBS_SCRAPE_PDF_EXTRACTION_MODE_SETTING_KEY) ?? null;
+  const pdfExtractionModelIdRaw =
+    jobSettingsByKey.get(JOBS_SCRAPE_PDF_EXTRACTION_MODEL_ID_SETTING_KEY) ?? null;
+  const lastSuccessAtRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.lastSuccessAt) ?? null;
+  const lockUntilRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.lockUntil) ?? null;
+  const lastRunStatusRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.lastRunStatus) ?? null;
+  const lastSkipReasonRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.lastSkipReason) ?? null;
+  const lastRunSummaryRaw = jobSettingsByKey.get(JOBS_SCRAPE_LAST_RUN_SUMMARY_SETTING_KEY) ?? null;
 
   const scheduleSettings = resolveJobsScrapeScheduleSettings({
     enabled: enabledRaw,
@@ -934,81 +971,15 @@ export default async function AdminJobsPage() {
   const insertedLastRun =
     typeof lastRunSummary?.inserted === "number"
       ? lastRunSummary.inserted
-      : typeof lastRunSummary?.["inserted"] === "number"
-        ? (lastRunSummary["inserted"] as number)
+      : typeof lastRunSummary?.inserted === "number"
+        ? (lastRunSummary.inserted as number)
         : null;
   const updatedLastRun =
     typeof lastRunSummary?.updated === "number"
       ? lastRunSummary.updated
-      : typeof lastRunSummary?.["updated"] === "number"
-        ? (lastRunSummary["updated"] as number)
+      : typeof lastRunSummary?.updated === "number"
+        ? (lastRunSummary.updated as number)
         : null;
-  const enabledSourcesCount = managedSources.filter((source) => source.enabled).length;
-  const scrapeHistoryUnavailable = scrapeHistory === null;
-  const scrapeHistoryItems = scrapeHistory ?? [];
-  const scrapeHistoryInitial = scrapeHistoryItems.slice(0, 10);
-  const scrapeHistoryRemaining = scrapeHistoryItems.slice(10);
-  const latestJobsInitial = jobs.slice(0, 10);
-  const latestJobsRemaining = jobs.slice(10);
-
-  const renderScrapeHistoryRow = (entry: (typeof scrapeHistoryItems)[number]) => {
-    const progressBarColor =
-      entry.status === "success"
-        ? "bg-emerald-500"
-        : entry.status === "failed"
-          ? "bg-red-500"
-          : entry.status === "cancelled"
-            ? "bg-amber-500"
-            : "bg-slate-500";
-
-    return (
-      <tr className="border-t align-top" key={entry.runId}>
-        <td className="px-3 py-3 text-xs">
-          {formatIsoDateTime(entry.startedAt, scheduleSettings.timezone)}
-        </td>
-        <td className="px-3 py-3 text-xs">{entry.trigger}</td>
-        <td className="px-3 py-3">
-          <span
-            className={`rounded-full border px-2 py-0.5 text-xs ${getHistoryStatusBadgeClasses(
-              entry.status
-            )}`}
-          >
-            {entry.status}
-          </span>
-        </td>
-        <td className="px-3 py-3">
-          <div className="w-36">
-            <div className="h-2 w-full overflow-hidden rounded bg-muted">
-              <div
-                className={`h-full ${progressBarColor}`}
-                style={{ width: `${entry.completionPercent}%` }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {entry.completionPercent}%
-            </p>
-          </div>
-        </td>
-        <td className="px-3 py-3 text-xs">
-          {entry.processedSources}/{entry.totalSources}
-        </td>
-        <td className="px-3 py-3 text-xs">{formatDurationMs(entry.durationMs)}</td>
-        <td className="px-3 py-3 text-xs">
-          <div>Inserted: {entry.inserted}</div>
-          <div>Updated: {entry.updated}</div>
-          <div>Duplicates: {entry.skippedDuplicates}</div>
-        </td>
-        <td className="max-w-xs px-3 py-3 whitespace-normal text-xs text-muted-foreground">
-          {entry.errorMessage ??
-            entry.skipReason ??
-            (entry.status === "success"
-              ? "Completed successfully."
-              : "No additional details.")}
-        </td>
-      </tr>
-    );
-  };
-
   const renderLatestJobRow = (job: (typeof jobs)[number]) => {
     const pdfCacheState = getJobPdfCacheState(job);
     const resolvedPdfUrl = resolvePdfUrl(job);
@@ -1143,7 +1114,11 @@ export default async function AdminJobsPage() {
             Configure source sites in the Source Management section below.
           </p>
           <div className="mt-2">
-            <AdminJobsScrapeControl initialProgress={scrapeProgress} />
+            <Suspense fallback={<JobsPanelFallback rows={3} />}>
+              <JobsScrapeControlSection
+                scrapeProgressPromise={scrapeProgressPromise}
+              />
+            </Suspense>
           </div>
       </CollapsibleSectionCard>
 
@@ -1395,239 +1370,20 @@ export default async function AdminJobsPage() {
           </div>
       </CollapsibleSectionCard>
 
-      <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Scraping History">
-          <p className="text-muted-foreground">
-            Latest 50 scrape runs across auto schedule and manual runs.
-          </p>
-          <p className="text-muted-foreground text-xs">
-            Next auto run at:{" "}
-            <span className="font-medium text-foreground">
-              {scheduleSettings.enabled
-                ? formatMaybeDateTime(nextDueAt, scheduleSettings.timezone)
-                : "Auto scrape disabled"}
-            </span>
-          </p>
-          {scrapeHistoryUnavailable ? (
-            <p className="text-amber-700 text-sm">
-              Scrape history is temporarily unavailable. Please refresh in a few seconds.
-            </p>
-          ) : scrapeHistoryItems.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No scrape history yet.
-            </p>
-          ) : (
-            <AdminJobsExpandableTable
-              header={
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Run Time</th>
-                  <th className="px-3 py-2 text-left font-medium">Trigger</th>
-                  <th className="px-3 py-2 text-left font-medium">Status</th>
-                  <th className="px-3 py-2 text-left font-medium">Progress</th>
-                  <th className="px-3 py-2 text-left font-medium">Sources</th>
-                  <th className="px-3 py-2 text-left font-medium">Duration</th>
-                  <th className="px-3 py-2 text-left font-medium">Result</th>
-                  <th className="px-3 py-2 text-left font-medium">Notes</th>
-                </tr>
-              }
-              initialRows={scrapeHistoryInitial.map((entry) => renderScrapeHistoryRow(entry))}
-              remainingCount={scrapeHistoryRemaining.length}
-              remainingRows={scrapeHistoryRemaining.map((entry) =>
-                renderScrapeHistoryRow(entry)
-              )}
-            />
-          )}
-      </CollapsibleSectionCard>
+      <Suspense fallback={<JobsPanelFallback rows={6} title="Scraping History" />}>
+        <JobsScrapeHistorySection
+          nextDueAt={nextDueAt}
+          scheduleSettings={scheduleSettings}
+          scrapeHistoryPromise={scrapeHistoryPromise}
+        />
+      </Suspense>
 
-      <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Source Management">
-          <p className="text-muted-foreground">
-            Managed sources: {managedSources.length} total / {enabledSourcesCount} enabled.
-            {enabledSourcesCount === 0
-              ? " No enabled source is configured, so fallback sources from config/jobSources.ts will be used."
-              : " Enabled sources are used for all manual and automatic scrape runs."}
-          </p>
-          <p className="text-muted-foreground text-xs">
-            Use <strong>Auto</strong> for most sites. The scraper will try generic extraction
-            patterns. You can choose per-source location scope below.
-          </p>
-
-          <form action={addScrapeSourceAction} className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 md:col-span-2">
-              Source URL
-              <input
-                className="rounded-md border bg-background px-3 py-2"
-                name="url"
-                placeholder="https://in.linkedin.com/jobs/search/?keywords=Shillong&location=Meghalaya"
-                required
-                type="url"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              Display name (optional)
-              <input
-                className="rounded-md border bg-background px-3 py-2"
-                name="name"
-                placeholder="LinkedIn Meghalaya Shillong"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              Source type
-              <select
-                className="rounded-md border bg-background px-3 py-2"
-                defaultValue="auto"
-                name="type"
-              >
-                <option value="auto">Auto (recommended)</option>
-                <option value="generic">Generic website</option>
-                <option value="linkedin">LinkedIn</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 md:col-span-2">
-              Location scope
-              <select
-                className="rounded-md border bg-background px-3 py-2"
-                defaultValue="meghalaya_only"
-                name="locationScope"
-              >
-                <option value="meghalaya_only">Meghalaya-only</option>
-                <option value="all_locations">All locations</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2 md:col-span-2">
-              <input defaultChecked name="enabled" type="checkbox" value="true" />
-              Enable this source immediately
-            </label>
-            <div className="md:col-span-2">
-              <ActionSubmitButton
-                className="cursor-pointer"
-                pendingLabel="Saving source..."
-                refreshOnSuccess
-                successMessage="Source saved."
-              >
-                Add Source
-              </ActionSubmitButton>
-            </div>
-          </form>
-
-          {managedSources.length === 0 ? (
-            <p className="text-muted-foreground">
-              No managed sources added yet. Add at least one source URL above.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      Source
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      Type
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      Scope
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      URL
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      Updated
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {managedSources.map((source) => (
-                    <tr className="border-t" key={source.id}>
-                      <td className="px-3 py-3 align-top">
-                        <span className="font-medium">{source.name}</span>
-                      </td>
-                      <td className="px-3 py-3 align-top text-xs">{source.type}</td>
-                      <td className="px-3 py-3 align-top text-xs">
-                        {formatLocationScope(source.locationScope)}
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <span className="rounded-full border px-2 py-0.5 text-xs">
-                          {source.enabled ? "enabled" : "disabled"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <a
-                          className="text-primary text-xs underline"
-                          href={source.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {source.url}
-                        </a>
-                      </td>
-                      <td className="px-3 py-3 align-top text-xs">
-                        {formatIsoDateTime(source.updatedAt, scheduleSettings.timezone)}
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex items-center gap-2 whitespace-nowrap">
-                          <form action={toggleScrapeSourceAction}>
-                            <input name="sourceId" type="hidden" value={source.id} />
-                            <input
-                              name="nextEnabled"
-                              type="hidden"
-                              value={source.enabled ? "false" : "true"}
-                            />
-                            <ActionSubmitButton
-                              className="h-7 cursor-pointer px-2 text-xs"
-                              pendingLabel="Updating..."
-                              successMessage="Source updated."
-                              variant="outline"
-                            >
-                              {source.enabled ? "Disable" : "Enable"}
-                            </ActionSubmitButton>
-                          </form>
-                          <form action={setScrapeSourceLocationScopeAction}>
-                            <input name="sourceId" type="hidden" value={source.id} />
-                            <input
-                              name="nextLocationScope"
-                              type="hidden"
-                              value={
-                                source.locationScope === "meghalaya_only"
-                                  ? "all_locations"
-                                  : "meghalaya_only"
-                              }
-                            />
-                            <ActionSubmitButton
-                              className="h-7 cursor-pointer px-2 text-xs"
-                              pendingLabel="Updating..."
-                              successMessage="Source scope updated."
-                              variant="outline"
-                            >
-                              {source.locationScope === "meghalaya_only"
-                                ? "All locations"
-                                : "Meghalaya-only"}
-                            </ActionSubmitButton>
-                          </form>
-                          <form action={deleteScrapeSourceAction}>
-                            <input name="sourceId" type="hidden" value={source.id} />
-                            <ActionSubmitButton
-                              className="h-7 cursor-pointer px-2 text-xs"
-                              pendingLabel="Removing..."
-                              successMessage="Source removed."
-                              variant="destructive"
-                            >
-                              Remove
-                            </ActionSubmitButton>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-      </CollapsibleSectionCard>
+      <Suspense fallback={<JobsPanelFallback rows={6} title="Source Management" />}>
+        <JobsSourceManagementSection
+          managedSourcesPromise={managedSourcesPromise}
+          scheduleTimezone={scheduleSettings.timezone}
+        />
+      </Suspense>
 
       <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Manual Job Entry">
           <p className="text-muted-foreground">
@@ -1702,44 +1458,397 @@ export default async function AdminJobsPage() {
           </form>
       </CollapsibleSectionCard>
 
-      <CollapsibleSectionCard title={`Latest Jobs (${jobs.length})`}>
+      <CollapsibleSectionCard title={`Jobs (${totalJobs.toLocaleString()})`}>
         {jobs.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             No jobs are available in the Supabase jobs table yet.
           </p>
         ) : (
-          <AdminJobsExpandableTable
-            header={
-              <tr>
-                <th className="px-3 py-2 text-left font-medium">Title</th>
-                <th className="px-3 py-2 text-left font-medium">Company</th>
-                <th className="px-3 py-2 text-left font-medium">Location</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-left font-medium">PDF Cache</th>
-                <th className="px-3 py-2 text-left font-medium">Added On</th>
-                <th className="px-3 py-2 text-left font-medium">Description</th>
-                <th className="px-3 py-2 text-left font-medium">Links</th>
-                <th className="sticky right-0 z-10 border-l bg-muted/70 px-3 py-2 text-left font-medium">
-                  Actions
-                </th>
-              </tr>
-            }
-            initialRows={latestJobsInitial.map((job) => renderLatestJobRow(job))}
-            remainingCount={latestJobsRemaining.length}
-            remainingRows={latestJobsRemaining.map((job) => renderLatestJobRow(job))}
-          />
-          )}
-          {jobs.length > 0 ? (
+          <div className="space-y-4">
+            <div className="overflow-x-auto rounded-md border">
+              <table className="min-w-max border-collapse whitespace-nowrap text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Title</th>
+                    <th className="px-3 py-2 text-left font-medium">Company</th>
+                    <th className="px-3 py-2 text-left font-medium">Location</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">PDF Cache</th>
+                    <th className="px-3 py-2 text-left font-medium">Added On</th>
+                    <th className="px-3 py-2 text-left font-medium">Description</th>
+                    <th className="px-3 py-2 text-left font-medium">Links</th>
+                    <th className="sticky right-0 z-10 border-l bg-muted/70 px-3 py-2 text-left font-medium">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>{jobs.map((job) => renderLatestJobRow(job))}</tbody>
+              </table>
+            </div>
+
+            <AdminPagination
+              itemLabel="jobs"
+              page={jobsPage}
+              pageSize={ADMIN_JOBS_PAGE_SIZE}
+              pathname="/admin/jobs"
+              searchParams={resolvedSearchParams}
+              totalItems={totalJobs}
+            />
+          </div>
+        )}
+        {jobs.length > 0 ? (
             <div className="text-muted-foreground mt-2 space-y-1 text-xs">
               <p>
-                Showing the latest {MAX_ADMIN_JOBS_RENDERED} jobs to keep the admin page responsive.
+                The jobs table is paginated at {ADMIN_JOBS_PAGE_SIZE} rows per
+                page to keep admin rendering stable as the dataset grows.
               </p>
               <p>
                 Action buttons are pinned in the right-most column (Set active/inactive, Delete).
               </p>
             </div>
-          ) : null}
+        ) : null}
       </CollapsibleSectionCard>
     </div>
+  );
+}
+
+async function JobsScrapeControlSection({
+  scrapeProgressPromise,
+}: {
+  scrapeProgressPromise: Promise<
+    Awaited<ReturnType<typeof getJobsScrapeProgressSnapshot>> | null
+  >;
+}) {
+  const scrapeProgress = await scrapeProgressPromise;
+  return <AdminJobsScrapeControl initialProgress={scrapeProgress} />;
+}
+
+async function JobsScrapeHistorySection({
+  nextDueAt,
+  scheduleSettings,
+  scrapeHistoryPromise,
+}: {
+  nextDueAt: Date | null;
+  scheduleSettings: ReturnType<typeof resolveJobsScrapeScheduleSettings>;
+  scrapeHistoryPromise: Promise<
+    Awaited<ReturnType<typeof getJobsScrapeHistory>> | null
+  >;
+}) {
+  const scrapeHistory = await scrapeHistoryPromise;
+  const scrapeHistoryUnavailable = scrapeHistory === null;
+  const scrapeHistoryItems = scrapeHistory ?? [];
+  const scrapeHistoryInitial = scrapeHistoryItems.slice(0, 10);
+  const scrapeHistoryRemaining = scrapeHistoryItems.slice(10);
+
+  const renderScrapeHistoryRow = (entry: (typeof scrapeHistoryItems)[number]) => {
+    const progressBarColor =
+      entry.status === "success"
+        ? "bg-emerald-500"
+        : entry.status === "failed"
+          ? "bg-red-500"
+          : entry.status === "cancelled"
+            ? "bg-amber-500"
+            : "bg-slate-500";
+
+    return (
+      <tr className="border-t align-top" key={entry.runId}>
+        <td className="px-3 py-3 text-xs">
+          {formatIsoDateTime(entry.startedAt, scheduleSettings.timezone)}
+        </td>
+        <td className="px-3 py-3 text-xs">{entry.trigger}</td>
+        <td className="px-3 py-3">
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs ${getHistoryStatusBadgeClasses(
+              entry.status
+            )}`}
+          >
+            {entry.status}
+          </span>
+        </td>
+        <td className="px-3 py-3">
+          <div className="w-36">
+            <div className="h-2 w-full overflow-hidden rounded bg-muted">
+              <div
+                className={`h-full ${progressBarColor}`}
+                style={{ width: `${entry.completionPercent}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {entry.completionPercent}%
+            </p>
+          </div>
+        </td>
+        <td className="px-3 py-3 text-xs">
+          {entry.processedSources}/{entry.totalSources}
+        </td>
+        <td className="px-3 py-3 text-xs">{formatDurationMs(entry.durationMs)}</td>
+        <td className="px-3 py-3 text-xs">
+          <div>Inserted: {entry.inserted}</div>
+          <div>Updated: {entry.updated}</div>
+          <div>Duplicates: {entry.skippedDuplicates}</div>
+        </td>
+        <td className="max-w-xs px-3 py-3 whitespace-normal text-xs text-muted-foreground">
+          {entry.errorMessage ??
+            entry.skipReason ??
+            (entry.status === "success"
+              ? "Completed successfully."
+              : "No additional details.")}
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Scraping History">
+      <p className="text-muted-foreground">
+        Latest 50 scrape runs across auto schedule and manual runs.
+      </p>
+      <p className="text-muted-foreground text-xs">
+        Next auto run at:{" "}
+        <span className="font-medium text-foreground">
+          {scheduleSettings.enabled
+            ? formatMaybeDateTime(nextDueAt, scheduleSettings.timezone)
+            : "Auto scrape disabled"}
+        </span>
+      </p>
+      {scrapeHistoryUnavailable ? (
+        <p className="text-amber-700 text-sm">
+          Scrape history is temporarily unavailable. Please refresh in a few seconds.
+        </p>
+      ) : scrapeHistoryItems.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No scrape history yet.</p>
+      ) : (
+        <AdminJobsExpandableTable
+          header={
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">Run Time</th>
+              <th className="px-3 py-2 text-left font-medium">Trigger</th>
+              <th className="px-3 py-2 text-left font-medium">Status</th>
+              <th className="px-3 py-2 text-left font-medium">Progress</th>
+              <th className="px-3 py-2 text-left font-medium">Sources</th>
+              <th className="px-3 py-2 text-left font-medium">Duration</th>
+              <th className="px-3 py-2 text-left font-medium">Result</th>
+              <th className="px-3 py-2 text-left font-medium">Notes</th>
+            </tr>
+          }
+          initialRows={scrapeHistoryInitial.map((entry) => renderScrapeHistoryRow(entry))}
+          remainingCount={scrapeHistoryRemaining.length}
+          remainingRows={scrapeHistoryRemaining.map((entry) =>
+            renderScrapeHistoryRow(entry)
+          )}
+        />
+      )}
+    </CollapsibleSectionCard>
+  );
+}
+
+async function JobsSourceManagementSection({
+  managedSourcesPromise,
+  scheduleTimezone,
+}: {
+  managedSourcesPromise: Promise<
+    Awaited<ReturnType<typeof listManagedJobSources>>
+  >;
+  scheduleTimezone: string;
+}) {
+  const managedSources = await managedSourcesPromise;
+  const enabledSourcesCount = managedSources.filter((source) => source.enabled).length;
+
+  return (
+    <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Source Management">
+      <p className="text-muted-foreground">
+        Managed sources: {managedSources.length} total / {enabledSourcesCount} enabled.
+        {enabledSourcesCount === 0
+          ? " No enabled source is configured, so fallback sources from config/jobSources.ts will be used."
+          : " Enabled sources are used for all manual and automatic scrape runs."}
+      </p>
+      <p className="text-muted-foreground text-xs">
+        Use <strong>Auto</strong> for most sites. The scraper will try generic extraction
+        patterns. You can choose per-source location scope below.
+      </p>
+
+      <form action={addScrapeSourceAction} className="grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 md:col-span-2">
+          Source URL
+          <input
+            className="rounded-md border bg-background px-3 py-2"
+            name="url"
+            placeholder="https://in.linkedin.com/jobs/search/?keywords=Shillong&location=Meghalaya"
+            required
+            type="url"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          Display name (optional)
+          <input
+            className="rounded-md border bg-background px-3 py-2"
+            name="name"
+            placeholder="LinkedIn Meghalaya Shillong"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          Source type
+          <select
+            className="rounded-md border bg-background px-3 py-2"
+            defaultValue="auto"
+            name="type"
+          >
+            <option value="auto">Auto (recommended)</option>
+            <option value="generic">Generic website</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 md:col-span-2">
+          Location scope
+          <select
+            className="rounded-md border bg-background px-3 py-2"
+            defaultValue="meghalaya_only"
+            name="locationScope"
+          >
+            <option value="meghalaya_only">Meghalaya-only</option>
+            <option value="all_locations">All locations</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 md:col-span-2">
+          <input defaultChecked name="enabled" type="checkbox" value="true" />
+          Enable this source immediately
+        </label>
+        <div className="md:col-span-2">
+          <ActionSubmitButton
+            className="cursor-pointer"
+            pendingLabel="Saving source..."
+            refreshOnSuccess
+            successMessage="Source saved."
+          >
+            Add Source
+          </ActionSubmitButton>
+        </div>
+      </form>
+
+      {managedSources.length === 0 ? (
+        <p className="text-muted-foreground">
+          No managed sources added yet. Add at least one source URL above.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="min-w-max border-collapse whitespace-nowrap text-sm">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Source</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Type</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Scope</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">URL</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Updated</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {managedSources.map((source) => (
+                <tr className="border-t" key={source.id}>
+                  <td className="px-3 py-3 align-top">
+                    <span className="font-medium">{source.name}</span>
+                  </td>
+                  <td className="px-3 py-3 align-top text-xs">{source.type}</td>
+                  <td className="px-3 py-3 align-top text-xs">
+                    {formatLocationScope(source.locationScope)}
+                  </td>
+                  <td className="px-3 py-3 align-top">
+                    <span className="rounded-full border px-2 py-0.5 text-xs">
+                      {source.enabled ? "enabled" : "disabled"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 align-top">
+                    <a
+                      className="text-primary text-xs underline"
+                      href={source.url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {source.url}
+                    </a>
+                  </td>
+                  <td className="px-3 py-3 align-top text-xs">
+                    {formatIsoDateTime(source.updatedAt, scheduleTimezone)}
+                  </td>
+                  <td className="px-3 py-3 align-top">
+                    <div className="flex items-center gap-2 whitespace-nowrap">
+                      <form action={toggleScrapeSourceAction}>
+                        <input name="sourceId" type="hidden" value={source.id} />
+                        <input
+                          name="nextEnabled"
+                          type="hidden"
+                          value={source.enabled ? "false" : "true"}
+                        />
+                        <ActionSubmitButton
+                          className="h-7 cursor-pointer px-2 text-xs"
+                          pendingLabel="Updating..."
+                          successMessage="Source updated."
+                          variant="outline"
+                        >
+                          {source.enabled ? "Disable" : "Enable"}
+                        </ActionSubmitButton>
+                      </form>
+                      <form action={setScrapeSourceLocationScopeAction}>
+                        <input name="sourceId" type="hidden" value={source.id} />
+                        <input
+                          name="nextLocationScope"
+                          type="hidden"
+                          value={
+                            source.locationScope === "meghalaya_only"
+                              ? "all_locations"
+                              : "meghalaya_only"
+                          }
+                        />
+                        <ActionSubmitButton
+                          className="h-7 cursor-pointer px-2 text-xs"
+                          pendingLabel="Updating..."
+                          successMessage="Source scope updated."
+                          variant="outline"
+                        >
+                          {source.locationScope === "meghalaya_only"
+                            ? "All locations"
+                            : "Meghalaya-only"}
+                        </ActionSubmitButton>
+                      </form>
+                      <form action={deleteScrapeSourceAction}>
+                        <input name="sourceId" type="hidden" value={source.id} />
+                        <ActionSubmitButton
+                          className="h-7 cursor-pointer px-2 text-xs"
+                          pendingLabel="Removing..."
+                          successMessage="Source removed."
+                          variant="destructive"
+                        >
+                          Remove
+                        </ActionSubmitButton>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </CollapsibleSectionCard>
+  );
+}
+
+function JobsPanelFallback({
+  rows,
+  title = "Loading",
+}: {
+  rows: number;
+  title?: string;
+}) {
+  return (
+    <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title={title}>
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          className="h-12 animate-pulse rounded-lg bg-muted/50"
+          key={`${title}-${index + 1}`}
+        />
+      ))}
+    </CollapsibleSectionCard>
   );
 }

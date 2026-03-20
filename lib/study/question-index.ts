@@ -100,7 +100,7 @@ function isLikelyQuestionStart(restText: string) {
 function extractInlineAnswers(questionText: string): string[] {
   const values: string[] = [];
   const answerPattern =
-    /\b(?:answer|ans(?:wer)?|correct answer)\s*[:\-]\s*(\(?[A-H]\)?|[^\n.]+)/gi;
+    /\b(?:answer|ans(?:wer)?|correct answer)\s*[:-]\s*(\(?[A-H]\)?|[^\n.]+)/gi;
 
   for (const match of questionText.matchAll(answerPattern)) {
     const raw = match[1]?.trim();
@@ -228,7 +228,6 @@ function parseAnswerKeyMap(content: string): Map<number, string[]> {
     );
     if (prefixedMatch?.[1] && prefixedMatch[2]) {
       push(Number.parseInt(prefixedMatch[1], 10), prefixedMatch[2]);
-      continue;
     }
   }
 

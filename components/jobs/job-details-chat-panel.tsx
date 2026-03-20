@@ -7,10 +7,10 @@ import { Messages } from "@/components/messages";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { MultimodalInput } from "@/components/multimodal-input";
 import { toast } from "@/components/toast";
+import type { VisibilityType } from "@/components/visibility-selector";
 import { VisibilitySelector } from "@/components/visibility-selector";
 import type { JobCard } from "@/lib/jobs/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
-import type { VisibilityType } from "@/components/visibility-selector";
 import { fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { FloatingChatPopup } from "./floating-chat-popup";
 
@@ -113,13 +113,13 @@ export function JobDetailsChatPanel({
 
   useEffect(() => {
     setIsVisible(defaultOpen);
-  }, [defaultOpen, resolvedChatId]);
+  }, [defaultOpen]);
 
   useEffect(() => {
     setHasMoreHistory(initialHasMoreHistory);
     setOldestMessageAt(initialOldestMessageAt);
     setIsLoadingHistory(false);
-  }, [initialHasMoreHistory, initialOldestMessageAt, resolvedChatId]);
+  }, [initialHasMoreHistory, initialOldestMessageAt]);
 
   const loadOlderMessages = useCallback(async () => {
     if (isLoadingHistory || !hasMoreHistory) {

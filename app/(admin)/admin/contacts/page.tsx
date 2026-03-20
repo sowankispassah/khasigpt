@@ -1,7 +1,11 @@
-﻿import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import type { Metadata } from "next";
 
-import { listContactMessages } from "@/lib/db/queries";
+import { AdminPagination } from "@/components/admin/admin-pagination";
+import {
+  getContactMessageCount,
+  listContactMessages,
+} from "@/lib/db/queries";
 import type { ContactMessage } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -11,13 +15,50 @@ export const metadata: Metadata = {
   description: "Review messages submitted through the contact form.",
 };
 
-export default async function AdminContactsPage() {
+const CONTACTS_PAGE_SIZE = 25;
+
+function parsePage(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(rawValue ?? "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+export default async function AdminContactsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedPage = parsePage(resolvedSearchParams?.page);
   let messages: ContactMessage[] = [];
+  let totalMessages = 0;
 
   try {
-    messages = await listContactMessages({ limit: 100 });
+    const offset = (requestedPage - 1) * CONTACTS_PAGE_SIZE;
+    [messages, totalMessages] = await Promise.all([
+      listContactMessages({
+        limit: CONTACTS_PAGE_SIZE,
+        offset,
+      }),
+      getContactMessageCount(),
+    ]);
   } catch (error) {
     console.error("Failed to load contact messages", error);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalMessages / CONTACTS_PAGE_SIZE));
+  const page = Math.min(requestedPage, totalPages);
+
+  if (page !== requestedPage) {
+    const offset = (page - 1) * CONTACTS_PAGE_SIZE;
+    try {
+      messages = await listContactMessages({
+        limit: CONTACTS_PAGE_SIZE,
+        offset,
+      });
+    } catch (error) {
+      console.error("Failed to load contact messages for corrected page", error);
+    }
   }
 
   return (
@@ -57,7 +98,7 @@ export default async function AdminContactsPage() {
                     <td className="py-3 align-top">
                       <div className="font-medium">{message.name}</div>
                       <a
-                        className="text-muted-foreground text-xs hover:underline"
+                        className="cursor-pointer text-muted-foreground text-xs hover:underline"
                         href={`mailto:${message.email}`}
                       >
                         {message.email}
@@ -66,7 +107,7 @@ export default async function AdminContactsPage() {
                     <td className="py-3 align-top text-muted-foreground text-xs">
                       {message.phone ? (
                         <a
-                          className="hover:underline"
+                          className="cursor-pointer hover:underline"
                           href={`tel:${message.phone}`}
                         >
                           {message.phone}
@@ -94,6 +135,17 @@ export default async function AdminContactsPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-4">
+          <AdminPagination
+            itemLabel="contact requests"
+            page={page}
+            pageSize={CONTACTS_PAGE_SIZE}
+            pathname="/admin/contacts"
+            searchParams={resolvedSearchParams}
+            totalItems={totalMessages}
+          />
         </div>
       </section>
     </div>

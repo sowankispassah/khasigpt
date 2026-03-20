@@ -1,8 +1,8 @@
 import { compare } from "bcrypt-ts";
+import { cookies } from "next/headers";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
-import { cookies } from "next/headers";
 
 import {
   DUMMY_PASSWORD,

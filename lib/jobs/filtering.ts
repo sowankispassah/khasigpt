@@ -1,4 +1,4 @@
-import { isJobSector, resolveJobSector, type JobSector } from "@/lib/jobs/sector";
+import { isJobSector, type JobSector, resolveJobSector } from "@/lib/jobs/sector";
 import type { JobPostingRecord } from "@/lib/jobs/types";
 
 type EmploymentTypeFilter =

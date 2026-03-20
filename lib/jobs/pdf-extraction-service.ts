@@ -15,8 +15,8 @@ import {
   extractPdfStructuredFields,
   normalizeMultiline,
   normalizeWhitespace,
-  truncateText,
   type PdfStructuredFields,
+  truncateText,
 } from "@/lib/scraper/scraper-utils";
 import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
 

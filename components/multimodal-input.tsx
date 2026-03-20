@@ -19,8 +19,8 @@ import { toast } from "sonner";
 import { useWindowSize } from "usehooks-ts";
 import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
-import type { JobTitleReference } from "@/lib/jobs/types";
 import { SelectItem } from "@/components/ui/select";
+import type { JobTitleReference } from "@/lib/jobs/types";
 import type { StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
@@ -283,19 +283,19 @@ function PureMultimodalInput({
       textareaRef.current?.focus();
     }
   }, [
-    input,
-    setInput,
-    attachments,
-    sendMessage,
-    setAttachments,
-    width,
-    onBeforeSubmit,
-    onClearJobTitleReference,
-    onClearStudyQuestionReference,
-    jobTitleReference,
-    lockJobTitleReference,
-    studyQuestionReference,
-    resetHeight,
+    input, 
+    setInput, 
+    attachments, 
+    sendMessage, 
+    setAttachments, 
+    width, 
+    onBeforeSubmit, 
+    onClearJobTitleReference, 
+    onClearStudyQuestionReference, 
+    jobTitleReference, 
+    lockJobTitleReference, 
+    studyQuestionReference, 
+    resetHeight, translate
   ]);
 
   const isResponsePending =

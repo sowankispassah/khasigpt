@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   type MouseEvent,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -58,6 +59,22 @@ export function AdminNav({ className }: { className?: string }) {
     },
     [router]
   );
+
+  useEffect(() => {
+    const timeoutIds: number[] = [];
+    ADMIN_LINKS.forEach((link, index) => {
+      const timeoutId = window.setTimeout(() => {
+        prefetchRoute(link.href);
+      }, index * 60);
+      timeoutIds.push(timeoutId);
+    });
+
+    return () => {
+      for (const timeoutId of timeoutIds) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [prefetchRoute]);
 
   const handleLinkClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -120,7 +137,7 @@ export function AdminNav({ className }: { className?: string }) {
                   onFocus={() => prefetchRoute(link.href)}
                   onMouseEnter={() => prefetchRoute(link.href)}
                   onTouchStart={() => prefetchRoute(link.href)}
-                  prefetch={false}
+                  prefetch
                 >
                   {link.label}
                 </Link>
@@ -145,7 +162,7 @@ export function AdminNav({ className }: { className?: string }) {
               onFocus={() => prefetchRoute(link.href)}
               onMouseEnter={() => prefetchRoute(link.href)}
               onTouchStart={() => prefetchRoute(link.href)}
-              prefetch={false}
+              prefetch
             >
               {link.label}
             </Link>

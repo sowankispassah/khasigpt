@@ -187,7 +187,10 @@ export function JobsModeListPanel({
     <div className="space-y-4">
       <div className="rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/35 p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-1.5 sm:gap-3">
-          <label
+          <label className="sr-only" htmlFor="jobs-mode-search">
+            Search jobs
+          </label>
+          <div
             className={cn(
               "group flex items-center gap-3 rounded-[22px] border border-border/70 bg-background/90 px-4 py-3 shadow-sm",
               "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-0"
@@ -197,6 +200,7 @@ export function JobsModeListPanel({
             <Input
               autoComplete="off"
               className="h-auto border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              id="jobs-mode-search"
               name="q"
               onChange={(event) =>
                 setFilters((previous) => ({
@@ -205,10 +209,10 @@ export function JobsModeListPanel({
                 }))
               }
               placeholder="Search jobs by title, company, location, or salary"
-              role="searchbox"
+              type="search"
               value={filters.q}
             />
-          </label>
+          </div>
 
           <div className="-mx-1 overflow-x-auto pb-1">
             <div className="flex min-w-max items-center gap-1 px-1 sm:gap-2">

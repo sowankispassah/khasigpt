@@ -18,11 +18,11 @@ import {
 } from "@/lib/db/queries";
 import { generateHashedPassword } from "@/lib/db/utils";
 import { normalizeAdminEntryCodeInput } from "@/lib/security/admin-entry-pass";
-import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import {
   normalizeAdminEntryPathSetting,
   sanitizeAdminEntryPathInput,
 } from "@/lib/settings/admin-entry";
+import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";

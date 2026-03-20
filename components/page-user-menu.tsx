@@ -2,10 +2,10 @@
 
 import { EllipsisVertical } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import type { Session } from "next-auth";
+import { signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import {
   AlertDialog,
@@ -17,7 +17,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 import {
   UserDropdownMenu,
   UserMenuTrigger,
@@ -28,13 +27,14 @@ import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 export function PageUserMenu({
   className,
   forumEnabled = true,
+  initialUser = null,
 }: {
   className?: string;
   forumEnabled?: boolean;
+  initialUser?: Session["user"] | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
   const {
     translate,
@@ -53,7 +53,7 @@ export function PageUserMenu({
   const [isActionPending, setIsActionPending] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
-  const user = session?.user ?? null;
+  const user = initialUser;
   const hasPrefetchedRoutesRef = useRef(false);
   const prefetchIdleRef = useRef<ReturnType<typeof runWhenIdle> | null>(null);
   const displayName = (() => {
@@ -142,7 +142,7 @@ export function PageUserMenu({
   const beginAction = () => {
     setIsActionPending(true);
   };
-  const handleNavigate = (path: string) => {
+  const _handleNavigate = (path: string) => {
     const isSameRoute = path === pathname;
     if (isSameRoute) {
       setIsActionPending(false);
@@ -185,7 +185,7 @@ export function PageUserMenu({
     [handleMenuClosed, prefetchUserRoutes]
   );
 
-  const isBusy = status === "loading" || isActionPending;
+  const isBusy = isActionPending;
   const interfaceLanguageSwitchingVisible =
     menuLanguageChangeStarted && isLanguageUpdating && !pendingChatLanguage;
   const overlayVisible = interfaceLanguageSwitchingVisible || chatLanguageSwitching;
@@ -248,16 +248,7 @@ export function PageUserMenu({
       <div
         className={cn("fixed top-1.5 right-2 z-40 flex items-center", className)}
       >
-      {status === "loading" ? (
-        <Button className="h-8 w-8" disabled variant="outline">
-          <span className="sr-only">
-            {translate("user_menu.loading", "Loading user menu")}
-          </span>
-          <span className="animate-spin">
-            <LoaderIcon size={16} />
-          </span>
-        </Button>
-      ) : user ? (
+      {user ? (
         <UserDropdownMenu
           align="end"
           currentPathname={pathname}
@@ -385,16 +376,15 @@ export function PageUserMenu({
       </AlertDialog>
       </div>
       {overlayVisible ? (
-        <div
+        <output
           aria-live="polite"
           className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
-          role="status"
         >
-          <div className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm font-medium">{overlayMessage}</p>
-          </div>
-        </div>
+          <span className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm font-medium">{overlayMessage}</span>
+          </span>
+        </output>
       ) : null}
     </>
   );

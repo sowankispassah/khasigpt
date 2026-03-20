@@ -2,14 +2,14 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { Response } from "@/components/elements/response";
 import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
-import { JobDetailsChatShell } from "@/components/jobs/job-details-chat-shell";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
+import { JobDetailsChatShell } from "@/components/jobs/job-details-chat-shell";
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { readChatOriginUiContext } from "@/lib/chat/ui-context";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
@@ -17,8 +17,8 @@ import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
 import { getSiteUrl } from "@/lib/seo/site";
 import type { ChatMessage } from "@/lib/types";
-import { convertToUIMessages } from "@/lib/utils";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
+import { convertToUIMessages } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 

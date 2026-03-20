@@ -4,13 +4,12 @@ import { formatDistanceToNow } from "date-fns";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import useSWR from "swr";
-
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/utils";
 
 type LiveUserRow = {

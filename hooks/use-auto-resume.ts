@@ -1,7 +1,7 @@
 "use client";
 
-import type { DataUIPart } from "ai";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import type { DataUIPart } from "ai";
 import { useEffect } from "react";
 import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 

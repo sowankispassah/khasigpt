@@ -1,7 +1,18 @@
-import { AdminCharactersManager } from "@/components/admin-characters-manager";
+import nextDynamic from "next/dynamic";
+import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import { listCharactersForAdmin } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
+
+const AdminCharactersManager = nextDynamic(
+  () =>
+    import("@/components/admin-characters-manager").then(
+      (module) => module.AdminCharactersManager
+    ),
+  {
+    loading: () => <AdminPageLoading rows={7} titleWidth="w-44" />,
+  }
+);
 
 export default async function AdminCharactersPage() {
   const characters = await listCharactersForAdmin();

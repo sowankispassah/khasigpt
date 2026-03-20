@@ -2,6 +2,7 @@
 
 import { EllipsisVertical } from "lucide-react";
 import dynamic from "next/dynamic";
+import type { Session } from "next-auth";
 
 const PageUserMenu = dynamic(
   () => import("@/components/page-user-menu").then((module) => module.PageUserMenu),
@@ -34,17 +35,17 @@ const UserPresenceTracker = dynamic(
 
 type SiteShellExtrasProps = {
   forumEnabled: boolean;
-  hasSession: boolean;
+  sessionUser: Session["user"] | null;
 };
 
 export function SiteShellExtras({
   forumEnabled,
-  hasSession,
+  sessionUser,
 }: SiteShellExtrasProps) {
   return (
     <>
-      <PageUserMenu forumEnabled={forumEnabled} />
-      {hasSession ? <UserPresenceTracker /> : null}
+      <PageUserMenu forumEnabled={forumEnabled} initialUser={sessionUser} />
+      {sessionUser?.id ? <UserPresenceTracker userId={sessionUser.id} /> : null}
     </>
   );
 }

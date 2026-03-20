@@ -27,9 +27,9 @@ import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
+import { resolveLanguageModel } from "@/lib/ai/providers";
 import { shouldUseDefaultModeRag } from "@/lib/chat/default-mode-rag";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
-import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
@@ -72,14 +72,13 @@ import { extractSalaryText, resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import {
   findJobPostingByReference,
-  JOBS_CHAT_MODE,
-  JOB_POSTING_RUNTIME_CONTEXT_CHARS,
   getJobKnowledgeUnitById,
   getJobPostingEntryById,
+  JOB_POSTING_RUNTIME_CONTEXT_CHARS,
+  JOBS_CHAT_MODE,
   listActiveJobPostingIdsForModel,
   listJobPostings,
   listStudyPapersForJob,
-  toJobCard,
 } from "@/lib/jobs/service";
 import type { JobCard } from "@/lib/jobs/types";
 import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
@@ -98,15 +97,15 @@ import {
   resolveStudyNumberIntent,
 } from "@/lib/study/question-index";
 import {
-  STUDY_CHAT_MODE,
   extractStudyYear,
-  QUESTION_PAPER_RUNTIME_CONTEXT_CHARS,
   getQuestionPaperEntryById,
   listActiveQuestionPaperIdsForModel,
   listQuestionPaperChips,
   listQuestionPaperFacets,
   listQuestionPapers,
+  QUESTION_PAPER_RUNTIME_CONTEXT_CHARS,
   resolveStudyFilters,
+  STUDY_CHAT_MODE,
   toStudyCard,
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
@@ -383,7 +382,7 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findRequestedSalaryRange(text: string) {
+function _findRequestedSalaryRange(text: string) {
   const normalized = text.trim().toLowerCase();
   if (!normalized) {
     return null;
@@ -463,7 +462,7 @@ function jobMayMatchRequestedSalary({
   return max >= salaryRange.min && min <= salaryRange.max;
 }
 
-function buildJobsCatalogCandidates({
+function _buildJobsCatalogCandidates({
   jobs,
   text,
   requestedLocation,
@@ -590,7 +589,7 @@ function buildJobsCatalogCandidates({
     .map((entry) => entry.job);
 }
 
-function normalizeJobsSelectionAnswer({
+function _normalizeJobsSelectionAnswer({
   query,
   answer,
   matchedCards,
@@ -664,7 +663,7 @@ function formatJobsSalaryAnchor(value: number) {
   }).format(value);
 }
 
-function buildStructuredJobsListingText({
+function _buildStructuredJobsListingText({
   matchedCards,
   requestedLocation,
   requestedSalaryRange,
@@ -742,7 +741,7 @@ function resolveGeminiFileSearchModelId(
   return DEFAULT_GEMINI_FILE_SEARCH_MODEL_ID;
 }
 
-function parseJobsRagSelection(rawText: string) {
+function _parseJobsRagSelection(rawText: string) {
   const trimmed = rawText.trim();
   if (!trimmed) {
     return null;
@@ -935,7 +934,7 @@ function extractJobFactsFromText(text: string) {
   return facts;
 }
 
-async function resolveJobPdfSupplementalContext(job: {
+async function _resolveJobPdfSupplementalContext(job: {
   title: string;
   sourceUrl: string | null;
   pdfSourceUrl: string | null;

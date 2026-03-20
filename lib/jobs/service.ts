@@ -1,30 +1,29 @@
 import "server-only";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { ragEntry } from "@/lib/db/schema";
-import {
-  isJobSector,
-  isJobType,
-  resolveJobSector,
-  resolveJobType,
-  type JobSector,
-} from "@/lib/jobs/sector";
+import { db } from "@/lib/db/queries";
 import type {
   RagEmbeddingStatus,
+  RagEntry,
   RagEntryApprovalStatus,
   RagEntryStatus,
-  RagEntry,
 } from "@/lib/db/schema";
-import { db } from "@/lib/db/queries";
+import { ragEntry } from "@/lib/db/schema";
 import { DEFAULT_JOB_LOCATION, resolveJobLocation } from "@/lib/jobs/location";
 import { parseJobsPdfExtractedData } from "@/lib/jobs/pdf-extraction";
 import { NO_SALARY_LABEL, resolveJobSalaryInfo } from "@/lib/jobs/salary";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import { withTimeout } from "@/lib/utils/async";
+import {
+  isJobSector,
+  type JobSector,
+  resolveJobSector,
+  resolveJobType,
+} from "@/lib/jobs/sector";
 import {
   listQuestionPaperEntries,
   listQuestionPapers,
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/utils/async";
 import {
   buildJobKnowledgeUnit,
   type JobKnowledgeUnit,
@@ -539,15 +538,19 @@ export async function listJobPostingEntries({
   includeInactive = false,
   includeRagState = true,
   limit,
+  offset = 0,
 }: {
   includeInactive?: boolean;
   includeRagState?: boolean;
   limit?: number;
+  offset?: number;
 } = {}): Promise<JobPostingRecord[]> {
   const normalizedLimit =
     typeof limit === "number" && Number.isFinite(limit) && limit > 0
       ? Math.trunc(limit)
       : null;
+  const normalizedOffset =
+    Number.isFinite(offset) && offset > 0 ? Math.trunc(offset) : 0;
 
   const rows = includeInactive
     ? await (() => {
@@ -558,7 +561,10 @@ export async function listJobPostingEntries({
           .order("created_at", { ascending: false });
 
         if (normalizedLimit !== null) {
-          query = query.limit(normalizedLimit);
+          query = query.range(
+            normalizedOffset,
+            normalizedOffset + normalizedLimit - 1
+          );
         }
 
         return query.then(({ data, error }) => {
@@ -589,7 +595,32 @@ export async function listJobPostingEntries({
     return activeJobs;
   }
 
-  return activeJobs.slice(0, normalizedLimit);
+  return activeJobs.slice(normalizedOffset, normalizedOffset + normalizedLimit);
+}
+
+export async function getJobPostingCount({
+  includeInactive = false,
+}: {
+  includeInactive?: boolean;
+} = {}): Promise<number> {
+  if (includeInactive) {
+    const supabase = createSupabaseAdminClient();
+    const { count, error } = await supabase
+      .from("jobs")
+      .select("id", { count: "exact", head: true });
+
+    if (error) {
+      throw new Error(`[jobs-service] Failed to count jobs: ${error.message}`);
+    }
+
+    return Number(count ?? 0);
+  }
+
+  const jobs = await listJobsFromSupabaseCached();
+  return jobs.reduce((total, row) => {
+    const normalized = normalizeJobPostingRecord(row);
+    return normalized.status === "active" ? total + 1 : total;
+  }, 0);
 }
 
 export async function getJobPostingById({

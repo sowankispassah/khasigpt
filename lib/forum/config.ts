@@ -1,10 +1,10 @@
 import { FORUM_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import {
-  isFeatureEnabledForRole,
-  parseFeatureAccessMode,
   type FeatureAccessMode,
   type FeatureAccessRole,
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
 } from "@/lib/feature-access";
 
 function coerceBoolean(value: unknown, fallback = true): boolean {
