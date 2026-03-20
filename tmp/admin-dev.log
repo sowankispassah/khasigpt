@@ -1,0 +1,60 @@
+
+> ai-chatbot@3.1.0 dev D:\Coding\ai-chatbot-main\ai-chatbot-main
+> next dev --webpack
+
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.128.1:3000
+- Environments: .env
+
+✓ Starting...
+✓ Ready in 4.4s
+○ Compiling /login ...
+ GET /login 200 in 9.6s (compile: 8.9s, proxy.ts: 198ms, render: 522ms)
+ GET /login?callbackUrl=/admin 200 in 252ms (compile: 9ms, proxy.ts: 80ms, render: 163ms)
+ GET /api/auth/providers 200 in 3.6s (compile: 3.5s, proxy.ts: 11ms, render: 27ms)
+ GET /login?callbackUrl=/admin 200 in 346ms (compile: 75ms, proxy.ts: 16ms, render: 255ms)
+ GET /login?callbackUrl=/admin 200 in 390ms (compile: 15ms, proxy.ts: 315ms, render: 60ms)
+ GET /api/auth/csrf 200 in 35ms (compile: 17ms, proxy.ts: 9ms, render: 9ms)
+ POST /api/auth/callback/credentials 302 in 1658ms (compile: 13ms, proxy.ts: 12ms, render: 1633ms)
+○ Compiling /admin ...
+[admin] Query "user count" succeeded in 236ms.
+[admin] Query "chat count" succeeded in 281ms.
+[admin] Query "contact message count" succeeded in 287ms.
+[admin] Query "recent users" succeeded in 404ms.
+[admin] Query "recent chats" succeeded in 1136ms.
+[admin] Query "recent audit log entries" succeeded in 269ms.
+[admin] Query "recent contact messages" succeeded in 726ms.
+ GET /admin 200 in 8.8s (compile: 6.1s, proxy.ts: 14ms, render: 2.7s)
+○ Compiling /admin/account ...
+○ Compiling /admin/coupons ...
+ GET /admin/coupons 200 in 7.2s (compile: 3.8s, proxy.ts: 12ms, render: 3.4s)
+ GET /admin/account 200 in 18.9s (compile: 9.8s, proxy.ts: 12ms, render: 9.1s)
+○ Compiling /admin/users ...
+ GET /admin/users 200 in 7.6s (compile: 4.5s, proxy.ts: 13ms, render: 3.1s)
+ GET /admin/chats 200 in 5.0s (compile: 2.3s, proxy.ts: 14ms, render: 2.8s)
+○ Compiling /admin/rag ...
+○ Compiling /admin/jobs ...
+○ Compiling /admin/characters ...
+ GET /admin/characters 200 in 7.9s (compile: 4.6s, proxy.ts: 316ms, render: 3.0s)
+ GET /admin/jobs 200 in 15.8s (compile: 4.8s, proxy.ts: 12ms, render: 11.0s)
+○ Compiling /admin/contacts ...
+ GET /admin/contacts 200 in 6.3s (compile: 4.8s, proxy.ts: 636ms, render: 874ms)
+○ Compiling /admin/settings ...
+ GET /admin/logs 200 in 7.3s (compile: 1824ms, proxy.ts: 8ms, render: 5.5s)
+○ Compiling /admin/translations ...
+ GET /admin/settings 200 in 15.9s (compile: 7.7s, proxy.ts: 13ms, render: 8.2s)
+ GET /admin/translations 200 in 10.3s (compile: 8.5s, proxy.ts: 14ms, render: 1761ms)
+ GET /admin/rag 200 in 55s (compile: 6.8s, proxy.ts: 59ms, render: 48s)
+ GET /api/auth/csrf 200 in 1235ms (compile: 1118ms, proxy.ts: 53ms, render: 63ms)
+ POST /api/auth/callback/credentials 302 in 1663ms (compile: 13ms, proxy.ts: 9ms, render: 1640ms)
+○ Compiling /admin/account ...
+ GET /admin/account 200 in 11.6s (compile: 4.6s, proxy.ts: 12ms, render: 7.0s)
+ GET /api/auth/csrf 200 in 148ms (compile: 43ms, proxy.ts: 13ms, render: 92ms)
+ POST /api/auth/callback/credentials 302 in 1598ms (compile: 11ms, proxy.ts: 10ms, render: 1578ms)
+○ Compiling /admin/settings ...
+ GET /admin/settings 200 in 8.6s (compile: 3.5s, proxy.ts: 7ms, render: 5.1s)
+ GET /api/auth/csrf 200 in 139ms (compile: 35ms, proxy.ts: 17ms, render: 87ms)
+ POST /api/auth/callback/credentials 302 in 1615ms (compile: 6ms, proxy.ts: 8ms, render: 1601ms)
+○ Compiling /admin/rag ...
+ GET /admin/rag 200 in 9.7s (compile: 6.1s, proxy.ts: 8ms, render: 3.6s)

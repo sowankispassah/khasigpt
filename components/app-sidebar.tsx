@@ -1,23 +1,30 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import type { User } from "next-auth";
-import { signOut, useSession } from "next-auth/react";
-import { useTheme } from "next-themes";
-import { useTransition } from "react";
+import { BookOpen, BriefcaseBusiness, Calculator } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { LoaderIcon, PlusIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { User } from "next-auth";
+import { useSession } from "next-auth/react";
+import { type MouseEvent, useCallback, useEffect, useState } from "react";
+import { preloadChat } from "@/components/chat-loader";
+import { PlusIcon } from "@/components/icons";
 import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import {
+  doneGlobalProgress,
+  startGlobalProgress,
+} from "@/lib/ui/global-progress";
+import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
 const SidebarHistory = dynamic(
   () =>
@@ -45,34 +52,247 @@ const SidebarHistory = dynamic(
   }
 );
 
-export function AppSidebar({ user }: { user: User | undefined }) {
-  const router = useRouter();
+// These request a fresh `/chat` render so a new chat id is generated, then the
+// Chat UI strips `new` back out of the URL.
+const HOME_HREF = "/chat";
+const NEW_CHAT_HREF = "/chat?new=1";
+const NEW_STUDY_HREF = "/chat?mode=study&new=1";
+const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
+const CALCULATOR_HREF = "/calculator";
+const JOBS_LIST_API_ROUTE = "/api/jobs/list";
+
+function isChatShellPath(pathname: string) {
+  return pathname === "/" || pathname.startsWith("/chat");
+}
+
+export function AppSidebar({
+  calculatorEnabled = true,
+  jobsModeEnabled = false,
+  user,
+  studyModeEnabled = false,
+}: {
+  calculatorEnabled?: boolean;
+  jobsModeEnabled?: boolean;
+  user: User | undefined;
+  studyModeEnabled?: boolean;
+}) {
   const { setOpenMobile } = useSidebar();
-  const { data: sessionData, status } = useSession();
-  const { setTheme, resolvedTheme } = useTheme();
-  const [isPending, startTransition] = useTransition();
+  const { data: sessionData } = useSession();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const navigationFingerprint = `${pathname}?${searchParams.toString()}`;
+  const router = useRouter();
+  const [pendingNavigation, setPendingNavigation] = useState<
+    "home" | "chat" | "study" | "jobs" | "calculator" | null
+  >(null);
 
   const activeUser = sessionData?.user ?? user;
-  const userEmail = activeUser?.email ?? "";
-  const isAdmin = activeUser?.role === "admin";
 
-  const createNewChatHref = () => {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return `/?new=${crypto.randomUUID()}`;
-    }
-    return `/?new=${Date.now().toString(36)}`;
-  };
+  useEffect(() => {
+    void navigationFingerprint;
+    // Close the mobile sidebar after navigation completes (avoid delaying URL change).
+    setOpenMobile(false);
+    setPendingNavigation(null);
+    doneGlobalProgress();
+  }, [navigationFingerprint, setOpenMobile]);
 
-  const handleNewChat = () => {
-    if (isPending) {
+  const shouldHandleClientNavigation = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) =>
+      !(
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ),
+    []
+  );
+
+  const prefetchRoute = useCallback(
+    (href: string) => {
+      if (!shouldPrefetch()) {
+        return;
+      }
+
+      try {
+        router.prefetch(href);
+      } catch (error) {
+        console.warn("Prefetch route failed", error);
+      }
+    },
+    [router]
+  );
+
+  const prefetchChatRoute = useCallback(
+    (href: string) => {
+      prefetchRoute(href);
+      preloadChat();
+    },
+    [prefetchRoute]
+  );
+
+  const prefetchJobsModeData = useCallback(() => {
+    if (!shouldPrefetch()) {
       return;
     }
-    const targetHref = createNewChatHref();
-    startTransition(() => {
-      setOpenMobile(false);
-      router.push(targetHref);
+
+    void fetch(JOBS_LIST_API_ROUTE, {
+      credentials: "same-origin",
+    }).catch((error) => {
+      console.warn("Prefetch jobs list failed", error);
     });
-  };
+  }, []);
+
+  const navigateWithFeedback = useCallback(
+    (target: "home" | "chat" | "study" | "jobs" | "calculator", href: string) => {
+      if (pendingNavigation) {
+        return;
+      }
+
+      setPendingNavigation(target);
+      startGlobalProgress();
+      if (target !== "calculator") {
+        preloadChat();
+      }
+      setOpenMobile(false);
+
+      if (target !== "calculator" && isChatShellPath(pathname)) {
+        if (typeof window !== "undefined") {
+          window.history.pushState(null, "", href);
+        }
+        return;
+      }
+
+      router.push(href, { scroll: false });
+    },
+    [pathname, pendingNavigation, router, setOpenMobile]
+  );
+
+  useEffect(() => {
+    if (!shouldPrefetch()) {
+      return;
+    }
+
+    const idleHandle = runWhenIdle(() => {
+      prefetchChatRoute(NEW_CHAT_HREF);
+      if (studyModeEnabled) {
+        prefetchChatRoute(NEW_STUDY_HREF);
+      }
+      if (jobsModeEnabled) {
+        prefetchChatRoute(VIEW_JOBS_HREF);
+        prefetchJobsModeData();
+      }
+      if (calculatorEnabled) {
+        prefetchRoute(CALCULATOR_HREF);
+      }
+    }, 300);
+
+    return () => {
+      cancelIdle(idleHandle);
+    };
+  }, [
+    calculatorEnabled,
+    jobsModeEnabled,
+    prefetchChatRoute,
+    prefetchJobsModeData,
+    prefetchRoute,
+    studyModeEnabled,
+  ]);
+
+  const handleHomeClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const href = NEW_CHAT_HREF;
+      navigateWithFeedback("home", href);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleNewChatClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      navigateWithFeedback("chat", NEW_CHAT_HREF);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleNewStudyClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      navigateWithFeedback("study", NEW_STUDY_HREF);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleCalculatorClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+      event.preventDefault();
+      if (pathname === CALCULATOR_HREF) {
+        setOpenMobile(false);
+        return;
+      }
+      navigateWithFeedback("calculator", CALCULATOR_HREF);
+    },
+    [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
+  );
+
+  const handleCalculatorPrefetch = useCallback(() => {
+    prefetchRoute(CALCULATOR_HREF);
+  }, [prefetchRoute]);
+
+  const handleViewJobsClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const currentMode = searchParams.get("mode");
+      const currentJobId = searchParams.get("jobId");
+      if (
+        (pathname === "/" || pathname === "/chat") &&
+        currentMode === "jobs" &&
+        !currentJobId
+      ) {
+        setOpenMobile(false);
+        return;
+      }
+
+      navigateWithFeedback("jobs", VIEW_JOBS_HREF);
+    },
+    [
+      navigateWithFeedback,
+      pathname,
+      searchParams,
+      setOpenMobile,
+      shouldHandleClientNavigation,
+    ]
+  );
+
+  const handleViewJobsPrefetch = useCallback(() => {
+    prefetchChatRoute(VIEW_JOBS_HREF);
+    prefetchJobsModeData();
+  }, [prefetchChatRoute, prefetchJobsModeData]);
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
@@ -81,54 +301,105 @@ export function AppSidebar({ user }: { user: User | undefined }) {
           <div className="flex flex-row items-center justify-between">
             <Link
               className="flex cursor-pointer flex-row items-center"
-              href="/"
-              onClick={() => {
-                setOpenMobile(false);
-              }}
+              href={HOME_HREF}
+              onClick={handleHomeClick}
             >
               <Image
                 alt="KhasiGPT logo"
-                className="h-8 w-6 rounded-md object-contain dark:invert dark:brightness-150"
+                className="h-8 w-6 rounded-md object-contain dark:brightness-150 dark:invert"
                 height={32}
                 priority
                 src="/images/khasigptlogo.png"
                 width={24}
               />
               <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                KhasiGPT
+                {pendingNavigation === "home" ? "Opening..." : "KhasiGPT"}
               </span>
             </Link>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-busy={isPending}
-                    className="h-8 px-2 md:h-fit md:px-2"
-                    data-testid="new-chat-button"
-                    disabled={isPending}
-                    onClick={handleNewChat}
-                    type="button"
-                    variant="outline"
-                  >
-                    {isPending ? (
-                      <span className="flex animate-spin items-center justify-center">
-                        <LoaderIcon size={16} />
-                      </span>
-                    ) : (
-                      <PlusIcon />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent align="end">New Chat</TooltipContent>
-              </Tooltip>
-
-              <div className="md:hidden" />
-            </div>
+            <div className="md:hidden" />
           </div>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarHistory user={user} />
+        <div className="mt-5 px-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                <Link
+                  aria-disabled={pendingNavigation !== null}
+                  href={NEW_CHAT_HREF}
+                  onClick={handleNewChatClick}
+                >
+                  <PlusIcon />
+                  <span>
+                    {pendingNavigation === "chat" ? "Opening..." : "New chat"}
+                  </span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {studyModeEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={NEW_STUDY_HREF}
+                    onClick={handleNewStudyClick}
+                  >
+                    <BookOpen />
+                    <span>
+                      {pendingNavigation === "study"
+                        ? "Opening..."
+                        : "Study Mode"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+            {jobsModeEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={VIEW_JOBS_HREF}
+                    onClick={handleViewJobsClick}
+                    onFocus={handleViewJobsPrefetch}
+                    onMouseEnter={handleViewJobsPrefetch}
+                    onTouchStart={handleViewJobsPrefetch}
+                  >
+                    <BriefcaseBusiness />
+                    <span>
+                      {pendingNavigation === "jobs" ? "Opening..." : "Jobs"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+            {calculatorEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={CALCULATOR_HREF}
+                    onClick={handleCalculatorClick}
+                    onFocus={handleCalculatorPrefetch}
+                    onMouseEnter={handleCalculatorPrefetch}
+                    onTouchStart={handleCalculatorPrefetch}
+                  >
+                    <Calculator />
+                    <span>
+                      {pendingNavigation === "calculator"
+                        ? "Opening..."
+                        : "Calculator"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+          </SidebarMenu>
+        </div>
+        <SidebarSeparator />
+        <SidebarHistory label="Chat History" mode="all" user={activeUser ?? user} />
       </SidebarContent>
     </Sidebar>
   );
