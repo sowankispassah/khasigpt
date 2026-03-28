@@ -1,0 +1,69 @@
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.20.128.1:3001
+- Environments: .env
+
+✓ Starting...
+
+  We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
+  The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+  	- include was updated to add '.next-turbo/types/**/*.ts'
+  	- include was updated to add '.next-turbo/dev/types/**/*.ts'
+
+✓ Ready in 5.7s
+○ Compiling /login ...
+ GET /login 200 in 10.8s (compile: 6.9s, proxy.ts: 208ms, render: 3.7s)
+ GET /api/auth/providers 200 in 2.9s (compile: 2.9s, proxy.ts: 37ms, render: 23ms)
+Persisting failed: Unable to write SST file 00000078.sst
+
+Caused by:
+    The system cannot find the path specified. (os error 3)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\soowa\AppData\Local\Temp\next-panic-a0ee652560e20a0cc588b64ee536c649.log.
+
+To help make Turbopack better, report this error by clicking here: https://github.com/vercel/next.js/discussions/new?category=turbopack-error-report&title=Turbopack%20Error%3A%20%5Bproject%5D%2Fapp%2Fglobals.css%20%5Bapp-client%5D%20%28css%29&body=Turbopack%20version%3A%20%6023c46498%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0ATurbopack%20Error%3A%20%5Bproject%5D%2Fapp%2Fglobals.css%20%5Bapp-client%5D%20%28css%29%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+-----
+
+✓ Compiled in 91.9s
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\soowa\AppData\Local\Temp\next-panic-a0ee652560e20a0cc588b64ee536c649.log.
+
+To help make Turbopack better, report this error by clicking here: https://github.com/vercel/next.js/discussions/new?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20write%20app%20endpoint%20%2F%28auth%29%2Flogin%2Fpage&body=Turbopack%20version%3A%20%6023c46498%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0ATurbopack%20Error%3A%20Failed%20to%20write%20app%20endpoint%20%2F%28auth%29%2Flogin%2Fpage%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+-----
+
+
+thread 'tokio-runtime-worker' (28000) panicked at C:\actions-runner\_work\next.js\next.js\turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Meta for PageEndpoint::client_module_graph (TaskId 390133))
+
+Caused by:
+    0: Looking up data for TaskId 390133 from database failed
+    1: Unable to open static sorted file referenced from 00000068.meta
+    2: Unable to open static sorted file 00000063.sst
+    3: The system cannot find the path specified. (os error 3)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'tokio-runtime-worker' (28000) panicked at C:\actions-runner\_work\next.js\next.js\turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Meta for AssetIdent::new_inner (TaskId 390194))
+
+Caused by:
+    0: Looking up data for TaskId 390194 from database failed
+    1: Unable to open static sorted file referenced from 00000068.meta
+    2: Unable to open static sorted file 00000063.sst
+    3: The system cannot find the path specified. (os error 3)
+
+thread 'tokio-runtime-worker' (14484) panicked at C:\actions-runner\_work\next.js\next.js\turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:156:17:
+Failed to restore task data (corrupted database or bug): Data for <DiskFileSystem as FileSystem>::read (TaskId 390271))
+
+Caused by:
+    0: Looking up data for TaskId 390271 from database failed
+    1: Unable to open static sorted file referenced from 00000069.meta
+    2: Unable to open static sorted file 00000059.sst
+    3: The system cannot find the path specified. (os error 3)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+○ Compiling /_error ...

@@ -3,19 +3,74 @@ import { differenceInSeconds } from "date-fns";
 import { auth } from "@/app/(auth)/auth";
 import {
   getChatById,
-  getMessagesByChatId,
+  getMessagesByChatIdPage,
   getStreamIdsByChatId,
 } from "@/lib/db/queries";
 import type { Chat } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
 import { getStreamContext } from "../../route";
 
+const STREAM_HEADERS: HeadersInit = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  "X-Accel-Buffering": "no",
+};
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+const ONE_MINUTE = 60 * 1000;
+const CHAT_RATE_LIMIT = {
+  limit: 120,
+  windowMs: ONE_MINUTE,
+};
+
+async function enforceStreamRateLimit(
+  request: Request
+): Promise<Response | null> {
+  const clientKey = getClientKeyFromHeaders(request.headers);
+  const { allowed, resetAt } = await incrementRateLimit(
+    `api:chat:${clientKey}`,
+    CHAT_RATE_LIMIT
+  );
+
+  if (allowed) {
+    return null;
+  }
+
+  const retryAfterSeconds = Math.max(
+    Math.ceil((resetAt - Date.now()) / 1000),
+    1
+  ).toString();
+
+  return new Response(
+    JSON.stringify({
+      code: "rate_limit:api",
+      message: "Too many requests. Please try again later.",
+    }),
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": retryAfterSeconds,
+      },
+    }
+  );
+}
+
 export async function GET(
-  _: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: chatId } = await params;
+  const rateLimited = await enforceStreamRateLimit(request);
+
+  if (rateLimited) {
+    return rateLimited;
+  }
 
   const streamContext = getStreamContext();
   const resumeRequestedAt = new Date();
@@ -63,7 +118,6 @@ export async function GET(
   }
 
   const emptyDataStream = createUIMessageStream<ChatMessage>({
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: "Needs to exist"
     execute: () => {},
   });
 
@@ -76,15 +130,24 @@ export async function GET(
    * but the resumable stream has concluded at this point.
    */
   if (!stream) {
-    const messages = await getMessagesByChatId({ id: chatId });
+    const { messages } = await getMessagesByChatIdPage({
+      id: chatId,
+      limit: 1,
+    });
     const mostRecentMessage = messages.at(-1);
 
     if (!mostRecentMessage) {
-      return new Response(emptyDataStream, { status: 200 });
+      return new Response(emptyDataStream, {
+        status: 200,
+        headers: STREAM_HEADERS,
+      });
     }
 
     if (mostRecentMessage.role !== "assistant") {
-      return new Response(emptyDataStream, { status: 200 });
+      return new Response(emptyDataStream, {
+        status: 200,
+        headers: STREAM_HEADERS,
+      });
     }
 
     const messageCreatedAt = new Date(mostRecentMessage.createdAt);
@@ -105,9 +168,9 @@ export async function GET(
 
     return new Response(
       restoredStream.pipeThrough(new JsonToSseTransformStream()),
-      { status: 200 }
+      { status: 200, headers: STREAM_HEADERS }
     );
   }
 
-  return new Response(stream, { status: 200 });
+  return new Response(stream, { status: 200, headers: STREAM_HEADERS });
 }

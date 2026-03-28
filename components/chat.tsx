@@ -1,13 +1,24 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { type DataUIPart, DefaultChatTransport } from "ai";
+import { BookOpen } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
+import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
+import { useTranslation } from "@/components/language-provider";
+import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,55 +29,627 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
+import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
-import { ChatSDKError } from "@/lib/errors";
-import type { Attachment, ChatMessage } from "@/lib/types";
-import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { useTranslation } from "@/components/language-provider";
-import { useDataStream } from "./data-stream-provider";
+import type { LanguageOption } from "@/lib/i18n/languages";
+import type {
+  IconPromptAction,
+  IconPromptSuggestion,
+} from "@/lib/icon-prompts";
+import { getJobTypeLabel } from "@/lib/jobs/sector";
+import type {
+  JobCard,
+  JobListItem,
+  JobTitleReference,
+} from "@/lib/jobs/types";
+import {
+  getStudyContextForChat,
+  setStudyContextForChat,
+} from "@/lib/study/context-store";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
+import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
+import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
-import { getChatHistoryPaginationKey } from "./sidebar-history";
+import {
+  type ChatHistory,
+  getChatHistoryPaginationKeyForMode,
+} from "./sidebar-history";
+import { StudyPromptChips } from "./study/study-prompt-chips";
 import { toast } from "./toast";
-import type { VisibilityType } from "./visibility-selector";
+import {
+  VisibilitySelector,
+  type VisibilityType,
+} from "./visibility-selector";
+
+const MODEL_STORAGE_KEY = "chat-model-preference";
+const LANGUAGE_STORAGE_KEY = "chat-language-preference";
+const CHAT_MODEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+const JOBS_LIST_API_ROUTE = "/api/jobs/list";
+
+const FloatingChatPopup = dynamic(
+  () =>
+    import("@/components/jobs/floating-chat-popup").then(
+      (module) => module.FloatingChatPopup
+    ),
+  {
+    loading: () => null,
+  }
+);
+
+const JobsModeListPanel = dynamic(
+  () =>
+    import("@/components/jobs/jobs-mode-list-panel").then(
+      (module) => module.JobsModeListPanel
+    ),
+  {
+    loading: () => null,
+  }
+);
+
+const buildStudyQuestionReference = (
+  paper: StudyPaperCard
+): StudyQuestionReference => ({
+  paperId: paper.id,
+  title: paper.title,
+  preview: `${paper.exam} / ${paper.role} / ${paper.year}`,
+});
+
+const buildJobTitleReference = (job: JobCard): JobTitleReference => ({
+  title: job.title,
+  preview: [job.company, job.location].filter(Boolean).join(" / "),
+});
 
 export function Chat({
   id,
   initialMessages,
+  initialHasMoreHistory,
+  initialOldestMessageAt,
   initialChatModel,
+  initialChatLanguage,
+  initialJobContext = null,
+  jobsListItems = [],
   initialVisibilityType,
+  chatMode,
+  languageSettings,
   isReadonly,
   autoResume,
   suggestedPrompts,
+  iconPromptActions = [],
+  imageGeneration,
+  documentUploadsEnabled,
+  customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
   id: string;
   initialMessages: ChatMessage[];
+  initialHasMoreHistory: boolean;
+  initialOldestMessageAt: string | null;
   initialChatModel: string;
+  initialChatLanguage: string;
+  initialJobContext?: JobCard | null;
+  jobsListItems?: JobListItem[];
   initialVisibilityType: VisibilityType;
+  chatMode: "default" | "study" | "jobs";
+  languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
   suggestedPrompts: string[];
+  iconPromptActions?: IconPromptAction[];
+  imageGeneration: {
+    enabled: boolean;
+    canGenerate: boolean;
+    requiresPaidCredits: boolean;
+  };
+  documentUploadsEnabled: boolean;
+  customKnowledgeEnabled: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const query = searchParams.get("query");
+  const newChatNonce = searchParams.get("new");
+  const requestedMode = searchParams.get("mode");
+  const resolvedChatMode =
+    pathname === "/chat"
+      ? requestedMode === "study"
+        ? "study"
+        : requestedMode === "jobs"
+          ? "jobs"
+          : "default"
+      : chatMode;
+  const historyMode =
+    resolvedChatMode === "study"
+      ? "study"
+      : resolvedChatMode === "jobs"
+        ? "jobs"
+        : "default";
+  const historyPaginationKey = useMemo(
+    () => getChatHistoryPaginationKeyForMode(historyMode),
+    [historyMode]
+  );
   const { visibilityType } = useChatVisibility({
     chatId: id,
     initialVisibilityType,
+    historyMode,
   });
-  const { translate } = useTranslation();
+  const {
+    translate,
+    languages,
+    activeLanguage,
+    setLanguage,
+    isUpdating: isUiLanguageUpdating,
+  } = useTranslation();
 
   const { mutate } = useSWRConfig();
-  const { setDataStream } = useDataStream();
 
+  const isStudyMode = resolvedChatMode === "study";
+  const isJobsMode = resolvedChatMode === "jobs";
+  const greetingSubtitle = isStudyMode
+    ? translate("greeting.study.subtitle", "What would you like to study today?")
+    : undefined;
   const [input, setInput] = useState<string>("");
+  const [jobsSubmitScrollSignal, setJobsSubmitScrollSignal] = useState(0);
+  const [isJobsComposerVisible, setIsJobsComposerVisible] = useState(false);
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
+  const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
   const currentModelIdRef = useRef(currentModelId);
+  const [currentLanguageCode, setCurrentLanguageCode] = useState(
+    initialChatLanguage
+  );
+  const currentLanguageCodeRef = useRef(currentLanguageCode);
+  const studyContextIdRef = useRef<string | null>(null);
+  const studyQuizActiveRef = useRef(false);
+  const [pendingUiLanguage, setPendingUiLanguage] = useState<{
+    code: string;
+    name: string;
+  } | null>(null);
+  const [uiLanguageTarget, setUiLanguageTarget] = useState<string | null>(
+    null
+  );
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [showActionProgress, setShowActionProgress] = useState(false);
+  const [actionProgress, setActionProgress] = useState(0);
+  const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(
+    initialHasMoreHistory
+  );
+  const [oldestMessageAt, setOldestMessageAt] = useState(
+    initialOldestMessageAt
+  );
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [studyContext, setStudyContext] = useState<StudyPaperCard | null>(null);
+  const [jobContext, setJobContext] = useState<JobCard | null>(
+    initialJobContext
+  );
+  const [studyQuizActive, setStudyQuizActive] = useState(false);
+  const [studyQuestionReference, setStudyQuestionReference] =
+    useState<StudyQuestionReference | null>(null);
+  const [jobTitleReference, setJobTitleReference] =
+    useState<JobTitleReference | null>(
+      initialJobContext ? buildJobTitleReference(initialJobContext) : null
+    );
+  const [resumeDataPart, setResumeDataPart] =
+    useState<DataUIPart<CustomUIDataTypes> | null>(null);
+  const [studyViewerPaper, setStudyViewerPaper] =
+    useState<StudyPaperCard | null>(null);
+  const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
+  const chatPersistenceConfirmedRef = useRef(
+    (pathname !== "/" && pathname !== "/chat") || initialMessages.length > 0
+  );
+  const shouldLoadJobsListFromApi = isJobsMode && jobsListItems.length === 0;
+  const {
+    data: jobsModeListItemsData,
+    isLoading: isJobsModeListLoading,
+  } = useSWR<JobListItem[]>(
+    shouldLoadJobsListFromApi ? JOBS_LIST_API_ROUTE : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+    }
+  );
+  const resolvedJobsListItems =
+    jobsModeListItemsData && jobsModeListItemsData.length > 0
+      ? jobsModeListItemsData
+      : jobsListItems;
+  const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const imageUpgradeTitle = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.title",
+        "Free credits can't be used for images"
+      )
+    : translate(
+        "image.actions.locked.title",
+        "Recharge credits to generate images"
+      );
+  const imageUpgradeDescription = imageGeneration.requiresPaidCredits
+    ? translate(
+        "image.actions.locked.free.description",
+        "You are using free credits. Recharge to generate images."
+      )
+    : translate(
+        "image.actions.locked.description",
+        "Image generation is available for paid plans or users with active credits."
+      );
+
+  const refreshAndPromoteHistory = useCallback(() => {
+    const historyCacheKey = unstable_serialize(historyPaginationKey);
+    const now = new Date();
+
+    mutate(
+      historyCacheKey,
+      (currentPages: ChatHistory[] | undefined) => {
+        if (!currentPages || currentPages.length === 0) {
+          return currentPages;
+        }
+
+        let promotedChat: ChatHistory["chats"][number] | null = null;
+
+        const pagesWithoutCurrentChat = currentPages.map((page) => ({
+          ...page,
+          chats: page.chats.filter((chat) => {
+            if (chat.id !== id) {
+              return true;
+            }
+
+            promotedChat = {
+              ...chat,
+              createdAt:
+                now as unknown as ChatHistory["chats"][number]["createdAt"],
+            };
+            return false;
+          }),
+        }));
+
+        if (!promotedChat) {
+          return currentPages;
+        }
+
+        const [firstPage, ...remainingPages] = pagesWithoutCurrentChat;
+        if (!firstPage) {
+          return currentPages;
+        }
+
+        return [
+          {
+            ...firstPage,
+            chats: [promotedChat, ...firstPage.chats],
+          },
+          ...remainingPages,
+        ];
+      },
+      { revalidate: false }
+    );
+
+    if (historyRevalidateTimerRef.current) {
+      clearTimeout(historyRevalidateTimerRef.current);
+      historyRevalidateTimerRef.current = null;
+    }
+
+    historyRevalidateTimerRef.current = setTimeout(() => {
+      mutate(historyCacheKey);
+      historyRevalidateTimerRef.current = null;
+    }, 1500);
+  }, [historyPaginationKey, id, mutate]);
+
+  useEffect(() => {
+    return () => {
+      if (historyRevalidateTimerRef.current) {
+        clearTimeout(historyRevalidateTimerRef.current);
+        historyRevalidateTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
+
+  useEffect(() => {
+    currentLanguageCodeRef.current = currentLanguageCode;
+  }, [currentLanguageCode]);
+
+  useEffect(() => {
+    if (pathname !== "/" && pathname !== "/chat" && !newChatNonce) {
+      chatPersistenceConfirmedRef.current = true;
+    }
+  }, [newChatNonce, pathname]);
+
+  useEffect(() => {
+    studyContextIdRef.current = studyContext?.id ?? null;
+  }, [studyContext]);
+
+  useEffect(() => {
+    if (!isStudyMode) {
+      return;
+    }
+    if (!studyContext) {
+      setStudyContextForChat(id, null);
+      return;
+    }
+    setStudyContextForChat(id, {
+      exam: studyContext.exam,
+      role: studyContext.role,
+      year: studyContext.year,
+      title: studyContext.title,
+    });
+  }, [id, isStudyMode, studyContext]);
+
+  useEffect(() => {
+    studyQuizActiveRef.current = studyQuizActive;
+  }, [studyQuizActive]);
+
+  const setChatModelCookie = useCallback((modelId: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const encoded = encodeURIComponent(modelId);
+    document.cookie = `chat-model=${encoded}; path=/; max-age=${CHAT_MODEL_COOKIE_MAX_AGE}; samesite=lax`;
+  }, []);
+
+  const handleModelChange = useCallback((modelId: string) => {
+    if (modelId === currentModelIdRef.current) {
+      return;
+    }
+
+    currentModelIdRef.current = modelId;
+    setCurrentModelId(modelId);
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+      } catch {
+        // Ignore storage errors (private mode, quotas).
+      }
+    }
+    setChatModelCookie(modelId);
+  }, [setChatModelCookie]);
+
+  const setChatLanguageCookie = useCallback((languageCode: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const encoded = encodeURIComponent(languageCode);
+    document.cookie = `chat-language=${encoded}; path=/; max-age=${CHAT_LANGUAGE_COOKIE_MAX_AGE}; samesite=lax`;
+  }, []);
+
+  const handleLanguageChange = useCallback(
+    (languageCode: string, promptUiChange = false) => {
+      const normalized = languageCode.trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      const languageOptions =
+        languageSettings && languageSettings.length > 0
+          ? languageSettings
+          : languages;
+      const selectedLanguage =
+        languageOptions.find((language) => language.code === normalized) ??
+        languages.find((language) => language.code === normalized);
+      const shouldPromptUiChange =
+        promptUiChange &&
+        Boolean(selectedLanguage?.syncUiLanguage) &&
+        activeLanguage.code !== normalized;
+      if (
+        normalized === currentLanguageCodeRef.current &&
+        !shouldPromptUiChange
+      ) {
+        return;
+      }
+      if (normalized !== currentLanguageCodeRef.current) {
+        setCurrentLanguageCode(normalized);
+      }
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
+        } catch {
+          // Ignore storage errors (private mode, quotas).
+        }
+      }
+      setChatLanguageCookie(normalized);
+      if (shouldPromptUiChange && selectedLanguage) {
+        setPendingUiLanguage({
+          code: selectedLanguage.code,
+          name: selectedLanguage.name,
+        });
+      } else {
+        setPendingUiLanguage(null);
+      }
+    },
+    [activeLanguage.code, languageSettings, languages, setChatLanguageCookie]
+  );
+
+  const handleLanguageChangeFromInput = useCallback(
+    (languageCode: string) => {
+      handleLanguageChange(languageCode, true);
+    },
+    [handleLanguageChange]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ code?: string }>).detail;
+      if (!detail?.code) {
+        return;
+      }
+      handleLanguageChange(detail.code, false);
+    };
+    window.addEventListener("chat-language-change", handler);
+    return () => window.removeEventListener("chat-language-change", handler);
+  }, [handleLanguageChange]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storedModelId = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (storedModelId && storedModelId !== currentModelId) {
+        handleModelChange(storedModelId);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [currentModelId, handleModelChange]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storedLanguageCode = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (
+        storedLanguageCode &&
+        storedLanguageCode !== currentLanguageCode
+      ) {
+        handleLanguageChange(storedLanguageCode, false);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [currentLanguageCode, handleLanguageChange]);
+
+  useEffect(() => {
+    setHasMoreHistory(initialHasMoreHistory);
+    setOldestMessageAt(initialOldestMessageAt);
+    setIsLoadingHistory(false);
+  }, [initialHasMoreHistory, initialOldestMessageAt]);
+
+  useEffect(() => {
+    void id;
+    if (!isStudyMode) {
+      setStudyContext(null);
+      setStudyQuizActive(false);
+      setStudyQuestionReference(null);
+      setStudyViewerPaper(null);
+    } else {
+      setStudyContext(null);
+      setStudyQuizActive(false);
+      setStudyViewerPaper(null);
+    }
+
+    if (!isJobsMode) {
+      setJobContext(null);
+      setJobTitleReference(null);
+      setJobViewerPosting(null);
+      return;
+    }
+    setJobContext(initialJobContext ?? null);
+    setJobTitleReference(
+      initialJobContext ? buildJobTitleReference(initialJobContext) : null
+    );
+    setJobViewerPosting(null);
+  }, [id, initialJobContext, isStudyMode, isJobsMode]);
+
+  useEffect(() => {
+    if (!isJobsMode) {
+      setIsJobsComposerVisible(false);
+      return;
+    }
+    setIsJobsComposerVisible(initialMessages.length > 0);
+  }, [initialMessages.length, isJobsMode]);
+
+  useEffect(() => {
+    void id;
+    setResumeDataPart(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (!languages.length) {
+      return;
+    }
+    const exists = languages.some(
+      (language) => language.code === currentLanguageCode
+    );
+    if (exists) {
+      return;
+    }
+    const fallbackCode = activeLanguage?.code ?? languages[0]?.code ?? null;
+    if (fallbackCode && fallbackCode !== currentLanguageCode) {
+      handleLanguageChange(fallbackCode, false);
+    }
+  }, [
+    activeLanguage?.code,
+    currentLanguageCode,
+    handleLanguageChange,
+    languages,
+  ]);
+
+  useEffect(() => {
+    if (!imageGeneration.enabled || isStudyMode) {
+      setIsImageMode(false);
+    }
+  }, [imageGeneration.enabled, isStudyMode]);
+
+  const clearProgressTimers = useCallback(() => {
+    for (const timerId of progressTimersRef.current) {
+      clearTimeout(timerId);
+    }
+    progressTimersRef.current = [];
+  }, []);
+
+  const startActionProgress = useCallback(() => {
+    clearProgressTimers();
+    setShowActionProgress(true);
+    setActionProgress(12);
+    const timers = [
+      setTimeout(() => setActionProgress(40), 120),
+      setTimeout(() => setActionProgress(70), 260),
+      setTimeout(() => setActionProgress(90), 520),
+    ];
+    progressTimersRef.current = timers;
+  }, [clearProgressTimers]);
+
+  useEffect(() => {
+    return () => {
+      clearProgressTimers();
+    };
+  }, [clearProgressTimers]);
+
+  useEffect(() => {
+    if (!uiLanguageTarget) {
+      return;
+    }
+    if (activeLanguage.code !== uiLanguageTarget) {
+      return;
+    }
+    if (isUiLanguageUpdating) {
+      return;
+    }
+
+    setActionProgress(100);
+    const timer = setTimeout(() => {
+      clearProgressTimers();
+      setShowActionProgress(false);
+      setActionProgress(0);
+      setUiLanguageTarget(null);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [
+    activeLanguage.code,
+    clearProgressTimers,
+    isUiLanguageUpdating,
+    uiLanguageTarget,
+  ]);
 
   const {
     messages,
@@ -85,22 +668,39 @@ export function Chat({
       api: "/api/chat",
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
+        const modePayload = isStudyMode
+          ? {
+              chatMode: resolvedChatMode,
+              studyPaperId: studyContextIdRef.current,
+              studyQuizActive: studyQuizActiveRef.current,
+            }
+          : isJobsMode
+            ? {
+                chatMode: resolvedChatMode,
+              }
+            : { chatMode: "default" };
         return {
           body: {
             id: request.id,
             message: request.messages.at(-1),
             selectedChatModel: currentModelIdRef.current,
+            selectedLanguage: currentLanguageCodeRef.current,
             selectedVisibilityType: visibilityType,
             ...request.body,
+            ...modePayload,
           },
         };
       },
     }),
     onData: (dataPart) => {
-      setDataStream((ds) => (ds ? [...ds, dataPart] : []));
+      if (dataPart.type === "data-appendMessage") {
+        setResumeDataPart(dataPart);
+      }
     },
-    onFinish: async () => {
-      mutate(unstable_serialize(getChatHistoryPaginationKey));
+    
+    onFinish: () => {
+      syncCurrentChatUrl();
+      refreshAndPromoteHistory();
     },
     onError: (error) => {
       const message =
@@ -116,7 +716,7 @@ export function Chat({
             return prev;
           }
           const next = [...prev];
-          const last = next[next.length - 1];
+          const last = next.at(-1);
           if (last?.role === "user") {
             next.pop();
           }
@@ -127,9 +727,9 @@ export function Chat({
         setAttachments([]);
 
         if (messages.length <= 1) {
-          router.replace("/", { scroll: false });
+          router.replace("/chat", { scroll: false });
           if (typeof window !== "undefined") {
-            window.history.replaceState({}, "", "/");
+            window.history.replaceState({}, "", "/chat");
           }
         }
 
@@ -156,31 +756,219 @@ export function Chat({
     },
   });
 
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const query = searchParams.get("query");
-  const newChatNonce = searchParams.get("new");
+  useEffect(() => {
+    if (!isStudyMode) {
+      return;
+    }
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    if (!lastUserMessage) {
+      return;
+    }
+    const text = (lastUserMessage.parts ?? [])
+      .filter(
+        (part): part is { type: "text"; text: string } => part.type === "text"
+      )
+      .map((part) => part.text)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) {
+      return;
+    }
+    const normalized =
+      text.length > 80 ? `${text.slice(0, 77).trim()}...` : text;
+    const existing = getStudyContextForChat(id);
+    if (existing?.title === normalized) {
+      return;
+    }
+    setStudyContextForChat(id, {
+      ...existing,
+      title: normalized,
+    });
+  }, [id, isStudyMode, messages]);
+
+  const studyAssistChips = useMemo(() => {
+    if (!isStudyMode) {
+      return null;
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const entry = messages[index];
+      if (entry.role !== "assistant") {
+        continue;
+      }
+      const dataPart = entry.parts.find(
+        (part) => part.type === "data-studyAssistChips"
+      ) as
+        | { data?: { question?: string; chips?: string[] } }
+        | undefined;
+      if (dataPart?.data?.question && dataPart.data.chips?.length) {
+        return {
+          question: dataPart.data.question,
+          chips: dataPart.data.chips,
+        };
+      }
+    }
+    return null;
+  }, [isStudyMode, messages]);
+
+  const handleStudyView = useCallback((paper: StudyPaperCard) => {
+    setStudyViewerPaper(paper);
+  }, []);
+
+  const handleStudyAsk = useCallback((paper: StudyPaperCard) => {
+    setStudyContext(paper);
+    setStudyQuizActive(false);
+    setStudyQuestionReference(buildStudyQuestionReference(paper));
+  }, []);
+
+  const handleStudyQuiz = useCallback(
+    (paper: StudyPaperCard) => {
+      if (status !== "ready") {
+        return;
+      }
+      const reference = buildStudyQuestionReference(paper);
+      setStudyContext(paper);
+      setStudyQuizActive(true);
+      setStudyQuestionReference(reference);
+      sendMessage({
+        role: "user",
+        parts: [
+          {
+            type: "data-studyQuestionReference",
+            data: reference,
+          },
+          { type: "text", text: "Start quiz" },
+        ],
+      });
+    },
+    [sendMessage, status]
+  );
+
+  const handleJumpToQuestionPaper = useCallback((paperId: string) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const escapedPaperId =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(paperId)
+        : paperId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+    const targetCard = document.querySelector<HTMLElement>(
+      `[data-study-paper-card-id="${escapedPaperId}"]`
+    );
+    const fallbackList =
+      document.querySelector<HTMLElement>('[data-study-papers-list="true"]');
+    const target = targetCard ?? fallbackList;
+
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.classList.add("ring-2", "ring-primary/40");
+    window.setTimeout(() => {
+      target.classList.remove("ring-2", "ring-primary/40");
+    }, 1200);
+  }, []);
+
+  const clearStudyContext = useCallback(() => {
+    setStudyContext(null);
+    setStudyQuizActive(false);
+    setStudyQuestionReference(null);
+  }, []);
+
+  const handleJobAsk = useCallback((job: JobCard) => {
+    setJobContext(job);
+    setJobTitleReference(buildJobTitleReference(job));
+    setIsJobsComposerVisible(true);
+  }, []);
+
+  const clearJobContext = useCallback(() => {
+    setJobContext(null);
+    setJobTitleReference(null);
+  }, []);
+
+  const handleJobPrefetch = useCallback(
+    (job: JobCard) => {
+      try {
+        router.prefetch(`/jobs/${job.id}`);
+      } catch (error) {
+        console.warn("Prefetch job details failed", error);
+      }
+    },
+    [router]
+  );
+
+  const handleJobView = useCallback(
+    (job: JobCard) => {
+      startActionProgress();
+      handleJobPrefetch(job);
+      router.push(`/jobs/${job.id}`, { scroll: false });
+    },
+    [handleJobPrefetch, router, startActionProgress]
+  );
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
+  const getCurrentChatHref = useCallback(
+    (chatId: string) => {
+      const params = new URLSearchParams();
+      if (isStudyMode) {
+        params.set("mode", "study");
+      } else if (isJobsMode) {
+        params.set("mode", "jobs");
+      }
+
+      const queryString = params.toString();
+      return queryString ? `/chat/${chatId}?${queryString}` : `/chat/${chatId}`;
+    },
+    [isJobsMode, isStudyMode]
+  );
+
+  const syncCurrentChatUrl = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    document.cookie = `recent-chat-id=${encodeURIComponent(
+      `${id}|${Date.now()}`
+    )}; path=/; max-age=30; samesite=lax`;
+
+    const nextHref = getCurrentChatHref(id);
+    const currentHref = `${window.location.pathname}${window.location.search}`;
+    if (currentHref === nextHref) {
+      return;
+    }
+
+    window.history.replaceState({}, "", nextHref);
+  }, [getCurrentChatHref, id]);
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {
+      syncCurrentChatUrl();
       sendMessage({
         role: "user" as const,
         parts: [{ type: "text", text: query }],
       });
 
       setHasAppendedQuery(true);
-      window.history.replaceState({}, "", `/chat/${id}`);
     }
-  }, [query, sendMessage, hasAppendedQuery, id]);
+  }, [query, sendMessage, hasAppendedQuery, syncCurrentChatUrl]);
 
   useEffect(() => {
-    if (pathname === "/" && newChatNonce) {
-      router.replace("/", { scroll: false });
+    if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
+      const nextPath = pathname === "/chat" ? "/chat" : "/";
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("new");
+      nextParams.delete("nonce");
+      const nextHref = nextParams.toString()
+        ? `${nextPath}?${nextParams.toString()}`
+        : nextPath;
+      window.history.replaceState({}, "", nextHref);
     }
-  }, [pathname, newChatNonce, router]);
+  }, [newChatNonce, pathname, searchParams]);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
@@ -189,72 +977,850 @@ export function Chat({
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const isArtifactVisible = false;
+  const [iconPromptSuggestions, setIconPromptSuggestions] = useState<
+    IconPromptSuggestion[]
+  >([]);
+  const handleIconPromptSelect = useCallback(
+    (item: IconPromptAction) => {
+      const trimmedPrompt = item.prompt.trim();
+      if (item.showSuggestions && item.suggestions.length > 0) {
+        setIconPromptSuggestions(item.suggestions);
+      } else {
+        setIconPromptSuggestions([]);
+        if (trimmedPrompt) {
+          setInput((current) => {
+            const existing = current ?? "";
+            if (item.behavior === "append" && existing.trim().length > 0) {
+              const separator = existing.endsWith(" ") ? "" : " ";
+              return `${existing}${separator}${trimmedPrompt}`;
+            }
+            return trimmedPrompt;
+          });
+        }
+      }
+
+      if (item.selectImageMode) {
+        if (!imageGeneration.enabled) {
+          return;
+        }
+        if (!imageGeneration.canGenerate) {
+          setShowImageUpgradeDialog(true);
+          return;
+        }
+        setIsImageMode(true);
+      } else {
+        setIsImageMode(false);
+      }
+    },
+    [imageGeneration.canGenerate, imageGeneration.enabled]
+  );
+
+  const generateImageFromPrompt = useCallback(
+    async (prompt: string, displayPrompt?: string) => {
+      if (!imageGeneration.enabled) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.disabled",
+            "Image generation is currently unavailable."
+          ),
+        });
+        return;
+      }
+      if (!imageGeneration.canGenerate) {
+        setShowImageUpgradeDialog(true);
+        return;
+      }
+
+      const trimmedPrompt = prompt.trim();
+      if (!trimmedPrompt) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.prompt.required",
+            "Add a prompt before generating."
+          ),
+        });
+        return;
+      }
+
+      const displayText =
+        (displayPrompt ?? "").trim() || trimmedPrompt;
+      const imageAttachments = attachments.filter((attachment) =>
+        attachment.contentType?.startsWith("image/")
+      );
+
+      syncCurrentChatUrl();
+
+      const userMessageId = generateUUID();
+      const userParts = [
+        ...imageAttachments.map((attachment) => ({
+          type: "file" as const,
+          url: attachment.url,
+          filename: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        { type: "text" as const, text: displayText },
+      ];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: userMessageId,
+          role: "user",
+          parts: userParts,
+        },
+      ]);
+
+      setInput("");
+      setAttachments([]);
+      setIsGeneratingImage(true);
+
+      try {
+        const response = await fetch("/api/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chatId: id,
+            visibility: visibilityType,
+            prompt: trimmedPrompt,
+            displayPrompt: displayText,
+            userMessageId,
+            imageUrls: imageAttachments.map((attachment) => attachment.url),
+          }),
+        });
+
+        const data = (await response.json().catch(() => null)) as
+          | {
+              assistantMessage?: ChatMessage;
+              message?: string;
+            }
+          | null;
+
+        if (!response.ok) {
+          if (response.status === 402) {
+            setMessages((prev) =>
+              prev.filter((message) => message.id !== userMessageId)
+            );
+            setShowImageUpgradeDialog(true);
+            return;
+          }
+
+          toast({
+            type: "error",
+            description:
+              data?.message ??
+              translate(
+                "image.generate.failed",
+                "Image generation failed. Please try again."
+              ),
+          });
+          return;
+        }
+
+        const assistantMessage = data?.assistantMessage;
+        if (!assistantMessage) {
+          toast({
+            type: "error",
+            description: translate(
+              "image.generate.empty",
+              "No image was returned. Try a different prompt."
+            ),
+          });
+          return;
+        }
+
+        setMessages((prev) => [...prev, assistantMessage]);
+        refreshAndPromoteHistory();
+      } catch (_error) {
+        toast({
+          type: "error",
+          description: translate(
+            "image.generate.failed",
+            "Image generation failed. Please try again."
+          ),
+        });
+      } finally {
+        setIsGeneratingImage(false);
+      }
+    },
+    [
+      attachments, 
+      id, 
+      imageGeneration.canGenerate, 
+      imageGeneration.enabled, 
+      refreshAndPromoteHistory, 
+      setMessages, 
+      translate, 
+      visibilityType, syncCurrentChatUrl
+    ]
+  );
+
+  const handleIconPromptSuggestionSelect = useCallback(
+    (suggestion: IconPromptSuggestion) => {
+      const visibleText = suggestion.label.trim();
+      const trimmed = suggestion.prompt.trim();
+      const hiddenText = trimmed || visibleText;
+      if (!hiddenText) {
+        return;
+      }
+      if ((status !== "ready" && status !== "error") || isGeneratingImage) {
+        return;
+      }
+
+      setIconPromptSuggestions([]);
+
+      const displayedPrompt = visibleText || hiddenText;
+      if (suggestion.isEditable) {
+        setInput(displayedPrompt);
+        return;
+      }
+
+      if (isImageMode) {
+        void generateImageFromPrompt(hiddenText, visibleText);
+        return;
+      }
+
+      syncCurrentChatUrl();
+
+      const messageParts = [
+        ...attachments.map((attachment) => ({
+          type: "file" as const,
+          url: attachment.url,
+          name: attachment.name,
+          mediaType: attachment.contentType,
+        })),
+        { type: "text" as const, text: displayedPrompt },
+      ];
+
+      sendMessage(
+        {
+          role: "user",
+          parts: messageParts,
+        },
+        hiddenText !== displayedPrompt
+          ? { body: { hiddenPrompt: hiddenText } }
+          : undefined
+      );
+
+      setInput("");
+      setAttachments([]);
+    },
+    [
+      attachments, 
+      generateImageFromPrompt, 
+      isGeneratingImage, 
+      isImageMode, 
+      sendMessage, 
+      status, syncCurrentChatUrl
+    ]
+  );
+
+  const ensureChatExistsBeforeNavigation = useCallback(
+    async (firstMessageText: string) => {
+      if (chatPersistenceConfirmedRef.current) {
+        return;
+      }
+
+      await ensureChatExistsAction({
+        chatId: id,
+        visibility: visibilityType,
+        mode: resolvedChatMode,
+        firstMessageText,
+      });
+      chatPersistenceConfirmedRef.current = true;
+    },
+    [id, resolvedChatMode, visibilityType]
+  );
+
+  const handleBeforeSubmit = useCallback(async () => {
+    await ensureChatExistsBeforeNavigation(input);
+    syncCurrentChatUrl();
+    if (!isJobsMode) {
+      return;
+    }
+    setJobsSubmitScrollSignal((current) => current + 1);
+    void mutate("messages:should-scroll", "auto", { revalidate: false });
+  }, [
+    ensureChatExistsBeforeNavigation,
+    input,
+    isJobsMode,
+    mutate,
+    syncCurrentChatUrl,
+  ]);
+
+  useEffect(() => {
+    setIconPromptSuggestions([]);
+  }, []);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingHistory || !hasMoreHistory) {
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", String(CHAT_HISTORY_PAGE_SIZE));
+      if (oldestMessageAt) {
+        params.set("before", oldestMessageAt);
+      }
+
+      const response = await fetchWithErrorHandlers(
+        `/api/chat/${id}/messages?${params.toString()}`
+      );
+      const data = (await response.json()) as {
+        messages?: ChatMessage[];
+        hasMore?: boolean;
+        oldestMessageAt?: string | null;
+      };
+
+      const incomingMessages = Array.isArray(data.messages)
+        ? data.messages
+        : [];
+      if (incomingMessages.length > 0) {
+        setMessages((prev) => [...incomingMessages, ...prev]);
+      }
+
+      if (typeof data.hasMore === "boolean") {
+        setHasMoreHistory(data.hasMore);
+      } else {
+        setHasMoreHistory(false);
+      }
+
+      if (data && "oldestMessageAt" in data) {
+        setOldestMessageAt(
+          typeof data.oldestMessageAt === "string" ? data.oldestMessageAt : null
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "");
+      toast({
+        type: "error",
+        description:
+          message ||
+          translate(
+            "chat.history.load_failed",
+            "Unable to load earlier messages."
+          ),
+      });
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [
+    hasMoreHistory,
+    id,
+    isLoadingHistory,
+    oldestMessageAt,
+    setMessages,
+    translate,
+  ]);
 
   useAutoResume({
     autoResume,
     initialMessages,
+    resumeDataPart,
     resumeStream,
     setMessages,
   });
 
-  return (
-    <>
-      <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
-        <ChatHeader
-          chatId={id}
-          isReadonly={isReadonly}
-          selectedVisibilityType={initialVisibilityType}
-        />
+  const studyHeader = isStudyMode ? (
+      <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
+          <BookOpen className="h-3.5 w-3.5" />
+          Study mode
+        </span>
+        {studyQuizActive ? (
+          <span className="rounded-full border border-border/60 bg-background px-2 py-1">
+            Quiz active
+          </span>
+        ) : null}
+      </div>
+      {studyContext ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-background px-3 py-2 text-xs">
+          <div className="min-w-0 space-y-0.5">
+            <div className="truncate font-semibold text-foreground">
+              {studyContext.title}
+            </div>
+            <div className="truncate text-muted-foreground">
+              {studyContext.exam} / {studyContext.role} / {studyContext.year}
+            </div>
+          </div>
+          <Button
+            className="cursor-pointer"
+            onClick={clearStudyContext}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
+      <StudyPromptChips
+        assistChips={studyAssistChips}
+        chatId={id}
+        sendMessage={sendMessage}
+      />
+    </div>
+  ) : null;
+  const jobsHeader = isJobsMode ? (
+    <div className="flex flex-col gap-3">
+      <JobsModeListPanel
+        isLoading={isJobsModeListLoading && resolvedJobsListItems.length === 0}
+        jobs={resolvedJobsListItems}
+      />
+    </div>
+  ) : null;
+  const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
 
-        <Messages
-          chatId={id}
-          isArtifactVisible={isArtifactVisible}
-          isReadonly={isReadonly}
-          messages={messages}
-          regenerate={regenerate}
-          selectedVisibilityType={visibilityType}
-          selectedModelId={currentModelId}
-          sendMessage={sendMessage}
-          setMessages={setMessages}
-          status={status}
-          suggestedPrompts={suggestedPrompts}
-          votes={votes}
-        />
-
-        <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
-          {isReadonly ? null : (
-            <div className="flex w-full flex-col gap-2">
-              <MultimodalInput
-                attachments={attachments}
-                chatId={id}
-                input={input}
-                messages={messages}
-                onModelChange={setCurrentModelId}
-                selectedModelId={currentModelId}
-                selectedVisibilityType={visibilityType}
+  const studyActions = isStudyMode
+    ? {
+        activePaperId: studyContext?.id ?? null,
+        isQuizActive: studyQuizActive,
+        onView: handleStudyView,
+        onAsk: handleStudyAsk,
+        onQuiz: handleStudyQuiz,
+        onJumpToQuestionPaper: handleJumpToQuestionPaper,
+      }
+    : undefined;
+  const jobActions = isJobsMode
+    ? {
+        activeJobId: jobContext?.id ?? null,
+        onPrefetch: handleJobPrefetch,
+        onView: handleJobView,
+        onAsk: handleJobAsk,
+      }
+    : undefined;
+  const jobsPopupEmptyState = isJobsMode ? (
+    <div className="rounded-[20px] border border-dashed border-border/60 bg-muted/20 px-5 py-8 text-center text-muted-foreground text-sm">
+      Send a message to get started.
+    </div>
+  ) : null;
+  const jobsPopup = isJobsMode && !isReadonly ? (
+    <FloatingChatPopup
+      controls={
+        <>
+          <VisibilitySelector
+            chatId={id}
+            showOnMobile={true}
+            selectedVisibilityType={visibilityType}
+          />
+          <ModelSelectorCompact
+            className="shrink-0"
+            onModelChange={handleModelChange}
+            selectedModelId={currentModelId}
+          />
+        </>
+      }
+      isVisible={isJobsComposerVisible}
+      onClose={() => setIsJobsComposerVisible(false)}
+      onOpen={() => setIsJobsComposerVisible(true)}
+    >
+      <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex flex-1 overflow-hidden">
+          <Messages
+            chatId={id}
+            key={`${id}:jobs-popup`}
+            enableGenerationAutoFollow={true}
+            submitScrollSignal={jobsSubmitScrollSignal}
+            hasMoreHistory={hasMoreHistory}
+            header={messages.length === 0 ? jobsPopupEmptyState : undefined}
+            headerFullWidth={false}
+            isArtifactVisible={isArtifactVisible}
+            isGeneratingImage={isGeneratingImage}
+            isLoadingHistory={isLoadingHistory}
+            isReadonly={false}
+            messages={messages}
+            onLoadMoreHistory={loadOlderMessages}
+            regenerate={regenerate}
+            selectedModelId={currentModelId}
+            selectedVisibilityType={visibilityType}
+            sendMessage={sendMessage}
+            setMessages={setMessages}
+            showGreeting={false}
+            showScrollbar={true}
+            status={status}
+            suggestedPrompts={[]}
+            jobActions={jobActions}
+            studyActions={studyActions}
+            votes={votes}
+          />
+        </div>
+        <div className="shrink-0 border-t border-border/60 bg-background/95 p-3 md:p-4">
+          <div className="flex w-full flex-col gap-2">
+            {iconPromptSuggestions.length > 0 ? (
+              <div className="rounded-lg bg-background p-2">
+                {iconPromptSuggestions.map((suggestion, index) => (
+                  <button
+                    className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                    key={`${suggestion.label}-${index}`}
+                    onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                    type="button"
+                  >
+                    {suggestion.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <MultimodalInput
+              attachments={attachments}
+              autoFocus={isJobsComposerVisible}
+              chatId={id}
+              documentUploadsEnabled={documentUploadsEnabled}
+              imageGenerationCanGenerate={false}
+              imageGenerationEnabled={false}
+              imageGenerationRequiresPaidCredits={false}
+              imageGenerationSelected={false}
+              isGeneratingImage={false}
+              input={input}
+              messages={messages}
+              onLanguageChange={handleLanguageChangeFromInput}
+              onModelChange={handleModelChange}
+              selectedLanguageCode={currentLanguageCode}
+              selectedModelId={currentModelId}
+              selectedVisibilityType={visibilityType}
+              onGenerateImage={() => {}}
+              jobTitleReference={jobTitleReference}
+              onClearJobTitleReference={clearJobContext}
+              onClearStudyQuestionReference={() =>
+                setStudyQuestionReference(null)
+              }
+              onJumpToQuestionPaper={handleJumpToQuestionPaper}
+              onBeforeSubmit={handleBeforeSubmit}
               sendMessage={sendMessage}
               setAttachments={setAttachments}
               setInput={setInput}
               setMessages={setMessages}
               status={status}
               stop={stop}
+              studyQuestionReference={studyQuestionReference}
+              onToggleImageMode={() => {}}
             />
-              <p className="px-2 text-center text-muted-foreground text-xs">
-                {translate(
-                  "chat.disclaimer.text",
-                  "KhasiGPT or other AI Models can make mistakes. Check important details."
-                )}{" "}
-                <Link className="underline" href="/privacy-policy">
-                  {translate(
-                    "chat.disclaimer.privacy_link",
-                    "See privacy policy."
-                  )}
-                </Link>
-              </p>
-            </div>
-          )}
+          </div>
         </div>
       </div>
+    </FloatingChatPopup>
+  ) : null;
+
+  return (
+    <>
+      {showActionProgress ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 bg-border/50"
+        >
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${actionProgress}%` }}
+          />
+        </div>
+      ) : null}
+      <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
+        <ChatHeader
+          chatId={id}
+          isReadonly={isReadonly}
+          onModelChange={handleModelChange}
+          selectedModelId={currentModelId}
+          selectedVisibilityType={initialVisibilityType}
+          showInlineControls={!isJobsMode}
+        />
+
+        {isJobsMode && !isReadonly ? (
+          <div className="overscroll-behavior-contain -webkit-overflow-scrolling-touch relative flex-1 touch-pan-y overflow-y-scroll [scrollbar-gutter:stable_both-edges] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-2 pb-6 pt-[10px] md:px-4">
+              {jobsHeader}
+            </div>
+          </div>
+        ) : (
+          <>
+            <Messages
+              chatId={id}
+              key={id}
+              enableGenerationAutoFollow={isJobsMode}
+              submitScrollSignal={jobsSubmitScrollSignal}
+              greetingSubtitle={greetingSubtitle}
+              showGreeting={!isJobsMode}
+              hasMoreHistory={hasMoreHistory}
+              header={modeHeader}
+              headerFullWidth={isJobsMode}
+              isArtifactVisible={isArtifactVisible}
+              isGeneratingImage={isGeneratingImage}
+              isLoadingHistory={isLoadingHistory}
+              isReadonly={isReadonly}
+              messages={messages}
+              onLoadMoreHistory={loadOlderMessages}
+              regenerate={regenerate}
+              selectedModelId={currentModelId}
+              selectedVisibilityType={visibilityType}
+              sendMessage={sendMessage}
+              setMessages={setMessages}
+              status={status}
+              suggestedPrompts={isJobsMode || isStudyMode ? [] : suggestedPrompts}
+              iconPromptActions={isJobsMode || isStudyMode ? [] : iconPromptActions}
+              onIconPromptSelect={handleIconPromptSelect}
+              jobActions={jobActions}
+              studyActions={studyActions}
+              votes={votes}
+            />
+
+            <div
+              className={cn(
+                "sticky bottom-0 z-1 mx-auto w-full max-w-4xl border-t-0 px-2 md:px-4",
+                "bg-background pb-3 md:pb-4"
+              )}
+            >
+              {isReadonly ? null : (
+                <div className="flex w-full flex-col gap-2">
+                  {iconPromptSuggestions.length > 0 ? (
+                    <div className="rounded-lg bg-background p-2">
+                      {iconPromptSuggestions.map((suggestion, index) => (
+                        <button
+                          className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                          key={`${suggestion.label}-${index}`}
+                          onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                          type="button"
+                        >
+                          {suggestion.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <MultimodalInput
+                    attachments={attachments}
+                    chatId={id}
+                    documentUploadsEnabled={documentUploadsEnabled}
+                    imageGenerationCanGenerate={
+                      imageGeneration.canGenerate && !isStudyMode
+                    }
+                    imageGenerationEnabled={imageGeneration.enabled && !isStudyMode}
+                    imageGenerationRequiresPaidCredits={
+                      imageGeneration.requiresPaidCredits
+                    }
+                    imageGenerationSelected={isImageMode && !isStudyMode}
+                    isGeneratingImage={isGeneratingImage}
+                    input={input}
+                    messages={messages}
+                    onLanguageChange={handleLanguageChangeFromInput}
+                    onModelChange={handleModelChange}
+                    selectedLanguageCode={currentLanguageCode}
+                    selectedModelId={currentModelId}
+                    selectedVisibilityType={visibilityType}
+                    onGenerateImage={() => {
+                      void generateImageFromPrompt(input);
+                    }}
+                    jobTitleReference={jobTitleReference}
+                    onClearJobTitleReference={clearJobContext}
+                    onClearStudyQuestionReference={() =>
+                      setStudyQuestionReference(null)
+                    }
+                    onJumpToQuestionPaper={handleJumpToQuestionPaper}
+                    onBeforeSubmit={handleBeforeSubmit}
+                    sendMessage={sendMessage}
+                    setAttachments={setAttachments}
+                    setInput={setInput}
+                    setMessages={setMessages}
+                    status={status}
+                    stop={stop}
+                    studyQuestionReference={studyQuestionReference}
+                    onToggleImageMode={() => {
+                      if (!imageGeneration.enabled || isStudyMode) {
+                        return;
+                      }
+                      if (!imageGeneration.canGenerate) {
+                        setShowImageUpgradeDialog(true);
+                        return;
+                      }
+                      setIsImageMode((prev) => !prev);
+                    }}
+                  />
+                  <p className="px-2 text-center text-muted-foreground text-xs">
+                    {translate(
+                      "chat.disclaimer.text",
+                      "KhasiGPT or other AI Models can make mistakes. Check important details."
+                    )}{" "}
+                    <Link className="underline" href="/privacy-policy">
+                      {translate(
+                        "chat.disclaimer.privacy_link",
+                        "See privacy policy."
+                      )}
+                    </Link>
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {jobsPopup}
+      </div>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setStudyViewerPaper(null);
+          }
+        }}
+        open={Boolean(studyViewerPaper)}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{studyViewerPaper?.title ?? "Question paper"}</DialogTitle>
+            <DialogDescription>
+              {studyViewerPaper
+                ? `${studyViewerPaper.exam} / ${studyViewerPaper.role} / ${studyViewerPaper.year}`
+                : "Review the selected question paper."}
+            </DialogDescription>
+          </DialogHeader>
+          {studyViewerPaper ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap gap-2 text-muted-foreground">
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {studyViewerPaper.language}
+                </span>
+                {studyViewerPaper.tags.map((tag) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${studyViewerPaper.id}-tag-${tag}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {studyViewerPaper.sourceUrl ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <iframe
+                    className="h-[60vh] w-full"
+                    src={studyViewerPaper.sourceUrl}
+                    title={studyViewerPaper.title}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center text-muted-foreground text-xs">
+                  No file was uploaded for this paper.
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {studyViewerPaper.sourceUrl ? (
+                  <Button asChild variant="outline">
+                    <a
+                      className="cursor-pointer"
+                      href={studyViewerPaper.sourceUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Download
+                    </a>
+                  </Button>
+                ) : null}
+                <Button
+                  className="cursor-pointer"
+                  onClick={() => setStudyViewerPaper(null)}
+                  type="button"
+                  variant="ghost"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setJobViewerPosting(null);
+          }
+        }}
+        open={Boolean(jobViewerPosting)}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{jobViewerPosting?.title ?? "Job posting"}</DialogTitle>
+            <DialogDescription>
+              {jobViewerPosting
+                ? `${jobViewerPosting.company} / ${jobViewerPosting.location}`
+                : "Review the selected job posting."}
+            </DialogDescription>
+          </DialogHeader>
+          {jobViewerPosting ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap gap-2 text-muted-foreground">
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {getJobTypeLabel(jobViewerPosting.employmentType)}
+                </span>
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {jobViewerPosting.studyExam}
+                </span>
+                <span className="rounded-full border border-border/60 px-2 py-0.5 text-xs">
+                  {jobViewerPosting.studyRole}
+                </span>
+                {jobViewerPosting.studyYears.map((year) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${jobViewerPosting.id}-year-${year}`}
+                  >
+                    {year}
+                  </span>
+                ))}
+                {jobViewerPosting.studyTags.map((tag) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${jobViewerPosting.id}-study-tag-${tag}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {jobViewerPosting.tags.map((tag) => (
+                  <span
+                    className="rounded-full border border-border/60 px-2 py-0.5 text-xs"
+                    key={`${jobViewerPosting.id}-tag-${tag}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {jobViewerPosting.sourceUrl ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <iframe
+                    className="h-[60vh] w-full"
+                    src={jobViewerPosting.sourceUrl}
+                    title={jobViewerPosting.title}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed px-4 py-6 text-center text-muted-foreground text-xs">
+                  No file was uploaded for this job posting.
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {jobViewerPosting.sourceUrl ? (
+                  <Button asChild variant="outline">
+                    <a
+                      className="cursor-pointer"
+                      href={jobViewerPosting.sourceUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Download
+                    </a>
+                  </Button>
+                ) : null}
+                <Button
+                  className="cursor-pointer"
+                  onClick={() => setJobViewerPosting(null)}
+                  type="button"
+                  variant="ghost"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         onOpenChange={setShowRechargeDialog}
@@ -263,10 +1829,7 @@ export function Chat({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate(
-                "chat.recharge.alert.title",
-                "Credit top-up required"
-              )}
+              {translate("chat.recharge.alert.title", "Credit top-up required")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {translate(
@@ -285,10 +1848,7 @@ export function Chat({
                 router.push("/recharge");
               }}
             >
-              {translate(
-                "chat.recharge.alert.confirm",
-                "Go to recharge"
-              )}
+              {translate("chat.recharge.alert.confirm", "Go to recharge")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -310,10 +1870,7 @@ export function Chat({
               ).replace(
                 "{subject}",
                 process.env.NODE_ENV === "production"
-                  ? translate(
-                      "chat.gateway.alert.subject.owner",
-                      "the owner"
-                    )
+                  ? translate("chat.gateway.alert.subject.owner", "the owner")
                   : translate("chat.gateway.alert.subject.you", "you")
               )}
             </AlertDialogDescription>
@@ -328,7 +1885,7 @@ export function Chat({
                   "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card",
                   "_blank"
                 );
-                window.location.href = "/";
+                window.location.href = "/chat";
               }}
             >
               {translate("chat.gateway.alert.confirm", "Activate")}
@@ -336,6 +1893,106 @@ export function Chat({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={setShowImageUpgradeDialog}
+        open={showImageUpgradeDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{imageUpgradeTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {imageUpgradeDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {translate("common.close", "Close")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowImageUpgradeDialog(false);
+                startActionProgress();
+                router.push("/recharge");
+              }}
+            >
+              {translate("image.actions.locked.cta", "Go to recharge")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingUiLanguage(null);
+          }
+        }}
+        open={Boolean(pendingUiLanguage)}
+      >
+        <AlertDialogContent className="w-[90vw] max-w-sm gap-3 p-4">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">
+              {translate(
+                "chat.language.ui_prompt.title",
+                "Change interface language?"
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground">
+              {translate(
+                "chat.language.ui_prompt.description",
+                "Do you also want the interface language to change to {language}?"
+              ).replace("{language}", pendingUiLanguage?.name ?? "")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2 sm:space-x-2">
+            <AlertDialogCancel
+              className="h-8 px-3 text-xs"
+              onClick={() => {
+                setPendingUiLanguage(null);
+              }}
+            >
+              {translate(
+                "chat.language.ui_prompt.cancel",
+                "No, keep interface"
+              )}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="h-8 px-3 text-xs"
+              onClick={() => {
+                if (!pendingUiLanguage) {
+                  return;
+                }
+                const targetCode = pendingUiLanguage.code;
+                setPendingUiLanguage(null);
+                setUiLanguageTarget(targetCode);
+                setLanguage(targetCode);
+              }}
+            >
+              {translate(
+                "chat.language.ui_prompt.confirm",
+                "Yes, change interface"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {uiLanguageTarget ? (
+        <output
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
+        >
+          <span className="flex w-full max-w-xs flex-col items-center gap-3 rounded-lg border bg-background px-5 py-4 text-center shadow-lg">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-sm font-medium">
+              {translate(
+                "chat.language.ui_prompt.loading",
+                "Switching interface language..."
+              )}
+            </span>
+          </span>
+        </output>
+      ) : null}
     </>
   );
 }
