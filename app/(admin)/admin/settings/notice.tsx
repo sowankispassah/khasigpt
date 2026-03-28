@@ -140,6 +140,75 @@ const NOTICE_MESSAGES: Record<
     type: "error",
     message: "The default language cannot be removed.",
   },
+  "translation-language-created": {
+    type: "success",
+    message: "Translation language added successfully.",
+  },
+  "translation-language-create-error": {
+    type: "error",
+    message: "Failed to add the translation language. Please try again.",
+  },
+  "translation-language-create-duplicate": {
+    type: "error",
+    message:
+      "That translation language code already exists. Choose a different code.",
+  },
+  "translation-language-code-invalid": {
+    type: "error",
+    message:
+      "Translation language code must be 2-16 characters using lowercase letters, numbers, or hyphens.",
+  },
+  "translation-language-updated": {
+    type: "success",
+    message: "Translation language status updated.",
+  },
+  "translation-language-settings-updated": {
+    type: "success",
+    message: "Translation language settings updated.",
+  },
+  "translation-language-update-error": {
+    type: "error",
+    message: "Failed to update translation language status. Please try again.",
+  },
+  "translation-language-settings-error": {
+    type: "error",
+    message:
+      "Failed to update the translation language settings. Please try again.",
+  },
+  "translation-language-default-inactive": {
+    type: "error",
+    message: "The default translation language cannot be deactivated.",
+  },
+  "translation-language-deleted": {
+    type: "success",
+    message: "Translation language removed.",
+  },
+  "translation-language-delete-error": {
+    type: "error",
+    message: "Failed to remove the translation language. Please try again.",
+  },
+  "translation-language-default-delete": {
+    type: "error",
+    message: "The default translation language cannot be removed.",
+  },
+  "translation-language-model-invalid": {
+    type: "error",
+    message:
+      "Selected translation model is unavailable or disabled. Choose an enabled model.",
+  },
+  "translation-language-speech-model-invalid": {
+    type: "error",
+    message:
+      "Selected speech/live model is unavailable or disabled. Choose an enabled model.",
+  },
+  "translation-provider-mode-updated": {
+    type: "success",
+    message: "Translation provider mode updated.",
+  },
+  "translation-provider-mode-error": {
+    type: "error",
+    message: "Failed to update the translation provider mode.",
+  },
   "plan-translation-updated": {
     type: "success",
     message: "Plan translation saved.",

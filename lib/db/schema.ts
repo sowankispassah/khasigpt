@@ -638,6 +638,41 @@ export const language = pgTable(
 
 export type Language = InferSelectModel<typeof language>;
 
+export const translationFeatureLanguage = pgTable(
+  "TranslationFeatureLanguage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: varchar("code", { length: 16 }).notNull().unique(),
+    name: varchar("name", { length: 64 }).notNull(),
+    isDefault: boolean("isDefault").notNull().default(false),
+    isActive: boolean("isActive").notNull().default(true),
+    systemPrompt: text("systemPrompt"),
+    modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
+      onDelete: "set null",
+    }),
+    speechModelConfigId: uuid("speechModelConfigId").references(
+      () => modelConfig.id,
+      {
+        onDelete: "set null",
+      }
+    ),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex("TranslationFeatureLanguage_code_idx").on(table.code),
+    activeIdx: index("TranslationFeatureLanguage_active_idx").on(table.isActive),
+    modelIdx: index("TranslationFeatureLanguage_model_idx").on(table.modelConfigId),
+    speechModelIdx: index("TranslationFeatureLanguage_speech_model_idx").on(
+      table.speechModelConfigId
+    ),
+  })
+);
+
+export type TranslationFeatureLanguage = InferSelectModel<
+  typeof translationFeatureLanguage
+>;
+
 export const translationKey = pgTable(
   "translation_key",
   {

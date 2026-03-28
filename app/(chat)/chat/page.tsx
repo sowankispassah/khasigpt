@@ -43,7 +43,7 @@ export default async function Page({
 
   const session = await auth();
   if (!session) {
-    redirect("/login?callbackUrl=/");
+    redirect("/login?callbackUrl=/chat");
   }
 
   const requestedMode =

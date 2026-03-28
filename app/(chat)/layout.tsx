@@ -10,6 +10,7 @@ import {
   FORUM_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -21,6 +22,7 @@ import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
+import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../(auth)/auth";
 
@@ -82,7 +84,13 @@ export default async function Layout({
       const remembered = getLastKnownAppSetting<T>(key);
       return remembered ?? fallback;
     });
-  const [studyModeSetting, forumSetting, calculatorSetting, jobsSetting] = session
+  const [
+    studyModeSetting,
+    forumSetting,
+    calculatorSetting,
+    jobsSetting,
+    translateSetting,
+  ] = session
     ? await Promise.all([
         safeSettingRead(
           "study mode setting",
@@ -108,8 +116,14 @@ export default async function Layout({
           getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
           null
         ),
+        safeSettingRead(
+          "translate setting",
+          TRANSLATE_FEATURE_FLAG_KEY,
+          getAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY),
+          null
+        ),
       ])
-    : [null, null, null, null];
+    : [null, null, null, null, null];
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,
@@ -131,6 +145,11 @@ export default async function Layout({
     jobsAccessMode,
     session?.user?.role ?? null
   );
+  const translateAccessMode = parseTranslateAccessModeSetting(translateSetting);
+  const translateEnabled = isFeatureEnabledForRole(
+    translateAccessMode,
+    session?.user?.role ?? null
+  );
 
   return (
     <SiteShell
@@ -147,6 +166,7 @@ export default async function Layout({
             calculatorEnabled={calculatorEnabled}
             jobsModeEnabled={jobsModeEnabled}
             studyModeEnabled={studyModeEnabled}
+            translateEnabled={translateEnabled}
             user={session.user}
           />
           <SidebarInset>{children}</SidebarInset>

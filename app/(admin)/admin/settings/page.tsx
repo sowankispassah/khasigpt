@@ -5,10 +5,12 @@ import {
   createLanguageAction,
   createModelConfigAction,
   createPricingPlanAction,
+  createTranslationFeatureLanguageAction,
   deleteImageModelConfigAction,
   deleteLanguageAction,
   deleteModelConfigAction,
   deletePricingPlanAction,
+  deleteTranslationFeatureLanguageAction,
   hardDeleteImageModelConfigAction,
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
@@ -32,6 +34,9 @@ import {
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
   updateTermsOfServiceByLanguageAction,
+  updateTranslateProviderModeAction,
+  updateTranslationFeatureLanguageSettingsAction,
+  updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { parseImageGenerationAccessModeSetting } from "@/lib/ai/image-generation";
@@ -64,6 +69,8 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
+  TRANSLATE_FEATURE_FLAG_KEY,
+  TRANSLATE_PROVIDER_MODE_SETTING_KEY,
 } from "@/lib/constants";
 import {
   getAppSettingsByKeysUncached,
@@ -73,6 +80,7 @@ import {
   listLanguagesWithSettings,
   listModelConfigs,
   listPricingPlans,
+  listTranslationFeatureLanguages,
 } from "@/lib/db/queries";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
@@ -98,6 +106,10 @@ import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import {
   parseSuggestedPromptsAccessModeSetting,
 } from "@/lib/suggested-prompts";
+import {
+  parseTranslateAccessModeSetting,
+  parseTranslateProviderModeSetting,
+} from "@/lib/translate/config";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
@@ -149,6 +161,8 @@ const SETTINGS_SNAPSHOT_KEYS = [
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
+  TRANSLATE_PROVIDER_MODE_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
@@ -170,6 +184,7 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   CALCULATOR_FEATURE_FLAG_KEY,
   FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -288,6 +303,11 @@ async function loadAdminSettingsData() {
     listLanguagesWithSettings(),
     []
   );
+  const translationFeatureLanguagesPromise = safeSettingsQuery(
+    "translation feature languages",
+    listTranslationFeatureLanguages(),
+    []
+  );
   const [
     exchangeRate,
     appSettingValuesByKey,
@@ -295,6 +315,7 @@ async function loadAdminSettingsData() {
     imageModelConfigs,
     plansRaw,
     languages,
+    translationFeatureLanguages,
   ] = await Promise.all([
     exchangeRatePromise,
     appSettingValuesByKeyPromise,
@@ -302,6 +323,7 @@ async function loadAdminSettingsData() {
     imageModelConfigsPromise,
     plansRawPromise,
     languagesPromise,
+    translationFeatureLanguagesPromise,
   ]);
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
@@ -383,6 +405,12 @@ async function loadAdminSettingsData() {
   const documentUploadsEnabledSetting = getStoredSetting<string | boolean>(
     DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
   );
+  const translateEnabledSetting = getStoredSetting<string | boolean>(
+    TRANSLATE_FEATURE_FLAG_KEY
+  );
+  const translateProviderModeSetting = getStoredSetting<string | boolean>(
+    TRANSLATE_PROVIDER_MODE_SETTING_KEY
+  );
   const freeMessageSettings = normalizeFreeMessageSettings(
     getStoredSetting(FREE_MESSAGE_SETTINGS_KEY)
   );
@@ -402,6 +430,7 @@ async function loadAdminSettingsData() {
     suggestedPromptsEnabledSetting,
     recommendedPlanSetting,
     languages,
+    translationFeatureLanguages,
     freeMessageSettings,
     calculatorEnabledSetting,
     sitePublicLaunchedSetting,
@@ -421,6 +450,8 @@ async function loadAdminSettingsData() {
     iconPromptsSetting,
     iconPromptsEnabledSetting,
     documentUploadsEnabledSetting,
+    translateEnabledSetting,
+    translateProviderModeSetting,
   };
 }
 
@@ -444,6 +475,7 @@ function buildFallbackAdminSettingsData() {
     suggestedPromptsEnabledSetting: null,
     recommendedPlanSetting: null,
     languages: [],
+    translationFeatureLanguages: [],
     freeMessageSettings: normalizeFreeMessageSettings(null),
     calculatorEnabledSetting: null,
     sitePublicLaunchedSetting: null,
@@ -463,6 +495,8 @@ function buildFallbackAdminSettingsData() {
     iconPromptsSetting: null,
     iconPromptsEnabledSetting: null,
     documentUploadsEnabledSetting: null,
+    translateEnabledSetting: null,
+    translateProviderModeSetting: null,
   } as Awaited<ReturnType<typeof loadAdminSettingsData>>;
 }
 
@@ -681,6 +715,7 @@ export default async function AdminSettingsPage({
     suggestedPromptsEnabledSetting,
     recommendedPlanSetting,
     languages,
+    translationFeatureLanguages,
     freeMessageSettings,
     calculatorEnabledSetting,
     sitePublicLaunchedSetting,
@@ -700,6 +735,8 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsEnabledSetting,
     documentUploadsEnabledSetting,
+    translateEnabledSetting,
+    translateProviderModeSetting,
   } = settingsData;
 
   const usdToInr = exchangeRate.rate;
@@ -804,9 +841,16 @@ export default async function AdminSettingsPage({
     }
   }
   const activeLanguagesList = languages.filter((language) => language.isActive);
+  const translationFeatureLanguageRows = translationFeatureLanguages;
+  const activeTranslationFeatureLanguages = translationFeatureLanguageRows.filter(
+    (language) => language.isActive
+  );
 
   const providerLabelLookup = new Map(
     PROVIDER_OPTIONS.map((option) => [option.value, option.label])
+  );
+  const modelNameLookup = new Map(
+    activeModels.map((model) => [model.id, model.displayName])
   );
   const providerCostSummaries = activeModels
     .filter((model) => model.isEnabled)
@@ -894,6 +938,13 @@ export default async function AdminSettingsPage({
     settingsLoadFailed && studyModeEnabledSetting === null
       ? null
       : parseStudyModeAccessModeSetting(studyModeEnabledSetting);
+  const translateAccessMode =
+    settingsLoadFailed && translateEnabledSetting === null
+      ? null
+      : parseTranslateAccessModeSetting(translateEnabledSetting);
+  const translateProviderMode = parseTranslateProviderModeSetting(
+    translateProviderModeSetting
+  );
   const jobsAccessMode =
     settingsLoadFailed && jobsEnabledSetting === null
       ? null
@@ -990,10 +1041,12 @@ export default async function AdminSettingsPage({
           getTranslationValuesForKeys(planTranslationKeys),
           PLAN_TRANSLATION_QUERY_TIMEOUT_MS
         ).catch((error) => {
-          console.error(
-            "[admin/settings] Translation query timed out or failed. Rendering settings without plan translations.",
-            error
-          );
+          if (!(error instanceof Error && error.message === "timeout")) {
+            console.error(
+              "[admin/settings] Failed to load plan translations. Rendering settings without plan translations.",
+              error
+            );
+          }
           return {} as Record<string, Record<string, string>>;
         })
       : {};
@@ -1069,7 +1122,6 @@ export default async function AdminSettingsPage({
 
             <PrelaunchInvitesPanel
               appBaseUrl={appBaseUrl}
-              loadOnMount
             />
 
             <form
@@ -1218,6 +1270,14 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
+              currentMode={translateAccessMode}
+              description="Show or hide the Translate page and sidebar entry. When disabled, end users cannot access translation routes."
+              fieldName="translateAccessMode"
+              successMessage="Translate availability updated."
+              title="Translate"
+            />
+
+            <FeatureAccessModeControl
               currentMode={jobsAccessMode}
               description="Show or hide the Jobs experience for browsing uploaded job postings."
               fieldName="jobsAccessMode"
@@ -1361,6 +1421,457 @@ export default async function AdminSettingsPage({
               day is active.
             </div>
           ) : null}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Manage Translate-only target languages and choose whether translation runs through Google Translation API or the existing AI model flow."
+          title="Translation settings"
+        >
+          <div className="space-y-6">
+            <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-sm">
+              <p className="font-medium">
+                Translation languages are separate from display languages.
+              </p>
+              <p className="mt-1 text-muted-foreground text-xs">
+                Active translation languages appear on the Translate page.
+                Google mode ignores model and prompt settings. AI mode uses the
+                configured model and system prompt for each language.
+              </p>
+            </div>
+
+            <form
+              action={updateTranslateProviderModeAction}
+              className="grid gap-4 rounded-lg border bg-background p-4 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <div className="flex flex-col gap-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="translate-provider-mode"
+                >
+                  Translation provider mode
+                </label>
+                <select
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={translateProviderMode}
+                  id="translate-provider-mode"
+                  name="translateProviderMode"
+                >
+                  <option value="google">Google Translation API</option>
+                  <option value="ai">AI model-based translation</option>
+                </select>
+                <p className="text-muted-foreground text-xs">
+                  Google mode uses Google Translation API for text and the
+                  browser speech-recognition transcript flow for voice. AI mode
+                  uses the admin-selected translation model and per-language
+                  system prompt.
+                </p>
+              </div>
+              <div className="flex items-end justify-end">
+                <SettingsSubmitButton pendingLabel="Saving...">
+                  Save provider mode
+                </SettingsSubmitButton>
+              </div>
+            </form>
+
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,360px)_1fr]">
+              <form
+                action={createTranslationFeatureLanguageAction}
+                className="flex flex-col gap-4 rounded-lg border bg-background p-4"
+              >
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="translation-feature-language-code"
+                  >
+                    Translation language code
+                  </label>
+                  <input
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    id="translation-feature-language-code"
+                    name="code"
+                    pattern="[a-z0-9-]{2,16}"
+                    placeholder="fr"
+                    required
+                    title="Use 2-16 lowercase letters, numbers, or hyphens."
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="translation-feature-language-name"
+                  >
+                    Translation language name
+                  </label>
+                  <input
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    id="translation-feature-language-name"
+                    name="name"
+                    placeholder="French"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="translation-feature-language-model"
+                  >
+                    Text translation model
+                  </label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    defaultValue=""
+                    disabled={
+                      translateProviderMode === "google" ||
+                      enabledModels.length === 0
+                    }
+                    id="translation-feature-language-model"
+                    name="modelConfigId"
+                    required={translateProviderMode === "ai"}
+                  >
+                    <option value="">Select a model</option>
+                    {enabledModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.displayName} ({model.provider})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    {translateProviderMode === "google"
+                      ? "Ignored in Google mode."
+                      : "This model is used for text translation and live speech translation when AI mode is selected."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="translation-feature-language-speech-model"
+                  >
+                    Speech/live model
+                  </label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    defaultValue=""
+                    disabled={
+                      translateProviderMode === "google" ||
+                      enabledModels.length === 0
+                    }
+                    id="translation-feature-language-speech-model"
+                    name="speechModelConfigId"
+                  >
+                    <option value="">
+                      No live speech model (browser speech fallback)
+                    </option>
+                    {enabledModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.displayName} ({model.provider})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    {translateProviderMode === "google"
+                      ? "Ignored in Google mode."
+                      : "Optional. Configure an enabled Google live/native-audio model here to power true live speech. If left blank, the Translate page falls back to browser speech recognition."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="translation-feature-language-prompt"
+                  >
+                    Translation system prompt
+                  </label>
+                  <textarea
+                    className="min-h-[140px] rounded-md border bg-background px-3 py-2 text-sm"
+                    disabled={translateProviderMode === "google"}
+                    id="translation-feature-language-prompt"
+                    name="systemPrompt"
+                    placeholder="e.g., Translate into French naturally and preserve the original formatting."
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    {translateProviderMode === "google"
+                      ? "Ignored in Google mode."
+                      : "This is a standalone translation prompt used only when this language is the translation target. It does not combine with the model's main system prompt."}
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 font-medium text-sm">
+                  <input
+                    className="h-4 w-4 cursor-pointer"
+                    defaultChecked
+                    name="isActive"
+                    type="checkbox"
+                  />
+                  Active immediately
+                </label>
+                {translateProviderMode === "ai" && enabledModels.length === 0 ? (
+                  <div className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-amber-800 text-xs dark:bg-amber-500/10 dark:text-amber-100">
+                    Add and enable at least one model before creating
+                    translation languages.
+                  </div>
+                ) : null}
+                <SettingsSubmitButton
+                  disabled={
+                    translateProviderMode === "ai" &&
+                    enabledModels.length === 0
+                  }
+                  pendingLabel="Adding..."
+                  type="submit"
+                >
+                  Add translation language
+                </SettingsSubmitButton>
+              </form>
+
+              <div className="space-y-4">
+                {translationFeatureLanguageRows.length === 0 ? (
+                  <div className="rounded-lg border bg-background p-4 text-muted-foreground text-sm">
+                    No translation languages configured yet.
+                  </div>
+                ) : null}
+                {translationFeatureLanguageRows.map((language) => {
+                  const statusBadge = language.isActive
+                    ? "text-emerald-600 bg-emerald-500/10"
+                    : "text-muted-foreground bg-muted/60";
+                  const modelName = language.modelConfigId
+                    ? modelNameLookup.get(language.modelConfigId) ??
+                      "Configured model unavailable"
+                    : "No model selected";
+                  const speechModelName = language.speechModelConfigId
+                    ? modelNameLookup.get(language.speechModelConfigId) ??
+                      "Configured speech model unavailable"
+                    : "No live speech model (browser fallback)";
+
+                  return (
+                    <details
+                      className="rounded-lg border bg-background p-4"
+                      key={language.id}
+                    >
+                      <summary className="flex cursor-pointer flex-col gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{language.name}</span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs ${statusBadge}`}
+                          >
+                            {language.isActive ? "Active" : "Inactive"}
+                          </span>
+                          {language.isDefault ? (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-[11px] text-primary uppercase tracking-wide">
+                              Default
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                          <span className="font-mono">{language.code}</span>
+                          <span>•</span>
+                          <span>Text: {modelName}</span>
+                          <span>•</span>
+                          <span>Speech: {speechModelName}</span>
+                        </div>
+                      </summary>
+                      <div className="mt-4 space-y-4">
+                        <form
+                          action={updateTranslationFeatureLanguageSettingsAction}
+                          className="grid gap-4 md:grid-cols-2"
+                        >
+                          <input
+                            name="languageId"
+                            type="hidden"
+                            value={language.id}
+                          />
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`translation-feature-language-code-${language.id}`}
+                            >
+                              Language code
+                            </label>
+                            <input
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={language.code}
+                              id={`translation-feature-language-code-${language.id}`}
+                              name="code"
+                              pattern="[a-z0-9-]{2,16}"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`translation-feature-language-name-${language.id}`}
+                            >
+                              Display name
+                            </label>
+                            <input
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={language.name}
+                              id={`translation-feature-language-name-${language.id}`}
+                              name="name"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2 md:col-span-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`translation-feature-language-model-${language.id}`}
+                            >
+                              Text translation model
+                            </label>
+                            <select
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={language.modelConfigId ?? ""}
+                              disabled={
+                                translateProviderMode === "google" ||
+                                enabledModels.length === 0
+                              }
+                              id={`translation-feature-language-model-${language.id}`}
+                              name="modelConfigId"
+                              required={translateProviderMode === "ai"}
+                            >
+                              <option value="">Select a model</option>
+                              {enabledModels.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.displayName} ({model.provider})
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-muted-foreground text-xs">
+                              {translateProviderMode === "google"
+                                ? "Ignored in Google mode."
+                                : `This exact model will be used for text translation into ${language.name}.`}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2 md:col-span-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`translation-feature-language-speech-model-${language.id}`}
+                            >
+                              Speech/live model
+                            </label>
+                            <select
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={language.speechModelConfigId ?? ""}
+                              disabled={
+                                translateProviderMode === "google" ||
+                                enabledModels.length === 0
+                              }
+                              id={`translation-feature-language-speech-model-${language.id}`}
+                              name="speechModelConfigId"
+                            >
+                              <option value="">
+                                No live speech model (browser speech fallback)
+                              </option>
+                              {enabledModels.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.displayName} ({model.provider})
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-muted-foreground text-xs">
+                              {translateProviderMode === "google"
+                                ? "Ignored in Google mode."
+                                : "Optional. Use a dedicated speech/live model here only for AI mode voice translation."}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2 md:col-span-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`translation-feature-language-prompt-${language.id}`}
+                            >
+                              System prompt
+                            </label>
+                            <textarea
+                              className="min-h-[140px] rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={language.systemPrompt ?? ""}
+                              disabled={translateProviderMode === "google"}
+                              id={`translation-feature-language-prompt-${language.id}`}
+                              name="systemPrompt"
+                              placeholder="e.g., Translate naturally and preserve formatting."
+                            />
+                            <p className="text-muted-foreground text-xs">
+                              {translateProviderMode === "google"
+                                ? "Ignored in Google mode."
+                                : "This is a standalone translation prompt for this language only. It does not combine with the model's main system prompt."}
+                            </p>
+                          </div>
+                          <div className="flex justify-end md:col-span-2">
+                            <SettingsSubmitButton
+                              disabled={
+                                translateProviderMode === "ai" &&
+                                enabledModels.length === 0
+                              }
+                              pendingLabel="Saving..."
+                            >
+                              Save settings
+                            </SettingsSubmitButton>
+                          </div>
+                        </form>
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                          {language.isDefault ? (
+                            <span className="text-muted-foreground text-xs">
+                              Default translation language cannot be deactivated
+                              or removed.
+                            </span>
+                          ) : (
+                            <>
+                              <form
+                                action={updateTranslationFeatureLanguageStatusAction}
+                              >
+                                <input
+                                  name="languageId"
+                                  type="hidden"
+                                  value={language.id}
+                                />
+                                <input
+                                  name="intent"
+                                  type="hidden"
+                                  value={
+                                    language.isActive
+                                      ? "deactivate"
+                                      : "activate"
+                                  }
+                                />
+                                <SettingsSubmitButton
+                                  pendingLabel={
+                                    language.isActive
+                                      ? "Disabling..."
+                                      : "Enabling..."
+                                  }
+                                  size="sm"
+                                  variant="outline"
+                                >
+                                  {language.isActive ? "Deactivate" : "Activate"}
+                                </SettingsSubmitButton>
+                              </form>
+                              <form action={deleteTranslationFeatureLanguageAction}>
+                                <input
+                                  name="languageId"
+                                  type="hidden"
+                                  value={language.id}
+                                />
+                                <SettingsSubmitButton
+                                  pendingLabel="Removing..."
+                                  size="sm"
+                                  variant="destructive"
+                                >
+                                  Remove language
+                                </SettingsSubmitButton>
+                              </form>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+            </div>
+
+            {activeTranslationFeatureLanguages.length === 0 ? (
+              <div className="rounded-md border border-muted-foreground/30 border-dashed bg-muted/20 p-4 text-muted-foreground text-sm">
+                No active translation languages are configured. End users will
+                see an empty target-language list until at least one
+                translation language is active.
+              </div>
+            ) : null}
+          </div>
         </CollapsibleSection>
 
         <CollapsibleSection

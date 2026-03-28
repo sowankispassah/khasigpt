@@ -727,9 +727,9 @@ export function Chat({
         setAttachments([]);
 
         if (messages.length <= 1) {
-          router.replace("/", { scroll: false });
+          router.replace("/chat", { scroll: false });
           if (typeof window !== "undefined") {
-            window.history.replaceState({}, "", "/");
+            window.history.replaceState({}, "", "/chat");
           }
         }
 
@@ -1885,7 +1885,7 @@ export function Chat({
                   "https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card",
                   "_blank"
                 );
-                window.location.href = "/";
+                window.location.href = "/chat";
               }}
             >
               {translate("chat.gateway.alert.confirm", "Activate")}

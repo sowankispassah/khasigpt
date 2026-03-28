@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 import { useTranslation } from "@/components/language-provider";
@@ -16,7 +16,7 @@ import { AuthCallbackProvider, useAuthCallback } from "../use-auth-callback";
 
 export default function Page() {
   return (
-    <AuthCallbackProvider>
+    <AuthCallbackProvider defaultUrl="/chat">
       <LoginContent />
     </AuthCallbackProvider>
   );
@@ -39,6 +39,7 @@ function LoginContent() {
     hasInactiveParam || hasLinkRequiredParam
   );
   const [isSuccessful, setIsSuccessful] = useState(false);
+  const redirectStartedRef = useRef(false);
   type LoginErrorKey =
     | null
     | "invalid"
@@ -88,6 +89,10 @@ function LoginContent() {
 
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
+      if (redirectStartedRef.current) {
+        return;
+      }
+      redirectStartedRef.current = true;
       clearCallback();
       router.replace(callbackUrl);
       return;
@@ -104,6 +109,10 @@ function LoginContent() {
     } else if (state.status === "success") {
       setIsSuccessful(true);
       setErrorKey(null);
+      if (redirectStartedRef.current) {
+        return;
+      }
+      redirectStartedRef.current = true;
       updateSession().finally(() => {
         clearCallback();
         router.replace(callbackUrl);

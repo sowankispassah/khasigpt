@@ -49,6 +49,7 @@ const connectSrc = [
   "https://api.openai.com",
   "https://api.anthropic.com",
   "https://generativelanguage.googleapis.com",
+  "wss://generativelanguage.googleapis.com",
   "https://cdn.jsdelivr.net",
   "https://checkout.razorpay.com",
   "https://api.razorpay.com",
@@ -104,7 +105,7 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), accelerometer=(), autoplay=(self)",
+      "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), accelerometer=(), autoplay=(self)",
   },
   {
     key: "X-Frame-Options",

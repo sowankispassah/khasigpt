@@ -28,6 +28,7 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TOKENS_PER_CREDIT,
+  TRANSLATE_PROVIDER_MODE_SETTING_KEY,
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
@@ -38,6 +39,7 @@ import {
   createModelConfig,
   createPrelaunchInviteToken,
   createPricingPlan,
+  createTranslationFeatureLanguage,
   deleteCharacterById,
   deleteChatById,
   deleteImageModelConfig,
@@ -45,6 +47,7 @@ import {
   deleteModelConfig,
   deletePrelaunchInviteToken,
   deletePricingPlan,
+  deleteTranslationFeatureLanguageById,
   deleteTranslationValueEntry,
   getAppSetting,
   getAppSettingUncached,
@@ -53,6 +56,7 @@ import {
   getModelConfigById,
   getModelConfigByKey,
   getPricingPlanById,
+  getTranslationFeatureLanguageByIdRaw,
   getTranslationKeyByKey,
   grantUserCredits,
   hardDeleteChatById,
@@ -75,6 +79,8 @@ import {
   updateLanguageDetails,
   updateModelConfig,
   updatePricingPlan,
+  updateTranslationFeatureLanguageActiveState,
+  updateTranslationFeatureLanguageDetails,
   updateUserActiveState,
   updateUserPersonalKnowledgePermission,
   updateUserRole,
@@ -140,6 +146,7 @@ import {
   QUESTION_PAPER_MAX_TEXT_CHARS,
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
+import { parseTranslateProviderModeSetting } from "@/lib/translate/config";
 import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
@@ -435,6 +442,38 @@ export async function updateImageGenerationAvailabilityAction(
     formData,
     settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
   });
+}
+
+export async function updateTranslateProviderModeAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const providerMode = formData.get("translateProviderMode")?.toString().trim();
+
+  if (providerMode !== "ai" && providerMode !== "google") {
+    redirect("/admin/settings?notice=translation-provider-mode-error");
+  }
+
+  await withTimeout(
+    setAppSetting({
+      key: TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+      value: providerMode,
+    }),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  revalidateAppSettingCache(TRANSLATE_PROVIDER_MODE_SETTING_KEY);
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.translate.provider_mode.update",
+    target: { setting: TRANSLATE_PROVIDER_MODE_SETTING_KEY },
+    metadata: { providerMode },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/translate");
+
+  redirect("/admin/settings?notice=translation-provider-mode-updated");
 }
 
 export async function updateDocumentUploadsAvailabilityAction(
@@ -1695,6 +1734,297 @@ export async function setImagePromptTranslationModelAction(
   revalidatePath("/admin/settings");
 
   redirect("/admin/settings?notice=image-translation-model-updated");
+}
+
+export async function createTranslationFeatureLanguageAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const translateProviderMode = parseTranslateProviderModeSetting(
+    await getAppSetting<string | boolean | number>(
+      TRANSLATE_PROVIDER_MODE_SETTING_KEY
+    )
+  );
+
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const isActive = parseBoolean(formData.get("isActive") ?? "on");
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
+  const modelId = formData.get("modelConfigId")?.toString().trim() ?? "";
+  const speechModelId =
+    formData.get("speechModelConfigId")?.toString().trim() ?? "";
+  const normalizedCode = code.toLowerCase();
+
+  if (
+    !normalizedCode ||
+    !name ||
+    (translateProviderMode === "ai" && !modelId)
+  ) {
+    redirect("/admin/settings?notice=translation-language-create-error");
+  }
+
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    redirect("/admin/settings?notice=translation-language-code-invalid");
+  }
+
+  const model =
+    translateProviderMode === "ai" && modelId
+      ? await getModelConfigById({ id: modelId })
+      : null;
+  if (translateProviderMode === "ai" && (!model || !model.isEnabled)) {
+    redirect("/admin/settings?notice=translation-language-model-invalid");
+  }
+  const speechModel =
+    translateProviderMode === "ai" && speechModelId
+      ? await getModelConfigById({ id: speechModelId })
+      : null;
+  if (
+    translateProviderMode === "ai" &&
+    speechModelId &&
+    (!speechModel || !speechModel.isEnabled)
+  ) {
+    redirect("/admin/settings?notice=translation-language-speech-model-invalid");
+  }
+
+  try {
+    await createTranslationFeatureLanguage({
+      code: normalizedCode,
+      name,
+      isActive,
+      isDefault: false,
+      modelConfigId: model?.id ?? null,
+      speechModelConfigId: speechModel?.id ?? null,
+      systemPrompt: translateProviderMode === "ai" ? systemPrompt : null,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("already exists")) {
+      redirect("/admin/settings?notice=translation-language-create-duplicate");
+    }
+    console.error("Failed to create translation feature language", error);
+    redirect("/admin/settings?notice=translation-language-create-error");
+  }
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.translate.language.create",
+    target: { languageCode: normalizedCode },
+    metadata: {
+      name,
+      isActive,
+      modelConfigId: model?.id ?? null,
+      speechModelConfigId: speechModel?.id ?? null,
+      systemPrompt:
+        translateProviderMode === "ai" ? systemPrompt.trim() || null : null,
+    },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/translate");
+
+  redirect("/admin/settings?notice=translation-language-created");
+}
+
+export async function updateTranslationFeatureLanguageStatusAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const intent = formData.get("intent")?.toString().trim();
+
+  if (!languageId || !intent) {
+    redirect("/admin/settings?notice=translation-language-update-error");
+  }
+
+  const targetLanguage = await getTranslationFeatureLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=translation-language-update-error");
+  }
+
+  const shouldActivate = intent === "activate";
+  if (intent !== "activate" && intent !== "deactivate") {
+    redirect("/admin/settings?notice=translation-language-update-error");
+  }
+
+  if (targetLanguage.isDefault && !shouldActivate) {
+    redirect("/admin/settings?notice=translation-language-default-inactive");
+  }
+
+  if (targetLanguage.isActive === shouldActivate) {
+    redirect("/admin/settings?notice=translation-language-updated");
+  }
+
+  await updateTranslationFeatureLanguageActiveState({
+    id: targetLanguage.id,
+    isActive: shouldActivate,
+  });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.translate.language.toggle",
+    target: { languageCode: targetLanguage.code },
+    metadata: { isActive: shouldActivate },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/translate");
+
+  redirect("/admin/settings?notice=translation-language-updated");
+}
+
+export async function updateTranslationFeatureLanguageSettingsAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const translateProviderMode = parseTranslateProviderModeSetting(
+    await getAppSetting<string | boolean | number>(
+      TRANSLATE_PROVIDER_MODE_SETTING_KEY
+    )
+  );
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
+  const modelId = formData.get("modelConfigId")?.toString().trim() ?? "";
+  const speechModelId =
+    formData.get("speechModelConfigId")?.toString().trim() ?? "";
+  const normalizedCode = code.toLowerCase();
+
+  if (
+    !languageId ||
+    !normalizedCode ||
+    !name ||
+    (translateProviderMode === "ai" && !modelId)
+  ) {
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    redirect("/admin/settings?notice=translation-language-code-invalid");
+  }
+
+  if (name.length > 64) {
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  const targetLanguage = await getTranslationFeatureLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  const model =
+    translateProviderMode === "ai" && modelId
+      ? await getModelConfigById({ id: modelId })
+      : null;
+  if (translateProviderMode === "ai" && (!model || !model.isEnabled)) {
+    redirect("/admin/settings?notice=translation-language-model-invalid");
+  }
+  const speechModel =
+    translateProviderMode === "ai" && speechModelId
+      ? await getModelConfigById({ id: speechModelId })
+      : null;
+  if (
+    translateProviderMode === "ai" &&
+    speechModelId &&
+    (!speechModel || !speechModel.isEnabled)
+  ) {
+    redirect("/admin/settings?notice=translation-language-speech-model-invalid");
+  }
+
+  const normalizedPrompt =
+    systemPrompt.trim().length > 0 ? systemPrompt.trim() : null;
+
+  try {
+    await updateTranslationFeatureLanguageDetails({
+      id: targetLanguage.id,
+      code: normalizedCode,
+      name,
+      modelConfigId:
+        translateProviderMode === "ai"
+          ? model?.id ?? null
+          : targetLanguage.modelConfigId,
+      speechModelConfigId:
+        translateProviderMode === "ai"
+          ? speechModel?.id ?? null
+          : targetLanguage.speechModelConfigId,
+      systemPrompt:
+        translateProviderMode === "ai"
+          ? normalizedPrompt
+          : targetLanguage.systemPrompt,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("already exists")) {
+      redirect("/admin/settings?notice=translation-language-create-duplicate");
+    }
+    console.error("Failed to update translation feature language", error);
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.translate.language.update",
+    target: { languageCode: targetLanguage.code },
+    metadata: {
+      nextCode: normalizedCode,
+      name,
+      modelConfigId:
+        translateProviderMode === "ai"
+          ? model?.id ?? null
+          : targetLanguage.modelConfigId,
+      speechModelConfigId:
+        translateProviderMode === "ai"
+          ? speechModel?.id ?? null
+          : targetLanguage.speechModelConfigId,
+      systemPrompt:
+        translateProviderMode === "ai"
+          ? normalizedPrompt
+          : targetLanguage.systemPrompt,
+    },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/translate");
+
+  redirect("/admin/settings?notice=translation-language-settings-updated");
+}
+
+export async function deleteTranslationFeatureLanguageAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  if (!languageId) {
+    redirect("/admin/settings?notice=translation-language-delete-error");
+  }
+
+  const targetLanguage = await getTranslationFeatureLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=translation-language-delete-error");
+  }
+
+  if (targetLanguage.isDefault) {
+    redirect("/admin/settings?notice=translation-language-default-delete");
+  }
+
+  await deleteTranslationFeatureLanguageById({ id: targetLanguage.id });
+
+  await createAuditLogEntry({
+    actorId: actor.id,
+    action: "feature.translate.language.delete",
+    target: { languageCode: targetLanguage.code },
+    metadata: { name: targetLanguage.name },
+  });
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/translate");
+
+  redirect("/admin/settings?notice=translation-language-deleted");
 }
 
 export async function updatePrivacyPolicyAction(formData: FormData) {

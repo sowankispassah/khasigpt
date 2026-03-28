@@ -58,3 +58,102 @@
  POST /api/auth/callback/credentials 302 in 1615ms (compile: 6ms, proxy.ts: 8ms, render: 1601ms)
 ○ Compiling /admin/rag ...
  GET /admin/rag 200 in 9.7s (compile: 6.1s, proxy.ts: 8ms, render: 3.6s)
+○ Compiling /api/public/site-launch ...
+ GET /api/public/session-role 200 in 7.1s (compile: 6.9s, proxy.ts: 41ms, render: 137ms)
+ GET /api/public/site-launch 200 in 8.6s (compile: 6.9s, proxy.ts: 41ms, render: 1589ms)
+○ Compiling /chat ...
+○ Compiling /manifest.webmanifest ...
+ GET /manifest.webmanifest 200 in 6.5s (compile: 6.4s, render: 76ms)
+ GET /chat 200 in 9.2s (compile: 12ms, proxy.ts: 36ms, render: 9.2s)
+○ Compiling /api/jobs/list ...
+○ Compiling /api/history ...
+ GET /api/jobs/list 200 in 27.8s (compile: 6.7s, proxy.ts: 16ms, render: 21.1s)
+○ Compiling /admin ...
+ GET /api/history?limit=20 200 in 25.0s (compile: 19.9s, proxy.ts: 36ms, render: 5.1s)
+[admin] Query "user count" succeeded in 1747ms.
+[admin] Query "chat count" succeeded in 1871ms.
+[admin] Query "contact message count" succeeded in 1871ms.
+[admin] Query "recent users" succeeded in 1850ms.
+[admin] Query "recent chats" succeeded in 2096ms.
+ GET /api/profile/avatar?v=2025-12-25T22%3A45%3A43.553Z 200 in 32.2s (compile: 26.6s, proxy.ts: 380ms, render: 5.2s)
+ GET /manifest.webmanifest 200 in 112ms (compile: 23ms, render: 89ms)
+[admin] Query "recent audit log entries" succeeded in 2527ms.
+[admin] Query "recent contact messages" succeeded in 2748ms.
+ GET /admin 200 in 35.3s (compile: 26.6s, proxy.ts: 380ms, render: 8.3s)
+ GET /api/billing/balance 200 in 36.0s (compile: 26.6s, proxy.ts: 380ms, render: 9.0s)
+ GET /chat 200 in 8.3s (compile: 17ms, proxy.ts: 55ms, render: 8.2s)
+ GET /chat 200 in 36.2s (compile: 26.6s, proxy.ts: 38ms, render: 9.5s)
+ GET /manifest.webmanifest 200 in 54ms (compile: 6ms, render: 48ms)
+ GET /chat 200 in 4.8s (compile: 22ms, proxy.ts: 33ms, render: 4.8s)
+[admin] Query "user count" succeeded in 162ms.
+[admin] Query "chat count" succeeded in 162ms.
+[admin] Query "contact message count" succeeded in 161ms.
+[admin] Query "recent users" succeeded in 599ms.
+ GET /manifest.webmanifest 200 in 58ms (compile: 12ms, render: 46ms)
+[admin] Query "recent chats" succeeded in 1140ms.
+[admin] Query "user count" succeeded in 1703ms.
+[admin] Query "chat count" succeeded in 1713ms.
+[admin] Query "contact message count" succeeded in 1719ms.
+ GET /admin 200 in 2.8s (compile: 14ms, proxy.ts: 17ms, render: 2.8s)
+ GET /manifest.webmanifest 200 in 81ms (compile: 26ms, render: 55ms)
+[admin] Query "recent audit log entries" succeeded in 1594ms.
+[admin] Query "recent contact messages" succeeded in 1884ms.
+[admin] Query "recent users" succeeded in 1012ms.
+ GET /api/jobs/list 200 in 895ms (compile: 195ms, proxy.ts: 160ms, render: 541ms)
+[admin] Query "recent chats" succeeded in 1250ms.
+[admin] Query "recent audit log entries" succeeded in 584ms.
+[admin] Query "recent contact messages" succeeded in 1067ms.
+ GET /admin 200 in 4.3s (compile: 13ms, proxy.ts: 16ms, render: 4.3s)
+[admin] Query "user count" succeeded in 242ms.
+[admin] Query "chat count" succeeded in 243ms.
+[admin] Query "contact message count" succeeded in 242ms.
+ GET /manifest.webmanifest 200 in 48ms (compile: 7ms, render: 41ms)
+ GET /manifest.webmanifest 200 in 59ms (compile: 5ms, render: 54ms)
+[admin] Query "recent users" succeeded in 1208ms.
+[admin] Query "recent chats" succeeded in 1445ms.
+[admin] Query "recent audit log entries" succeeded in 621ms.
+[admin] Query "recent contact messages" succeeded in 912ms.
+ GET /admin 200 in 3.1s (compile: 98ms, proxy.ts: 32ms, render: 2.9s)
+ GET /chat 200 in 3.5s (compile: 20ms, proxy.ts: 32ms, render: 3.5s)
+○ Compiling /api/admin/activity ...
+ GET /api/admin/activity 200 in 6.0s (compile: 4.8s, proxy.ts: 29ms, render: 1185ms)
+[admin] Query "user count" succeeded in 2023ms.
+[admin] Query "chat count" succeeded in 2132ms.
+[admin] Query "contact message count" succeeded in 2137ms.
+[admin] Query "recent users" succeeded in 980ms.
+[admin] Query "recent chats" succeeded in 1219ms.
+[admin] Query "recent audit log entries" succeeded in 1431ms.
+[admin] Query "recent contact messages" succeeded in 1636ms.
+ GET /login 200 in 549ms (compile: 57ms, proxy.ts: 12ms, render: 480ms)
+ GET /admin 200 in 5.9s (compile: 128ms, proxy.ts: 32ms, render: 5.8s)
+ GET /manifest.webmanifest 200 in 91ms (compile: 14ms, render: 77ms)
+ GET /chat 200 in 7.8s (compile: 388ms, proxy.ts: 32ms, render: 7.3s)
+ GET /manifest.webmanifest 200 in 130ms (compile: 16ms, render: 114ms)
+[admin] Query "user count" succeeded in 1492ms.
+[admin] Query "chat count" succeeded in 1639ms.
+[admin] Query "contact message count" succeeded in 1644ms.
+[admin] Query "recent users" succeeded in 840ms.
+[admin] Query "recent chats" succeeded in 1093ms.
+[admin] Query "recent audit log entries" succeeded in 1245ms.
+[admin] Query "recent contact messages" succeeded in 1482ms.
+ GET /admin 200 in 4.4s (compile: 14ms, proxy.ts: 20ms, render: 4.3s)
+ GET /manifest.webmanifest 200 in 29ms (compile: 3ms, render: 26ms)
+ GET /chat 200 in 4.8s (compile: 90ms, proxy.ts: 20ms, render: 4.7s)
+ GET /manifest.webmanifest 200 in 37ms (compile: 4ms, render: 33ms)
+[admin] Query "user count" succeeded in 1503ms.
+[admin] Query "chat count" succeeded in 1662ms.
+[admin] Query "contact message count" succeeded in 1667ms.
+[admin] Query "recent users" succeeded in 820ms.
+[admin] Query "recent chats" succeeded in 1058ms.
+[admin] Query "recent audit log entries" succeeded in 1258ms.
+[admin] Query "recent contact messages" succeeded in 1473ms.
+ GET /admin 200 in 4.4s (compile: 67ms, proxy.ts: 18ms, render: 4.3s)
+ GET /manifest.webmanifest 200 in 37ms (compile: 3ms, render: 34ms)
+ GET /chat 200 in 4.8s (compile: 10ms, proxy.ts: 18ms, render: 4.8s)
+ GET /manifest.webmanifest 200 in 37ms (compile: 4ms, render: 33ms)
+[admin] Query "user count" succeeded in 130ms.
+[admin] Query "chat count" succeeded in 133ms.
+[admin] Query "contact message count" succeeded in 134ms.
+[admin] Query "recent users" succeeded in 891ms.
+[admin] Query "recent chats" succeeded in 1115ms.
+[admin] Query "recent audit log entries" succeeded in 764ms.

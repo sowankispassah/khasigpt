@@ -91,9 +91,11 @@ import {
   stream,
   suggestion,
   type TokenUsage,
+  type TranslationFeatureLanguage,
   type TranslationKey,
   type TranslationValue,
   tokenUsage,
+  translationFeatureLanguage,
   translationKey,
   translationValue,
   type User,
@@ -311,7 +313,7 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-const defaultPoolSize = process.env.NODE_ENV === "development" ? 1 : 3;
+const defaultPoolSize = process.env.NODE_ENV === "development" ? 5 : 3;
 const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 0;
 const defaultConnectTimeout =
@@ -350,14 +352,9 @@ const poolConfig = {
           : !postgresUrl?.includes(".pooler.supabase.com"),
 };
 
-if (
-  process.env.NODE_ENV === "development" &&
-  postgresUrl.includes(".supabase.co:5432")
-) {
-  console.warn(
-    "[db] Using the direct Supabase Postgres endpoint on port 5432 in development. This is prone to CONNECT_TIMEOUT under Next dev load. Prefer the Supabase pooler URL on port 6543 when possible."
-  );
-}
+// Dev setups sometimes intentionally use the direct Supabase endpoint.
+// Avoid spamming the console on every restart; connectivity issues will still
+// surface naturally through actual query errors and timeouts.
 
 const client =
   globalDbState.postgresClient ?? postgres(postgresUrl, poolConfig);
@@ -381,6 +378,18 @@ const PAYMENT_STATUS_PENDING: PaymentTransaction["status"] = "pending";
 const PAYMENT_STATUS_PROCESSING: PaymentTransaction["status"] = "processing";
 const PAYMENT_STATUS_PAID: PaymentTransaction["status"] = "paid";
 const PAYMENT_STATUS_FAILED: PaymentTransaction["status"] = "failed";
+
+function isMissingTranslationSpeechModelColumnError(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "42703" &&
+      "message" in error &&
+      typeof (error as { message?: unknown }).message === "string" &&
+      (error as { message: string }).message.includes("speechModelConfigId")
+  );
+}
 
 export type ChatListItem = Chat & { userEmail: string | null };
 
@@ -9320,4 +9329,362 @@ export async function updateLanguageDetails({
 
 export async function deleteLanguageById({ id }: { id: string }) {
   await db.delete(language).where(eq(language.id, id));
+}
+
+export async function getTranslationFeatureLanguageByIdRaw(
+  id: string
+): Promise<TranslationFeatureLanguage | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(translationFeatureLanguage)
+      .where(eq(translationFeatureLanguage.id, id))
+      .limit(1);
+
+    return row ?? null;
+  } catch (error) {
+    if (!isMissingTranslationSpeechModelColumnError(error)) {
+      throw error;
+    }
+
+    const [row] = await db
+      .select({
+        id: translationFeatureLanguage.id,
+        code: translationFeatureLanguage.code,
+        name: translationFeatureLanguage.name,
+        isDefault: translationFeatureLanguage.isDefault,
+        isActive: translationFeatureLanguage.isActive,
+        systemPrompt: translationFeatureLanguage.systemPrompt,
+        modelConfigId: translationFeatureLanguage.modelConfigId,
+        speechModelConfigId:
+          sql<string | null>`NULL`.as("speechModelConfigId"),
+        createdAt: translationFeatureLanguage.createdAt,
+        updatedAt: translationFeatureLanguage.updatedAt,
+      })
+      .from(translationFeatureLanguage)
+      .where(eq(translationFeatureLanguage.id, id))
+      .limit(1);
+
+    return (row as TranslationFeatureLanguage | undefined) ?? null;
+  }
+}
+
+export async function getTranslationFeatureLanguageByCodeRaw(
+  code: string
+): Promise<TranslationFeatureLanguage | null> {
+  const normalizedCode = code.trim().toLowerCase();
+  if (!normalizedCode) {
+    return null;
+  }
+
+  try {
+    const [row] = await db
+      .select()
+      .from(translationFeatureLanguage)
+      .where(eq(translationFeatureLanguage.code, normalizedCode))
+      .limit(1);
+
+    return row ?? null;
+  } catch (error) {
+    if (!isMissingTranslationSpeechModelColumnError(error)) {
+      throw error;
+    }
+
+    const [row] = await db
+      .select({
+        id: translationFeatureLanguage.id,
+        code: translationFeatureLanguage.code,
+        name: translationFeatureLanguage.name,
+        isDefault: translationFeatureLanguage.isDefault,
+        isActive: translationFeatureLanguage.isActive,
+        systemPrompt: translationFeatureLanguage.systemPrompt,
+        modelConfigId: translationFeatureLanguage.modelConfigId,
+        speechModelConfigId:
+          sql<string | null>`NULL`.as("speechModelConfigId"),
+        createdAt: translationFeatureLanguage.createdAt,
+        updatedAt: translationFeatureLanguage.updatedAt,
+      })
+      .from(translationFeatureLanguage)
+      .where(eq(translationFeatureLanguage.code, normalizedCode))
+      .limit(1);
+
+    return (row as TranslationFeatureLanguage | undefined) ?? null;
+  }
+}
+
+export async function listTranslationFeatureLanguages() {
+  try {
+    return await db
+      .select()
+      .from(translationFeatureLanguage)
+      .orderBy(
+        desc(translationFeatureLanguage.isDefault),
+        asc(translationFeatureLanguage.name)
+      );
+  } catch (error) {
+    if (!isMissingTranslationSpeechModelColumnError(error)) {
+      throw error;
+    }
+
+    return (await db
+      .select({
+        id: translationFeatureLanguage.id,
+        code: translationFeatureLanguage.code,
+        name: translationFeatureLanguage.name,
+        isDefault: translationFeatureLanguage.isDefault,
+        isActive: translationFeatureLanguage.isActive,
+        systemPrompt: translationFeatureLanguage.systemPrompt,
+        modelConfigId: translationFeatureLanguage.modelConfigId,
+        speechModelConfigId:
+          sql<string | null>`NULL`.as("speechModelConfigId"),
+        createdAt: translationFeatureLanguage.createdAt,
+        updatedAt: translationFeatureLanguage.updatedAt,
+      })
+      .from(translationFeatureLanguage)
+      .orderBy(
+        desc(translationFeatureLanguage.isDefault),
+        asc(translationFeatureLanguage.name)
+      )) as TranslationFeatureLanguage[];
+  }
+}
+
+export async function listTranslationFeatureLanguagesWithModels() {
+  try {
+    return await db
+      .select({
+        id: translationFeatureLanguage.id,
+        code: translationFeatureLanguage.code,
+        name: translationFeatureLanguage.name,
+        isDefault: translationFeatureLanguage.isDefault,
+        isActive: translationFeatureLanguage.isActive,
+        systemPrompt: translationFeatureLanguage.systemPrompt,
+        modelConfigId: translationFeatureLanguage.modelConfigId,
+        speechModelConfigId: translationFeatureLanguage.speechModelConfigId,
+        modelProvider: modelConfig.provider,
+        modelProviderModelId: modelConfig.providerModelId,
+        modelDisplayName: modelConfig.displayName,
+        modelEnabled: modelConfig.isEnabled,
+      })
+      .from(translationFeatureLanguage)
+      .leftJoin(
+        modelConfig,
+        eq(translationFeatureLanguage.modelConfigId, modelConfig.id)
+      )
+      .orderBy(
+        desc(translationFeatureLanguage.isDefault),
+        asc(translationFeatureLanguage.name)
+      );
+  } catch (error) {
+    if (!isMissingTranslationSpeechModelColumnError(error)) {
+      throw error;
+    }
+
+    return await db
+      .select({
+        id: translationFeatureLanguage.id,
+        code: translationFeatureLanguage.code,
+        name: translationFeatureLanguage.name,
+        isDefault: translationFeatureLanguage.isDefault,
+        isActive: translationFeatureLanguage.isActive,
+        systemPrompt: translationFeatureLanguage.systemPrompt,
+        modelConfigId: translationFeatureLanguage.modelConfigId,
+        speechModelConfigId:
+          sql<string | null>`NULL`.as("speechModelConfigId"),
+        modelProvider: modelConfig.provider,
+        modelProviderModelId: modelConfig.providerModelId,
+        modelDisplayName: modelConfig.displayName,
+        modelEnabled: modelConfig.isEnabled,
+      })
+      .from(translationFeatureLanguage)
+      .leftJoin(
+        modelConfig,
+        eq(translationFeatureLanguage.modelConfigId, modelConfig.id)
+      )
+      .orderBy(
+        desc(translationFeatureLanguage.isDefault),
+        asc(translationFeatureLanguage.name)
+      );
+  }
+}
+
+export async function createTranslationFeatureLanguage({
+  code,
+  name,
+  isDefault = false,
+  isActive = true,
+  systemPrompt,
+  modelConfigId,
+  speechModelConfigId,
+}: {
+  code: string;
+  name: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  systemPrompt?: string | null;
+  modelConfigId?: string | null;
+  speechModelConfigId?: string | null;
+}): Promise<TranslationFeatureLanguage> {
+  const normalizedCode = code.trim().toLowerCase();
+  const normalizedName = name.trim();
+  const normalizedPrompt =
+    typeof systemPrompt === "string" && systemPrompt.trim().length > 0
+      ? systemPrompt.trim()
+      : null;
+  const normalizedModelConfigId =
+    typeof modelConfigId === "string" && modelConfigId.trim().length > 0
+      ? modelConfigId.trim()
+      : null;
+  const normalizedSpeechModelConfigId =
+    typeof speechModelConfigId === "string" && speechModelConfigId.trim().length > 0
+      ? speechModelConfigId.trim()
+      : null;
+
+  if (!normalizedCode) {
+    throw new Error("Translation language code is required");
+  }
+
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    throw new Error(
+      "Translation language code must be 2-16 characters and use lowercase letters, numbers, or hyphens."
+    );
+  }
+
+  if (!normalizedName) {
+    throw new Error("Translation language name is required");
+  }
+
+  if (normalizedName.length > 64) {
+    throw new Error("Translation language name must be 1-64 characters.");
+  }
+
+  const [existing] = await db
+    .select({ id: translationFeatureLanguage.id })
+    .from(translationFeatureLanguage)
+    .where(eq(translationFeatureLanguage.code, normalizedCode))
+    .limit(1);
+
+  if (existing) {
+    throw new Error("Translation language code already exists");
+  }
+
+  if (isDefault) {
+    await db.update(translationFeatureLanguage).set({ isDefault: false });
+  }
+
+  const [inserted] = await db
+    .insert(translationFeatureLanguage)
+    .values({
+      code: normalizedCode,
+      name: normalizedName,
+      isDefault,
+      isActive,
+      systemPrompt: normalizedPrompt,
+      modelConfigId: normalizedModelConfigId,
+      speechModelConfigId: normalizedSpeechModelConfigId,
+    })
+    .returning();
+
+  return inserted;
+}
+
+export async function updateTranslationFeatureLanguageDetails({
+  id,
+  code,
+  name,
+  systemPrompt,
+  modelConfigId,
+  speechModelConfigId,
+}: {
+  id: string;
+  code: string;
+  name: string;
+  systemPrompt: string | null;
+  modelConfigId: string | null;
+  speechModelConfigId: string | null;
+}) {
+  const normalizedCode = code.trim().toLowerCase();
+  const normalizedName = name.trim();
+  const normalizedPrompt =
+    typeof systemPrompt === "string" && systemPrompt.trim().length > 0
+      ? systemPrompt.trim()
+      : null;
+  const normalizedModelConfigId =
+    typeof modelConfigId === "string" && modelConfigId.trim().length > 0
+      ? modelConfigId.trim()
+      : null;
+  const normalizedSpeechModelConfigId =
+    typeof speechModelConfigId === "string" && speechModelConfigId.trim().length > 0
+      ? speechModelConfigId.trim()
+      : null;
+
+  if (!normalizedCode) {
+    throw new Error("Translation language code is required");
+  }
+
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    throw new Error(
+      "Translation language code must be 2-16 characters and use lowercase letters, numbers, or hyphens."
+    );
+  }
+
+  if (!normalizedName) {
+    throw new Error("Translation language name is required");
+  }
+
+  if (normalizedName.length > 64) {
+    throw new Error("Translation language name must be 1-64 characters.");
+  }
+
+  const [existing] = await db
+    .select({ id: translationFeatureLanguage.id })
+    .from(translationFeatureLanguage)
+    .where(
+      and(
+        eq(translationFeatureLanguage.code, normalizedCode),
+        ne(translationFeatureLanguage.id, id)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    throw new Error("Translation language code already exists");
+  }
+
+  await db
+    .update(translationFeatureLanguage)
+    .set({
+      code: normalizedCode,
+      name: normalizedName,
+      systemPrompt: normalizedPrompt,
+      modelConfigId: normalizedModelConfigId,
+      speechModelConfigId: normalizedSpeechModelConfigId,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(translationFeatureLanguage.id, id));
+}
+
+export async function updateTranslationFeatureLanguageActiveState({
+  id,
+  isActive,
+}: {
+  id: string;
+  isActive: boolean;
+}) {
+  await db
+    .update(translationFeatureLanguage)
+    .set({
+      isActive,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(translationFeatureLanguage.id, id));
+}
+
+export async function deleteTranslationFeatureLanguageById({
+  id,
+}: {
+  id: string;
+}) {
+  await db
+    .delete(translationFeatureLanguage)
+    .where(eq(translationFeatureLanguage.id, id));
 }

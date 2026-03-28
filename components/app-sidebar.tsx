@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, BriefcaseBusiness, Calculator } from "lucide-react";
+import { BookOpen, BriefcaseBusiness, Calculator, Languages } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -56,6 +56,7 @@ const SidebarHistory = dynamic(
 // Chat UI strips `new` back out of the URL.
 const HOME_HREF = "/chat";
 const NEW_CHAT_HREF = "/chat?new=1";
+const TRANSLATE_HREF = "/translate";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 const CALCULATOR_HREF = "/calculator";
@@ -68,11 +69,13 @@ function isChatShellPath(pathname: string) {
 export function AppSidebar({
   calculatorEnabled = true,
   jobsModeEnabled = false,
+  translateEnabled = false,
   user,
   studyModeEnabled = false,
 }: {
   calculatorEnabled?: boolean;
   jobsModeEnabled?: boolean;
+  translateEnabled?: boolean;
   user: User | undefined;
   studyModeEnabled?: boolean;
 }) {
@@ -83,7 +86,7 @@ export function AppSidebar({
   const navigationFingerprint = `${pathname}?${searchParams.toString()}`;
   const router = useRouter();
   const [pendingNavigation, setPendingNavigation] = useState<
-    "home" | "chat" | "study" | "jobs" | "calculator" | null
+    "home" | "chat" | "translate" | "study" | "jobs" | "calculator" | null
   >(null);
 
   const activeUser = sessionData?.user ?? user;
@@ -145,19 +148,26 @@ export function AppSidebar({
   }, []);
 
   const navigateWithFeedback = useCallback(
-    (target: "home" | "chat" | "study" | "jobs" | "calculator", href: string) => {
+    (
+      target: "home" | "chat" | "translate" | "study" | "jobs" | "calculator",
+      href: string
+    ) => {
       if (pendingNavigation) {
         return;
       }
 
       setPendingNavigation(target);
       startGlobalProgress();
-      if (target !== "calculator") {
+      if (target !== "calculator" && target !== "translate") {
         preloadChat();
       }
       setOpenMobile(false);
 
-      if (target !== "calculator" && isChatShellPath(pathname)) {
+      if (
+        target !== "calculator" &&
+        target !== "translate" &&
+        isChatShellPath(pathname)
+      ) {
         if (typeof window !== "undefined") {
           window.history.pushState(null, "", href);
         }
@@ -176,6 +186,9 @@ export function AppSidebar({
 
     const idleHandle = runWhenIdle(() => {
       prefetchChatRoute(NEW_CHAT_HREF);
+      if (translateEnabled) {
+        prefetchRoute(TRANSLATE_HREF);
+      }
       if (studyModeEnabled) {
         prefetchChatRoute(NEW_STUDY_HREF);
       }
@@ -198,6 +211,7 @@ export function AppSidebar({
     prefetchJobsModeData,
     prefetchRoute,
     studyModeEnabled,
+    translateEnabled,
   ]);
 
   const handleHomeClick = useCallback(
@@ -239,6 +253,28 @@ export function AppSidebar({
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
+
+  const handleTranslateClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (pathname === TRANSLATE_HREF) {
+        setOpenMobile(false);
+        return;
+      }
+
+      navigateWithFeedback("translate", TRANSLATE_HREF);
+    },
+    [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
+  );
+
+  const handleTranslatePrefetch = useCallback(() => {
+    prefetchRoute(TRANSLATE_HREF);
+  }, [prefetchRoute]);
 
   const handleCalculatorClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -338,6 +374,27 @@ export function AppSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
 
+            {translateEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={TRANSLATE_HREF}
+                    onClick={handleTranslateClick}
+                    onFocus={handleTranslatePrefetch}
+                    onMouseEnter={handleTranslatePrefetch}
+                    onTouchStart={handleTranslatePrefetch}
+                  >
+                    <Languages />
+                    <span>
+                      {pendingNavigation === "translate"
+                        ? "Opening..."
+                        : "Translate"}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
             {studyModeEnabled ? (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild className="cursor-pointer text-sm">

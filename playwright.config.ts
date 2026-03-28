@@ -105,6 +105,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       PORT: String(PORT),
+      SKIP_APP_SETTING_CACHE: "1",
     },
   },
 });

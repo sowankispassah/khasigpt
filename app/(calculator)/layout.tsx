@@ -10,6 +10,7 @@ import {
   FORUM_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
@@ -17,20 +18,29 @@ import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
+import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 
 export default async function CalculatorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [cookieStore, session, calculatorSetting, forumSetting, jobsSetting, studyModeSetting] =
-    await Promise.all([
+  const [
+    cookieStore,
+    session,
+    calculatorSetting,
+    forumSetting,
+    jobsSetting,
+    studyModeSetting,
+    translateSetting,
+  ] = await Promise.all([
       cookies(),
       auth(),
       getAppSetting<string | boolean | number>(CALCULATOR_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY),
     ]);
 
   if (!session?.user) {
@@ -62,6 +72,10 @@ export default async function CalculatorLayout({
     parseStudyModeAccessModeSetting(studyModeSetting),
     session.user.role
   );
+  const translateEnabled = isFeatureEnabledForRole(
+    parseTranslateAccessModeSetting(translateSetting),
+    session.user.role
+  );
   const sidebarState = cookieStore.get("sidebar_state")?.value;
   const defaultSidebarOpen = sidebarState !== "false";
 
@@ -78,6 +92,7 @@ export default async function CalculatorLayout({
           calculatorEnabled={calculatorEnabled}
           jobsModeEnabled={jobsModeEnabled}
           studyModeEnabled={studyModeEnabled}
+          translateEnabled={translateEnabled}
           user={session.user}
         />
         <SidebarInset>{children}</SidebarInset>

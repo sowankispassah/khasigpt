@@ -10,6 +10,7 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
@@ -43,6 +44,11 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
     settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
     fallbackMode: "disabled",
     auditAction: "feature.study_mode.toggle",
+  },
+  translateAccessMode: {
+    settingKey: TRANSLATE_FEATURE_FLAG_KEY,
+    fallbackMode: "disabled",
+    auditAction: "feature.translate.toggle",
   },
   jobsAccessMode: {
     settingKey: JOBS_FEATURE_FLAG_KEY,
