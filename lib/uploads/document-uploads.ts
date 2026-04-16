@@ -8,7 +8,6 @@ export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png"] as const;
 export const DOCUMENT_MIME_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ] as const;
 
 export const DOCUMENT_EXTENSION_BY_MIME: Record<
@@ -18,7 +17,6 @@ export const DOCUMENT_EXTENSION_BY_MIME: Record<
   "application/pdf": "pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
     "docx",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
 };
 
 export const DOCUMENT_UPLOADS_MAX_TEXT_CHARS = 80_000;

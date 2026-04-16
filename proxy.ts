@@ -554,6 +554,22 @@ function isAdminSignInRoutePath(pathname: string) {
   return pathname === "/login";
 }
 
+async function hasAuthenticatedSession(request: NextRequest) {
+  if (!hasSessionCookie(request)) {
+    return false;
+  }
+
+  const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (!authSecret) {
+    return true;
+  }
+
+  const token = await getToken({ req: request, secret: authSecret }).catch(
+    () => null
+  );
+  return Boolean(token);
+}
+
 export async function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.toLowerCase();
   if (
@@ -648,6 +664,18 @@ export async function proxy(request: NextRequest) {
         }
       }
     }
+  }
+
+  if (
+    isPageNavigationRequest(request) &&
+    (request.nextUrl.pathname === "/login" ||
+      request.nextUrl.pathname === "/register") &&
+    (await hasAuthenticatedSession(request))
+  ) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/chat";
+    redirectUrl.search = "";
+    return NextResponse.redirect(redirectUrl);
   }
 
   if (

@@ -30,13 +30,14 @@ function LoginContent() {
   const [email, setEmail] = useState("");
   const errorParam = searchParams?.get("error");
   const errorDescription = searchParams?.get("error_description");
+  const credentialsParam = searchParams?.get("credentials") === "1";
   const hasInactiveParam =
     errorParam === "AccountInactive" || errorDescription === "AccountInactive";
   const hasLinkRequiredParam =
     errorParam === "AccountLinkRequired" ||
     errorDescription === "AccountLinkRequired";
   const [showEmailFields, setShowEmailFields] = useState(
-    hasInactiveParam || hasLinkRequiredParam
+    credentialsParam || hasInactiveParam || hasLinkRequiredParam
   );
   const [isSuccessful, setIsSuccessful] = useState(false);
   const redirectStartedRef = useRef(false);
@@ -86,8 +87,17 @@ function LoginContent() {
   );
 
   const errorMessage = errorKey ? errorMessages[errorKey] : null;
+  const credentialsHref = useMemo(() => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set("credentials", "1");
+    const query = params.toString();
+    return query ? `/login?${query}` : "/login?credentials=1";
+  }, [searchParams]);
 
   useEffect(() => {
+    if (credentialsParam) {
+      setShowEmailFields(true);
+    }
     if (status === "authenticated" && session?.user) {
       if (redirectStartedRef.current) {
         return;
@@ -122,6 +132,7 @@ function LoginContent() {
   }, [
     callbackUrl,
     clearCallback,
+    credentialsParam,
     router,
     session?.user,
     state.status,
@@ -198,6 +209,7 @@ function LoginContent() {
             "login.continue_with_email",
             "Continue with Email"
           )}
+          credentialsHref={credentialsHref}
           lead={<GoogleSignInSection callbackUrl={callbackUrl} mode="login" />}
           onShowCredentials={() => setShowEmailFields(true)}
         >

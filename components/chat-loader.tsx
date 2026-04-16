@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatPageLoaderPayload } from "@/lib/chat/page-payload";
 import { doneGlobalProgress } from "@/lib/ui/global-progress";
 import { generateUUID } from "@/lib/utils";
@@ -64,9 +64,8 @@ export function ChatLoader(props: ChatLoaderProps) {
   const searchParams = useSearchParams();
   const [_attempt, setAttempt] = useState(0);
   const [loadError, setLoadError] = useState<unknown>(null);
-  const [ChatClient, setChatClient] = useState<ComponentType<ChatLoaderProps> | null>(
-    () => resolvedChatClient
-  );
+  const [ChatClient, setChatClient] =
+    useState<ComponentType<ChatLoaderProps> | null>(null);
   const [optimisticSession, setOptimisticSession] = useState<{
     chatMode: ChatLoaderProps["chatMode"];
     id: string;
@@ -133,11 +132,6 @@ export function ChatLoader(props: ChatLoaderProps) {
       }
     : props;
 
-  // Start loading as early as possible (during render), then resolve in an effect.
-  useMemo(() => {
-    loadChatModule().catch(() => undefined);
-  }, []);
-
   useEffect(() => {
     doneGlobalProgress();
   }, []);
@@ -145,6 +139,13 @@ export function ChatLoader(props: ChatLoaderProps) {
   useEffect(() => {
     let cancelled = false;
     setLoadError(null);
+
+    if (resolvedChatClient) {
+      setChatClient(() => resolvedChatClient);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     loadChatModule()
       .then((module) => {

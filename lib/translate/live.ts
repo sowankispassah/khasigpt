@@ -31,6 +31,26 @@ export type LiveTranslationTokenResponse =
       message: string;
     };
 
+export function isGoogleLiveTranslationModel(
+  model:
+    | {
+        provider: string;
+        providerModelId: string;
+      }
+    | null
+    | undefined
+) {
+  if (!model || model.provider !== "google") {
+    return false;
+  }
+
+  const providerModelId = model.providerModelId.trim().toLowerCase();
+  return (
+    providerModelId.includes("native-audio") ||
+    providerModelId.includes("-live")
+  );
+}
+
 export function buildLiveTranslationSystemPrompt({
   languageName,
   languageCode,

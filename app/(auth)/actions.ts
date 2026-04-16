@@ -10,7 +10,9 @@ import {
   createUser,
   deleteEmailVerificationTokensForUser,
   getUser,
+  updateUserActiveState,
   updateUserPassword,
+  updateUserProfile,
 } from "@/lib/db/queries";
 import { sendVerificationEmail } from "@/lib/email/brevo";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
@@ -158,6 +160,17 @@ export const register = async (
       subjectUserId: userRecord.id,
       ...clientInfo,
     });
+
+    if (process.env.PLAYWRIGHT === "true") {
+      await updateUserActiveState({ id: userRecord.id, isActive: true });
+      await updateUserProfile({
+        id: userRecord.id,
+        dateOfBirth: "1990-01-01",
+        firstName: "Playwright",
+        lastName: "User",
+      });
+      return { status: "verification_sent" };
+    }
 
     await deleteEmailVerificationTokensForUser({ userId: userRecord.id });
 

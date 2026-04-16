@@ -10,6 +10,12 @@ import {
 } from "ai";
 import type { ModelConfig } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import {
+  artifactModel as testArtifactModel,
+  chatModel as testChatModel,
+  reasoningModel as testReasoningModel,
+  titleModel as testTitleModel,
+} from "./models.test";
 
 const openaiClient =
   process.env.OPENAI_API_KEY !== undefined
@@ -27,6 +33,7 @@ const googleClient =
     : null;
 
 const DEFAULT_TITLE_MODEL = "gpt-4o-mini";
+const isPlaywright = process.env.PLAYWRIGHT === "true";
 
 function ensureClient<T>(client: T | null, name: string): T {
   if (!client) {
@@ -40,6 +47,10 @@ function ensureClient<T>(client: T | null, name: string): T {
 }
 
 export function resolveLanguageModel(config: ModelConfig): LanguageModelV2 {
+  if (isPlaywright) {
+    return config.supportsReasoning ? testReasoningModel : testChatModel;
+  }
+
   const baseModel = (() => {
     switch (config.provider) {
       case "openai": {
@@ -77,6 +88,10 @@ export function resolveLanguageModel(config: ModelConfig): LanguageModelV2 {
 export function getTitleLanguageModel(
   preferredModel?: ModelConfig | null
 ): LanguageModelV2 {
+  if (isPlaywright) {
+    return testTitleModel;
+  }
+
   if (preferredModel) {
     try {
       return resolveLanguageModel(preferredModel);
@@ -97,6 +112,10 @@ export function getTitleLanguageModel(
 }
 
 export function getArtifactLanguageModel(): LanguageModelV2 {
+  if (isPlaywright) {
+    return testArtifactModel;
+  }
+
   const client = ensureClient(openaiClient, "OpenAI");
   return client.languageModel(DEFAULT_TITLE_MODEL);
 }

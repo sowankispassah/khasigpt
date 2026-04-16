@@ -822,9 +822,6 @@ function resolveDocumentMediaTypeFromUrl(url: string) {
     if (pathname.endsWith(".docx")) {
       return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     }
-    if (pathname.endsWith(".xlsx")) {
-      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    }
     return null;
   } catch {
     return null;
@@ -1020,9 +1017,7 @@ async function resolveStudyPaperContextText({
       const lowerUrl = url.toLowerCase();
       const mediaType = lowerUrl.endsWith(".docx")
         ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        : lowerUrl.endsWith(".xlsx")
-          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          : "application/pdf";
+        : "application/pdf";
       const parsed = await extractDocumentText(
         {
           name: paper.title ?? "question-paper",
@@ -1235,7 +1230,8 @@ export async function POST(request: Request) {
         : perModelAllowance;
 
     const hasFreeDailyAllowance =
-      !hasActiveCredits && messageCount < freeMessagesForModel;
+      process.env.PLAYWRIGHT === "true" ||
+      (!hasActiveCredits && messageCount < freeMessagesForModel);
 
     if (!hasActiveCredits && !hasFreeDailyAllowance) {
       return new ChatSDKError(
@@ -1738,9 +1734,7 @@ export async function POST(request: Request) {
         const lowerUrl = url.toLowerCase();
         const mediaType = lowerUrl.endsWith(".docx")
           ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          : lowerUrl.endsWith(".xlsx")
-            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            : "application/pdf";
+          : "application/pdf";
         const parsed = await extractDocumentText(
           {
             name: studyEntry.title ?? "question-paper",

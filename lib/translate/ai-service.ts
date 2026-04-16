@@ -6,7 +6,6 @@ import {
   getModelConfigById,
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
-import type { ModelConfig } from "@/lib/db/schema";
 import {
   buildLiveSpeechTranslationPrompt,
   buildTranslationSystemPrompt,
@@ -16,23 +15,6 @@ import { withTimeout } from "@/lib/utils/async";
 const TRANSLATE_LANGUAGE_TIMEOUT_MS = 5_000;
 const TRANSLATE_MODEL_TIMEOUT_MS = 7_000;
 const TRANSLATE_GENERATION_TIMEOUT_MS = 25_000;
-
-export function isGoogleLiveTranslationModel(
-  model:
-    | Pick<ModelConfig, "provider" | "providerModelId">
-    | null
-    | undefined
-) {
-  if (!model || model.provider !== "google") {
-    return false;
-  }
-
-  const providerModelId = model.providerModelId.trim().toLowerCase();
-  return (
-    providerModelId.includes("native-audio") ||
-    providerModelId.includes("-live")
-  );
-}
 
 export async function translateSourceTextWithAIModel({
   sourceText,

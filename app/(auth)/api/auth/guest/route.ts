@@ -7,7 +7,7 @@ import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
 
 const isProduction = process.env.NODE_ENV === "production";
 const GUEST_SIGNIN_RATE_LIMIT = {
-  limit: 10,
+  limit: process.env.PLAYWRIGHT === "true" ? 500 : 10,
   windowMs: 10 * 60 * 1000,
 };
 

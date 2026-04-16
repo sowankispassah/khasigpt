@@ -2,6 +2,7 @@
 
 import { Mail } from "lucide-react";
 import Form from "next/form";
+import Link from "next/link";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -17,6 +18,7 @@ type AuthFormProps = {
   credentialsVisible?: boolean;
   onShowCredentials?: () => void;
   emailButtonLabel?: string;
+  credentialsHref?: string;
 };
 
 export function AuthForm({
@@ -27,6 +29,7 @@ export function AuthForm({
   credentialsVisible = true,
   onShowCredentials,
   emailButtonLabel,
+  credentialsHref,
 }: AuthFormProps) {
   const { translate } = useTranslation();
   const resolvedEmailButtonLabel =
@@ -81,16 +84,30 @@ export function AuthForm({
 
           {children}
         </>
-      ) : onShowCredentials ? (
-        <Button
-          className="w-full"
-          onClick={onShowCredentials}
-          type="button"
-          variant="outline"
-        >
-          <Mail className="mr-2 h-4 w-4" />
-          {resolvedEmailButtonLabel}
-        </Button>
+      ) : credentialsHref || onShowCredentials ? (
+        credentialsHref ? (
+          <Button
+            asChild
+            className="w-full"
+            onClick={onShowCredentials}
+            variant="outline"
+          >
+            <Link href={credentialsHref}>
+              <Mail className="mr-2 h-4 w-4" />
+              {resolvedEmailButtonLabel}
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            onClick={onShowCredentials}
+            type="button"
+            variant="outline"
+          >
+            <Mail className="mr-2 h-4 w-4" />
+            {resolvedEmailButtonLabel}
+          </Button>
+        )
       ) : null}
     </Form>
   );

@@ -147,6 +147,7 @@ import {
 } from "@/lib/study/service";
 import type { QuestionPaperRecord } from "@/lib/study/types";
 import { parseTranslateProviderModeSetting } from "@/lib/translate/config";
+import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
 import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
@@ -1782,7 +1783,9 @@ export async function createTranslationFeatureLanguageAction(
   if (
     translateProviderMode === "ai" &&
     speechModelId &&
-    (!speechModel || !speechModel.isEnabled)
+    (!speechModel ||
+      !speechModel.isEnabled ||
+      !isGoogleLiveTranslationModel(speechModel))
   ) {
     redirect("/admin/settings?notice=translation-language-speech-model-invalid");
   }
@@ -1930,7 +1933,9 @@ export async function updateTranslationFeatureLanguageSettingsAction(
   if (
     translateProviderMode === "ai" &&
     speechModelId &&
-    (!speechModel || !speechModel.isEnabled)
+    (!speechModel ||
+      !speechModel.isEnabled ||
+      !isGoogleLiveTranslationModel(speechModel))
   ) {
     redirect("/admin/settings?notice=translation-language-speech-model-invalid");
   }
@@ -3235,7 +3240,7 @@ async function processQuestionPaperFile({
 }) {
   const mimeType = file.type;
   if (!isDocumentMimeType(mimeType)) {
-    throw new Error("Only PDF, DOCX, or XLSX files are supported.");
+    throw new Error("Only PDF or DOCX files are supported.");
   }
   if (file.size > QUESTION_PAPER_MAX_BYTES) {
     throw new Error("File size must be under 25MB.");
@@ -3681,7 +3686,7 @@ async function processJobPostingFile({
   const isDocument = isDocumentMimeType(mimeType);
   const isImage = (IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
   if (!isDocument && !isImage) {
-    throw new Error("Only PDF, DOCX, XLSX, JPEG, or PNG files are supported.");
+    throw new Error("Only PDF, DOCX, JPEG, or PNG files are supported.");
   }
   if (file.size > JOB_POSTING_MAX_BYTES) {
     throw new Error("File size must be under 25MB.");

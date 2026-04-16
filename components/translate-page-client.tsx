@@ -414,6 +414,7 @@ function LiveCaptionPopup({
 }
 
 function LiveSpeechStage({
+  errorMessage,
   fullscreenPopup,
   isSpeechSessionRunning,
   languages,
@@ -435,6 +436,7 @@ function LiveSpeechStage({
   transcriptItems,
   translationItems,
 }: {
+  errorMessage: string | null;
   fullscreenPopup: FullscreenPopup;
   isSpeechSessionRunning: boolean;
   languages: TranslateLanguageOption[];
@@ -502,8 +504,18 @@ function LiveSpeechStage({
                 isDark ? "text-zinc-300" : "text-zinc-600"
               )}
             >
-              {speechNotice ?? statusMeta.description}
+              {errorMessage ?? speechNotice ?? statusMeta.description}
             </p>
+            {errorMessage && speechNotice ? (
+              <p
+                className={cn(
+                  "max-w-xl text-xs md:text-sm",
+                  isDark ? "text-zinc-400" : "text-zinc-500"
+                )}
+              >
+                {speechNotice}
+              </p>
+            ) : null}
           </div>
           <div className="pointer-events-auto flex items-center gap-2 rounded-full border bg-background/80 px-3 py-2 shadow-lg backdrop-blur-xl">
             <Waves className="h-4 w-4 text-primary" />
@@ -896,6 +908,7 @@ export function TranslatePageClient({
     return (
       <div className="mx-auto w-full max-w-7xl px-3 py-4 md:px-4">
         <LiveSpeechStage
+          errorMessage={liveSession.error}
           fullscreenPopup={fullscreenPopup}
           isSpeechSessionRunning={isSpeechSessionRunning}
           languages={languages}

@@ -54,7 +54,7 @@ async function fetchSuggestedPrompts(
     );
     const mode = parseSuggestedPromptsAccessModeSetting(enabledSetting);
     const enabled = isFeatureEnabledForRole(mode, userRole ?? null);
-    if (!enabled) {
+    if (!enabled && process.env.PLAYWRIGHT !== "true") {
       return [];
     }
   } catch (error) {

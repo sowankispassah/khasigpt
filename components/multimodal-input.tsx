@@ -545,12 +545,10 @@ function PureMultimodalInput({
             <StopButton setMessages={setMessages} stop={stop} />
           ) : (
             <PromptInputSubmit
+              aria-label="Send message"
               className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
-              disabled={
-                !input.trim() ||
-                uploadQueue.length > 0 ||
-                isBusy
-              }
+              data-testid="send-button"
+              disabled={!input.trim() || uploadQueue.length > 0 || isBusy}
               status={status}
             >
               <ArrowUpIcon size={14} />

@@ -70,6 +70,22 @@ type MessagesProps = {
 
 const MAX_RENDERED_MESSAGES = 200;
 
+function dedupeMessages(messages: ChatMessage[]) {
+  const seen = new Set<string>();
+  const deduped: ChatMessage[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (seen.has(message.id)) {
+      continue;
+    }
+    seen.add(message.id);
+    deduped.unshift(message);
+  }
+
+  return deduped;
+}
+
 function PureMessages({
   chatId,
   status,
@@ -99,7 +115,8 @@ function PureMessages({
   greetingSubtitle,
   showScrollbar = false,
 }: MessagesProps) {
-  const lastMessage = messages.at(-1);
+  const renderMessages = useMemo(() => dedupeMessages(messages), [messages]);
+  const lastMessage = renderMessages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
   const votesByMessageId = useMemo(() => {
     if (!votes) {
@@ -133,9 +150,11 @@ function PureMessages({
   const submitBottomLockDeadlineRef = useRef(0);
   const hiddenCount = showAllLoaded
     ? 0
-    : Math.max(0, messages.length - MAX_RENDERED_MESSAGES);
+    : Math.max(0, renderMessages.length - MAX_RENDERED_MESSAGES);
   const baseIndex = showAllLoaded ? 0 : hiddenCount;
-  const visibleMessages = showAllLoaded ? messages : messages.slice(hiddenCount);
+  const visibleMessages = showAllLoaded
+    ? renderMessages
+    : renderMessages.slice(hiddenCount);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
       ? (lastMessage.parts
@@ -366,7 +385,7 @@ function PureMessages({
     if (pendingInitialScrollChatIdRef.current !== chatId) {
       return;
     }
-    if (messages.length === 0) {
+    if (renderMessages.length === 0) {
       return;
     }
 
@@ -491,7 +510,7 @@ function PureMessages({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [chatId, messages.length, messagesContainerRef, messagesEndRef]);
+  }, [chatId, renderMessages.length, messagesContainerRef, messagesEndRef]);
 
   useEffect(() => {
     if (status === "streaming" && streamingSignature !== null && isAtBottom) {
@@ -579,7 +598,7 @@ function PureMessages({
     }
   }, [isLoadingHistory, messagesContainerRef, onLoadMoreHistory]);
 
-  if (messages.length === 0) {
+  if (renderMessages.length === 0) {
     return (
       <div
         className={cn(
@@ -685,14 +704,15 @@ function PureMessages({
             <PreviewMessage
               chatId={chatId}
               isLoading={
-                status === "streaming" && messages.length - 1 === originalIndex
+                status === "streaming" &&
+                renderMessages.length - 1 === originalIndex
               }
               isReadonly={isReadonly}
               key={message.id}
               message={message}
               regenerate={regenerate}
               requiresScrollPadding={
-                hasSentMessage && originalIndex === messages.length - 1
+                hasSentMessage && originalIndex === renderMessages.length - 1
               }
               setMessages={setMessages}
               studyActions={studyActions}

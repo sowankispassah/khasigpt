@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 
 import { AuthForm } from "@/components/auth-form";
 import { useTranslation } from "@/components/language-provider";
@@ -22,10 +24,14 @@ export default function Page() {
 }
 
 function RegisterContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const { callbackUrl } = useAuthCallback();
   const { translate } = useTranslation();
   const [email, setEmail] = useState("");
-  const [showEmailFields, setShowEmailFields] = useState(false);
+  const credentialsParam = searchParams?.get("credentials") === "1";
+  const [showEmailFields, setShowEmailFields] = useState(credentialsParam);
   const [isSuccessful, setIsSuccessful] = useState(false);
 
   const [state, formAction] = useActionState<RegisterActionState, FormData>(
@@ -36,6 +42,15 @@ function RegisterContent() {
   );
 
   useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      router.replace(callbackUrl);
+    }
+  }, [callbackUrl, router, session?.user, status]);
+
+  useEffect(() => {
+    if (credentialsParam) {
+      setShowEmailFields(true);
+    }
     if (state.status === "user_exists") {
       setShowEmailFields(true);
       toast({
@@ -93,7 +108,14 @@ function RegisterContent() {
       setIsSuccessful(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status, translate]);
+  }, [credentialsParam, state.status, translate]);
+
+  const credentialsHref = useMemo(() => {
+    const params = new URLSearchParams(searchParams?.toString());
+    params.set("credentials", "1");
+    const query = params.toString();
+    return query ? `/register?${query}` : "/register?credentials=1";
+  }, [searchParams]);
 
   const handleSubmit = (formData: FormData) => {
     setEmail(formData.get("email") as string);
@@ -132,6 +154,7 @@ function RegisterContent() {
             "register.continue_with_email",
             "Sign up with Email"
           )}
+          credentialsHref={credentialsHref}
           lead={
             <GoogleSignInSection callbackUrl={callbackUrl} mode="register" />
           }

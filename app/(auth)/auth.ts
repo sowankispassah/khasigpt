@@ -138,14 +138,16 @@ providers.push(
         name: "Guest",
         imageVersion: null,
         allowPersonalKnowledge: false,
-        firstName: null,
-        lastName: null,
+        firstName: "Guest",
+        lastName: "User",
+        dateOfBirth: "1990-01-01",
       } as typeof record & {
         role: UserRole;
         imageVersion: string | null;
         allowPersonalKnowledge: boolean;
         firstName: string | null;
         lastName: string | null;
+        dateOfBirth: string | null;
       };
     },
   })

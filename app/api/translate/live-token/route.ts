@@ -16,10 +16,10 @@ import {
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
-import { isGoogleLiveTranslationModel } from "@/lib/translate/ai-service";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import {
   buildLiveTranslationSystemPrompt,
+  isGoogleLiveTranslationModel,
   LIVE_TOKEN_NEW_SESSION_WINDOW_MS,
   LIVE_TOKEN_SESSION_WINDOW_MS,
   type LiveTokenFallbackReason,
@@ -160,9 +160,6 @@ export async function POST(request: Request) {
             responseModalities: [Modality.AUDIO],
             inputAudioTranscription: {},
             outputAudioTranscription: {},
-            sessionResumption: {
-              transparent: true,
-            },
             realtimeInputConfig: {
               activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
               automaticActivityDetection: {

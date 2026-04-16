@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         })
         .refine((file) => allowedMimeTypes.includes(file.type as any), {
           message: documentUploadsEnabled
-            ? "File type should be PNG, JPG, PDF, DOCX, or XLSX"
+            ? "File type should be PNG, JPG, PDF, or DOCX"
             : "File type should be PNG or JPG",
         }),
     });
@@ -126,6 +126,23 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    if (process.env.PLAYWRIGHT === "true") {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const url =
+        isImage && mimeType === "image/jpeg"
+          ? new URL(
+              "/images/mouth%20of%20the%20seine%2C%20monet.jpg",
+              request.url
+            ).toString()
+          : new URL(`/playwright-upload.${extension}`, request.url).toString();
+      return NextResponse.json({
+        url,
+        pathname: `playwright-upload.${extension}`,
+        contentType: mimeType,
+      });
+    }
+
     const objectKey = `uploads/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
     try {

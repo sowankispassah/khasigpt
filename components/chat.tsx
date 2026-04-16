@@ -684,7 +684,7 @@ export function Chat({
             id: request.id,
             message: request.messages.at(-1),
             selectedChatModel: currentModelIdRef.current,
-            selectedLanguage: currentLanguageCodeRef.current,
+            selectedLanguage: currentLanguageCodeRef.current || undefined,
             selectedVisibilityType: visibilityType,
             ...request.body,
             ...modePayload,
@@ -912,6 +912,7 @@ export function Chat({
   );
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
+  const queryAppendStartedRef = useRef(false);
   const getCurrentChatHref = useCallback(
     (chatId: string) => {
       const params = new URLSearchParams();
@@ -946,14 +947,14 @@ export function Chat({
   }, [getCurrentChatHref, id]);
 
   useEffect(() => {
-    if (query && !hasAppendedQuery) {
+    if (query && !(hasAppendedQuery || queryAppendStartedRef.current)) {
+      queryAppendStartedRef.current = true;
+      setHasAppendedQuery(true);
       syncCurrentChatUrl();
       sendMessage({
         role: "user" as const,
         parts: [{ type: "text", text: query }],
       });
-
-      setHasAppendedQuery(true);
     }
   }, [query, sendMessage, hasAppendedQuery, syncCurrentChatUrl]);
 

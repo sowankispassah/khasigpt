@@ -110,6 +110,7 @@ import {
   parseTranslateAccessModeSetting,
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
+import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
@@ -745,6 +746,14 @@ export default async function AdminSettingsPage({
   const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
   const deletedImageModels = imageModelConfigs.filter((model) => model.deletedAt);
   const enabledModels = activeModels.filter((model) => model.isEnabled);
+  const enabledLiveSpeechModels = enabledModels.filter((model) =>
+    isGoogleLiveTranslationModel(model)
+  );
+  const supportedLiveSpeechModelIds = new Set(
+    activeModels
+      .filter((model) => isGoogleLiveTranslationModel(model))
+      .map((model) => model.id)
+  );
   const imageFilenamePrefix =
     typeof imageFilenamePrefixSetting === "string"
       ? imageFilenamePrefixSetting
@@ -1295,7 +1304,7 @@ export default async function AdminSettingsPage({
 
             <FeatureAccessModeControl
               currentMode={documentUploadsAccessMode}
-              description="Allow users to upload PDFs, DOCX, and XLSX files in chat."
+              description="Allow users to upload PDF and DOCX files in chat."
               fieldName="documentUploadsAccessMode"
               successMessage="Document upload availability updated."
               title="Document uploads"
@@ -1551,17 +1560,14 @@ export default async function AdminSettingsPage({
                   <select
                     className="rounded-md border bg-background px-3 py-2 text-sm"
                     defaultValue=""
-                    disabled={
-                      translateProviderMode === "google" ||
-                      enabledModels.length === 0
-                    }
+                    disabled={translateProviderMode === "google"}
                     id="translation-feature-language-speech-model"
                     name="speechModelConfigId"
                   >
                     <option value="">
                       No live speech model (browser speech fallback)
                     </option>
-                    {enabledModels.map((model) => (
+                    {enabledLiveSpeechModels.map((model) => (
                       <option key={model.id} value={model.id}>
                         {model.displayName} ({model.provider})
                       </option>
@@ -1570,7 +1576,9 @@ export default async function AdminSettingsPage({
                   <p className="text-muted-foreground text-xs">
                     {translateProviderMode === "google"
                       ? "Ignored in Google mode."
-                      : "Optional. Configure an enabled Google live/native-audio model here to power true live speech. If left blank, the Translate page falls back to browser speech recognition."}
+                      : enabledLiveSpeechModels.length > 0
+                        ? "Optional. Configure an enabled Google live/native-audio model here to power true live speech. If left blank, the Translate page falls back to browser speech recognition."
+                        : "No enabled Google live/native-audio models are available. The Translate page will use browser speech recognition only."}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1635,8 +1643,13 @@ export default async function AdminSettingsPage({
                       "Configured model unavailable"
                     : "No model selected";
                   const speechModelName = language.speechModelConfigId
-                    ? modelNameLookup.get(language.speechModelConfigId) ??
-                      "Configured speech model unavailable"
+                    ? supportedLiveSpeechModelIds.has(
+                        language.speechModelConfigId
+                      )
+                      ? modelNameLookup.get(language.speechModelConfigId) ??
+                        "Configured speech model unavailable"
+                      : modelNameLookup.get(language.speechModelConfigId) ??
+                        "Configured speech model does not support live audio"
                     : "No live speech model (browser fallback)";
 
                   return (
@@ -1748,17 +1761,14 @@ export default async function AdminSettingsPage({
                             <select
                               className="rounded-md border bg-background px-3 py-2 text-sm"
                               defaultValue={language.speechModelConfigId ?? ""}
-                              disabled={
-                                translateProviderMode === "google" ||
-                                enabledModels.length === 0
-                              }
+                              disabled={translateProviderMode === "google"}
                               id={`translation-feature-language-speech-model-${language.id}`}
                               name="speechModelConfigId"
                             >
                               <option value="">
                                 No live speech model (browser speech fallback)
                               </option>
-                              {enabledModels.map((model) => (
+                              {enabledLiveSpeechModels.map((model) => (
                                 <option key={model.id} value={model.id}>
                                   {model.displayName} ({model.provider})
                                 </option>
@@ -1767,7 +1777,9 @@ export default async function AdminSettingsPage({
                             <p className="text-muted-foreground text-xs">
                               {translateProviderMode === "google"
                                 ? "Ignored in Google mode."
-                                : "Optional. Use a dedicated speech/live model here only for AI mode voice translation."}
+                                : enabledLiveSpeechModels.length > 0
+                                  ? "Optional. Use a dedicated Google live/native-audio model here only for AI mode voice translation."
+                                  : "No enabled Google live/native-audio models are available. Saving will keep browser speech fallback only."}
                             </p>
                           </div>
                           <div className="flex flex-col gap-2 md:col-span-2">

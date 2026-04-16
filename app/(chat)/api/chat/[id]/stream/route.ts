@@ -72,12 +72,7 @@ export async function GET(
     return rateLimited;
   }
 
-  const streamContext = getStreamContext();
   const resumeRequestedAt = new Date();
-
-  if (!streamContext) {
-    return new Response(null, { status: 204 });
-  }
 
   if (!chatId) {
     return new ChatSDKError("bad_request:api").toResponse();
@@ -103,6 +98,12 @@ export async function GET(
 
   if (chat.visibility === "private" && chat.userId !== session.user.id) {
     return new ChatSDKError("forbidden:chat").toResponse();
+  }
+
+  const streamContext = getStreamContext();
+
+  if (!streamContext) {
+    return new Response(null, { status: 204 });
   }
 
   const streamIds = await getStreamIdsByChatId({ chatId });

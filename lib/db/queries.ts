@@ -492,11 +492,17 @@ export async function createGuestUser() {
         password,
         isActive: true,
         authProvider: "credentials",
+        firstName: "Guest",
+        lastName: "User",
+        dateOfBirth: "1990-01-01",
       })
       .returning({
         id: user.id,
         email: user.email,
         role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        dateOfBirth: user.dateOfBirth,
       });
   } catch (_error) {
     throw new ChatSDKError(

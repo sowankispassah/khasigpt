@@ -116,15 +116,9 @@ export async function createAuthenticatedContext({
 
   await ensureCredentialsUser(email, password, name);
 
-  await page.goto("/login?callbackUrl=/chat");
-  const emailSignInButton = page.getByRole("button", {
-    name: "Continue with Email",
-  });
-  if (await emailSignInButton.isVisible().catch(() => false)) {
-    await emailSignInButton.click();
-  }
-  await page.getByPlaceholder("Your Email Address").click();
-  await page.getByPlaceholder("Your Email Address").fill(email);
+  await page.goto("/login?callbackUrl=/chat&credentials=1");
+  await page.getByLabel("Email Address").click();
+  await page.getByLabel("Email Address").fill(email);
   await page.getByLabel("Password").click();
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

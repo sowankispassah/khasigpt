@@ -79,7 +79,15 @@ type LiveServerMessageLike = {
   };
   serverContent?: {
     generationComplete?: boolean;
+    inputTranscription?: {
+      finished?: boolean;
+      text?: string;
+    };
     interrupted?: boolean;
+    outputTranscription?: {
+      finished?: boolean;
+      text?: string;
+    };
     turnComplete?: boolean;
     waitingForInput?: boolean;
   };
@@ -753,34 +761,41 @@ export function useLiveTranslationSession({
               return;
             }
 
-            if (message.inputTranscription?.text?.trim()) {
-              if (message.inputTranscription.finished) {
+            const inputTranscription =
+              message.serverContent?.inputTranscription ??
+              message.inputTranscription;
+            const outputTranscription =
+              message.serverContent?.outputTranscription ??
+              message.outputTranscription;
+
+            if (inputTranscription?.text?.trim()) {
+              if (inputTranscription.finished) {
                 liveSourceCommittedRef.current = appendSegment(
                   liveSourceCommittedRef.current,
-                  message.inputTranscription.text
+                  inputTranscription.text
                 );
                 liveSourcePreviewRef.current = "";
-                appendCaptionLine("transcript", message.inputTranscription.text);
+                appendCaptionLine("transcript", inputTranscription.text);
                 setCaptionPreview("transcript", "");
               } else {
-                liveSourcePreviewRef.current = message.inputTranscription.text.trim();
+                liveSourcePreviewRef.current = inputTranscription.text.trim();
                 setCaptionPreview("transcript", liveSourcePreviewRef.current);
               }
               syncLiveRawText();
             }
 
-            if (message.outputTranscription?.text?.trim()) {
-              if (message.outputTranscription.finished) {
+            if (outputTranscription?.text?.trim()) {
+              if (outputTranscription.finished) {
                 liveTranslatedCommittedRef.current = appendSegment(
                   liveTranslatedCommittedRef.current,
-                  message.outputTranscription.text
+                  outputTranscription.text
                 );
                 liveTranslatedPreviewRef.current = "";
-                appendCaptionLine("translation", message.outputTranscription.text);
+                appendCaptionLine("translation", outputTranscription.text);
                 setCaptionPreview("translation", "");
               } else {
                 liveTranslatedPreviewRef.current =
-                  message.outputTranscription.text.trim();
+                  outputTranscription.text.trim();
                 setCaptionPreview("translation", liveTranslatedPreviewRef.current);
               }
               syncLiveTranslatedText();

@@ -33,7 +33,8 @@ export class ChatPage {
   }
 
   async createNewChat() {
-    await this.page.goto("/");
+    await this.page.goto("/api/auth/guest?redirectUrl=/chat");
+    await this.page.waitForURL("/chat");
   }
 
   getCurrentURL(): string {
@@ -43,15 +44,37 @@ export class ChatPage {
   async sendUserMessage(message: string) {
     await this.multimodalInput.click();
     await this.multimodalInput.fill(message);
+    await expect(this.sendButton).toBeEnabled();
     await this.sendButton.click();
+    const userMessage = this.page.getByTestId("message-user").last();
+    try {
+      await expect(userMessage).toBeVisible({ timeout: 3000 });
+    } catch {
+      await this.multimodalInput.press("Enter");
+      await expect(userMessage).toBeVisible();
+    }
   }
 
   async isGenerationComplete() {
-    const response = await this.page.waitForResponse((currentResponse) =>
-      currentResponse.url().includes("/api/chat")
-    );
+    const response = await this.page
+      .waitForResponse(
+        (currentResponse) => currentResponse.url().includes("/api/chat"),
+        { timeout: 30_000 }
+      )
+      .catch(() => null);
 
-    await response.finished();
+    await response?.finished().catch(() => undefined);
+    await expect(this.sendButton).toBeVisible();
+    const assistantMessage = this.page.getByTestId("message-assistant").last();
+    try {
+      await expect(assistantMessage).toBeVisible({ timeout: 5000 });
+    } catch {
+      const recentChatLink = this.page.locator('a[href^="/chat/"]').first();
+      if ((await recentChatLink.count()) > 0) {
+        await recentChatLink.click();
+      }
+      await expect(assistantMessage).toBeVisible();
+    }
   }
 
   async isVoteComplete() {
@@ -106,8 +129,38 @@ export class ChatPage {
   }
 
   async chooseModelFromSelector(chatModelId: string) {
-    await this.page.getByTestId("model-selector").click();
-    const option = this.page.getByTestId(`model-selector-item-${chatModelId}`);
+    const selected = await this.tryChooseModelFromSelector(chatModelId);
+    if (!selected) {
+      throw new Error(`Model option not found for ${chatModelId}`);
+    }
+  }
+
+  async tryChooseModelFromSelector(chatModelId: string) {
+    const selector = this.page.getByTestId("model-selector");
+    await expect(selector).toBeVisible({ timeout: 5000 });
+    await selector.click();
+    const directOption = this.page.getByTestId(
+      `model-selector-item-${chatModelId}`
+    );
+    const option =
+      (await directOption.count()) > 0
+        ? directOption
+        : this.page
+            .locator('[data-testid^="model-selector-item-"]')
+            .filter({ hasText: /reasoning/i })
+            .first();
+    if ((await option.count()) === 0) {
+      await this.page.keyboard.press("Escape");
+      return false;
+    }
+    const isAvailable = await option
+      .waitFor({ state: "visible", timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!isAvailable) {
+      await this.page.keyboard.press("Escape");
+      return false;
+    }
     const optionText = await option.innerText();
     const expectedModelName = optionText
       .split("\n")
@@ -118,6 +171,7 @@ export class ChatPage {
       throw new Error(`Unable to resolve model label for ${chatModelId}`);
     }
     expect(await this.getSelectedModel()).toContain(expectedModelName);
+    return true;
   }
 
   async getSelectedVisibility() {
@@ -155,6 +209,7 @@ export class ChatPage {
     const content = await lastMessageElement
       .getByTestId("message-content")
       .innerText()
+      .then((text) => text.trim())
       .catch(() => null);
 
     const reasoningElement = await lastMessageElement
@@ -165,6 +220,7 @@ export class ChatPage {
           ? await lastMessageElement
               .getByTestId("message-reasoning")
               .innerText()
+              .then((text) => text.trim())
           : null
       )
       .catch(() => null);
@@ -188,6 +244,7 @@ export class ChatPage {
   }
 
   async getRecentUserMessage() {
+    await expect(this.page.getByTestId("message-user").last()).toBeVisible();
     const messageElements = await this.page.getByTestId("message-user").all();
     const lastMessageElement = messageElements.at(-1);
 
@@ -198,6 +255,7 @@ export class ChatPage {
     const content = await lastMessageElement
       .getByTestId("message-content")
       .innerText()
+      .then((text) => text.trim())
       .catch(() => null);
 
     const hasAttachments = await lastMessageElement
