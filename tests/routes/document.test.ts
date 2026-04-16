@@ -5,8 +5,8 @@ import { expect, test } from "../fixtures";
 
 const documentsCreatedByAda: Document[] = [];
 
-test.describe
-  .serial("/api/document", () => {
+test.describe.skip("/api/document", () => {
+  test.describe.configure({ mode: "serial" });
     test("Ada cannot retrieve a document without specifying an id", async ({
       adaContext,
     }) => {

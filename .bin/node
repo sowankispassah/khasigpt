@@ -1,0 +1,2 @@
+#!/bin/sh
+"/mnt/c/Program Files/nodejs/node.exe" "$@"

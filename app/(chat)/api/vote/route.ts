@@ -1,5 +1,10 @@
 import { auth } from "@/app/(auth)/auth";
-import { getChatById, getVotesByChatId, voteMessage } from "@/lib/db/queries";
+import {
+  getChatById,
+  getMessageById,
+  getVotesByChatId,
+  voteMessage,
+} from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 
 export async function GET(request: Request) {
@@ -63,6 +68,20 @@ export async function PATCH(request: Request) {
 
   if (chat.userId !== session.user.id) {
     return new ChatSDKError("forbidden:vote").toResponse();
+  }
+
+  let messageExists = false;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const [message] = await getMessageById({ id: messageId });
+    if (message?.chatId === chatId) {
+      messageExists = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (!messageExists) {
+    return new ChatSDKError("not_found:vote").toResponse();
   }
 
   await voteMessage({

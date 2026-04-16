@@ -1,0 +1,15 @@
+
+> ai-chatbot@3.1.0 dev D:\Coding\ai-chatbot-main\ai-chatbot-main
+> next dev --turbo
+
+⚠ Port 3000 is in use by process 4168, using available port 3001 instead.
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://172.20.128.1:3001
+- Environments: .env
+
+✓ Starting...
+⨯ Unable to acquire lock at D:\Coding\ai-chatbot-main\ai-chatbot-main\.next\dev\lock, is another instance of next dev running?
+  Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h
+ ELIFECYCLE  Command failed with exit code 1.
