@@ -18,6 +18,7 @@ import {
   redeemPrelaunchInviteTokenForUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
 import { withTimeout } from "@/lib/utils/async";
@@ -123,6 +124,41 @@ const providers: any[] = [
     },
   }),
 ];
+
+providers.push(
+  Credentials({
+    id: "mobile-token",
+    name: "Mobile Token",
+    credentials: {},
+    async authorize({ token }: any) {
+      const tokenValue = typeof token === "string" ? token : "";
+      const verified = verifyMobileAuthToken(tokenValue);
+      if (!verified) {
+        return null;
+      }
+
+      const targetUser = await getUserById(verified.userId);
+      if (!targetUser || !targetUser.isActive) {
+        return null;
+      }
+
+      const { image, ...rest } = targetUser;
+      const imageVersion =
+        image && targetUser.updatedAt instanceof Date
+          ? targetUser.updatedAt.toISOString()
+          : image
+            ? new Date().toISOString()
+            : null;
+
+      return {
+        ...rest,
+        role: targetUser.role as UserRole,
+        imageVersion,
+        allowPersonalKnowledge: targetUser.allowPersonalKnowledge ?? false,
+      } as typeof rest & { role: UserRole; imageVersion: string | null };
+    },
+  })
+);
 
 providers.push(
   Credentials({
