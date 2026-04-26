@@ -86,14 +86,14 @@ const SITE_STATUS_CACHE_WINDOW_MS =
 const SITE_STATUS_STALE_GRACE_MS =
   process.env.NODE_ENV === "development" ? 60 * 1000 : 60 * 1000;
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
-  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "6000",
+  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "15000",
   10
 );
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS =
   Number.isFinite(INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW) &&
   INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW > 0
     ? INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW
-    : 3000;
+    : 15_000;
 type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
 let siteStatusCache: {

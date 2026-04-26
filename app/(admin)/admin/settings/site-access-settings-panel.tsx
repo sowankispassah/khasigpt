@@ -7,7 +7,7 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 
 const SITE_ACCESS_API_ENDPOINT = "/api/admin/settings/site-access";
-const REQUEST_TIMEOUT_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 22_000;
 
 type SiteAccessState = {
   publicLaunched: boolean;

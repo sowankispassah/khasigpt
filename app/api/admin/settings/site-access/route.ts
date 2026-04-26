@@ -27,8 +27,8 @@ import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 
-const API_TIMEOUT_MS = 12_000;
-const READ_TIMEOUT_MS = 6_000;
+const API_TIMEOUT_MS = 20_000;
+const READ_TIMEOUT_MS = 12_000;
 const AUDIT_TIMEOUT_MS = 3_000;
 
 const SITE_SETTING_KEYS = [

@@ -15,8 +15,8 @@ import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
-const SITE_LAUNCH_SETTINGS_TIMEOUT_MS = 6000;
-const SITE_LAUNCH_RETRY_TIMEOUT_MS = 2000;
+const SITE_LAUNCH_SETTINGS_TIMEOUT_MS = 12_000;
+const SITE_LAUNCH_RETRY_TIMEOUT_MS = 4_000;
 const SITE_LAUNCH_CACHE_WINDOW_MS =
   process.env.NODE_ENV === "development" ? 1_000 : 1_000;
 const SITE_LAUNCH_CACHE_STALE_GRACE_MS =
