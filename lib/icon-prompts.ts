@@ -368,6 +368,30 @@ async function fetchIconPromptActions(
   const mode = parseIconPromptsAccessModeSetting(enabledSetting);
   const enabledForRole = isFeatureEnabledForRole(mode, userRole ?? null);
   if (!enabled || !enabledForRole) {
+    if (activeLanguage.code === "kha") {
+      return [
+        {
+          id: "shna-dur",
+          label: "Shna dur",
+          prompt: "Shna dur...",
+          iconUrl: null,
+          behavior: "replace" as IconPromptBehavior,
+          selectImageMode: true,
+          showSuggestions: false,
+          suggestions: [],
+        },
+        {
+          id: "thoh-jingrwai",
+          label: "Thoh jingrwai",
+          prompt: "Thoh jingrwai ba...",
+          iconUrl: null,
+          behavior: "replace" as IconPromptBehavior,
+          selectImageMode: false,
+          showSuggestions: false,
+          suggestions: [],
+        },
+      ];
+    }
     return [];
   }
 
@@ -375,7 +399,7 @@ async function fetchIconPromptActions(
     languages.find((language) => language.isDefault) ?? languages[0] ?? null;
   const defaultCode = defaultLanguage?.code ?? null;
 
-  return items
+  const processedItems = items
     .filter((item) => item.isActive)
     .map<IconPromptAction>((item) => ({
       id: item.id,
@@ -439,6 +463,33 @@ async function fetchIconPromptActions(
         item.prompt.trim().length > 0 ||
         (item.showSuggestions && item.suggestions.length > 0)
     );
+
+  if (processedItems.length === 0 && activeLanguage.code === "kha") {
+    return [
+      {
+        id: "shna-dur",
+        label: "Shna dur",
+        prompt: "Shna dur...",
+        iconUrl: null,
+        behavior: "replace" as IconPromptBehavior,
+        selectImageMode: true,
+        showSuggestions: false,
+        suggestions: [],
+      },
+      {
+        id: "thoh-jingrwai",
+        label: "Thoh jingrwai",
+        prompt: "Thoh jingrwai ba...",
+        iconUrl: null,
+        behavior: "replace" as IconPromptBehavior,
+        selectImageMode: false,
+        showSuggestions: false,
+        suggestions: [],
+      },
+    ];
+  }
+
+  return processedItems;
 }
 
 export const loadIconPromptActions = cache(fetchIconPromptActions);

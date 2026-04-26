@@ -1,12 +1,9 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
-import { type UpdateProfileNameState, updateNameAction } from "./actions";
-
-const initialState: UpdateProfileNameState = { status: "idle" };
 
 type NameFormProps = {
   initialFirstName: string | null;
@@ -17,26 +14,12 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
   const { translate } = useTranslation();
   const [firstName, setFirstName] = useState(initialFirstName ?? "");
   const [lastName, setLastName] = useState(initialLastName ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [status, setStatus] = useState<{
+    message: string;
+    type: "error" | "success";
+  } | null>(null);
   const { update: updateSession } = useSession();
-
-  const [state, formAction, isPending] = useActionState<
-    UpdateProfileNameState,
-    FormData
-  >(async (prev, formData) => {
-    const result = await updateNameAction(prev, formData);
-    if (result.status === "success") {
-      const submittedFirst = formData.get("firstName")?.toString() ?? "";
-      const submittedLast = formData.get("lastName")?.toString() ?? "";
-      setFirstName(submittedFirst);
-      setLastName(submittedLast);
-      await updateSession({
-        firstName: submittedFirst,
-        lastName: submittedLast,
-        name: [submittedFirst, submittedLast].filter(Boolean).join(" "),
-      });
-    }
-    return result;
-  }, initialState);
 
   useEffect(() => {
     setFirstName(initialFirstName ?? "");
@@ -46,10 +29,66 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
     setLastName(initialLastName ?? "");
   }, [initialLastName]);
 
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setStatus(null);
+
+    try {
+      const response = await fetch("/api/mobile/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+        }),
+      });
+
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string; ok?: boolean }
+        | null;
+
+      if (!response.ok || body?.ok === false) {
+        setStatus({
+          message:
+            body?.error ??
+            translate("profile.name.error", "Unable to update profile."),
+          type: "error",
+        });
+        return;
+      }
+
+      await updateSession({
+        firstName,
+        lastName,
+        name: [firstName, lastName].filter(Boolean).join(" "),
+      });
+      setStatus({
+        message: translate(
+          "profile.name.success",
+          "Profile details updated successfully."
+        ),
+        type: "success",
+      });
+    } catch {
+      setStatus({
+        message: translate(
+          "profile.name.error",
+          "Unable to update profile."
+        ),
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <form
-      action={formAction}
       className="space-y-4 rounded-lg border bg-card p-6 shadow-sm"
+      onSubmit={handleSubmit}
     >
       <div>
         <h2 className="font-semibold text-lg">
@@ -93,23 +132,18 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
         </div>
       </div>
       <div aria-live="polite" className="min-h-[1.25rem] text-sm">
-        {state.status === "error" ? (
-          <span className="text-destructive">{state.message}</span>
-        ) : state.status === "success" ? (
-          <span className="text-emerald-600">
-            {translate(
-              "profile.name.success",
-              "Profile details updated successfully."
-            )}
-          </span>
+        {status?.type === "error" ? (
+          <span className="text-destructive">{status.message}</span>
+        ) : status?.type === "success" ? (
+          <span className="text-emerald-600">{status.message}</span>
         ) : null}
       </div>
       <button
         className="inline-flex cursor-pointer items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={isPending}
+        disabled={isSaving}
         type="submit"
       >
-        {isPending ? (
+        {isSaving ? (
           <span className="flex items-center gap-2">
             <span className="h-4 w-4 animate-spin">
               <LoaderIcon size={16} />

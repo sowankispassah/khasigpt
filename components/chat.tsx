@@ -160,6 +160,7 @@ export function Chat({
   const query = searchParams.get("query");
   const newChatNonce = searchParams.get("new");
   const requestedMode = searchParams.get("mode");
+  const embeddedMode = searchParams.get("embedded");
   const resolvedChatMode =
     pathname === "/chat"
       ? requestedMode === "study"
@@ -921,11 +922,14 @@ export function Chat({
       } else if (isJobsMode) {
         params.set("mode", "jobs");
       }
+      if (embeddedMode === "native") {
+        params.set("embedded", "native");
+      }
 
       const queryString = params.toString();
       return queryString ? `/chat/${chatId}?${queryString}` : `/chat/${chatId}`;
     },
-    [isJobsMode, isStudyMode]
+    [embeddedMode, isJobsMode, isStudyMode]
   );
 
   const syncCurrentChatUrl = useCallback(() => {

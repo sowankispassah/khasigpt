@@ -1,7 +1,7 @@
 "use client";
 
 import { EllipsisVertical } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Session } from "next-auth";
 import { signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
@@ -35,6 +35,7 @@ export function PageUserMenu({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { setTheme, resolvedTheme } = useTheme();
   const {
     translate,
@@ -54,6 +55,7 @@ export function PageUserMenu({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
   const user = initialUser;
+  const isEmbeddedNative = searchParams.get("embedded") === "native";
   const hasPrefetchedRoutesRef = useRef(false);
   const prefetchIdleRef = useRef<ReturnType<typeof runWhenIdle> | null>(null);
   const displayName = (() => {
@@ -245,7 +247,9 @@ export function PageUserMenu({
 
   return (
     <>
+      {isEmbeddedNative ? null : (
       <div
+        data-page-user-menu="true"
         className={cn("fixed top-1.5 right-2 z-40 flex items-center", className)}
       >
       {user ? (
@@ -375,6 +379,7 @@ export function PageUserMenu({
         </AlertDialogContent>
       </AlertDialog>
       </div>
+      )}
       {overlayVisible ? (
         <output
           aria-live="polite"

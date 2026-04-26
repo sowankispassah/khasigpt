@@ -35,7 +35,12 @@ function isTimeoutError(error: unknown) {
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: Promise<{ mode?: string; jobId?: string; pendingChatId?: string }>;
+  searchParams?: Promise<{
+    embedded?: string;
+    jobId?: string;
+    mode?: string;
+    pendingChatId?: string;
+  }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const cookieStore = await cookies();
@@ -52,6 +57,7 @@ export default async function Page({
       : null;
   const isStudyMode = requestedMode === "study";
   const isJobsMode = requestedMode === "jobs";
+  const isEmbeddedNative = resolvedSearchParams?.embedded === "native";
   const shouldLoadHomePrompts = !isStudyMode && !isJobsMode;
 
   const CHAT_HOME_QUERY_TIMEOUT_MS = 8_000;
@@ -226,14 +232,16 @@ export default async function Page({
   const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
   const jobsListItems =
     chatMode === "jobs"
-      ? await withTimeout(
-          listJobListItems(),
-          CHAT_HOME_QUERY_TIMEOUT_MS
-        )
-          .catch((error) => {
-            console.error("[chat/home] jobs listing query timed out or failed.", error);
-            return [];
-          })
+      ? isEmbeddedNative
+        ? []
+        : await withTimeout(
+            listJobListItems(),
+            CHAT_HOME_QUERY_TIMEOUT_MS
+          )
+            .catch((error) => {
+              console.error("[chat/home] jobs listing query timed out or failed.", error);
+              return [];
+            })
       : [];
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)

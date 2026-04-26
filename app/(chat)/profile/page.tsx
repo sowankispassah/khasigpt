@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
-import { getUserById } from "@/lib/db/queries";
+import { getActiveUserProfileImage, getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { listPersonalKnowledgeForUser } from "@/lib/rag/service";
 import { AvatarForm } from "./avatar-form";
@@ -31,9 +31,11 @@ export default async function ProfilePage() {
   const [
     { languages: _languages, activeLanguage: _active, dictionary },
     currentUser,
+    activeProfileImage,
   ] = await Promise.all([
     getTranslationBundle(preferredLanguage),
     getUserById(session.user.id),
+    getActiveUserProfileImage({ userId: session.user.id }),
   ]);
 
   const allowPersonalKnowledge = Boolean(
@@ -56,14 +58,14 @@ export default async function ProfilePage() {
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const initialAvatar = (() => {
-    const raw = currentUser?.image ?? null;
+    const raw = activeProfileImage?.imageUrl ?? currentUser?.image ?? null;
     if (!raw) {
       return null;
     }
     try {
       return getDownloadUrl(raw);
     } catch {
-      return raw.startsWith("data:") ? raw : null;
+      return /^(data:|https?:\/\/)/.test(raw) ? raw : null;
     }
   })();
 
@@ -71,7 +73,7 @@ export default async function ProfilePage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 md:gap-8">
       <div>
         <BackToHomeButton
-          label={t("navigation.back_to_home", "Back to home")}
+          label={t("navigation.back", "Back")}
         />
       </div>
 

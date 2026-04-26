@@ -174,6 +174,14 @@ export function ForumComposer({
       router.push(`/forum/${thread.slug}`);
     } catch (error) {
       console.error(error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : translate(
+              "forum.composer.toast.error",
+              "Unable to publish discussion. Please try again."
+            )
+      );
     }
   };
 

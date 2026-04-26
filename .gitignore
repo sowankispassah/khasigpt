@@ -27,6 +27,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+tmp/
+native/tmp/
 
 # local env files
 .env.local
@@ -42,6 +44,9 @@ yarn-error.log*
 .env*.local
 
 .env.example
+.codex/
+native/.expo/
+*.tsbuildinfo
 
 # editors
 .cursor/
@@ -52,4 +57,3 @@ yarn-error.log*
 /blob-report/
 /playwright/*
 
-native

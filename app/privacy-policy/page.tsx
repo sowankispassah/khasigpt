@@ -64,7 +64,7 @@ export default async function PrivacyPolicyPage() {
       <div>
         <BackToHomeButton
           href="/"
-          label={t("navigation.back_to_home", "Back to home")}
+          label={t("navigation.back", "Back")}
         />
       </div>
 

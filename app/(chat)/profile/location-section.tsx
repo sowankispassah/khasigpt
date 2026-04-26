@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { updateUserLocationAction } from "./actions";
 
 type LocationSectionProps = {
   initialLatitude: number | null;
@@ -18,9 +17,65 @@ export function LocationSection({
   initialAccuracy,
   updatedAt,
 }: LocationSectionProps) {
+  const [latitude, setLatitude] = useState<number | null>(initialLatitude);
+  const [longitude, setLongitude] = useState<number | null>(initialLongitude);
+  const [accuracy, setAccuracy] = useState<number | null>(initialAccuracy);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(updatedAt);
   const [status, setStatus] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
   const hasAutoCapturedRef = useRef(false);
+
+  useEffect(() => {
+    setLatitude(initialLatitude);
+  }, [initialLatitude]);
+
+  useEffect(() => {
+    setLongitude(initialLongitude);
+  }, [initialLongitude]);
+
+  useEffect(() => {
+    setAccuracy(initialAccuracy);
+  }, [initialAccuracy]);
+
+  useEffect(() => {
+    setLastUpdated(updatedAt);
+  }, [updatedAt]);
+
+  const persistLocation = async ({
+    accuracy,
+    latitude,
+    longitude,
+  }: {
+    accuracy: number | null;
+    latitude: number;
+    longitude: number;
+  }) => {
+    setIsSaving(true);
+    const response = await fetch("/api/profile/location", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        accuracy,
+        latitude,
+        longitude,
+      }),
+    });
+
+    const body = (await response.json().catch(() => null)) as
+      | { error?: string; ok?: boolean; updatedAt?: string | null }
+      | null;
+
+    if (!response.ok || body?.ok === false) {
+      throw new Error(body?.error ?? "Failed to save location.");
+    }
+
+    setLatitude(latitude);
+    setLongitude(longitude);
+    setAccuracy(accuracy);
+    setLastUpdated(body?.updatedAt ?? new Date().toISOString());
+  };
 
   const handleCapture = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -30,21 +85,24 @@ export function LocationSection({
 
     setStatus("Requesting your location (optional)...");
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        startTransition(async () => {
-          const result = await updateUserLocationAction({
+      async (position) => {
+        try {
+          await persistLocation({
+            accuracy: position.coords.accuracy,
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
           });
-          if (result.success) {
-            setStatus("Location saved.");
-          } else {
-            setStatus(result.error ?? "Failed to save location.");
-          }
-        });
+          setStatus("Location saved.");
+        } catch (error) {
+          setStatus(
+            error instanceof Error ? error.message : "Failed to save location."
+          );
+        } finally {
+          setIsSaving(false);
+        }
       },
       (error) => {
+        setIsSaving(false);
         if (error.code === error.PERMISSION_DENIED) {
           setStatus(
             "Location permission denied. You can enable it later when needed."
@@ -76,15 +134,19 @@ export function LocationSection({
           return;
         }
         navigator.geolocation.getCurrentPosition(
-          (position) => {
-            startTransition(async () => {
-              await updateUserLocationAction({
+          async (position) => {
+            try {
+              await persistLocation({
+                accuracy: position.coords.accuracy,
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
-                accuracy: position.coords.accuracy,
               });
               setStatus("Location captured automatically.");
-            });
+            } catch {
+              setStatus("Failed to save location.");
+            } finally {
+              setIsSaving(false);
+            }
           },
           () => {
             // Silent failure; user can use the manual button later.
@@ -109,12 +171,12 @@ export function LocationSection({
           </p>
         </div>
         <Button
-          disabled={isPending}
+          disabled={isSaving}
           onClick={handleCapture}
           size="sm"
           variant="outline"
         >
-          {isPending ? (
+          {isSaving ? (
             <span className="flex items-center gap-2">
               <LoaderIcon className="h-4 w-4 animate-spin" />
               <span>Saving...</span>
@@ -128,19 +190,19 @@ export function LocationSection({
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
           <p className="text-muted-foreground text-xs uppercase">Latitude</p>
-          <p className="font-mono">{initialLatitude ?? "—"}</p>
+          <p className="font-mono">{latitude ?? "—"}</p>
         </div>
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
           <p className="text-muted-foreground text-xs uppercase">Longitude</p>
-          <p className="font-mono">{initialLongitude ?? "—"}</p>
+          <p className="font-mono">{longitude ?? "—"}</p>
         </div>
         <div className="rounded-md border border-dashed px-3 py-2 text-sm">
           <p className="text-muted-foreground text-xs uppercase">
             Accuracy (m)
           </p>
           <p className="font-mono">
-            {initialAccuracy !== null && initialAccuracy !== undefined
-              ? Math.round(initialAccuracy)
+            {accuracy !== null && accuracy !== undefined
+              ? Math.round(accuracy)
               : "—"}
           </p>
         </div>
@@ -149,8 +211,8 @@ export function LocationSection({
             Last updated
           </p>
           <p className="font-mono">
-            {updatedAt
-              ? new Date(updatedAt).toLocaleString()
+            {lastUpdated
+              ? new Date(lastUpdated).toLocaleString()
               : "Not captured yet"}
           </p>
         </div>

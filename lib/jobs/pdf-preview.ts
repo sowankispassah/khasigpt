@@ -49,7 +49,7 @@ async function fetchPdfBuffer(
   return new Uint8Array(arrayBuffer);
 }
 
-export async function renderPdfPreviewDataUrl(input: {
+export async function renderPdfPreviewImage(input: {
   headers?: HeadersInit;
   pdfUrl: string;
   targetWidth?: number;
@@ -89,6 +89,7 @@ export async function renderPdfPreviewDataUrl(input: {
     return {
       aspectRatio: viewport.width / viewport.height,
       dataUrl: canvas.toDataURL("image/png"),
+      pngBuffer: canvas.toBuffer("image/png"),
       height: viewport.height,
       width: viewport.width,
     };

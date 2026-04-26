@@ -1,8 +1,8 @@
 "use client";
 
-import { EllipsisVertical } from "lucide-react";
 import Link from "next/link";
 import React from "react";
+import { EllipsisVertical } from "lucide-react";
 import useSWR from "swr";
 import { useTranslation } from "@/components/language-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,14 +47,7 @@ type UserDropdownMenuProps = {
 };
 
 const AVATAR_COLORS = [
-  "#EF4444",
-  "#F97316",
-  "#F59E0B",
   "#10B981",
-  "#3B82F6",
-  "#6366F1",
-  "#8B5CF6",
-  "#EC4899",
 ];
 const NON_ALPHA_REGEX = /[^a-zA-Z\s]/g;
 const WHITESPACE_SPLIT_REGEX = /\s+/;
@@ -81,18 +74,8 @@ export function getInitials(name?: string | null, email?: string | null) {
   return parts[0][0].toUpperCase();
 }
 
-export function getAvatarColor(key?: string | null) {
-  const value = key ?? "";
-  if (!value) {
-    return AVATAR_COLORS[0];
-  }
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash << 5) - hash + value.charCodeAt(i);
-    hash |= 0;
-  }
-  const index = Math.abs(hash) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[index];
+export function getAvatarColor(_key?: string | null) {
+  return AVATAR_COLORS[0];
 }
 
 type BasicUser = {
@@ -149,14 +132,17 @@ export const UserMenuTrigger = React.forwardRef<
     <button
       aria-busy={isBusy}
       className={cn(
-        "relative flex cursor-pointer items-center gap-2 rounded-full border border-border bg-muted/40 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "relative flex h-8 min-w-[3.875rem] cursor-pointer items-center justify-between gap-1 rounded-full border border-border bg-muted/40 py-0.5 pr-0.5 pl-1 transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className
       )}
       ref={ref}
       type="button"
       {...props}
     >
-      <span className="flex h-6 items-center justify-center rounded-full bg-background/80 text-muted-foreground">
+      <span
+        aria-hidden="true"
+        className="flex h-7 w-5 items-center justify-center text-muted-foreground"
+      >
         <EllipsisVertical size={16} />
       </span>
       <Avatar className="h-8 w-8">
@@ -464,7 +450,11 @@ export function UserDropdownMenu({
   );
 
   return (
-    <DropdownMenu onOpenChange={handleMenuOpenChange} open={isMenuOpen}>
+    <DropdownMenu
+      modal={false}
+      onOpenChange={handleMenuOpenChange}
+      open={isMenuOpen}
+    >
         <DropdownMenuTrigger
           asChild
           data-user-menu-trigger="1"

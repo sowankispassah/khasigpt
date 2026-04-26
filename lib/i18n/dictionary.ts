@@ -43,6 +43,10 @@ const LANGUAGE_FALLBACK_DICTIONARIES: Record<string, Record<string, string>> = {
     "recharge.dialog.validate": "Pynshisha ïa ka coupon",
     "recharge.dialog.validating": "Dang pynshisha...",
     "recharge.dialog.proceed": "Bteng sha ka jingsiew",
+    "greeting.subtitle": "Kaei nga lah ban iarap ia phi mynta?",
+    "chat.input.placeholder": "Send iaka message...",
+    "chat.disclaimer.text": "Ka KhasiGPT ne kiwei pat ki AI Models ki lah ban bakla. Peit ia ki jingtip kiba kongsan.",
+    "chat.disclaimer.privacy_link": "Pule privacy policy.",
   },
 };
 

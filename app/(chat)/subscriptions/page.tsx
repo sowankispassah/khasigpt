@@ -312,14 +312,8 @@ export default async function SubscriptionsPage({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:gap-8">
       <div className="flex items-center gap-3">
         <BackToHomeButton
-          label={t("navigation.back_to_home", "Back to home")}
+          label={t("navigation.back", "Back")}
         />
-        <Link
-          className="inline-flex items-center gap-2 font-medium text-muted-foreground text-sm transition-colors hover:text-muted-foreground/80"
-          href="/profile"
-        >
-          {t("subscriptions.manage_profile", "Manage profile")}
-        </Link>
       </div>
 
       <header className="flex flex-col gap-1">

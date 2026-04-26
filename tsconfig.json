@@ -50,6 +50,7 @@
     ".next-build-clean",
     ".next-tmp",
     "build_output",
-    "dist-next"
+    "dist-next",
+    "native"
   ]
 }

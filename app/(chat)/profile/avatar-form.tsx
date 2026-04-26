@@ -6,13 +6,12 @@ import {
   type FormEvent,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { useSWRConfig } from "swr";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getAvatarColor, getInitials } from "@/components/user-dropdown-menu";
 
@@ -49,7 +48,6 @@ export function AvatarForm({
   const [messageType, setMessageType] = useState<"success" | "error" | null>(
     null
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { translate } = useTranslation();
 
   const initials = useMemo(
@@ -131,10 +129,6 @@ export function AvatarForm({
     const objectUrl = URL.createObjectURL(file);
     setSelectedFile(file);
     setPreview(objectUrl);
-  };
-
-  const handleChooseImage = () => {
-    fileInputRef.current?.click();
   };
 
   const handleUpload = async (event: FormEvent<HTMLFormElement>) => {
@@ -303,31 +297,38 @@ export function AvatarForm({
     <form className="space-y-4" onSubmit={handleUpload}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Avatar className="h-20 w-20 overflow-hidden">
-          <AvatarImage
-            alt="Profile picture"
-            className="object-cover"
-            src={preview ?? undefined}
-          />
-          <AvatarFallback
-            className="font-semibold text-lg text-white uppercase"
-            style={{ backgroundColor: avatarColor }}
-          >
-            {initials}
-          </AvatarFallback>
+          {preview ? (
+            <img
+              alt="Profile picture"
+              className="h-full w-full object-cover"
+              src={preview}
+            />
+          ) : (
+            <AvatarFallback
+              className="font-semibold text-lg text-white uppercase"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {initials}
+            </AvatarFallback>
+          )}
         </Avatar>
 
         <div className="flex flex-col gap-2">
-          <input
-            accept={ACCEPTED_TYPES.join(",")}
-            className="hidden"
-            onChange={handleFileChange}
-            ref={fileInputRef}
-            type="file"
-          />
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={handleChooseImage} type="button" variant="outline">
-              {translate("profile.picture.choose", "Choose image")}
-            </Button>
+            <div className="relative inline-flex h-10 overflow-hidden rounded-md border border-input bg-background">
+              <span className="pointer-events-none inline-flex h-full items-center justify-center px-4 font-medium text-sm transition-colors">
+                {translate("profile.picture.choose", "Choose image")}
+              </span>
+              <input
+                accept={ACCEPTED_TYPES.join(",")}
+                className="absolute inset-0 cursor-pointer opacity-0"
+                onChange={handleFileChange}
+                onClick={(event) => {
+                  event.currentTarget.value = "";
+                }}
+                type="file"
+              />
+            </div>
             <Button disabled={isSaving || !selectedFile} type="submit">
               {isSaving && pendingAction === "upload" ? (
                 <span className="flex items-center gap-2">

@@ -1,8 +1,7 @@
 "use client";
 
 import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
@@ -18,22 +17,36 @@ export function BackToHomeButton({
   href = "/",
 }: BackToHomeButtonProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const isEmbeddedNative = searchParams.get("embedded") === "native";
+
+  if (isEmbeddedNative) {
+    return null;
+  }
 
   return (
-    <Link
+    <button
+      data-native-back-button="true"
       className={cn(
-        "inline-flex cursor-pointer items-center gap-2 font-medium text-primary text-sm transition-colors hover:text-primary/80",
+        "inline-flex cursor-pointer items-center gap-2 font-medium text-2xl text-primary transition-colors hover:text-primary/80",
         className
       )}
-      href={href}
+      type="button"
       onClick={(event) => {
         if (pathname === href) {
           event.preventDefault();
+          return;
         }
+        if (window.history.length > 1) {
+          router.back();
+          return;
+        }
+        router.push(href);
       }}
     >
-      <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+      <ArrowLeft aria-hidden="true" className="h-7 w-7" />
       <span>{label}</span>
-    </Link>
+    </button>
   );
 }

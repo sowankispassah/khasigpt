@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "KhasiGPT",
+    "slug": "khasigpt-native",
+    "scheme": "khasigpt",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/khasigptlogo.png",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/khasigptlogo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.khasigpt.mobile",
+      "permissions": ["INTERNET", "RECORD_AUDIO"],
+      "usesCleartextTraffic": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.khasigpt.mobile",
+      "supportsTablet": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://khasigpt.com"
+    }
+  }
+}

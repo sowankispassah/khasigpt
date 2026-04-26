@@ -1,35 +1,79 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
-import { type UpdatePasswordState, updatePasswordAction } from "./actions";
-
-const initialState: UpdatePasswordState = { status: "idle" };
 
 export function PasswordForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [status, setStatus] = useState<{
+    message: string;
+    type: "error" | "success";
+  } | null>(null);
   const { translate } = useTranslation();
 
-  const [state, formAction, isPending] = useActionState<
-    UpdatePasswordState,
-    FormData
-  >(async (prev: UpdatePasswordState, formData: FormData) => {
-    const result = await updatePasswordAction(prev, formData);
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setStatus(null);
 
-    if (result.status === "success") {
+    try {
+      const response = await fetch("/api/profile/password", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          password,
+          confirmPassword,
+        }),
+      });
+
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string; ok?: boolean }
+        | null;
+
+      if (!response.ok || body?.ok === false) {
+        setStatus({
+          message:
+            body?.error ??
+            translate(
+              "profile.password.error",
+              "Unable to update password."
+            ),
+          type: "error",
+        });
+        return;
+      }
+
       setPassword("");
       setConfirmPassword("");
+      setStatus({
+        message: translate(
+          "profile.password.success",
+          "Password updated successfully."
+        ),
+        type: "success",
+      });
+    } catch {
+      setStatus({
+        message: translate(
+          "profile.password.error",
+          "Unable to update password."
+        ),
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
     }
-
-    return result;
-  }, initialState);
+  };
 
   return (
     <form
-      action={formAction}
       className="space-y-4 rounded-lg border bg-card p-6 shadow-sm"
+      onSubmit={handleSubmit}
     >
       <div>
         <h2 className="font-semibold text-lg">
@@ -75,24 +119,19 @@ export function PasswordForm() {
           value={confirmPassword}
         />
         <div aria-live="polite" className="min-h-[1.25rem] text-sm">
-          {state.status === "error" ? (
-            <span className="text-destructive">{state.message}</span>
-          ) : state.status === "success" ? (
-            <span className="text-emerald-600">
-              {translate(
-                "profile.password.success",
-                "Password updated successfully."
-              )}
-            </span>
+          {status?.type === "error" ? (
+            <span className="text-destructive">{status.message}</span>
+          ) : status?.type === "success" ? (
+            <span className="text-emerald-600">{status.message}</span>
           ) : null}
         </div>
       </div>
       <button
         className="inline-flex cursor-pointer items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={isPending}
+        disabled={isSaving}
         type="submit"
       >
-        {isPending ? (
+        {isSaving ? (
           <span className="flex items-center gap-2">
             <span className="h-4 w-4 animate-spin">
               <LoaderIcon size={16} />

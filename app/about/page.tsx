@@ -158,7 +158,7 @@ export default async function AboutPage() {
       <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-10 px-6 py-12 md:py-16">
         <div>
           <BackToHomeButton
-            label={t("navigation.back_to_home", "Back to home")}
+            label={t("navigation.back", "Back")}
             href="/"
           />
         </div>

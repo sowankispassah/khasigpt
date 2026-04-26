@@ -144,7 +144,7 @@ export async function GET() {
     try {
       signedImage = getDownloadUrl(imageUrl);
     } catch (_error) {
-      signedImage = imageUrl.startsWith("data:") ? imageUrl : null;
+      signedImage = /^(data:|https?:\/\/)/.test(imageUrl) ? imageUrl : null;
     }
   }
 

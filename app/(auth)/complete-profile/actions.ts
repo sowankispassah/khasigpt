@@ -1,7 +1,11 @@
 "use server";
 
 import { z } from "zod";
-import { updateUserProfile } from "@/lib/db/queries";
+import { getUserById, updateUserProfile } from "@/lib/db/queries";
+import {
+  DATE_OF_BIRTH_LOCK_MESSAGE,
+  isDateOfBirthChangeBlocked,
+} from "@/lib/utils/date-of-birth";
 import { auth, unstable_update } from "../auth";
 
 export type CompleteProfileState =
@@ -68,6 +72,15 @@ export async function submitDateOfBirthAction(
     return {
       status: "error",
       message: "You must be at least 13 years old to use this service.",
+    };
+  }
+
+  const currentUser = await getUserById(session.user.id);
+  const currentDateOfBirth = currentUser?.dateOfBirth ?? session.user.dateOfBirth;
+  if (isDateOfBirthChangeBlocked(currentDateOfBirth, parsed.data.dob)) {
+    return {
+      status: "error",
+      message: DATE_OF_BIRTH_LOCK_MESSAGE,
     };
   }
 

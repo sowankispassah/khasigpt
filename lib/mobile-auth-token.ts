@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const TOKEN_TTL_MS = 2 * 60 * 1000;
+const PREVIEW_TOKEN_TTL_MS = 5 * 60 * 1000;
 
 function base64UrlEncode(value: string | Buffer) {
   const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
@@ -43,6 +44,17 @@ export function createMobileAuthToken(userId: string) {
   return `${payload}.${sign(payload)}`;
 }
 
+export function createJobPreviewToken(jobId: string) {
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      exp: Date.now() + PREVIEW_TOKEN_TTL_MS,
+      jobId,
+      type: "job-preview",
+    })
+  );
+  return `${payload}.${sign(payload)}`;
+}
+
 export function verifyMobileAuthToken(token: string) {
   const [payload, signature] = token.split(".");
   if (!payload || !signature) {
@@ -75,5 +87,39 @@ export function verifyMobileAuthToken(token: string) {
     };
   } catch {
     return null;
+  }
+}
+
+export function verifyJobPreviewToken(token: string, expectedJobId: string) {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) {
+    return false;
+  }
+
+  const expected = sign(payload);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(payload)) as {
+      exp?: unknown;
+      jobId?: unknown;
+      type?: unknown;
+    };
+    return (
+      parsed.type === "job-preview" &&
+      typeof parsed.jobId === "string" &&
+      parsed.jobId === expectedJobId &&
+      typeof parsed.exp === "number" &&
+      parsed.exp >= Date.now()
+    );
+  } catch {
+    return false;
   }
 }

@@ -72,6 +72,10 @@ const frameSrc = [
   "https://api.razorpay.com",
 ].join(" ");
 
+const frameAncestors = isDevelopment
+  ? "frame-ancestors 'self' http://localhost:8081 http://127.0.0.1:8081"
+  : "frame-ancestors 'none'";
+
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
@@ -79,12 +83,12 @@ const securityHeaders = [
       "default-src 'self'",
       scriptSrc,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.vercel-storage.com https://avatar.vercel.sh",
+      "img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh",
       "font-src 'self'",
       "worker-src 'self' blob:",
       connectSrc,
       frameSrc,
-      "frame-ancestors 'none'",
+      frameAncestors,
       "base-uri 'self'",
       "form-action 'self'",
       "upgrade-insecure-requests",
@@ -107,10 +111,14 @@ const securityHeaders = [
     value:
       "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), accelerometer=(), autoplay=(self)",
   },
-  {
-    key: "X-Frame-Options",
-    value: "DENY",
-  },
+  ...(isDevelopment
+    ? []
+    : [
+        {
+          key: "X-Frame-Options",
+          value: "DENY",
+        },
+      ]),
 ];
 
 const nextConfig: NextConfig = {

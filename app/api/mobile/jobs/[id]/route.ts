@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
-import { renderPdfPreviewDataUrl } from "@/lib/jobs/pdf-preview";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
+import { createJobPreviewToken } from "@/lib/mobile-auth-token";
 import { getJobPostingById } from "@/lib/jobs/service";
 
 export const runtime = "nodejs";
@@ -139,31 +139,7 @@ export async function GET(
   });
   const proxiedPdfUrl = pdfUrl ? `/api/jobs/${job.id}/pdf` : null;
   const sourceLabel = getSourceHostLabel(job.sourceUrl);
-
-  let pdfPreview:
-    | {
-        aspectRatio: number;
-        dataUrl: string;
-      }
-    | null = null;
-
-  if (proxiedPdfUrl) {
-    try {
-      const preview = await renderPdfPreviewDataUrl({
-        headers: request.headers.get("cookie")
-          ? { cookie: request.headers.get("cookie") as string }
-          : undefined,
-        pdfUrl: new URL(proxiedPdfUrl, request.url).toString(),
-        targetWidth: 960,
-      });
-      pdfPreview = {
-        aspectRatio: preview.aspectRatio,
-        dataUrl: preview.dataUrl,
-      };
-    } catch (error) {
-      console.warn("[api/mobile/jobs/[id]] Failed to render PDF preview.", error);
-    }
-  }
+  const previewToken = proxiedPdfUrl ? createJobPreviewToken(job.id) : null;
 
   return NextResponse.json(
     {
@@ -184,7 +160,11 @@ export async function GET(
       sourceLabel,
       sourceUrl: job.sourceUrl,
       pdfUrl: proxiedPdfUrl,
-      pdfPreview,
+      pdfPreviewImageUrl: proxiedPdfUrl && previewToken
+        ? `/api/mobile/jobs/${job.id}/preview-image?token=${encodeURIComponent(
+            previewToken
+          )}`
+        : null,
     },
     {
       headers: {
