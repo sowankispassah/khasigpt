@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { Session } from "next-auth";
+import { Suspense } from "react";
 import { PageUserMenu } from "@/components/page-user-menu";
 
 const UserPresenceTracker = dynamic(
@@ -25,7 +26,9 @@ export function SiteShellExtras({
 }: SiteShellExtrasProps) {
   return (
     <>
-      <PageUserMenu forumEnabled={forumEnabled} initialUser={sessionUser} />
+      <Suspense fallback={null}>
+        <PageUserMenu forumEnabled={forumEnabled} initialUser={sessionUser} />
+      </Suspense>
       {sessionUser?.id ? <UserPresenceTracker userId={sessionUser.id} /> : null}
     </>
   );
