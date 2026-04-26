@@ -1,6 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
@@ -13,6 +12,8 @@ import {
   getAppSettingUncached,
   setAppSetting,
 } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
+import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 
 type MaintenanceFieldConfig = {
@@ -62,11 +63,9 @@ function parseBooleanInput(value: unknown): boolean | null {
   return null;
 }
 
-export async function POST(request: Request) {
-  const session = await withTimeout(auth(), MAINTENANCE_TIMEOUT_MS).catch(
-    () => null
-  );
-  if (!session?.user || session.user.role !== "admin") {
+export async function POST(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
+  if (!user) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -107,8 +106,8 @@ export async function POST(request: Request) {
       getAppSettingUncached<unknown>(config.settingKey),
       MAINTENANCE_TIMEOUT_MS
     );
-    const persisted = parseBooleanInput(persistedRaw);
-    if (persisted === null || persisted !== enabled) {
+    const persisted = parseBooleanSetting(persistedRaw, !enabled);
+    if (persisted !== enabled) {
       throw new Error("persisted_value_mismatch");
     }
   } catch (error) {
@@ -123,7 +122,7 @@ export async function POST(request: Request) {
 
   void withTimeout(
     createAuditLogEntry({
-      actorId: session.user.id,
+      actorId: user.id,
       action: config.auditAction,
       target: { setting: config.settingKey },
       metadata: { enabled },

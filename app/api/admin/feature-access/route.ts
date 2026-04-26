@@ -1,6 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -18,6 +17,7 @@ import {
   setAppSetting,
 } from "@/lib/db/queries";
 import { type FeatureAccessMode, parseFeatureAccessMode } from "@/lib/feature-access";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 type FeatureAccessFieldConfig = {
@@ -87,11 +87,9 @@ function isFeatureAccessMode(value: unknown): value is FeatureAccessMode {
   return value === "enabled" || value === "admin_only" || value === "disabled";
 }
 
-export async function POST(request: Request) {
-  const session = await withTimeout(auth(), FEATURE_ACCESS_TIMEOUT_MS).catch(
-    () => null
-  );
-  if (!session?.user || session.user.role !== "admin") {
+export async function POST(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
+  if (!user) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -144,7 +142,7 @@ export async function POST(request: Request) {
 
   void withTimeout(
     createAuditLogEntry({
-      actorId: session.user.id,
+      actorId: user.id,
       action: config.auditAction,
       target: { setting: config.settingKey },
       metadata: { accessMode: resolvedMode },

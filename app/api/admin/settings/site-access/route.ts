@@ -1,6 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -17,6 +16,7 @@ import {
   setAppSetting,
 } from "@/lib/db/queries";
 import { generateHashedPassword } from "@/lib/db/utils";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { normalizeAdminEntryCodeInput } from "@/lib/security/admin-entry-pass";
 import {
   normalizeAdminEntryPathSetting,
@@ -27,9 +27,9 @@ import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 
-const API_TIMEOUT_MS = 20_000;
 const READ_TIMEOUT_MS = 12_000;
 const AUDIT_TIMEOUT_MS = 3_000;
+const WRITE_TIMEOUT_MS = 12_000;
 
 const SITE_SETTING_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
@@ -72,14 +72,6 @@ function parseBooleanInput(value: unknown): boolean | null {
   }
 
   return null;
-}
-
-async function requireAdminUser() {
-  const session = await withTimeout(auth(), API_TIMEOUT_MS).catch(() => null);
-  if (!session?.user || session.user.role !== "admin") {
-    return null;
-  }
-  return session.user;
 }
 
 async function loadSiteAccessState(): Promise<SiteAccessState> {
@@ -136,7 +128,7 @@ async function writeSettingAndVerify({
       key,
       value,
     }),
-    API_TIMEOUT_MS
+    WRITE_TIMEOUT_MS
   );
 
   const persisted = await withTimeout(
@@ -154,8 +146,8 @@ async function auditSafely(args: Parameters<typeof createAuditLogEntry>[0]) {
   await withTimeout(createAuditLogEntry(args), AUDIT_TIMEOUT_MS).catch(() => null);
 }
 
-export async function GET() {
-  const user = await requireAdminUser();
+export async function GET(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
   if (!user) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -171,8 +163,8 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  const user = await requireAdminUser();
+export async function POST(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
   if (!user) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
