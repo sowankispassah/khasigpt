@@ -8,7 +8,7 @@ type AdminApiUser = {
   role: UserRole;
 };
 
-const ADMIN_AUTH_TIMEOUT_MS = 4000;
+const ADMIN_AUTH_TIMEOUT_MS = 20_000;
 
 export async function requireAdminApiUser(
   request: NextRequest
@@ -31,7 +31,10 @@ export async function requireAdminApiUser(
 
   const { auth } = await import("@/app/(auth)/auth");
   const session = await withTimeout(auth(), ADMIN_AUTH_TIMEOUT_MS).catch(
-    () => null
+    (error) => {
+      console.error("[admin-api-auth] Admin session fallback failed.", error);
+      return null;
+    }
   );
   if (!session?.user || session.user.role !== "admin") {
     return null;

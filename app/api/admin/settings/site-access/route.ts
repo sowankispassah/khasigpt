@@ -140,7 +140,14 @@ async function auditSafely(args: Parameters<typeof createLiteAuditLogEntry>[0]) 
 export async function GET(request: NextRequest) {
   const user = await requireAdminApiUser(request);
   if (!user) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return NextResponse.json(
+      {
+        error: "forbidden",
+        message:
+          "Your admin session was not accepted. Please refresh and sign in again.",
+      },
+      { status: 403 }
+    );
   }
 
   try {
@@ -157,7 +164,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const user = await requireAdminApiUser(request);
   if (!user) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    return NextResponse.json(
+      {
+        error: "forbidden",
+        message:
+          "Your admin session was not accepted. Please refresh and sign in again.",
+      },
+      { status: 403 }
+    );
   }
 
   const body = await request.json().catch(() => null);
@@ -243,6 +257,12 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("[api/admin/settings/site-access] Failed to save state.", error);
-    return NextResponse.json({ error: "save_failed" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "save_failed",
+        message: "The server could not save this setting. Please retry.",
+      },
+      { status: 500 }
+    );
   }
 }

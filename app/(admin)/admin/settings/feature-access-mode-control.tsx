@@ -9,7 +9,7 @@ import type { FeatureAccessMode } from "@/lib/feature-access";
 
 const FEATURE_ACCESS_API_ENDPOINT = "/api/admin/feature-access";
 const FEATURE_TOGGLE_SLOW_NOTICE_MS = 8000;
-const FEATURE_TOGGLE_ATTEMPT_TIMEOUT_MS = 12000;
+const FEATURE_TOGGLE_ATTEMPT_TIMEOUT_MS = 45_000;
 const FEATURE_TOGGLE_MAX_RETRIES = 1;
 
 function normalizeErrorMessage(value: unknown) {

@@ -7,7 +7,7 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 
 const SITE_ACCESS_API_ENDPOINT = "/api/admin/settings/site-access";
-const REQUEST_TIMEOUT_MS = 22_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 
 type SiteAccessState = {
   publicLaunched: boolean;
@@ -55,6 +55,26 @@ const TOGGLE_ROWS: Array<{
   },
 ];
 
+class AdminSettingsRequestError extends Error {
+  code: string;
+  status: number;
+
+  constructor({
+    code,
+    message,
+    status,
+  }: {
+    code: string;
+    message: string;
+    status: number;
+  }) {
+    super(message);
+    this.name = "AdminSettingsRequestError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 function EnabledBadge({ enabled }: { enabled: boolean }) {
   if (enabled) {
     return (
@@ -89,9 +109,23 @@ async function fetchJsonWithTimeout<T>(
       },
     });
 
-    const body = (await response.json().catch(() => null)) as T | null;
+    const body = (await response.json().catch(() => null)) as
+      | (T & { error?: unknown; message?: unknown })
+      | null;
     if (!response.ok || body === null) {
-      throw new Error("request_failed");
+      const code =
+        body && typeof body.error === "string" ? body.error : "request_failed";
+      const message =
+        body && typeof body.message === "string"
+          ? body.message
+          : response.status === 403
+            ? "Your admin session was not accepted. Please refresh and sign in again."
+            : `Request failed (${response.status}).`;
+      throw new AdminSettingsRequestError({
+        code,
+        message,
+        status: response.status,
+      });
     }
 
     return body;
@@ -103,6 +137,18 @@ async function fetchJsonWithTimeout<T>(
   } finally {
     window.clearTimeout(timeoutId);
   }
+}
+
+function getErrorDescription(error: unknown, fallback: string) {
+  if (error instanceof AdminSettingsRequestError) {
+    return error.message;
+  }
+
+  if (error instanceof Error && error.message === "request_timeout") {
+    return "Request timed out. Please try again.";
+  }
+
+  return fallback;
 }
 
 export function SiteAccessSettingsPanel({
@@ -130,13 +176,12 @@ export function SiteAccessSettingsPanel({
       setPathInput(data.adminEntryPath);
       setSyncedAt(new Date());
     } catch (error) {
-      const timedOut =
-        error instanceof Error && error.message === "request_timeout";
       toast({
         type: "error",
-        description: timedOut
-          ? "Loading timed out. Please refresh and try again."
-          : "Failed to load current settings.",
+        description: getErrorDescription(
+          error,
+          "Failed to load current settings."
+        ),
       });
     } finally {
       setIsLoading(false);
@@ -177,13 +222,9 @@ export function SiteAccessSettingsPanel({
       toast({ type: "success", description: "Setting updated." });
     } catch (error) {
       setState(previous);
-      const timedOut =
-        error instanceof Error && error.message === "request_timeout";
       toast({
         type: "error",
-        description: timedOut
-          ? "Save timed out. Please try again."
-          : "Failed to save setting.",
+        description: getErrorDescription(error, "Failed to save setting."),
       });
     } finally {
       setSavingField(null);
@@ -212,13 +253,12 @@ export function SiteAccessSettingsPanel({
       router.refresh();
       toast({ type: "success", description: "Admin entry path updated." });
     } catch (error) {
-      const timedOut =
-        error instanceof Error && error.message === "request_timeout";
       toast({
         type: "error",
-        description: timedOut
-          ? "Save timed out. Please try again."
-          : "Failed to save admin entry path.",
+        description: getErrorDescription(
+          error,
+          "Failed to save admin entry path."
+        ),
       });
     } finally {
       setSavingField(null);
@@ -247,13 +287,12 @@ export function SiteAccessSettingsPanel({
       router.refresh();
       toast({ type: "success", description: "Admin access code updated." });
     } catch (error) {
-      const timedOut =
-        error instanceof Error && error.message === "request_timeout";
       toast({
         type: "error",
-        description: timedOut
-          ? "Save timed out. Please try again."
-          : "Failed to save admin access code.",
+        description: getErrorDescription(
+          error,
+          "Failed to save admin access code."
+        ),
       });
     } finally {
       setSavingField(null);

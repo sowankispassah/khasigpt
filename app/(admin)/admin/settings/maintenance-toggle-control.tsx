@@ -6,7 +6,7 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 
 const MAINTENANCE_API_ENDPOINT = "/api/admin/maintenance";
-const SAVE_TIMEOUT_MS = 12_000;
+const SAVE_TIMEOUT_MS = 45_000;
 
 function EnabledBadge({ enabled }: { enabled: boolean }) {
   if (enabled) {
