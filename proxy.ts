@@ -74,7 +74,7 @@ const BYPASS_SITE_STATUS_GATE_IN_DEV =
   process.env.ENABLE_SITE_STATUS_GATE_IN_DEV !== "1";
 const siteStatusCacheWindowRaw = Number.parseInt(
   process.env.MIDDLEWARE_SITE_STATUS_CACHE_WINDOW_MS ??
-    (process.env.NODE_ENV === "development" ? "10000" : "60000"),
+    (process.env.NODE_ENV === "development" ? "1000" : "1000"),
   10
 );
 const SITE_STATUS_CACHE_WINDOW_MS =
