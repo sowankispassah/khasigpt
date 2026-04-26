@@ -13,9 +13,9 @@ import {
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
-  createAuditLogEntry,
-  setAppSetting,
-} from "@/lib/db/queries";
+  createLiteAuditLogEntry,
+  setLiteAppSetting,
+} from "@/lib/db/app-settings-lite";
 import { type FeatureAccessMode, parseFeatureAccessMode } from "@/lib/feature-access";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await withTimeout(
-      setAppSetting({
+      setLiteAppSetting({
         key: config.settingKey,
         value: resolvedMode,
       }),
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
   revalidateTag(appSettingCacheTagForKey(config.settingKey), "max");
 
   void withTimeout(
-    createAuditLogEntry({
+    createLiteAuditLogEntry({
       actorId: user.id,
       action: config.auditAction,
       target: { setting: config.settingKey },

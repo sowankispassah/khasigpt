@@ -10,11 +10,10 @@ import {
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
-  createAuditLogEntry,
-  getAppSettingsByKeysUncached,
-  getAppSettingUncached,
-  setAppSetting,
-} from "@/lib/db/queries";
+  createLiteAuditLogEntry,
+  getLiteAppSettingsByKeysUncached,
+  setLiteAppSetting,
+} from "@/lib/db/app-settings-lite";
 import { generateHashedPassword } from "@/lib/db/utils";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { normalizeAdminEntryCodeInput } from "@/lib/security/admin-entry-pass";
@@ -76,7 +75,7 @@ function parseBooleanInput(value: unknown): boolean | null {
 
 async function loadSiteAccessState(): Promise<SiteAccessState> {
   const settings = await withTimeout(
-    getAppSettingsByKeysUncached([...SITE_SETTING_KEYS]),
+    getLiteAppSettingsByKeysUncached([...SITE_SETTING_KEYS]),
     READ_TIMEOUT_MS
   );
   const map = new Map(settings.map((entry) => [entry.key, entry.value]));
@@ -114,36 +113,28 @@ async function loadSiteAccessState(): Promise<SiteAccessState> {
   };
 }
 
-async function writeSettingAndVerify({
+async function writeSetting({
   key,
   value,
-  verify,
 }: {
   key: string;
   value: unknown;
-  verify: (persisted: unknown) => boolean;
 }) {
   await withTimeout(
-    setAppSetting({
+    setLiteAppSetting({
       key,
       value,
     }),
     WRITE_TIMEOUT_MS
   );
 
-  const persisted = await withTimeout(
-    getAppSettingUncached<unknown>(key),
-    READ_TIMEOUT_MS
-  );
-  if (!verify(persisted)) {
-    throw new Error("persisted_value_mismatch");
-  }
-
   revalidateTag(appSettingCacheTagForKey(key), "max");
 }
 
-async function auditSafely(args: Parameters<typeof createAuditLogEntry>[0]) {
-  await withTimeout(createAuditLogEntry(args), AUDIT_TIMEOUT_MS).catch(() => null);
+async function auditSafely(args: Parameters<typeof createLiteAuditLogEntry>[0]) {
+  await withTimeout(createLiteAuditLogEntry(args), AUDIT_TIMEOUT_MS).catch(
+    () => null
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -192,10 +183,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "invalid_value" }, { status: 400 });
       }
 
-      await writeSettingAndVerify({
+      await writeSetting({
         key: settingKey,
         value: enabled,
-        verify: (persisted) => parseBooleanSetting(persisted, !enabled) === enabled,
       });
       void auditSafely({
         actorId: user.id,
@@ -211,10 +201,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "invalid_path" }, { status: 400 });
       }
 
-      await writeSettingAndVerify({
+      await writeSetting({
         key: SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
         value: path,
-        verify: (persisted) => normalizeAdminEntryPathSetting(persisted) === path,
       });
       void auditSafely({
         actorId: user.id,
@@ -231,10 +220,9 @@ export async function POST(request: NextRequest) {
       }
 
       const hash = generateHashedPassword(code);
-      await writeSettingAndVerify({
+      await writeSetting({
         key: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
         value: hash,
-        verify: (persisted) => typeof persisted === "string" && persisted === hash,
       });
       void auditSafely({
         actorId: user.id,

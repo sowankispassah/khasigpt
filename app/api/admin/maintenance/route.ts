@@ -8,12 +8,10 @@ import {
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
-  createAuditLogEntry,
-  getAppSettingUncached,
-  setAppSetting,
-} from "@/lib/db/queries";
+  createLiteAuditLogEntry,
+  setLiteAppSetting,
+} from "@/lib/db/app-settings-lite";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
-import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 
 type MaintenanceFieldConfig = {
@@ -95,21 +93,12 @@ export async function POST(request: NextRequest) {
 
   try {
     await withTimeout(
-      setAppSetting({
+      setLiteAppSetting({
         key: config.settingKey,
         value: enabled,
       }),
       MAINTENANCE_TIMEOUT_MS
     );
-
-    const persistedRaw = await withTimeout(
-      getAppSettingUncached<unknown>(config.settingKey),
-      MAINTENANCE_TIMEOUT_MS
-    );
-    const persisted = parseBooleanSetting(persistedRaw, !enabled);
-    if (persisted !== enabled) {
-      throw new Error("persisted_value_mismatch");
-    }
   } catch (error) {
     console.error(
       `[api/admin/maintenance] Failed to save setting "${config.settingKey}".`,
@@ -121,7 +110,7 @@ export async function POST(request: NextRequest) {
   revalidateTag(appSettingCacheTagForKey(config.settingKey), "max");
 
   void withTimeout(
-    createAuditLogEntry({
+    createLiteAuditLogEntry({
       actorId: user.id,
       action: config.auditAction,
       target: { setting: config.settingKey },

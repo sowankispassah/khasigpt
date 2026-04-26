@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import type { UserRole } from "@/app/(auth)/auth";
-import { auth } from "@/app/(auth)/auth";
 import { withTimeout } from "@/lib/utils/async";
 
 type AdminApiUser = {
@@ -30,6 +29,7 @@ export async function requireAdminApiUser(
     }
   }
 
+  const { auth } = await import("@/app/(auth)/auth");
   const session = await withTimeout(auth(), ADMIN_AUTH_TIMEOUT_MS).catch(
     () => null
   );

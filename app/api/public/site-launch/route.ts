@@ -7,9 +7,9 @@ import {
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
 import {
-  getAppSettingsByKeysUncached,
-  getAppSettingUncached,
-} from "@/lib/db/queries";
+  getLiteAppSettingsByKeysUncached,
+  getLiteAppSettingUncached,
+} from "@/lib/db/app-settings-lite";
 import { normalizeAdminEntryPathSetting } from "@/lib/settings/admin-entry";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
@@ -116,7 +116,7 @@ async function loadSiteLaunchSettingsMap({
 
   try {
     const settings = await withTimeout(
-      getAppSettingsByKeysUncached([...SITE_LAUNCH_SETTING_KEYS]),
+      getLiteAppSettingsByKeysUncached([...SITE_LAUNCH_SETTING_KEYS]),
       SITE_LAUNCH_SETTINGS_TIMEOUT_MS
     );
     return cacheSettingsMap(
@@ -132,7 +132,7 @@ async function loadSiteLaunchSettingsMap({
   const entries = await Promise.allSettled(
     SITE_LAUNCH_SETTING_KEYS.map(async (key) => {
       const value = await withTimeout(
-        getAppSettingUncached<unknown>(key),
+        getLiteAppSettingUncached<unknown>(key),
         SITE_LAUNCH_RETRY_TIMEOUT_MS
       );
       return [key, value] as const;
