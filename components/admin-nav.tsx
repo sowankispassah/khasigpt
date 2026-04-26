@@ -31,6 +31,7 @@ const ADMIN_LINKS = [
   { href: "/admin/chats", label: "Chats" },
   { href: "/admin/rag", label: "RAG" },
   { href: "/admin/jobs", label: "Jobs" },
+  { href: "/admin/forum", label: "Forum" },
   { href: "/admin/characters", label: "Characters" },
   { href: "/admin/contacts", label: "Contacts" },
   { href: "/admin/logs", label: "Audit Log" },
