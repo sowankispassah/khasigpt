@@ -1,5 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { RouteProp } from "@react-navigation/native";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -12,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Download,
   EllipsisVertical,
   Globe,
   Image as ImageIcon,
@@ -23,8 +25,10 @@ import {
   Share2,
   Square,
   Trash2,
+  X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
   Animated,
   ActivityIndicator,
@@ -47,9 +51,21 @@ import {
   Vibration,
   View,
 } from "react-native";
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_BASE_URL, api } from "@/api/client";
-import type { ChatHistoryItem, ChatMessage } from "@/api/types";
+import type {
+  ChatHistoryItem,
+  ChatMessage,
+  ChatMessagePart,
+  IconPromptAction,
+  IconPromptSuggestion,
+  UploadedAttachment,
+} from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AppSidebar } from "@/components/AppSidebar";
 import { PageHeader } from "@/components/PageHeader";
@@ -66,7 +82,15 @@ type LocalMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  images?: MessageImage[];
+  isImageGenerating?: boolean;
   createdAt?: string;
+};
+
+type MessageImage = {
+  url: string;
+  mediaType?: string | null;
+  filename?: string | null;
 };
 
 type GroupedHistory = {
@@ -83,6 +107,7 @@ const SEND_RELOAD_RETRIES = 4;
 const MESSAGE_OVERLAY_CLEARANCE = 88;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const SIDEBAR_CLOSED_TRANSLATE_X = -336;
+const IMAGE_PROMPT_PLACEHOLDER = "Enter image prompt here...";
 
 function textFromMessage(message: ChatMessage) {
   if (message.content) {
@@ -138,12 +163,19 @@ export function ChatScreen() {
   });
   const [selectedTextMessage, setSelectedTextMessage] =
     useState<LocalMessage | null>(null);
+  const [selectedImage, setSelectedImage] = useState<MessageImage | null>(null);
+  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+  const [imageDownloadStatus, setImageDownloadStatus] = useState<string | null>(
+    null
+  );
   const [pendingMessageAction, setPendingMessageAction] = useState<
     "copy" | null
   >(null);
   const [copyToastVisible, setCopyToastVisible] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
+  const [isResettingChat, setIsResettingChat] = useState(false);
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [messageHasMore, setMessageHasMore] = useState(false);
   const [oldestMessageAt, setOldestMessageAt] = useState<string | null>(null);
@@ -159,6 +191,23 @@ export function ChatScreen() {
   );
   const [visibility] = useState<"private" | "public">("private");
   const [isSending, setIsSending] = useState(false);
+  const [isImageGenerationSelected, setIsImageGenerationSelected] =
+    useState(false);
+  const [activeIconPromptId, setActiveIconPromptId] = useState<string | null>(
+    null
+  );
+  const [iconPromptSuggestions, setIconPromptSuggestions] = useState<
+    IconPromptSuggestion[]
+  >([]);
+  const [
+    selectedIconPromptSuggestionKey,
+    setSelectedIconPromptSuggestionKey,
+  ] = useState<string | null>(null);
+  const [insertedIconPromptText, setInsertedIconPromptText] = useState<
+    string | null
+  >(null);
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  const [uploadQueue, setUploadQueue] = useState<string[]>([]);
   const [bottomAreaHeight, setBottomAreaHeight] = useState(182);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isSidebarInteractive, setIsSidebarInteractive] = useState(false);
@@ -372,6 +421,10 @@ export function ChatScreen() {
   const openChat = useCallback(
     (id: string) => {
       setActiveHistoryMenuId(null);
+      setActiveIconPromptId(null);
+      setIconPromptSuggestions([]);
+      setSelectedIconPromptSuggestionKey(null);
+      setInsertedIconPromptText(null);
       setChatId(id);
       setIsSidebarInteractive(false);
       loadChatPage({
@@ -580,6 +633,17 @@ export function ChatScreen() {
         : null;
     return price ? `${plan.name} (${price})` : plan.name;
   }, [bootstrap?.billing.balance?.plan, t]);
+  const imagePromptAction = useMemo(
+    () => iconPrompts.find((action) => action.selectImageMode),
+    [iconPrompts]
+  );
+  const activeIconPromptAction = useMemo(
+    () =>
+      activeIconPromptId
+        ? iconPrompts.find((action) => action.id === activeIconPromptId)
+        : null,
+    [activeIconPromptId, iconPrompts]
+  );
   const primaryPrompt = iconPrompts[0]?.label ?? "Shna dur";
   const secondaryPrompt = iconPrompts[1]?.label ?? "Thoh jingrwai";
   const greetingTitle = t("greeting.title", "Hi, {name}").replaceAll(
@@ -591,6 +655,26 @@ export function ChatScreen() {
     "How can I help you today?"
   );
   const inputPlaceholder = t("chat.input.placeholder", "Send a message...");
+  const imageGeneration = bootstrap?.chat.imageGeneration ?? {
+    enabled: false,
+    canGenerate: false,
+    requiresPaidCredits: false,
+  };
+  const imagePromptPlaceholder = t(
+    "image.prompt.placeholder",
+    IMAGE_PROMPT_PLACEHOLDER
+  );
+  const lyricsPromptPlaceholder = t(
+    "lyrics.prompt.placeholder",
+    "Enter lyrics details..."
+  );
+  const composerPlaceholder = isImageGenerationSelected
+    ? imagePromptPlaceholder.toLowerCase().includes("banana astronaut")
+      ? IMAGE_PROMPT_PLACEHOLDER
+      : imagePromptPlaceholder
+    : activeIconPromptAction && !activeIconPromptAction.selectImageMode
+      ? lyricsPromptPlaceholder
+    : inputPlaceholder;
   const disclaimerText = t(
     "chat.disclaimer.text",
     "KhasiGPT or other AI Models can make mistakes. Check important details."
@@ -618,6 +702,7 @@ export function ChatScreen() {
 
   const startNewChat = useCallback(() => {
     activeChatRequestRef.current += 1;
+    setIsResettingChat(true);
     setChatId(generateUUID());
     setMessages([]);
     setMessageHasMore(false);
@@ -627,6 +712,16 @@ export function ChatScreen() {
     setIsUserMenuVisible(false);
     setIsComposerLanguageVisible(false);
     setIsModelMenuOpen(false);
+    setAttachments([]);
+    setUploadQueue([]);
+    setIsImageGenerationSelected(false);
+    setActiveIconPromptId(null);
+    setIconPromptSuggestions([]);
+    setSelectedIconPromptSuggestionKey(null);
+    setInsertedIconPromptText(null);
+    requestAnimationFrame(() => {
+      setIsResettingChat(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -809,6 +904,122 @@ export function ChatScreen() {
         .finally(() => setPendingLanguageCode(null));
     },
     [changeLanguage, closeComposerLanguageMenu, pendingLanguageCode]
+  );
+
+  const applyIconPromptText = useCallback(
+    (action: Pick<IconPromptAction, "behavior" | "prompt">) => {
+      const trimmedPrompt = action.prompt.trim();
+      if (!trimmedPrompt) {
+        return;
+      }
+      setInput((current) => {
+        const existing = current ?? "";
+        if (action.behavior === "append" && existing.trim().length > 0) {
+          const separator = existing.endsWith(" ") ? "" : " ";
+          return `${existing}${separator}${trimmedPrompt}`;
+        }
+        return trimmedPrompt;
+      });
+    },
+    []
+  );
+
+  const clearInsertedIconPromptText = useCallback(() => {
+    if (!insertedIconPromptText) {
+      return;
+    }
+    setInput((current) =>
+      current.trim() === insertedIconPromptText.trim() ? "" : current
+    );
+    setInsertedIconPromptText(null);
+  }, [insertedIconPromptText]);
+
+  const disableImageGenerationMode = useCallback(() => {
+    clearInsertedIconPromptText();
+    setIsImageGenerationSelected(false);
+    setActiveIconPromptId(null);
+    setIconPromptSuggestions([]);
+    setSelectedIconPromptSuggestionKey(null);
+    setInsertedIconPromptText(null);
+    setAttachments([]);
+  }, [clearInsertedIconPromptText]);
+
+  const handleIconPromptSelect = useCallback(
+    (action: IconPromptAction | undefined, fallbackPrompt: string) => {
+      if (!action) {
+        clearInsertedIconPromptText();
+        setActiveIconPromptId(null);
+        setIconPromptSuggestions([]);
+        setSelectedIconPromptSuggestionKey(null);
+        setInput(fallbackPrompt);
+        setInsertedIconPromptText(null);
+        return;
+      }
+
+      const isSameActionOpen =
+        activeIconPromptId === action.id && iconPromptSuggestions.length > 0;
+      if (isSameActionOpen) {
+        clearInsertedIconPromptText();
+        setActiveIconPromptId(null);
+        setIconPromptSuggestions([]);
+        setSelectedIconPromptSuggestionKey(null);
+        if (action.selectImageMode) {
+          setIsImageGenerationSelected(false);
+          setAttachments([]);
+        }
+        return;
+      }
+
+      if (activeIconPromptId !== action.id) {
+        clearInsertedIconPromptText();
+      }
+
+      if (action.selectImageMode) {
+        setIsImageGenerationSelected(true);
+      } else if (isImageGenerationSelected) {
+        setIsImageGenerationSelected(false);
+        setAttachments([]);
+      }
+
+      if (action.showSuggestions && action.suggestions.length > 0) {
+        setActiveIconPromptId(action.id);
+        setIconPromptSuggestions(action.suggestions);
+        setSelectedIconPromptSuggestionKey(null);
+        setInsertedIconPromptText(null);
+        return;
+      }
+
+      setActiveIconPromptId(null);
+      setIconPromptSuggestions([]);
+      setSelectedIconPromptSuggestionKey(null);
+      setInsertedIconPromptText(null);
+      applyIconPromptText(action);
+    },
+    [
+      activeIconPromptId,
+      applyIconPromptText,
+      clearInsertedIconPromptText,
+      iconPromptSuggestions.length,
+      isImageGenerationSelected,
+    ]
+  );
+
+  const handleIconPromptSuggestionSelect = useCallback(
+    (suggestion: IconPromptSuggestion, index: number) => {
+      const visibleText = suggestion.label.trim();
+      const hiddenText = suggestion.prompt.trim() || visibleText;
+      const displayedPrompt = visibleText || hiddenText;
+      if (!displayedPrompt) {
+        return;
+      }
+      setInput(displayedPrompt);
+      setInsertedIconPromptText(displayedPrompt);
+      setSelectedIconPromptSuggestionKey(
+        getIconPromptSuggestionKey(suggestion, index)
+      );
+      composerInputRef.current?.focus();
+    },
+    []
   );
 
   const streamUserMessage = useCallback(async ({
@@ -1082,9 +1293,132 @@ export function ChatScreen() {
     visibility,
   ]);
 
+  const generateImageFromPrompt = useCallback(async () => {
+    const prompt = input.trim();
+    if (!prompt || isSending || uploadQueue.length > 0) {
+      return;
+    }
+    if (!imageGeneration.enabled) {
+      setChatError(t("image.disabled", "Image generation is currently unavailable."));
+      return;
+    }
+    if (!imageGeneration.canGenerate) {
+      setChatError(
+        imageGeneration.requiresPaidCredits
+          ? t("image.actions.locked.free.description", "You are using free credits. Recharge to generate images.")
+          : t("image.access.locked", "Image generation is available for users with active credits or a paid plan.")
+      );
+      navigation.navigate("Recharge");
+      return;
+    }
+
+    const userMessageId = generateUUID();
+    const assistantMessageId = generateUUID();
+    const sourceImages = attachments
+      .filter((attachment) => attachment.contentType.startsWith("image/"))
+      .map((attachment) => ({
+        url: attachment.url,
+        mediaType: attachment.contentType,
+        filename: attachment.name,
+      }));
+
+    setInput("");
+    setActiveIconPromptId(null);
+    setIconPromptSuggestions([]);
+    setSelectedIconPromptSuggestionKey(null);
+    setAttachments([]);
+    setIsSending(true);
+    setChatError(null);
+    shouldStickToBottomRef.current = true;
+    setMessages((current) => [
+      ...current,
+      {
+        id: userMessageId,
+        role: "user",
+        text: prompt,
+        images: sourceImages,
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        text: "",
+        isImageGenerating: true,
+      },
+    ]);
+    scrollToLatestMessage(true);
+
+    try {
+      const result = await api.generateImage({
+        chatId,
+        visibility,
+        prompt,
+        displayPrompt: prompt,
+        userMessageId,
+        imageUrls: sourceImages.map((image) => image.url),
+      });
+      const assistantMessage = result.assistantMessage;
+      if (!assistantMessage) {
+        throw new Error(t("image.generate.empty", "No image was returned. Try a different prompt."));
+      }
+      const [renderedAssistant] = messagesFromApi([assistantMessage]);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessageId
+            ? renderedAssistant ?? {
+                ...message,
+                text: t("image.generate.empty", "No image was returned. Try a different prompt."),
+                isImageGenerating: false,
+              }
+            : message
+        )
+      );
+      refresh().catch(() => undefined);
+      refreshChatHistory().catch(() => undefined);
+      loadHistoryPage().catch(() => undefined);
+    } catch (error) {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessageId
+            ? {
+                ...message,
+                text:
+                  error instanceof Error
+                    ? error.message
+                    : t("image.generate.failed", "Image generation failed. Please try again."),
+                isImageGenerating: false,
+              }
+            : message
+        )
+      );
+    } finally {
+      setIsSending(false);
+      scrollToLatestMessage(false);
+    }
+  }, [
+    attachments,
+    chatId,
+    imageGeneration.canGenerate,
+    imageGeneration.enabled,
+    imageGeneration.requiresPaidCredits,
+    input,
+    isSending,
+    loadHistoryPage,
+    navigation,
+    refresh,
+    scrollToLatestMessage,
+    t,
+    uploadQueue.length,
+    visibility,
+  ]);
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || isSending) {
+    if (!text || isSending || uploadQueue.length > 0) {
+      return;
+    }
+
+    if (isImageGenerationSelected || attachments.length > 0) {
+      await generateImageFromPrompt();
       return;
     }
 
@@ -1096,6 +1430,10 @@ export function ChatScreen() {
     ).length;
 
     setInput("");
+    setActiveIconPromptId(null);
+    setIconPromptSuggestions([]);
+    setSelectedIconPromptSuggestionKey(null);
+    setInsertedIconPromptText(null);
     setEditingMessageId(null);
     setEditingDraft("");
     setEditingError(null);
@@ -1112,7 +1450,16 @@ export function ChatScreen() {
       ],
       userMessageId,
     });
-  }, [input, isSending, messages, streamUserMessage]);
+  }, [
+    attachments.length,
+    generateImageFromPrompt,
+    input,
+    isImageGenerationSelected,
+    isSending,
+    messages,
+    streamUserMessage,
+    uploadQueue.length,
+  ]);
 
   const beginInlineEdit = useCallback((item: LocalMessage) => {
     if (item.role !== "user" || isSending || editingPendingMessageId) {
@@ -1172,6 +1519,69 @@ export function ChatScreen() {
     setSelectedTextMessage(messageActionTarget);
     setMessageActionTarget(null);
   }, [messageActionTarget]);
+
+  const closeImageViewer = useCallback(() => {
+    if (isDownloadingImage) {
+      return;
+    }
+    setSelectedImage(null);
+    setViewerImageUri(null);
+    setImageDownloadStatus(null);
+  }, [isDownloadingImage]);
+
+  const openImageViewer = useCallback((image: MessageImage) => {
+    setSelectedImage(image);
+    setViewerImageUri(null);
+    setImageDownloadStatus(null);
+    requestAnimationFrame(() => {
+      setViewerImageUri(image.url);
+    });
+  }, []);
+
+  const downloadSelectedImage = useCallback(async () => {
+    if (!selectedImage || isDownloadingImage) {
+      return;
+    }
+
+    setIsDownloadingImage(true);
+    setImageDownloadStatus(null);
+    try {
+      const filename = buildImageDownloadFilename(selectedImage);
+      if (Platform.OS === "web") {
+        const anchor = document.createElement("a");
+        anchor.href = selectedImage.url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setImageDownloadStatus("Download started.");
+        return;
+      }
+
+      const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      if (!directory) {
+        throw new Error("Unable to access device storage.");
+      }
+
+      const fileUri = `${directory}${filename}`;
+      const dataUrl = parseImageDataUrl(selectedImage.url);
+      if (dataUrl) {
+        await FileSystem.writeAsStringAsync(fileUri, dataUrl.base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } else {
+        await FileSystem.downloadAsync(selectedImage.url, fileUri);
+      }
+
+      setImageDownloadStatus(`Saved to ${filename}`);
+    } catch (error) {
+      setImageDownloadStatus(
+        error instanceof Error ? error.message : "Unable to download image."
+      );
+    } finally {
+      setIsDownloadingImage(false);
+    }
+  }, [isDownloadingImage, selectedImage]);
 
   const handleEditMessageFromMenu = useCallback(() => {
     if (!messageActionTarget || messageActionTarget.role !== "user") {
@@ -1267,15 +1677,47 @@ export function ChatScreen() {
   };
 
   const pickAttachment = async () => {
-    await DocumentPicker.getDocumentAsync({
+    if (isSending || uploadQueue.length > 0) {
+      return;
+    }
+    const result = await DocumentPicker.getDocumentAsync({
       copyToCacheDirectory: true,
-      multiple: false,
-      type: [
-        "image/*",
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ],
+      multiple: true,
+      type: ["image/png", "image/jpeg"],
     });
+    if (result.canceled) {
+      return;
+    }
+
+    const assets = result.assets.filter((asset) =>
+      (asset.mimeType ?? "").startsWith("image/")
+    );
+    if (assets.length === 0) {
+      setChatError("Choose a PNG or JPG image.");
+      return;
+    }
+
+    setIsImageGenerationSelected(true);
+    setUploadQueue(assets.map((asset) => asset.name ?? "image"));
+    setChatError(null);
+    try {
+      const uploaded = await Promise.all(
+        assets.map((asset) =>
+          api.uploadFile({
+            uri: asset.uri,
+            name: asset.name ?? `reference-${Date.now()}.jpg`,
+            mimeType: asset.mimeType ?? "image/jpeg",
+          })
+        )
+      );
+      setAttachments((current) => [...current, ...uploaded]);
+    } catch (error) {
+      setChatError(
+        error instanceof Error ? error.message : "Failed to upload image."
+      );
+    } finally {
+      setUploadQueue([]);
+    }
   };
 
   useEffect(() => {
@@ -1332,6 +1774,13 @@ export function ChatScreen() {
     outputRange: ["0deg", "360deg"],
   });
   const isInlineEditing = Boolean(editingMessageId);
+  const shouldShowPromptPills =
+    messages.length === 0 &&
+    !isInlineEditing &&
+    !isLoadingChat &&
+    !isResettingChat;
+  const shouldShowPromptSuggestions =
+    shouldShowPromptPills && iconPromptSuggestions.length > 0;
   const composerBottomOffset = keyboardHeight;
   const visibleBottomPadding =
     keyboardHeight > 0 ? Math.max(insets.bottom, composerBottomPadding) : bottomSafePadding;
@@ -1378,7 +1827,7 @@ export function ChatScreen() {
           >
             <EllipsisVertical color={palette.mutedForeground} size={16} />
           </Pressable>
-        </View>
+          </View>
         {isMenuOpen ? (
           <View
             style={[
@@ -1985,14 +2434,50 @@ export function ChatScreen() {
                     onLongPress={(event) => openMessageActionMenu(item, event)}
                     style={item.role === "user" ? styles.userMessagePressTarget : null}
                   >
-                    <MarkdownMessage
-                      color={palette.foreground}
-                      text={item.text}
-                      variant={item.role === "user" ? "user" : "assistant"}
-                    />
+                    {item.images && item.images.length > 0 ? (
+                      <View
+                        style={[
+                          styles.messageImageGrid,
+                          item.role === "user"
+                            ? styles.userMessageImageGrid
+                            : null,
+                        ]}
+                      >
+                        {item.images.map((image) => (
+                          <Pressable
+                            key={image.url}
+                            onPressIn={() => {
+                              openImageViewer(image);
+                            }}
+                            style={styles.messageImageButton}
+                          >
+                            <RNImage
+                              resizeMode="cover"
+                              source={{ uri: image.url }}
+                              style={[
+                                styles.messageImage,
+                                { backgroundColor: palette.muted },
+                              ]}
+                            />
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                    {item.isImageGenerating ? (
+                      <ImageGenerationWave />
+                    ) : item.text.trim() || !item.images?.length ? (
+                      <MarkdownMessage
+                        color={palette.foreground}
+                        text={item.text}
+                        variant={item.role === "user" ? "user" : "assistant"}
+                      />
+                    ) : null}
                   </Pressable>
                 )}
-                {item.role === "assistant" && isSending && messages.at(-1)?.id === item.id ? (
+                {item.role === "assistant" &&
+                isSending &&
+                !item.isImageGenerating &&
+                messages.at(-1)?.id === item.id ? (
                   <View style={styles.assistantStreamingIndicator}>
                     <ActivityIndicator color={palette.mutedForeground} size="small" />
                   </View>
@@ -2003,17 +2488,23 @@ export function ChatScreen() {
         )}
       />
 
-      {messages.length === 0 && !isInlineEditing ? (
+      {shouldShowPromptPills ? (
         <View
           style={[
-            styles.promptRow,
+            styles.promptOverlay,
             {
-              bottom: bottomAreaHeight + composerBottomOffset + 22,
+              bottom: bottomAreaHeight + composerBottomOffset + 12,
             },
           ]}
         >
+          <View style={styles.promptRow}>
           <Pressable
-            onPress={() => setInput(iconPrompts[0]?.prompt || prompts[0] || primaryPrompt)}
+            onPress={() =>
+              handleIconPromptSelect(
+                iconPrompts[0],
+                prompts[0] || primaryPrompt
+              )
+            }
             style={[
               styles.promptPill,
               { backgroundColor: palette.background, borderColor: palette.border },
@@ -2026,7 +2517,10 @@ export function ChatScreen() {
           </Pressable>
           <Pressable
             onPress={() =>
-              setInput(iconPrompts[1]?.prompt || prompts[1] || secondaryPrompt)
+              handleIconPromptSelect(
+                iconPrompts[1],
+                prompts[1] || secondaryPrompt
+              )
             }
             style={[
               styles.promptPill,
@@ -2038,6 +2532,56 @@ export function ChatScreen() {
               {secondaryPrompt}
             </Text>
           </Pressable>
+          </View>
+          {shouldShowPromptSuggestions ? (
+            <View
+              style={[
+                styles.promptSuggestions,
+                { backgroundColor: palette.background },
+              ]}
+            >
+              {iconPromptSuggestions.map((suggestion, index) => (
+                (() => {
+                  const suggestionKey = getIconPromptSuggestionKey(
+                    suggestion,
+                    index
+                  );
+                  const isSelected =
+                    selectedIconPromptSuggestionKey === suggestionKey;
+                  return (
+                    <Pressable
+                      key={suggestionKey}
+                      onPress={() =>
+                        handleIconPromptSuggestionSelect(suggestion, index)
+                      }
+                      style={[
+                        styles.promptSuggestionButton,
+                        isSelected
+                          ? { backgroundColor: palette.muted }
+                          : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.promptSuggestionText,
+                          {
+                            color: isSelected
+                              ? palette.foreground
+                              : palette.mutedForeground,
+                          },
+                        ]}
+                      >
+                        {suggestion.label}
+                      </Text>
+                      {isSelected ? (
+                        <CheckCircle color={palette.primary} size={16} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })()
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -2084,22 +2628,126 @@ export function ChatScreen() {
             multiline
             onChangeText={setInput}
             onFocus={closeComposerLanguageMenu}
-            placeholder={inputPlaceholder}
+            placeholder={composerPlaceholder}
             placeholderTextColor={palette.mutedForeground}
             style={[styles.input, { color: palette.foreground }]}
             value={input}
           />
+          {attachments.length > 0 || uploadQueue.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.attachmentPreviewScroller}
+              contentContainerStyle={styles.attachmentPreviewRow}
+            >
+              {attachments.map((attachment) => (
+                <View
+                  key={attachment.url}
+                  style={[
+                    styles.attachmentPreview,
+                    { borderColor: palette.border, backgroundColor: palette.muted },
+                  ]}
+                >
+                  <RNImage
+                    source={{ uri: attachment.url }}
+                    style={styles.attachmentPreviewImage}
+                  />
+                  <Pressable
+                    onPress={() =>
+                      setAttachments((current) =>
+                        current.filter((item) => item.url !== attachment.url)
+                      )
+                    }
+                    style={[
+                      styles.attachmentRemoveButton,
+                      { backgroundColor: palette.background },
+                    ]}
+                  >
+                    <X color={palette.foreground} size={13} />
+                  </Pressable>
+                </View>
+              ))}
+              {uploadQueue.map((filename) => (
+                <View
+                  key={filename}
+                  style={[
+                    styles.attachmentPreview,
+                    styles.attachmentUploading,
+                    { borderColor: palette.border, backgroundColor: palette.muted },
+                  ]}
+                >
+                  <ImageIcon color={palette.mutedForeground} size={18} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.attachmentUploadingText,
+                      { color: palette.mutedForeground },
+                    ]}
+                  >
+                    {filename}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
           <View style={styles.composerToolbar}>
             <Pressable
+              disabled={isSending || uploadQueue.length > 0}
               onPress={() => {
                 closeComposerLanguageMenu();
                 void pickAttachment();
               }}
-              style={styles.toolbarItem}
+              style={[
+                styles.toolbarItem,
+                isSending || uploadQueue.length > 0 ? styles.disabledButton : null,
+              ]}
             >
-              <Paperclip color={palette.foreground} size={18} />
+              {uploadQueue.length > 0 ? (
+                <ActivityIndicator color={palette.foreground} size="small" />
+              ) : (
+                <Paperclip color={palette.foreground} size={18} />
+              )}
             </Pressable>
-            <Pressable style={styles.toolbarItem}>
+            <Pressable
+              disabled={isSending || uploadQueue.length > 0}
+              onPress={() => {
+                if (!imageGeneration.enabled) {
+                  setChatError(t("image.disabled", "Image generation is currently unavailable."));
+                  return;
+                }
+                if (!imageGeneration.canGenerate) {
+                  navigation.navigate("Recharge");
+                  return;
+                }
+                if (isImageGenerationSelected) {
+                  disableImageGenerationMode();
+                  return;
+                }
+                if (imagePromptAction) {
+                  handleIconPromptSelect(imagePromptAction, imagePromptAction.prompt);
+                  return;
+                }
+                setIsImageGenerationSelected(true);
+                setActiveIconPromptId(null);
+                setIconPromptSuggestions([]);
+                setSelectedIconPromptSuggestionKey(null);
+                setInsertedIconPromptText(null);
+              }}
+              style={[
+                styles.toolbarItem,
+                isImageGenerationSelected
+                  ? [
+                      styles.imageModeActive,
+                      {
+                        backgroundColor: palette.muted,
+                        borderColor: palette.border,
+                      },
+                    ]
+                  : isSending || uploadQueue.length > 0
+                    ? styles.disabledButton
+                  : null,
+              ]}
+            >
               <ImageIcon color={palette.foreground} size={16} />
               <Text style={[styles.toolbarText, { color: palette.foreground }]}>
                 Generate image
@@ -2128,6 +2776,7 @@ export function ChatScreen() {
             </Pressable>
             <View style={styles.toolbarSpacer} />
             <Pressable
+              disabled={!isSending && (!input.trim() || uploadQueue.length > 0)}
               onPress={() => {
                 closeComposerLanguageMenu();
                 if (isSending) {
@@ -2139,13 +2788,16 @@ export function ChatScreen() {
               style={[
                 styles.sendButton,
                 {
-                  backgroundColor: input.trim() ? palette.primary : palette.muted,
+                  backgroundColor:
+                    input.trim() && uploadQueue.length === 0
+                      ? palette.primary
+                      : palette.muted,
                 },
               ]}
             >
               {isSending ? (
                 <Square color={palette.primaryForeground} size={16} />
-              ) : input.trim() ? (
+              ) : input.trim() && uploadQueue.length === 0 ? (
                 <ArrowUp color={palette.primaryForeground} size={18} />
               ) : (
                 <ArrowUp color={palette.mutedForeground} size={18} />
@@ -2354,6 +3006,59 @@ export function ChatScreen() {
           </View>
         </View>
       </Modal>
+      {selectedImage ? (
+        <View style={styles.imageViewerOverlay}>
+          <Pressable
+            disabled={isDownloadingImage}
+            onPress={closeImageViewer}
+            style={styles.imageViewerBackdrop}
+          />
+          <View style={styles.imageViewerContent}>
+            <View style={styles.imageViewerChrome}>
+              <Pressable
+                disabled={isDownloadingImage}
+                onPress={closeImageViewer}
+                style={styles.imageViewerIconButton}
+              >
+                <X color="#fff" size={23} />
+              </Pressable>
+              <Pressable
+                disabled={isDownloadingImage}
+                onPress={downloadSelectedImage}
+                style={styles.imageViewerIconButton}
+              >
+                {isDownloadingImage ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Download color="#fff" size={21} />
+                )}
+              </Pressable>
+            </View>
+            {viewerImageUri ? (
+              <ZoomableImage
+                key={viewerImageUri}
+                uri={viewerImageUri}
+              />
+            ) : (
+              <View style={styles.imageViewerImageStage}>
+                <ActivityIndicator color="#fff" size="large" />
+              </View>
+            )}
+          </View>
+          {imageDownloadStatus ? (
+            <View
+              style={[
+                styles.imageViewerStatus,
+                { bottom: Math.max(insets.bottom + 22, 36) },
+              ]}
+            >
+              <Text style={styles.imageViewerStatusText}>
+                {imageDownloadStatus}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
       <AppSidebar
         onClose={closeSidebar}
         visible={isSidebarInteractive}
@@ -2406,15 +3111,49 @@ function groupHistoryByDate(history: ChatHistoryItem[]): GroupedHistory {
   );
 }
 
+function getIconPromptSuggestionKey(
+  suggestion: IconPromptSuggestion,
+  index: number
+) {
+  return `${suggestion.label}-${suggestion.prompt}-${index}`;
+}
+
 function messagesFromApi(messages: ChatMessage[]): LocalMessage[] {
   return messages
     .filter((message) => message.role === "user" || message.role === "assistant")
-    .map((message) => ({
-      id: message.id,
-      role: message.role as "user" | "assistant",
-      text: textFromMessage(message),
-      createdAt: message.createdAt,
-    }));
+    .map((message) => {
+      const images =
+        message.parts
+          ?.filter(isImageFilePart)
+          .map((part) => ({
+            url: part.url as string,
+            mediaType:
+              typeof part.mediaType === "string" ? part.mediaType : null,
+            filename:
+              typeof part.filename === "string" ? part.filename : null,
+          })) ?? [];
+
+      return {
+        id: message.id,
+        role: message.role as "user" | "assistant",
+        text: textFromMessage(message),
+        images,
+        createdAt: message.createdAt,
+      };
+    });
+}
+
+function isImageFilePart(
+  part: ChatMessagePart
+): part is Extract<ChatMessagePart, { type: "file" }> {
+  if (part.type !== "file" || typeof part.url !== "string") {
+    return false;
+  }
+  return (
+    typeof part.mediaType !== "string" ||
+    part.mediaType.startsWith("image/") ||
+    part.url.startsWith("data:image/")
+  );
 }
 
 function mergeMessagePages(
@@ -2431,6 +3170,198 @@ function mergeMessagePages(
     merged.push(message);
   }
   return merged;
+}
+
+function parseImageDataUrl(url: string) {
+  const match = url.match(/^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/i);
+  if (!match) {
+    return null;
+  }
+  return {
+    mediaType: match[1].toLowerCase(),
+    base64: match[2],
+  };
+}
+
+function buildImageDownloadFilename(image: MessageImage) {
+  const baseName =
+    image.filename?.replace(/\.[a-z0-9]+$/i, "") || "khasigpt-image";
+  const safeBaseName =
+    baseName
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_-]/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^[-_]+|[-_]+$/g, "") || "khasigpt-image";
+  const dataUrl = parseImageDataUrl(image.url);
+  const mediaType = image.mediaType ?? dataUrl?.mediaType ?? "";
+  const extension = mediaType.includes("png") ? "png" : "jpg";
+  return `${safeBaseName}-${Date.now()}.${extension}`;
+}
+
+function ZoomableImage({ uri }: { uri: string }) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  const reset = () => {
+    "worklet";
+    scale.value = withSpring(1, { damping: 18, stiffness: 180 });
+    savedScale.value = 1;
+    translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
+    translateY.value = withSpring(0, { damping: 18, stiffness: 180 });
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+  };
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event) => {
+      const nextScale = Math.min(Math.max(savedScale.value * event.scale, 1), 4);
+      scale.value = nextScale;
+    })
+    .onEnd(() => {
+      if (scale.value <= 1.02) {
+        reset();
+        return;
+      }
+      savedScale.value = scale.value;
+    });
+
+  const panGesture = Gesture.Pan()
+    .minDistance(2)
+    .onUpdate((event) => {
+      if (scale.value <= 1) {
+        return;
+      }
+      translateX.value = savedTranslateX.value + event.translationX;
+      translateY.value = savedTranslateY.value + event.translationY;
+    })
+    .onEnd(() => {
+      if (scale.value <= 1) {
+        reset();
+        return;
+      }
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDelay(220)
+    .onEnd(() => {
+      if (scale.value > 1.02) {
+        reset();
+        return;
+      }
+      scale.value = withSpring(2, { damping: 18, stiffness: 180 });
+      savedScale.value = 2;
+      translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
+      translateY.value = withSpring(0, { damping: 18, stiffness: 180 });
+      savedTranslateX.value = 0;
+      savedTranslateY.value = 0;
+    });
+
+  const composedGesture = Gesture.Simultaneous(
+    doubleTapGesture,
+    Gesture.Simultaneous(pinchGesture, panGesture)
+  );
+
+  const imageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={composedGesture}>
+      <View style={styles.imageViewerImageStage}>
+        <Reanimated.Image
+          fadeDuration={0}
+          resizeMode="contain"
+          source={{ uri }}
+          style={[styles.imageViewerImage, imageStyle]}
+        />
+      </View>
+    </GestureDetector>
+  );
+}
+
+function ImageGenerationWave() {
+  const { palette } = useAppTheme();
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 920,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 920,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [shimmer]);
+
+  const opacity = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.62, 1],
+  });
+  const translateX = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-18, 18],
+  });
+  const scale = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.985, 1.015],
+  });
+
+  return (
+    <View style={styles.imageGenerationWave}>
+      <View
+        style={[
+          styles.imageGenerationSkeletonFrame,
+          { backgroundColor: palette.muted, borderColor: palette.border },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.imageGenerationSkeleton,
+            {
+              backgroundColor: palette.mutedForeground,
+              opacity,
+              transform: [{ translateX }, { scale }],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.imageGenerationHighlight,
+            {
+              opacity,
+              transform: [{ translateX }],
+            },
+          ]}
+        />
+      </View>
+      <Text style={[styles.imageGenerationText, { color: palette.mutedForeground }]}>
+        Generating image...
+      </Text>
+    </View>
+  );
 }
 
 function MarkdownMessage({
@@ -2910,6 +3841,125 @@ const styles = StyleSheet.create({
   assistantStreamingIndicator: {
     paddingTop: 8,
   },
+  messageImageGrid: {
+    width: "100%",
+    gap: 8,
+    marginBottom: 8,
+  },
+  userMessageImageGrid: {
+    alignItems: "flex-end",
+  },
+  messageImageButton: {
+    borderRadius: 12,
+  },
+  messageImage: {
+    width: 238,
+    height: 238,
+    maxWidth: "100%",
+    borderRadius: 12,
+  },
+  imageGenerationWave: {
+    width: 246,
+    maxWidth: "100%",
+    gap: 12,
+    paddingVertical: 4,
+  },
+  imageGenerationSkeletonFrame: {
+    borderWidth: 1,
+    height: 154,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  imageGenerationSkeleton: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  imageGenerationHighlight: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: "38%",
+    width: "24%",
+    backgroundColor: "rgba(255,255,255,0.58)",
+  },
+  imageGenerationText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  imageViewerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
+    elevation: 120,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 24,
+  },
+  imageViewerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  imageViewerContent: {
+    width: "100%",
+    height: "88%",
+    zIndex: 1,
+    gap: 8,
+  },
+  imageViewerChrome: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  imageViewerIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  imageViewerDownloadButton: {
+    minHeight: 42,
+    borderRadius: 21,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    backgroundColor: "#fff",
+  },
+  imageViewerDownloadText: {
+    color: "#111827",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  imageViewerImageStage: {
+    width: "100%",
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  imageViewerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  imageViewerStatus: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    minHeight: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  imageViewerStatusText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   markdownRoot: {
     gap: 8,
   },
@@ -2997,13 +4047,38 @@ const styles = StyleSheet.create({
   messagesTopHint: {
     fontSize: 12,
   },
-  promptRow: {
+  promptOverlay: {
     position: "absolute",
     left: 0,
     right: 0,
+    alignItems: "center",
+    gap: 16,
+  },
+  promptRow: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 12,
+  },
+  promptSuggestions: {
+    alignSelf: "stretch",
+    marginHorizontal: 10,
+    borderRadius: 8,
+    paddingVertical: 6,
+  },
+  promptSuggestionButton: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  promptSuggestionText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
   promptPill: {
     height: 41,
@@ -3069,6 +4144,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlignVertical: "top",
   },
+  attachmentPreviewScroller: {
+    marginBottom: 10,
+    maxHeight: 72,
+  },
+  attachmentPreviewRow: {
+    gap: 8,
+    alignItems: "center",
+    paddingRight: 8,
+  },
+  attachmentPreview: {
+    width: 64,
+    height: 64,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachmentPreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  attachmentRemoveButton: {
+    position: "absolute",
+    right: 4,
+    top: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachmentUploading: {
+    gap: 4,
+    paddingHorizontal: 5,
+  },
+  attachmentUploadingText: {
+    maxWidth: 54,
+    fontSize: 10,
+  },
   composerToolbar: {
     flexDirection: "row",
     alignItems: "center",
@@ -3083,6 +4198,11 @@ const styles = StyleSheet.create({
   toolbarText: {
     fontSize: 15,
     fontWeight: "500",
+  },
+  imageModeActive: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 8,
   },
   toolbarSpacer: {
     flex: 1,

@@ -12,6 +12,7 @@ import {
 import { useAuth } from "@/auth/AuthContext";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { CalculatorScreen } from "@/screens/CalculatorScreen";
+import { ForumScreen } from "@/screens/ForumScreen";
 import { JobsScreen } from "@/screens/JobsScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { TranslateScreen } from "@/screens/TranslateScreen";
@@ -27,7 +28,6 @@ const SubscriptionsWebScreen = createWebRouteScreen(
   "Subscriptions"
 );
 const RechargeWebScreen = createWebRouteScreen("/recharge", "Upgrade Plan", "Recharge");
-const ForumWebScreen = createWebRouteScreen("/forum", "Community Forum", "Forum");
 const AboutWebScreen = createWebRouteScreen("/about", "About Us", "About");
 const ContactWebScreen = createWebRouteScreen("/about#contact", "Contact Us", "Contact");
 const PrivacyPolicyWebScreen = createWebRouteScreen(
@@ -101,7 +101,7 @@ export function MainTabs() {
         <Tab.Screen component={CalculatorScreen} name="Calculator" />
       ) : null}
       {featureAccess?.forum ? (
-        <Tab.Screen component={ForumWebScreen} name="Forum" />
+        <Tab.Screen component={ForumScreen} name="Forum" />
       ) : null}
       <Tab.Screen component={SubscriptionsWebScreen} name="Subscriptions" />
       <Tab.Screen component={RechargeWebScreen} name="Recharge" />

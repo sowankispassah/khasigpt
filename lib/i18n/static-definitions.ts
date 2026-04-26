@@ -757,8 +757,13 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "image.prompt.placeholder",
-    defaultText: "A cinematic close-up of a banana astronaut...",
+    defaultText: "Enter image prompt here...",
     description: "Placeholder text for the image generation prompt field.",
+  },
+  {
+    key: "lyrics.prompt.placeholder",
+    defaultText: "Enter lyrics details...",
+    description: "Placeholder text for the lyrics prompt field.",
   },
   {
     key: "image.prompt.helper",

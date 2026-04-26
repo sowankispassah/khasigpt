@@ -75,6 +75,7 @@ export type BalanceSummary = {
   } | null;
 };
 
+
 export type BootstrapPayload = {
   session: SessionPayload;
   i18n: {
@@ -158,6 +159,12 @@ export type JobChatCard = {
 
 export type ChatMessagePart =
   | { type: "text"; text: string }
+  | {
+      type: "file";
+      url: string;
+      mediaType?: string | null;
+      filename?: string | null;
+    }
   | { type: "data-jobCards"; data?: { jobs?: JobChatCard[] } }
   | {
       type: "data-jobTitleReference";
@@ -174,6 +181,12 @@ export type ChatMessage = {
   parts?: ChatMessagePart[];
   content?: string;
   createdAt?: string;
+};
+
+export type UploadedAttachment = {
+  url: string;
+  name: string;
+  contentType: string;
 };
 
 export type JobListItem = {
@@ -207,19 +220,95 @@ export type JobDetailsPayload = {
   pdfPreviewImageUrl: string | null;
 };
 
+export type ForumReactionType = "like" | "insightful" | "support";
+export type ForumThreadStatus = "open" | "resolved" | "archived";
+
+export type ForumUserSummary = {
+  id: string;
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  role: string | null;
+  isAdmin: boolean;
+};
+
 export type ForumCategory = {
   id: string;
+  slug: string;
   name: string;
+  description?: string | null;
+  icon?: string | null;
+  position?: number;
+  isLocked?: boolean;
+  threadCount?: number;
+  lastActivityAt?: string | null;
+};
+
+export type ForumTag = {
+  id: string;
   slug: string;
   description?: string | null;
+  label: string;
+  usageCount?: number;
 };
 
 export type ForumThread = {
   id: string;
   slug: string;
   title: string;
+  summary?: string | null;
   excerpt?: string | null;
-  postCount?: number;
-  viewCount?: number;
-  createdAt?: string;
+  status?: ForumThreadStatus;
+  isPinned?: boolean;
+  isLocked?: boolean;
+  totalReplies?: number;
+  viewCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastRepliedAt: string | null;
+  category: {
+    id: string;
+    slug: string;
+    name: string;
+  };
+  author: ForumUserSummary;
+  lastResponder: ForumUserSummary | null;
+  tags: Array<{
+    id: string;
+    slug: string;
+    label: string;
+  }>;
+};
+
+export type ForumPost = {
+  id: string;
+  threadId: string;
+  author: ForumUserSummary;
+  content: string;
+  isEdited: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  parentPostId: string | null;
+  reactions: Record<ForumReactionType, number>;
+};
+
+export type ForumOverview = {
+  categories: ForumCategory[];
+  tags: ForumTag[];
+  threads: ForumThread[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  activeCategoryId: string | null;
+  activeTagId: string | null;
+  subscribedThreadIds: string[];
+};
+
+export type ForumThreadDetail = {
+  thread: ForumThread;
+  posts: ForumPost[];
+  isSubscribed: boolean;
+  viewerReactions: Record<string, ForumReactionType[]>;
 };
