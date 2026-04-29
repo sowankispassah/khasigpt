@@ -2,6 +2,7 @@ import "server-only";
 
 import { auth } from "@/app/(auth)/auth";
 import type { UserRole } from "@/app/(auth)/auth";
+import type { User } from "@/lib/db/schema";
 import { getUserById } from "@/lib/db/queries";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
 
@@ -36,6 +37,10 @@ export async function getMobileSession(request: Request) {
     return null;
   }
 
+  return createMobileSessionFromUser(user);
+}
+
+export function createMobileSessionFromUser(user: User) {
   const computedName = [user.firstName, user.lastName]
     .filter(Boolean)
     .join(" ")

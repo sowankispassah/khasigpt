@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { getUser } from "@/lib/db/queries";
+import { createMobileSessionFromUser } from "@/lib/mobile-auth-session";
 import { createMobileAuthToken } from "@/lib/mobile-auth-token";
 import {
   incrementRateLimit,
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       token: createMobileAuthToken(user.id, { persistent: true }),
+      session: createMobileSessionFromUser(user),
     },
     {
       headers: {
