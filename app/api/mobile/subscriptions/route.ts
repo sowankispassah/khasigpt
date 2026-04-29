@@ -118,8 +118,22 @@ export async function GET(request: Request) {
 
   const [balance, rawDailyUsage, sessionUsage] = await Promise.all([
     getUserBalanceSummary(session.user.id),
-    getDailyTokenUsageForUser(session.user.id, range),
-    getSessionTokenUsageForUser(session.user.id, { sortBy: sessionSort }),
+    getDailyTokenUsageForUser(session.user.id, range).catch((error) => {
+      console.error(
+        "[api/mobile/subscriptions] Failed to load daily usage.",
+        error
+      );
+      return [];
+    }),
+    getSessionTokenUsageForUser(session.user.id, { sortBy: sessionSort }).catch(
+      (error) => {
+        console.error(
+          "[api/mobile/subscriptions] Failed to load session usage.",
+          error
+        );
+        return [];
+      }
+    ),
   ]);
 
   const now = new Date();
