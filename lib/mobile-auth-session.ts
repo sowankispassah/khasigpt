@@ -17,9 +17,16 @@ function getBearerToken(request: Request) {
 }
 
 export async function getMobileSession(request: Request) {
-  const cookieSession = await auth();
-  if (cookieSession?.user?.id) {
-    return cookieSession;
+  try {
+    const cookieSession = await auth();
+    if (cookieSession?.user?.id) {
+      return cookieSession;
+    }
+  } catch (error) {
+    console.warn(
+      "[mobile-auth-session] Cookie session lookup failed; falling back to bearer token.",
+      error
+    );
   }
 
   const token = getBearerToken(request);
