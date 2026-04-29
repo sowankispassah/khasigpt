@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const TOKEN_TTL_MS = 2 * 60 * 1000;
+const PERSISTENT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PREVIEW_TOKEN_TTL_MS = 5 * 60 * 1000;
 
 function base64UrlEncode(value: string | Buffer) {
@@ -34,11 +35,16 @@ function sign(value: string) {
   return base64UrlEncode(createHmac("sha256", getSecret()).update(value).digest());
 }
 
-export function createMobileAuthToken(userId: string) {
+export function createMobileAuthToken(
+  userId: string,
+  options?: { persistent?: boolean }
+) {
   const payload = base64UrlEncode(
     JSON.stringify({
       sub: userId,
-      exp: Date.now() + TOKEN_TTL_MS,
+      exp:
+        Date.now() +
+        (options?.persistent ? PERSISTENT_TOKEN_TTL_MS : TOKEN_TTL_MS),
     })
   );
   return `${payload}.${sign(payload)}`;
