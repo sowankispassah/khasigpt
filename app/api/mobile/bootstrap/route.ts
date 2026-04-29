@@ -41,7 +41,8 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const MOBILE_BOOTSTRAP_TIMEOUT_MS = 20_000;
+const MOBILE_BOOTSTRAP_TIMEOUT_MS = 12_000;
+const MOBILE_BOOTSTRAP_DEFERRED_TIMEOUT_MS = 8_000;
 
 const serializeDate = (value: Date | string | null | undefined) =>
   value instanceof Date ? value.toISOString() : value ?? null;
@@ -73,6 +74,11 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const { searchParams } = new URL(request.url);
   const requestedLanguage = searchParams.get("lang")?.trim().toLowerCase() ?? null;
+  const phase =
+    searchParams.get("phase")?.trim().toLowerCase() === "startup"
+      ? "startup"
+      : "full";
+  const isStartupPhase = phase === "startup";
   const preferredLanguage = requestedLanguage || cookieStore.get("lang")?.value || null;
   const role = session?.user?.role ?? null;
 
@@ -145,16 +151,26 @@ export async function GET(request: Request) {
       TRANSLATE_PROVIDER_MODE_SETTING_KEY,
       null
     ),
-    withTimeout(
-      listTranslationFeatureLanguagesWithModels(),
-      MOBILE_BOOTSTRAP_TIMEOUT_MS
-    ).catch(() => []),
-    session?.user
-      ? listPricingPlans({ includeInactive: false }).catch(() => [])
+    isStartupPhase
+      ? Promise.resolve([])
+      : withTimeout(
+          listTranslationFeatureLanguagesWithModels(),
+          MOBILE_BOOTSTRAP_DEFERRED_TIMEOUT_MS
+        ).catch(() => []),
+    session?.user && !isStartupPhase
+      ? withTimeout(
+          listPricingPlans({ includeInactive: false }),
+          MOBILE_BOOTSTRAP_DEFERRED_TIMEOUT_MS
+        ).catch(() => [])
       : Promise.resolve([]),
-    safeAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY, null),
-    session?.user
-      ? getUserBalanceSummary(session.user.id).catch(() => null)
+    isStartupPhase
+      ? Promise.resolve(null)
+      : safeAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY, null),
+    session?.user && !isStartupPhase
+      ? withTimeout(
+          getUserBalanceSummary(session.user.id),
+          MOBILE_BOOTSTRAP_DEFERRED_TIMEOUT_MS
+        ).catch(() => null)
       : Promise.resolve(null),
     session?.user
       ? getImageGenerationAccess({
