@@ -2,13 +2,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import { createForumThread, getForumOverview } from "@/lib/forum/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ const createThreadSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }

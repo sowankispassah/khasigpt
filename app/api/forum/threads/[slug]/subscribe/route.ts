@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
@@ -12,6 +11,7 @@ import {
   resolveForumThreadId,
   toggleForumSubscription,
 } from "@/lib/forum/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 const subscriptionSchema = z.object({
   subscribe: z.boolean(),
@@ -27,7 +27,7 @@ export async function POST(
   request: NextRequest,
   context: ThreadSubscribeRouteContext
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }

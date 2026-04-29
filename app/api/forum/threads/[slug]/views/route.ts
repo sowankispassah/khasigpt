@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
@@ -11,6 +10,7 @@ import {
   recordForumThreadView,
   resolveForumThreadId,
 } from "@/lib/forum/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 type ThreadViewRouteContext = {
   params: Promise<{
@@ -19,10 +19,10 @@ type ThreadViewRouteContext = {
 };
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   context: ThreadViewRouteContext
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }

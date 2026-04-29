@@ -2,13 +2,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import { createForumPost } from "@/lib/forum/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 const createPostSchema = z.object({
   content: z.string().min(8),
@@ -25,7 +25,7 @@ export async function POST(
   request: NextRequest,
   context: ThreadPostRouteContext
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }

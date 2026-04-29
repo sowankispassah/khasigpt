@@ -2,13 +2,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import { toggleForumPostReaction } from "@/lib/forum/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 const reactionSchema = z.object({
   type: z.enum(["like", "insightful", "support"]),
@@ -21,7 +21,7 @@ type PostRouteContext = {
 };
 
 export async function POST(request: NextRequest, context: PostRouteContext) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }

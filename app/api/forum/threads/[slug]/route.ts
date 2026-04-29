@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
 import {
   forumDisabledResponse,
   forumErrorResponse,
@@ -13,14 +12,15 @@ import {
   getForumThreadDetail,
   updateForumThreadStatus,
 } from "@/lib/forum/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
     return forumDisabledResponse();
   }
@@ -56,7 +56,7 @@ export async function PATCH(
   context: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await auth();
+    const session = await getMobileSession(request);
     if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
       return forumDisabledResponse();
     }
@@ -89,11 +89,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await auth();
+    const session = await getMobileSession(request);
     if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
       return forumDisabledResponse();
     }
