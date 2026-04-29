@@ -528,10 +528,6 @@ export async function ensureOAuthUser(
       throw new ChatSDKError("forbidden:auth", "account_inactive");
     }
 
-    if (existing.authProvider !== "google") {
-      throw new ChatSDKError("forbidden:auth", "account_link_required");
-    }
-
     let userRecord = existing;
 
     const activeProfileImage = await getActiveUserProfileImage({
