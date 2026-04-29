@@ -41,7 +41,7 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const MOBILE_BOOTSTRAP_TIMEOUT_MS = 8_000;
+const MOBILE_BOOTSTRAP_TIMEOUT_MS = 20_000;
 
 const serializeDate = (value: Date | string | null | undefined) =>
   value instanceof Date ? value.toISOString() : value ?? null;
@@ -99,17 +99,28 @@ export async function GET(request: Request) {
     getTranslationBundle(preferredLanguage),
     loadChatModels(),
     withTimeout(listLanguagesWithSettings(), MOBILE_BOOTSTRAP_TIMEOUT_MS).catch(
-      () => []
+      (error) => {
+        console.error("[api/mobile/bootstrap] Failed to load chat languages.", error);
+        return [];
+      }
     ),
     session?.user
-      ? loadSuggestedPrompts(preferredLanguage, session.user.role).catch(
-          () => []
-        )
+      ? withTimeout(
+          loadSuggestedPrompts(preferredLanguage, session.user.role),
+          MOBILE_BOOTSTRAP_TIMEOUT_MS
+        ).catch((error) => {
+          console.error("[api/mobile/bootstrap] Failed to load prompts.", error);
+          return [];
+        })
       : Promise.resolve([]),
     session?.user
-      ? loadIconPromptActions(preferredLanguage, session.user.role).catch(
-          () => []
-        )
+      ? withTimeout(
+          loadIconPromptActions(preferredLanguage, session.user.role),
+          MOBILE_BOOTSTRAP_TIMEOUT_MS
+        ).catch((error) => {
+          console.error("[api/mobile/bootstrap] Failed to load icon prompts.", error);
+          return [];
+        })
       : Promise.resolve([]),
     safeAppSetting<string | boolean | null>(
       CALCULATOR_FEATURE_FLAG_KEY,
@@ -185,6 +196,19 @@ export async function GET(request: Request) {
       isActive: language.isActive,
       syncUiLanguage: language.syncUiLanguage,
     }));
+  const chatLanguages =
+    activeChatLanguages.length > 0
+      ? activeChatLanguages
+      : translationBundle.languages
+          .filter((language) => language.isActive)
+          .map((language) => ({
+            id: language.id,
+            code: language.code,
+            name: language.name,
+            isDefault: language.isDefault,
+            isActive: language.isActive,
+            syncUiLanguage: language.syncUiLanguage,
+          }));
 
   const response = NextResponse.json(
     {
@@ -205,7 +229,7 @@ export async function GET(request: Request) {
         })),
       },
       chat: {
-        languages: activeChatLanguages,
+        languages: chatLanguages,
         suggestedPrompts,
         iconPromptActions,
         imageGeneration: imageGenerationAccess

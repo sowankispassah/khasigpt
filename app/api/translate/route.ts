@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import {
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
 } from "@/lib/constants";
 import { getAppSetting, getLastKnownAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
@@ -31,7 +31,7 @@ const TRANSLATE_SETTING_TIMEOUT_MS = 5_000;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
 
   if (!session?.user) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });

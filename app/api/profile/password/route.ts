@@ -1,9 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import { createAuditLogEntry, updateUserPassword } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ const passwordSchema = z
   });
 
 export async function PATCH(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }

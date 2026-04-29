@@ -2,10 +2,10 @@ import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/app/(auth)/auth";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
@@ -47,7 +47,7 @@ function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
