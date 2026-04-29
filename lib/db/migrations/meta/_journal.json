@@ -355,8 +355,85 @@
     {
       "idx": 50,
       "version": "7",
+      "when": 1765238400001,
+      "tag": "0049_jobs_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
       "when": 1765238400000,
       "tag": "0049_prelaunch_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1765238400002,
+      "tag": "0050_jobs_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1765238400003,
+      "tag": "0051_invite_assigned_to_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1765238400004,
+      "tag": "0052_invite_redeemer_block",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1765238400005,
+      "tag": "0053_jobs_pdf_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1765238400006,
+      "tag": "0054_jobs_scraper_reliability",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1765238400007,
+      "tag": "0055_jobs_rag_metadata_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1765238400008,
+      "tag": "0056_rag_retrieval_log_if_missing",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1765238400009,
+      "tag": "0057_translation_feature_languages",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1765238400010,
+      "tag": "0058_translation_feature_speech_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1765238400011,
+      "tag": "0059_google_play_billing",
       "breakpoints": true
     }
   ]

@@ -28,6 +28,7 @@ import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -262,6 +263,8 @@ export async function GET(request: Request) {
           name: plan.name,
           description: plan.description,
           priceInPaise: plan.priceInPaise,
+          androidProductId:
+            plan.priceInPaise > 0 ? getAndroidProductIdForPlan(plan) : null,
           tokenAllowance: plan.tokenAllowance,
           billingCycleDays: plan.billingCycleDays,
           isActive: plan.isActive,

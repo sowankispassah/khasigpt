@@ -21,14 +21,44 @@ export async function GET() {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const [plans, balance, recommendedPlanId] = await Promise.all([
+  const [plans, balance, recommendedPlanSetting] = await Promise.all([
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
   ]);
 
+  const sortedPlans = [...plans].sort((a, b) => {
+    if (a.priceInPaise === b.priceInPaise) {
+      return a.tokenAllowance - b.tokenAllowance;
+    }
+    return a.priceInPaise - b.priceInPaise;
+  });
+
+  let recommendedPlanId: string | null =
+    recommendedPlanSetting &&
+    sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
+      ? recommendedPlanSetting
+      : null;
+
+  if (!recommendedPlanId) {
+    let highestPrice = Number.NEGATIVE_INFINITY;
+    let highestAllowance = Number.NEGATIVE_INFINITY;
+    for (const plan of sortedPlans) {
+      if (
+        plan.priceInPaise > highestPrice ||
+        (plan.priceInPaise === highestPrice &&
+          plan.tokenAllowance > highestAllowance)
+      ) {
+        recommendedPlanId = plan.id;
+        highestPrice = plan.priceInPaise;
+        highestAllowance = plan.tokenAllowance;
+      }
+    }
+  }
+
   return NextResponse.json(
     {
+      activePlanId: balance.plan?.id ?? null,
       recommendedPlanId,
       balance: {
         tokensRemaining: balance.tokensRemaining,
@@ -48,7 +78,7 @@ export async function GET() {
             }
           : null,
       },
-      plans: plans.map((plan) => ({
+      plans: sortedPlans.map((plan) => ({
         id: plan.id,
         name: plan.name,
         description: plan.description,

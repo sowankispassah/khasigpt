@@ -1,7 +1,7 @@
 import { getDownloadUrl } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
+import { auth, unstable_update } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   getActiveUserProfileImage,
@@ -24,6 +24,20 @@ const profilePatchSchema = z.object({
   firstName: z.string().trim().min(1).max(64).optional(),
   lastName: z.string().trim().min(1).max(64).optional(),
 });
+
+function isAtLeast13YearsOld(dateString: string) {
+  const dob = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(dob.getTime())) {
+    return false;
+  }
+  const today = new Date();
+  const minAllowed = new Date(
+    today.getFullYear() - 13,
+    today.getMonth(),
+    today.getDate()
+  );
+  return dob <= minAllowed;
+}
 
 async function getAvatar(userId: string) {
   const activeImage = await getActiveUserProfileImage({ userId });
@@ -113,6 +127,13 @@ export async function PATCH(request: Request) {
     typeof parsed.data.dateOfBirth !== "undefined" &&
     parsed.data.dateOfBirth !== currentUser.dateOfBirth;
 
+  if (shouldUpdateDateOfBirth && !isAtLeast13YearsOld(dateOfBirth)) {
+    return NextResponse.json(
+      { error: "You must be at least 13 years old to use this service." },
+      { status: 400 }
+    );
+  }
+
   const updated =
     shouldUpdateDateOfBirth
       ? await updateUserProfile({
@@ -136,6 +157,17 @@ export async function PATCH(request: Request) {
     subjectUserId: session.user.id,
     ...clientInfo,
   });
+
+  await unstable_update({
+    user: {
+      dateOfBirth: updated?.dateOfBirth ?? dateOfBirth,
+      firstName: updated?.firstName ?? firstName,
+      lastName: updated?.lastName ?? lastName,
+      name: [updated?.firstName ?? firstName, updated?.lastName ?? lastName]
+        .filter(Boolean)
+        .join(" "),
+    },
+  }).catch(() => undefined);
 
   return NextResponse.json({
     ok: true,

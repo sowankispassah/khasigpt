@@ -437,6 +437,7 @@ export const pricingPlan = pgTable("PricingPlan", {
   name: varchar("name", { length: 128 }).notNull(),
   description: text("description"),
   priceInPaise: integer("priceInPaise").notNull(),
+  androidProductId: varchar("androidProductId", { length: 191 }),
   tokenAllowance: integer("tokenAllowance").notNull(),
   billingCycleDays: integer("billingCycleDays").notNull(),
   isActive: boolean("isActive").notNull().default(true),
@@ -502,6 +503,11 @@ export const paymentTransaction = pgTable(
     amount: integer("amount").notNull(),
     currency: varchar("currency", { length: 16 }).notNull(),
     discountAmount: integer("discountAmount").notNull().default(0),
+    provider: varchar("provider", { length: 32 }).notNull().default("razorpay"),
+    providerProductId: varchar("providerProductId", { length: 191 }),
+    providerPurchaseTokenHash: varchar("providerPurchaseTokenHash", {
+      length: 64,
+    }),
     notes: jsonb("notes"),
     paymentId: varchar("paymentId", { length: 128 }),
     signature: varchar("signature", { length: 256 }),
@@ -513,6 +519,9 @@ export const paymentTransaction = pgTable(
     planIdx: index("PaymentTransaction_plan_idx").on(table.planId),
     statusIdx: index("PaymentTransaction_status_idx").on(table.status),
     couponIdx: index("PaymentTransaction_coupon_idx").on(table.couponId),
+    providerPurchaseTokenHashIdx: uniqueIndex(
+      "PaymentTransaction_provider_purchase_token_hash_idx"
+    ).on(table.providerPurchaseTokenHash),
   })
 );
 

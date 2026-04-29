@@ -6041,6 +6041,9 @@ export async function createPaymentTransaction({
   orderId,
   amount,
   currency,
+  provider = "razorpay",
+  providerProductId = null,
+  providerPurchaseTokenHash = null,
   notes = null,
   couponId = null,
   creatorId = null,
@@ -6051,6 +6054,9 @@ export async function createPaymentTransaction({
   orderId: string;
   amount: number;
   currency: string;
+  provider?: string;
+  providerProductId?: string | null;
+  providerPurchaseTokenHash?: string | null;
   notes?: Record<string, unknown> | null;
   couponId?: string | null;
   creatorId?: string | null;
@@ -6076,6 +6082,9 @@ export async function createPaymentTransaction({
           planId,
           amount,
           currency,
+          provider,
+          providerProductId,
+          providerPurchaseTokenHash,
           couponId,
           creatorId,
           discountAmount: Math.max(0, discountAmount ?? 0),

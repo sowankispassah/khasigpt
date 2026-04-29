@@ -51,6 +51,7 @@
     ".next-tmp",
     "build_output",
     "dist-next",
-    "native"
+    "native",
+    "tmp"
   ]
 }
