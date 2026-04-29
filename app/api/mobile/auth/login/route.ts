@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { getUser } from "@/lib/db/queries";
-import { ChatSDKError } from "@/lib/errors";
 import { createMobileAuthToken } from "@/lib/mobile-auth-token";
 import {
   incrementRateLimit,
@@ -18,13 +17,36 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+function authError(message: string, status: number) {
+  return NextResponse.json(
+    {
+      code: status === 429 ? "rate_limit:auth" : "unauthorized:auth",
+      message,
+    },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
+
 export async function POST(request: Request) {
   const parsed = loginSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return new ChatSDKError(
-      "bad_request:auth",
-      "Enter a valid email and password."
-    ).toResponse();
+    return NextResponse.json(
+      {
+        code: "bad_request:auth",
+        message: "Enter a valid email and password.",
+      },
+      {
+        status: 400,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   }
 
   const email = parsed.data.email.trim().toLowerCase();
@@ -36,34 +58,33 @@ export async function POST(request: Request) {
 
   if (!allowed) {
     await compare(parsed.data.password, DUMMY_PASSWORD);
-    return new ChatSDKError(
-      "rate_limit:auth",
-      "Too many login attempts. Please try again later."
-    ).toResponse();
+    return authError("Too many login attempts. Please try again later.", 429);
   }
 
   const [user] = await getUser(email);
   if (!user?.password) {
     await compare(parsed.data.password, DUMMY_PASSWORD);
-    return new ChatSDKError(
-      "unauthorized:auth",
-      "Invalid credentials. Please try again."
-    ).toResponse();
+    return authError("Invalid credentials. Please try again.", 401);
   }
 
   const passwordsMatch = await compare(parsed.data.password, user.password);
   if (!passwordsMatch) {
-    return new ChatSDKError(
-      "unauthorized:auth",
-      "Invalid credentials. Please try again."
-    ).toResponse();
+    return authError("Invalid credentials. Please try again.", 401);
   }
 
   if (!user.isActive) {
-    return new ChatSDKError(
-      "forbidden:auth",
-      "Your account is inactive."
-    ).toResponse();
+    return NextResponse.json(
+      {
+        code: "forbidden:auth",
+        message: "Your account is inactive.",
+      },
+      {
+        status: 403,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   }
 
   resetRateLimit(rateLimitKey);
