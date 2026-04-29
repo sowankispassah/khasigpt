@@ -1122,7 +1122,7 @@ export async function POST(request: Request) {
     }: {
       id: string;
       message: ChatMessage;
-      selectedChatModel: string;
+      selectedChatModel?: string;
       selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
@@ -2724,7 +2724,7 @@ export async function POST(request: Request) {
         : null;
 
     const baseInstruction = systemPrompt({
-      selectedChatModel,
+      selectedChatModel: selectedChatModel ?? modelConfig.id,
       requestHints,
       modelSystemPrompt: modelConfig.systemPrompt ?? null,
     });

@@ -59,8 +59,16 @@ export const postRequestBodySchema = z.object({
   jobPostingId: z.string().uuid().optional().nullable(),
   originJobPostingId: z.string().uuid().optional().nullable(),
   // Historically this cookie stored a model `key` (not the UUID id).
-  // Accept both so older clients/cookies don't hard-fail requests.
-  selectedChatModel: z.string().min(1).max(128),
+  // Accept both so older clients/cookies don't hard-fail requests. Native
+  // builds can briefly send an empty value while bootstrap is hydrating; let
+  // the route fall back to the server default model instead of rejecting the
+  // whole request.
+  selectedChatModel: z
+    .preprocess(
+      (value) =>
+        typeof value === "string" && !value.trim() ? undefined : value,
+      z.string().min(1).max(128).optional()
+    ),
   selectedLanguage: z.string().trim().min(1).max(16).optional(),
   selectedVisibilityType: z.enum(["public", "private"]),
 });
