@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ export async function GET(
     return new ChatSDKError("bad_request:chat").toResponse();
   }
 
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:chat").toResponse();
   }

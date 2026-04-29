@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import {
   getChatById,
   updateChatVisiblityById,
 } from "@/lib/db/queries";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ chatId: string }> }
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

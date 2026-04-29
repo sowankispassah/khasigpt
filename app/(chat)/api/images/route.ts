@@ -1,7 +1,6 @@
 import { isIP } from "node:net";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import {
   ALLOWED_IMAGE_MEDIA_TYPES,
@@ -21,6 +20,7 @@ import {
   saveMessages,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
@@ -243,7 +243,7 @@ export async function POST(request: Request) {
     return rateLimited;
   }
 
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:auth").toResponse();
   }

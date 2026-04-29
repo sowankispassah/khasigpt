@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { getImageGenerationAccess } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
@@ -28,6 +27,7 @@ import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
@@ -69,7 +69,7 @@ async function safeAppSetting<T>(key: string, fallback: T) {
 }
 
 export async function GET(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   const cookieStore = await cookies();
   const { searchParams } = new URL(request.url);
   const requestedLanguage = searchParams.get("lang")?.trim().toLowerCase() ?? null;

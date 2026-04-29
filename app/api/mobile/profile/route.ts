@@ -1,7 +1,7 @@
 import { getDownloadUrl } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth, unstable_update } from "@/app/(auth)/auth";
+import { unstable_update } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   getActiveUserProfileImage,
@@ -10,6 +10,7 @@ import {
   updateUserProfile,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import {
   DATE_OF_BIRTH_LOCK_MESSAGE,
@@ -52,8 +53,8 @@ async function getAvatar(userId: string) {
   }
 }
 
-export async function GET() {
-  const session = await auth();
+export async function GET(request: Request) {
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
@@ -93,7 +94,7 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }

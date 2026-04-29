@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import {
   deleteMessagesByChatIdAfterTimestamp,
   getChatById,
   getMessageById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ messageId: string }> }
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:chat").toResponse();
   }

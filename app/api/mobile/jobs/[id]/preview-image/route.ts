@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { renderPdfPreviewImage } from "@/lib/jobs/pdf-preview";
 import { verifyJobPreviewToken } from "@/lib/mobile-auth-token";
 import { getJobPostingById } from "@/lib/jobs/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,7 +68,7 @@ export async function GET(
   const hasValidPreviewToken = verifyJobPreviewToken(previewToken, id);
 
   if (!hasValidPreviewToken) {
-    const session = await auth();
+    const session = await getMobileSession(request);
     if (!session?.user) {
       return NextResponse.json(
         { code: "unauthorized:auth", message: "You must be signed in." },

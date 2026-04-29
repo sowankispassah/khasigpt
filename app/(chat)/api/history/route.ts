@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { getChatsByUserId } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { isStudyModeEnabledForRole } from "@/lib/study/config";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       ).toResponse();
     }
 
-    const session = await auth();
+    const session = await getMobileSession(request);
 
     if (!session?.user) {
       return new ChatSDKError("unauthorized:chat").toResponse();

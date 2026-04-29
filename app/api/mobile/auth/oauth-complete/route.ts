@@ -13,6 +13,9 @@ export async function GET() {
     return NextResponse.redirect(url);
   }
 
-  url.searchParams.set("token", createMobileAuthToken(session.user.id));
+  url.searchParams.set(
+    "token",
+    createMobileAuthToken(session.user.id, { persistent: true })
+  );
   return NextResponse.redirect(url);
 }

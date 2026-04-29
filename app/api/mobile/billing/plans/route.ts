@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
   getAppSetting,
@@ -7,6 +6,7 @@ import {
   listPricingPlans,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,8 @@ export const runtime = "nodejs";
 const serializeDate = (value: Date | string | null | undefined) =>
   value instanceof Date ? value.toISOString() : value ?? null;
 
-export async function GET() {
-  const session = await auth();
+export async function GET(request: Request) {
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }

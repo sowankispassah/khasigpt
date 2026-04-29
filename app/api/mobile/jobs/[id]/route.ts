@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { createJobPreviewToken } from "@/lib/mobile-auth-token";
 import { getJobPostingById } from "@/lib/jobs/service";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,7 +84,7 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return NextResponse.json(
       {

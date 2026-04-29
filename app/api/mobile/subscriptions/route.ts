@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   getDailyTokenUsageForUser,
@@ -7,6 +6,7 @@ import {
   getUserBalanceSummary,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import {
   isSessionSortOption,
   SESSION_SORT_DEFAULT,
@@ -103,7 +103,7 @@ function buildDailySeries(
 }
 
 export async function GET(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }

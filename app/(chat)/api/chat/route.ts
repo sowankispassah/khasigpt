@@ -21,7 +21,7 @@ import type { ModelCatalog } from "tokenlens/core";
 import { fetchModels } from "tokenlens/fetch";
 import { getUsage } from "tokenlens/helpers";
 import { z } from "zod";
-import { auth, type UserRole } from "@/app/(auth)/auth";
+import type { UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
 import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
@@ -55,6 +55,7 @@ import {
   updateChatTitleById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
@@ -1133,7 +1134,9 @@ export async function POST(request: Request) {
       originJobPostingId?: string | null;
     } = requestBody;
 
-    const session = await measurePreModelStep("auth", () => auth());
+    const session = await measurePreModelStep("auth", () =>
+      getMobileSession(request)
+    );
 
     if (!session?.user) {
       return new ChatSDKError("unauthorized:chat").toResponse();
@@ -3462,7 +3465,7 @@ export async function DELETE(request: Request) {
     return new ChatSDKError("bad_request:api").toResponse();
   }
 
-  const session = await auth();
+  const session = await getMobileSession(request);
 
   if (!session?.user) {
     return new ChatSDKError("unauthorized:chat").toResponse();

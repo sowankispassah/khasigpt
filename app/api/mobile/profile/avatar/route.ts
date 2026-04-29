@@ -1,13 +1,13 @@
 import { del, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import {
   clearActiveUserProfileImage,
   getActiveUserProfileImage,
   setActiveUserProfileImage,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,7 +45,7 @@ function detectExtension(fileName: string, mimeType: string) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
@@ -108,8 +108,8 @@ export async function POST(request: Request) {
   });
 }
 
-export async function DELETE() {
-  const session = await auth();
+export async function DELETE(request: Request) {
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
