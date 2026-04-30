@@ -181,6 +181,8 @@ const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
 const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
 const ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS = 6000;
 const ADMIN_ACTION_INVITE_TIMEOUT_MS = 12000;
+const ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS = 10000;
+const ADMIN_PRICING_TRANSLATION_SYNC_TIMEOUT_MS = 1500;
 const FEATURE_ACCESS_SETTING_TIMEOUT_MS = 12000;
 
 async function createAuditLogEntrySafely(
@@ -195,6 +197,35 @@ async function createAuditLogEntrySafely(
       error
     );
     return null;
+  });
+}
+
+async function syncPricingPlanTranslationKeysSafely({
+  description,
+  id,
+  name,
+}: {
+  description: string | null;
+  id: string;
+  name: string;
+}) {
+  await withTimeout(
+    registerTranslationKeys([
+      {
+        key: `recharge.plan.${id}.name`,
+        defaultText: name,
+      },
+      {
+        key: `recharge.plan.${id}.description`,
+        defaultText: description ?? "",
+      },
+    ]),
+    ADMIN_PRICING_TRANSLATION_SYNC_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      `[admin/actions] Pricing plan translation key sync timed out or failed for plan "${id}".`,
+      error
+    );
   });
 }
 
@@ -2848,30 +2879,26 @@ export async function createPricingPlanAction(formData: FormData) {
   if (!name) {
     throw new Error("Plan name is required");
   }
-  const plan = await createPricingPlan({
-    name,
+  const plan = await withTimeout(
+    createPricingPlan({
+      name,
+      description,
+      androidProductId,
+      priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
+      tokenAllowance,
+      billingCycleDays,
+      isActive,
+    }),
+    ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS
+  );
+
+  await syncPricingPlanTranslationKeysSafely({
     description,
-    androidProductId,
-    priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
-    tokenAllowance,
-    billingCycleDays,
-    isActive,
+    id: plan.id,
+    name: plan.name,
   });
 
-  await registerTranslationKeys([
-    {
-      key: `recharge.plan.${plan.id}.name`,
-      defaultText: plan.name,
-    },
-    {
-      key: `recharge.plan.${plan.id}.description`,
-      defaultText: description,
-    },
-  ]);
-
-  await invalidateTranslationBundleCache();
-
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.create",
     target: { planId: plan.id },
@@ -2928,36 +2955,27 @@ export async function updatePricingPlanAction(formData: FormData) {
     updates.isActive = parseBoolean(formData.get("isActive"));
   }
 
-  await updatePricingPlan({
-    id,
-    updates: updates as {
-      name?: string;
-      description?: string | null;
-      androidProductId?: string | null;
-      priceInPaise?: number;
-      tokenAllowance?: number;
-      billingCycleDays?: number;
-      isActive?: boolean;
-    },
-  });
-
-  const updatedPlan = await getPricingPlanById({ id, includeDeleted: true });
-  if (updatedPlan) {
-    await registerTranslationKeys([
-      {
-        key: `recharge.plan.${updatedPlan.id}.name`,
-        defaultText: updatedPlan.name,
+  const updatedPlan = await withTimeout(
+    updatePricingPlan({
+      id,
+      updates: updates as {
+        name?: string;
+        description?: string | null;
+        androidProductId?: string | null;
+        priceInPaise?: number;
+        tokenAllowance?: number;
+        billingCycleDays?: number;
+        isActive?: boolean;
       },
-      {
-        key: `recharge.plan.${updatedPlan.id}.description`,
-        defaultText: updatedPlan.description ?? "",
-      },
-    ]);
+    }),
+    ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS
+  );
 
-    await invalidateTranslationBundleCache();
+  if (!updatedPlan) {
+    redirect("/admin/settings?notice=plan-update-error");
   }
 
-  await createAuditLogEntry({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.update",
     target: { planId: id },
