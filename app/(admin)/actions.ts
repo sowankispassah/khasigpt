@@ -2983,10 +2983,8 @@ export async function updatePricingPlanAction(formData: FormData) {
   });
 
   revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
-  redirect("/admin/settings?notice=plan-updated");
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {
