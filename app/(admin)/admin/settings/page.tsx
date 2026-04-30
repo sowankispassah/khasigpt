@@ -294,10 +294,9 @@ async function loadAdminSettingsData() {
     }),
     []
   );
-  const plansRawPromise = safeSettingsQuery(
-    "pricing plans",
+  const plansRawPromise = withTimeout(
     listPricingPlans({ includeInactive: true, includeDeleted: true }),
-    []
+    SETTINGS_SNAPSHOT_TIMEOUT_MS
   );
   const languagesPromise = safeSettingsQuery(
     "languages",

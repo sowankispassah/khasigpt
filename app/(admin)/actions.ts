@@ -896,6 +896,19 @@ function parseBooleanFromEntries(formData: FormData, key: string) {
   return entries.some((entry) => parseBoolean(entry));
 }
 
+function parseAndroidProductId(value: FormDataEntryValue | null | undefined) {
+  const productId = value?.toString().trim() ?? "";
+  if (!productId) {
+    return null;
+  }
+  if (!/^[a-z0-9][a-z0-9_.]*$/.test(productId)) {
+    throw new Error(
+      "Android product id can only contain lowercase letters, numbers, underscores, and periods, and must start with a letter or number."
+    );
+  }
+  return productId;
+}
+
 function parseJson(value: FormDataEntryValue | null | undefined) {
   if (!value) {
     return null;
@@ -2818,8 +2831,9 @@ export async function createPricingPlanAction(formData: FormData) {
 
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim() ?? "";
-  const androidProductId =
-    formData.get("androidProductId")?.toString().trim() || null;
+  const androidProductId = parseAndroidProductId(
+    formData.get("androidProductId")
+  );
   const priceInRupees = parseNumber(formData.get("priceInRupees"));
   const tokenAllowance = Math.max(
     0,
@@ -2890,8 +2904,9 @@ export async function updatePricingPlanAction(formData: FormData) {
     updates.description = formData.get("description")?.toString().trim() ?? "";
   }
   if (formData.has("androidProductId")) {
-    updates.androidProductId =
-      formData.get("androidProductId")?.toString().trim() || null;
+    updates.androidProductId = parseAndroidProductId(
+      formData.get("androidProductId")
+    );
   }
   if (formData.has("priceInRupees")) {
     const rupees = parseNumber(formData.get("priceInRupees"));
