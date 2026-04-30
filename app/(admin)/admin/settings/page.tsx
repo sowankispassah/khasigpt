@@ -30,7 +30,6 @@ import {
   updateLanguageStatusAction,
   updateModelConfigAction,
   updatePlanTranslationAction,
-  updatePricingPlanAction,
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
   updateTermsOfServiceByLanguageAction,
@@ -122,6 +121,7 @@ import { LanguagePromptsForm } from "./language-prompts-form";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
+import { PricingPlanEditForm } from "./pricing-plan-edit-form";
 import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
 
 export const dynamic = "force-dynamic";
@@ -2478,111 +2478,11 @@ export default async function AdminSettingsPage({
                     </summary>
                     <div className="grid gap-6 border-t p-4 md:grid-cols-[3fr,2fr]">
                       <div className="space-y-6">
-                        <form
-                          action={updatePricingPlanAction}
-                          className="flex flex-col gap-4"
-                        >
-                          <input name="id" type="hidden" value={plan.id} />
-                          <div className="flex flex-col gap-2">
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`plan-update-name-${plan.id}`}
-                            >
-                              Plan name (English)
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.name}
-                              id={`plan-update-name-${plan.id}`}
-                              name="name"
-                              required
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`plan-update-description-${plan.id}`}
-                            >
-                              Description (English)
-                            </label>
-                            <textarea
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.description ?? ""}
-                              id={`plan-update-description-${plan.id}`}
-                              name="description"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`plan-update-android-product-id-${plan.id}`}
-                            >
-                              Android product id
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.androidProductId ?? ""}
-                              id={`plan-update-android-product-id-${plan.id}`}
-                              name="androidProductId"
-                              placeholder="khasigpt_starter"
-                            />
-                            <p className="text-muted-foreground text-xs">
-                              Must exactly match the in-app product id configured
-                              in Google Play Console.
-                            </p>
-                          </div>
-                          <div className="space-y-3">
-                            <PlanPricingFields
-                              initialPriceInRupees={priceInRupees}
-                              initialTokenAllowance={plan.tokenAllowance}
-                              modelCosts={providerCostSummaries}
-                              usdToInr={usdToInr}
-                            />
-                            <p className="text-muted-foreground text-xs">
-                              Display credits are calculated automatically (
-                              {TOKENS_PER_CREDIT} tokens per credit).
-                            </p>
-                          </div>
-                          <div className="flex flex-col gap-2 sm:w-48">
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`plan-cycle-${plan.id}`}
-                            >
-                              Cycle (days)
-                            </label>
-                            <input
-                              className="rounded-md border bg-background px-3 py-2 text-sm"
-                              defaultValue={plan.billingCycleDays}
-                              id={`plan-cycle-${plan.id}`}
-                              min={0}
-                              name="billingCycleDays"
-                              type="number"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              className="h-4 w-4"
-                              defaultChecked={plan.isActive}
-                              id={`plan-active-${plan.id}`}
-                              name="isActive"
-                              type="checkbox"
-                            />
-                            <label
-                              className="font-medium text-sm"
-                              htmlFor={`plan-active-${plan.id}`}
-                            >
-                              Plan is active
-                            </label>
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <SettingsSubmitButton
-                              pendingLabel="Saving..."
-                              successMessage="Plan updated"
-                            >
-                              Save changes
-                            </SettingsSubmitButton>
-                          </div>
-                        </form>
+                        <PricingPlanEditForm
+                          modelCosts={providerCostSummaries}
+                          plan={plan}
+                          usdToInr={usdToInr}
+                        />
 
                         <div className="space-y-4">
                           <h4 className="font-semibold text-muted-foreground text-sm">
