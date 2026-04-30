@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
+import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
   createImageModelConfigAction,
@@ -57,6 +58,7 @@ import {
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -135,11 +137,10 @@ const PROVIDER_OPTIONS = [
 
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
-const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 1200;
-const SETTINGS_DATA_QUERY_TIMEOUT_MS = 8000;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 15000;
-const SETTINGS_PAGE_RENDER_TIMEOUT_MS = 30000;
-const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 4000;
+const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
+const SETTINGS_DATA_QUERY_TIMEOUT_MS = 3000;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3000;
+const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -250,9 +251,17 @@ async function loadAppSettingValuesByKey() {
   return getLastKnownAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]);
 }
 
+const getAdminPricingPlansCached = unstable_cache(
+  () => listPricingPlans({ includeInactive: true, includeDeleted: true }),
+  ["admin-settings-pricing-plans"],
+  {
+    tags: [PRICING_PLAN_CACHE_TAG],
+  }
+);
+
 async function loadPricingPlansForAdmin() {
   return withTimeout(
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    getAdminPricingPlansCached(),
     SETTINGS_DATA_QUERY_TIMEOUT_MS
   );
 }
@@ -644,14 +653,11 @@ export default async function AdminSettingsPage({
   let settingsLoadFailed = false;
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
-    settingsData = await withTimeout(
-      loadAdminSettingsData(priorityPricingPlansPromise),
-      SETTINGS_PAGE_RENDER_TIMEOUT_MS
-    );
+    settingsData = await loadAdminSettingsData(priorityPricingPlansPromise);
   } catch (error) {
     settingsLoadFailed = true;
     console.error(
-      "[admin/settings] Failed to load settings snapshot for render. Falling back to safe defaults.",
+      "[admin/settings] Unexpected settings render failure. Falling back to safe defaults.",
       error
     );
     settingsData = buildFallbackAdminSettingsData();
