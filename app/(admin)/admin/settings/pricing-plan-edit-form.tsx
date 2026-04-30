@@ -66,8 +66,10 @@ export function PricingPlanEditForm({
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         const error =
-          typeof payload?.error === "string"
-            ? payload.error.replaceAll("_", " ")
+          typeof payload?.message === "string"
+            ? payload.message
+            : typeof payload?.error === "string"
+              ? payload.error.replaceAll("_", " ")
             : "Unable to save pricing plan.";
         throw new Error(error);
       }

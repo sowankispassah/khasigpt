@@ -5,12 +5,13 @@ import {
   createAuditLogEntry,
   updatePricingPlan,
 } from "@/lib/db/queries";
+import { ChatSDKError } from "@/lib/errors";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
-const PRICING_PLAN_SAVE_TIMEOUT_MS = 10_000;
 const PRICING_PLAN_AUDIT_TIMEOUT_MS = 3_000;
 
 function parseBooleanInput(value: unknown): boolean | null {
@@ -56,6 +57,18 @@ function parseNonNegativeInteger(value: unknown) {
   return Number.isFinite(numberValue) && numberValue >= 0
     ? Math.floor(numberValue)
     : null;
+}
+
+function pricingPlanSaveError(error: unknown) {
+  if (error instanceof ChatSDKError) {
+    return error.cause ?? error.message;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to save pricing plan.";
 }
 
 export async function PATCH(
@@ -109,22 +122,19 @@ export async function PATCH(
   }
 
   try {
-    const plan = await withTimeout(
-      updatePricingPlan({
-        id,
-        updates: {
-          name,
-          description:
-            typeof body.description === "string" ? body.description.trim() : "",
-          androidProductId,
-          priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
-          tokenAllowance,
-          billingCycleDays,
-          isActive,
-        },
-      }),
-      PRICING_PLAN_SAVE_TIMEOUT_MS
-    );
+    const plan = await updatePricingPlan({
+      id,
+      updates: {
+        name,
+        description:
+          typeof body.description === "string" ? body.description.trim() : "",
+        androidProductId,
+        priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
+        tokenAllowance,
+        billingCycleDays,
+        isActive,
+      },
+    });
 
     if (!plan) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -162,11 +172,16 @@ export async function PATCH(
       }
     );
   } catch (error) {
-    const status = error instanceof Error && error.message === "timeout" ? 504 : 500;
     console.error(
       `[api/admin/pricing-plans] Failed to update pricing plan "${id}".`,
       error
     );
-    return NextResponse.json({ error: "save_failed" }, { status });
+    return NextResponse.json(
+      {
+        error: "save_failed",
+        message: pricingPlanSaveError(error),
+      },
+      { status: 500 }
+    );
   }
 }

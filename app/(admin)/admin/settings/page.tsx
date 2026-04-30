@@ -139,7 +139,6 @@ const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 3000;
 const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3000;
 const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
-const ADMIN_PRICING_QUERY_TIMEOUT_MS = 10_000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -251,10 +250,7 @@ async function loadAppSettingValuesByKey() {
 }
 
 async function loadPricingPlansForAdmin() {
-  return withTimeout(
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
-    ADMIN_PRICING_QUERY_TIMEOUT_MS
-  );
+  return listPricingPlans({ includeInactive: true, includeDeleted: true });
 }
 
 function SettingsSubmitButton(
@@ -641,15 +637,7 @@ export default async function AdminSettingsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
-  const priorityPricingPlansPromise = loadPricingPlansForAdmin().catch(
-    (error) => {
-      console.error(
-        "[admin/settings] Priority pricing plans query failed.",
-        error
-      );
-      return [];
-    }
-  );
+  const priorityPricingPlansPromise = loadPricingPlansForAdmin();
 
   let settingsLoadFailed = false;
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
@@ -730,7 +718,8 @@ export default async function AdminSettingsPage({
     try {
       settingsData = {
         ...settingsData,
-        plansRaw: await priorityPricingPlansPromise,
+        plansRaw: await loadPricingPlansForAdmin(),
+        pricingPlansLoadFailed: false,
       };
     } catch (pricingReadError) {
       console.error(
