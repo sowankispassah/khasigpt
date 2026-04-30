@@ -250,6 +250,13 @@ async function loadAppSettingValuesByKey() {
   return getLastKnownAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]);
 }
 
+async function loadPricingPlansForAdmin() {
+  return withTimeout(
+    listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    SETTINGS_DATA_QUERY_TIMEOUT_MS
+  );
+}
+
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
 ) {
@@ -295,7 +302,7 @@ async function loadAdminSettingsData() {
     []
   );
   const plansRawPromise = withTimeout(
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    loadPricingPlansForAdmin(),
     SETTINGS_SNAPSHOT_TIMEOUT_MS
   );
   const languagesPromise = safeSettingsQuery(
@@ -695,6 +702,18 @@ export default async function AdminSettingsPage({
       console.error(
         "[admin/settings] Essential fallback setting read failed.",
         fallbackReadError
+      );
+    }
+
+    try {
+      settingsData = {
+        ...settingsData,
+        plansRaw: await loadPricingPlansForAdmin(),
+      };
+    } catch (pricingReadError) {
+      console.error(
+        "[admin/settings] Pricing plans fallback query failed.",
+        pricingReadError
       );
     }
   }
