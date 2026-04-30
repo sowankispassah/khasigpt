@@ -32,20 +32,49 @@ function base64Url(input: Buffer | string) {
     .replace(/\//g, "_");
 }
 
+function decodeBase64Env(value: string) {
+  return Buffer.from(value, "base64").toString("utf8");
+}
+
+function parseServiceAccount(rawJson: string) {
+  const parsed = JSON.parse(rawJson) as GoogleServiceAccount;
+  if (parsed.client_email && parsed.private_key) {
+    return {
+      clientEmail: parsed.client_email,
+      privateKey: parsed.private_key.replace(/\\n/g, "\n"),
+    };
+  }
+
+  return null;
+}
+
 function getServiceAccount() {
-  const rawJson = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON;
+  const rawJson =
+    process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON ??
+    (process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64
+      ? decodeBase64Env(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64)
+      : null);
   if (rawJson) {
-    const parsed = JSON.parse(rawJson) as GoogleServiceAccount;
-    if (parsed.client_email && parsed.private_key) {
-      return {
-        clientEmail: parsed.client_email,
-        privateKey: parsed.private_key.replace(/\\n/g, "\n"),
-      };
+    try {
+      const serviceAccount = parseServiceAccount(rawJson);
+      if (serviceAccount) {
+        return serviceAccount;
+      }
+    } catch {
+      throw new ChatSDKError(
+        "bad_request:api",
+        "Google Play service account JSON is invalid."
+      );
     }
   }
 
   const clientEmail = process.env.GOOGLE_PLAY_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_PLAY_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = (
+    process.env.GOOGLE_PLAY_PRIVATE_KEY ??
+    (process.env.GOOGLE_PLAY_PRIVATE_KEY_BASE64
+      ? decodeBase64Env(process.env.GOOGLE_PLAY_PRIVATE_KEY_BASE64)
+      : "")
+  ).replace(/\\n/g, "\n");
   if (clientEmail && privateKey) {
     return { clientEmail, privateKey };
   }
