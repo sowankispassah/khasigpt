@@ -1,5 +1,4 @@
 import { formatDistanceToNow } from "date-fns";
-import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
   createImageModelConfigAction,
@@ -58,7 +57,6 @@ import {
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
-  PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -141,6 +139,7 @@ const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 3000;
 const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3000;
 const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
+const ADMIN_PRICING_QUERY_TIMEOUT_MS = 10_000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -251,18 +250,10 @@ async function loadAppSettingValuesByKey() {
   return getLastKnownAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]);
 }
 
-const getAdminPricingPlansCached = unstable_cache(
-  () => listPricingPlans({ includeInactive: true, includeDeleted: true }),
-  ["admin-settings-pricing-plans"],
-  {
-    tags: [PRICING_PLAN_CACHE_TAG],
-  }
-);
-
 async function loadPricingPlansForAdmin() {
   return withTimeout(
-    getAdminPricingPlansCached(),
-    SETTINGS_DATA_QUERY_TIMEOUT_MS
+    listPricingPlans({ includeInactive: true, includeDeleted: true }),
+    ADMIN_PRICING_QUERY_TIMEOUT_MS
   );
 }
 
@@ -313,13 +304,21 @@ async function loadAdminSettingsData(
     }),
     []
   );
-  const plansRawPromise = pricingPlansPromise.catch((error) => {
-    console.error(
-      "[admin/settings] Pricing plans query timed out or failed. Rendering settings without pricing plans.",
-      error
-    );
-    return [];
-  });
+  const plansStatePromise = pricingPlansPromise
+    .then((plans) => ({
+      failed: false,
+      plans,
+    }))
+    .catch((error) => {
+      console.error(
+        "[admin/settings] Pricing plans query timed out or failed. Rendering settings without pricing plans.",
+        error
+      );
+      return {
+        failed: true,
+        plans: [],
+      };
+    });
   const languagesPromise = safeSettingsQuery(
     "languages",
     listLanguagesWithSettings(),
@@ -335,7 +334,7 @@ async function loadAdminSettingsData(
     appSettingValuesByKey,
     modelsRaw,
     imageModelConfigs,
-    plansRaw,
+    plansState,
     languages,
     translationFeatureLanguages,
   ] = await Promise.all([
@@ -343,7 +342,7 @@ async function loadAdminSettingsData(
     appSettingValuesByKeyPromise,
     modelsRawPromise,
     imageModelConfigsPromise,
-    plansRawPromise,
+    plansStatePromise,
     languagesPromise,
     translationFeatureLanguagesPromise,
   ]);
@@ -440,7 +439,8 @@ async function loadAdminSettingsData(
     exchangeRate,
     modelsRaw,
     imageModelConfigs,
-    plansRaw,
+    plansRaw: plansState.plans,
+    pricingPlansLoadFailed: plansState.failed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -486,6 +486,7 @@ function buildFallbackAdminSettingsData() {
     modelsRaw: [],
     imageModelConfigs: [],
     plansRaw: [],
+    pricingPlansLoadFailed: false,
     privacyPolicySetting: null,
     termsOfServiceSetting: null,
     aboutUsSetting: null,
@@ -744,6 +745,7 @@ export default async function AdminSettingsPage({
     modelsRaw,
     imageModelConfigs,
     plansRaw,
+    pricingPlansLoadFailed,
     privacyPolicySetting,
     termsOfServiceSetting,
     aboutUsSetting,
@@ -2436,7 +2438,13 @@ export default async function AdminSettingsPage({
           </form>
 
           <div className="mt-8 space-y-4">
-            {activePlans.length === 0 ? (
+            {pricingPlansLoadFailed ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
+                Pricing plans could not be loaded. Other admin settings remain
+                available, but this section needs a refresh before editing
+                plans.
+              </div>
+            ) : activePlans.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 No plans created yet.
               </p>
