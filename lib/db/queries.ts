@@ -5008,6 +5008,7 @@ export async function getPricingPlanById({
 export async function createPricingPlan({
   name,
   description = "",
+  androidProductId = null,
   priceInPaise,
   tokenAllowance,
   billingCycleDays,
@@ -5015,6 +5016,7 @@ export async function createPricingPlan({
 }: {
   name: string;
   description?: string | null;
+  androidProductId?: string | null;
   priceInPaise: number;
   tokenAllowance: number;
   billingCycleDays: number;
@@ -5028,6 +5030,7 @@ export async function createPricingPlan({
       .values({
         name,
         description,
+        androidProductId,
         priceInPaise,
         tokenAllowance,
         billingCycleDays,
@@ -5062,6 +5065,7 @@ export async function updatePricingPlan({
   updates: {
     name?: string;
     description?: string | null;
+    androidProductId?: string | null;
     priceInPaise?: number;
     tokenAllowance?: number;
     billingCycleDays?: number;

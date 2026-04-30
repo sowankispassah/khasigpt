@@ -2335,6 +2335,24 @@ export default async function AdminSettingsPage({
                 placeholder="Great for individual builders."
               />
             </div>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label
+                className="font-medium text-sm"
+                htmlFor="plan-android-product-id"
+              >
+                Android product id
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                id="plan-android-product-id"
+                name="androidProductId"
+                placeholder="khasigpt_starter"
+              />
+              <p className="text-muted-foreground text-xs">
+                Must exactly match the in-app product id configured in Google
+                Play Console.
+              </p>
+            </div>
             <div className="space-y-3 md:col-span-2">
               <PlanPricingFields
                 modelCosts={providerCostSummaries}
@@ -2446,6 +2464,25 @@ export default async function AdminSettingsPage({
                               id={`plan-update-description-${plan.id}`}
                               name="description"
                             />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className="font-medium text-sm"
+                              htmlFor={`plan-update-android-product-id-${plan.id}`}
+                            >
+                              Android product id
+                            </label>
+                            <input
+                              className="rounded-md border bg-background px-3 py-2 text-sm"
+                              defaultValue={plan.androidProductId ?? ""}
+                              id={`plan-update-android-product-id-${plan.id}`}
+                              name="androidProductId"
+                              placeholder="khasigpt_starter"
+                            />
+                            <p className="text-muted-foreground text-xs">
+                              Must exactly match the in-app product id configured
+                              in Google Play Console.
+                            </p>
                           </div>
                           <div className="space-y-3">
                             <PlanPricingFields

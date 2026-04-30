@@ -2818,6 +2818,8 @@ export async function createPricingPlanAction(formData: FormData) {
 
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim() ?? "";
+  const androidProductId =
+    formData.get("androidProductId")?.toString().trim() || null;
   const priceInRupees = parseNumber(formData.get("priceInRupees"));
   const tokenAllowance = Math.max(
     0,
@@ -2835,6 +2837,7 @@ export async function createPricingPlanAction(formData: FormData) {
   const plan = await createPricingPlan({
     name,
     description,
+    androidProductId,
     priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
     tokenAllowance,
     billingCycleDays,
@@ -2886,6 +2889,10 @@ export async function updatePricingPlanAction(formData: FormData) {
   if (formData.has("description")) {
     updates.description = formData.get("description")?.toString().trim() ?? "";
   }
+  if (formData.has("androidProductId")) {
+    updates.androidProductId =
+      formData.get("androidProductId")?.toString().trim() || null;
+  }
   if (formData.has("priceInRupees")) {
     const rupees = parseNumber(formData.get("priceInRupees"));
     updates.priceInPaise = Math.max(0, Math.round(rupees * 100));
@@ -2911,6 +2918,7 @@ export async function updatePricingPlanAction(formData: FormData) {
     updates: updates as {
       name?: string;
       description?: string | null;
+      androidProductId?: string | null;
       priceInPaise?: number;
       tokenAllowance?: number;
       billingCycleDays?: number;

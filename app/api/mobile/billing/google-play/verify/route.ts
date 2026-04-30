@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
 import {
   createPaymentTransaction,
   createUserSubscription,
@@ -11,6 +10,7 @@ import {
   markPaymentTransactionProcessing,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import {
   consumeGooglePlayProductPurchase,
   getGooglePlayPackageName,
@@ -27,7 +27,7 @@ function buildOrderId(tokenHash: string) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
