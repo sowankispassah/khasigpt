@@ -268,7 +268,10 @@ function SettingsSubmitButton(
   );
 }
 
-async function loadAdminSettingsData() {
+async function loadAdminSettingsData(
+  pricingPlansPromise: Promise<Awaited<ReturnType<typeof loadPricingPlansForAdmin>>> =
+    loadPricingPlansForAdmin()
+) {
   const exchangeRatePromise = withTimeout(
     getUsdToInrRate(),
     EXCHANGE_RATE_QUERY_TIMEOUT_MS
@@ -301,10 +304,13 @@ async function loadAdminSettingsData() {
     }),
     []
   );
-  const plansRawPromise = withTimeout(
-    loadPricingPlansForAdmin(),
-    SETTINGS_SNAPSHOT_TIMEOUT_MS
-  );
+  const plansRawPromise = pricingPlansPromise.catch((error) => {
+    console.error(
+      "[admin/settings] Pricing plans query timed out or failed. Rendering settings without pricing plans.",
+      error
+    );
+    return [];
+  });
   const languagesPromise = safeSettingsQuery(
     "languages",
     listLanguagesWithSettings(),
@@ -625,12 +631,21 @@ export default async function AdminSettingsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
+  const priorityPricingPlansPromise = loadPricingPlansForAdmin().catch(
+    (error) => {
+      console.error(
+        "[admin/settings] Priority pricing plans query failed.",
+        error
+      );
+      return [];
+    }
+  );
 
   let settingsLoadFailed = false;
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
     settingsData = await withTimeout(
-      loadAdminSettingsData(),
+      loadAdminSettingsData(priorityPricingPlansPromise),
       SETTINGS_PAGE_RENDER_TIMEOUT_MS
     );
   } catch (error) {
@@ -708,7 +723,7 @@ export default async function AdminSettingsPage({
     try {
       settingsData = {
         ...settingsData,
-        plansRaw: await loadPricingPlansForAdmin(),
+        plansRaw: await priorityPricingPlansPromise,
       };
     } catch (pricingReadError) {
       console.error(
