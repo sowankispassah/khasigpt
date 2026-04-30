@@ -6147,9 +6147,11 @@ export async function getPaymentTransactionByOrderId({
 
 export async function markPaymentTransactionProcessing({
   orderId,
+  retryFailed = false,
   userId,
 }: {
   orderId: string;
+  retryFailed?: boolean;
   userId: string;
 }): Promise<boolean> {
   try {
@@ -6163,7 +6165,12 @@ export async function markPaymentTransactionProcessing({
         and(
           eq(paymentTransaction.orderId, orderId),
           eq(paymentTransaction.userId, userId),
-          eq(paymentTransaction.status, PAYMENT_STATUS_PENDING)
+          retryFailed
+            ? or(
+                eq(paymentTransaction.status, PAYMENT_STATUS_PENDING),
+                eq(paymentTransaction.status, PAYMENT_STATUS_FAILED)
+              )
+            : eq(paymentTransaction.status, PAYMENT_STATUS_PENDING)
         )
       )
       .returning();

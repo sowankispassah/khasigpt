@@ -26,6 +26,28 @@ function buildOrderId(tokenHash: string) {
   return `gp_${tokenHash.slice(0, 56)}`;
 }
 
+function googlePlayFailure(message: string, status = 400) {
+  return NextResponse.json(
+    {
+      code: "google_play_verification_failed",
+      message,
+    },
+    { status }
+  );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ChatSDKError && typeof error.cause === "string") {
+    return error.cause;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export async function POST(request: Request) {
   const session = await getMobileSession(request);
   if (!session?.user) {
@@ -57,10 +79,9 @@ export async function POST(request: Request) {
 
     const expectedProductId = getAndroidProductIdForPlan(plan);
     if (expectedProductId !== productId) {
-      return new ChatSDKError(
-        "bad_request:api",
-        "Google Play product does not match the selected plan."
-      ).toResponse();
+      return googlePlayFailure(
+        `Google Play product does not match the selected plan. Expected ${expectedProductId}, received ${productId}.`
+      );
     }
 
     const tokenHash = hashGooglePlayPurchaseToken(purchaseToken);
@@ -76,13 +97,20 @@ export async function POST(request: Request) {
       packageName,
       productId,
       purchaseToken,
+    }).catch((error) => {
+      console.error("Failed to fetch Google Play purchase", {
+        error,
+        packageName,
+        productId,
+      });
+      throw new ChatSDKError(
+        "bad_request:api",
+        getErrorMessage(error, "Google Play purchase could not be verified.")
+      );
     });
 
     if (purchase.purchaseState !== 0) {
-      return new ChatSDKError(
-        "bad_request:api",
-        "Google Play purchase is not completed."
-      ).toResponse();
+      return googlePlayFailure("Google Play purchase is not completed.");
     }
 
     const transaction =
@@ -111,6 +139,7 @@ export async function POST(request: Request) {
 
     const locked = await markPaymentTransactionProcessing({
       orderId,
+      retryFailed: true,
       userId: session.user.id,
     });
     if (!locked && transaction.status !== "processing") {
@@ -125,15 +154,22 @@ export async function POST(request: Request) {
         userId: session.user.id,
         planId: plan.id,
       });
-      await consumeGooglePlayProductPurchase({
-        packageName,
-        productId,
-        purchaseToken,
-      });
       await markPaymentTransactionPaid({
         orderId,
         paymentId: purchase.orderId ?? orderId,
         signature: tokenHash,
+      });
+      await consumeGooglePlayProductPurchase({
+        packageName,
+        productId,
+        purchaseToken,
+      }).catch((error) => {
+        console.error("Failed to consume Google Play purchase after crediting", {
+          error,
+          orderId,
+          packageName,
+          productId,
+        });
       });
 
       const balance = await getUserBalanceSummary(session.user.id);
@@ -144,9 +180,12 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     if (error instanceof ChatSDKError) {
-      return error.toResponse();
+      return googlePlayFailure(
+        getErrorMessage(error, "Google Play purchase could not be verified."),
+        error.statusCode
+      );
     }
     console.error("Failed to verify Google Play purchase", error);
-    return new ChatSDKError("bad_request:api").toResponse();
+    return googlePlayFailure("Google Play purchase could not be verified.");
   }
 }
