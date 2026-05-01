@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { createMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,16 +13,11 @@ export async function GET(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
-  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", clientId);
+  const url = new URL(`${origin}/api/auth/signin/google`);
   url.searchParams.set(
-    "redirect_uri",
-    `${origin}/api/mobile/auth/google-callback`
+    "callbackUrl",
+    `${origin}/api/mobile/auth/oauth-complete`
   );
-  url.searchParams.set("scope", "openid profile email");
-  url.searchParams.set("state", createMobileGoogleOAuthState());
-  url.searchParams.set("prompt", "select_account");
 
   return NextResponse.redirect(url);
 }

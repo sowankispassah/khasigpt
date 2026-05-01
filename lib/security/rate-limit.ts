@@ -235,6 +235,42 @@ async function incrementRestKv(
   }
 }
 
+async function deleteRedisKey(key: string) {
+  const client = await getRedisClient();
+  if (!client) {
+    return;
+  }
+
+  try {
+    await client.del(key);
+  } catch (error) {
+    console.error("[rate-limit] Redis reset failed", error);
+  }
+}
+
+async function deleteRestKvKey(key: string) {
+  if (!hasRestKv) {
+    return;
+  }
+
+  try {
+    await fetchWithTimeout(
+      `${kvRestUrl}/pipeline`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${kvRestToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify([["DEL", key]]),
+      },
+      KV_FETCH_TIMEOUT_MS
+    );
+  } catch (error) {
+    console.error("[rate-limit] KV REST reset failed", error);
+  }
+}
+
 export async function incrementRateLimit(
   key: string,
   { windowMs = DEFAULT_WINDOW_MS, limit = DEFAULT_LIMIT }: RateLimitOptions = {}
@@ -280,4 +316,6 @@ export async function incrementRateLimit(
 
 export function resetRateLimit(key: string) {
   buckets.delete(key);
+  void deleteRestKvKey(key);
+  void deleteRedisKey(key);
 }
