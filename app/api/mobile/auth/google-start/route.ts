@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { createMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
+import { signIn } from "@/app/(auth)/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function noStoreRedirect(url: URL) {
-  const response = NextResponse.redirect(url);
+const MAX_ATTEMPT_ID_LENGTH = 80;
+
+function noStore(response: NextResponse) {
   response.headers.set(
     "Cache-Control",
     "no-store, no-cache, must-revalidate, max-age=0"
@@ -14,36 +15,50 @@ function noStoreRedirect(url: URL) {
   return response;
 }
 
+function normalizeAttemptId(value: string | null) {
+  const normalized = value
+    ?.replace(/[^a-zA-Z0-9._-]/g, "")
+    .slice(0, MAX_ATTEMPT_ID_LENGTH);
+  return normalized || `web_${Date.now().toString(36)}`;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    return NextResponse.json(
-      { error: "Google sign in is not configured." },
-      { status: 503 }
-    );
-  }
-
-  const origin = requestUrl.origin;
-  const redirectUri = `${origin}/api/mobile/auth/google-callback`;
-  const { attemptId, state } = createMobileGoogleOAuthState(
-    requestUrl.searchParams.get("attempt")
+  const attemptId = normalizeAttemptId(requestUrl.searchParams.get("attempt"));
+  const callbackUrl = new URL(
+    "/api/mobile/auth/oauth-complete",
+    requestUrl.origin
   );
-  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("scope", "openid profile email");
-  url.searchParams.set("state", state);
-  url.searchParams.set("prompt", "select_account");
+  callbackUrl.searchParams.set("attempt", attemptId);
 
-  console.info("[mobile-google-oauth] Start.", {
+  console.info("[mobile-google-oauth] Starting Auth.js handoff.", {
     attemptId,
-    clientIdSuffix: clientId.slice(-12),
-    origin,
-    redirectUri,
+    callbackUrl: callbackUrl.toString(),
+    clientIdSuffix: process.env.GOOGLE_CLIENT_ID?.slice(-12) ?? "missing",
+    origin: requestUrl.origin,
+    provider: "authjs-google",
   });
 
-  return noStoreRedirect(url);
+  try {
+    const redirectUrl = await signIn(
+      "google",
+      {
+        redirect: false,
+        redirectTo: callbackUrl.toString(),
+      },
+      {
+        prompt: "select_account",
+      }
+    );
+    return noStore(NextResponse.redirect(redirectUrl));
+  } catch (error) {
+    console.error("[mobile-google-oauth] Failed to start Auth.js handoff.", {
+      attemptId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const url = new URL("khasigpt://oauth-complete");
+    url.searchParams.set("attempt", attemptId);
+    url.searchParams.set("error", "google_auth_start_failed");
+    return noStore(NextResponse.redirect(url));
+  }
 }
