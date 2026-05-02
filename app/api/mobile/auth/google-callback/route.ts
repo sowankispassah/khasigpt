@@ -26,6 +26,8 @@ type GoogleUserInfo = {
   picture?: string;
 };
 
+const MAX_OAUTH_ERROR_DETAIL_LENGTH = 180;
+
 function redirectToApp(params: Record<string, string>) {
   const url = new URL("khasigpt://oauth-complete");
   for (const [key, value] of Object.entries(params)) {
@@ -44,6 +46,17 @@ function splitFullName(name: string | null | undefined) {
 
 function normalizeOAuthError(value: string | undefined) {
   return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") || "unknown";
+}
+
+function sanitizeOAuthErrorDetail(value: string | undefined) {
+  const detail = value?.trim();
+  if (!detail) {
+    return undefined;
+  }
+  return detail
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, MAX_OAUTH_ERROR_DETAIL_LENGTH);
 }
 
 export async function GET(request: Request) {
@@ -90,13 +103,19 @@ export async function GET(request: Request) {
     const tokenPayload = (await tokenResponse.json()) as GoogleTokenResponse;
     if (!tokenResponse.ok || !tokenPayload.access_token) {
       const tokenError = normalizeOAuthError(tokenPayload.error);
+      const tokenDetail = sanitizeOAuthErrorDetail(
+        tokenPayload.error_description
+      );
       console.error("[mobile-google-oauth] Token exchange failed.", {
         error: tokenPayload.error,
         description: tokenPayload.error_description,
         redirectUri,
         status: tokenResponse.status,
       });
-      return redirectToApp({ error: `token_exchange_${tokenError}` });
+      return redirectToApp({
+        error: `token_exchange_${tokenError}`,
+        ...(tokenDetail ? { detail: tokenDetail } : {}),
+      });
     }
 
     const userInfoResponse = await fetch(
