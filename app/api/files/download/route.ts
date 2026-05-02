@@ -1,12 +1,12 @@
-import { auth } from "@/app/(auth)/auth";
 import { ChatSDKError } from "@/lib/errors";
+import { getAuthenticatedSession } from "@/lib/mobile-auth-session";
 import { verifyBlobToken } from "@/lib/security/blob-token";
 import { resolveDocumentBlobUrl } from "@/lib/uploads/document-access";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const session = await auth();
+  const session = await getAuthenticatedSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }

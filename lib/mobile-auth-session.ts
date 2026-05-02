@@ -1,22 +1,33 @@
 import "server-only";
 
-import { auth } from "@/app/(auth)/auth";
 import type { UserRole } from "@/app/(auth)/auth";
-import type { User } from "@/lib/db/schema";
+import { auth } from "@/app/(auth)/auth";
 import { getUserById } from "@/lib/db/queries";
+import type { User } from "@/lib/db/schema";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
 
 function getBearerToken(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
-  const [scheme, token] = authorization.split(" ");
-  if (scheme?.toLowerCase() === "bearer" && token?.trim()) {
-    return token.trim();
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (match?.[1]?.trim()) {
+    return match[1].trim();
   }
   const headerToken = request.headers.get("x-mobile-auth-token")?.trim();
   return headerToken && headerToken.length > 0 ? headerToken : null;
 }
 
 export async function getMobileSession(request: Request) {
+  const token = getBearerToken(request);
+  if (token) {
+    const verified = verifyMobileAuthToken(token);
+    if (verified) {
+      const user = await getUserById(verified.userId);
+      if (user?.isActive) {
+        return createMobileSessionFromUser(user);
+      }
+    }
+  }
+
   try {
     const cookieSession = await auth();
     if (cookieSession?.user?.id) {
@@ -29,23 +40,10 @@ export async function getMobileSession(request: Request) {
     );
   }
 
-  const token = getBearerToken(request);
-  if (!token) {
-    return null;
-  }
-
-  const verified = verifyMobileAuthToken(token);
-  if (!verified) {
-    return null;
-  }
-
-  const user = await getUserById(verified.userId);
-  if (!user || !user.isActive) {
-    return null;
-  }
-
-  return createMobileSessionFromUser(user);
+  return null;
 }
+
+export const getAuthenticatedSession = getMobileSession;
 
 export function createMobileSessionFromUser(user: User) {
   const computedName = [user.firstName, user.lastName]

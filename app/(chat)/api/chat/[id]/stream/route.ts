@@ -1,6 +1,5 @@
 import { createUIMessageStream, JsonToSseTransformStream } from "ai";
 import { differenceInSeconds } from "date-fns";
-import { auth } from "@/app/(auth)/auth";
 import {
   getChatById,
   getMessagesByChatIdPage,
@@ -8,6 +7,7 @@ import {
 } from "@/lib/db/queries";
 import type { Chat } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import { getAuthenticatedSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
@@ -78,7 +78,7 @@ export async function GET(
     return new ChatSDKError("bad_request:api").toResponse();
   }
 
-  const session = await auth();
+  const session = await getAuthenticatedSession(request);
 
   if (!session?.user) {
     return new ChatSDKError("unauthorized:chat").toResponse();
