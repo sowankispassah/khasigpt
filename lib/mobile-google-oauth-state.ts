@@ -1,6 +1,12 @@
 import "server-only";
 
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -34,14 +40,21 @@ function sign(value: string) {
 }
 
 export function createMobileGoogleOAuthState() {
+  const codeVerifier = base64UrlEncode(randomBytes(32));
   const payload = base64UrlEncode(
     JSON.stringify({
+      codeVerifier,
       exp: Date.now() + STATE_TTL_MS,
       nonce: randomUUID(),
       type: "mobile-google-oauth",
     })
   );
-  return `${payload}.${sign(payload)}`;
+  return {
+    codeChallenge: base64UrlEncode(
+      createHash("sha256").update(codeVerifier).digest()
+    ),
+    state: `${payload}.${sign(payload)}`,
+  };
 }
 
 export function verifyMobileGoogleOAuthState(state: string | null) {
@@ -66,15 +79,24 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
 
   try {
     const parsed = JSON.parse(base64UrlDecode(payload)) as {
+      codeVerifier?: unknown;
       exp?: unknown;
       type?: unknown;
     };
-    return (
-      parsed.type === "mobile-google-oauth" &&
-      typeof parsed.exp === "number" &&
-      parsed.exp >= Date.now()
-    );
+    if (
+      parsed.type !== "mobile-google-oauth" ||
+      typeof parsed.exp !== "number"
+    ) {
+      return null;
+    }
+    if (parsed.exp < Date.now()) {
+      return null;
+    }
+    return {
+      codeVerifier:
+        typeof parsed.codeVerifier === "string" ? parsed.codeVerifier : null,
+    };
   } catch {
-    return false;
+    return null;
   }
 }

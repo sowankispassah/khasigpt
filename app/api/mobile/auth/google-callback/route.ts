@@ -42,6 +42,10 @@ function splitFullName(name: string | null | undefined) {
   };
 }
 
+function normalizeOAuthError(value: string | undefined) {
+  return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") || "unknown";
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -52,7 +56,8 @@ export async function GET(request: Request) {
     return redirectToApp({ error: oauthError });
   }
 
-  if (!code || !verifyMobileGoogleOAuthState(state)) {
+  const statePayload = verifyMobileGoogleOAuthState(state);
+  if (!code || !statePayload) {
     return redirectToApp({ error: "invalid_oauth_state" });
   }
 
@@ -64,26 +69,34 @@ export async function GET(request: Request) {
 
   try {
     const redirectUri = `${requestUrl.origin}/api/mobile/auth/google-callback`;
+    const tokenBody = new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+    });
+    if (statePayload.codeVerifier) {
+      tokenBody.set("code_verifier", statePayload.codeVerifier);
+    }
+
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: "authorization_code",
-        redirect_uri: redirectUri,
-      }),
+      body: tokenBody,
     });
     const tokenPayload = (await tokenResponse.json()) as GoogleTokenResponse;
     if (!tokenResponse.ok || !tokenPayload.access_token) {
+      const tokenError = normalizeOAuthError(tokenPayload.error);
       console.error("[mobile-google-oauth] Token exchange failed.", {
         error: tokenPayload.error,
         description: tokenPayload.error_description,
+        redirectUri,
+        status: tokenResponse.status,
       });
-      return redirectToApp({ error: "token_exchange_failed" });
+      return redirectToApp({ error: `token_exchange_${tokenError}` });
     }
 
     const userInfoResponse = await fetch(
