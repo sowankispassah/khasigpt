@@ -5,8 +5,9 @@ import {
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { verifyMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
-import { createMobileAuthToken } from "@/lib/mobile-auth-token";
+import { createMobileOAuthHandoffToken } from "@/lib/mobile-auth-token";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { createHash } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,6 +28,35 @@ type GoogleUserInfo = {
 };
 
 const MAX_OAUTH_ERROR_DETAIL_LENGTH = 180;
+const HANDOFF_COOKIE_MAX_AGE_SECONDS = 10 * 60;
+
+function createHandoffUrl(origin: string, handoff: string) {
+  const url = new URL("/api/mobile/auth/google-complete", origin);
+  url.searchParams.set("handoff", handoff);
+  return url;
+}
+
+function getHandoffCookieName(state: string) {
+  const hash = createHash("sha256")
+    .update(state)
+    .digest("base64url")
+    .slice(0, 32);
+  return `mobile_google_handoff_${hash}`;
+}
+
+function getCookieValue(request: Request, name: string) {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) {
+    return null;
+  }
+  for (const cookie of cookieHeader.split(";")) {
+    const [cookieName, ...valueParts] = cookie.trim().split("=");
+    if (cookieName === name) {
+      return decodeURIComponent(valueParts.join("="));
+    }
+  }
+  return null;
+}
 
 function redirectToApp(params: Record<string, string>) {
   const url = new URL("khasigpt://oauth-complete");
@@ -70,8 +100,17 @@ export async function GET(request: Request) {
   }
 
   const statePayload = verifyMobileGoogleOAuthState(state);
-  if (!code || !statePayload) {
+  if (!code || !state || !statePayload) {
     return redirectToApp({ error: "invalid_oauth_state" });
+  }
+
+  const handoffCookieName = getHandoffCookieName(state);
+  const cachedHandoff = getCookieValue(request, handoffCookieName);
+  if (cachedHandoff) {
+    console.info("[mobile-google-oauth] Reused cached mobile handoff.");
+    return NextResponse.redirect(
+      createHandoffUrl(requestUrl.origin, cachedHandoff)
+    );
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -159,9 +198,18 @@ export async function GET(request: Request) {
       console.error("[mobile-google-oauth] Failed to record audit log.", error);
     });
 
-    return redirectToApp({
-      token: createMobileAuthToken(user.id, { persistent: true }),
+    const handoff = createMobileOAuthHandoffToken(user.id);
+    const response = NextResponse.redirect(
+      createHandoffUrl(requestUrl.origin, handoff)
+    );
+    response.cookies.set(handoffCookieName, handoff, {
+      httpOnly: true,
+      maxAge: HANDOFF_COOKIE_MAX_AGE_SECONDS,
+      path: "/api/mobile/auth",
+      sameSite: "lax",
+      secure: true,
     });
+    return response;
   } catch (error) {
     if (error instanceof ChatSDKError) {
       console.error("[mobile-google-oauth] Callback failed with app error.", {

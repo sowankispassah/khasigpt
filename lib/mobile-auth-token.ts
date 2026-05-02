@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 const TOKEN_TTL_MS = 2 * 60 * 1000;
 const PERSISTENT_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PREVIEW_TOKEN_TTL_MS = 5 * 60 * 1000;
+const OAUTH_HANDOFF_TOKEN_TTL_MS = 10 * 60 * 1000;
 
 function base64UrlEncode(value: string | Buffer) {
   const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
@@ -61,6 +62,17 @@ export function createJobPreviewToken(jobId: string) {
   return `${payload}.${sign(payload)}`;
 }
 
+export function createMobileOAuthHandoffToken(userId: string) {
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      exp: Date.now() + OAUTH_HANDOFF_TOKEN_TTL_MS,
+      sub: userId,
+      type: "mobile-oauth-handoff",
+    })
+  );
+  return `${payload}.${sign(payload)}`;
+}
+
 export function verifyMobileAuthToken(token: string) {
   const [payload, signature] = token.split(".");
   if (!payload || !signature) {
@@ -83,6 +95,46 @@ export function verifyMobileAuthToken(token: string) {
       sub?: unknown;
     };
     if (typeof parsed.sub !== "string" || typeof parsed.exp !== "number") {
+      return null;
+    }
+    if (parsed.exp < Date.now()) {
+      return null;
+    }
+    return {
+      userId: parsed.sub,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function verifyMobileOAuthHandoffToken(token: string) {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) {
+    return null;
+  }
+
+  const expected = sign(payload);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(payload)) as {
+      exp?: unknown;
+      sub?: unknown;
+      type?: unknown;
+    };
+    if (
+      parsed.type !== "mobile-oauth-handoff" ||
+      typeof parsed.sub !== "string" ||
+      typeof parsed.exp !== "number"
+    ) {
       return null;
     }
     if (parsed.exp < Date.now()) {
