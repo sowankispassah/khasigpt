@@ -134,8 +134,23 @@ export async function GET(request: Request) {
       token: createMobileAuthToken(user.id, { persistent: true }),
     });
   } catch (error) {
-    if (error instanceof ChatSDKError && error.cause === "account_inactive") {
-      return redirectToApp({ error: "account_inactive" });
+    if (error instanceof ChatSDKError) {
+      console.error("[mobile-google-oauth] Callback failed with app error.", {
+        type: error.type,
+        surface: error.surface,
+        cause: error.cause,
+      });
+
+      if (error.cause === "account_inactive") {
+        return redirectToApp({ error: "account_inactive" });
+      }
+
+      return redirectToApp({
+        error:
+          error.surface === "database"
+            ? "oauth_database_failed"
+            : "oauth_account_failed",
+      });
     }
     console.error("[mobile-google-oauth] Callback failed.", error);
     return redirectToApp({ error: "oauth_callback_failed" });

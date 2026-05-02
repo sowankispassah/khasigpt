@@ -530,19 +530,26 @@ export async function ensureOAuthUser(
 
     let userRecord = existing;
 
-    const activeProfileImage = await getActiveUserProfileImage({
-      userId: userRecord.id,
-    });
-
-    if (!activeProfileImage?.imageUrl && profile?.image) {
-      const updated = await setActiveUserProfileImage({
+    try {
+      const activeProfileImage = await getActiveUserProfileImage({
         userId: userRecord.id,
-        imageUrl: profile.image,
-        source: "google",
       });
-      if (updated?.user) {
-        userRecord = updated.user;
+
+      if (!activeProfileImage?.imageUrl && profile?.image) {
+        const updated = await setActiveUserProfileImage({
+          userId: userRecord.id,
+          imageUrl: profile.image,
+          source: "google",
+        });
+        if (updated?.user) {
+          userRecord = updated.user;
+        }
       }
+    } catch (error) {
+      console.error("[oauth] Failed to sync OAuth profile image.", {
+        userId: userRecord.id,
+        error,
+      });
     }
 
     const nameUpdates: Partial<typeof user.$inferInsert> = {};
@@ -563,15 +570,22 @@ export async function ensureOAuthUser(
     }
 
     if (Object.keys(nameUpdates).length > 0) {
-      const [updated] = await db
-        .update(user)
-        .set({
-          ...nameUpdates,
-          updatedAt: new Date(),
-        })
-        .where(eq(user.id, userRecord.id))
-        .returning();
-      userRecord = updated ?? userRecord;
+      try {
+        const [updated] = await db
+          .update(user)
+          .set({
+            ...nameUpdates,
+            updatedAt: new Date(),
+          })
+          .where(eq(user.id, userRecord.id))
+          .returning();
+        userRecord = updated ?? userRecord;
+      } catch (error) {
+        console.error("[oauth] Failed to sync OAuth profile name.", {
+          userId: userRecord.id,
+          error,
+        });
+      }
     }
 
     return { user: userRecord, isNewUser: false };
