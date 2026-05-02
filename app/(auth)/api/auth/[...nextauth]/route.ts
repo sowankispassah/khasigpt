@@ -15,6 +15,25 @@ const recentCallbackCodes = new Map<string, number>();
 const getMobileGoogleAttemptId = (value: string | undefined) =>
   value ? normalizeMobileGoogleAttemptId(value) : null;
 
+const forceMobileGoogleCompletion = (
+  response: Response,
+  completionUrl: URL
+) => {
+  const headers = new Headers(response.headers);
+  headers.set("Location", completionUrl.toString());
+  headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
+  headers.set("Pragma", "no-cache");
+
+  return new NextResponse(null, {
+    headers,
+    status:
+      response.status >= 300 && response.status < 400 ? response.status : 307,
+  });
+};
+
 const pruneCallbackCodes = (now: number) => {
   for (const [code, seenAt] of recentCallbackCodes) {
     if (now - seenAt > CALLBACK_CODE_TTL_MS) {
@@ -70,18 +89,21 @@ export async function GET(request: Request) {
 
     const response = await authGET(request as NextRequest);
     recentCallbackCodes.set(code, now);
-    const nextResponse = new NextResponse(response.body, response);
+    const nextResponse =
+      mobileGoogleAttemptId && url.pathname.endsWith("/callback/google")
+        ? forceMobileGoogleCompletion(
+            response,
+            createMobileGoogleCompletionUrl(url.origin, mobileGoogleAttemptId)
+          )
+        : new NextResponse(response.body, response);
     if (mobileGoogleAttemptId && url.pathname.endsWith("/callback/google")) {
-      nextResponse.headers.set(
-        "Location",
-        createMobileGoogleCompletionUrl(url.origin, mobileGoogleAttemptId)
-          .toString()
+      console.info(
+        "[mobile-google-oauth] Forced Auth.js callback to native handoff.",
+        {
+          attemptId: mobileGoogleAttemptId,
+          authStatus: response.status,
+        }
       );
-      nextResponse.headers.set(
-        "Cache-Control",
-        "no-store, no-cache, must-revalidate, max-age=0"
-      );
-      nextResponse.headers.set("Pragma", "no-cache");
     }
     nextResponse.cookies.set(CALLBACK_CODE_COOKIE, code, {
       httpOnly: true,
