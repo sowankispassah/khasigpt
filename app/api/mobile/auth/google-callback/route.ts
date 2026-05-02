@@ -117,7 +117,9 @@ export async function GET(request: Request) {
   const handoffCookieName = getHandoffCookieName(state);
   const cachedHandoff = getCookieValue(request, handoffCookieName);
   if (cachedHandoff) {
-    console.info("[mobile-google-oauth] Reused cached mobile handoff.");
+    console.info("[mobile-google-oauth] Reused cached mobile handoff.", {
+      attemptId: statePayload.attemptId,
+    });
     return noStoreRedirect(createHandoffUrl(requestUrl.origin, cachedHandoff));
   }
 
@@ -129,6 +131,16 @@ export async function GET(request: Request) {
 
   try {
     const redirectUri = `${requestUrl.origin}/api/mobile/auth/google-callback`;
+    console.info("[mobile-google-oauth] Callback exchange started.", {
+      attemptId: statePayload.attemptId,
+      clientIdSuffix: clientId.slice(-12),
+      hasCode: Boolean(code),
+      redirectUri,
+      stateAgeMs:
+        typeof statePayload.issuedAt === "number"
+          ? Date.now() - statePayload.issuedAt
+          : null,
+    });
     const tokenBody = new URLSearchParams({
       code,
       client_id: clientId,
@@ -151,13 +163,16 @@ export async function GET(request: Request) {
         tokenPayload.error_description
       );
       console.error("[mobile-google-oauth] Token exchange failed.", {
+        attemptId: statePayload.attemptId,
         error: tokenPayload.error,
         description: tokenPayload.error_description,
         redirectUri,
         status: tokenResponse.status,
       });
       return redirectToApp({
+        attempt: statePayload.attemptId,
         error: `token_exchange_${tokenError}`,
+        status: String(tokenResponse.status),
         ...(tokenDetail ? { detail: tokenDetail } : {}),
       });
     }
@@ -195,6 +210,7 @@ export async function GET(request: Request) {
         email: user.email ?? userInfo.email,
       },
       metadata: {
+        attemptId: statePayload.attemptId,
         provider: "google",
         type: "oauth",
         client: "native",

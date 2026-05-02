@@ -7,6 +7,7 @@ import {
 } from "node:crypto";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+const MAX_ATTEMPT_ID_LENGTH = 80;
 
 function base64UrlEncode(value: string | Buffer) {
   const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
@@ -37,15 +38,28 @@ function sign(value: string) {
   return base64UrlEncode(createHmac("sha256", getSecret()).update(value).digest());
 }
 
-export function createMobileGoogleOAuthState() {
+function normalizeAttemptId(attemptId: string | null | undefined) {
+  const normalized = attemptId?.replace(/[^a-zA-Z0-9._-]/g, "").slice(
+    0,
+    MAX_ATTEMPT_ID_LENGTH
+  );
+  return normalized || randomUUID();
+}
+
+export function createMobileGoogleOAuthState(attemptId?: string | null) {
+  const issuedAt = Date.now();
+  const normalizedAttemptId = normalizeAttemptId(attemptId);
   const payload = base64UrlEncode(
     JSON.stringify({
-      exp: Date.now() + STATE_TTL_MS,
+      attemptId: normalizedAttemptId,
+      exp: issuedAt + STATE_TTL_MS,
+      issuedAt,
       nonce: randomUUID(),
       type: "mobile-google-oauth",
     })
   );
   return {
+    attemptId: normalizedAttemptId,
     state: `${payload}.${sign(payload)}`,
   };
 }
@@ -72,7 +86,9 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
 
   try {
     const parsed = JSON.parse(base64UrlDecode(payload)) as {
+      attemptId?: unknown;
       exp?: unknown;
+      issuedAt?: unknown;
       type?: unknown;
     };
     if (
@@ -84,7 +100,12 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
     if (parsed.exp < Date.now()) {
       return null;
     }
-    return true;
+    return {
+      attemptId:
+        typeof parsed.attemptId === "string" ? parsed.attemptId : "unknown",
+      issuedAt:
+        typeof parsed.issuedAt === "number" ? parsed.issuedAt : null,
+    };
   } catch {
     return null;
   }
