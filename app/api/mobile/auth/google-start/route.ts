@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
-  const { codeChallenge, state } = createMobileGoogleOAuthState();
+  const { state } = createMobileGoogleOAuthState();
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
@@ -25,8 +25,6 @@ export async function GET(request: Request) {
   );
   url.searchParams.set("scope", "openid profile email");
   url.searchParams.set("state", state);
-  url.searchParams.set("code_challenge", codeChallenge);
-  url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("prompt", "select_account");
 
   return NextResponse.redirect(url);

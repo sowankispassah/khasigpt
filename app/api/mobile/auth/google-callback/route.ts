@@ -89,9 +89,6 @@ export async function GET(request: Request) {
       grant_type: "authorization_code",
       redirect_uri: redirectUri,
     });
-    if (statePayload.codeVerifier) {
-      tokenBody.set("code_verifier", statePayload.codeVerifier);
-    }
 
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",

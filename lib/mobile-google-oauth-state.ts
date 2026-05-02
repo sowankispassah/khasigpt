@@ -1,9 +1,7 @@
 import "server-only";
 
 import {
-  createHash,
   createHmac,
-  randomBytes,
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
@@ -40,19 +38,14 @@ function sign(value: string) {
 }
 
 export function createMobileGoogleOAuthState() {
-  const codeVerifier = base64UrlEncode(randomBytes(32));
   const payload = base64UrlEncode(
     JSON.stringify({
-      codeVerifier,
       exp: Date.now() + STATE_TTL_MS,
       nonce: randomUUID(),
       type: "mobile-google-oauth",
     })
   );
   return {
-    codeChallenge: base64UrlEncode(
-      createHash("sha256").update(codeVerifier).digest()
-    ),
     state: `${payload}.${sign(payload)}`,
   };
 }
@@ -79,7 +72,6 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
 
   try {
     const parsed = JSON.parse(base64UrlDecode(payload)) as {
-      codeVerifier?: unknown;
       exp?: unknown;
       type?: unknown;
     };
@@ -92,10 +84,7 @@ export function verifyMobileGoogleOAuthState(state: string | null) {
     if (parsed.exp < Date.now()) {
       return null;
     }
-    return {
-      codeVerifier:
-        typeof parsed.codeVerifier === "string" ? parsed.codeVerifier : null,
-    };
+    return true;
   } catch {
     return null;
   }
