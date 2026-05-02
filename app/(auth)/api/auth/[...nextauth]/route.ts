@@ -1,11 +1,19 @@
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { GET as authGET, POST as authPOST } from "@/app/(auth)/auth";
+import {
+  createMobileGoogleCompletionUrl,
+  MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE,
+  normalizeMobileGoogleAttemptId,
+} from "@/lib/mobile-google-auth";
 import { sanitizeRedirectPath } from "@/lib/security/safe-redirect";
 
 const CALLBACK_CODE_TTL_MS = 60 * 1000;
 const CALLBACK_CODE_COOKIE = "__auth_callback_code";
 const recentCallbackCodes = new Map<string, number>();
+
+const getMobileGoogleAttemptId = (value: string | undefined) =>
+  value ? normalizeMobileGoogleAttemptId(value) : null;
 
 const pruneCallbackCodes = (now: number) => {
   for (const [code, seenAt] of recentCallbackCodes) {
@@ -25,8 +33,16 @@ export async function GET(request: Request) {
     pruneCallbackCodes(now);
 
     const cookieStore = await cookies();
+    const mobileGoogleAttemptId = getMobileGoogleAttemptId(
+      cookieStore.get(MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE)?.value
+    );
     const storedCode = cookieStore.get(CALLBACK_CODE_COOKIE)?.value;
     if (storedCode && storedCode === code) {
+      if (mobileGoogleAttemptId) {
+        return NextResponse.redirect(
+          createMobileGoogleCompletionUrl(url.origin, mobileGoogleAttemptId)
+        );
+      }
       const callbackParam = url.searchParams.get("callbackUrl") ?? "/";
       const safeCallback = sanitizeRedirectPath(
         callbackParam,
@@ -38,6 +54,11 @@ export async function GET(request: Request) {
 
     const seenAt = recentCallbackCodes.get(code);
     if (typeof seenAt === "number" && now - seenAt < CALLBACK_CODE_TTL_MS) {
+      if (mobileGoogleAttemptId) {
+        return NextResponse.redirect(
+          createMobileGoogleCompletionUrl(url.origin, mobileGoogleAttemptId)
+        );
+      }
       const callbackParam = url.searchParams.get("callbackUrl") ?? "/";
       const safeCallback = sanitizeRedirectPath(
         callbackParam,
@@ -50,6 +71,18 @@ export async function GET(request: Request) {
     const response = await authGET(request as NextRequest);
     recentCallbackCodes.set(code, now);
     const nextResponse = new NextResponse(response.body, response);
+    if (mobileGoogleAttemptId && url.pathname.endsWith("/callback/google")) {
+      nextResponse.headers.set(
+        "Location",
+        createMobileGoogleCompletionUrl(url.origin, mobileGoogleAttemptId)
+          .toString()
+      );
+      nextResponse.headers.set(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, max-age=0"
+      );
+      nextResponse.headers.set("Pragma", "no-cache");
+    }
     nextResponse.cookies.set(CALLBACK_CODE_COOKIE, code, {
       httpOnly: true,
       maxAge: Math.ceil(CALLBACK_CODE_TTL_MS / 1000),

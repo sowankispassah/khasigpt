@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { signIn } from "@/app/(auth)/auth";
+import {
+  createMobileGoogleCompletionUrl,
+  MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE,
+  MOBILE_GOOGLE_AUTH_ATTEMPT_MAX_AGE_SECONDS,
+  normalizeMobileGoogleAttemptId,
+} from "@/lib/mobile-google-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const MAX_ATTEMPT_ID_LENGTH = 80;
 
 function noStore(response: NextResponse) {
   response.headers.set(
@@ -15,21 +19,15 @@ function noStore(response: NextResponse) {
   return response;
 }
 
-function normalizeAttemptId(value: string | null) {
-  const normalized = value
-    ?.replace(/[^a-zA-Z0-9._-]/g, "")
-    .slice(0, MAX_ATTEMPT_ID_LENGTH);
-  return normalized || `web_${Date.now().toString(36)}`;
-}
-
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const attemptId = normalizeAttemptId(requestUrl.searchParams.get("attempt"));
-  const callbackUrl = new URL(
-    "/api/mobile/auth/oauth-complete",
-    requestUrl.origin
+  const attemptId = normalizeMobileGoogleAttemptId(
+    requestUrl.searchParams.get("attempt")
   );
-  callbackUrl.searchParams.set("attempt", attemptId);
+  const callbackUrl = createMobileGoogleCompletionUrl(
+    requestUrl.origin,
+    attemptId
+  );
 
   console.info("[mobile-google-oauth] Starting Auth.js handoff.", {
     attemptId,
@@ -50,7 +48,15 @@ export async function GET(request: Request) {
         prompt: "select_account",
       }
     );
-    return noStore(NextResponse.redirect(redirectUrl));
+    const response = noStore(NextResponse.redirect(redirectUrl));
+    response.cookies.set(MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE, attemptId, {
+      httpOnly: true,
+      maxAge: MOBILE_GOOGLE_AUTH_ATTEMPT_MAX_AGE_SECONDS,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+    return response;
   } catch (error) {
     console.error("[mobile-google-oauth] Failed to start Auth.js handoff.", {
       attemptId,

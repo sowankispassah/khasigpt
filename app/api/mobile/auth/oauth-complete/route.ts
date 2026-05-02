@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { createMobileAuthToken } from "@/lib/mobile-auth-token";
+import { MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE } from "@/lib/mobile-google-auth";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,13 @@ function redirectToApp(params: Record<string, string>) {
     "no-store, no-cache, must-revalidate, max-age=0"
   );
   response.headers.set("Pragma", "no-cache");
+  response.cookies.set(MOBILE_GOOGLE_AUTH_ATTEMPT_COOKIE, "", {
+    httpOnly: true,
+    maxAge: 0,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
   return response;
 }
 
