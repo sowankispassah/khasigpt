@@ -12,7 +12,13 @@ function redirectToApp(params: Record<string, string>) {
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  return NextResponse.redirect(url);
+  const response = NextResponse.redirect(url);
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
+  response.headers.set("Pragma", "no-cache");
+  return response;
 }
 
 export async function GET(request: Request) {

@@ -4,6 +4,16 @@ import { createMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function noStoreRedirect(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
+  response.headers.set("Pragma", "no-cache");
+  return response;
+}
+
 export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -27,5 +37,5 @@ export async function GET(request: Request) {
   url.searchParams.set("state", state);
   url.searchParams.set("prompt", "select_account");
 
-  return NextResponse.redirect(url);
+  return noStoreRedirect(url);
 }

@@ -63,7 +63,17 @@ function redirectToApp(params: Record<string, string>) {
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  return NextResponse.redirect(url);
+  return noStoreRedirect(url);
+}
+
+function noStoreRedirect(url: URL) {
+  const response = NextResponse.redirect(url);
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
+  response.headers.set("Pragma", "no-cache");
+  return response;
 }
 
 function splitFullName(name: string | null | undefined) {
@@ -108,9 +118,7 @@ export async function GET(request: Request) {
   const cachedHandoff = getCookieValue(request, handoffCookieName);
   if (cachedHandoff) {
     console.info("[mobile-google-oauth] Reused cached mobile handoff.");
-    return NextResponse.redirect(
-      createHandoffUrl(requestUrl.origin, cachedHandoff)
-    );
+    return noStoreRedirect(createHandoffUrl(requestUrl.origin, cachedHandoff));
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -199,9 +207,7 @@ export async function GET(request: Request) {
     });
 
     const handoff = createMobileOAuthHandoffToken(user.id);
-    const response = NextResponse.redirect(
-      createHandoffUrl(requestUrl.origin, handoff)
-    );
+    const response = noStoreRedirect(createHandoffUrl(requestUrl.origin, handoff));
     response.cookies.set(handoffCookieName, handoff, {
       httpOnly: true,
       maxAge: HANDOFF_COOKIE_MAX_AGE_SECONDS,
