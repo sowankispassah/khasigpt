@@ -794,6 +794,39 @@ export async function listJobListItems(): Promise<JobListItem[]> {
   return jobsServiceCacheState.jobListItemsPromise;
 }
 
+export async function listJobListPageItems({
+  limit,
+  offset,
+}: {
+  limit: number;
+  offset: number;
+}): Promise<{ items: JobListItem[]; total: number }> {
+  const normalizedLimit = Math.max(1, Math.min(limit, 40));
+  const normalizedOffset = Math.max(0, offset);
+  const supabase = createSupabaseAdminClient();
+  const { count, data, error } = await supabase
+    .from("jobs")
+    .select(
+      "id,title,company,location,salary,source,description,pdf_extracted_data,source_url,pdf_source_url,pdf_cached_url,created_at",
+      { count: "exact" }
+    )
+    .order("created_at", { ascending: false })
+    .range(normalizedOffset, normalizedOffset + normalizedLimit - 1);
+
+  if (error) {
+    throw new Error(`[jobs-service] Failed to fetch jobs page: ${error.message}`);
+  }
+
+  const items = await toJobListItems(
+    ((data ?? []) as SupabaseJobListRow[]).map(normalizeJobListItemSource)
+  );
+
+  return {
+    items,
+    total: count ?? normalizedOffset + items.length,
+  };
+}
+
 export async function listActiveJobPostingIdsForModel({
   modelConfigId,
   modelKey,
