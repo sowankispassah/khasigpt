@@ -4401,15 +4401,50 @@ export async function updateModelConfig({
 
 export async function deleteModelConfig(id: string) {
   try {
-    await db
-      .update(modelConfig)
-      .set({
-        deletedAt: new Date(),
-        isDefault: false,
-        isMarginBaseline: false,
-        isEnabled: false,
-      })
-      .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .update(modelConfig)
+        .set({
+          deletedAt: now,
+          isDefault: false,
+          isMarginBaseline: false,
+          isEnabled: false,
+          updatedAt: now,
+        })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
+        .returning();
+
+      if (!deleted) {
+        throw new Error("Model configuration not found");
+      }
+
+      if (deleted.isDefault || deleted.isMarginBaseline) {
+        const [fallback] = await tx
+          .select()
+          .from(modelConfig)
+          .where(
+            and(
+              eq(modelConfig.isEnabled, true),
+              isNull(modelConfig.deletedAt),
+              ne(modelConfig.id, id)
+            )
+          )
+          .orderBy(desc(modelConfig.updatedAt))
+          .limit(1);
+
+        if (fallback) {
+          await tx
+            .update(modelConfig)
+            .set({
+              ...(deleted.isDefault ? { isDefault: true } : {}),
+              ...(deleted.isMarginBaseline ? { isMarginBaseline: true } : {}),
+              updatedAt: now,
+            })
+            .where(eq(modelConfig.id, fallback.id));
+        }
+      }
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -4420,7 +4455,46 @@ export async function deleteModelConfig(id: string) {
 
 export async function hardDeleteModelConfig(id: string) {
   try {
-    await db.delete(modelConfig).where(eq(modelConfig.id, id));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select()
+        .from(modelConfig)
+        .where(eq(modelConfig.id, id))
+        .limit(1);
+
+      if (!target) {
+        throw new Error("Model configuration not found");
+      }
+
+      await tx.delete(modelConfig).where(eq(modelConfig.id, id));
+
+      if (target.isDefault || target.isMarginBaseline) {
+        const [fallback] = await tx
+          .select()
+          .from(modelConfig)
+          .where(
+            and(
+              eq(modelConfig.isEnabled, true),
+              isNull(modelConfig.deletedAt),
+              ne(modelConfig.id, id)
+            )
+          )
+          .orderBy(desc(modelConfig.updatedAt))
+          .limit(1);
+
+        if (fallback) {
+          await tx
+            .update(modelConfig)
+            .set({
+              ...(target.isDefault ? { isDefault: true } : {}),
+              ...(target.isMarginBaseline ? { isMarginBaseline: true } : {}),
+              updatedAt: now,
+            })
+            .where(eq(modelConfig.id, fallback.id));
+        }
+      }
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -4434,17 +4508,26 @@ export async function setDefaultModelConfig(id: string) {
 
   try {
     await db.transaction(async (tx) => {
+      const [target] = await tx
+        .update(modelConfig)
+        .set({ isDefault: true, isEnabled: true, updatedAt: now })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
+        .returning();
+
+      if (!target) {
+        throw new Error("Model configuration not found");
+      }
+
       await tx
         .update(modelConfig)
         .set({ isDefault: false, updatedAt: now })
         .where(
-          and(eq(modelConfig.isDefault, true), isNull(modelConfig.deletedAt))
+          and(
+            eq(modelConfig.isDefault, true),
+            isNull(modelConfig.deletedAt),
+            ne(modelConfig.id, id)
+          )
         );
-
-      await tx
-        .update(modelConfig)
-        .set({ isDefault: true, updatedAt: now })
-        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
     });
   } catch (_error) {
     throw new ChatSDKError(
@@ -4459,20 +4542,26 @@ export async function setMarginBaselineModel(id: string) {
 
   try {
     await db.transaction(async (tx) => {
+      const [target] = await tx
+        .update(modelConfig)
+        .set({ isMarginBaseline: true, updatedAt: now })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
+        .returning();
+
+      if (!target) {
+        throw new Error("Model configuration not found");
+      }
+
       await tx
         .update(modelConfig)
         .set({ isMarginBaseline: false, updatedAt: now })
         .where(
           and(
             eq(modelConfig.isMarginBaseline, true),
-            isNull(modelConfig.deletedAt)
+            isNull(modelConfig.deletedAt),
+            ne(modelConfig.id, id)
           )
         );
-
-      await tx
-        .update(modelConfig)
-        .set({ isMarginBaseline: true, updatedAt: now })
-        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
     });
   } catch (_error) {
     throw new ChatSDKError(
@@ -4748,14 +4837,45 @@ export async function updateImageModelConfig({
 
 export async function deleteImageModelConfig(id: string) {
   try {
-    await db
-      .update(imageModelConfig)
-      .set({
-        deletedAt: new Date(),
-        isActive: false,
-        isEnabled: false,
-      })
-      .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .update(imageModelConfig)
+        .set({
+          deletedAt: now,
+          isActive: false,
+          isEnabled: false,
+          updatedAt: now,
+        })
+        .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)))
+        .returning();
+
+      if (!deleted) {
+        throw new Error("Image model configuration not found");
+      }
+
+      if (deleted.isActive) {
+        const [fallback] = await tx
+          .select()
+          .from(imageModelConfig)
+          .where(
+            and(
+              eq(imageModelConfig.isEnabled, true),
+              isNull(imageModelConfig.deletedAt),
+              ne(imageModelConfig.id, id)
+            )
+          )
+          .orderBy(desc(imageModelConfig.updatedAt))
+          .limit(1);
+
+        if (fallback) {
+          await tx
+            .update(imageModelConfig)
+            .set({ isActive: true, updatedAt: now })
+            .where(eq(imageModelConfig.id, fallback.id));
+        }
+      }
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -4766,7 +4886,42 @@ export async function deleteImageModelConfig(id: string) {
 
 export async function hardDeleteImageModelConfig(id: string) {
   try {
-    await db.delete(imageModelConfig).where(eq(imageModelConfig.id, id));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select()
+        .from(imageModelConfig)
+        .where(eq(imageModelConfig.id, id))
+        .limit(1);
+
+      if (!target) {
+        throw new Error("Image model configuration not found");
+      }
+
+      await tx.delete(imageModelConfig).where(eq(imageModelConfig.id, id));
+
+      if (target.isActive) {
+        const [fallback] = await tx
+          .select()
+          .from(imageModelConfig)
+          .where(
+            and(
+              eq(imageModelConfig.isEnabled, true),
+              isNull(imageModelConfig.deletedAt),
+              ne(imageModelConfig.id, id)
+            )
+          )
+          .orderBy(desc(imageModelConfig.updatedAt))
+          .limit(1);
+
+        if (fallback) {
+          await tx
+            .update(imageModelConfig)
+            .set({ isActive: true, updatedAt: now })
+            .where(eq(imageModelConfig.id, fallback.id));
+        }
+      }
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -4780,17 +4935,26 @@ export async function setActiveImageModelConfig(id: string) {
 
   try {
     await db.transaction(async (tx) => {
+      const [target] = await tx
+        .update(imageModelConfig)
+        .set({ isActive: true, isEnabled: true, updatedAt: now })
+        .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)))
+        .returning();
+
+      if (!target) {
+        throw new Error("Image model configuration not found");
+      }
+
       await tx
         .update(imageModelConfig)
         .set({ isActive: false, updatedAt: now })
         .where(
-          and(eq(imageModelConfig.isActive, true), isNull(imageModelConfig.deletedAt))
+          and(
+            eq(imageModelConfig.isActive, true),
+            isNull(imageModelConfig.deletedAt),
+            ne(imageModelConfig.id, id)
+          )
         );
-
-      await tx
-        .update(imageModelConfig)
-        .set({ isActive: true, isEnabled: true, updatedAt: now })
-        .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)));
     });
   } catch (_error) {
     throw new ChatSDKError(
@@ -5319,10 +5483,15 @@ export async function updatePricingPlan({
 
 export async function deletePricingPlan(id: string) {
   try {
-    await db
+    const [deleted] = await db
       .update(pricingPlan)
-      .set({ deletedAt: new Date(), isActive: false })
-      .where(and(eq(pricingPlan.id, id), isNull(pricingPlan.deletedAt)));
+      .set({ deletedAt: new Date(), isActive: false, updatedAt: new Date() })
+      .where(and(eq(pricingPlan.id, id), isNull(pricingPlan.deletedAt)))
+      .returning();
+
+    if (!deleted) {
+      throw new Error("Pricing plan not found");
+    }
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -5333,7 +5502,14 @@ export async function deletePricingPlan(id: string) {
 
 export async function hardDeletePricingPlan(id: string) {
   try {
-    await db.delete(pricingPlan).where(eq(pricingPlan.id, id));
+    const [deleted] = await db
+      .delete(pricingPlan)
+      .where(eq(pricingPlan.id, id))
+      .returning();
+
+    if (!deleted) {
+      throw new Error("Pricing plan not found");
+    }
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",

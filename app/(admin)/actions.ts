@@ -182,6 +182,21 @@ function revalidateAdminSettingsSection() {
   }
 }
 
+function revalidateAdminModelSettings() {
+  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
+  revalidateAdminSettingsSection();
+}
+
+function revalidateAdminImageModelSettings() {
+  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
+  revalidateAdminSettingsSection();
+}
+
+function revalidateAdminPricingSettings() {
+  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
+  revalidateAdminSettingsSection();
+}
+
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
 const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
 const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
@@ -1308,18 +1323,14 @@ export async function createModelConfigAction(formData: FormData) {
     redirect("/admin/settings?notice=model-create-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.create",
     target: { modelId: created.id },
     metadata: { key, provider, providerModelId },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings();
 
   redirect("/admin/settings?notice=model-created");
 }
@@ -1344,7 +1355,6 @@ export async function updateModelConfigAction(formData: FormData) {
     supportsReasoning?: boolean;
     config?: Record<string, unknown> | null;
     isEnabled?: boolean;
-    isDefault?: boolean;
     inputProviderCostPerMillion?: number;
     outputProviderCostPerMillion?: number;
     freeMessagesPerDay?: number;
@@ -1399,9 +1409,7 @@ export async function updateModelConfigAction(formData: FormData) {
   }
 
   const isDefaultValue = parseBooleanFromEntries(formData, "isDefault");
-  if (isDefaultValue !== null) {
-    patch.isDefault = isDefaultValue;
-  }
+  const shouldSetDefault = isDefaultValue === true;
 
   if (formData.has("inputProviderCostPerMillion")) {
     patch.inputProviderCostPerMillion = parseNumber(
@@ -1422,23 +1430,27 @@ export async function updateModelConfigAction(formData: FormData) {
     );
   }
 
-  await updateModelConfig({
+  const updated = await updateModelConfig({
     id,
     ...patch,
   });
 
-  await createAuditLogEntry({
+  if (!updated) {
+    redirect("/admin/settings?notice=model-update-missing");
+  }
+
+  if (shouldSetDefault) {
+    await setDefaultModelConfig(id);
+  }
+
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.update",
     target: { modelId: id },
-    metadata: patch,
+    metadata: { ...patch, setDefault: shouldSetDefault },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings();
 }
 
 export async function deleteModelConfigAction(formData: FormData) {
@@ -1452,17 +1464,13 @@ export async function deleteModelConfigAction(formData: FormData) {
 
   await deleteModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.delete",
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings();
 
   redirect("/admin/settings?notice=model-deleted");
 }
@@ -1478,17 +1486,13 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
 
   await hardDeleteModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.hard_delete",
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings();
 
   redirect("/admin/settings?notice=model-hard-deleted");
 }
@@ -1504,17 +1508,13 @@ export async function setDefaultModelConfigAction(formData: FormData) {
 
   await setDefaultModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.setDefault",
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings();
 
   redirect("/admin/settings?notice=model-defaulted");
 }
@@ -1530,17 +1530,13 @@ export async function setMarginBaselineModelAction(formData: FormData) {
 
   await setMarginBaselineModel(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.setMarginBaseline",
     target: { modelId: id },
   });
 
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings();
 
   redirect("/admin/settings?notice=model-margin-baseline");
 }
@@ -1596,16 +1592,14 @@ export async function createImageModelConfigAction(formData: FormData) {
     redirect("/admin/settings?notice=image-model-create-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "image_model.create",
     target: { imageModelId: created.id },
     metadata: { key, provider, providerModelId },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/", "layout");
+  revalidateAdminImageModelSettings();
 }
 
 export async function updateImageModelConfigAction(formData: FormData) {
@@ -1662,21 +1656,23 @@ export async function updateImageModelConfigAction(formData: FormData) {
     patch.isEnabled = isEnabledValue;
   }
 
-  await updateImageModelConfig({
+  const updated = await updateImageModelConfig({
     id,
     ...patch,
   });
 
-  await createAuditLogEntry({
+  if (!updated) {
+    redirect("/admin/settings?notice=image-model-update-missing");
+  }
+
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "image_model.update",
     target: { imageModelId: id },
     metadata: patch,
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/", "layout");
+  revalidateAdminImageModelSettings();
 }
 
 export async function deleteImageModelConfigAction(formData: FormData) {
@@ -1690,15 +1686,13 @@ export async function deleteImageModelConfigAction(formData: FormData) {
 
   await deleteImageModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "image_model.delete",
     target: { imageModelId: id },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/", "layout");
+  revalidateAdminImageModelSettings();
 
   redirect("/admin/settings?notice=image-model-deleted");
 }
@@ -1714,15 +1708,13 @@ export async function hardDeleteImageModelConfigAction(formData: FormData) {
 
   await hardDeleteImageModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "image_model.hard_delete",
     target: { imageModelId: id },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/", "layout");
+  revalidateAdminImageModelSettings();
 
   redirect("/admin/settings?notice=image-model-hard-deleted");
 }
@@ -1738,15 +1730,13 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
 
   await setActiveImageModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "image_model.setActive",
     target: { imageModelId: id },
   });
 
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/", "layout");
+  revalidateAdminImageModelSettings();
 
   redirect("/admin/settings?notice=image-model-activated");
 }
@@ -2670,7 +2660,7 @@ export async function updatePlanTranslationAction(formData: FormData) {
 
     await invalidateTranslationBundleCache([language.code]);
 
-    await createAuditLogEntry({
+    await createAuditLogEntrySafely({
       actorId: actor.id,
       action: "billing.plan.translate",
       target: { planId: plan.id, language: language.code },
@@ -2680,10 +2670,8 @@ export async function updatePlanTranslationAction(formData: FormData) {
       },
     });
 
-    revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-    revalidateAdminSettingsSection();
+    revalidateAdminPricingSettings();
     revalidatePath("/admin/translations");
-    revalidatePath("/recharge");
 
     redirect("/admin/settings?notice=plan-translation-updated");
   } catch (error) {
@@ -2911,10 +2899,7 @@ export async function createPricingPlanAction(formData: FormData) {
     metadata: plan,
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings();
 
   redirect("/admin/settings?notice=plan-created");
 }
@@ -2988,9 +2973,7 @@ export async function updatePricingPlanAction(formData: FormData) {
     metadata: updates,
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings();
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {
@@ -3014,9 +2997,7 @@ export async function setRecommendedPricingPlanAction(formData: FormData) {
     metadata: { planId: value },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings();
 
   redirect("/admin/settings?notice=plan-recommendation-updated");
 }
@@ -3038,10 +3019,7 @@ export async function deletePricingPlanAction(formData: FormData) {
     target: { planId: id },
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings();
 
   redirect("/admin/settings?notice=plan-deleted");
 }
@@ -3063,10 +3041,7 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
     target: { planId: id },
   });
 
-  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings();
 
   redirect("/admin/settings?notice=plan-hard-deleted");
 }

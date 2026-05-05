@@ -73,6 +73,17 @@ function rememberChatModels(result: ChatModelsResult): ChatModelsResult {
   return result;
 }
 
+function requireUsableChatModels(
+  result: ChatModelsResult,
+  source: "registry" | "direct"
+) {
+  if (result.models.length > 0 && result.defaultModel) {
+    return result;
+  }
+
+  throw new Error(`No usable chat models returned from ${source} model load.`);
+}
+
 async function loadChatModelsFromRegistry(): Promise<ChatModelsResult> {
   const { configs, defaultConfig } = await withTimeout(
     getModelRegistry(),
@@ -84,7 +95,10 @@ async function loadChatModelsFromRegistry(): Promise<ChatModelsResult> {
     }
   );
 
-  return buildChatModelsResult(configs, defaultConfig);
+  return requireUsableChatModels(
+    buildChatModelsResult(configs, defaultConfig),
+    "registry"
+  );
 }
 
 async function loadChatModelsDirectly(): Promise<ChatModelsResult> {
@@ -98,7 +112,7 @@ async function loadChatModelsDirectly(): Promise<ChatModelsResult> {
     }
   );
 
-  return buildChatModelsResult(configs);
+  return requireUsableChatModels(buildChatModelsResult(configs), "direct");
 }
 
 export async function loadChatModels() {
