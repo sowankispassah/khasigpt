@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 
 import { LoaderIcon } from "@/components/icons";
@@ -29,8 +29,8 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
     ...buttonProps
   } = props;
   const { pending } = useFormStatus();
+  const [isRefreshing, startTransition] = useTransition();
   const wasPendingRef = useRef(false);
-  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -42,7 +42,9 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
     if (!pending && wasPendingRef.current) {
       toast({ type: "success", description: successMessage });
       if (refreshOnSuccess) {
-        router.refresh();
+        startTransition(() => {
+          router.refresh();
+        });
       }
     }
 
@@ -50,35 +52,29 @@ export function ActionSubmitButton(props: ActionSubmitButtonProps) {
   }, [pending, successMessage, refreshOnSuccess, router]);
 
   useEffect(() => {
-    if (pendingTimeoutRef.current) {
-      clearTimeout(pendingTimeoutRef.current);
-      pendingTimeoutRef.current = null;
-    }
-
     if (!pending || !pendingTimeoutMs || pendingTimeoutMs <= 0) {
       return;
     }
 
-    pendingTimeoutRef.current = setTimeout(() => {
-      router.refresh();
+    const timeoutId = setTimeout(() => {
+      console.warn(
+        `[action-submit-button] Form action still pending after ${pendingTimeoutMs}ms.`
+      );
     }, pendingTimeoutMs);
 
-    return () => {
-      if (pendingTimeoutRef.current) {
-        clearTimeout(pendingTimeoutRef.current);
-        pendingTimeoutRef.current = null;
-      }
-    };
-  }, [pending, pendingTimeoutMs, router]);
+    return () => clearTimeout(timeoutId);
+  }, [pending, pendingTimeoutMs]);
+
+  const isBusy = pending || isRefreshing;
 
   return (
     <Button
       className={className}
-      disabled={disabled || pending}
+      disabled={disabled || isBusy}
       type="submit"
       {...buttonProps}
     >
-      {pending ? (
+      {isBusy ? (
         <span className="flex items-center gap-2">
           <span className="h-4 w-4 animate-spin">
             <LoaderIcon size={16} />

@@ -65,11 +65,11 @@ import {
   document,
   type EmailVerificationToken,
   emailVerificationToken,
+  freeChatUsageDaily,
   type ImageModelConfig,
   type ImpersonationToken,
   type InviteRedeemerBlock,
   type InviteToken,
-  freeChatUsageDaily,
   imageModelConfig,
   impersonationToken,
   inviteRedeemerBlock,
@@ -3250,17 +3250,45 @@ export async function updateUserAuthProvider({
 export async function listUsers({
   limit = 50,
   offset = 0,
+  search,
+  role,
+  isActive,
 }: {
   limit?: number;
   offset?: number;
+  search?: string | null;
+  role?: User["role"] | "all" | null;
+  isActive?: boolean | "all" | null;
 } = {}): Promise<User[]> {
   try {
-    return await db
-      .select()
-      .from(user)
-      .orderBy(desc(user.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const conditions: SQL<boolean>[] = [];
+    const normalizedSearch = search?.trim().toLowerCase();
+
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql<boolean>`lower(${user.email}) like ${pattern}`,
+          sql<boolean>`lower(${user.firstName}) like ${pattern}`,
+          sql<boolean>`lower(${user.lastName}) like ${pattern}`,
+          sql<boolean>`lower(${user.id}::text) like ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
+
+    if (role && role !== "all") {
+      conditions.push(eq(user.role, role) as SQL<boolean>);
+    }
+
+    if (typeof isActive === "boolean") {
+      conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
+    }
+
+    const builder = db.select().from(user);
+    const query =
+      conditions.length > 0 ? builder.where(and(...conditions)) : builder;
+
+    return await query.orderBy(desc(user.createdAt)).limit(limit).offset(offset);
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];
@@ -3284,9 +3312,43 @@ export async function listCreators(): Promise<User[]> {
   }
 }
 
-export async function getUserCount(): Promise<number> {
+export async function getUserCount({
+  search,
+  role,
+  isActive,
+}: {
+  search?: string | null;
+  role?: User["role"] | "all" | null;
+  isActive?: boolean | "all" | null;
+} = {}): Promise<number> {
   try {
-    const [result] = await db.select({ total: count(user.id) }).from(user);
+    const conditions: SQL<boolean>[] = [];
+    const normalizedSearch = search?.trim().toLowerCase();
+
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql<boolean>`lower(${user.email}) like ${pattern}`,
+          sql<boolean>`lower(${user.firstName}) like ${pattern}`,
+          sql<boolean>`lower(${user.lastName}) like ${pattern}`,
+          sql<boolean>`lower(${user.id}::text) like ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
+
+    if (role && role !== "all") {
+      conditions.push(eq(user.role, role) as SQL<boolean>);
+    }
+
+    if (typeof isActive === "boolean") {
+      conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
+    }
+
+    const builder = db.select({ total: count(user.id) }).from(user);
+    const query =
+      conditions.length > 0 ? builder.where(and(...conditions)) : builder;
+    const [result] = await query;
     return Number(result?.total ?? 0);
   } catch (_error) {
     throw new ChatSDKError("bad_request:database", "Failed to count users");
@@ -3298,19 +3360,34 @@ export async function listChats({
   offset = 0,
   includeDeleted = false,
   onlyDeleted = false,
+  search,
 }: {
   limit?: number;
   offset?: number;
   includeDeleted?: boolean;
   onlyDeleted?: boolean;
+  search?: string | null;
 } = {}): Promise<ChatListItem[]> {
   try {
     const conditions: SQL<boolean>[] = [];
+    const normalizedSearch = search?.trim().toLowerCase();
 
     if (onlyDeleted) {
       conditions.push(isNotNull(chat.deletedAt) as SQL<boolean>);
     } else if (!includeDeleted) {
       conditions.push(isNull(chat.deletedAt) as SQL<boolean>);
+    }
+
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql<boolean>`lower(${chat.title}) like ${pattern}`,
+          sql<boolean>`lower(${chat.userId}::text) like ${pattern}`,
+          sql<boolean>`lower(${chat.id}::text) like ${pattern}`,
+          sql<boolean>`lower(${user.email}) like ${pattern}`
+        ) as SQL<boolean>
+      );
     }
 
     const baseQuery = db
@@ -3355,25 +3432,43 @@ export async function listChats({
 export async function getChatCount({
   includeDeleted = false,
   onlyDeleted = false,
+  search,
 }: {
   includeDeleted?: boolean;
   onlyDeleted?: boolean;
+  search?: string | null;
 } = {}): Promise<number> {
   try {
-    const baseBuilder = db.select({ total: count(chat.id) }).from(chat);
+    const conditions: SQL<boolean>[] = [];
+    const normalizedSearch = search?.trim().toLowerCase();
 
-    const filterCondition = onlyDeleted
-      ? (isNotNull(chat.deletedAt) as SQL<boolean>)
-      : includeDeleted
-        ? undefined
-        : (isNull(chat.deletedAt) as SQL<boolean>);
+    if (onlyDeleted) {
+      conditions.push(isNotNull(chat.deletedAt) as SQL<boolean>);
+    } else if (!includeDeleted) {
+      conditions.push(isNull(chat.deletedAt) as SQL<boolean>);
+    }
 
-    const builder =
-      filterCondition !== undefined
-        ? baseBuilder.where(filterCondition)
-        : baseBuilder;
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql<boolean>`lower(${chat.title}) like ${pattern}`,
+          sql<boolean>`lower(${chat.userId}::text) like ${pattern}`,
+          sql<boolean>`lower(${chat.id}::text) like ${pattern}`,
+          sql<boolean>`lower(${user.email}) like ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
 
-    const [result] = await builder;
+    const baseBuilder = db
+      .select({ total: count(chat.id) })
+      .from(chat)
+      .leftJoin(user, eq(chat.userId, user.id));
+
+    const query =
+      conditions.length > 0 ? baseBuilder.where(and(...conditions)) : baseBuilder;
+
+    const [result] = await query;
     return Number(result?.total ?? 0);
   } catch (_error) {
     if (isTableMissingError(_error)) {
@@ -3835,17 +3930,35 @@ export async function listContactMessages({
   limit = 50,
   offset = 0,
   status,
+  search,
 }: {
   limit?: number;
   offset?: number;
   status?: ContactMessageStatus | "all";
+  search?: string | null;
 } = {}): Promise<ContactMessage[]> {
   try {
+    const conditions: SQL<boolean>[] = [];
+    const normalizedSearch = search?.trim().toLowerCase();
+    if (status && status !== "all") {
+      conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
+    }
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql<boolean>`lower(${contactMessage.name}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.email}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.phone}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.subject}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.message}) like ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
+
     const baseQuery = db.select().from(contactMessage);
     const filteredQuery =
-      status && status !== "all"
-        ? baseQuery.where(eq(contactMessage.status, status))
-        : baseQuery;
+      conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
 
     const finalQuery = filteredQuery
       .orderBy(desc(contactMessage.createdAt))
@@ -3866,15 +3979,33 @@ export async function listContactMessages({
 
 export async function getContactMessageCount({
   status,
+  search,
 }: {
   status?: ContactMessageStatus | "all";
+  search?: string | null;
 } = {}): Promise<number> {
   try {
+    const conditions: SQL<boolean>[] = [];
+    const normalizedSearch = search?.trim().toLowerCase();
+    if (status && status !== "all") {
+      conditions.push(eq(contactMessage.status, status) as SQL<boolean>);
+    }
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql<boolean>`lower(${contactMessage.name}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.email}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.phone}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.subject}) like ${pattern}`,
+          sql<boolean>`lower(${contactMessage.message}) like ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
+
     const baseQuery = db.select({ value: count() }).from(contactMessage);
     const filteredQuery =
-      status && status !== "all"
-        ? baseQuery.where(eq(contactMessage.status, status))
-        : baseQuery;
+      conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
 
     const [result] = await filteredQuery;
     return result?.value ?? 0;

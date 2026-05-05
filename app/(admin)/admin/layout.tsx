@@ -9,7 +9,9 @@ import {
   getTranslationsForKeys,
   type TranslationDefinition,
 } from "@/lib/i18n/dictionary";
+import type { LanguageOption } from "@/lib/i18n/languages";
 import { resolveLanguage } from "@/lib/i18n/languages";
+import { withTimeout } from "@/lib/utils/async";
 
 const ADMIN_SHELL_TRANSLATIONS: TranslationDefinition[] = [
   { key: "user_menu.resources", defaultText: "Resources" },
@@ -49,7 +51,7 @@ const ADMIN_SHELL_TRANSLATIONS: TranslationDefinition[] = [
   },
   {
     key: "user_menu.manage_subscriptions_status_fallback",
-    defaultText: "Free Plan",
+    defaultText: "No active plan",
   },
   { key: "user_menu.upgrade_plan", defaultText: "Upgrade plan" },
   { key: "user_menu.open_admin_console", defaultText: "Open admin console" },
@@ -67,6 +69,25 @@ const ADMIN_SHELL_TRANSLATIONS: TranslationDefinition[] = [
   },
 ];
 
+const ADMIN_SHELL_DATA_TIMEOUT_MS = 2500;
+const FALLBACK_LANGUAGE: LanguageOption = {
+  id: "fallback-en",
+  code: "en",
+  name: "English",
+  isDefault: true,
+  isActive: true,
+  syncUiLanguage: true,
+};
+
+function buildFallbackDictionary() {
+  return Object.fromEntries(
+    ADMIN_SHELL_TRANSLATIONS.map((definition) => [
+      definition.key,
+      definition.defaultText,
+    ])
+  );
+}
+
 export default async function AdminLayout({
   children,
 }: {
@@ -81,8 +102,23 @@ export default async function AdminLayout({
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
   const [{ languages, activeLanguage }, dictionary] = await Promise.all([
-    resolveLanguage(preferredLanguage),
-    getTranslationsForKeys(preferredLanguage, ADMIN_SHELL_TRANSLATIONS),
+    withTimeout(
+      resolveLanguage(preferredLanguage),
+      ADMIN_SHELL_DATA_TIMEOUT_MS
+    ).catch((error) => {
+      console.error("[admin/layout] Language shell data timed out.", error);
+      return {
+        languages: [FALLBACK_LANGUAGE],
+        activeLanguage: FALLBACK_LANGUAGE,
+      };
+    }),
+    withTimeout(
+      getTranslationsForKeys(preferredLanguage, ADMIN_SHELL_TRANSLATIONS),
+      ADMIN_SHELL_DATA_TIMEOUT_MS
+    ).catch((error) => {
+      console.error("[admin/layout] Dictionary shell data timed out.", error);
+      return buildFallbackDictionary();
+    }),
   ]);
 
   return (

@@ -176,6 +176,12 @@ function revalidateAppSettingCache(key: string) {
   revalidateTag(appSettingCacheTagForKey(key), "max");
 }
 
+function revalidateAdminSettingsSection() {
+  if (process.env.ADMIN_SETTINGS_FULL_ROUTE_REVALIDATE_ON_SAVE === "1") {
+    revalidatePath("/admin/settings");
+  }
+}
+
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
 const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
 const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
@@ -502,7 +508,7 @@ export async function updateTranslateProviderModeAction(formData: FormData) {
     metadata: { providerMode },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/translate");
 
   redirect("/admin/settings?notice=translation-provider-mode-updated");
@@ -584,7 +590,7 @@ export async function updateComingSoonContentAction(formData: FormData) {
     metadata: content,
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/coming-soon");
 }
 
@@ -610,7 +616,7 @@ export async function updateComingSoonTimerAction(formData: FormData) {
     metadata: timerSetting,
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/coming-soon");
 }
 
@@ -653,7 +659,7 @@ export async function updateAdminEntryCodeAction(formData: FormData) {
     metadata: { updated: true, length: code.length },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function updateAdminEntryPathAction(formData: FormData) {
@@ -694,7 +700,7 @@ export async function updateAdminEntryPathAction(formData: FormData) {
     metadata: { path },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function createPrelaunchInviteAction(formData: FormData) {
@@ -742,7 +748,7 @@ export async function createPrelaunchInviteAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function revokePrelaunchInviteAction(formData: FormData) {
@@ -777,7 +783,7 @@ export async function revokePrelaunchInviteAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function deletePrelaunchInviteAction(formData: FormData) {
@@ -811,7 +817,7 @@ export async function deletePrelaunchInviteAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function revokePrelaunchInviteAccessAction(formData: FormData) {
@@ -851,7 +857,7 @@ export async function revokePrelaunchInviteAccessAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {
@@ -874,7 +880,7 @@ export async function updateImageFilenamePrefixAction(formData: FormData) {
     metadata: { prefix },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 }
 
 export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
@@ -894,7 +900,7 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
     metadata: { enabled },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/admin/rag");
 }
 
@@ -1310,7 +1316,7 @@ export async function createModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -1429,7 +1435,7 @@ export async function updateModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -1453,7 +1459,7 @@ export async function deleteModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -1479,7 +1485,7 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -1505,7 +1511,7 @@ export async function setDefaultModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -1531,7 +1537,7 @@ export async function setMarginBaselineModelAction(formData: FormData) {
   });
 
   revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -1598,7 +1604,7 @@ export async function createImageModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/", "layout");
 }
 
@@ -1669,7 +1675,7 @@ export async function updateImageModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/", "layout");
 }
 
@@ -1691,7 +1697,7 @@ export async function deleteImageModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=image-model-deleted");
@@ -1715,7 +1721,7 @@ export async function hardDeleteImageModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=image-model-hard-deleted");
@@ -1739,7 +1745,7 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
   });
 
   revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/", "layout");
 
   redirect("/admin/settings?notice=image-model-activated");
@@ -1776,7 +1782,7 @@ export async function setImagePromptTranslationModelAction(
     metadata: { modelId: normalizedModelId },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   redirect("/admin/settings?notice=image-translation-model-updated");
 }
@@ -1866,7 +1872,7 @@ export async function createTranslationFeatureLanguageAction(
     },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/translate");
 
   redirect("/admin/settings?notice=translation-language-created");
@@ -1915,7 +1921,7 @@ export async function updateTranslationFeatureLanguageStatusAction(
     metadata: { isActive: shouldActivate },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/translate");
 
   redirect("/admin/settings?notice=translation-language-updated");
@@ -2035,7 +2041,7 @@ export async function updateTranslationFeatureLanguageSettingsAction(
     },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/translate");
 
   redirect("/admin/settings?notice=translation-language-settings-updated");
@@ -2070,7 +2076,7 @@ export async function deleteTranslationFeatureLanguageAction(
     metadata: { name: targetLanguage.name },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/translate");
 
   redirect("/admin/settings?notice=translation-language-deleted");
@@ -2092,7 +2098,7 @@ export async function updatePrivacyPolicyAction(formData: FormData) {
   });
 
   revalidatePath("/privacy-policy");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   redirect("/admin/settings?notice=privacy-updated");
 }
@@ -2113,7 +2119,7 @@ export async function updateTermsOfServiceAction(formData: FormData) {
   });
 
   revalidatePath("/terms-of-service");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   redirect("/admin/settings?notice=terms-updated");
 }
@@ -2183,7 +2189,7 @@ export async function updateAboutContentAction(formData: FormData) {
   });
 
   revalidatePath("/about");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   return {
     success: true as const,
@@ -2256,7 +2262,7 @@ export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
   });
 
   revalidatePath("/privacy-policy");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   return {
     success: true as const,
@@ -2329,7 +2335,7 @@ export async function updateTermsOfServiceByLanguageAction(formData: FormData) {
   });
 
   revalidatePath("/terms-of-service");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   return {
     success: true as const,
@@ -2390,7 +2396,7 @@ export async function createLanguageAction(formData: FormData) {
 
   revalidateTag("languages", "max");
   revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/admin/translations");
 
   redirect("/admin/settings?notice=language-created");
@@ -2442,7 +2448,7 @@ export async function updateLanguageStatusAction(formData: FormData) {
 
   revalidateTag("languages", "max");
   revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/admin/translations");
 
   redirect("/admin/settings?notice=language-updated");
@@ -2495,7 +2501,7 @@ export async function updateLanguageSettingsAction(formData: FormData) {
 
   revalidateTag("languages", "max");
   revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   redirect("/admin/settings?notice=language-settings-updated");
 }
@@ -2531,7 +2537,7 @@ export async function deleteLanguageAction(formData: FormData) {
 
   revalidateTag("languages", "max");
   revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/admin/translations");
 
   redirect("/admin/settings?notice=language-deleted");
@@ -2675,7 +2681,7 @@ export async function updatePlanTranslationAction(formData: FormData) {
     });
 
     revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-    revalidatePath("/admin/settings");
+    revalidateAdminSettingsSection();
     revalidatePath("/admin/translations");
     revalidatePath("/recharge");
 
@@ -2718,7 +2724,7 @@ export async function updateFreeMessageSettingsAction(formData: FormData) {
     metadata: normalized,
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/chat", "layout");
   revalidatePath("/chat");
   revalidatePath("/", "layout");
@@ -2802,7 +2808,7 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
 
   revalidatePath("/", "layout");
   revalidatePath("/chat");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   return {
     success: true as const,
@@ -2848,7 +2854,7 @@ export async function updateIconPromptsAction(formData: FormData) {
 
   revalidatePath("/", "layout");
   revalidatePath("/chat");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
 
   return {
     success: true as const,
@@ -2906,7 +2912,7 @@ export async function createPricingPlanAction(formData: FormData) {
   });
 
   revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
 
@@ -3008,7 +3014,7 @@ export async function setRecommendedPricingPlanAction(formData: FormData) {
     metadata: { planId: value },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
 
@@ -3033,7 +3039,7 @@ export async function deletePricingPlanAction(formData: FormData) {
   });
 
   revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
 
@@ -3058,7 +3064,7 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
   });
 
   revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection();
   revalidatePath("/recharge");
   revalidatePath("/subscriptions");
 

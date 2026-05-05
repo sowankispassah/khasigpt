@@ -1,8 +1,8 @@
 "use client";
 
+import { EllipsisVertical } from "lucide-react";
 import Link from "next/link";
 import React from "react";
-import { EllipsisVertical } from "lucide-react";
 import useSWR from "swr";
 import { useTranslation } from "@/components/language-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -293,11 +293,9 @@ export function UserDropdownMenu({
     (
       event: Event,
       {
-        actionType,
         callback,
         skipProgress,
       }: {
-        actionType: "theme" | "signOut" | "language" | "action";
         callback: () => void;
         skipProgress?: boolean;
       }
@@ -516,7 +514,7 @@ export function UserDropdownMenu({
                       : (planLabel ??
                         translate(
                           "user_menu.manage_subscriptions_status_fallback",
-                          "Free Plan"
+                          "No active plan"
                         ))}
                   </span>
                 </Link>
@@ -536,14 +534,13 @@ export function UserDropdownMenu({
                 <DropdownMenuItem
                   className="cursor-pointer"
                   data-testid="user-nav-item-admin"
-	                  onSelect={(event) =>
-	                    handleSelect(event, {
-	                      actionType: "action",
-	                      callback: () => {
-	                        window.open("/admin", "_blank", "noopener,noreferrer");
-	                        setIsMenuOpen(false);
-	                      },
-	                      skipProgress: true,
+                  onSelect={(event) =>
+                    handleSelect(event, {
+                      callback: () => {
+                        window.open("/admin", "_blank", "noopener,noreferrer");
+                        setIsMenuOpen(false);
+                      },
+                      skipProgress: true,
                     })
                   }
                 >
@@ -610,7 +607,6 @@ export function UserDropdownMenu({
                       key={language.code}
                       onSelect={(event) =>
                         handleSelect(event, {
-                          actionType: "language",
                           callback: () => onLanguageChange?.(language.code),
                         })
                       }
@@ -663,7 +659,6 @@ export function UserDropdownMenu({
             data-testid="user-nav-item-theme"
             onSelect={(event) =>
               handleSelect(event, {
-                actionType: "theme",
                 callback: onToggleTheme,
               })
             }
@@ -683,7 +678,6 @@ export function UserDropdownMenu({
                 onSelect={(event) =>
                   onSignOut &&
                   handleSelect(event, {
-                    actionType: "signOut",
                     callback: onSignOut,
                   })
                 }
