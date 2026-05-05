@@ -1170,6 +1170,28 @@ export const tokenUsage = pgTable(
 
 export type TokenUsage = InferSelectModel<typeof tokenUsage>;
 
+export const freeChatUsageDaily = pgTable(
+  "FreeChatUsageDaily",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    messageCount: integer("messageCount").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userDayIdx: uniqueIndex("FreeChatUsageDaily_user_day_idx").on(
+      table.userId,
+      table.day
+    ),
+  })
+);
+
+export type FreeChatUsageDaily = InferSelectModel<typeof freeChatUsageDaily>;
+
 export const forumThreadStatusEnum = pgEnum("forum_thread_status", [
   "open",
   "resolved",

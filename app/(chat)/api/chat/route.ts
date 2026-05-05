@@ -40,6 +40,7 @@ import {
 } from "@/lib/constants";
 import {
   createStreamId,
+  consumeFreeDailyChatAllowance,
   deleteChatById,
   getActiveSubscriptionForUser,
   getAppSetting,
@@ -47,6 +48,7 @@ import {
   getLanguageByCodeRaw,
   getMessageCountByUserId,
   getMessagesByChatIdPage,
+  getPricingPlanById,
   recordTokenUsage,
   saveChat,
   saveMessages,
@@ -1220,8 +1222,14 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
+    const activePlan = activeSubscription
+      ? await measurePreModelStep("get_active_plan", () =>
+          getPricingPlanById({ id: activeSubscription.planId })
+        )
+      : null;
     const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
-    const hasActiveCredits = activeTokenBalance > 0;
+    const activePlanIsPaid = (activePlan?.priceInPaise ?? 0) > 0;
+    const hasActiveCredits = activePlanIsPaid && activeTokenBalance > 0;
     const perModelAllowance = Math.max(
       0,
       modelConfig.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY
@@ -1231,15 +1239,37 @@ export async function POST(request: Request) {
       freeMessageSettings.mode === "global"
         ? globalAllowance
         : perModelAllowance;
+    const freeDailyMessageLimit = Math.min(
+      DEFAULT_FREE_MESSAGES_PER_DAY,
+      freeMessagesForModel
+    );
 
-    const hasFreeDailyAllowance =
-      process.env.PLAYWRIGHT === "true" ||
-      (!hasActiveCredits && messageCount < freeMessagesForModel);
+    if (
+      process.env.PLAYWRIGHT !== "true" &&
+      userRole !== "admin" &&
+      !hasActiveCredits
+    ) {
+      const allowance = await measurePreModelStep("consume_free_daily_chat", () =>
+        consumeFreeDailyChatAllowance({
+          userId: session.user.id,
+          day: getStartOfTodayInIST(),
+          limit: freeDailyMessageLimit,
+          existingMessageCount: messageCount,
+        })
+      );
 
-    if (!hasActiveCredits && !hasFreeDailyAllowance) {
+      if (!allowance.allowed) {
+        return new ChatSDKError(
+          "payment_required:free_messages",
+          `Free daily chat limit reached (${allowance.used}/${allowance.limit}).`
+        ).toResponse();
+      }
+    }
+
+    if (userRole !== "admin" && !hasActiveCredits && freeDailyMessageLimit <= 0) {
       return new ChatSDKError(
-        "payment_required:credits",
-        "You have no active credits remaining. Please recharge to continue."
+        "payment_required:free_messages",
+        "Free chat access is disabled. Please recharge to continue."
       ).toResponse();
     }
 

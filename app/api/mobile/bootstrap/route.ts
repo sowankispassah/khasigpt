@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getImageGenerationAccess } from "@/lib/ai/image-generation";
+import {
+  getImageGenerationAccess,
+  isImageGenerationEnabledForAllUsers,
+} from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
@@ -41,8 +44,8 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const MOBILE_BOOTSTRAP_TIMEOUT_MS = 12_000;
-const MOBILE_BOOTSTRAP_DEFERRED_TIMEOUT_MS = 8_000;
+const MOBILE_BOOTSTRAP_TIMEOUT_MS = 20_000;
+const MOBILE_BOOTSTRAP_DEFERRED_TIMEOUT_MS = 15_000;
 
 const serializeDate = (value: Date | string | null | undefined) =>
   value instanceof Date ? value.toISOString() : value ?? null;
@@ -101,6 +104,7 @@ export async function GET(request: Request) {
     recommendedPlanId,
     balance,
     imageGenerationAccess,
+    imageGenerationEnabledForAll,
   ] = await Promise.all([
     getTranslationBundle(preferredLanguage),
     loadChatModels(),
@@ -178,6 +182,9 @@ export async function GET(request: Request) {
           userRole: session.user.role,
         }).catch(() => null)
       : Promise.resolve(null),
+    isStartupPhase
+      ? Promise.resolve(false)
+      : isImageGenerationEnabledForAllUsers().catch(() => false),
   ]);
 
   const featureAccess = {
@@ -277,6 +284,7 @@ export async function GET(request: Request) {
           })),
       },
       billing: {
+        imageGenerationEnabledForAll,
         recommendedPlanId,
         balance: balance
           ? {

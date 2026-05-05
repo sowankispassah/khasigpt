@@ -15,7 +15,7 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const RESOURCE_TIMEOUT_MS = 8_000;
+const RESOURCE_TIMEOUT_MS = 15_000;
 
 type LocalizedContentMap = Record<string, string>;
 

@@ -107,7 +107,23 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const currentUser = await getUserById(session.user.id);
+  let currentUser: Awaited<ReturnType<typeof getUserById>> = null;
+  try {
+    currentUser = await getUserById(session.user.id);
+  } catch (error) {
+    console.error("[api/mobile/profile] Failed to load user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Profile service is taking too long. Please wait a moment and try again.",
+      },
+      { status: 503 }
+    );
+  }
+
   if (!currentUser) {
     return new ChatSDKError("not_found:api", "User not found.").toResponse();
   }
@@ -135,8 +151,12 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const updated =
-    shouldUpdateDateOfBirth
+  let updated:
+    | Awaited<ReturnType<typeof updateUserProfile>>
+    | Awaited<ReturnType<typeof updateUserName>>
+    | null = null;
+  try {
+    updated = shouldUpdateDateOfBirth
       ? await updateUserProfile({
           id: session.user.id,
           firstName,
@@ -148,6 +168,19 @@ export async function PATCH(request: Request) {
           firstName,
           lastName,
         });
+  } catch (error) {
+    console.error("[api/mobile/profile] Failed to update user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Profile service is taking too long. Please wait a moment and try again.",
+      },
+      { status: 503 }
+    );
+  }
 
   const clientInfo = await getClientInfoFromHeaders();
   await createAuditLogEntry({
@@ -157,6 +190,11 @@ export async function PATCH(request: Request) {
     metadata: { client: "native" },
     subjectUserId: session.user.id,
     ...clientInfo,
+  }).catch((error) => {
+    console.error("[api/mobile/profile] Failed to write profile audit log.", {
+      userId: session.user.id,
+      error,
+    });
   });
 
   await unstable_update({

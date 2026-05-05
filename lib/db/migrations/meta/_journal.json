@@ -435,6 +435,20 @@
       "when": 1765238400011,
       "tag": "0059_google_play_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1765238400012,
+      "tag": "0060_repair_core_lookup_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1765238400013,
+      "tag": "0061_free_chat_usage_daily",
+      "breakpoints": true
     }
   ]
 }

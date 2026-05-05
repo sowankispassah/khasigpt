@@ -20,6 +20,7 @@ export type Surface =
   | "suggestions"
   | "activate_gateway"
   | "credits"
+  | "free_messages"
   | "pricing_plan"
   | "usage"
   | "configuration"
@@ -42,6 +43,7 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   suggestions: "response",
   activate_gateway: "response",
   credits: "response",
+  free_messages: "response",
   pricing_plan: "response",
   usage: "response",
   configuration: "response",
@@ -123,6 +125,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
       return "You have exceeded your maximum number of messages for the day. Please try again later.";
     case "payment_required:credits":
       return "You have no active credits remaining. Please recharge to continue.";
+    case "payment_required:free_messages":
+      return "You have used your 3 free chats for today. Recharge or upgrade to keep chatting.";
     case "not_found:chat":
       return "The requested chat was not found. Please check the chat ID and try again.";
     case "forbidden:chat":

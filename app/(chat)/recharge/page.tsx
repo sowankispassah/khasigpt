@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
+import { isImageGenerationEnabledForAllUsers } from "@/lib/ai/image-generation";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
   getAppSetting,
@@ -27,10 +28,16 @@ export default async function RechargePage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [plans, balance, recommendedPlanSetting] = await Promise.all([
+  const [
+    plans,
+    balance,
+    recommendedPlanSetting,
+    imageGenerationEnabledForAll,
+  ] = await Promise.all([
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+    isImageGenerationEnabledForAllUsers(),
   ]);
 
   const planTranslationDefinitions = plans.flatMap((plan) => [
@@ -146,6 +153,7 @@ export default async function RechargePage() {
 
       <RechargePlans
         activePlanId={activePlanId}
+        imageGenerationEnabledForAll={imageGenerationEnabledForAll}
         plans={localizedPlans.map((plan) => ({
           id: plan.id,
           name: plan.name,

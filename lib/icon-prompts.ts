@@ -368,30 +368,6 @@ async function fetchIconPromptActions(
   const mode = parseIconPromptsAccessModeSetting(enabledSetting);
   const enabledForRole = isFeatureEnabledForRole(mode, userRole ?? null);
   if (!enabled || !enabledForRole) {
-    if (activeLanguage.code === "kha") {
-      return [
-        {
-          id: "shna-dur",
-          label: "Shna dur",
-          prompt: "Shna dur...",
-          iconUrl: null,
-          behavior: "replace" as IconPromptBehavior,
-          selectImageMode: true,
-          showSuggestions: false,
-          suggestions: [],
-        },
-        {
-          id: "thoh-jingrwai",
-          label: "Thoh jingrwai",
-          prompt: "Thoh jingrwai ba...",
-          iconUrl: null,
-          behavior: "replace" as IconPromptBehavior,
-          selectImageMode: false,
-          showSuggestions: false,
-          suggestions: [],
-        },
-      ];
-    }
     return [];
   }
 

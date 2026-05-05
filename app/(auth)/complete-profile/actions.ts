@@ -75,7 +75,21 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  const currentUser = await getUserById(session.user.id);
+  let currentUser: Awaited<ReturnType<typeof getUserById>> = null;
+  try {
+    currentUser = await getUserById(session.user.id);
+  } catch (error) {
+    console.error("[complete-profile] Failed to load user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return {
+      status: "error",
+      message:
+        "Profile service is taking too long. Please wait a moment and try again.",
+    };
+  }
+
   const currentDateOfBirth = currentUser?.dateOfBirth ?? session.user.dateOfBirth;
   if (isDateOfBirthChangeBlocked(currentDateOfBirth, parsed.data.dob)) {
     return {
@@ -84,12 +98,26 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  const updatedProfile = await updateUserProfile({
-    id: session.user.id,
-    dateOfBirth: parsed.data.dob,
-    firstName: parsed.data.firstName,
-    lastName: parsed.data.lastName,
-  });
+  let updatedProfile: Awaited<ReturnType<typeof updateUserProfile>> | null =
+    null;
+  try {
+    updatedProfile = await updateUserProfile({
+      id: session.user.id,
+      dateOfBirth: parsed.data.dob,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+    });
+  } catch (error) {
+    console.error("[complete-profile] Failed to update user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return {
+      status: "error",
+      message:
+        "Profile service is taking too long. Please wait a moment and try again.",
+    };
+  }
 
   if (!updatedProfile) {
     return {
@@ -107,6 +135,11 @@ export async function submitDateOfBirthAction(
         .filter(Boolean)
         .join(" "),
     },
+  }).catch((error) => {
+    console.error("[complete-profile] Failed to refresh session profile.", {
+      userId: session.user.id,
+      error,
+    });
   });
 
   return { status: "success" };

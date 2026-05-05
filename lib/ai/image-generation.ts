@@ -78,6 +78,19 @@ export function parseImageGenerationEnabledSetting(value: unknown): boolean {
   return parseImageGenerationAccessModeSetting(value) !== "disabled";
 }
 
+export async function isImageGenerationEnabledForAllUsers(): Promise<boolean> {
+  const rawSetting = await getAppSetting<string | boolean | number>(
+    IMAGE_GENERATION_FEATURE_FLAG_KEY
+  );
+  const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
+  if (featureMode !== "enabled") {
+    return false;
+  }
+
+  const activeModel = await getActiveImageModel();
+  return Boolean(activeModel?.isEnabled);
+}
+
 export async function getImageGenerationAccess({
   userId,
   userRole,

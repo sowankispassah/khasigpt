@@ -69,6 +69,7 @@ import {
   type ImpersonationToken,
   type InviteRedeemerBlock,
   type InviteToken,
+  freeChatUsageDaily,
   imageModelConfig,
   impersonationToken,
   inviteRedeemerBlock,
@@ -318,12 +319,12 @@ const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 0;
 const defaultConnectTimeout =
   process.env.NODE_ENV === "development" ? 12 : 5;
-const postgresUrl = process.env.POSTGRES_URL;
+const postgresUrl = process.env.POSTGRES_POOLER_URL ?? process.env.POSTGRES_URL;
 
 if (!postgresUrl) {
   throw new ChatSDKError(
     "bad_request:configuration",
-    "POSTGRES_URL is not configured"
+    "POSTGRES_URL or POSTGRES_POOLER_URL is not configured"
   );
 }
 
@@ -1193,6 +1194,25 @@ export async function voteMessage({
   }
 }
 
+export async function clearMessageVote({
+  chatId,
+  messageId,
+}: {
+  chatId: string;
+  messageId: string;
+}) {
+  try {
+    return await db
+      .delete(vote)
+      .where(and(eq(vote.messageId, messageId), eq(vote.chatId, chatId)));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to clear message vote"
+    );
+  }
+}
+
 export async function getVotesByChatId({ id }: { id: string }) {
   try {
     return await db.select().from(vote).where(eq(vote.chatId, id));
@@ -1460,6 +1480,67 @@ export async function getMessageCountByUserId({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to get message count by user id"
+    );
+  }
+}
+
+export async function consumeFreeDailyChatAllowance({
+  userId,
+  day,
+  limit,
+  existingMessageCount = 0,
+}: {
+  userId: string;
+  day: Date;
+  limit: number;
+  existingMessageCount?: number;
+}) {
+  const normalizedLimit = Math.max(0, Math.floor(limit));
+  const normalizedExistingCount = Math.max(0, Math.floor(existingMessageCount));
+
+  if (normalizedLimit <= 0 || normalizedExistingCount >= normalizedLimit) {
+    return {
+      allowed: false,
+      used: normalizedExistingCount,
+      limit: normalizedLimit,
+    };
+  }
+
+  const now = new Date();
+  const dayKey = _dateToIstKey(day);
+  const initialMessageCount = normalizedExistingCount + 1;
+
+  try {
+    const rows = await db
+      .insert(freeChatUsageDaily)
+      .values({
+        userId,
+        day: dayKey,
+        messageCount: initialMessageCount,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [freeChatUsageDaily.userId, freeChatUsageDaily.day],
+        set: {
+          messageCount: sql`${freeChatUsageDaily.messageCount} + 1`,
+          updatedAt: now,
+        },
+        setWhere: lt(freeChatUsageDaily.messageCount, normalizedLimit),
+      })
+      .returning({ messageCount: freeChatUsageDaily.messageCount });
+
+    const used = rows[0]?.messageCount ?? normalizedExistingCount;
+
+    return {
+      allowed: rows.length > 0 && used <= normalizedLimit,
+      used,
+      limit: normalizedLimit,
+    };
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update free daily chat usage"
     );
   }
 }

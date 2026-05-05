@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 const DESCRIPTION_SPLIT_REGEX = /\r?\n/;
 const BULLET_PREFIX_REGEX = /^[\s*-\u2022]+/;
 const FEATURE_SPLIT_REGEX = /\n/;
+const IMAGE_GENERATION_FEATURE_REGEX = /\bimage\s*(generation|gen)\b/i;
 
 type PlanForClient = {
   id: string;
@@ -36,6 +37,7 @@ type PlanForClient = {
 type RechargePlansProps = {
   plans: PlanForClient[];
   activePlanId: string | null;
+  imageGenerationEnabledForAll: boolean;
   recommendedPlanId: string | null;
   user: {
     name?: string | null;
@@ -110,6 +112,7 @@ type RazorpaySuccessResponse = {
 export function RechargePlans({
   plans,
   activePlanId,
+  imageGenerationEnabledForAll,
   recommendedPlanId,
   user,
 }: RechargePlansProps) {
@@ -527,10 +530,15 @@ export function RechargePlans({
               : plan.description
                 ? [plan.description]
                 : [];
+          const visibleFeatures = imageGenerationEnabledForAll
+            ? features
+            : features.filter(
+                (feature) => !IMAGE_GENERATION_FEATURE_REGEX.test(feature)
+              );
 
           const buttonLabel = effectiveIsActive
             ? isFreePlan
-              ? translate("recharge.plan.pill.active", "Previously recharged")
+              ? translate("recharge.plan.pill.active", "Your current plan")
               : translate(
                   "recharge.plan.button.recharge_again",
                   "Recharge again"
@@ -601,10 +609,10 @@ export function RechargePlans({
                     </div>
                   ) : null}
 
-                  {features.length > 0 ? (
+                  {visibleFeatures.length > 0 ? (
                     <div className="space-y-2">
                       <ul className="space-y-2 text-sm">
-                        {features.map((feature) => {
+                        {visibleFeatures.map((feature) => {
                           const lines = feature.split(FEATURE_SPLIT_REGEX);
                           return lines.map((line) => (
                             <li
@@ -626,7 +634,7 @@ export function RechargePlans({
                     <div className="rounded-md bg-primary/5 px-3 py-2 text-center font-medium text-primary text-xs">
                       {translate(
                         "recharge.plan.pill.active",
-                        "Previously recharged"
+                        "Your current plan"
                       )}
                     </div>
                   ) : null}

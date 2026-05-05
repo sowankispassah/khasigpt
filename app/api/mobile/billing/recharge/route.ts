@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isImageGenerationEnabledForAllUsers } from "@/lib/ai/image-generation";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
   getAppSetting,
@@ -21,10 +22,16 @@ export async function GET(request: Request) {
     return new ChatSDKError("unauthorized:api").toResponse();
   }
 
-  const [plans, balance, recommendedPlanSetting] = await Promise.all([
+  const [
+    plans,
+    balance,
+    recommendedPlanSetting,
+    imageGenerationEnabledForAll,
+  ] = await Promise.all([
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+    isImageGenerationEnabledForAllUsers(),
   ]);
 
   const sortedPlans = [...plans].sort((a, b) => {
@@ -59,6 +66,7 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       activePlanId: balance.plan?.id ?? null,
+      imageGenerationEnabledForAll,
       recommendedPlanId,
       balance: {
         tokensRemaining: balance.tokensRemaining,
