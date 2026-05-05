@@ -1,5 +1,5 @@
-import { revalidateTag } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -138,7 +138,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: responseCode }, { status });
   }
 
-  revalidateTag(appSettingCacheTagForKey(config.settingKey), "max");
+  invalidateAdminMutation({
+    source: config.auditAction,
+    tags: [appSettingCacheTagForKey(config.settingKey)],
+  });
 
   void withTimeout(
     createLiteAuditLogEntry({

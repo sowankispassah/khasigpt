@@ -1,10 +1,10 @@
 "use server";
 
 import { put } from "@vercel/blob";
-import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -172,29 +172,76 @@ async function requireAdmin() {
   return session.user;
 }
 
-function revalidateAppSettingCache(key: string) {
-  revalidateTag(appSettingCacheTagForKey(key), "max");
+function revalidateAppSettingCache(key: string, source = "admin.appSetting") {
+  invalidateAdminMutation({
+    source,
+    tags: [appSettingCacheTagForKey(key)],
+  });
 }
 
-function revalidateAdminSettingsSection() {
+function revalidateAdminSettingsSection(source = "admin.settings") {
   if (process.env.ADMIN_SETTINGS_FULL_ROUTE_REVALIDATE_ON_SAVE === "1") {
-    revalidatePath("/admin/settings");
+    invalidateAdminMutation({
+      paths: [{ path: "/admin/settings" }],
+      source,
+    });
   }
 }
 
-function revalidateAdminModelSettings() {
-  revalidateTag(MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
+function revalidateAdminModelSettings(source = "admin.models") {
+  invalidateAdminMutation({
+    source,
+    tags: [MODEL_REGISTRY_CACHE_TAG],
+  });
+  revalidateAdminSettingsSection(source);
 }
 
-function revalidateAdminImageModelSettings() {
-  revalidateTag(IMAGE_MODEL_REGISTRY_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
+function revalidateAdminImageModelSettings(source = "admin.imageModels") {
+  invalidateAdminMutation({
+    source,
+    tags: [IMAGE_MODEL_REGISTRY_CACHE_TAG],
+  });
+  revalidateAdminSettingsSection(source);
 }
 
-function revalidateAdminPricingSettings() {
-  revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
-  revalidateAdminSettingsSection();
+function revalidateAdminPricingSettings(source = "admin.pricing") {
+  invalidateAdminMutation({
+    source,
+    tags: [PRICING_PLAN_CACHE_TAG],
+  });
+  revalidateAdminSettingsSection(source);
+}
+
+function revalidateAdminPath(path: string, source: string) {
+  invalidateAdminMutation({
+    paths: [{ path }],
+    source,
+  });
+}
+
+function revalidatePublicPath(path: string, source: string) {
+  invalidateAdminMutation({
+    paths: [{ path }],
+    source,
+  });
+}
+
+function revalidateLanguageSettings({
+  includeTranslations = false,
+  source,
+}: {
+  includeTranslations?: boolean;
+  source: string;
+}) {
+  invalidateAdminMutation({
+    source,
+    tags: ["languages"],
+  });
+  revalidateAdminSettingsSection(source);
+
+  if (includeTranslations) {
+    revalidateAdminPath("/admin/translations", source);
+  }
 }
 
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
@@ -313,7 +360,7 @@ async function updateFeatureAccessModeSetting({
     }
   );
 
-  revalidateAppSettingCache(settingKey);
+  revalidateAppSettingCache(settingKey, auditAction);
   void createAuditLogEntrySafely({
     actorId,
     action: auditAction,
@@ -332,14 +379,14 @@ export async function setUserRoleAction({
   const actor = await requireAdmin();
 
   await updateUserRole({ id: userId, role });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.role.update",
     target: { userId },
     metadata: { role },
   });
 
-  revalidatePath("/admin/users");
+  revalidateAdminPath("/admin/users", "user.role.update");
 }
 
 export async function setUserActiveStateAction({
@@ -352,14 +399,14 @@ export async function setUserActiveStateAction({
   const actor = await requireAdmin();
 
   await updateUserActiveState({ id: userId, isActive });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.active.update",
     target: { userId },
     metadata: { isActive },
   });
 
-  revalidatePath("/admin/users");
+  revalidateAdminPath("/admin/users", "user.active.update");
 }
 
 export async function setUserPersonalKnowledgePermissionAction({
@@ -376,55 +423,56 @@ export async function setUserPersonalKnowledgePermissionAction({
     allowPersonalKnowledge: allowed,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.personal_knowledge.toggle",
     target: { userId },
     metadata: { allowed },
   });
 
-  revalidatePath("/admin/users");
-  revalidatePath("/admin/rag");
-  revalidatePath("/profile");
+  invalidateAdminMutation({
+    paths: [{ path: "/admin/users" }, { path: "/admin/rag" }],
+    source: "user.personal_knowledge.toggle",
+  });
 }
 
 export async function deleteChatAction({ chatId }: { chatId: string }) {
   const actor = await requireAdmin();
 
   await deleteChatById({ id: chatId });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "chat.delete",
     target: { chatId },
   });
 
-  revalidatePath("/admin/chats");
+  revalidateAdminPath("/admin/chats", "chat.delete");
 }
 
 export async function hardDeleteChatAction({ chatId }: { chatId: string }) {
   const actor = await requireAdmin();
 
   await hardDeleteChatById({ id: chatId });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "chat.hard_delete",
     target: { chatId },
   });
 
-  revalidatePath("/admin/chats");
+  revalidateAdminPath("/admin/chats", "chat.hard_delete");
 }
 
 export async function restoreChatAction({ chatId }: { chatId: string }) {
   const actor = await requireAdmin();
 
   await restoreChatById({ id: chatId });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "chat.restore",
     target: { chatId },
   });
 
-  revalidatePath("/admin/chats");
+  revalidateAdminPath("/admin/chats", "chat.restore");
 }
 
 export async function updateForumAvailabilityAction(formData: FormData) {
@@ -514,17 +562,20 @@ export async function updateTranslateProviderModeAction(formData: FormData) {
     FEATURE_ACCESS_SETTING_TIMEOUT_MS
   );
 
-  revalidateAppSettingCache(TRANSLATE_PROVIDER_MODE_SETTING_KEY);
+  revalidateAppSettingCache(
+    TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+    "feature.translate.provider_mode.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.translate.provider_mode.update",
     target: { setting: TRANSLATE_PROVIDER_MODE_SETTING_KEY },
     metadata: { providerMode },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/translate");
+  revalidateAdminSettingsSection("feature.translate.provider_mode.update");
+  revalidatePublicPath("/translate", "feature.translate.provider_mode.update");
 
   redirect("/admin/settings?notice=translation-provider-mode-updated");
 }
@@ -596,17 +647,20 @@ export async function updateComingSoonContentAction(formData: FormData) {
     key: SITE_COMING_SOON_CONTENT_SETTING_KEY,
     value: content,
   });
-  revalidateAppSettingCache(SITE_COMING_SOON_CONTENT_SETTING_KEY);
+  revalidateAppSettingCache(
+    SITE_COMING_SOON_CONTENT_SETTING_KEY,
+    "site.coming_soon_content.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "site.coming_soon_content.update",
     target: { setting: SITE_COMING_SOON_CONTENT_SETTING_KEY },
     metadata: content,
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/coming-soon");
+  revalidateAdminSettingsSection("site.coming_soon_content.update");
+  revalidatePublicPath("/coming-soon", "site.coming_soon_content.update");
 }
 
 export async function updateComingSoonTimerAction(formData: FormData) {
@@ -622,17 +676,20 @@ export async function updateComingSoonTimerAction(formData: FormData) {
     key: SITE_COMING_SOON_TIMER_SETTING_KEY,
     value: timerSetting,
   });
-  revalidateAppSettingCache(SITE_COMING_SOON_TIMER_SETTING_KEY);
+  revalidateAppSettingCache(
+    SITE_COMING_SOON_TIMER_SETTING_KEY,
+    "site.coming_soon_timer.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "site.coming_soon_timer.update",
     target: { setting: SITE_COMING_SOON_TIMER_SETTING_KEY },
     metadata: timerSetting,
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/coming-soon");
+  revalidateAdminSettingsSection("site.coming_soon_timer.update");
+  revalidatePublicPath("/coming-soon", "site.coming_soon_timer.update");
 }
 
 export async function updateAdminEntryCodeAction(formData: FormData) {
@@ -665,16 +722,19 @@ export async function updateAdminEntryCodeAction(formData: FormData) {
   if (persistedHash !== hashedCode) {
     throw new Error("Failed to verify saved admin entry code.");
   }
-  revalidateAppSettingCache(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY);
+  revalidateAppSettingCache(
+    SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+    "site.admin_entry_code.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "site.admin_entry_code.update",
     target: { setting: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY },
     metadata: { updated: true, length: code.length },
   });
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("site.admin_entry_code.update");
 }
 
 export async function updateAdminEntryPathAction(formData: FormData) {
@@ -706,16 +766,19 @@ export async function updateAdminEntryPathAction(formData: FormData) {
   if (persistedPath !== path) {
     throw new Error("Failed to verify saved admin entry path.");
   }
-  revalidateAppSettingCache(SITE_ADMIN_ENTRY_PATH_SETTING_KEY);
+  revalidateAppSettingCache(
+    SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+    "site.admin_entry_path.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "site.admin_entry_path.update",
     target: { setting: SITE_ADMIN_ENTRY_PATH_SETTING_KEY },
     metadata: { path },
   });
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("site.admin_entry_path.update");
 }
 
 export async function createPrelaunchInviteAction(formData: FormData) {
@@ -763,7 +826,7 @@ export async function createPrelaunchInviteAction(formData: FormData) {
     },
   });
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("site.prelaunch_invite.create");
 }
 
 export async function revokePrelaunchInviteAction(formData: FormData) {
@@ -798,7 +861,7 @@ export async function revokePrelaunchInviteAction(formData: FormData) {
     });
   }
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("site.prelaunch_invite.revoke");
 }
 
 export async function deletePrelaunchInviteAction(formData: FormData) {
@@ -832,7 +895,7 @@ export async function deletePrelaunchInviteAction(formData: FormData) {
     });
   }
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("site.prelaunch_invite.delete");
 }
 
 export async function revokePrelaunchInviteAccessAction(formData: FormData) {
@@ -872,7 +935,7 @@ export async function revokePrelaunchInviteAccessAction(formData: FormData) {
     });
   }
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("site.prelaunch_invite_access.revoke");
 }
 
 export async function updateImageFilenamePrefixAction(formData: FormData) {
@@ -886,16 +949,19 @@ export async function updateImageFilenamePrefixAction(formData: FormData) {
     key: IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
     value: prefix,
   });
-  revalidateAppSettingCache(IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY);
+  revalidateAppSettingCache(
+    IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+    "feature.image_generation.filename_prefix"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.image_generation.filename_prefix",
     target: { setting: IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY },
     metadata: { prefix },
   });
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("feature.image_generation.filename_prefix");
 }
 
 export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
@@ -906,17 +972,20 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
     key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
     value: enabled,
   });
-  revalidateAppSettingCache(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY);
+  revalidateAppSettingCache(
+    CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+    "settings.custom_knowledge.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "settings.custom_knowledge.update",
     target: { setting: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY },
     metadata: { enabled },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/admin/rag");
+  revalidateAdminSettingsSection("settings.custom_knowledge.update");
+  revalidateAdminPath("/admin/rag", "settings.custom_knowledge.update");
 }
 
 export async function rebuildRagFileSearchIndexAction() {
@@ -929,7 +998,7 @@ export async function rebuildRagFileSearchIndexAction() {
     target: { feature: "rag.file_search" },
     metadata: summary,
   });
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.file_search.rebuild");
 }
 
 function parseBoolean(value: FormDataEntryValue | null | undefined) {
@@ -1133,7 +1202,7 @@ export async function upsertCouponAction(formData: FormData) {
     isActive,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: couponIdRaw ? "coupon.update" : "coupon.create",
     target: { couponId: couponRecord.id },
@@ -1145,8 +1214,10 @@ export async function upsertCouponAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin/coupons");
-  revalidatePath("/recharge");
+  revalidateAdminPath(
+    "/admin/coupons",
+    couponIdRaw ? "coupon.update" : "coupon.create"
+  );
 }
 
 export async function setCouponStatusAction(formData: FormData) {
@@ -1163,15 +1234,14 @@ export async function setCouponStatusAction(formData: FormData) {
     isActive,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "coupon.status.update",
     target: { couponId },
     metadata: { isActive },
   });
 
-  revalidatePath("/admin/coupons");
-  revalidatePath("/recharge");
+  revalidateAdminPath("/admin/coupons", "coupon.status.update");
 }
 
 export async function setCouponRewardStatusAction(formData: FormData) {
@@ -1195,15 +1265,14 @@ export async function setCouponRewardStatusAction(formData: FormData) {
     rewardStatus: normalizedStatus,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "coupon.reward_status.update",
     target: { couponId },
     metadata: { rewardStatus: normalizedStatus },
   });
 
-  revalidatePath("/admin/coupons");
-  revalidatePath("/recharge");
+  revalidateAdminPath("/admin/coupons", "coupon.reward_status.update");
 }
 
 export async function recordCouponPayoutAction(formData: FormData) {
@@ -1230,15 +1299,14 @@ export async function recordCouponPayoutAction(formData: FormData) {
     recordedBy: actor.id,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "coupon.reward.payout",
     target: { couponId },
     metadata: { amountInPaise, note },
   });
 
-  revalidatePath("/admin/coupons");
-  revalidatePath("/creator-dashboard");
+  revalidateAdminPath("/admin/coupons", "coupon.reward.payout");
 }
 
 function isRedirectErrorLike(error: unknown): boolean {
@@ -1330,7 +1398,7 @@ export async function createModelConfigAction(formData: FormData) {
     metadata: { key, provider, providerModelId },
   });
 
-  revalidateAdminModelSettings();
+  revalidateAdminModelSettings("model.create");
 
   redirect("/admin/settings?notice=model-created");
 }
@@ -1450,7 +1518,7 @@ export async function updateModelConfigAction(formData: FormData) {
     metadata: { ...patch, setDefault: shouldSetDefault },
   });
 
-  revalidateAdminModelSettings();
+  revalidateAdminModelSettings("model.update");
 }
 
 export async function deleteModelConfigAction(formData: FormData) {
@@ -1470,7 +1538,7 @@ export async function deleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateAdminModelSettings();
+  revalidateAdminModelSettings("model.delete");
 
   redirect("/admin/settings?notice=model-deleted");
 }
@@ -1492,7 +1560,7 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateAdminModelSettings();
+  revalidateAdminModelSettings("model.hard_delete");
 
   redirect("/admin/settings?notice=model-hard-deleted");
 }
@@ -1514,7 +1582,7 @@ export async function setDefaultModelConfigAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateAdminModelSettings();
+  revalidateAdminModelSettings("model.setDefault");
 
   redirect("/admin/settings?notice=model-defaulted");
 }
@@ -1536,7 +1604,7 @@ export async function setMarginBaselineModelAction(formData: FormData) {
     target: { modelId: id },
   });
 
-  revalidateAdminModelSettings();
+  revalidateAdminModelSettings("model.setMarginBaseline");
 
   redirect("/admin/settings?notice=model-margin-baseline");
 }
@@ -1599,7 +1667,7 @@ export async function createImageModelConfigAction(formData: FormData) {
     metadata: { key, provider, providerModelId },
   });
 
-  revalidateAdminImageModelSettings();
+  revalidateAdminImageModelSettings("image_model.create");
 }
 
 export async function updateImageModelConfigAction(formData: FormData) {
@@ -1672,7 +1740,7 @@ export async function updateImageModelConfigAction(formData: FormData) {
     metadata: patch,
   });
 
-  revalidateAdminImageModelSettings();
+  revalidateAdminImageModelSettings("image_model.update");
 }
 
 export async function deleteImageModelConfigAction(formData: FormData) {
@@ -1692,7 +1760,7 @@ export async function deleteImageModelConfigAction(formData: FormData) {
     target: { imageModelId: id },
   });
 
-  revalidateAdminImageModelSettings();
+  revalidateAdminImageModelSettings("image_model.delete");
 
   redirect("/admin/settings?notice=image-model-deleted");
 }
@@ -1714,7 +1782,7 @@ export async function hardDeleteImageModelConfigAction(formData: FormData) {
     target: { imageModelId: id },
   });
 
-  revalidateAdminImageModelSettings();
+  revalidateAdminImageModelSettings("image_model.hard_delete");
 
   redirect("/admin/settings?notice=image-model-hard-deleted");
 }
@@ -1736,7 +1804,7 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
     target: { imageModelId: id },
   });
 
-  revalidateAdminImageModelSettings();
+  revalidateAdminImageModelSettings("image_model.setActive");
 
   redirect("/admin/settings?notice=image-model-activated");
 }
@@ -1763,16 +1831,19 @@ export async function setImagePromptTranslationModelAction(
     key: IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
     value: normalizedModelId,
   });
-  revalidateAppSettingCache(IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY);
+  revalidateAppSettingCache(
+    IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+    "image_prompt_translation_model.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "image_prompt_translation_model.update",
     target: { setting: IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY },
     metadata: { modelId: normalizedModelId },
   });
 
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("image_prompt_translation_model.update");
 
   redirect("/admin/settings?notice=image-translation-model-updated");
 }
@@ -1848,7 +1919,7 @@ export async function createTranslationFeatureLanguageAction(
     redirect("/admin/settings?notice=translation-language-create-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.translate.language.create",
     target: { languageCode: normalizedCode },
@@ -1862,8 +1933,8 @@ export async function createTranslationFeatureLanguageAction(
     },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/translate");
+  revalidateAdminSettingsSection("feature.translate.language.create");
+  revalidatePublicPath("/translate", "feature.translate.language.create");
 
   redirect("/admin/settings?notice=translation-language-created");
 }
@@ -1904,15 +1975,15 @@ export async function updateTranslationFeatureLanguageStatusAction(
     isActive: shouldActivate,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.translate.language.toggle",
     target: { languageCode: targetLanguage.code },
     metadata: { isActive: shouldActivate },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/translate");
+  revalidateAdminSettingsSection("feature.translate.language.toggle");
+  revalidatePublicPath("/translate", "feature.translate.language.toggle");
 
   redirect("/admin/settings?notice=translation-language-updated");
 }
@@ -2009,7 +2080,7 @@ export async function updateTranslationFeatureLanguageSettingsAction(
     redirect("/admin/settings?notice=translation-language-settings-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.translate.language.update",
     target: { languageCode: targetLanguage.code },
@@ -2031,8 +2102,8 @@ export async function updateTranslationFeatureLanguageSettingsAction(
     },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/translate");
+  revalidateAdminSettingsSection("feature.translate.language.update");
+  revalidatePublicPath("/translate", "feature.translate.language.update");
 
   redirect("/admin/settings?notice=translation-language-settings-updated");
 }
@@ -2059,15 +2130,15 @@ export async function deleteTranslationFeatureLanguageAction(
 
   await deleteTranslationFeatureLanguageById({ id: targetLanguage.id });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "feature.translate.language.delete",
     target: { languageCode: targetLanguage.code },
     metadata: { name: targetLanguage.name },
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/translate");
+  revalidateAdminSettingsSection("feature.translate.language.delete");
+  revalidatePublicPath("/translate", "feature.translate.language.delete");
 
   redirect("/admin/settings?notice=translation-language-deleted");
 }
@@ -2079,16 +2150,16 @@ export async function updatePrivacyPolicyAction(formData: FormData) {
   const content = formData.get("content")?.toString().trim() ?? "";
 
   await setAppSetting({ key: "privacyPolicy", value: content });
-  revalidateAppSettingCache("privacyPolicy");
+  revalidateAppSettingCache("privacyPolicy", "legal.privacy.update");
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.privacy.update",
     target: { document: "privacyPolicy" },
   });
 
-  revalidatePath("/privacy-policy");
-  revalidateAdminSettingsSection();
+  revalidatePublicPath("/privacy-policy", "legal.privacy.update");
+  revalidateAdminSettingsSection("legal.privacy.update");
 
   redirect("/admin/settings?notice=privacy-updated");
 }
@@ -2100,16 +2171,16 @@ export async function updateTermsOfServiceAction(formData: FormData) {
   const content = formData.get("content")?.toString().trim() ?? "";
 
   await setAppSetting({ key: "termsOfService", value: content });
-  revalidateAppSettingCache("termsOfService");
+  revalidateAppSettingCache("termsOfService", "legal.terms.update");
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.terms.update",
     target: { document: "termsOfService" },
   });
 
-  revalidatePath("/terms-of-service");
-  revalidateAdminSettingsSection();
+  revalidatePublicPath("/terms-of-service", "legal.terms.update");
+  revalidateAdminSettingsSection("legal.terms.update");
 
   redirect("/admin/settings?notice=terms-updated");
 }
@@ -2164,22 +2235,25 @@ export async function updateAboutContentAction(formData: FormData) {
     key: "aboutUsContentByLanguage",
     value: aboutContentByLanguage,
   });
-  revalidateAppSettingCache("aboutUsContentByLanguage");
+  revalidateAppSettingCache(
+    "aboutUsContentByLanguage",
+    "company.about.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "aboutUsContent", value: content });
-    revalidateAppSettingCache("aboutUsContent");
+    revalidateAppSettingCache("aboutUsContent", "company.about.update");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "company.about.update",
     target: { document: "aboutUsContent" },
     metadata: { language: language.code },
   });
 
-  revalidatePath("/about");
-  revalidateAdminSettingsSection();
+  revalidatePublicPath("/about", "company.about.update");
+  revalidateAdminSettingsSection("company.about.update");
 
   return {
     success: true as const,
@@ -2237,22 +2311,25 @@ export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
     key: "privacyPolicyByLanguage",
     value: privacyContentByLanguage,
   });
-  revalidateAppSettingCache("privacyPolicyByLanguage");
+  revalidateAppSettingCache(
+    "privacyPolicyByLanguage",
+    "legal.privacy.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "privacyPolicy", value: content });
-    revalidateAppSettingCache("privacyPolicy");
+    revalidateAppSettingCache("privacyPolicy", "legal.privacy.update");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.privacy.update",
     target: { document: "privacyPolicy" },
     metadata: { language: language.code },
   });
 
-  revalidatePath("/privacy-policy");
-  revalidateAdminSettingsSection();
+  revalidatePublicPath("/privacy-policy", "legal.privacy.update");
+  revalidateAdminSettingsSection("legal.privacy.update");
 
   return {
     success: true as const,
@@ -2310,22 +2387,25 @@ export async function updateTermsOfServiceByLanguageAction(formData: FormData) {
     key: "termsOfServiceByLanguage",
     value: termsContentByLanguage,
   });
-  revalidateAppSettingCache("termsOfServiceByLanguage");
+  revalidateAppSettingCache(
+    "termsOfServiceByLanguage",
+    "legal.terms.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "termsOfService", value: content });
-    revalidateAppSettingCache("termsOfService");
+    revalidateAppSettingCache("termsOfService", "legal.terms.update");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.terms.update",
     target: { document: "termsOfService" },
     metadata: { language: language.code },
   });
 
-  revalidatePath("/terms-of-service");
-  revalidateAdminSettingsSection();
+  revalidatePublicPath("/terms-of-service", "legal.terms.update");
+  revalidateAdminSettingsSection("legal.terms.update");
 
   return {
     success: true as const,
@@ -2370,7 +2450,7 @@ export async function createLanguageAction(formData: FormData) {
     redirect("/admin/settings?notice=language-create-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "translation.language.create",
     target: { languageCode: normalizedCode },
@@ -2384,10 +2464,10 @@ export async function createLanguageAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  revalidateTag("languages", "max");
-  revalidatePath("/", "layout");
-  revalidateAdminSettingsSection();
-  revalidatePath("/admin/translations");
+  revalidateLanguageSettings({
+    includeTranslations: true,
+    source: "translation.language.create",
+  });
 
   redirect("/admin/settings?notice=language-created");
 }
@@ -2429,17 +2509,17 @@ export async function updateLanguageStatusAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "translation.language.toggle",
     target: { languageCode: targetLanguage.code },
     metadata: { isActive: shouldActivate },
   });
 
-  revalidateTag("languages", "max");
-  revalidatePath("/", "layout");
-  revalidateAdminSettingsSection();
-  revalidatePath("/admin/translations");
+  revalidateLanguageSettings({
+    includeTranslations: true,
+    source: "translation.language.toggle",
+  });
 
   redirect("/admin/settings?notice=language-updated");
 }
@@ -2476,7 +2556,7 @@ export async function updateLanguageSettingsAction(formData: FormData) {
     syncUiLanguage,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "translation.language.update",
     target: { languageCode: targetLanguage.code },
@@ -2489,9 +2569,9 @@ export async function updateLanguageSettingsAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  revalidateTag("languages", "max");
-  revalidatePath("/", "layout");
-  revalidateAdminSettingsSection();
+  revalidateLanguageSettings({
+    source: "translation.language.update",
+  });
 
   redirect("/admin/settings?notice=language-settings-updated");
 }
@@ -2516,7 +2596,7 @@ export async function deleteLanguageAction(formData: FormData) {
 
   await deleteLanguageById({ id: targetLanguage.id });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "translation.language.delete",
     target: { languageCode: targetLanguage.code },
@@ -2525,10 +2605,10 @@ export async function deleteLanguageAction(formData: FormData) {
 
   await invalidateTranslationBundleCache();
 
-  revalidateTag("languages", "max");
-  revalidatePath("/", "layout");
-  revalidateAdminSettingsSection();
-  revalidatePath("/admin/translations");
+  revalidateLanguageSettings({
+    includeTranslations: true,
+    source: "translation.language.delete",
+  });
 
   redirect("/admin/settings?notice=language-deleted");
 }
@@ -2670,8 +2750,8 @@ export async function updatePlanTranslationAction(formData: FormData) {
       },
     });
 
-    revalidateAdminPricingSettings();
-    revalidatePath("/admin/translations");
+    revalidateAdminPricingSettings("billing.plan.translate");
+    revalidateAdminPath("/admin/translations", "billing.plan.translate");
 
     redirect("/admin/settings?notice=plan-translation-updated");
   } catch (error) {
@@ -2703,19 +2783,19 @@ export async function updateFreeMessageSettingsAction(formData: FormData) {
     key: FREE_MESSAGE_SETTINGS_KEY,
     value: normalized,
   });
-  revalidateAppSettingCache(FREE_MESSAGE_SETTINGS_KEY);
+  revalidateAppSettingCache(
+    FREE_MESSAGE_SETTINGS_KEY,
+    "settings.update.free_messages"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "settings.update.free_messages",
     target: { key: FREE_MESSAGE_SETTINGS_KEY },
     metadata: normalized,
   });
 
-  revalidateAdminSettingsSection();
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminSettingsSection("settings.update.free_messages");
 }
 
 function parseInteger(value: FormDataEntryValue | null | undefined) {
@@ -2780,23 +2860,27 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
     key: "suggestedPromptsByLanguage",
     value: promptsByLanguage,
   });
-  revalidateAppSettingCache("suggestedPromptsByLanguage");
+  revalidateAppSettingCache(
+    "suggestedPromptsByLanguage",
+    "ui.suggested_prompts.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "suggestedPrompts", value: prompts });
-    revalidateAppSettingCache("suggestedPrompts");
+    revalidateAppSettingCache(
+      "suggestedPrompts",
+      "ui.suggested_prompts.update"
+    );
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "ui.suggested_prompts.update",
     target: { feature: "suggestedPrompts", language: language.code },
     metadata: { count: prompts.length },
   });
 
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("ui.suggested_prompts.update");
 
   return {
     success: true as const,
@@ -2831,18 +2915,19 @@ export async function updateIconPromptsAction(formData: FormData) {
     key: ICON_PROMPTS_SETTING_KEY,
     value: { items: uniqueItems },
   });
-  revalidateAppSettingCache(ICON_PROMPTS_SETTING_KEY);
+  revalidateAppSettingCache(
+    ICON_PROMPTS_SETTING_KEY,
+    "ui.icon_prompts.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "ui.icon_prompts.update",
     target: { feature: "iconPrompts" },
     metadata: { count: uniqueItems.length },
   });
 
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidateAdminSettingsSection();
+  revalidateAdminSettingsSection("ui.icon_prompts.update");
 
   return {
     success: true as const,
@@ -2899,7 +2984,7 @@ export async function createPricingPlanAction(formData: FormData) {
     metadata: plan,
   });
 
-  revalidateAdminPricingSettings();
+  revalidateAdminPricingSettings("billing.plan.create");
 
   redirect("/admin/settings?notice=plan-created");
 }
@@ -2973,7 +3058,7 @@ export async function updatePricingPlanAction(formData: FormData) {
     metadata: updates,
   });
 
-  revalidateAdminPricingSettings();
+  revalidateAdminPricingSettings("billing.plan.update");
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {
@@ -2988,16 +3073,19 @@ export async function setRecommendedPricingPlanAction(formData: FormData) {
     key: RECOMMENDED_PRICING_PLAN_SETTING_KEY,
     value,
   });
-  revalidateAppSettingCache(RECOMMENDED_PRICING_PLAN_SETTING_KEY);
+  revalidateAppSettingCache(
+    RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+    "billing.plan.recommendation.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.recommendation.update",
     target: { planId: value },
     metadata: { planId: value },
   });
 
-  revalidateAdminPricingSettings();
+  revalidateAdminPricingSettings("billing.plan.recommendation.update");
 
   redirect("/admin/settings?notice=plan-recommendation-updated");
 }
@@ -3013,13 +3101,13 @@ export async function deletePricingPlanAction(formData: FormData) {
 
   await deletePricingPlan(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.delete",
     target: { planId: id },
   });
 
-  revalidateAdminPricingSettings();
+  revalidateAdminPricingSettings("billing.plan.delete");
 
   redirect("/admin/settings?notice=plan-deleted");
 }
@@ -3035,13 +3123,13 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
 
   await hardDeletePricingPlan(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.hard_delete",
     target: { planId: id },
   });
 
-  revalidateAdminPricingSettings();
+  revalidateAdminPricingSettings("billing.plan.hard_delete");
 
   redirect("/admin/settings?notice=plan-hard-deleted");
 }
@@ -3072,7 +3160,7 @@ export async function grantUserCreditsAction(formData: FormData) {
     expiresInDays,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.manual_credit.grant",
     target: { userId, subscriptionId: subscription.id },
@@ -3083,9 +3171,7 @@ export async function grantUserCreditsAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin/users");
-  revalidatePath("/subscriptions");
-  revalidatePath("/recharge");
+  revalidateAdminPath("/admin/users", "billing.manual_credit.grant");
 }
 
 export async function updateUserKnowledgeApprovalAction({
@@ -3102,15 +3188,14 @@ export async function updateUserKnowledgeApprovalAction({
     actorId: actor.id,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.personal_knowledge.review",
     target: { entryId, userId: entry.personalForUserId },
     metadata: { approvalStatus },
   });
 
-  revalidatePath("/admin/rag");
-  revalidatePath("/profile");
+  revalidateAdminPath("/admin/rag", "user.personal_knowledge.review");
   return entry;
 }
 
@@ -3127,14 +3212,13 @@ export async function deleteUserKnowledgeEntryAction({
     allowOverride: true,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.personal_knowledge.delete",
     target: { entryId },
   });
 
-  revalidatePath("/admin/rag");
-  revalidatePath("/profile");
+  revalidateAdminPath("/admin/rag", "user.personal_knowledge.delete");
 }
 
 export async function createRagEntryAction(input: UpsertRagEntryInput) {
@@ -3144,14 +3228,14 @@ export async function createRagEntryAction(input: UpsertRagEntryInput) {
     actorId: actor.id,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.create",
     target: { ragEntryId: entry.id },
     metadata: { status: entry.status },
   });
 
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.entry.create");
   return entry;
 }
 
@@ -3169,14 +3253,14 @@ export async function updateRagEntryAction({
     actorId: actor.id,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.update",
     target: { ragEntryId: entry.id },
     metadata: { status: entry.status },
   });
 
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.entry.update");
   return entry;
 }
 
@@ -3405,14 +3489,17 @@ export async function createQuestionPaperAction(formData: FormData) {
           : new Date(createdEntry.updatedAt),
     } as QuestionPaperRecord);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "study.question_paper.create",
     target: { questionPaperId: paperId },
     metadata: { exam, role, year, status },
   });
 
-  revalidatePath("/admin/study/question-papers");
+  revalidateAdminPath(
+    "/admin/study/question-papers",
+    "study.question_paper.create"
+  );
   return serializeQuestionPaper(resolvedCreated);
 }
 
@@ -3554,14 +3641,17 @@ export async function updateQuestionPaperAction(formData: FormData) {
           : new Date(updatedEntry.updatedAt),
     } as QuestionPaperRecord);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "study.question_paper.update",
     target: { questionPaperId: id },
     metadata: { exam, role, year, status },
   });
 
-  revalidatePath("/admin/study/question-papers");
+  revalidateAdminPath(
+    "/admin/study/question-papers",
+    "study.question_paper.update"
+  );
   return serializeQuestionPaper(resolvedUpdated);
 }
 
@@ -3581,13 +3671,16 @@ export async function deleteQuestionPaperAction({ id }: { id: string }) {
 
   await deleteRagEntries({ ids: [id], actorId: actor.id });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "study.question_paper.delete",
     target: { questionPaperId: id },
   });
 
-  revalidatePath("/admin/study/question-papers");
+  revalidateAdminPath(
+    "/admin/study/question-papers",
+    "study.question_paper.delete"
+  );
 }
 
 type SerializedJobPosting = {
@@ -3904,7 +3997,7 @@ export async function createJobPostingAction(formData: FormData) {
         })
   );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "jobs.posting.create",
     target: { jobPostingId: jobId },
@@ -3919,7 +4012,7 @@ export async function createJobPostingAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin/jobs");
+  revalidateAdminPath("/admin/jobs", "jobs.posting.create");
   return serializeJobPosting(resolvedCreated);
 }
 
@@ -4136,7 +4229,7 @@ export async function updateJobPostingAction(formData: FormData) {
           : new Date(updatedEntry.updatedAt),
     } as JobPostingRecord);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "jobs.posting.update",
     target: { jobPostingId: id },
@@ -4151,7 +4244,7 @@ export async function updateJobPostingAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin/jobs");
+  revalidateAdminPath("/admin/jobs", "jobs.posting.update");
   return serializeJobPosting(resolvedUpdated);
 }
 
@@ -4171,13 +4264,13 @@ export async function deleteJobPostingAction({ id }: { id: string }) {
 
   await deleteRagEntries({ ids: [id], actorId: actor.id });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "jobs.posting.delete",
     target: { jobPostingId: id },
   });
 
-  revalidatePath("/admin/jobs");
+  revalidateAdminPath("/admin/jobs", "jobs.posting.delete");
 }
 
 function sanitizeAliasList(values: string[]) {
@@ -4259,7 +4352,7 @@ export async function createCharacterAction({
     enabled: enabled ?? true,
   });
 
-  revalidatePath("/admin/characters");
+  revalidateAdminPath("/admin/characters", "character.create");
   return character;
 }
 
@@ -4315,14 +4408,14 @@ export async function updateCharacterAction({
     enabled: enabled ?? true,
   });
 
-  revalidatePath("/admin/characters");
+  revalidateAdminPath("/admin/characters", "character.update");
   return character;
 }
 
 export async function deleteCharacterAction({ id }: { id: string }) {
   await requireAdmin();
   await deleteCharacterById(id);
-  revalidatePath("/admin/characters");
+  revalidateAdminPath("/admin/characters", "character.delete");
 }
 
 export async function bulkUpdateRagEntryStatusAction({
@@ -4339,38 +4432,38 @@ export async function bulkUpdateRagEntryStatusAction({
     actorId: actor.id,
   });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.bulk_status",
     target: { ragEntryIds: ids },
     metadata: { status, count: updated.length },
   });
 
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.entry.bulk_status");
   return updated;
 }
 
 export async function deleteRagEntriesAction({ ids }: { ids: string[] }) {
   const actor = await requireAdmin();
   await deleteRagEntries({ ids, actorId: actor.id });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.archive",
     target: { ragEntryIds: ids },
     metadata: { count: ids.length },
   });
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.entry.archive");
 }
 
 export async function restoreRagEntryAction({ id }: { id: string }) {
   const actor = await requireAdmin();
   await restoreRagEntry({ id, actorId: actor.id });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.restore",
     target: { ragEntryId: id },
   });
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.entry.restore");
 }
 
 export async function restoreRagVersionAction({
@@ -4382,25 +4475,25 @@ export async function restoreRagVersionAction({
 }) {
   const actor = await requireAdmin();
   await restoreRagVersion({ entryId, versionId, actorId: actor.id });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.version.restore",
     target: { ragEntryId: entryId, versionId },
   });
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.entry.version.restore");
 }
 
 export async function createRagCategoryAction(name: string) {
   const actor = await requireAdmin();
   const category = await createRagCategory({ name });
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.category.create",
     target: { ragCategoryId: category.id },
     metadata: { name: category.name },
   });
 
-  revalidatePath("/admin/rag");
+  revalidateAdminPath("/admin/rag", "rag.category.create");
   return category;
 }

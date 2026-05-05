@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -105,7 +104,6 @@ export function IconPromptSettingsForm({
   languages,
   onSubmit,
 }: IconPromptSettingsFormProps) {
-  const router = useRouter();
   const [items, setItems] = useState<EditableItem[]>(
     normalizeItems(initialItems)
   );
@@ -449,7 +447,6 @@ export function IconPromptSettingsForm({
             }.`,
           });
         }
-        router.refresh();
       } catch (error) {
         console.error("Failed to save icon prompts", error);
         toast({

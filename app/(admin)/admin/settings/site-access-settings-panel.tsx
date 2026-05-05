@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
@@ -156,7 +155,6 @@ export function SiteAccessSettingsPanel({
 }: {
   initialState: SiteAccessState;
 }) {
-  const router = useRouter();
   const [state, setState] = useState<SiteAccessState>(initialState);
   const [isLoading, setIsLoading] = useState(false);
   const [savingField, setSavingField] = useState<string | null>(null);
@@ -218,7 +216,6 @@ export function SiteAccessSettingsPanel({
       setState(result.state);
       setPathInput(result.state.adminEntryPath);
       setSyncedAt(new Date());
-      router.refresh();
       toast({ type: "success", description: "Setting updated." });
     } catch (error) {
       setState(previous);
@@ -250,7 +247,6 @@ export function SiteAccessSettingsPanel({
       setState(result.state);
       setPathInput(result.state.adminEntryPath);
       setSyncedAt(new Date());
-      router.refresh();
       toast({ type: "success", description: "Admin entry path updated." });
     } catch (error) {
       toast({
@@ -284,7 +280,6 @@ export function SiteAccessSettingsPanel({
       setState(result.state);
       setCodeInput("");
       setSyncedAt(new Date());
-      router.refresh();
       toast({ type: "success", description: "Admin access code updated." });
     } catch (error) {
       toast({

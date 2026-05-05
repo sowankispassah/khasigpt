@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
@@ -26,7 +25,6 @@ export function LanguagePromptsForm({
   initialPrompts,
   onSubmit,
 }: LanguagePromptsFormProps) {
-  const router = useRouter();
   const [value, setValue] = useState(initialPrompts.join("\n"));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -58,7 +56,6 @@ export function LanguagePromptsForm({
           });
           setStatusMessage(`Saved ${language.name} prompts`);
         }
-        router.refresh();
       } catch (error) {
         console.error("Failed to save prompts", error);
         toast({

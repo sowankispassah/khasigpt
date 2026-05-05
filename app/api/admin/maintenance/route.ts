@@ -1,5 +1,5 @@
-import { revalidateTag } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
@@ -107,7 +107,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "save_failed" }, { status: 500 });
   }
 
-  revalidateTag(appSettingCacheTagForKey(config.settingKey), "max");
+  invalidateAdminMutation({
+    source: config.auditAction,
+    tags: [appSettingCacheTagForKey(config.settingKey)],
+  });
 
   void withTimeout(
     createLiteAuditLogEntry({

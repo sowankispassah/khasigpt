@@ -1,5 +1,5 @@
-import { revalidateTag } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import { PRICING_PLAN_CACHE_TAG } from "@/lib/constants";
 import {
   createAuditLogEntry,
@@ -140,7 +140,10 @@ export async function PATCH(
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
-    revalidateTag(PRICING_PLAN_CACHE_TAG, "max");
+    invalidateAdminMutation({
+      source: "billing.plan.update",
+      tags: [PRICING_PLAN_CACHE_TAG],
+    });
 
     void withTimeout(
       createAuditLogEntry({

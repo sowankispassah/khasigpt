@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
@@ -164,7 +163,6 @@ export function FeatureAccessModeControl({
   successMessage: string;
   title: string;
 }) {
-  const router = useRouter();
   const [mode, setMode] = useState<FeatureAccessMode | null>(currentMode);
   const [pendingTarget, setPendingTarget] = useState<FeatureAccessMode | null>(
     null
@@ -215,7 +213,6 @@ export function FeatureAccessModeControl({
           ? `${successMessage} (completed after a delay)`
           : successMessage,
       });
-      router.refresh();
     } catch (error) {
       const requestTimedOut =
         error instanceof Error && error.message === "request_timeout";

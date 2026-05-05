@@ -1,6 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -10,6 +9,7 @@ import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminForumConfirmForm } from "@/components/admin-forum-confirm-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import { db } from "@/lib/db/queries";
 import {
   type ForumThreadStatus,
@@ -48,9 +48,15 @@ function booleanValue(formData: FormData, key: string) {
   return formData.get(key) === "on";
 }
 
-function revalidateForumAdmin() {
-  revalidatePath("/admin/forum");
-  revalidatePath("/forum");
+function revalidateForumAdmin(source: string, threadSlug?: string) {
+  invalidateAdminMutation({
+    paths: [
+      { path: "/admin/forum" },
+      { path: "/forum" },
+      ...(threadSlug ? [{ path: `/forum/${threadSlug}` }] : []),
+    ],
+    source,
+  });
 }
 
 async function recalculateThreadReplies(threadId: string) {
@@ -118,7 +124,7 @@ async function createCategoryAction(formData: FormData) {
     ]);
   }
 
-  revalidateForumAdmin();
+  revalidateForumAdmin("forum.category.create");
 }
 
 async function updateCategoryAction(formData: FormData) {
@@ -163,7 +169,7 @@ async function updateCategoryAction(formData: FormData) {
     ]);
   }
 
-  revalidateForumAdmin();
+  revalidateForumAdmin("forum.category.update");
 }
 
 async function deleteCategoryAction(formData: FormData) {
@@ -183,7 +189,7 @@ async function deleteCategoryAction(formData: FormData) {
   }
 
   await db.delete(forumCategory).where(eq(forumCategory.id, id));
-  revalidateForumAdmin();
+  revalidateForumAdmin("forum.category.delete");
 }
 
 async function updateThreadAction(formData: FormData) {
@@ -222,10 +228,7 @@ async function updateThreadAction(formData: FormData) {
     .where(eq(forumThread.id, id))
     .returning({ slug: forumThread.slug });
 
-  revalidateForumAdmin();
-  if (thread?.slug) {
-    revalidatePath(`/forum/${thread.slug}`);
-  }
+  revalidateForumAdmin("forum.thread.update", thread?.slug);
 }
 
 async function deleteThreadAction(formData: FormData) {
@@ -239,10 +242,7 @@ async function deleteThreadAction(formData: FormData) {
   }
 
   await db.delete(forumThread).where(eq(forumThread.id, id));
-  revalidateForumAdmin();
-  if (slug) {
-    revalidatePath(`/forum/${slug}`);
-  }
+  revalidateForumAdmin("forum.thread.delete", slug || undefined);
 }
 
 async function updatePostAction(formData: FormData) {
@@ -268,10 +268,7 @@ async function updatePostAction(formData: FormData) {
     .where(eq(forumPost.id, id));
 
   await recalculateThreadReplies(threadId);
-  revalidateForumAdmin();
-  if (slug) {
-    revalidatePath(`/forum/${slug}`);
-  }
+  revalidateForumAdmin("forum.post.update", slug || undefined);
 }
 
 async function deletePostAction(formData: FormData) {
@@ -287,10 +284,7 @@ async function deletePostAction(formData: FormData) {
 
   await db.delete(forumPost).where(eq(forumPost.id, id));
   await recalculateThreadReplies(threadId);
-  revalidateForumAdmin();
-  if (slug) {
-    revalidatePath(`/forum/${slug}`);
-  }
+  revalidateForumAdmin("forum.post.delete", slug || undefined);
 }
 
 async function getAdminForumData() {

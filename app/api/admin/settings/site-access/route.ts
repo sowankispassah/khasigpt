@@ -1,5 +1,5 @@
-import { revalidateTag } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -115,9 +115,11 @@ async function loadSiteAccessState(): Promise<SiteAccessState> {
 
 async function writeSetting({
   key,
+  source,
   value,
 }: {
   key: string;
+  source: string;
   value: unknown;
 }) {
   await withTimeout(
@@ -128,7 +130,10 @@ async function writeSetting({
     WRITE_TIMEOUT_MS
   );
 
-  revalidateTag(appSettingCacheTagForKey(key), "max");
+  invalidateAdminMutation({
+    source,
+    tags: [appSettingCacheTagForKey(key)],
+  });
 }
 
 async function auditSafely(args: Parameters<typeof createLiteAuditLogEntry>[0]) {
@@ -199,6 +204,7 @@ export async function POST(request: NextRequest) {
 
       await writeSetting({
         key: settingKey,
+        source: `site.${fieldName}.toggle`,
         value: enabled,
       });
       void auditSafely({
@@ -217,6 +223,7 @@ export async function POST(request: NextRequest) {
 
       await writeSetting({
         key: SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+        source: "site.admin_entry_path.update",
         value: path,
       });
       void auditSafely({
@@ -236,6 +243,7 @@ export async function POST(request: NextRequest) {
       const hash = generateHashedPassword(code);
       await writeSetting({
         key: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+        source: "site.admin_entry_code.update",
         value: hash,
       });
       void auditSafely({

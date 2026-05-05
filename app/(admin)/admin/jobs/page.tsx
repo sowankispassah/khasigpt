@@ -1,4 +1,3 @@
-import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
@@ -9,6 +8,7 @@ import { AdminJobsExpandableTable } from "@/components/admin-jobs-expandable-tab
 import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
   JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
@@ -102,10 +102,20 @@ const TIMEZONE_OFFSETS_MINUTES = {
 
 type SupportedScrapeTimezone = keyof typeof TIMEZONE_OFFSETS_MINUTES;
 
-function revalidateJobsScrapeSettingCaches() {
-  for (const key of JOBS_SCRAPE_SETTINGS_KEYS) {
-    revalidateTag(appSettingCacheTagForKey(key), "max");
-  }
+function revalidateJobsAdminMutation({
+  includeScrapeSettings = false,
+  source,
+}: {
+  includeScrapeSettings?: boolean;
+  source: string;
+}) {
+  invalidateAdminMutation({
+    paths: [{ path: "/admin/jobs" }],
+    source,
+    tags: includeScrapeSettings
+      ? JOBS_SCRAPE_SETTINGS_KEYS.map((key) => appSettingCacheTagForKey(key))
+      : [],
+  });
 }
 
 function normalizeSummary(value: unknown) {
@@ -552,8 +562,10 @@ async function saveJobsScrapeScheduleAction(formData: FormData) {
     });
   }
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_schedule.save",
+  });
 }
 
 async function saveOneTimeJobsScrapeAction(formData: FormData) {
@@ -584,8 +596,10 @@ async function saveOneTimeJobsScrapeAction(formData: FormData) {
     value: oneTimeAt.toISOString(),
   });
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_one_time.save",
+  });
 }
 
 async function clearOneTimeJobsScrapeAction() {
@@ -597,8 +611,10 @@ async function clearOneTimeJobsScrapeAction() {
   }
 
   await deleteAppSettingWithRetry(JOBS_SCRAPE_ONE_TIME_AT_SETTING_KEY);
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_one_time.clear",
+  });
 }
 
 async function saveJobsPdfExtractionSettingsAction(formData: FormData) {
@@ -625,8 +641,10 @@ async function saveJobsPdfExtractionSettingsAction(formData: FormData) {
     ),
   });
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.pdf_extraction_settings.save",
+  });
 }
 
 async function addScrapeSourceAction(formData: FormData) {
@@ -659,8 +677,10 @@ async function addScrapeSourceAction(formData: FormData) {
     enabled,
   });
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_source.add",
+  });
 }
 
 async function toggleScrapeSourceAction(formData: FormData) {
@@ -680,8 +700,10 @@ async function toggleScrapeSourceAction(formData: FormData) {
     enabled: nextEnabled,
   });
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_source.toggle",
+  });
 }
 
 async function setScrapeSourceLocationScopeAction(formData: FormData) {
@@ -701,8 +723,10 @@ async function setScrapeSourceLocationScopeAction(formData: FormData) {
     locationScope: nextLocationScope,
   });
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_source.location_scope",
+  });
 }
 
 async function deleteScrapeSourceAction(formData: FormData) {
@@ -716,8 +740,10 @@ async function deleteScrapeSourceAction(formData: FormData) {
   const sourceId = formData.get("sourceId")?.toString().trim() ?? "";
   await deleteManagedJobSource(sourceId);
 
-  revalidateJobsScrapeSettingCaches();
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({
+    includeScrapeSettings: true,
+    source: "jobs.scrape_source.delete",
+  });
 }
 
 async function createManualJobAction(formData: FormData) {
@@ -761,7 +787,7 @@ async function createManualJobAction(formData: FormData) {
     throw new Error("Job was not added. Source URL already exists.");
   }
 
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({ source: "jobs.manual.create" });
 }
 
 async function deleteManualJobAction(formData: FormData) {
@@ -792,7 +818,7 @@ async function deleteManualJobAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({ source: "jobs.manual.delete" });
 }
 
 async function updateJobStatusAction(formData: FormData) {
@@ -832,7 +858,7 @@ async function updateJobStatusAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/admin/jobs");
+  revalidateJobsAdminMutation({ source: "jobs.manual.status" });
 }
 
 async function withTimeoutFallback<T>(
