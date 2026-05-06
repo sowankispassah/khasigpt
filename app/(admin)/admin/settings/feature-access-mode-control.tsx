@@ -171,7 +171,7 @@ export function FeatureAccessModeControl({
 
   const currentModeSummary =
     mode === null
-      ? "Current: unavailable because the setting could not be loaded."
+      ? "Current: not confirmed from the database."
       : mode === "enabled"
       ? "Current: everyone can access."
       : mode === "admin_only"
@@ -179,7 +179,7 @@ export function FeatureAccessModeControl({
         : "Current: access is disabled for everyone.";
 
   const submitMode = async (nextMode: FeatureAccessMode) => {
-    if (isSaving || mode === null || nextMode === mode) {
+    if (isSaving || nextMode === mode) {
       return;
     }
 
@@ -255,7 +255,7 @@ export function FeatureAccessModeControl({
 
             return (
               <Button
-                disabled={isSaving || mode === null}
+                disabled={isSaving}
                 key={button.mode}
                 onClick={() => {
                   void submitMode(button.mode);
@@ -286,8 +286,8 @@ export function FeatureAccessModeControl({
         <p className="text-muted-foreground text-xs">{currentModeSummary}</p>
         {mode === null ? (
           <p className="text-amber-700 text-xs">
-            Reload this page after the settings read recovers before changing
-            this control.
+            The saved value could not be confirmed. Choosing a value here will
+            write a new explicit database value for this setting.
           </p>
         ) : null}
       </div>

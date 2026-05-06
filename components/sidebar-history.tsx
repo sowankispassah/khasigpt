@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/sidebar";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
 import type { Chat } from "@/lib/db/schema";
-import { fetcher } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import { preloadChat } from "./chat-loader";
 import { deleteCachedChatPagePayload } from "./chat-page-cache";
@@ -49,6 +48,28 @@ export type ChatHistoryMode = "all" | "default" | "study" | "jobs";
 
 const PAGE_SIZE = 20;
 const STUDY_INITIAL_HISTORY_LIMIT = 5;
+const CHAT_HISTORY_FETCH_TIMEOUT_MS = 15_000;
+
+async function chatHistoryFetcher(url: string) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort("chat_history_timeout");
+  }, CHAT_HISTORY_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`history_fetch_failed:${response.status}`);
+    }
+    return (await response.json()) as ChatHistory;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 const groupChatsByDate = (chats: Chat[]): GroupedChats => {
   const now = new Date();
@@ -167,7 +188,9 @@ export function SidebarHistory({
     isValidating,
     isLoading,
     mutate,
-  } = useSWRInfinite<ChatHistory>(historyPaginationKey, fetcher, {
+    error: historyError,
+  } = useSWRInfinite<ChatHistory>(historyPaginationKey, chatHistoryFetcher, {
+    errorRetryCount: 2,
     fallbackData: [],
   });
 
@@ -457,6 +480,33 @@ export function SidebarHistory({
                 />
               </div>
             ))}
+          </div>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  if (historyError && chatsFromHistory.length === 0) {
+    return (
+      <SidebarGroup>
+        {sectionLabel}
+        <SidebarGroupContent>
+          <div className="flex flex-col gap-2 px-2 text-sm text-zinc-500">
+            <span>
+              {translate(
+                "sidebar.history.error",
+                "Chat history could not load."
+              )}
+            </span>
+            <button
+              className="w-fit cursor-pointer rounded-md border px-2 py-1 font-medium text-sidebar-foreground text-xs"
+              onClick={() => {
+                void mutate();
+              }}
+              type="button"
+            >
+              {translate("sidebar.history.retry", "Retry")}
+            </button>
           </div>
         </SidebarGroupContent>
       </SidebarGroup>

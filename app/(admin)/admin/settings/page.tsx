@@ -38,8 +38,6 @@ import {
   updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
-import { parseImageGenerationAccessModeSetting } from "@/lib/ai/image-generation";
-import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DEFAULT_ABOUT_US,
@@ -81,13 +79,11 @@ import {
   listPricingPlans,
   listTranslationFeatureLanguages,
 } from "@/lib/db/queries";
-import { parseForumAccessModeSetting } from "@/lib/forum/config";
+import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
   normalizeIconPromptSettings,
-  parseIconPromptsAccessModeSetting,
 } from "@/lib/icon-prompts";
-import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import {
   getFallbackUsdToInrRate,
   getUsdToInrRate,
@@ -101,16 +97,10 @@ import {
   normalizeComingSoonContentSetting,
   normalizeComingSoonTimerSetting,
 } from "@/lib/settings/coming-soon";
-import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import {
-  parseSuggestedPromptsAccessModeSetting,
-} from "@/lib/suggested-prompts";
-import {
-  parseTranslateAccessModeSetting,
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
 import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
-import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
@@ -223,13 +213,21 @@ async function loadEssentialFallbackSettingMap() {
   return map;
 }
 
-async function loadAppSettingValuesByKey() {
+type AppSettingReadSource = "snapshot-db" | "essential-db" | "last-known";
+
+async function loadAppSettingValuesByKey(): Promise<{
+  source: AppSettingReadSource;
+  values: Map<string, unknown>;
+}> {
   try {
     const settings = await withTimeout(
       getAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
       SETTINGS_SNAPSHOT_TIMEOUT_MS
     );
-    return new Map(settings.map((setting) => [setting.key, setting.value]));
+    return {
+      source: "snapshot-db",
+      values: new Map(settings.map((setting) => [setting.key, setting.value])),
+    };
   } catch (error) {
     console.error(
       "[admin/settings] App settings snapshot query timed out or failed. Retrying with uncached per-key reads.",
@@ -237,7 +235,10 @@ async function loadAppSettingValuesByKey() {
     );
 
     try {
-      return await loadEssentialFallbackSettingMap();
+      return {
+        source: "essential-db",
+        values: await loadEssentialFallbackSettingMap(),
+      };
     } catch (retryError) {
       console.error(
         "[admin/settings] Per-key app setting retry failed. Using last known values or defaults for missing values.",
@@ -246,7 +247,10 @@ async function loadAppSettingValuesByKey() {
     }
   }
 
-  return getLastKnownAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]);
+  return {
+    source: "last-known",
+    values: getLastKnownAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]),
+  };
 }
 
 async function loadPricingPlansForAdmin() {
@@ -281,7 +285,7 @@ async function loadAdminSettingsData(
       fetchedAt: new Date(),
     };
   });
-  const appSettingValuesByKeyPromise = loadAppSettingValuesByKey();
+  const appSettingStatePromise = loadAppSettingValuesByKey();
   const modelsRawPromise = safeSettingsQuery(
     "model configs",
     listModelConfigs({
@@ -327,7 +331,7 @@ async function loadAdminSettingsData(
   );
   const [
     exchangeRate,
-    appSettingValuesByKey,
+    appSettingState,
     modelsRaw,
     imageModelConfigs,
     plansState,
@@ -335,13 +339,14 @@ async function loadAdminSettingsData(
     translationFeatureLanguages,
   ] = await Promise.all([
     exchangeRatePromise,
-    appSettingValuesByKeyPromise,
+    appSettingStatePromise,
     modelsRawPromise,
     imageModelConfigsPromise,
     plansStatePromise,
     languagesPromise,
     translationFeatureLanguagesPromise,
   ]);
+  const appSettingValuesByKey = appSettingState.values;
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -433,6 +438,7 @@ async function loadAdminSettingsData(
   );
   return {
     exchangeRate,
+    appSettingReadSource: appSettingState.source,
     modelsRaw,
     imageModelConfigs,
     plansRaw: plansState.plans,
@@ -479,6 +485,7 @@ function buildFallbackAdminSettingsData() {
       rate: getFallbackUsdToInrRate(),
       fetchedAt: new Date(),
     },
+    appSettingReadSource: "last-known" as AppSettingReadSource,
     modelsRaw: [],
     imageModelConfigs: [],
     plansRaw: [],
@@ -659,6 +666,7 @@ export default async function AdminSettingsPage({
       };
       settingsData = {
         ...settingsData,
+        appSettingReadSource: "essential-db",
         sitePublicLaunchedSetting:
           getEssential<string | boolean>(SITE_PUBLIC_LAUNCHED_SETTING_KEY) ??
           settingsData.sitePublicLaunchedSetting,
@@ -730,6 +738,7 @@ export default async function AdminSettingsPage({
   }
 
   const {
+    appSettingReadSource,
     exchangeRate,
     modelsRaw,
     imageModelConfigs,
@@ -769,6 +778,9 @@ export default async function AdminSettingsPage({
     translateEnabledSetting,
     translateProviderModeSetting,
   } = settingsData;
+  const featureSettingsReadConfirmed =
+    appSettingReadSource === "snapshot-db" ||
+    appSettingReadSource === "essential-db";
 
   const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -801,14 +813,14 @@ export default async function AdminSettingsPage({
     iconPromptsSetting,
     iconPromptsEnabledSetting
   );
-  const suggestedPromptsAccessMode =
-    settingsLoadFailed && suggestedPromptsEnabledSetting === null
-      ? null
-      : parseSuggestedPromptsAccessModeSetting(suggestedPromptsEnabledSetting);
-  const iconPromptsAccessMode =
-    settingsLoadFailed && iconPromptsEnabledSetting === null
-      ? null
-      : parseIconPromptsAccessModeSetting(iconPromptsEnabledSetting);
+  const parseConfirmedFeatureAccessMode = (value: unknown) =>
+    featureSettingsReadConfirmed ? parseFeatureAccessModeStrict(value) : null;
+  const suggestedPromptsAccessMode = parseConfirmedFeatureAccessMode(
+    suggestedPromptsEnabledSetting
+  );
+  const iconPromptsAccessMode = parseConfirmedFeatureAccessMode(
+    iconPromptsEnabledSetting
+  );
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
   const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
@@ -940,10 +952,7 @@ export default async function AdminSettingsPage({
       }
     }
   }
-  const forumAccessMode =
-    settingsLoadFailed && forumEnabledSetting === null
-      ? null
-      : parseForumAccessModeSetting(forumEnabledSetting);
+  const forumAccessMode = parseConfirmedFeatureAccessMode(forumEnabledSetting);
   const sitePublicLaunched = parseBooleanSetting(
     sitePublicLaunchedSetting,
     true
@@ -969,33 +978,25 @@ export default async function AdminSettingsPage({
   const comingSoonContent =
     normalizeComingSoonContentSetting(comingSoonContentSetting);
   const comingSoonTimer = normalizeComingSoonTimerSetting(comingSoonTimerSetting);
-  const calculatorAccessMode =
-    settingsLoadFailed && calculatorEnabledSetting === null
-      ? null
-      : parseCalculatorAccessModeSetting(calculatorEnabledSetting);
-  const studyModeAccessMode =
-    settingsLoadFailed && studyModeEnabledSetting === null
-      ? null
-      : parseStudyModeAccessModeSetting(studyModeEnabledSetting);
-  const translateAccessMode =
-    settingsLoadFailed && translateEnabledSetting === null
-      ? null
-      : parseTranslateAccessModeSetting(translateEnabledSetting);
+  const calculatorAccessMode = parseConfirmedFeatureAccessMode(
+    calculatorEnabledSetting
+  );
+  const studyModeAccessMode = parseConfirmedFeatureAccessMode(
+    studyModeEnabledSetting
+  );
+  const translateAccessMode = parseConfirmedFeatureAccessMode(
+    translateEnabledSetting
+  );
   const translateProviderMode = parseTranslateProviderModeSetting(
     translateProviderModeSetting
   );
-  const jobsAccessMode =
-    settingsLoadFailed && jobsEnabledSetting === null
-      ? null
-      : parseJobsAccessModeSetting(jobsEnabledSetting);
-  const imageGenerationAccessMode =
-    settingsLoadFailed && imageGenerationEnabledSetting === null
-      ? null
-      : parseImageGenerationAccessModeSetting(imageGenerationEnabledSetting);
-  const documentUploadsAccessMode =
-    settingsLoadFailed && documentUploadsEnabledSetting === null
-      ? null
-      : parseDocumentUploadsAccessModeSetting(documentUploadsEnabledSetting);
+  const jobsAccessMode = parseConfirmedFeatureAccessMode(jobsEnabledSetting);
+  const imageGenerationAccessMode = parseConfirmedFeatureAccessMode(
+    imageGenerationEnabledSetting
+  );
+  const documentUploadsAccessMode = parseConfirmedFeatureAccessMode(
+    documentUploadsEnabledSetting
+  );
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -1126,16 +1127,16 @@ export default async function AdminSettingsPage({
     <>
       <AdminSettingsNotice notice={notice} />
 
-      {settingsLoadFailed ? (
+      {settingsLoadFailed || !featureSettingsReadConfirmed ? (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
           <p className="font-medium text-amber-700">
             Settings loaded in fallback mode.
           </p>
           <p className="mt-1 text-muted-foreground">
-            A production settings query timed out, so last known values or safe
-            defaults are shown where possible, and unreadable feature toggles
-            stay unavailable instead of flipping to disabled. Retry in a few
-            seconds and check server logs for
+            A production settings query timed out or returned stale data, so
+            feature controls that are not confirmed from the database are shown
+            as unavailable instead of pretending fallback defaults are saved.
+            Retry in a few seconds and check server logs for
             <span className="mx-1 font-mono text-xs">[admin/settings]</span>
             entries if this persists.
           </p>

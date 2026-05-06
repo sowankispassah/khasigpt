@@ -1,4 +1,9 @@
 import postgres from "postgres";
+import {
+  assertFeatureSettingWriteAllowed,
+  type FeatureSettingWriteContext,
+  isFeatureAccessSettingKey,
+} from "@/lib/settings/feature-setting-guard";
 
 export type LiteAppSetting = {
   key: string;
@@ -147,6 +152,9 @@ export async function setLiteAppSetting<T>({
 }: {
   key: string;
   value: T;
+},
+options?: {
+  featureSettingWrite?: FeatureSettingWriteContext;
 }) {
   const normalizedKey = key.trim();
   if (!normalizedKey) {
@@ -154,6 +162,25 @@ export async function setLiteAppSetting<T>({
   }
 
   const sql = getLiteSqlClient();
+  let previousValue: unknown = null;
+  if (isFeatureAccessSettingKey(normalizedKey)) {
+    const previousRows = await sql<Array<{ value: unknown }>>`
+      select "value"
+      from "AppSetting"
+      where "key" = ${normalizedKey}
+      limit 1
+    `;
+    previousValue = previousRows[0]?.value ?? null;
+  }
+
+  assertFeatureSettingWriteAllowed({
+    context: options?.featureSettingWrite,
+    key: normalizedKey,
+    previousValue,
+    value,
+    writer: "setLiteAppSetting",
+  });
+
   const jsonValue = value as Parameters<typeof sql.json>[0];
   await sql`
     insert into "AppSetting" ("key", "value", "updatedAt")

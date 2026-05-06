@@ -32,6 +32,11 @@ import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
+import {
+  assertFeatureSettingWriteAllowed,
+  type FeatureSettingWriteContext,
+  isFeatureAccessSettingKey,
+} from "@/lib/settings/feature-setting-guard";
 import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "../constants";
 import { ChatSDKError } from "../errors";
 import {
@@ -3689,9 +3694,21 @@ export async function setAppSetting<T>({
   value: T;
 },
 options?: {
+  featureSettingWrite?: FeatureSettingWriteContext;
   revalidateCache?: boolean;
 }) {
   const now = new Date();
+  const previousValue = isFeatureAccessSettingKey(key)
+    ? await getAppSettingRaw<unknown>(key).catch(() => null)
+    : null;
+
+  assertFeatureSettingWriteAllowed({
+    context: options?.featureSettingWrite,
+    key,
+    previousValue,
+    value,
+    writer: "setAppSetting",
+  });
 
   try {
     await db

@@ -14,9 +14,13 @@ import {
 import {
   appSettingCacheTagForKey,
   createLiteAuditLogEntry,
+  getLiteAppSettingUncached,
   setLiteAppSetting,
 } from "@/lib/db/app-settings-lite";
-import type { FeatureAccessMode } from "@/lib/feature-access";
+import {
+  type FeatureAccessMode,
+  parseFeatureAccessModeStrict,
+} from "@/lib/feature-access";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -113,9 +117,31 @@ export async function POST(request: NextRequest) {
       setLiteAppSetting({
         key: config.settingKey,
         value: resolvedMode,
+      },
+      {
+        featureSettingWrite: {
+          actorId: user.id,
+          route: "/api/admin/feature-access",
+          source: config.auditAction,
+        },
       }),
       FEATURE_ACCESS_TIMEOUT_MS
     );
+    const persistedMode = parseFeatureAccessModeStrict(
+      await withTimeout(
+        getLiteAppSettingUncached(config.settingKey),
+        FEATURE_ACCESS_TIMEOUT_MS
+      )
+    );
+    if (persistedMode !== resolvedMode) {
+      console.error("[api/admin/feature-access] Readback mismatch.", {
+        expected: resolvedMode,
+        fieldName,
+        persisted: persistedMode,
+        settingKey: config.settingKey,
+      });
+      return NextResponse.json({ error: "readback_mismatch" }, { status: 500 });
+    }
   } catch (error) {
     const status = isTimeoutError(error) ? 504 : 500;
     const responseCode = isTimeoutError(error) ? "timeout" : "save_failed";

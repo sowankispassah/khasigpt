@@ -372,6 +372,13 @@ async function updateFeatureAccessModeSetting({
     setAppSetting({
       key: settingKey,
       value: accessMode,
+    },
+    {
+      featureSettingWrite: {
+        actorId,
+        route: "app/(admin)/actions:updateFeatureAccessModeSetting",
+        source: auditAction,
+      },
     }),
     FEATURE_ACCESS_SETTING_TIMEOUT_MS,
     () => {
@@ -380,6 +387,21 @@ async function updateFeatureAccessModeSetting({
       );
     }
   );
+
+  const persistedMode = parseFeatureAccessModeStrict(
+    await withTimeout(
+      getAppSettingUncached(settingKey),
+      FEATURE_ACCESS_SETTING_TIMEOUT_MS
+    )
+  );
+  if (persistedMode !== accessMode) {
+    console.error("[admin/actions] Feature access readback mismatch.", {
+      accessMode,
+      persistedMode,
+      settingKey,
+    });
+    throw new Error("Failed to verify saved feature access mode.");
+  }
 
   revalidateAppSettingCache(settingKey, auditAction);
   void createAuditLogEntrySafely({

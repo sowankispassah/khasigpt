@@ -34,7 +34,7 @@ const PROFILE_LOOKUP_TIMEOUT_MS =
   Number.isFinite(profileLookupTimeoutRaw) && profileLookupTimeoutRaw > 0
     ? profileLookupTimeoutRaw
     : 1200;
-const CHAT_LAYOUT_QUERY_TIMEOUT_MS = 8_000;
+const CHAT_LAYOUT_QUERY_TIMEOUT_MS = 1_500;
 
 export default async function Layout({
   children,
