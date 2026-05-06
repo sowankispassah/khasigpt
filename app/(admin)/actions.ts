@@ -96,7 +96,7 @@ import type {
 import { generateHashedPassword } from "@/lib/db/utils";
 import {
   type FeatureAccessMode,
-  parseFeatureAccessMode,
+  parseFeatureAccessModeStrict,
 } from "@/lib/feature-access";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
@@ -301,33 +301,55 @@ async function resolveFeatureAccessModeFromForm({
   formData,
   fieldName,
   settingKey,
-  fallbackMode,
 }: {
   formData: FormData;
   fieldName: string;
   settingKey: string;
-  fallbackMode: FeatureAccessMode;
 }): Promise<FeatureAccessMode> {
   const submittedValue = formData.get(fieldName);
-  if (typeof submittedValue === "string" && submittedValue.trim().length > 0) {
-    return parseFeatureAccessMode(submittedValue, fallbackMode);
+  const submittedMode = parseFeatureAccessModeStrict(submittedValue);
+  if (submittedMode) {
+    return submittedMode;
   }
 
-  const existingValue = await getAppSetting<string | boolean | number>(settingKey);
-  return parseFeatureAccessMode(existingValue, fallbackMode);
+  if (
+    typeof submittedValue === "string" &&
+    submittedValue.trim().length > 0
+  ) {
+    console.error(
+      `[admin/actions] Rejected invalid feature access value for "${settingKey}".`,
+      { fieldName, value: submittedValue }
+    );
+    throw new Error("Invalid feature access mode.");
+  }
+
+  const existingValue = await getAppSetting<string | boolean | number>(
+    settingKey
+  );
+  const existingMode = parseFeatureAccessModeStrict(existingValue);
+  if (existingMode) {
+    console.warn(
+      `[admin/actions] Feature access form field "${fieldName}" was missing; preserving current value for "${settingKey}".`
+    );
+    return existingMode;
+  }
+
+  console.error(
+    `[admin/actions] Refusing to save feature access setting "${settingKey}" because "${fieldName}" was missing and the current value is unreadable.`,
+    { fieldName, settingKey }
+  );
+  throw new Error("Unable to resolve current feature access mode.");
 }
 
 async function updateFeatureAccessModeSetting({
   actorId,
   auditAction,
-  fallbackMode,
   fieldName,
   formData,
   settingKey,
 }: {
   actorId: string;
   auditAction: string;
-  fallbackMode: FeatureAccessMode;
   fieldName: string;
   formData: FormData;
   settingKey: string;
@@ -337,7 +359,6 @@ async function updateFeatureAccessModeSetting({
       formData,
       fieldName,
       settingKey,
-      fallbackMode,
     }),
     FEATURE_ACCESS_SETTING_TIMEOUT_MS,
     () => {
@@ -485,7 +506,6 @@ export async function updateForumAvailabilityAction(formData: FormData) {
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "forum.toggle",
-    fallbackMode: "enabled",
     fieldName: "forumAccessMode",
     formData,
     settingKey: FORUM_FEATURE_FLAG_KEY,
@@ -502,7 +522,6 @@ export async function updateCalculatorAvailabilityAction(formData: FormData) {
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "feature.calculator.toggle",
-    fallbackMode: "enabled",
     fieldName: "calculatorAccessMode",
     formData,
     settingKey: CALCULATOR_FEATURE_FLAG_KEY,
@@ -519,7 +538,6 @@ export async function updateStudyModeAvailabilityAction(formData: FormData) {
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "feature.study_mode.toggle",
-    fallbackMode: "disabled",
     fieldName: "studyModeAccessMode",
     formData,
     settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
@@ -538,7 +556,6 @@ export async function updateImageGenerationAvailabilityAction(
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "feature.image_generation.toggle",
-    fallbackMode: "disabled",
     fieldName: "imageGenerationAccessMode",
     formData,
     settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
@@ -592,7 +609,6 @@ export async function updateDocumentUploadsAvailabilityAction(
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "feature.document_uploads.toggle",
-    fallbackMode: "disabled",
     fieldName: "documentUploadsAccessMode",
     formData,
     settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -609,7 +625,6 @@ export async function updateIconPromptAvailabilityAction(formData: FormData) {
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "feature.icon_prompts.toggle",
-    fallbackMode: "disabled",
     fieldName: "iconPromptsAccessMode",
     formData,
     settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
@@ -628,7 +643,6 @@ export async function updateSuggestedPromptsAvailabilityAction(
   await updateFeatureAccessModeSetting({
     actorId: actor.id,
     auditAction: "feature.suggested_prompts.toggle",
-    fallbackMode: "enabled",
     fieldName: "suggestedPromptsAccessMode",
     formData,
     settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,

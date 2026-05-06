@@ -12,9 +12,108 @@ import {
   loadTranslateReadModel,
 } from "@/lib/api/read-models";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const STARTUP_SECTION_TIMEOUT_MS = 2500;
+const FULL_SECTION_TIMEOUT_MS = 8000;
+
+type LanguageSnapshot = Awaited<ReturnType<typeof loadLanguageReadModel>>;
+type FeatureSnapshot = Awaited<ReturnType<typeof loadFeatureAccessReadModel>>;
+type ModelConfigSnapshot = Awaited<ReturnType<typeof loadModelConfigReadModel>>;
+type PromptSnapshot = Awaited<ReturnType<typeof loadPromptReadModel>>;
+type TranslateSnapshot = Awaited<ReturnType<typeof loadTranslateReadModel>>;
+type PricingSnapshot = Awaited<ReturnType<typeof loadPricingReadModel>>;
+
+const FALLBACK_LANGUAGE = {
+  id: "fallback-en",
+  code: "en",
+  name: "English",
+  isDefault: true,
+  isActive: true,
+  syncUiLanguage: true,
+};
+
+const FALLBACK_LANGUAGE_SNAPSHOT: LanguageSnapshot = {
+  i18n: {
+    activeLanguage: FALLBACK_LANGUAGE,
+    languages: [FALLBACK_LANGUAGE],
+    dictionary: {},
+  },
+  chatLanguages: [FALLBACK_LANGUAGE],
+};
+
+const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
+  calculator: true,
+  customKnowledge: false,
+  documentUploads: false,
+  forum: true,
+  jobs: false,
+  study: false,
+  translate: false,
+  imageGeneration: {
+    enabled: false,
+    canGenerate: false,
+    requiresPaidCredits: false,
+  },
+};
+
+const FALLBACK_MODEL_CONFIG: ModelConfigSnapshot = {
+  defaultModelId: null,
+  models: [],
+};
+
+const FALLBACK_PROMPT_SNAPSHOT: PromptSnapshot = {
+  iconPromptActions: [],
+  suggestedPrompts: [],
+};
+
+const FALLBACK_TRANSLATE_SNAPSHOT: TranslateSnapshot = {
+  providerMode: "ai",
+  languages: [],
+};
+
+const FALLBACK_PRICING_SNAPSHOT: PricingSnapshot = {
+  imageGenerationEnabledForAll: false,
+  recommendedPlanId: null,
+  plans: [],
+};
+
+async function safeBootstrapSection<T>({
+  fallback,
+  label,
+  loader,
+  phase,
+}: {
+  fallback: T;
+  label: string;
+  loader: () => Promise<T>;
+  phase: "startup" | "full";
+}) {
+  const timeoutMs =
+    phase === "startup" ? STARTUP_SECTION_TIMEOUT_MS : FULL_SECTION_TIMEOUT_MS;
+
+  try {
+    return await withApiTiming(
+      label,
+      () =>
+        withTimeout(loader(), timeoutMs, () => {
+          console.warn(
+            `[api/mobile/bootstrap] ${label} timed out during ${phase}; using fallback.`
+          );
+        }),
+      { slowMs: phase === "startup" ? 500 : 1500 }
+    );
+  } catch (error) {
+    console.error(
+      `[api/mobile/bootstrap] ${label} failed during ${phase}; using fallback.`,
+      error
+    );
+    return fallback;
+  }
+}
 
 export async function GET(request: Request) {
   const session = await withApiTiming(
@@ -43,31 +142,54 @@ export async function GET(request: Request) {
     pricing,
     balance,
   ] = await Promise.all([
-    withApiTiming("mobile.bootstrap.languages", () =>
-      loadLanguageReadModel(preferredLanguage)
-    ),
-    withApiTiming("mobile.bootstrap.features", () =>
-      loadFeatureAccessReadModel({ role, userId })
-    ),
-    withApiTiming("mobile.bootstrap.models", loadModelConfigReadModel),
-    session?.user && !isStartupPhase
-      ? withApiTiming("mobile.bootstrap.prompts", () =>
-          loadPromptReadModel({
-            preferredLanguage,
-            role: session.user.role,
-          })
-        )
-      : Promise.resolve({ iconPromptActions: [], suggestedPrompts: [] }),
-    withApiTiming("mobile.bootstrap.translate", () =>
-      loadTranslateReadModel({ includeLanguages: !isStartupPhase })
-    ),
-    session?.user && !isStartupPhase
-      ? withApiTiming("mobile.bootstrap.pricing", loadPricingReadModel)
-      : Promise.resolve({
-          imageGenerationEnabledForAll: false,
-          recommendedPlanId: null,
-          plans: [],
+    safeBootstrapSection({
+      fallback: FALLBACK_LANGUAGE_SNAPSHOT,
+      label: "mobile.bootstrap.languages",
+      loader: () => loadLanguageReadModel(preferredLanguage),
+      phase,
+    }),
+    isStartupPhase
+      ? Promise.resolve(FALLBACK_FEATURE_SNAPSHOT)
+      : safeBootstrapSection({
+          fallback: FALLBACK_FEATURE_SNAPSHOT,
+          label: "mobile.bootstrap.features",
+          loader: () => loadFeatureAccessReadModel({ role, userId }),
+          phase,
         }),
+    safeBootstrapSection({
+      fallback: FALLBACK_MODEL_CONFIG,
+      label: "mobile.bootstrap.models",
+      loader: loadModelConfigReadModel,
+      phase,
+    }),
+    session?.user && !isStartupPhase
+      ? safeBootstrapSection({
+          fallback: FALLBACK_PROMPT_SNAPSHOT,
+          label: "mobile.bootstrap.prompts",
+          loader: () =>
+            loadPromptReadModel({
+              preferredLanguage,
+              role: session.user.role,
+            }),
+          phase,
+        })
+      : Promise.resolve(FALLBACK_PROMPT_SNAPSHOT),
+    isStartupPhase
+      ? Promise.resolve(FALLBACK_TRANSLATE_SNAPSHOT)
+      : safeBootstrapSection({
+          fallback: FALLBACK_TRANSLATE_SNAPSHOT,
+          label: "mobile.bootstrap.translate",
+          loader: () => loadTranslateReadModel({ includeLanguages: true }),
+          phase,
+        }),
+    session?.user && !isStartupPhase
+      ? safeBootstrapSection({
+          fallback: FALLBACK_PRICING_SNAPSHOT,
+          label: "mobile.bootstrap.pricing",
+          loader: loadPricingReadModel,
+          phase,
+        })
+      : Promise.resolve(FALLBACK_PRICING_SNAPSHOT),
     session?.user && !isStartupPhase
       ? withApiTiming("mobile.bootstrap.billing", () =>
           loadBillingReadModel(session.user.id)

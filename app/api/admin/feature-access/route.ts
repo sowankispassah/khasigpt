@@ -16,13 +16,12 @@ import {
   createLiteAuditLogEntry,
   setLiteAppSetting,
 } from "@/lib/db/app-settings-lite";
-import { type FeatureAccessMode, parseFeatureAccessMode } from "@/lib/feature-access";
+import type { FeatureAccessMode } from "@/lib/feature-access";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 type FeatureAccessFieldConfig = {
   auditAction: string;
-  fallbackMode: FeatureAccessMode;
   settingKey: string;
 };
 
@@ -32,47 +31,38 @@ const FEATURE_ACCESS_AUDIT_TIMEOUT_MS = 3_000;
 const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
   forumAccessMode: {
     settingKey: FORUM_FEATURE_FLAG_KEY,
-    fallbackMode: "enabled",
     auditAction: "forum.toggle",
   },
   calculatorAccessMode: {
     settingKey: CALCULATOR_FEATURE_FLAG_KEY,
-    fallbackMode: "enabled",
     auditAction: "feature.calculator.toggle",
   },
   studyModeAccessMode: {
     settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
-    fallbackMode: "disabled",
     auditAction: "feature.study_mode.toggle",
   },
   translateAccessMode: {
     settingKey: TRANSLATE_FEATURE_FLAG_KEY,
-    fallbackMode: "disabled",
     auditAction: "feature.translate.toggle",
   },
   jobsAccessMode: {
     settingKey: JOBS_FEATURE_FLAG_KEY,
-    fallbackMode: "disabled",
     auditAction: "feature.jobs_mode.toggle",
   },
   imageGenerationAccessMode: {
     settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
-    fallbackMode: "disabled",
     auditAction: "feature.image_generation.toggle",
   },
   documentUploadsAccessMode: {
     settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-    fallbackMode: "disabled",
     auditAction: "feature.document_uploads.toggle",
   },
   suggestedPromptsAccessMode: {
     settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
-    fallbackMode: "enabled",
     auditAction: "feature.suggested_prompts.toggle",
   },
   iconPromptsAccessMode: {
     settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
-    fallbackMode: "disabled",
     auditAction: "feature.icon_prompts.toggle",
   },
 };
@@ -116,7 +106,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unknown_field" }, { status: 400 });
   }
 
-  const resolvedMode = parseFeatureAccessMode(mode, config.fallbackMode);
+  const resolvedMode = mode;
 
   try {
     await withTimeout(
@@ -141,6 +131,13 @@ export async function POST(request: NextRequest) {
   invalidateAdminMutation({
     source: config.auditAction,
     tags: [appSettingCacheTagForKey(config.settingKey)],
+  });
+  console.info("[api/admin/feature-access] Scoped feature mutation invalidation.", {
+    accessMode: resolvedMode,
+    fieldName,
+    invalidatedTags: [appSettingCacheTagForKey(config.settingKey)],
+    settingKey: config.settingKey,
+    source: config.auditAction,
   });
 
   void withTimeout(

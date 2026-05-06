@@ -79,10 +79,9 @@ function parseFeatureAccessModePrimitive(
   return null;
 }
 
-export function parseFeatureAccessMode(
-  value: unknown,
-  fallback: FeatureAccessMode
-): FeatureAccessMode {
+export function parseFeatureAccessModeStrict(
+  value: unknown
+): FeatureAccessMode | null {
   const directMode = parseFeatureAccessModePrimitive(value);
   if (directMode) {
     return directMode;
@@ -112,7 +111,14 @@ export function parseFeatureAccessMode(
     }
   }
 
-  return fallback;
+  return null;
+}
+
+export function parseFeatureAccessMode(
+  value: unknown,
+  fallback: FeatureAccessMode
+): FeatureAccessMode {
+  return parseFeatureAccessModeStrict(value) ?? fallback;
 }
 
 export function isFeatureEnabledForRole(
