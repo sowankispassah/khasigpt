@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isImageGenerationEnabledForAllUsers } from "@/lib/ai/image-generation";
+import { sortPricingPlansForDisplay } from "@/lib/billing/pricing-plans";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
   getAppSetting,
@@ -34,12 +35,7 @@ export async function GET(request: Request) {
     isImageGenerationEnabledForAllUsers(),
   ]);
 
-  const sortedPlans = [...plans].sort((a, b) => {
-    if (a.priceInPaise === b.priceInPaise) {
-      return a.tokenAllowance - b.tokenAllowance;
-    }
-    return a.priceInPaise - b.priceInPaise;
-  });
+  const sortedPlans = sortPricingPlansForDisplay(plans);
 
   let recommendedPlanId: string | null =
     recommendedPlanSetting &&

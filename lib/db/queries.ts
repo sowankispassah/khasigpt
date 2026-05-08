@@ -6566,14 +6566,33 @@ export async function getPaymentTransactionByOrderId({
 
 export async function markPaymentTransactionProcessing({
   orderId,
+  processingStaleBefore,
   retryFailed = false,
   userId,
 }: {
   orderId: string;
+  processingStaleBefore?: Date;
   retryFailed?: boolean;
   userId: string;
 }): Promise<boolean> {
   try {
+    const eligibleStatuses: SQL<boolean>[] = [
+      eq(paymentTransaction.status, PAYMENT_STATUS_PENDING) as SQL<boolean>,
+    ];
+    if (retryFailed) {
+      eligibleStatuses.push(
+        eq(paymentTransaction.status, PAYMENT_STATUS_FAILED) as SQL<boolean>
+      );
+    }
+    if (processingStaleBefore) {
+      eligibleStatuses.push(
+        and(
+          eq(paymentTransaction.status, PAYMENT_STATUS_PROCESSING),
+          lt(paymentTransaction.updatedAt, processingStaleBefore)
+        ) as SQL<boolean>
+      );
+    }
+
     const [transaction] = await db
       .update(paymentTransaction)
       .set({
@@ -6584,12 +6603,9 @@ export async function markPaymentTransactionProcessing({
         and(
           eq(paymentTransaction.orderId, orderId),
           eq(paymentTransaction.userId, userId),
-          retryFailed
-            ? or(
-                eq(paymentTransaction.status, PAYMENT_STATUS_PENDING),
-                eq(paymentTransaction.status, PAYMENT_STATUS_FAILED)
-              )
-            : eq(paymentTransaction.status, PAYMENT_STATUS_PENDING)
+          eligibleStatuses.length === 1
+            ? eligibleStatuses[0]
+            : (or(...eligibleStatuses) as SQL<boolean>)
         )
       )
       .returning();
@@ -6731,6 +6747,177 @@ async function getLatestSubscriptionForUser(
   return latest ?? null;
 }
 
+async function createUserSubscriptionForPlan(
+  executor: any,
+  {
+    now,
+    planId,
+    userId,
+  }: {
+    now: Date;
+    planId: string;
+    userId: string;
+  }
+): Promise<UserSubscription> {
+  const [plan] = await executor
+    .select()
+    .from(pricingPlan)
+    .where(and(eq(pricingPlan.id, planId), isNull(pricingPlan.deletedAt)))
+    .limit(1);
+
+  if (!plan) {
+    throw new ChatSDKError("not_found:pricing_plan", "Pricing plan not found");
+  }
+
+  if (!plan.isActive) {
+    throw new ChatSDKError(
+      "bad_request:pricing_plan",
+      "Selected plan is not currently active"
+    );
+  }
+
+  const allowance = Math.max(0, plan.tokenAllowance);
+  const isPaidPlan = plan.priceInPaise > 0;
+  const expiresAt = addDays(now, Math.max(1, plan.billingCycleDays));
+  const active = await getActiveSubscriptionInternal(executor, userId, now);
+
+  if (active) {
+    const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
+    const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
+    const updatedManual = isPaidPlan
+      ? currentManual
+      : currentManual + allowance;
+    const updatedPaid = isPaidPlan ? currentPaid + allowance : currentPaid;
+    const updatedBalance = updatedManual + updatedPaid;
+
+    const [updated] = await executor
+      .update(userSubscription)
+      .set({
+        planId: plan.id,
+        tokenAllowance: active.tokenAllowance + allowance,
+        tokenBalance: updatedBalance,
+        manualTokenBalance: updatedManual,
+        paidTokenBalance: updatedPaid,
+        expiresAt: active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
+        status: "active",
+        updatedAt: now,
+      })
+      .where(eq(userSubscription.id, active.id))
+      .returning();
+
+    return updated;
+  }
+
+  const [subscription] = await executor
+    .insert(userSubscription)
+    .values({
+      userId,
+      planId: plan.id,
+      status: "active",
+      tokenAllowance: allowance,
+      tokenBalance: allowance,
+      manualTokenBalance: isPaidPlan ? 0 : allowance,
+      paidTokenBalance: isPaidPlan ? allowance : 0,
+      tokensUsed: 0,
+      startedAt: now,
+      expiresAt,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+
+  return subscription;
+}
+
+export async function completePaymentTransactionWithSubscription({
+  orderId,
+  paymentId,
+  planId,
+  signature,
+  userId,
+}: {
+  orderId: string;
+  paymentId: string;
+  planId: string;
+  signature: string;
+  userId: string;
+}): Promise<{ alreadyProcessed: boolean; subscription: UserSubscription | null }> {
+  const now = new Date();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [transaction] = await tx
+        .select()
+        .from(paymentTransaction)
+        .where(
+          and(
+            eq(paymentTransaction.orderId, orderId),
+            eq(paymentTransaction.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (!transaction) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Payment transaction was not found"
+        );
+      }
+
+      if (transaction.status === PAYMENT_STATUS_PAID) {
+        return { alreadyProcessed: true, subscription: null };
+      }
+
+      if (transaction.status !== PAYMENT_STATUS_PROCESSING) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Payment transaction is not ready to complete"
+        );
+      }
+
+      const subscription = await createUserSubscriptionForPlan(tx, {
+        now,
+        planId,
+        userId,
+      });
+
+      const [paid] = await tx
+        .update(paymentTransaction)
+        .set({
+          status: PAYMENT_STATUS_PAID,
+          paymentId,
+          signature,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(paymentTransaction.orderId, orderId),
+            eq(paymentTransaction.userId, userId),
+            eq(paymentTransaction.status, PAYMENT_STATUS_PROCESSING)
+          )
+        )
+        .returning();
+
+      if (!paid) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Payment transaction could not be marked paid"
+        );
+      }
+
+      return { alreadyProcessed: false, subscription };
+    });
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to complete payment transaction"
+    );
+  }
+}
+
 export async function createUserSubscription({
   userId,
   planId,
@@ -6742,78 +6929,7 @@ export async function createUserSubscription({
 
   try {
     return await db.transaction(async (tx) => {
-      const [plan] = await tx
-        .select()
-        .from(pricingPlan)
-        .where(and(eq(pricingPlan.id, planId), isNull(pricingPlan.deletedAt)))
-        .limit(1);
-
-      if (!plan) {
-        throw new ChatSDKError(
-          "not_found:pricing_plan",
-          "Pricing plan not found"
-        );
-      }
-
-      if (!plan.isActive) {
-        throw new ChatSDKError(
-          "bad_request:pricing_plan",
-          "Selected plan is not currently active"
-        );
-      }
-
-      const allowance = Math.max(0, plan.tokenAllowance);
-      const isPaidPlan = plan.priceInPaise > 0;
-      const expiresAt = addDays(now, Math.max(1, plan.billingCycleDays));
-      const active = await getActiveSubscriptionInternal(tx, userId, now);
-
-      if (active) {
-        const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
-        const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
-        const updatedManual = isPaidPlan
-          ? currentManual
-          : currentManual + allowance;
-        const updatedPaid = isPaidPlan ? currentPaid + allowance : currentPaid;
-        const updatedBalance = updatedManual + updatedPaid;
-
-        const [updated] = await tx
-          .update(userSubscription)
-          .set({
-            planId: plan.id,
-            tokenAllowance: active.tokenAllowance + allowance,
-            tokenBalance: updatedBalance,
-            manualTokenBalance: updatedManual,
-            paidTokenBalance: updatedPaid,
-            expiresAt:
-              active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
-            status: "active",
-            updatedAt: now,
-          })
-          .where(eq(userSubscription.id, active.id))
-          .returning();
-
-        return updated;
-      }
-
-      const [subscription] = await tx
-        .insert(userSubscription)
-        .values({
-          userId,
-          planId: plan.id,
-          status: "active",
-          tokenAllowance: allowance,
-          tokenBalance: allowance,
-          manualTokenBalance: isPaidPlan ? 0 : allowance,
-          paidTokenBalance: isPaidPlan ? allowance : 0,
-          tokensUsed: 0,
-          startedAt: now,
-          expiresAt,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
-
-      return subscription;
+      return createUserSubscriptionForPlan(tx, { now, planId, userId });
     });
   } catch (error) {
     if (error instanceof ChatSDKError) {

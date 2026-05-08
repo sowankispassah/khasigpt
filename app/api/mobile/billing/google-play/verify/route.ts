@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import {
+  completePaymentTransactionWithSubscription,
   createPaymentTransaction,
-  createUserSubscription,
   getPaymentTransactionByOrderId,
   getPricingPlanById,
   getUserBalanceSummary,
   markPaymentTransactionFailed,
-  markPaymentTransactionPaid,
   markPaymentTransactionProcessing,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
@@ -21,6 +20,8 @@ import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products"
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const GOOGLE_PLAY_PROCESSING_STALE_MS = 10 * 60_000;
 
 function buildOrderId(tokenHash: string) {
   return `gp_${tokenHash.slice(0, 56)}`;
@@ -139,25 +140,33 @@ export async function POST(request: Request) {
 
     const locked = await markPaymentTransactionProcessing({
       orderId,
+      processingStaleBefore: new Date(
+        Date.now() - GOOGLE_PLAY_PROCESSING_STALE_MS
+      ),
       retryFailed: true,
       userId: session.user.id,
     });
-    if (!locked && transaction.status !== "processing") {
-      return new ChatSDKError(
-        "bad_request:api",
-        "Purchase is already being processed. Please try again shortly."
-      ).toResponse();
+    if (!locked) {
+      const balance = await getUserBalanceSummary(session.user.id);
+      return NextResponse.json(
+        {
+          balance,
+          ok: false,
+          processing: true,
+          message:
+            "Purchase verification is already in progress. The app will retry shortly.",
+        },
+        { status: 202 }
+      );
     }
 
     try {
-      await createUserSubscription({
-        userId: session.user.id,
-        planId: plan.id,
-      });
-      await markPaymentTransactionPaid({
+      const completed = await completePaymentTransactionWithSubscription({
         orderId,
         paymentId: purchase.orderId ?? orderId,
+        planId: plan.id,
         signature: tokenHash,
+        userId: session.user.id,
       });
       await consumeGooglePlayProductPurchase({
         packageName,
@@ -173,7 +182,11 @@ export async function POST(request: Request) {
       });
 
       const balance = await getUserBalanceSummary(session.user.id);
-      return NextResponse.json({ balance, ok: true });
+      return NextResponse.json({
+        alreadyProcessed: completed.alreadyProcessed,
+        balance,
+        ok: true,
+      });
     } catch (error) {
       await markPaymentTransactionFailed({ orderId });
       throw error;

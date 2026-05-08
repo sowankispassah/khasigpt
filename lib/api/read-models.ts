@@ -5,6 +5,7 @@ import {
   isImageGenerationEnabledForAllUsers,
 } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
+import { sortPricingPlansForDisplay } from "@/lib/billing/pricing-plans";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
@@ -274,10 +275,12 @@ export async function loadPricingReadModel() {
       isImageGenerationEnabledForAllUsers().catch(() => false),
     ]);
 
+  const sortedPricingPlans = sortPricingPlansForDisplay(pricingPlans);
+
   return {
     imageGenerationEnabledForAll,
     recommendedPlanId,
-    plans: pricingPlans.map((plan) => ({
+    plans: sortedPricingPlans.map((plan) => ({
       id: plan.id,
       name: plan.name,
       description: plan.description,
