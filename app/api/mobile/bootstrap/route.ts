@@ -45,6 +45,33 @@ const FALLBACK_LANGUAGE_SNAPSHOT: LanguageSnapshot = {
   chatLanguages: [FALLBACK_LANGUAGE],
 };
 
+function buildStartupLanguageSnapshot(
+  preferredLanguage: string | null
+): LanguageSnapshot {
+  const code = preferredLanguage?.trim().toLowerCase();
+  if (!code || code === FALLBACK_LANGUAGE.code) {
+    return FALLBACK_LANGUAGE_SNAPSHOT;
+  }
+
+  const startupLanguage = {
+    id: `startup-${code}`,
+    code,
+    name: code.toUpperCase(),
+    isDefault: false,
+    isActive: true,
+    syncUiLanguage: false,
+  };
+
+  return {
+    i18n: {
+      activeLanguage: startupLanguage,
+      languages: [FALLBACK_LANGUAGE, startupLanguage],
+      dictionary: {},
+    },
+    chatLanguages: [FALLBACK_LANGUAGE, startupLanguage],
+  };
+}
+
 const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
   calculator: true,
   customKnowledge: false,
@@ -142,12 +169,14 @@ export async function GET(request: Request) {
     pricing,
     balance,
   ] = await Promise.all([
-    safeBootstrapSection({
-      fallback: FALLBACK_LANGUAGE_SNAPSHOT,
-      label: "mobile.bootstrap.languages",
-      loader: () => loadLanguageReadModel(preferredLanguage),
-      phase,
-    }),
+    isStartupPhase
+      ? Promise.resolve(buildStartupLanguageSnapshot(preferredLanguage))
+      : safeBootstrapSection({
+          fallback: FALLBACK_LANGUAGE_SNAPSHOT,
+          label: "mobile.bootstrap.languages",
+          loader: () => loadLanguageReadModel(preferredLanguage),
+          phase,
+        }),
     isStartupPhase
       ? Promise.resolve(FALLBACK_FEATURE_SNAPSHOT)
       : safeBootstrapSection({
