@@ -1338,7 +1338,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "subscriptions.plan_overview.no_plan",
-    defaultText: "No plan yet",
+    defaultText: "Free Plan",
     description: "Fallback label when user has no plan.",
   },
   {

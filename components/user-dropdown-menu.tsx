@@ -514,7 +514,7 @@ export function UserDropdownMenu({
                       : (planLabel ??
                         translate(
                           "user_menu.manage_subscriptions_status_fallback",
-                          "No active plan"
+                          "Free Plan"
                         ))}
                   </span>
                 </Link>

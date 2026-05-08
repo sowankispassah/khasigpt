@@ -256,7 +256,7 @@ export default async function SubscriptionsPage({
       ? `${plan?.name} (${planPriceLabel})`
       : (plan?.name ??
         t("subscriptions.plan_overview.active_plan", "Active plan"))
-    : t("subscriptions.plan_overview.no_plan", "No plan yet");
+    : t("subscriptions.plan_overview.no_plan", "Free Plan");
 
   const freeCreditsRemaining = isManualPlan
     ? effectiveCreditsRemaining

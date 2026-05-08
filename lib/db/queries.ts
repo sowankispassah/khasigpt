@@ -6970,15 +6970,15 @@ export async function getUserBalanceSummary(
     if (!activeSubscription) {
       return {
         subscription: null,
-        plan: plan ?? null,
+        plan: null,
         tokensRemaining: 0,
         tokensTotal: 0,
         creditsRemaining: 0,
         creditsTotal: 0,
         allocatedCredits: 0,
         rechargedCredits: 0,
-        expiresAt: latestSubscription.expiresAt,
-        startedAt: latestSubscription.startedAt,
+        expiresAt: null,
+        startedAt: null,
       };
     }
 
@@ -7093,15 +7093,15 @@ export async function getUserBalanceSummaries(
       if (!activeSubscription) {
         summaries.set(userId, {
           subscription: null,
-          plan,
+          plan: null,
           tokensRemaining: 0,
           tokensTotal: 0,
           creditsRemaining: 0,
           creditsTotal: 0,
           allocatedCredits: 0,
           rechargedCredits: 0,
-          expiresAt: latestSubscription.expiresAt,
-          startedAt: latestSubscription.startedAt,
+          expiresAt: null,
+          startedAt: null,
         });
         continue;
       }

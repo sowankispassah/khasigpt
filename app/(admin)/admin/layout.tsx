@@ -44,7 +44,7 @@ const ADMIN_SHELL_TRANSLATIONS = [
   },
   {
     key: "user_menu.manage_subscriptions_status_fallback",
-    defaultText: "No active plan",
+    defaultText: "Free Plan",
   },
   { key: "user_menu.upgrade_plan", defaultText: "Upgrade plan" },
   { key: "user_menu.open_admin_console", defaultText: "Open admin console" },
