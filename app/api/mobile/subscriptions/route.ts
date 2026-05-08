@@ -4,6 +4,7 @@ import {
   getDailyTokenUsageForUser,
   getSessionTokenUsageForUser,
   getUserBalanceSummary,
+  listUserRechargeHistory,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
@@ -36,6 +37,26 @@ function parseRange(value: string | null): RangeOption {
 function parsePage(value: string | null) {
   const requestedPage = Number.parseInt(value ?? "", 10);
   return Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+}
+
+function formatRechargeAmount(amount: number, currency: string) {
+  return new Intl.NumberFormat(currency === "USD" ? "en-US" : "en-IN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+function formatRechargeStatus(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized === "paid") {
+    return "Paid";
+  }
+  if (normalized === "processing") {
+    return "Processing";
+  }
+  return "Failed";
 }
 
 function buildDailySeries(
@@ -116,7 +137,7 @@ export async function GET(request: Request) {
     ? sortParam
     : SESSION_SORT_DEFAULT;
 
-  const [balance, rawDailyUsage, sessionUsage] = await Promise.all([
+  const [balance, rawDailyUsage, sessionUsage, rechargeHistory] = await Promise.all([
     getUserBalanceSummary(session.user.id),
     getDailyTokenUsageForUser(session.user.id, range).catch((error) => {
       console.error(
@@ -129,6 +150,15 @@ export async function GET(request: Request) {
       (error) => {
         console.error(
           "[api/mobile/subscriptions] Failed to load session usage.",
+          error
+        );
+        return [];
+      }
+    ),
+    listUserRechargeHistory({ userId: session.user.id, limit: 10 }).catch(
+      (error) => {
+        console.error(
+          "[api/mobile/subscriptions] Failed to load recharge history.",
           error
         );
         return [];
@@ -243,6 +273,25 @@ export async function GET(request: Request) {
         creditsUsed: entry.totalTokens / TOKENS_PER_CREDIT,
         totalTokens: entry.totalTokens,
       })),
+      rechargeHistory: rechargeHistory.map((entry) => {
+        const normalizedStatus = entry.status?.toLowerCase() ?? "";
+        return {
+          orderId: entry.orderId,
+          planLabel: entry.planName ?? "Plan unavailable",
+          amountLabel: formatRechargeAmount(entry.amount, entry.currency),
+          statusLabel: formatRechargeStatus(normalizedStatus),
+          status: normalizedStatus,
+          dateLabel: new Intl.DateTimeFormat("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).format(entry.createdAt),
+        };
+      }),
     },
     {
       headers: {
