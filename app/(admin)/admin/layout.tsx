@@ -1,19 +1,12 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { AdminNav } from "@/components/admin-nav";
 import { AdminSearch } from "@/components/admin-search";
 import { SiteShell } from "@/components/site-shell";
-import {
-  getTranslationsForKeys,
-  type TranslationDefinition,
-} from "@/lib/i18n/dictionary";
 import type { LanguageOption } from "@/lib/i18n/languages";
-import { resolveLanguage } from "@/lib/i18n/languages";
-import { withTimeout } from "@/lib/utils/async";
 
-const ADMIN_SHELL_TRANSLATIONS: TranslationDefinition[] = [
+const ADMIN_SHELL_TRANSLATIONS = [
   { key: "user_menu.resources", defaultText: "Resources" },
   { key: "user_menu.language", defaultText: "Language" },
   { key: "user_menu.language.active", defaultText: "Active" },
@@ -67,9 +60,8 @@ const ADMIN_SHELL_TRANSLATIONS: TranslationDefinition[] = [
     key: "chat.language.ui_prompt.loading",
     defaultText: "Switching interface language...",
   },
-];
+] as const;
 
-const ADMIN_SHELL_DATA_TIMEOUT_MS = 2500;
 const FALLBACK_LANGUAGE: LanguageOption = {
   id: "fallback-en",
   code: "en",
@@ -99,27 +91,9 @@ export default async function AdminLayout({
     redirect("/");
   }
 
-  const cookieStore = await cookies();
-  const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [{ languages, activeLanguage }, dictionary] = await Promise.all([
-    withTimeout(
-      resolveLanguage(preferredLanguage),
-      ADMIN_SHELL_DATA_TIMEOUT_MS
-    ).catch((error) => {
-      console.error("[admin/layout] Language shell data timed out.", error);
-      return {
-        languages: [FALLBACK_LANGUAGE],
-        activeLanguage: FALLBACK_LANGUAGE,
-      };
-    }),
-    withTimeout(
-      getTranslationsForKeys(preferredLanguage, ADMIN_SHELL_TRANSLATIONS),
-      ADMIN_SHELL_DATA_TIMEOUT_MS
-    ).catch((error) => {
-      console.error("[admin/layout] Dictionary shell data timed out.", error);
-      return buildFallbackDictionary();
-    }),
-  ]);
+  const languages = [FALLBACK_LANGUAGE];
+  const activeLanguage = FALLBACK_LANGUAGE;
+  const dictionary = buildFallbackDictionary();
 
   return (
     <SiteShell
