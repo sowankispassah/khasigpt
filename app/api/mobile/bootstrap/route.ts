@@ -38,15 +38,6 @@ const FALLBACK_LANGUAGE = {
   syncUiLanguage: true,
 };
 
-const FALLBACK_LANGUAGE_SNAPSHOT: LanguageSnapshot = {
-  i18n: {
-    activeLanguage: FALLBACK_LANGUAGE,
-    languages: [FALLBACK_LANGUAGE],
-    dictionary: {},
-  },
-  chatLanguages: [FALLBACK_LANGUAGE],
-};
-
 const STARTUP_LANGUAGE_NAMES: Record<
   string,
   { displayName: string; nativeName?: string }
@@ -59,33 +50,54 @@ function resolveStartupLanguageName(code: string) {
   return STARTUP_LANGUAGE_NAMES[code]?.displayName ?? code;
 }
 
+function buildStartupLanguageOption(
+  code: string,
+  options: {
+    isDefault?: boolean;
+    syncUiLanguage?: boolean;
+  } = {}
+) {
+  const name = resolveStartupLanguageName(code);
+
+  return {
+    id: `startup-${code}`,
+    code,
+    name,
+    displayName: name,
+    nativeName: STARTUP_LANGUAGE_NAMES[code]?.nativeName ?? name,
+    isDefault: options.isDefault ?? code === FALLBACK_LANGUAGE.code,
+    isActive: true,
+    syncUiLanguage: options.syncUiLanguage ?? code === FALLBACK_LANGUAGE.code,
+  };
+}
+
+const STARTUP_LANGUAGES = [
+  buildStartupLanguageOption("en", {
+    isDefault: true,
+    syncUiLanguage: true,
+  }),
+  buildStartupLanguageOption("kha", {
+    isDefault: false,
+    syncUiLanguage: false,
+  }),
+];
+
 function buildStartupLanguageSnapshot(
   preferredLanguage: string | null
 ): LanguageSnapshot {
   const code = preferredLanguage?.trim().toLowerCase();
-  if (!code || code === FALLBACK_LANGUAGE.code) {
-    return FALLBACK_LANGUAGE_SNAPSHOT;
-  }
-
-  const startupLanguage = {
-    id: `startup-${code}`,
-    code,
-    name: resolveStartupLanguageName(code),
-    displayName: resolveStartupLanguageName(code),
-    nativeName:
-      STARTUP_LANGUAGE_NAMES[code]?.nativeName ?? resolveStartupLanguageName(code),
-    isDefault: false,
-    isActive: true,
-    syncUiLanguage: false,
-  };
+  const activeLanguage =
+    STARTUP_LANGUAGES.find((language) => language.code === code) ??
+    STARTUP_LANGUAGES.find((language) => language.isDefault) ??
+    FALLBACK_LANGUAGE;
 
   return {
     i18n: {
-      activeLanguage: startupLanguage,
-      languages: [FALLBACK_LANGUAGE, startupLanguage],
+      activeLanguage,
+      languages: STARTUP_LANGUAGES,
       dictionary: {},
     },
-    chatLanguages: [FALLBACK_LANGUAGE, startupLanguage],
+    chatLanguages: STARTUP_LANGUAGES,
   };
 }
 
@@ -189,7 +201,7 @@ export async function GET(request: Request) {
     isStartupPhase
       ? Promise.resolve(buildStartupLanguageSnapshot(preferredLanguage))
       : safeBootstrapSection({
-          fallback: FALLBACK_LANGUAGE_SNAPSHOT,
+          fallback: buildStartupLanguageSnapshot(preferredLanguage),
           label: "mobile.bootstrap.languages",
           loader: () => loadLanguageReadModel(preferredLanguage),
           phase,
