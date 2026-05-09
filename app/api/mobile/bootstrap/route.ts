@@ -31,6 +31,8 @@ const FALLBACK_LANGUAGE = {
   id: "fallback-en",
   code: "en",
   name: "English",
+  displayName: "English",
+  nativeName: "English",
   isDefault: true,
   isActive: true,
   syncUiLanguage: true,
@@ -45,6 +47,18 @@ const FALLBACK_LANGUAGE_SNAPSHOT: LanguageSnapshot = {
   chatLanguages: [FALLBACK_LANGUAGE],
 };
 
+const STARTUP_LANGUAGE_NAMES: Record<
+  string,
+  { displayName: string; nativeName?: string }
+> = {
+  en: { displayName: "English", nativeName: "English" },
+  kha: { displayName: "Khasi", nativeName: "Khasi" },
+};
+
+function resolveStartupLanguageName(code: string) {
+  return STARTUP_LANGUAGE_NAMES[code]?.displayName ?? code;
+}
+
 function buildStartupLanguageSnapshot(
   preferredLanguage: string | null
 ): LanguageSnapshot {
@@ -56,7 +70,10 @@ function buildStartupLanguageSnapshot(
   const startupLanguage = {
     id: `startup-${code}`,
     code,
-    name: code.toUpperCase(),
+    name: resolveStartupLanguageName(code),
+    displayName: resolveStartupLanguageName(code),
+    nativeName:
+      STARTUP_LANGUAGE_NAMES[code]?.nativeName ?? resolveStartupLanguageName(code),
     isDefault: false,
     isActive: true,
     syncUiLanguage: false,
