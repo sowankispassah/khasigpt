@@ -96,6 +96,7 @@ function buildStartupLanguageSnapshot(
       activeLanguage,
       languages: STARTUP_LANGUAGES,
       dictionary: {},
+      dictionaryLanguageCode: "",
     },
     chatLanguages: STARTUP_LANGUAGES,
   };

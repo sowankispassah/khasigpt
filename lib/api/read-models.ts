@@ -29,7 +29,10 @@ import {
 import type { UserRole } from "@/lib/db/schema";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { parseForumAccessModeSetting } from "@/lib/forum/config";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import {
+  getFreshTranslationBundle,
+  getTranslationBundle,
+} from "@/lib/i18n/dictionary";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
@@ -140,9 +143,14 @@ export async function loadFeatureAccessReadModel({
   };
 }
 
-export async function loadLanguageReadModel(preferredLanguage?: string | null) {
+export async function loadLanguageReadModel(
+  preferredLanguage?: string | null,
+  options: { requireFresh?: boolean; timeoutMs?: number } = {}
+) {
   const [translationBundle, languagesWithSettings] = await Promise.all([
-    getTranslationBundle(preferredLanguage),
+    options.requireFresh
+      ? getFreshTranslationBundle(preferredLanguage, options.timeoutMs)
+      : getTranslationBundle(preferredLanguage),
     withTimeout(listLanguagesWithSettings(), READ_TIMEOUT_MS).catch((error) => {
       console.error("[read-models] Failed to load chat languages.", error);
       return [];
@@ -179,6 +187,7 @@ export async function loadLanguageReadModel(preferredLanguage?: string | null) {
       activeLanguage: translationBundle.activeLanguage,
       languages: translationBundle.languages,
       dictionary: translationBundle.dictionary,
+      dictionaryLanguageCode: translationBundle.activeLanguage.code,
     },
     chatLanguages,
   };

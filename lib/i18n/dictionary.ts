@@ -279,7 +279,7 @@ async function loadTranslationBundle(preferredCode?: string | null) {
   };
 }
 
-type TranslationBundle = {
+export type TranslationBundle = {
   languages: LanguageOption[];
   activeLanguage: LanguageOption;
   dictionary: Record<string, string>;
@@ -535,6 +535,29 @@ export async function getTranslationBundle(
     scheduleBundleRefresh(key, preferredCode);
     return fallbackBundle;
   }
+}
+
+export async function getFreshTranslationBundle(
+  preferredCode?: string | null,
+  timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
+): Promise<TranslationBundle> {
+  const key = cacheKeyForLanguage(preferredCode);
+  const bundle = await withTimeout(
+    loadTranslationBundle(preferredCode),
+    timeoutMs,
+    () => {
+      logTranslationTimeout(
+        `[i18n] Fresh bundle load timed out after ${timeoutMs}ms for key "${key}".`
+      );
+    }
+  );
+
+  clearTranslationDbFailure();
+  BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
+  void persistBundle(key, bundle).catch((error) => {
+    logTranslationError("[i18n] Failed to persist translation bundle.", error);
+  });
+  return bundle;
 }
 
 export async function invalidateTranslationBundleCache(
