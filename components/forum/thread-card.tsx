@@ -4,6 +4,7 @@ import { Bookmark, Clock, Eye, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { type MouseEvent, memo, useMemo } from "react";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import type { ForumThreadListItemPayload } from "@/lib/forum/types";
 import { sanitizeText } from "@/lib/utils";
 
@@ -96,23 +97,35 @@ function ThreadCardComponent({
         </span>
         {thread.isPinned ? (
           <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700">
-            {translate("forum.thread.pinned", "Pinned")}
+            <EditableTranslation
+              defaultText="Pinned"
+              translationKey="forum.thread.pinned"
+            />
           </span>
         ) : null}
         {thread.status === "resolved" ? (
           <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600">
-            {translate("forum.thread.resolved", "Resolved")}
+            <EditableTranslation
+              defaultText="Resolved"
+              translationKey="forum.thread.resolved"
+            />
           </span>
         ) : null}
         {thread.isLocked ? (
           <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[11px] text-red-600">
-            {translate("forum.thread.locked", "Locked")}
+            <EditableTranslation
+              defaultText="Locked"
+              translationKey="forum.thread.locked"
+            />
           </span>
         ) : null}
         {isSubscribed ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-600">
             <Bookmark className="h-3.5 w-3.5" />
-            {translate("forum.thread.subscribed", "Subscribed")}
+            <EditableTranslation
+              defaultText="Subscribed"
+              translationKey="forum.thread.subscribed"
+            />
           </span>
         ) : null}
       </div>
@@ -124,9 +137,11 @@ function ThreadCardComponent({
         <p className="line-clamp-3 text-muted-foreground text-sm leading-snug">
           {excerpt.length > 0
             ? excerpt
-            : translate(
-                "forum.thread.no_excerpt",
-                "This discussion does not include a preview yet."
+            : (
+                <EditableTranslation
+                  defaultText="This discussion does not include a preview yet."
+                  translationKey="forum.thread.no_excerpt"
+                />
               )}
         </p>
       </div>
@@ -145,17 +160,19 @@ function ThreadCardComponent({
       <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-xs">
         <div className="inline-flex items-center gap-1.5">
           <MessageSquare className="h-4 w-4" />
-          {translate("forum.thread.meta.replies", "{count} replies").replace(
-            "{count}",
-            thread.totalReplies.toString()
-          )}
+          <EditableTranslation
+            defaultText="{count} replies"
+            translationKey="forum.thread.meta.replies"
+            values={{ count: thread.totalReplies }}
+          />
         </div>
         <div className="inline-flex items-center gap-1.5">
           <Eye className="h-4 w-4" />
-          {translate("forum.thread.meta.views", "{count} views").replace(
-            "{count}",
-            thread.viewCount.toString()
-          )}
+          <EditableTranslation
+            defaultText="{count} views"
+            translationKey="forum.thread.meta.views"
+            values={{ count: thread.viewCount }}
+          />
         </div>
         <div className="inline-flex items-center gap-1.5">
           <Clock className="h-4 w-4" />

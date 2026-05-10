@@ -2,6 +2,11 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "app.brand",
+    defaultText: "KhasiGPT",
+    description: "Application brand name shown in app chrome.",
+  },
+  {
     key: "greeting.title",
     defaultText: "Hi, {name}",
     description:
@@ -83,6 +88,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Helper text while subscription plan is loading.",
   },
   {
+    key: "user_menu.manage_subscriptions_status_loading",
+    defaultText: "Loading plan...",
+    description: "Helper text while native subscription plan is loading.",
+  },
+  {
+    key: "user_menu.manage_subscriptions_status_unavailable",
+    defaultText: "Plan unavailable",
+    description: "Helper text when subscription plan could not be loaded.",
+  },
+  {
     key: "user_menu.manage_subscriptions_status_fallback",
     defaultText: "Free Plan",
     description: "Fallback label when plan information is unavailable.",
@@ -138,6 +153,97 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Generic clear/reset action label.",
   },
   {
+    key: "common.loading",
+    defaultText: "Loading...",
+    description: "Generic loading label.",
+  },
+  {
+    key: "common.try_again",
+    defaultText: "Try again",
+    description: "Generic retry action label.",
+  },
+  {
+    key: "common.continue",
+    defaultText: "Continue",
+    description: "Generic continue action label.",
+  },
+  {
+    key: "common.delete",
+    defaultText: "Delete",
+    description: "Generic delete action label.",
+  },
+  {
+    key: "translation_edit.mode.enable",
+    defaultText: "Enable translation edit mode",
+    description: "Admin menu action that enables inline localization editing.",
+  },
+  {
+    key: "translation_edit.mode.disable",
+    defaultText: "Disable translation edit mode",
+    description: "Admin menu action that disables inline localization editing.",
+  },
+  {
+    key: "translation_edit.modal.title",
+    defaultText: "Edit translation",
+    description: "Title for the inline translation editor dialog.",
+  },
+  {
+    key: "translation_edit.modal.description",
+    defaultText: "Save translated UI text for the selected language.",
+    description: "Description for the inline translation editor dialog.",
+  },
+  {
+    key: "translation_edit.source_label",
+    defaultText: "English source",
+    description: "Label for English source text in the inline translation editor.",
+  },
+  {
+    key: "translation_edit.language_label",
+    defaultText: "Language",
+    description: "Label for selected language in the inline translation editor.",
+  },
+  {
+    key: "translation_edit.value_label",
+    defaultText: "Translated value",
+    description: "Accessibility label for the inline translation text input.",
+  },
+  {
+    key: "translation_edit.default_language_locked",
+    defaultText:
+      "Inline edit saves translated values only. Edit English source text from Admin Translations.",
+    description: "Notice shown when inline editing is opened while English is active.",
+  },
+  {
+    key: "translation_edit.save",
+    defaultText: "Save translation",
+    description: "Submit button for the inline translation editor.",
+  },
+  {
+    key: "translation_edit.saving",
+    defaultText: "Saving...",
+    description: "Saving state label for the inline translation editor.",
+  },
+  {
+    key: "translation_edit.saved",
+    defaultText: "Translation saved",
+    description: "Success toast after saving an inline translation.",
+  },
+  {
+    key: "translation_edit.cleared",
+    defaultText: "Translation cleared",
+    description: "Success toast after clearing an inline translation.",
+  },
+  {
+    key: "translation_edit.save_failed",
+    defaultText: "Unable to save translation.",
+    description: "Error toast when inline translation saving fails.",
+  },
+  {
+    key: "translation_edit.edit_short",
+    defaultText: "Edit",
+    description: "Short edit label for non-text inline translation affordances.",
+  },
+  {
     key: "user_menu.resources.about",
     defaultText: "About Us",
     description: "Link to the about page.",
@@ -161,6 +267,51 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "navigation.back_to_home",
     defaultText: "Back to home",
     description: "Text for links that return to the home page.",
+  },
+  {
+    key: "navigation.back",
+    defaultText: "Back",
+    description: "Back navigation button label.",
+  },
+  {
+    key: "navigation.opening",
+    defaultText: "Opening...",
+    description: "Navigation pending label.",
+  },
+  {
+    key: "sidebar.new_chat",
+    defaultText: "New chat",
+    description: "Sidebar action for starting a new chat.",
+  },
+  {
+    key: "sidebar.translate",
+    defaultText: "Translate",
+    description: "Sidebar link to the translate tool.",
+  },
+  {
+    key: "sidebar.study_mode",
+    defaultText: "Study Mode",
+    description: "Sidebar link for the study chat mode.",
+  },
+  {
+    key: "sidebar.jobs",
+    defaultText: "Jobs",
+    description: "Sidebar link for jobs mode.",
+  },
+  {
+    key: "sidebar.calculator",
+    defaultText: "Calculator",
+    description: "Sidebar link for calculator.",
+  },
+  {
+    key: "sidebar.loading_tools",
+    defaultText: "Loading tools...",
+    description: "Sidebar loading label while feature links are loading.",
+  },
+  {
+    key: "sidebar.history.title",
+    defaultText: "Chat History",
+    description: "Sidebar chat history section title.",
   },
   {
     key: "about.title",
@@ -193,6 +344,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText:
       "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language.",
     description: "Subtitle displayed on authentication pages.",
+  },
+  {
+    key: "auth.signing_in",
+    defaultText: "Signing you in...",
+    description: "Loading label while authentication is in progress.",
+  },
+  {
+    key: "auth.google.completing",
+    defaultText: "Completing Google sign in",
+    description: "Loading title while Google authentication completes.",
+  },
+  {
+    key: "auth.loading_account",
+    defaultText: "Loading your account...",
+    description: "Loading detail while account bootstrap is being loaded.",
   },
   {
     key: "login.title",
@@ -346,6 +512,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "register.login_prompt_suffix",
     defaultText: "instead.",
     description: "Suffix text after the login link on the register page.",
+  },
+  {
+    key: "register.legal.error",
+    defaultText: "Unable to load this document.",
+    description: "Error shown when a legal document fails to load in native registration.",
+  },
+  {
+    key: "register.legal.empty",
+    defaultText: "No content is available yet.",
+    description: "Empty state for legal documents in native registration.",
   },
   {
     key: "forgot_password.title",
@@ -620,6 +796,26 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Placeholder text for the main chat input.",
   },
   {
+    key: "chat.header.new_chat",
+    defaultText: "New Chat",
+    description: "Header button label for starting a new chat.",
+  },
+  {
+    key: "chat.error.unable_to_load",
+    defaultText: "Unable to load chat",
+    description: "Chat detail error heading when a chat cannot be loaded.",
+  },
+  {
+    key: "study.empty.subtitle",
+    defaultText: "What would you like to study today?",
+    description: "Empty study chat subtitle shown above the composer.",
+  },
+  {
+    key: "study.empty.change_exam",
+    defaultText: "Change exam",
+    description: "Button label for changing the selected study exam.",
+  },
+  {
     key: "chat.language.ui_prompt.title",
     defaultText: "Change interface language?",
     description: "Title for the UI language change confirmation dialog.",
@@ -884,7 +1080,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "profile.name.description",
-    defaultText: "Update how your name appears across the product.",
+    defaultText: "Update how your name appears across the app.",
     description: "Supporting copy for the name section on the profile page.",
   },
   {
@@ -901,6 +1097,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.name.success",
     defaultText: "Your name has been updated.",
     description: "Toast message when the name update succeeds.",
+  },
+  {
+    key: "profile.name.error",
+    defaultText: "Unable to update profile.",
+    description: "Error shown when profile details cannot be updated.",
   },
   {
     key: "profile.name.saving",
@@ -934,9 +1135,24 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label for opening the file picker.",
   },
   {
+    key: "profile.picture.preparing",
+    defaultText: "Preparing image...",
+    description: "Status label while a chosen profile image is being prepared.",
+  },
+  {
+    key: "profile.picture.ready",
+    defaultText: "Image selected. Upload to save.",
+    description: "Status label after selecting a profile image.",
+  },
+  {
     key: "profile.picture.upload",
     defaultText: "Upload",
     description: "Button label when no file has been selected yet.",
+  },
+  {
+    key: "profile.picture.uploading",
+    defaultText: "Uploading image...",
+    description: "Status label while the profile image is uploading.",
   },
   {
     key: "profile.picture.save_changes",
@@ -952,6 +1168,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.picture.remove",
     defaultText: "Remove",
     description: "Button label for removing a profile image.",
+  },
+  {
+    key: "profile.picture.removing",
+    defaultText: "Removing image...",
+    description: "Status label while the profile image is being removed.",
   },
   {
     key: "profile.picture.error.file_type",
@@ -1009,6 +1230,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Description in the account email card.",
   },
   {
+    key: "profile.account_email.email_label",
+    defaultText: "Email",
+    description: "Label for the account email field.",
+  },
+  {
     key: "profile.account_email.link_text",
     defaultText: "subscriptions dashboard",
     description: "Link text inside the account email card.",
@@ -1057,6 +1283,31 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.password.success",
     defaultText: "Password updated successfully.",
     description: "Success message after updating the password.",
+  },
+  {
+    key: "profile.password.error",
+    defaultText: "Unable to update password.",
+    description: "Error shown when the password update fails.",
+  },
+  {
+    key: "profile.dob.label",
+    defaultText: "Date of birth",
+    description: "Label for the date of birth field.",
+  },
+  {
+    key: "profile.dob.placeholder",
+    defaultText: "YYYY-MM-DD",
+    description: "Placeholder format for the date of birth field.",
+  },
+  {
+    key: "profile.dob.locked_helper",
+    defaultText: "To correct your date of birth, contact support.",
+    description: "Helper shown when date of birth is locked.",
+  },
+  {
+    key: "profile.dob.editable_helper",
+    defaultText: "You can set your date of birth once.",
+    description: "Helper shown before date of birth is saved.",
   },
   {
     key: "profile.deactivate.title",
@@ -1137,6 +1388,37 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Label for chats created more than a month ago.",
   },
   {
+    key: "sidebar.history.loading_more",
+    defaultText: "Loading more...",
+    description: "Sidebar loading label while more chat history rows load.",
+  },
+  {
+    key: "sidebar.history.action.share",
+    defaultText: "Share",
+    description: "Sidebar chat history menu share heading.",
+  },
+  {
+    key: "sidebar.history.action.private",
+    defaultText: "Private",
+    description: "Sidebar chat history menu private visibility option.",
+  },
+  {
+    key: "sidebar.history.action.public",
+    defaultText: "Public",
+    description: "Sidebar chat history menu public visibility option.",
+  },
+  {
+    key: "sidebar.history.delete_confirm.title",
+    defaultText: "Are you absolutely sure?",
+    description: "Title for the sidebar chat deletion confirmation dialog.",
+  },
+  {
+    key: "sidebar.history.delete_confirm.description",
+    defaultText:
+      "This will remove the chat from your history. The record is kept safely in the backend unless an administrator purges it.",
+    description: "Body text for the sidebar chat deletion confirmation dialog.",
+  },
+  {
     key: "sidebar.history.toast.loading",
     defaultText: "Deleting chat...",
     description: "Toast message while a chat deletion is in progress.",
@@ -1192,6 +1474,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.subtitle",
     defaultText: "Track your current plan, credit balance, and recent usage.",
     description: "Subheading for the subscriptions page.",
+  },
+  {
+    key: "subscriptions.loading_details",
+    defaultText: "Loading subscription details...",
+    description: "Loading label while subscription details are fetched.",
+  },
+  {
+    key: "subscriptions.error.load_details",
+    defaultText: "Unable to load subscription details.",
+    description: "Error shown when subscription details cannot be loaded.",
   },
   {
     key: "subscriptions.metric.total_used",
@@ -1372,6 +1664,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Recharge link text.",
   },
   {
+    key: "subscriptions.quick_actions.recharge_hint",
+    defaultText: "Need more credits? Visit the recharge page.",
+    description: "Native quick action hint for opening the recharge page.",
+  },
+  {
+    key: "subscriptions.quick_actions.recharge_button",
+    defaultText: "Recharge",
+    description: "Button label for opening the recharge page.",
+  },
+  {
     key: "subscriptions.quick_actions.support",
     defaultText:
       "Prefer emailed invoices or receipts? Contact support and we'll help out.",
@@ -1396,6 +1698,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.daily_usage.peak_day",
     defaultText: "Peak day: {date} • {credits} credits",
     description: "Label summarising the peak usage day.",
+  },
+  {
+    key: "subscriptions.chart.area",
+    defaultText: "Area",
+    description: "Chart type selector label for area chart.",
+  },
+  {
+    key: "subscriptions.chart.bar",
+    defaultText: "Bar",
+    description: "Chart type selector label for bar chart.",
+  },
+  {
+    key: "subscriptions.chart.line",
+    defaultText: "Line",
+    description: "Chart type selector label for line chart.",
   },
   {
     key: "subscriptions.range.label",
@@ -1488,6 +1805,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label for viewing fewer sessions.",
   },
   {
+    key: "subscriptions.pagination.prev_short",
+    defaultText: "View fewer",
+    description: "Short button label for viewing fewer sessions on native.",
+  },
+  {
     key: "subscriptions.pagination.page",
     defaultText: "Page {current} of {total}",
     description: "Pagination status text.",
@@ -1496,6 +1818,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.pagination.next",
     defaultText: "View more sessions",
     description: "Button label for viewing more sessions.",
+  },
+  {
+    key: "subscriptions.pagination.next_short",
+    defaultText: "View more",
+    description: "Short button label for viewing more sessions on native.",
   },
   {
     key: "subscriptions.pagination.no_more",
@@ -1862,7 +2189,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "forum.hero.title",
-    defaultText: "Discuss product ideas with KhasiGPT builders",
+    defaultText: "Discuss issues, bugs, suggest features, etc.",
     description: "Headline shown at the top of the forum page.",
   },
   {
@@ -1920,6 +2247,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "forum.filters.search",
     defaultText: 'Search: "{value}"',
     description: "Badge label describing the current search query filter.",
+  },
+  {
+    key: "forum.filters.all_tags",
+    defaultText: "All tags",
+    description: "Forum tag filter option that clears the selected tag.",
+  },
+  {
+    key: "forum.error.load",
+    defaultText: "Unable to load forum",
+    description: "Error heading when the forum listing cannot be loaded.",
   },
   {
     key: "forum.empty.title",
@@ -2068,6 +2405,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Message shown when there are no tags to choose from.",
   },
   {
+    key: "forum.composer.tags.empty_short",
+    defaultText: "No tags yet",
+    description: "Short helper text when no forum tags exist.",
+  },
+  {
+    key: "forum.composer.tags.empty_publish",
+    defaultText: "No tags have been added yet. You can publish without tags.",
+    description: "Composer helper shown when publishing without tags is allowed.",
+  },
+  {
     key: "forum.composer.submit",
     defaultText: "Publish discussion",
     description: "Primary action button inside the composer sheet.",
@@ -2087,6 +2434,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText:
       "You need to be logged in to start a discussion. Please sign in and then return to the forum.",
     description: "Description in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.body_short",
+    defaultText: "You need to be logged in to start a discussion.",
+    description: "Short login-required message in the native forum composer.",
   },
   {
     key: "forum.composer.login_required.cancel",
@@ -2230,6 +2582,51 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Fallback text for very recent timestamps.",
   },
   {
+    key: "forum.thread.relative.ago",
+    defaultText: "{count} {unit} ago",
+    description: "Relative time label for past forum activity.",
+  },
+  {
+    key: "forum.thread.relative.from_now",
+    defaultText: "{count} {unit} from now",
+    description: "Relative time label for future forum activity.",
+  },
+  {
+    key: "forum.thread.relative.unit.minute",
+    defaultText: "minute",
+    description: "Singular minute unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.minutes",
+    defaultText: "minutes",
+    description: "Plural minutes unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.hour",
+    defaultText: "hour",
+    description: "Singular hour unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.hours",
+    defaultText: "hours",
+    description: "Plural hours unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.day",
+    defaultText: "day",
+    description: "Singular day unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.days",
+    defaultText: "days",
+    description: "Plural days unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.error.load",
+    defaultText: "Unable to load discussion",
+    description: "Error heading when a forum discussion cannot be loaded.",
+  },
+  {
     key: "forum.thread.toast.reply_posted",
     defaultText: "Reply posted!",
     description: "Toast shown after a reply is successfully created.",
@@ -2330,6 +2727,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "forum.thread.reply.placeholder_signed_in",
     defaultText: "Share your insights, {name}…",
     description: "Placeholder shown in the reply composer for signed-in users.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_in_short",
+    defaultText: "Share your insights...",
+    description: "Short native placeholder shown in the reply composer.",
   },
   {
     key: "forum.thread.reply.placeholder_signed_out",

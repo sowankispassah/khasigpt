@@ -5,6 +5,10 @@ import Link from "next/link";
 import React from "react";
 import useSWR from "swr";
 import { useTranslation } from "@/components/language-provider";
+import {
+  EditableTranslation,
+  useTranslationEdit,
+} from "@/components/translation-edit-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -197,6 +201,11 @@ export function UserDropdownMenu({
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
   const planLoadTriggeredRef = React.useRef(false);
   const { translate } = useTranslation();
+  const {
+    enabled: translationEditEnabled,
+    isAdmin: canEditTranslations,
+    toggleEnabled: toggleTranslationEdit,
+  } = useTranslationEdit();
 
   const closeMenuImmediately = React.useCallback(() => {
     setIsMenuOpen(false);
@@ -429,7 +438,10 @@ export function UserDropdownMenu({
       >
         <Link href={item.path}>
           <span className="flex w-full items-center justify-between gap-2">
-            {translate(item.labelKey, item.defaultLabel)}
+            <EditableTranslation
+              defaultText={item.defaultLabel}
+              translationKey={item.labelKey}
+            />
           </span>
         </Link>
       </DropdownMenuItem>
@@ -489,7 +501,10 @@ export function UserDropdownMenu({
               >
                 <Link href="/profile">
                   <span className="flex w-full items-center justify-between gap-2">
-                    {translate("user_menu.profile", "Profile")}
+                    <EditableTranslation
+                      defaultText="Profile"
+                      translationKey="user_menu.profile"
+                    />
                   </span>
                 </Link>
               </DropdownMenuItem>
@@ -500,10 +515,10 @@ export function UserDropdownMenu({
               >
                 <Link href="/subscriptions">
                   <span className="flex w-full items-center justify-between gap-2">
-                    {translate(
-                      "user_menu.manage_subscriptions",
-                      "Manage Subscriptions"
-                    )}
+                    <EditableTranslation
+                      defaultText="Manage Subscriptions"
+                      translationKey="user_menu.manage_subscriptions"
+                    />
                   </span>
                   <span className="text-muted-foreground text-xs opacity-80">
                     {isPlanLoading
@@ -526,7 +541,10 @@ export function UserDropdownMenu({
               >
                 <Link href="/recharge">
                   <span className="flex w-full items-center justify-between gap-2">
-                    {translate("user_menu.upgrade_plan", "Upgrade plan")}
+                    <EditableTranslation
+                      defaultText="Upgrade plan"
+                      translationKey="user_menu.upgrade_plan"
+                    />
                   </span>
                 </Link>
               </DropdownMenuItem>
@@ -545,10 +563,34 @@ export function UserDropdownMenu({
                   }
                 >
                   <span className="flex w-full items-center justify-between gap-2">
-                    {translate(
-                      "user_menu.open_admin_console",
-                      "Open admin console"
-                    )}
+                    <EditableTranslation
+                      defaultText="Open admin console"
+                      translationKey="user_menu.open_admin_console"
+                    />
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
+              {canEditTranslations ? (
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  data-testid="user-nav-item-translation-edit-mode"
+                  onSelect={(event) =>
+                    handleSelect(event, {
+                      callback: toggleTranslationEdit,
+                      skipProgress: true,
+                    })
+                  }
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    {translationEditEnabled
+                      ? translate(
+                          "translation_edit.mode.disable",
+                          "Disable translation edit mode"
+                        )
+                      : translate(
+                          "translation_edit.mode.enable",
+                          "Enable translation edit mode"
+                        )}
                   </span>
                 </DropdownMenuItem>
               ) : null}
@@ -560,10 +602,10 @@ export function UserDropdownMenu({
                 >
                   <Link href="/creator-dashboard">
                     <span className="flex w-full items-center justify-between gap-2">
-                      {translate(
-                        "user_menu.creator_dashboard",
-                        "Creator dashboard"
-                      )}
+                      <EditableTranslation
+                        defaultText="Creator dashboard"
+                        translationKey="user_menu.creator_dashboard"
+                      />
                     </span>
                   </Link>
                 </DropdownMenuItem>
@@ -580,7 +622,10 @@ export function UserDropdownMenu({
             >
               <Link href="/forum">
                 <span className="flex w-full items-center justify-between gap-2">
-                  {translate("user_menu.community_forum", "Community Forum")}
+                  <EditableTranslation
+                    defaultText="Community Forum"
+                    translationKey="user_menu.community_forum"
+                  />
                 </span>
               </Link>
             </DropdownMenuItem>
@@ -593,7 +638,10 @@ export function UserDropdownMenu({
                   className="flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start"
                   data-testid="user-nav-item-language"
                 >
-                  {translate("user_menu.language", "Language")}
+                  <EditableTranslation
+                    defaultText="Language"
+                    translationKey="user_menu.language"
+                  />
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
                   {languageOptions.map((language) => (
@@ -647,7 +695,10 @@ export function UserDropdownMenu({
               onKeyDown={handleResourcesKeyDown}
               onPointerDown={handleResourcesPointerDown}
             >
-              {translate("user_menu.resources", "Resources")}
+                <EditableTranslation
+                  defaultText="Resources"
+                  translationKey="user_menu.resources"
+                />
             </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-full min-w-0 rounded-md border bg-popover p-1 shadow-none max-sm:ml-[7px] sm:w-auto sm:min-w-[12rem] sm:shadow-lg">
               {renderInfoLinks()}
@@ -664,9 +715,17 @@ export function UserDropdownMenu({
             }
           >
             <span className="flex w-full items-center justify-between gap-2">
-              {resolvedTheme === "light"
-                ? translate("user_menu.theme.dark", "Dark mode")
-                : translate("user_menu.theme.light", "Light mode")}
+              {resolvedTheme === "light" ? (
+                <EditableTranslation
+                  defaultText="Dark mode"
+                  translationKey="user_menu.theme.dark"
+                />
+              ) : (
+                <EditableTranslation
+                  defaultText="Light mode"
+                  translationKey="user_menu.theme.light"
+                />
+              )}
             </span>
           </DropdownMenuItem>
           {showSignOut ? (
@@ -683,7 +742,10 @@ export function UserDropdownMenu({
                 }
               >
                 <span className="flex w-full items-center justify-between gap-2">
-                  {translate("user_menu.sign_out", "Sign out")}
+                  <EditableTranslation
+                    defaultText="Sign out"
+                    translationKey="user_menu.sign_out"
+                  />
                 </span>
               </DropdownMenuItem>
             </>

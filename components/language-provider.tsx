@@ -6,6 +6,7 @@ import {
   type PropsWithChildren,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -17,6 +18,7 @@ type TranslationContextValue = {
   activeLanguage: LanguageOption;
   dictionary: Record<string, string>;
   translate: (key: string, defaultText: string) => string;
+  upsertLocalTranslation: (key: string, value: string) => void;
   setLanguage: (code: string) => void;
   isUpdating: boolean;
 };
@@ -33,6 +35,10 @@ const TranslationContext = createContext<TranslationContextValue>({
   },
   dictionary: {},
   translate: (_key, defaultText) => defaultText,
+  upsertLocalTranslation: () => {
+    // default noop
+    return;
+  },
   setLanguage: () => {
     // default noop
     return;
@@ -55,6 +61,11 @@ export function LanguageProvider({
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, setIsPending] = useState(false);
+  const [localDictionary, setLocalDictionary] = useState(dictionary);
+
+  useEffect(() => {
+    setLocalDictionary(dictionary);
+  }, [dictionary]);
   const languageCodeSet = useMemo(() => {
     const codes = new Set<string>();
     for (const language of languages) {
@@ -68,9 +79,23 @@ export function LanguageProvider({
 
   const translate = useCallback(
     (key: string, defaultText: string) => {
-      return dictionary[key] ?? defaultText;
+      return localDictionary[key] ?? defaultText;
     },
-    [dictionary]
+    [localDictionary]
+  );
+
+  const upsertLocalTranslation = useCallback(
+    (key: string, value: string) => {
+      const normalizedKey = key.trim();
+      if (!normalizedKey) {
+        return;
+      }
+      setLocalDictionary((current) => ({
+        ...current,
+        [normalizedKey]: value,
+      }));
+    },
+    []
   );
 
   const setLanguage = useCallback(
@@ -126,12 +151,21 @@ export function LanguageProvider({
     () => ({
       languages,
       activeLanguage,
-      dictionary,
+      dictionary: localDictionary,
       translate,
+      upsertLocalTranslation,
       setLanguage,
       isUpdating: isPending,
     }),
-    [languages, activeLanguage, dictionary, translate, setLanguage, isPending]
+    [
+      languages,
+      activeLanguage,
+      localDictionary,
+      translate,
+      upsertLocalTranslation,
+      setLanguage,
+      isPending,
+    ]
   );
 
   return (

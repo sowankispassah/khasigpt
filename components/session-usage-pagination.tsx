@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useTransition } from "react";
 
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   SESSION_SORT_DEFAULT,
   SESSION_SORT_VALUES,
@@ -108,7 +109,10 @@ export function SessionUsagePagination({
           className="text-muted-foreground text-xs uppercase"
           htmlFor="session-usage-sort"
         >
-          {translate("subscriptions.session_usage.sort.label", "Sort sessions")}
+          <EditableTranslation
+            defaultText="Sort sessions"
+            translationKey="subscriptions.session_usage.sort.label"
+          />
         </label>
         <select
           className="cursor-pointer rounded-md border bg-background px-3 py-1 text-sm"
@@ -142,19 +146,18 @@ export function SessionUsagePagination({
               onClick={() => navigateToPage(sessionsPage - 1)}
               type="button"
             >
-              {translate(
-                "subscriptions.pagination.prev",
-                "View fewer sessions"
-              )}
+            <EditableTranslation
+              defaultText="View fewer sessions"
+              translationKey="subscriptions.pagination.prev"
+            />
             </button>
 
             <span className="text-muted-foreground text-xs">
-              {translate(
-                "subscriptions.pagination.page",
-                "Page {current} of {total}"
-              )
-                .replace("{current}", String(sessionsPage))
-                .replace("{total}", String(totalPages))}
+              <EditableTranslation
+                defaultText="Page {current} of {total}"
+                translationKey="subscriptions.pagination.page"
+                values={{ current: sessionsPage, total: totalPages }}
+              />
             </span>
 
             {canGoForward ? (
@@ -164,14 +167,17 @@ export function SessionUsagePagination({
                 onClick={() => navigateToPage(sessionsPage + 1)}
                 type="button"
               >
-                {translate(
-                  "subscriptions.pagination.next",
-                  "View more sessions"
-                )}
+                <EditableTranslation
+                  defaultText="View more sessions"
+                  translationKey="subscriptions.pagination.next"
+                />
               </button>
             ) : (
               <span className="text-muted-foreground text-xs">
-                {translate("subscriptions.pagination.no_more", "No more data")}
+                <EditableTranslation
+                  defaultText="No more data"
+                  translationKey="subscriptions.pagination.no_more"
+                />
               </span>
             )}
           </div>

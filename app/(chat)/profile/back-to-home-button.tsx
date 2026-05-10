@@ -3,18 +3,21 @@
 import { ArrowLeft } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { cn } from "@/lib/utils";
 
 type BackToHomeButtonProps = {
   label: string;
   className?: string;
   href?: string;
+  translationKey?: string;
 };
 
 export function BackToHomeButton({
   label,
   className,
   href = "/",
+  translationKey,
 }: BackToHomeButtonProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -46,7 +49,13 @@ export function BackToHomeButton({
       }}
     >
       <ArrowLeft aria-hidden="true" className="h-7 w-7" />
-      <span>{label}</span>
+      <span>
+        {translationKey ? (
+          <EditableTranslation defaultText={label} translationKey={translationKey} />
+        ) : (
+          label
+        )}
+      </span>
     </button>
   );
 }

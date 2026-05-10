@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { isImageGenerationEnabledForAllUsers } from "@/lib/ai/image-generation";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
@@ -14,7 +15,6 @@ import {
   listPricingPlans,
 } from "@/lib/db/queries";
 import {
-  getTranslationBundle,
   getTranslationsForKeys,
 } from "@/lib/i18n/dictionary";
 
@@ -53,16 +53,11 @@ export default async function RechargePage() {
     },
   ]);
 
-  const [bundle, planTranslations] = await Promise.all([
-    getTranslationBundle(preferredLanguage),
+  const planTranslations =
     planTranslationDefinitions.length > 0
-      ? getTranslationsForKeys(preferredLanguage, planTranslationDefinitions)
-      : Promise.resolve<Record<string, string>>({}),
-  ]);
+      ? await getTranslationsForKeys(preferredLanguage, planTranslationDefinitions)
+      : {};
 
-  const dictionary = bundle.dictionary;
-
-  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const formatCreditValue = (credits: number) =>
     credits.toLocaleString("en-IN", {
       minimumFractionDigits: 2,
@@ -132,21 +127,25 @@ export default async function RechargePage() {
       <header className="flex flex-col gap-6">
         <div>
           <BackToHomeButton
-            label={t("navigation.back_to_home", "Back to home")}
+            label="Back to home"
+            translationKey="navigation.back_to_home"
           />
         </div>
         <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
           <span className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
-            {t("recharge.tagline", "Pricing")}
+            <EditableTranslation defaultText="Pricing" translationKey="recharge.tagline" />
           </span>
           <h1 className="font-semibold text-3xl md:text-4xl">
-            {t("recharge.title", "Choose your plan")}
+            <EditableTranslation
+              defaultText="Choose your plan"
+              translationKey="recharge.title"
+            />
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            {t(
-              "recharge.subtitle",
-              "Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
-            )}
+            <EditableTranslation
+              defaultText="Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
+              translationKey="recharge.subtitle"
+            />
           </p>
         </div>
       </header>
@@ -173,12 +172,18 @@ export default async function RechargePage() {
 
       <section className="rounded-2xl border bg-card/80 p-6 shadow-sm">
         <h2 className="font-semibold text-lg">
-          {t("recharge.current_balance.title", "Current balance")}
+          <EditableTranslation
+            defaultText="Current balance"
+            translationKey="recharge.current_balance.title"
+          />
         </h2>
         <dl className="mt-4 grid gap-6 sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-              {t("recharge.current_balance.remaining", "Credits remaining")}
+              <EditableTranslation
+                defaultText="Credits remaining"
+                translationKey="recharge.current_balance.remaining"
+              />
             </dt>
             <dd className="mt-2 font-semibold text-2xl">
               {formatCreditValue(balance.creditsRemaining)}{" "}
@@ -190,10 +195,10 @@ export default async function RechargePage() {
           {balance.expiresAt ? (
             <div>
               <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                {t(
-                  "recharge.current_balance.valid_until",
-                  "Credits valid until"
-                )}
+                <EditableTranslation
+                  defaultText="Credits valid until"
+                  translationKey="recharge.current_balance.valid_until"
+                />
               </dt>
               <dd className="mt-2 font-semibold text-lg">
                 {expiryFormatter.format(balance.expiresAt)}

@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { EditableMarkdownContent } from "@/components/editable-markdown-content";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { DEFAULT_PRIVACY_POLICY } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
-
-const DOUBLE_NEWLINE_REGEX = /\n{2,}/;
-const HEADING_REGEX = /^#{1,6}\s/;
-const HEADING_PREFIX_REGEX = /^#{1,6}/;
-const HEADING_TRIM_REGEX = /^#{1,6}\s*/;
-const LIST_ITEM_PREFIX_REGEX = /^-+\s*/;
-const MULTILINE_REGEX = /\n+/;
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -28,7 +22,7 @@ export default async function PrivacyPolicyPage() {
   ).catch(() => null);
   const englishContent =
     stored && stored.trim().length > 0 ? stored.trim() : DEFAULT_PRIVACY_POLICY;
-  const { activeLanguage, languages, dictionary } =
+  const { activeLanguage, languages } =
     await getTranslationBundle(preferredLanguage);
 
   const normalizedContentByLanguage: Record<string, string> = {};
@@ -57,81 +51,40 @@ export default async function PrivacyPolicyPage() {
         ? defaultLanguageContent
         : englishContent) ?? englishContent;
 
-  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
-
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-12 md:gap-8 md:py-16">
       <div>
         <BackToHomeButton
           href="/"
-          label={t("navigation.back", "Back")}
+          label="Back"
+          translationKey="navigation.back"
         />
       </div>
 
       <header className="space-y-2">
-        <p className="font-medium text-primary text-sm">Khasigpt</p>
+        <p className="font-medium text-primary text-sm">
+          <EditableTranslation defaultText="KhasiGPT" translationKey="app.brand" />
+        </p>
         <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
-          {t("legal.privacy.title", "Privacy Policy")}
+          <EditableTranslation
+            defaultText="Privacy Policy"
+            translationKey="legal.privacy.title"
+          />
         </h1>
         <p className="text-muted-foreground">
-          {t("legal.last_updated_prefix", "Last updated") +
-            `: ${new Date().getFullYear()}`}
+          <EditableTranslation
+            defaultText="Last updated"
+            translationKey="legal.last_updated_prefix"
+          />
+          {`: ${new Date().getFullYear()}`}
         </p>
       </header>
 
-      <section className="space-y-3 text-muted-foreground text-sm leading-6 md:text-base md:leading-7">
-        {renderLegalContent(content)}
-      </section>
+      <EditableMarkdownContent
+        className="space-y-3 text-muted-foreground text-sm leading-6 md:text-base md:leading-7"
+        content={content}
+        resource="privacyPolicy"
+      />
     </div>
   );
-}
-
-function renderLegalContent(content: string) {
-  const blocks = content
-    .split(DOUBLE_NEWLINE_REGEX)
-    .map((block) => block.trim());
-
-  return blocks.filter(Boolean).map((block, index) => {
-    if (HEADING_REGEX.test(block)) {
-      const match = block.match(HEADING_PREFIX_REGEX);
-      const level = match ? match[0].length : 2;
-      const headingText = block.replace(HEADING_TRIM_REGEX, "").trim();
-      const HeadingTag =
-        `h${Math.min(level + 1, 6)}` as keyof JSX.IntrinsicElements;
-
-      return (
-        <HeadingTag
-          className="font-semibold text-foreground text-xl"
-          key={`heading-${headingText || index}`}
-        >
-          {headingText}
-        </HeadingTag>
-      );
-    }
-
-    const lines = block.split("\n").map((line) => line.trim());
-    const isList = lines.every((line) => line.startsWith("- "));
-
-    if (isList) {
-      const listKey = `list-${lines.join("|").slice(0, 32) || index}`;
-      return (
-        <ul className="list-disc space-y-2 pl-5" key={listKey}>
-          {lines.map((line, itemIndex) => (
-            <li key={`list-item-${listKey}-${itemIndex}-${line}`}>
-              {line.replace(LIST_ITEM_PREFIX_REGEX, "")}
-            </li>
-          ))}
-        </ul>
-      );
-    }
-
-    return (
-      <p
-        className="whitespace-pre-line"
-        key={`paragraph-${block.slice(0, 32) || index}`}
-      >
-        {block.replace(MULTILINE_REGEX, " ")}
-      </p>
-    );
-  });
 }

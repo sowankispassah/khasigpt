@@ -2,8 +2,8 @@
 
 import { Loader2 } from "lucide-react";
 import { getProviders, signIn } from "next-auth/react";
-import { type ComponentProps, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "@/components/language-provider";
+import { type ComponentProps, useEffect, useState } from "react";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 
 type GoogleSignInSectionProps = {
@@ -43,12 +43,12 @@ export function GoogleSignInSection({
 }: GoogleSignInSectionProps) {
   const [isPending, setIsPending] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
-  const { translate } = useTranslation();
-  const buttonLabel = useMemo(() => {
-    return mode === "register"
-      ? translate("auth.continue_with_google.register", "Sign up with Google")
-      : translate("auth.continue_with_google.login", "Continue with Google");
-  }, [mode, translate]);
+  const buttonKey =
+    mode === "register"
+      ? "auth.continue_with_google.register"
+      : "auth.continue_with_google.login";
+  const buttonDefaultText =
+    mode === "register" ? "Sign up with Google" : "Continue with Google";
 
   useEffect(() => {
     let isMounted = true;
@@ -103,7 +103,12 @@ export function GoogleSignInSection({
         ) : (
           <GoogleIcon className="h-4 w-4" />
         )}
-        <span>{buttonLabel}</span>
+        <span>
+          <EditableTranslation
+            defaultText={buttonDefaultText}
+            translationKey={buttonKey}
+          />
+        </span>
       </Button>
     </div>
   );

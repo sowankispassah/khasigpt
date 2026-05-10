@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
 export function PasswordForm() {
   const [password, setPassword] = useState("");
@@ -77,18 +78,24 @@ export function PasswordForm() {
     >
       <div>
         <h2 className="font-semibold text-lg">
-          {translate("profile.password.title", "Update password")}
+          <EditableTranslation
+            defaultText="Update password"
+            translationKey="profile.password.title"
+          />
         </h2>
         <p className="text-muted-foreground text-sm">
-          {translate(
-            "profile.password.description",
-            "Password must be at least 8 characters long."
-          )}
+          <EditableTranslation
+            defaultText="Password must be at least 8 characters long."
+            translationKey="profile.password.description"
+          />
         </p>
       </div>
       <div className="space-y-2">
         <label className="font-medium text-sm" htmlFor="profile-password">
-          {translate("profile.password.new_label", "New password")}
+          <EditableTranslation
+            defaultText="New password"
+            translationKey="profile.password.new_label"
+          />
         </label>
         <input
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -106,7 +113,10 @@ export function PasswordForm() {
           className="font-medium text-sm"
           htmlFor="profile-password-confirm"
         >
-          {translate("profile.password.confirm_label", "Confirm password")}
+          <EditableTranslation
+            defaultText="Confirm password"
+            translationKey="profile.password.confirm_label"
+          />
         </label>
         <input
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -136,10 +146,18 @@ export function PasswordForm() {
             <span className="h-4 w-4 animate-spin">
               <LoaderIcon size={16} />
             </span>
-            <span>{translate("profile.password.saving", "Saving...")}</span>
+            <span>
+              <EditableTranslation
+                defaultText="Saving..."
+                translationKey="profile.password.saving"
+              />
+            </span>
           </span>
         ) : (
-          translate("profile.password.save_button", "Save password")
+          <EditableTranslation
+            defaultText="Save password"
+            translationKey="profile.password.save_button"
+          />
         )}
       </button>
     </form>

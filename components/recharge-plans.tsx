@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -536,20 +537,6 @@ export function RechargePlans({
                 (feature) => !IMAGE_GENERATION_FEATURE_REGEX.test(feature)
               );
 
-          const buttonLabel = effectiveIsActive
-            ? isFreePlan
-              ? translate("recharge.plan.pill.active", "Your current plan")
-              : translate(
-                  "recharge.plan.button.recharge_again",
-                  "Recharge again"
-                )
-            : isFreePlan
-              ? translate("recharge.plan.button.free", "Free Plan")
-              : translate("recharge.plan.button.get", "Get {plan}").replace(
-                  "{plan}",
-                  plan.name
-                );
-
           const buttonVariant = isFreePlan ? "outline" : "default";
 
           return (
@@ -561,13 +548,13 @@ export function RechargePlans({
               )}
               key={plan.id}
             >
-              {isRecommended ? (
+                  {isRecommended ? (
                 <div className="-translate-x-1/2 absolute top-2.5 left-1/2 flex">
                   <span className="rounded-full bg-amber-500/15 px-2 py-[2px] font-semibold text-[11px] text-amber-600">
-                    {translate(
-                      "recharge.plan.badge.recommended",
-                      "Recommended"
-                    )}
+                    <EditableTranslation
+                      defaultText="Recommended"
+                      translationKey="recharge.plan.badge.recommended"
+                    />
                   </span>
                 </div>
               ) : null}
@@ -592,18 +579,20 @@ export function RechargePlans({
                     <div className="text-muted-foreground text-sm leading-6">
                       {plan.tokenAllowance > 0 ? (
                         <p>
-                          {translate(
-                            "recharge.plan.credits",
-                            "{credits} credits"
-                          ).replace("{credits}", credits.toLocaleString())}
+                          <EditableTranslation
+                            defaultText="{credits} credits"
+                            translationKey="recharge.plan.credits"
+                            values={{ credits: credits.toLocaleString() }}
+                          />
                         </p>
                       ) : null}
                       {plan.billingCycleDays > 0 ? (
                         <p>
-                          {translate(
-                            "recharge.plan.validity",
-                            "Validity: {days} days"
-                          ).replace("{days}", String(plan.billingCycleDays))}
+                          <EditableTranslation
+                            defaultText="Validity: {days} days"
+                            translationKey="recharge.plan.validity"
+                            values={{ days: plan.billingCycleDays }}
+                          />
                         </p>
                       ) : null}
                     </div>
@@ -632,10 +621,10 @@ export function RechargePlans({
                 <div className="mt-auto space-y-3 pt-6">
                   {effectiveIsActive ? (
                     <div className="rounded-md bg-primary/5 px-3 py-2 text-center font-medium text-primary text-xs">
-                      {translate(
-                        "recharge.plan.pill.active",
-                        "Your current plan"
-                      )}
+                      <EditableTranslation
+                        defaultText="Your current plan"
+                        translationKey="recharge.plan.pill.active"
+                      />
                     </div>
                   ) : null}
                   {isFreePlan ? (
@@ -645,7 +634,17 @@ export function RechargePlans({
                       type="button"
                       variant={buttonVariant}
                     >
-                      {buttonLabel}
+                      {isFreePlan && effectiveIsActive ? (
+                        <EditableTranslation
+                          defaultText="Your current plan"
+                          translationKey="recharge.plan.pill.active"
+                        />
+                      ) : (
+                        <EditableTranslation
+                          defaultText="Free Plan"
+                          translationKey="recharge.plan.button.free"
+                        />
+                      )}
                     </Button>
                   ) : (
                     <Button
@@ -655,7 +654,18 @@ export function RechargePlans({
                       type="button"
                       variant={buttonVariant}
                     >
-                      {buttonLabel}
+                      {effectiveIsActive ? (
+                        <EditableTranslation
+                          defaultText="Recharge again"
+                          translationKey="recharge.plan.button.recharge_again"
+                        />
+                      ) : (
+                        <EditableTranslation
+                          defaultText="Get {plan}"
+                          translationKey="recharge.plan.button.get"
+                          values={{ plan: plan.name }}
+                        />
+                      )}
                     </Button>
                   )}
                 </div>

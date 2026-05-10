@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
 type NameFormProps = {
   initialFirstName: string | null;
@@ -92,19 +93,25 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
     >
       <div>
         <h2 className="font-semibold text-lg">
-          {translate("profile.name.title", "Personal details")}
+          <EditableTranslation
+            defaultText="Personal details"
+            translationKey="profile.name.title"
+          />
         </h2>
         <p className="text-muted-foreground text-sm">
-          {translate(
-            "profile.name.description",
-            "Update the name that appears across the product."
-          )}
+          <EditableTranslation
+            defaultText="Update the name that appears across the product."
+            translationKey="profile.name.description"
+          />
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <label className="font-medium text-sm" htmlFor="profile-first-name">
-            {translate("profile.name.first_label", "First name")}
+            <EditableTranslation
+              defaultText="First name"
+              translationKey="profile.name.first_label"
+            />
           </label>
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -118,7 +125,10 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
         </div>
         <div className="space-y-2">
           <label className="font-medium text-sm" htmlFor="profile-last-name">
-            {translate("profile.name.last_label", "Last name")}
+            <EditableTranslation
+              defaultText="Last name"
+              translationKey="profile.name.last_label"
+            />
           </label>
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -148,10 +158,18 @@ export function NameForm({ initialFirstName, initialLastName }: NameFormProps) {
             <span className="h-4 w-4 animate-spin">
               <LoaderIcon size={16} />
             </span>
-            <span>{translate("profile.name.saving", "Saving...")}</span>
+            <span>
+              <EditableTranslation
+                defaultText="Saving..."
+                translationKey="profile.name.saving"
+              />
+            </span>
           </span>
         ) : (
-          translate("profile.name.save_button", "Save changes")
+          <EditableTranslation
+            defaultText="Save changes"
+            translationKey="profile.name.save_button"
+          />
         )}
       </button>
     </form>

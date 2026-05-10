@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useSession } from "next-auth/react";
 import {
   type ChangeEvent,
@@ -11,6 +12,7 @@ import {
 import { useSWRConfig } from "swr";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { getAvatarColor, getInitials } from "@/components/user-dropdown-menu";
@@ -298,10 +300,13 @@ export function AvatarForm({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Avatar className="h-20 w-20 overflow-hidden">
           {preview ? (
-            <img
-              alt="Profile picture"
+            <Image
+              alt="Profile avatar"
               className="h-full w-full object-cover"
+              height={80}
               src={preview}
+              unoptimized
+              width={80}
             />
           ) : (
             <AvatarFallback
@@ -317,7 +322,10 @@ export function AvatarForm({
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative inline-flex h-10 overflow-hidden rounded-md border border-input bg-background">
               <span className="pointer-events-none inline-flex h-full items-center justify-center px-4 font-medium text-sm transition-colors">
-                {translate("profile.picture.choose", "Choose image")}
+                <EditableTranslation
+                  defaultText="Choose image"
+                  translationKey="profile.picture.choose"
+                />
               </span>
               <input
                 accept={ACCEPTED_TYPES.join(",")}
@@ -336,13 +344,22 @@ export function AvatarForm({
                     <LoaderIcon size={16} />
                   </span>
                   <span>
-                    {translate("profile.picture.saving", "Saving...")}
+                    <EditableTranslation
+                      defaultText="Saving..."
+                      translationKey="profile.picture.saving"
+                    />
                   </span>
                 </span>
               ) : selectedFile ? (
-                translate("profile.picture.save_changes", "Save changes")
+                <EditableTranslation
+                  defaultText="Save changes"
+                  translationKey="profile.picture.save_changes"
+                />
               ) : (
-                translate("profile.picture.upload", "Upload")
+                <EditableTranslation
+                  defaultText="Upload"
+                  translationKey="profile.picture.upload"
+                />
               )}
             </Button>
             {showRemoveButton ? (
@@ -358,20 +375,26 @@ export function AvatarForm({
                       <LoaderIcon size={16} />
                     </span>
                     <span>
-                      {translate("profile.picture.saving", "Saving...")}
+                      <EditableTranslation
+                        defaultText="Saving..."
+                        translationKey="profile.picture.saving"
+                      />
                     </span>
                   </span>
                 ) : (
-                  translate("profile.picture.remove", "Remove")
+                  <EditableTranslation
+                    defaultText="Remove"
+                    translationKey="profile.picture.remove"
+                  />
                 )}
               </Button>
             ) : null}
           </div>
           <p className="text-muted-foreground text-xs">
-            {translate(
-              "profile.picture.size_help",
-              "PNG, JPG, or WEBP up to 2 MB."
-            )}
+            <EditableTranslation
+              defaultText="PNG, JPG, or WEBP up to 2 MB."
+              translationKey="profile.picture.size_help"
+            />
           </p>
         </div>
       </div>

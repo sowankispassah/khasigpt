@@ -9,6 +9,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { AuthForm } from "@/components/auth-form";
 import { useTranslation } from "@/components/language-provider";
 import { SubmitButton } from "@/components/submit-button";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
 import { type LoginActionState, login } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -176,10 +177,10 @@ function LoginContent() {
       <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
         <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
           <h3 className="text-muted-foreground text-sm">
-            {translate(
-              "auth.subtitle",
-              "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
-            )}
+            <EditableTranslation
+              defaultText="KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
+              translationKey="auth.subtitle"
+            />
           </h3>
           <Image
             alt="KhasiGPT logo"
@@ -190,7 +191,10 @@ function LoginContent() {
             width={160}
           />
           <h3 className="font-semibold text-xl dark:text-zinc-50">
-            {translate("login.title", "Sign In To KhasiGPT")}
+            <EditableTranslation
+              defaultText="Sign In To KhasiGPT"
+              translationKey="login.title"
+            />
           </h3>
           {errorMessage ? (
             <div
@@ -215,7 +219,7 @@ function LoginContent() {
         >
           <div className="flex flex-col gap-1.5">
             <SubmitButton isSuccessful={isSuccessful}>
-              {translate("login.cta", "Sign in")}
+              <EditableTranslation defaultText="Sign in" translationKey="login.cta" />
             </SubmitButton>
             <div className="text-right text-sm">
               <button
@@ -223,20 +227,32 @@ function LoginContent() {
                 onClick={() => router.push("/forgot-password")}
                 type="button"
               >
-                {translate("login.forgot_password", "Forgot password?")}
+                <EditableTranslation
+                  defaultText="Forgot password?"
+                  translationKey="login.forgot_password"
+                />
               </button>
             </div>
           </div>
         </AuthForm>
         <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
-          {translate("login.signup_prompt_prefix", "Don't have an account?")}{" "}
+          <EditableTranslation
+            defaultText="Don't have an account?"
+            translationKey="login.signup_prompt_prefix"
+          />{" "}
           <Link
             className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
             href="/register"
           >
-            {translate("login.signup_prompt_link", "Sign up")}
+            <EditableTranslation
+              defaultText="Sign up"
+              translationKey="login.signup_prompt_link"
+            />
           </Link>{" "}
-          {translate("login.signup_prompt_suffix", "for free.")}
+          <EditableTranslation
+            defaultText="for free."
+            translationKey="login.signup_prompt_suffix"
+          />
         </p>
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useActionState, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
-import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,8 +28,6 @@ export function DeactivateAccountForm() {
     DeactivateAccountState,
     FormData
   >(deactivateAccountAction, initialState);
-  const { translate } = useTranslation();
-
   return (
     <form
       action={formAction}
@@ -38,13 +36,16 @@ export function DeactivateAccountForm() {
     >
       <div className="space-y-1">
         <h2 className="font-semibold text-destructive text-lg">
-          {translate("profile.deactivate.title", "Deactivate account")}
+          <EditableTranslation
+            defaultText="Deactivate account"
+            translationKey="profile.deactivate.title"
+          />
         </h2>
         <p className="text-muted-foreground text-sm">
-          {translate(
-            "profile.deactivate.description",
-            "This process cannot be undone. You can contact support for any further assistance."
-          )}
+          <EditableTranslation
+            defaultText="This process cannot be undone. You can contact support for any further assistance."
+            translationKey="profile.deactivate.description"
+          />
         </p>
       </div>
 
@@ -62,24 +63,33 @@ export function DeactivateAccountForm() {
             onClick={() => setOpen(true)}
             type="button"
           >
-            {translate("profile.deactivate.button", "Deactivate account")}
+            <EditableTranslation
+              defaultText="Deactivate account"
+              translationKey="profile.deactivate.button"
+            />
           </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate("profile.deactivate.confirm_title", "Are you sure?")}
+              <EditableTranslation
+                defaultText="Are you sure?"
+                translationKey="profile.deactivate.confirm_title"
+              />
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {translate(
-                "profile.deactivate.confirm_description",
-                "Your account will be disabled and you will be signed out."
-              )}
+              <EditableTranslation
+                defaultText="Your account will be disabled and you will be signed out."
+                translationKey="profile.deactivate.confirm_description"
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isPending}>
-              {translate("profile.deactivate.confirm_cancel", "Cancel")}
+              <EditableTranslation
+                defaultText="Cancel"
+                translationKey="profile.deactivate.confirm_cancel"
+              />
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
@@ -96,14 +106,17 @@ export function DeactivateAccountForm() {
                     <LoaderIcon size={16} />
                   </span>
                   <span>
-                    {translate(
-                      "profile.deactivate.confirm_action_pending",
-                      "Deactivating..."
-                    )}
+                    <EditableTranslation
+                      defaultText="Deactivating..."
+                      translationKey="profile.deactivate.confirm_action_pending"
+                    />
                   </span>
                 </span>
               ) : (
-                translate("profile.deactivate.confirm_action", "Deactivate")
+                <EditableTranslation
+                  defaultText="Deactivate"
+                  translationKey="profile.deactivate.confirm_action"
+                />
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

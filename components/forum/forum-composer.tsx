@@ -5,6 +5,7 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { LoaderIcon, PlusIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -199,9 +200,12 @@ export function ForumComposer({
                     "Sign in to start a discussion."
                   )
             }
-          >
-            <PlusIcon />
-            {translate("forum.composer.button", "Start a discussion")}
+            >
+              <PlusIcon />
+            <EditableTranslation
+              defaultText="Start a discussion"
+              translationKey="forum.composer.button"
+            />
           </Button>
         </SheetTrigger>
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
@@ -218,7 +222,10 @@ export function ForumComposer({
           <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor={titleId}>
-                {translate("forum.composer.title.label", "Title")}
+                <EditableTranslation
+                  defaultText="Title"
+                  translationKey="forum.composer.title.label"
+                />
               </label>
               <Input
                 id={titleId}
@@ -236,7 +243,10 @@ export function ForumComposer({
             </div>
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor={categoryId}>
-                {translate("forum.composer.category.label", "Category")}
+                <EditableTranslation
+                  defaultText="Category"
+                  translationKey="forum.composer.category.label"
+                />
               </label>
               <Select
                 onValueChange={setCategorySlug}
@@ -277,12 +287,15 @@ export function ForumComposer({
             </div>
             <div className="space-y-2">
               <label className="font-medium text-sm" htmlFor={detailsId}>
-                {translate("forum.composer.details.label", "Details")}{" "}
+                <EditableTranslation
+                  defaultText="Details"
+                  translationKey="forum.composer.details.label"
+                />{" "}
                 <span className="text-muted-foreground text-xs">
-                  {translate(
-                    "forum.composer.details.note",
-                    "(Markdown formatting supported soon)"
-                  )}
+                  <EditableTranslation
+                    defaultText="(Markdown formatting supported soon)"
+                    translationKey="forum.composer.details.note"
+                  />
                 </span>
               </label>
               <Textarea
@@ -303,7 +316,10 @@ export function ForumComposer({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-sm">
-                  {translate("forum.composer.tags.label", "Tags")}
+                  <EditableTranslation
+                    defaultText="Tags"
+                    translationKey="forum.composer.tags.label"
+                  />
                 </p>
                 <span className="text-muted-foreground text-xs">
                   {translate(
@@ -336,10 +352,10 @@ export function ForumComposer({
                 })}
                 {availableTags.length === 0 ? (
                   <p className="text-muted-foreground text-xs">
-                    {translate(
-                      "forum.composer.tags.empty",
-                      "No tags available yet."
-                    )}
+                    <EditableTranslation
+                      defaultText="No tags available yet."
+                      translationKey="forum.composer.tags.empty"
+                    />
                   </p>
                 ) : null}
               </div>
@@ -352,10 +368,16 @@ export function ForumComposer({
               {isCreatingThread ? (
                 <span className="inline-flex items-center gap-2">
                   <LoaderIcon className="animate-spin" size={16} />
-                  {translate("forum.composer.submit_pending", "Publishing…")}
+                  <EditableTranslation
+                    defaultText="Publishing..."
+                    translationKey="forum.composer.submit_pending"
+                  />
                 </span>
               ) : (
-                translate("forum.composer.submit", "Publish discussion")
+                <EditableTranslation
+                  defaultText="Publish discussion"
+                  translationKey="forum.composer.submit"
+                />
               )}
             </Button>
           </form>
@@ -365,27 +387,30 @@ export function ForumComposer({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate(
-                "forum.composer.login_required.title",
-                "Sign in to continue"
-              )}
+              <EditableTranslation
+                defaultText="Sign in to continue"
+                translationKey="forum.composer.login_required.title"
+              />
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {translate(
-                "forum.composer.login_required.body",
-                "You need to be logged in to start a discussion. Please sign in and then return to the forum."
-              )}
+              <EditableTranslation
+                defaultText="You need to be logged in to start a discussion. Please sign in and then return to the forum."
+                translationKey="forum.composer.login_required.body"
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>
-              {translate("forum.composer.login_required.cancel", "Not now")}
+              <EditableTranslation
+                defaultText="Not now"
+                translationKey="forum.composer.login_required.cancel"
+              />
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleLoginRedirect}>
-              {translate(
-                "forum.composer.login_required.confirm",
-                "Go to login"
-              )}
+              <EditableTranslation
+                defaultText="Go to login"
+                translationKey="forum.composer.login_required.confirm"
+              />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

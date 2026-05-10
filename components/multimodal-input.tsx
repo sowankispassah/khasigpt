@@ -19,6 +19,10 @@ import { toast } from "sonner";
 import { useWindowSize } from "usehooks-ts";
 import { useTranslation } from "@/components/language-provider";
 import { useModelConfig } from "@/components/model-config-provider";
+import {
+  EditableTranslation,
+  useEditableTranslation,
+} from "@/components/translation-edit-provider";
 import { SelectItem } from "@/components/ui/select";
 import type { JobTitleReference } from "@/lib/jobs/types";
 import type { StudyQuestionReference } from "@/lib/study/types";
@@ -125,17 +129,15 @@ function PureMultimodalInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
   const { translate } = useTranslation();
-  const inputPlaceholder = useMemo(
-    () => translate("chat.input.placeholder", "Send a message..."),
-    [translate]
+  const inputPlaceholder = useEditableTranslation(
+    "chat.input.placeholder",
+    "Send a message...",
+    "Placeholder text for the main chat input."
   );
-  const imagePlaceholder = useMemo(
-    () =>
-      translate(
-        "image.input.placeholder",
-        "Describe the image you want to generate..."
-      ),
-    [translate]
+  const imagePlaceholder = useEditableTranslation(
+    "image.input.placeholder",
+    "Describe the image you want to generate...",
+    "Placeholder text when image generation mode is active."
   );
   const imageToggleLabel = useMemo(
     () => translate("image.mode.toggle", "Generate image"),
@@ -154,6 +156,12 @@ function PureMultimodalInput({
           ),
     [translate, imageGenerationRequiresPaidCredits]
   );
+  const activePlaceholder = imageGenerationSelected
+    ? imagePlaceholder.text
+    : inputPlaceholder.text;
+  const activePlaceholderEditButton = imageGenerationSelected
+    ? imagePlaceholder.editButton
+    : inputPlaceholder.editButton;
 
   const fallbackModelId = useMemo(() => {
     if (!models.length) {
@@ -503,7 +511,7 @@ function PureMultimodalInput({
             ))}
           </div>
         )}
-        <div className="flex flex-row items-start gap-1 sm:gap-2">
+        <div className="relative flex flex-row items-start gap-1 sm:gap-2">
           <PromptInputTextarea
             className="grow resize-none border-0! border-none! bg-transparent p-2 text-sm outline-none ring-0 [-ms-overflow-style:none] [scrollbar-width:none] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 [&::-webkit-scrollbar]:hidden"
             data-testid="multimodal-input"
@@ -511,14 +519,17 @@ function PureMultimodalInput({
             maxHeight={200}
             minHeight={44}
             onChange={handleInput}
-            placeholder={
-              imageGenerationSelected ? imagePlaceholder : inputPlaceholder
-            }
+            placeholder={activePlaceholder}
             ref={textareaRef}
             rows={1}
             submitOnEnter={shouldSubmitOnEnter}
             value={input}
           />
+          {!input && activePlaceholderEditButton ? (
+            <div className="absolute left-2 top-2 z-10">
+              {activePlaceholderEditButton}
+            </div>
+          ) : null}
         </div>
         <PromptInputToolbar className="!border-top-0 border-t-0! p-0 shadow-none dark:border-0 dark:border-transparent!">
           <PromptInputTools className="gap-0 sm:gap-0.5">
@@ -806,7 +817,13 @@ function ImageModeToggle({
       variant="ghost"
     >
       <ImageIcon size={14} />
-      <span className="inline">{label}</span>
+      <span className="inline">
+        <EditableTranslation
+          defaultText="Generate image"
+          description="Chat input toggle for image generation mode."
+          translationKey="image.mode.toggle"
+        />
+      </span>
     </Button>
   );
 

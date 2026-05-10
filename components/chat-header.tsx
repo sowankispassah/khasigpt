@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useState } from "react";
 import { useWindowSize } from "usehooks-ts";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { SidebarToggle } from "@/components/sidebar-toggle";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
 
@@ -81,7 +82,17 @@ function PureChatHeader({
           >
             <PlusIcon />
             <span className="md:sr-only">
-              {isOpeningNewChat ? "Opening..." : "New Chat"}
+              {isOpeningNewChat ? (
+                <EditableTranslation
+                  defaultText="Opening..."
+                  translationKey="navigation.opening"
+                />
+              ) : (
+                <EditableTranslation
+                  defaultText="New Chat"
+                  translationKey="chat.header.new_chat"
+                />
+              )}
             </span>
           </Button>
         )}

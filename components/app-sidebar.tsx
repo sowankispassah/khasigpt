@@ -9,6 +9,11 @@ import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
 import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
+import { useTranslation } from "@/components/language-provider";
+import {
+  EditableTranslation,
+  useTranslationEdit,
+} from "@/components/translation-edit-provider";
 import { PlusIcon } from "@/components/icons";
 import {
   Sidebar,
@@ -64,6 +69,46 @@ const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
 function isChatShellPath(pathname: string) {
   return pathname === "/" || pathname.startsWith("/chat");
+}
+
+function SidebarEditableMenuLabel({
+  defaultText,
+  translationKey,
+}: {
+  defaultText: string;
+  translationKey: string;
+}) {
+  const { translate } = useTranslation();
+  const { enabled, isAdmin, openEditor } = useTranslationEdit();
+  const text = translate(translationKey, defaultText);
+
+  if (!isAdmin || !enabled) {
+    return <span className="truncate">{text}</span>;
+  }
+
+  return (
+    <span
+      className="inline-flex max-w-full cursor-pointer rounded-sm border border-amber-500/70 border-dashed px-0.5 leading-5"
+      data-translation-key={translationKey}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openEditor({ defaultText, key: translationKey });
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          openEditor({ defaultText, key: translationKey });
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      title={translationKey}
+    >
+      {text}
+    </span>
+  );
 }
 
 export function AppSidebar({
@@ -349,7 +394,18 @@ export function AppSidebar({
                 width={24}
               />
               <span className="cursor-pointer rounded-md px-2 font-semibold text-lg hover:bg-muted">
-                {pendingNavigation === "home" ? "Opening..." : "KhasiGPT"}
+                {pendingNavigation === "home" ? (
+                  <EditableTranslation
+                    defaultText="Opening..."
+                    translationKey="navigation.opening"
+                  />
+                ) : (
+                  <EditableTranslation
+                    defaultText="KhasiGPT"
+                    description="Application brand name in the sidebar header."
+                    translationKey="app.brand"
+                  />
+                )}
               </span>
             </Link>
             <div className="md:hidden" />
@@ -367,9 +423,17 @@ export function AppSidebar({
                   onClick={handleNewChatClick}
                 >
                   <PlusIcon />
-                  <span>
-                    {pendingNavigation === "chat" ? "Opening..." : "New chat"}
-                  </span>
+                  {pendingNavigation === "chat" ? (
+                    <SidebarEditableMenuLabel
+                      defaultText="Opening..."
+                      translationKey="navigation.opening"
+                    />
+                  ) : (
+                    <SidebarEditableMenuLabel
+                      defaultText="New chat"
+                      translationKey="sidebar.new_chat"
+                    />
+                  )}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -386,11 +450,17 @@ export function AppSidebar({
                     onTouchStart={handleTranslatePrefetch}
                   >
                     <Languages />
-                    <span>
-                      {pendingNavigation === "translate"
-                        ? "Opening..."
-                        : "Translate"}
-                    </span>
+                    {pendingNavigation === "translate" ? (
+                      <SidebarEditableMenuLabel
+                        defaultText="Opening..."
+                        translationKey="navigation.opening"
+                      />
+                    ) : (
+                      <SidebarEditableMenuLabel
+                        defaultText="Translate"
+                        translationKey="sidebar.translate"
+                      />
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -404,11 +474,17 @@ export function AppSidebar({
                     onClick={handleNewStudyClick}
                   >
                     <BookOpen />
-                    <span>
-                      {pendingNavigation === "study"
-                        ? "Opening..."
-                        : "Study Mode"}
-                    </span>
+                    {pendingNavigation === "study" ? (
+                      <SidebarEditableMenuLabel
+                        defaultText="Opening..."
+                        translationKey="navigation.opening"
+                      />
+                    ) : (
+                      <SidebarEditableMenuLabel
+                        defaultText="Study Mode"
+                        translationKey="sidebar.study_mode"
+                      />
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -425,9 +501,17 @@ export function AppSidebar({
                     onTouchStart={handleViewJobsPrefetch}
                   >
                     <BriefcaseBusiness />
-                    <span>
-                      {pendingNavigation === "jobs" ? "Opening..." : "Jobs"}
-                    </span>
+                    {pendingNavigation === "jobs" ? (
+                      <SidebarEditableMenuLabel
+                        defaultText="Opening..."
+                        translationKey="navigation.opening"
+                      />
+                    ) : (
+                      <SidebarEditableMenuLabel
+                        defaultText="Jobs"
+                        translationKey="sidebar.jobs"
+                      />
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -444,11 +528,17 @@ export function AppSidebar({
                     onTouchStart={handleCalculatorPrefetch}
                   >
                     <Calculator />
-                    <span>
-                      {pendingNavigation === "calculator"
-                        ? "Opening..."
-                        : "Calculator"}
-                    </span>
+                    {pendingNavigation === "calculator" ? (
+                      <SidebarEditableMenuLabel
+                        defaultText="Opening..."
+                        translationKey="navigation.opening"
+                      />
+                    ) : (
+                      <SidebarEditableMenuLabel
+                        defaultText="Calculator"
+                        translationKey="sidebar.calculator"
+                      />
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -456,7 +546,12 @@ export function AppSidebar({
           </SidebarMenu>
         </div>
         <SidebarSeparator />
-        <SidebarHistory label="Chat History" mode="all" user={activeUser ?? user} />
+        <SidebarHistory
+          label="Chat History"
+          labelKey="sidebar.history.title"
+          mode="all"
+          user={activeUser ?? user}
+        />
       </SidebarContent>
     </Sidebar>
   );

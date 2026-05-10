@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import type { ForumCategorySummary, ForumTagSummary } from "@/lib/forum/types";
 import { cn } from "@/lib/utils";
 
@@ -50,14 +51,20 @@ export function ForumSidebar({
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wider">
-            {translate("forum.sidebar.categories.title", "Categories")}
+            <EditableTranslation
+              defaultText="Categories"
+              translationKey="forum.sidebar.categories.title"
+            />
           </h2>
           {showReset ? (
             <Link
               className="font-medium text-primary text-xs transition hover:text-primary/80"
               href="/forum"
             >
-              {translate("forum.sidebar.categories.reset", "Reset")}
+              <EditableTranslation
+                defaultText="Reset"
+                translationKey="forum.sidebar.categories.reset"
+              />
             </Link>
           ) : null}
         </div>
@@ -75,7 +82,10 @@ export function ForumSidebar({
               })}
             >
               <span>
-                {translate("forum.sidebar.categories.all", "All discussions")}
+                <EditableTranslation
+                  defaultText="All discussions"
+                  translationKey="forum.sidebar.categories.all"
+                />
               </span>
               <span className="text-muted-foreground text-xs">
                 {categories.reduce(
@@ -117,12 +127,18 @@ export function ForumSidebar({
 
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wider">
-          {translate("forum.sidebar.tags.title", "Trending Tags")}
+          <EditableTranslation
+            defaultText="Trending Tags"
+            translationKey="forum.sidebar.tags.title"
+          />
         </h2>
         <div className="mt-4 flex flex-wrap gap-2">
           {tags.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              {translate("forum.sidebar.tags.empty", "No tags available yet.")}
+              <EditableTranslation
+                defaultText="No tags available yet."
+                translationKey="forum.sidebar.tags.empty"
+              />
             </p>
           ) : (
             tags.slice(0, 12).map((tag) => {

@@ -10,6 +10,10 @@ import { ForumCategoryManager } from "@/components/forum/forum-category-manager"
 import { ThreadCard } from "@/components/forum/thread-card";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
+import {
+  EditableTranslation,
+  useEditableTranslation,
+} from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
@@ -70,6 +74,10 @@ export function ForumClient({
   const router = useRouter();
   const pathname = usePathname();
   const { translate } = useTranslation();
+  const searchPlaceholder = useEditableTranslation(
+    "forum.search.placeholder",
+    "Search discussions, tags, or keywords"
+  );
   const isAdmin = viewer.role === "admin";
   const [threads, setThreads] = useState(initialThreads);
   const [cursor, setCursor] = useState(nextCursor);
@@ -210,31 +218,40 @@ export function ForumClient({
           <div className="flex flex-wrap items-center justify-between gap-6">
             <div className="space-y-4">
               <p className="font-semibold text-primary text-sm uppercase tracking-wider">
-                {translate("forum.hero.tagline", "Community Forum")}
+                <EditableTranslation
+                  defaultText="Community Forum"
+                  translationKey="forum.hero.tagline"
+                />
               </p>
               <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
-                {translate(
-                  "forum.hero.title",
-                  "Discuss product ideas with KhasiGPT builders"
-                )}
+                <EditableTranslation
+                  defaultText="Discuss product ideas with KhasiGPT builders"
+                  translationKey="forum.hero.title"
+                />
               </h1>
               <p className="text-muted-foreground text-sm md:text-base">
-                {translate(
-                  "forum.hero.subtitle",
-                  "Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance."
-                )}
+                <EditableTranslation
+                  defaultText="Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance."
+                  translationKey="forum.hero.subtitle"
+                />
               </p>
               <div className="flex gap-6 text-sm">
                 <div>
                   <p className="font-semibold text-2xl">{totalThreads}</p>
                   <p className="text-muted-foreground text-xs">
-                    {translate("forum.hero.stats.total_label", "Total topics")}
+                    <EditableTranslation
+                      defaultText="Total topics"
+                      translationKey="forum.hero.stats.total_label"
+                    />
                   </p>
                 </div>
                 <div>
                   <p className="font-semibold text-2xl">{totalActiveThreads}</p>
                   <p className="text-muted-foreground text-xs">
-                    {translate("forum.hero.stats.visible_label", "Visible now")}
+                    <EditableTranslation
+                      defaultText="Visible now"
+                      translationKey="forum.hero.stats.visible_label"
+                    />
                   </p>
                 </div>
               </div>
@@ -270,13 +287,15 @@ export function ForumClient({
           >
             <div className="relative flex-1">
               <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 h-4 w-4 text-muted-foreground" />
+              {searchPlaceholder.editButton ? (
+                <div className="absolute top-1/2 right-3 z-10 -translate-y-1/2">
+                  {searchPlaceholder.editButton}
+                </div>
+              ) : null}
               <Input
-                className="pl-9"
+                className="pl-9 pr-16"
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder={translate(
-                  "forum.search.placeholder",
-                  "Search discussions, tags, or keywords"
-                )}
+                placeholder={searchPlaceholder.text}
                 value={searchTerm}
               />
             </div>
@@ -289,17 +308,26 @@ export function ForumClient({
               {isSearching ? (
                 <span className="inline-flex items-center gap-2">
                   <LoaderIcon className="animate-spin" size={16} />
-                  {translate("forum.search.pending", "Searching…")}
+                  <EditableTranslation
+                    defaultText="Searching..."
+                    translationKey="forum.search.pending"
+                  />
                 </span>
               ) : (
-                translate("forum.search.submit", "Search")
+                <EditableTranslation
+                  defaultText="Search"
+                  translationKey="forum.search.submit"
+                />
               )}
             </Button>
           </form>
           {activeFilters.length > 0 ? (
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-primary/30 border-dashed px-3 py-1 text-muted-foreground text-xs">
               <Filter className="h-3.5 w-3.5" />
-              {translate("forum.filters.label", "Active filters:")}
+              <EditableTranslation
+                defaultText="Active filters:"
+                translationKey="forum.filters.label"
+              />
               {activeFilters.map((filter) => (
                 <span className="font-medium text-foreground" key={filter}>
                   {filter}
@@ -313,13 +341,16 @@ export function ForumClient({
           {threads.length === 0 ? (
             <div className="rounded-2xl border border-border border-dashed p-10 text-center">
               <p className="font-semibold text-lg">
-                {translate("forum.empty.title", "No discussions yet")}
+                <EditableTranslation
+                  defaultText="No discussions yet"
+                  translationKey="forum.empty.title"
+                />
               </p>
               <p className="mt-2 text-muted-foreground text-sm">
-                {translate(
-                  "forum.empty.subtitle",
-                  "Be the first to start a topic in this category."
-                )}
+                <EditableTranslation
+                  defaultText="Be the first to start a topic in this category."
+                  translationKey="forum.empty.subtitle"
+                />
               </p>
             </div>
           ) : (
@@ -346,10 +377,16 @@ export function ForumClient({
                 {isLoadingMore ? (
                   <span className="inline-flex items-center gap-2">
                     <LoaderIcon className="animate-spin" size={16} />
-                    {translate("forum.list.loading_more", "Loading…")}
+                    <EditableTranslation
+                      defaultText="Loading..."
+                      translationKey="forum.list.loading_more"
+                    />
                   </span>
                 ) : (
-                  translate("forum.list.load_more", "Load more discussions")
+                  <EditableTranslation
+                    defaultText="Load more discussions"
+                    translationKey="forum.list.load_more"
+                  />
                 )}
               </Button>
             </div>

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 
 type ChartVariant = "area" | "bar" | "line";
@@ -12,10 +13,26 @@ type DailyUsageChartSwitcherProps = {
   defaultVariant?: ChartVariant;
 };
 
-const chartOptions: Array<{ value: ChartVariant; label: string }> = [
-  { value: "area", label: "Area" },
-  { value: "bar", label: "Bar" },
-  { value: "line", label: "Line" },
+const chartOptions: Array<{
+  value: ChartVariant;
+  label: string;
+  translationKey: string;
+}> = [
+  {
+    value: "area",
+    label: "Area",
+    translationKey: "subscriptions.daily_usage.chart.area",
+  },
+  {
+    value: "bar",
+    label: "Bar",
+    translationKey: "subscriptions.daily_usage.chart.bar",
+  },
+  {
+    value: "line",
+    label: "Line",
+    translationKey: "subscriptions.daily_usage.chart.line",
+  },
 ];
 
 const STORAGE_KEY = "subscriptions.dailyUsage.chartVariant";
@@ -73,7 +90,10 @@ export function DailyUsageChartSwitcher({
             type="button"
             variant={variant === option.value ? "default" : "outline"}
           >
-            {option.label}
+            <EditableTranslation
+              defaultText={option.label}
+              translationKey={option.translationKey}
+            />
           </Button>
         ))}
       </div>

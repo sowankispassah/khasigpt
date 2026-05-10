@@ -9,6 +9,7 @@ import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
 import { RechargeHistoryDialog } from "@/components/recharge-history-dialog";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import { SessionUsagePagination } from "@/components/session-usage-pagination";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   getDailyTokenUsageForUser,
@@ -312,43 +313,74 @@ export default async function SubscriptionsPage({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:gap-8">
       <div className="flex items-center gap-3">
         <BackToHomeButton
-          label={t("navigation.back", "Back")}
+          label="Back"
+          translationKey="navigation.back"
         />
       </div>
 
       <header className="flex flex-col gap-1">
         <h1 className="font-semibold text-2xl">
-          {t("subscriptions.title", "Subscriptions & Credits")}
+          <EditableTranslation
+            defaultText="Subscriptions & Credits"
+            translationKey="subscriptions.title"
+          />
         </h1>
         <p className="text-muted-foreground text-sm">
-          {t(
-            "subscriptions.subtitle",
-            "Track your current plan, credit balance, and recent usage."
-          )}
+          <EditableTranslation
+            defaultText="Track your current plan, credit balance, and recent usage."
+            translationKey="subscriptions.subtitle"
+          />
         </p>
       </header>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label={t("subscriptions.metric.total_used", "Total credits used")}
+          label={
+            <EditableTranslation
+              defaultText="Total credits used"
+              translationKey="subscriptions.metric.total_used"
+            />
+          }
           value={formatCredits(billedTokensUsed)}
         />
         <MetricCard
-          label={t("subscriptions.metric.remaining", "Credits remaining")}
+          label={
+            <EditableTranslation
+              defaultText="Credits remaining"
+              translationKey="subscriptions.metric.remaining"
+            />
+          }
           value={formatCreditValue(effectiveCreditsRemaining)}
         />
         <MetricCard
-          label={t("subscriptions.metric.allocated", "Credits allocated")}
+          label={
+            <EditableTranslation
+              defaultText="Credits allocated"
+              translationKey="subscriptions.metric.allocated"
+            />
+          }
           value={formatCreditValue(effectiveCreditsTotal)}
         />
         <MetricCard
-          label={t("subscriptions.metric.plan_expires", "Plan expires")}
+          label={
+            <EditableTranslation
+              defaultText="Plan expires"
+              translationKey="subscriptions.metric.plan_expires"
+            />
+          }
           value={
             <div className="flex flex-col">
               <span className="font-semibold text-2xl">{expiryDateLabel}</span>
               {expiryDaysLabel ? (
                 <span className="text-muted-foreground text-xs">
-                  {expiryDaysLabel}
+                  <EditableTranslation
+                    defaultText="({count} day{plural} left)"
+                    translationKey="subscriptions.plan_overview.days_remaining"
+                    values={{
+                      count: daysRemaining ?? 0,
+                      plural: daysRemaining === 1 ? "" : "s",
+                    }}
+                  />
                 </span>
               ) : null}
             </div>
@@ -359,12 +391,18 @@ export default async function SubscriptionsPage({
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="font-semibold text-lg">
-            {t("subscriptions.plan_overview.title", "Plan overview")}
+            <EditableTranslation
+              defaultText="Plan overview"
+              translationKey="subscriptions.plan_overview.title"
+            />
           </h2>
           <dl className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between gap-3">
               <dt className="flex items-center gap-2 text-muted-foreground">
-                {t("subscriptions.plan_overview.current_plan", "Current plan")}
+                <EditableTranslation
+                  defaultText="Current plan"
+                  translationKey="subscriptions.plan_overview.current_plan"
+                />
                 <RechargeHistoryDialog
                   labels={rechargeHistoryLabels}
                   rows={rechargeHistoryRows}
@@ -375,10 +413,10 @@ export default async function SubscriptionsPage({
             {showFreeCredits ? (
               <div className="flex items-center justify-between">
                 <dt className="text-muted-foreground">
-                  {t(
-                    "subscriptions.plan_overview.free_credits",
-                    "Free credits"
-                  )}
+                  <EditableTranslation
+                    defaultText="Free credits"
+                    translationKey="subscriptions.plan_overview.free_credits"
+                  />
                 </dt>
                 <dd>
                   {formatCreditValue(freeCreditsRemaining)}{" "}
@@ -388,41 +426,51 @@ export default async function SubscriptionsPage({
             ) : null}
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t(
-                  "subscriptions.plan_overview.credits_remaining",
-                  "Credits remaining"
-                )}
+                <EditableTranslation
+                  defaultText="Credits remaining"
+                  translationKey="subscriptions.plan_overview.credits_remaining"
+                />
               </dt>
               <dd>{formatCreditValue(effectiveCreditsRemaining)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t(
-                  "subscriptions.plan_overview.credits_allocated",
-                  "Admin credits remaining"
-                )}
+                <EditableTranslation
+                  defaultText="Admin credits remaining"
+                  translationKey="subscriptions.plan_overview.credits_allocated"
+                />
               </dt>
               <dd>{formatCreditValue(allocatedCredits)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t(
-                  "subscriptions.plan_overview.credits_recharged",
-                  "Paid credits remaining"
-                )}
+                <EditableTranslation
+                  defaultText="Paid credits remaining"
+                  translationKey="subscriptions.plan_overview.credits_recharged"
+                />
               </dt>
               <dd>{formatCreditValue(rechargedCredits)}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">
-                {t("subscriptions.plan_overview.plan_expires", "Plan expires")}
+                <EditableTranslation
+                  defaultText="Plan expires"
+                  translationKey="subscriptions.plan_overview.plan_expires"
+                />
               </dt>
               <dd>
                 <div className="flex flex-col items-end">
                   <span>{expiryDateLabel}</span>
                   {expiryDaysLabel ? (
                     <span className="text-muted-foreground text-xs">
-                      {expiryDaysLabel}
+                      <EditableTranslation
+                        defaultText="({count} day{plural} left)"
+                        translationKey="subscriptions.plan_overview.days_remaining"
+                        values={{
+                          count: daysRemaining ?? 0,
+                          plural: daysRemaining === 1 ? "" : "s",
+                        }}
+                      />
                     </span>
                   ) : null}
                 </div>
@@ -433,23 +481,29 @@ export default async function SubscriptionsPage({
 
         <div className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="font-semibold text-lg">
-            {t("subscriptions.quick_actions.title", "Quick actions")}
+            <EditableTranslation
+              defaultText="Quick actions"
+              translationKey="subscriptions.quick_actions.title"
+            />
           </h2>
           <p className="mt-2 text-muted-foreground text-sm">
-            {t(
-              "subscriptions.quick_actions.recharge_prefix",
-              "Need more credits? Visit the"
-            )}{" "}
+            <EditableTranslation
+              defaultText="Need more credits? Visit the"
+              translationKey="subscriptions.quick_actions.recharge_prefix"
+            />{" "}
             <Link className="underline" href="/recharge">
-              {t("subscriptions.quick_actions.recharge_link", "recharge page")}
+              <EditableTranslation
+                defaultText="recharge page"
+                translationKey="subscriptions.quick_actions.recharge_link"
+              />
             </Link>
             .
           </p>
           <p className="text-muted-foreground text-sm">
-            {t(
-              "subscriptions.quick_actions.support",
-              "Prefer emailed invoices or receipts? Contact support and we'll help out."
-            )}
+            <EditableTranslation
+              defaultText="Prefer emailed invoices or receipts? Contact support and we'll help out."
+              translationKey="subscriptions.quick_actions.support"
+            />
           </p>
         </div>
       </section>
@@ -458,13 +512,16 @@ export default async function SubscriptionsPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold text-lg">
-              {t("subscriptions.daily_usage.title", "Daily usage")}
+              <EditableTranslation
+                defaultText="Daily usage"
+                translationKey="subscriptions.daily_usage.title"
+              />
             </h2>
             <p className="text-muted-foreground text-sm">
-              {t(
-                "subscriptions.daily_usage.subtitle",
-                "Credits consumed per day."
-              )}
+              <EditableTranslation
+                defaultText="Credits consumed per day."
+                translationKey="subscriptions.daily_usage.subtitle"
+              />
             </p>
           </div>
           <DailyUsageRangeSelect currentRange={range} options={RANGE_OPTIONS} />
@@ -472,10 +529,10 @@ export default async function SubscriptionsPage({
 
         {maxTokens === 0 ? (
           <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 text-muted-foreground text-sm">
-            {t(
-              "subscriptions.daily_usage.empty",
-              "No usage recorded in this range."
-            )}
+            <EditableTranslation
+              defaultText="No usage recorded in this range."
+              translationKey="subscriptions.daily_usage.empty"
+            />
           </div>
         ) : (
           <>
@@ -488,12 +545,14 @@ export default async function SubscriptionsPage({
             </div>
             {peakEntry ? (
               <p className="mt-2 text-muted-foreground text-xs">
-                {t(
-                  "subscriptions.daily_usage.peak_day",
-                  "Peak day: {date} • {credits} credits"
-                )
-                  .replace("{date}", istMonthDayFormatter.format(peakEntry.day))
-                  .replace("{credits}", formatCredits(peakEntry.totalTokens))}
+                <EditableTranslation
+                  defaultText="Peak day: {date} • {credits} credits"
+                  translationKey="subscriptions.daily_usage.peak_day"
+                  values={{
+                    date: istMonthDayFormatter.format(peakEntry.day),
+                    credits: formatCredits(peakEntry.totalTokens),
+                  }}
+                />
               </p>
             ) : null}
           </>
@@ -502,38 +561,44 @@ export default async function SubscriptionsPage({
 
       <section className="rounded-lg border bg-card p-6 shadow-sm">
         <h2 className="font-semibold text-lg">
-          {t("subscriptions.session_usage.title", "Usage by session")}
+          <EditableTranslation
+            defaultText="Usage by session"
+            translationKey="subscriptions.session_usage.title"
+          />
         </h2>
         <p className="text-muted-foreground text-sm">
-          {t(
-            "subscriptions.session_usage.subtitle",
-            "Total credits used across your recent chats."
-          )}
+          <EditableTranslation
+            defaultText="Total credits used across your recent chats."
+            translationKey="subscriptions.session_usage.subtitle"
+          />
         </p>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
               <tr>
                 <th className="py-2 text-left">
-                  {t("subscriptions.session_usage.headers.chat", "Chat")}
+                  <EditableTranslation
+                    defaultText="Chat"
+                    translationKey="subscriptions.session_usage.headers.chat"
+                  />
                 </th>
                 <th className="py-2 text-left">
-                  {t(
-                    "subscriptions.session_usage.headers.created",
-                    "Started on"
-                  )}
+                  <EditableTranslation
+                    defaultText="Started on"
+                    translationKey="subscriptions.session_usage.headers.created"
+                  />
                 </th>
                 <th className="py-2 text-left">
-                  {t(
-                    "subscriptions.session_usage.headers.last_used",
-                    "Last activity"
-                  )}
+                  <EditableTranslation
+                    defaultText="Last activity"
+                    translationKey="subscriptions.session_usage.headers.last_used"
+                  />
                 </th>
                 <th className="py-2 text-right">
-                  {t(
-                    "subscriptions.session_usage.headers.credits_used",
-                    "Credits used"
-                  )}
+                  <EditableTranslation
+                    defaultText="Credits used"
+                    translationKey="subscriptions.session_usage.headers.credits_used"
+                  />
                 </th>
               </tr>
             </thead>
@@ -541,10 +606,10 @@ export default async function SubscriptionsPage({
               {displayedSessions.length === 0 ? (
                 <tr>
                   <td className="py-4 text-muted-foreground" colSpan={4}>
-                    {t(
-                      "subscriptions.session_usage.empty",
-                      "No usage recorded yet."
-                    )}
+                    <EditableTranslation
+                      defaultText="No usage recorded yet."
+                      translationKey="subscriptions.session_usage.empty"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -601,7 +666,7 @@ export default async function SubscriptionsPage({
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: ReactNode }) {
+function MetricCard({ label, value }: { label: ReactNode; value: ReactNode }) {
   const renderValue =
     typeof value === "string" || typeof value === "number" ? (
       <span className="font-semibold text-2xl">{value}</span>

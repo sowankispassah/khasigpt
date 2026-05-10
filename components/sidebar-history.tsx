@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWRInfinite from "swr/infinite";
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -150,11 +151,13 @@ export function SidebarHistory({
   user,
   mode = "all",
   label,
+  labelKey,
   historyKey,
 }: {
   user: User | undefined;
   mode?: ChatHistoryMode;
   label?: string;
+  labelKey?: string;
   historyKey?: string;
 }) {
   const { setOpenMobile } = useSidebar();
@@ -436,7 +439,14 @@ export function SidebarHistory({
   const resolvedLabel = label ?? (dynamicStudyLabel ? dynamicStudyLabel : null);
   const sectionLabel = resolvedLabel ? (
     <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-      {resolvedLabel}
+      {labelKey ? (
+        <EditableTranslation
+          defaultText={resolvedLabel}
+          translationKey={labelKey}
+        />
+      ) : (
+        resolvedLabel
+      )}
     </div>
   ) : null;
 
@@ -446,10 +456,10 @@ export function SidebarHistory({
         {sectionLabel}
         <SidebarGroupContent>
           <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
-            {translate(
-              "sidebar.history.login_prompt",
-              "Login to save and revisit previous chats!"
-            )}
+            <EditableTranslation
+              defaultText="Login to save and revisit previous chats!"
+              translationKey="sidebar.history.login_prompt"
+            />
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -461,7 +471,10 @@ export function SidebarHistory({
       <SidebarGroup>
         {sectionLabel}
         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-          {translate("sidebar.history.section.today", "Today")}
+          <EditableTranslation
+            defaultText="Today"
+            translationKey="sidebar.history.section.today"
+          />
         </div>
         <SidebarGroupContent>
           <div className="flex flex-col">
@@ -493,10 +506,10 @@ export function SidebarHistory({
         <SidebarGroupContent>
           <div className="flex flex-col gap-2 px-2 text-sm text-zinc-500">
             <span>
-              {translate(
-                "sidebar.history.error",
-                "Chat history could not load."
-              )}
+              <EditableTranslation
+                defaultText="Chat history could not load."
+                translationKey="sidebar.history.error"
+              />
             </span>
             <button
               className="w-fit cursor-pointer rounded-md border px-2 py-1 font-medium text-sidebar-foreground text-xs"
@@ -505,7 +518,10 @@ export function SidebarHistory({
               }}
               type="button"
             >
-              {translate("sidebar.history.retry", "Retry")}
+              <EditableTranslation
+                defaultText="Retry"
+                translationKey="sidebar.history.retry"
+              />
             </button>
           </div>
         </SidebarGroupContent>
@@ -519,10 +535,10 @@ export function SidebarHistory({
         {sectionLabel}
         <SidebarGroupContent>
           <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
-            {translate(
-              "sidebar.history.empty",
-              "Your conversations will appear here once you start chatting!"
-            )}
+            <EditableTranslation
+              defaultText="Your conversations will appear here once you start chatting!"
+              translationKey="sidebar.history.empty"
+            />
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -539,7 +555,10 @@ export function SidebarHistory({
               {groupedChats.today.length > 0 && (
                 <div>
                   <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                    {translate("sidebar.history.section.today", "Today")}
+                    <EditableTranslation
+                      defaultText="Today"
+                      translationKey="sidebar.history.section.today"
+                    />
                   </div>
                   {groupedChats.today.map((chat) => (
                     <ChatItem
@@ -562,10 +581,10 @@ export function SidebarHistory({
               {groupedChats.yesterday.length > 0 && (
                 <div>
                   <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                    {translate(
-                      "sidebar.history.section.yesterday",
-                      "Yesterday"
-                    )}
+                    <EditableTranslation
+                      defaultText="Yesterday"
+                      translationKey="sidebar.history.section.yesterday"
+                    />
                   </div>
                   {groupedChats.yesterday.map((chat) => (
                     <ChatItem
@@ -588,10 +607,10 @@ export function SidebarHistory({
               {groupedChats.lastWeek.length > 0 && (
                 <div>
                   <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                    {translate(
-                      "sidebar.history.section.last_week",
-                      "Last 7 days"
-                    )}
+                    <EditableTranslation
+                      defaultText="Last 7 days"
+                      translationKey="sidebar.history.section.last_week"
+                    />
                   </div>
                   {groupedChats.lastWeek.map((chat) => (
                     <ChatItem
@@ -614,10 +633,10 @@ export function SidebarHistory({
               {groupedChats.lastMonth.length > 0 && (
                 <div>
                   <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                    {translate(
-                      "sidebar.history.section.last_month",
-                      "Last 30 days"
-                    )}
+                    <EditableTranslation
+                      defaultText="Last 30 days"
+                      translationKey="sidebar.history.section.last_month"
+                    />
                   </div>
                   {groupedChats.lastMonth.map((chat) => (
                     <ChatItem
@@ -640,10 +659,10 @@ export function SidebarHistory({
               {groupedChats.older.length > 0 && (
                 <div>
                   <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
-                    {translate(
-                      "sidebar.history.section.older",
-                      "Older than last month"
-                    )}
+                    <EditableTranslation
+                      defaultText="Older than last month"
+                      translationKey="sidebar.history.section.older"
+                    />
                   </div>
                   {groupedChats.older.map((chat) => (
                     <ChatItem
@@ -674,16 +693,19 @@ export function SidebarHistory({
                 onClick={() => setShowAllStudyHistory(true)}
                 type="button"
               >
-                {translate("sidebar.history.study.more", "More study history")}
+                <EditableTranslation
+                  defaultText="More study history"
+                  translationKey="sidebar.history.study.more"
+                />
               </button>
             </div>
           ) : hasReachedEnd ? (
             mode === "study" ? null : (
               <div className="mt-8 flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-zinc-500">
-                {translate(
-                  "sidebar.history.end",
-                  "You have reached the end of your chat history."
-                )}
+                <EditableTranslation
+                  defaultText="You have reached the end of your chat history."
+                  translationKey="sidebar.history.end"
+                />
               </div>
             )
           ) : (
@@ -692,7 +714,10 @@ export function SidebarHistory({
                 <LoaderIcon />
               </div>
               <div>
-                {translate("sidebar.history.loading", "Loading Chats...")}
+                <EditableTranslation
+                  defaultText="Loading Chats..."
+                  translationKey="sidebar.history.loading"
+                />
               </div>
             </div>
           )}
@@ -703,24 +728,27 @@ export function SidebarHistory({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {translate(
-                "sidebar.history.delete_dialog.title",
-                "Are you absolutely sure?"
-              )}
+              <EditableTranslation
+                defaultText="Are you absolutely sure?"
+                translationKey="sidebar.history.delete_dialog.title"
+              />
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {translate(
-                "sidebar.history.delete_dialog.description",
-                "This action cannot be undone. This will permanently delete your chat and remove it from our servers."
-              )}
+              <EditableTranslation
+                defaultText="This action cannot be undone. This will permanently delete your chat and remove it from our servers."
+                translationKey="sidebar.history.delete_dialog.description"
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>
-              {translate("common.cancel", "Cancel")}
+              <EditableTranslation defaultText="Cancel" translationKey="common.cancel" />
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>
-              {translate("sidebar.history.delete_dialog.confirm", "Continue")}
+              <EditableTranslation
+                defaultText="Continue"
+                translationKey="sidebar.history.delete_dialog.confirm"
+              />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

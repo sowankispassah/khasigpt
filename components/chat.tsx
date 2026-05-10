@@ -19,6 +19,7 @@ import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1642,15 +1643,17 @@ export function Chat({
                     }}
                   />
                   <p className="px-2 text-center text-muted-foreground text-xs">
-                    {translate(
-                      "chat.disclaimer.text",
-                      "KhasiGPT or other AI Models can make mistakes. Check important details."
-                    )}{" "}
+                    <EditableTranslation
+                      defaultText="KhasiGPT or other AI Models can make mistakes. Check important details."
+                      description="Small disclaimer below the chat input."
+                      translationKey="chat.disclaimer.text"
+                    />{" "}
                     <Link className="underline" href="/privacy-policy">
-                      {translate(
-                        "chat.disclaimer.privacy_link",
-                        "See privacy policy."
-                      )}
+                      <EditableTranslation
+                        defaultText="See privacy policy."
+                        description="Privacy policy link in the chat disclaimer."
+                        translationKey="chat.disclaimer.privacy_link"
+                      />
                     </Link>
                   </p>
                 </div>

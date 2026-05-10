@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 
 import { useTranslation } from "@/components/language-provider";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
 export const Greeting = ({
   title,
@@ -37,10 +38,9 @@ export const Greeting = ({
       ? session.user.firstName.trim()
       : "";
 
-  const greetingTemplate = translate("greeting.title", "Hi, {name}");
   const defaultTitle = firstName
-    ? greetingTemplate.replaceAll("{name}", firstName)
-    : greetingTemplate
+    ? translate("greeting.title", "Hi, {name}").replaceAll("{name}", firstName)
+    : translate("greeting.title", "Hi, {name}")
         .replaceAll("{name}", "")
         .replace(/\s{2,}/g, " ")
         .replace(/(^[,\s]+|[,\s]+$)/g, "")
@@ -57,12 +57,29 @@ export const Greeting = ({
       <div
         className={`${baseClasses} font-semibold text-xl md:text-2xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
       >
-        {greetingTitle}
+        {title ? (
+          greetingTitle
+        ) : (
+          <EditableTranslation
+            defaultText="Hi, {name}"
+            description="Greeting headline above the chat input. Use {name} as the placeholder for the user's first name."
+            translationKey="greeting.title"
+            values={{ name: firstName }}
+          />
+        )}
       </div>
       <div
         className={`${baseClasses} text-muted-foreground text-xl delay-75 md:text-2xl ${isVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
       >
-        {greetingSubtitle}
+        {subtitle ? (
+          greetingSubtitle
+        ) : (
+          <EditableTranslation
+            defaultText="How can I help you today?"
+            description="Secondary greeting line beneath the hero title."
+            translationKey="greeting.subtitle"
+          />
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,11 @@ import {
 } from "react";
 
 import { LoaderIcon } from "@/components/icons";
+import { useTranslation } from "@/components/language-provider";
+import {
+  EditableTranslation,
+  useEditableTranslation,
+} from "@/components/translation-edit-provider";
 import { type ContactFormState, submitContactFormAction } from "./actions";
 
 const initialState: ContactFormState = { status: "idle" };
@@ -39,9 +44,31 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
     FormData
   >(submitContactFormAction, initialState);
   const [values, setValues] = useState<FormValues>(emptyValues);
+  const { translate: runtimeTranslate } = useTranslation();
   const translate = useCallback(
-    (key: string, fallback: string) => translations[key] ?? fallback,
-    [translations]
+    (key: string, fallback: string) =>
+      translations[key] ?? runtimeTranslate(key, fallback),
+    [runtimeTranslate, translations]
+  );
+  const namePlaceholder = useEditableTranslation(
+    "contact.form.placeholder.name",
+    "Your name"
+  );
+  const emailPlaceholder = useEditableTranslation(
+    "contact.form.placeholder.email",
+    "you@example.com"
+  );
+  const phonePlaceholder = useEditableTranslation(
+    "contact.form.placeholder.phone",
+    "+91 98765 43210"
+  );
+  const subjectPlaceholder = useEditableTranslation(
+    "contact.form.placeholder.subject",
+    "How can we help?"
+  );
+  const messagePlaceholder = useEditableTranslation(
+    "contact.form.placeholder.message",
+    "Share a few details about your request..."
   );
 
   useEffect(() => {
@@ -70,16 +97,17 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
       <div className="grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-2">
           <span className="font-medium text-sm">
-            {translate("contact.form.field.name", "Name")}
+            <EditableTranslation
+              defaultText="Name"
+              translationKey="contact.form.field.name"
+            />
           </span>
+          {namePlaceholder.editButton}
           <input
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             name="name"
             onChange={handleChange("name")}
-            placeholder={translate(
-              "contact.form.placeholder.name",
-              "Your name"
-            )}
+            placeholder={namePlaceholder.text}
             required
             type="text"
             value={values.name}
@@ -92,16 +120,17 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
         </label>
         <label className="flex flex-col gap-2">
           <span className="font-medium text-sm">
-            {translate("contact.form.field.email", "Email")}
+            <EditableTranslation
+              defaultText="Email"
+              translationKey="contact.form.field.email"
+            />
           </span>
+          {emailPlaceholder.editButton}
           <input
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             name="email"
             onChange={handleChange("email")}
-            placeholder={translate(
-              "contact.form.placeholder.email",
-              "you@example.com"
-            )}
+            placeholder={emailPlaceholder.text}
             required
             type="email"
             value={values.email}
@@ -114,16 +143,17 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
         </label>
         <label className="flex flex-col gap-2 md:col-span-2">
           <span className="font-medium text-sm">
-            {translate("contact.form.field.phone", "Phone (optional)")}
+            <EditableTranslation
+              defaultText="Phone (optional)"
+              translationKey="contact.form.field.phone"
+            />
           </span>
+          {phonePlaceholder.editButton}
           <input
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             name="phone"
             onChange={handleChange("phone")}
-            placeholder={translate(
-              "contact.form.placeholder.phone",
-              "+91 98765 43210"
-            )}
+            placeholder={phonePlaceholder.text}
             type="tel"
             value={values.phone}
           />
@@ -136,16 +166,17 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
       </div>
       <label className="flex flex-col gap-2">
         <span className="font-medium text-sm">
-          {translate("contact.form.field.subject", "Subject")}
+          <EditableTranslation
+            defaultText="Subject"
+            translationKey="contact.form.field.subject"
+          />
         </span>
+        {subjectPlaceholder.editButton}
         <input
           className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           name="subject"
           onChange={handleChange("subject")}
-          placeholder={translate(
-            "contact.form.placeholder.subject",
-            "How can we help?"
-          )}
+          placeholder={subjectPlaceholder.text}
           required
           type="text"
           value={values.subject}
@@ -158,16 +189,17 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
       </label>
       <label className="flex flex-col gap-2">
         <span className="font-medium text-sm">
-          {translate("contact.form.field.message", "Message")}
+          <EditableTranslation
+            defaultText="Message"
+            translationKey="contact.form.field.message"
+          />
         </span>
+        {messagePlaceholder.editButton}
         <textarea
           className="min-h-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           name="message"
           onChange={handleChange("message")}
-          placeholder={translate(
-            "contact.form.placeholder.message",
-            "Share a few details about your request..."
-          )}
+          placeholder={messagePlaceholder.text}
           required
           value={values.message}
         />
@@ -189,11 +221,17 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
                 <LoaderIcon size={16} />
               </span>
               <span>
-                {translate("contact.form.submit.sending", "Sending...")}
+                <EditableTranslation
+                  defaultText="Sending..."
+                  translationKey="contact.form.submit.sending"
+                />
               </span>
             </span>
           ) : (
-            translate("contact.form.submit.default", "Send message")
+            <EditableTranslation
+              defaultText="Send message"
+              translationKey="contact.form.submit.default"
+            />
           )}
         </button>
         <div
@@ -211,10 +249,10 @@ export function ContactForm({ translations = {} }: ContactFormProps) {
             </span>
           ) : state.status === "success" ? (
             <span className="text-emerald-500">
-              {translate(
-                "contact.form.submit.success",
-                "Thanks! We'll reach out soon."
-              )}
+              <EditableTranslation
+                defaultText="Thanks! We'll reach out soon."
+                translationKey="contact.form.submit.success"
+              />
             </span>
           ) : null}
         </div>

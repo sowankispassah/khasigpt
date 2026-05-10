@@ -10,6 +10,7 @@ import { AuthForm } from "@/components/auth-form";
 import { useTranslation } from "@/components/language-provider";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 
 import { type RegisterActionState, register } from "../actions";
 import { GoogleSignInSection } from "../google-sign-in-button";
@@ -129,10 +130,10 @@ function RegisterContent() {
       <div className="flex w-full max-w-md flex-col gap-4 overflow-hidden rounded-2xl">
         <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
           <p className="text-muted-foreground text-sm">
-            {translate(
-              "auth.subtitle",
-              "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
-            )}
+            <EditableTranslation
+              defaultText="KhasiGPT is your smart AI assistant designed to understand and speak Khasi language."
+              translationKey="auth.subtitle"
+            />
           </p>
           <Image
             alt="KhasiGPT logo"
@@ -143,7 +144,10 @@ function RegisterContent() {
             width={160}
           />
           <h3 className="font-semibold text-xl dark:text-zinc-50">
-            {translate("register.title", "Sign Up To KhasiGPT")}
+            <EditableTranslation
+              defaultText="Sign Up To KhasiGPT"
+              translationKey="register.title"
+            />
           </h3>
         </div>
         <AuthForm
@@ -170,24 +174,42 @@ function RegisterContent() {
             />
             <label className="space-y-1" htmlFor="acceptTerms">
               <span className="font-medium text-foreground">
-                {translate("register.terms_statement_prefix", "I agree to the")}{" "}
+                <EditableTranslation
+                  defaultText="I agree to the"
+                  translationKey="register.terms_statement_prefix"
+                />{" "}
                 <Link
                   className="text-primary underline"
                   href="/terms-of-service"
                 >
-                  {translate("register.terms_terms", "Terms of Service")}
+                  <EditableTranslation
+                    defaultText="Terms of Service"
+                    translationKey="register.terms_terms"
+                  />
                 </Link>{" "}
-                {translate("register.terms_statement_and", "and")}{" "}
+                <EditableTranslation
+                  defaultText="and"
+                  translationKey="register.terms_statement_and"
+                />{" "}
                 <Link className="text-primary underline" href="/privacy-policy">
-                  {translate("register.terms_privacy", "Privacy Policy")}
+                  <EditableTranslation
+                    defaultText="Privacy Policy"
+                    translationKey="register.terms_privacy"
+                  />
                 </Link>
-                {translate("register.terms_statement_suffix", ".")}
+                <EditableTranslation
+                  defaultText="."
+                  translationKey="register.terms_statement_suffix"
+                />
               </span>
             </label>
           </div>
           <div className="flex flex-col gap-1.5">
             <SubmitButton isSuccessful={isSuccessful}>
-              {translate("register.cta", "Sign Up")}
+              <EditableTranslation
+                defaultText="Sign Up"
+                translationKey="register.cta"
+              />
             </SubmitButton>
             {state.status === "verification_sent" ? (
               <p className="rounded-md bg-muted/50 px-3 py-2 text-center text-muted-foreground text-sm">
@@ -200,17 +222,23 @@ function RegisterContent() {
           </div>
         </AuthForm>
         <p className="mt-4 px-4 text-center text-gray-600 text-sm sm:px-16 dark:text-zinc-400">
-          {translate(
-            "register.login_prompt_prefix",
-            "Already have an account?"
-          )}{" "}
+          <EditableTranslation
+            defaultText="Already have an account?"
+            translationKey="register.login_prompt_prefix"
+          />{" "}
           <Link
             className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
             href="/login"
           >
-            {translate("register.login_prompt_link", "Sign in")}
+            <EditableTranslation
+              defaultText="Sign in"
+              translationKey="register.login_prompt_link"
+            />
           </Link>{" "}
-          {translate("register.login_prompt_suffix", "instead.")}
+          <EditableTranslation
+            defaultText="instead."
+            translationKey="register.login_prompt_suffix"
+          />
         </p>
       </div>
     </div>

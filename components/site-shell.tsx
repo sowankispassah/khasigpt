@@ -3,6 +3,7 @@ import { HtmlLangSync } from "@/components/html-lang-sync";
 import { LanguageProvider } from "@/components/language-provider";
 import { SessionShell } from "@/components/session-shell";
 import { SiteShellExtras } from "@/components/site-shell-extras";
+import { TranslationEditProvider } from "@/components/translation-edit-provider";
 import type { LanguageOption } from "@/lib/i18n/languages";
 
 type SiteShellProps = {
@@ -29,12 +30,14 @@ export function SiteShell({
         dictionary={dictionary}
         languages={languages}
       >
-        <HtmlLangSync />
-        <SiteShellExtras
-          forumEnabled={forumEnabled}
-          sessionUser={session?.user ?? null}
-        />
-        {children}
+        <TranslationEditProvider isAdmin={session?.user?.role === "admin"}>
+          <HtmlLangSync />
+          <SiteShellExtras
+            forumEnabled={forumEnabled}
+            sessionUser={session?.user ?? null}
+          />
+          {children}
+        </TranslationEditProvider>
       </LanguageProvider>
     </SessionShell>
   );

@@ -1,19 +1,13 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
+import { EditableMarkdownContent } from "@/components/editable-markdown-content";
 import { JsonLd } from "@/components/json-ld";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { DEFAULT_ABOUT_US } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { ContactForm } from "./contact-form";
-
-const DOUBLE_NEWLINE_REGEX = /\n{2,}/;
-const HEADING_REGEX = /^#{1,6}\s/;
-const HEADING_PREFIX_REGEX = /^#{1,6}/;
-const HEADING_TRIM_REGEX = /^#{1,6}\s*/;
-const LIST_ITEM_PREFIX_REGEX = /^-+\s*/;
-const MULTILINE_REGEX = /\n+/;
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://khasigpt.com";
 const aboutUrl = `${siteUrl}/about`;
@@ -69,7 +63,6 @@ export default async function AboutPage() {
   const { dictionary, activeLanguage, languages } =
     await getTranslationBundle(preferredLanguage);
 
-  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const contactTranslations = pickContactTranslations(dictionary);
 
   const normalizedAboutMap: Record<string, string> = {};
@@ -158,39 +151,49 @@ export default async function AboutPage() {
       <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col gap-10 px-6 py-12 md:py-16">
         <div>
           <BackToHomeButton
-            label={t("navigation.back", "Back")}
             href="/"
+            label="Back"
+            translationKey="navigation.back"
           />
         </div>
 
         <header className="space-y-3 text-center md:text-left">
           <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
-            {t("about.title", "About KhasiGPT")}
+            <EditableTranslation
+              defaultText="About KhasiGPT"
+              translationKey="about.title"
+            />
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            {t(
-              "about.subtitle",
-              "We build AI assistance that understand Khasi culture, language, and the people who use them every day."
-            )}
+            <EditableTranslation
+              defaultText="We build AI assistance that understand Khasi culture, language, and the people who use them every day."
+              translationKey="about.subtitle"
+            />
           </p>
         </header>
 
-        <section className="space-y-4 text-muted-foreground text-sm leading-7 md:text-base md:leading-8">
-          {renderAboutContent(content)}
-        </section>
+        <EditableMarkdownContent
+          className="space-y-4 text-muted-foreground text-sm leading-7 md:text-base md:leading-8"
+          content={content}
+          paragraphClassName="whitespace-normal"
+          resource="about"
+        />
 
         <section
           className="rounded-xl border border-border bg-card p-6 shadow-sm"
           id="contact"
         >
           <h2 className="font-semibold text-xl">
-            {t("contact.form.heading", "Contact the team")}
+            <EditableTranslation
+              defaultText="Contact the team"
+              translationKey="contact.form.heading"
+            />
           </h2>
           <p className="mt-2 text-muted-foreground text-sm">
-            {t(
-              "contact.form.caption",
-              "Share feedback, partnership ideas, or support questions. We usually reply within one working day."
-            )}
+            <EditableTranslation
+              defaultText="Share feedback, partnership ideas, or support questions. We usually reply within one working day."
+              translationKey="contact.form.caption"
+            />
           </p>
           <div className="mt-6">
             <ContactForm translations={contactTranslations} />
@@ -225,51 +228,4 @@ function pickContactTranslations(dictionary: Record<string, string>) {
   ] as const).filter(([, value]) => typeof value === "string" && value.trim());
 
   return Object.fromEntries(entries);
-}
-
-function renderAboutContent(content: string) {
-  const blocks = content
-    .split(DOUBLE_NEWLINE_REGEX)
-    .map((block) => block.trim());
-
-  return blocks.filter(Boolean).map((block, index) => {
-    if (HEADING_REGEX.test(block)) {
-      const match = block.match(HEADING_PREFIX_REGEX);
-      const level = match ? match[0].length : 2;
-      const headingText = block.replace(HEADING_TRIM_REGEX, "").trim();
-      const HeadingTag =
-        `h${Math.min(level + 1, 6)}` as keyof JSX.IntrinsicElements;
-
-      return (
-        <HeadingTag
-          className="font-semibold text-foreground text-xl"
-          key={`heading-${headingText || index}`}
-        >
-          {headingText}
-        </HeadingTag>
-      );
-    }
-
-    const lines = block.split("\n").map((line) => line.trim());
-    const isList = lines.every((line) => line.startsWith("- "));
-
-    if (isList) {
-      const listKey = `list-${lines.join("|").slice(0, 32) || index}`;
-      return (
-        <ul className="list-disc space-y-2 pl-5" key={listKey}>
-          {lines.map((line, itemIndex) => (
-            <li key={`list-item-${listKey}-${itemIndex}-${line}`}>
-              {line.replace(LIST_ITEM_PREFIX_REGEX, "")}
-            </li>
-          ))}
-        </ul>
-      );
-    }
-
-    return (
-      <p key={`paragraph-${block.slice(0, 32) || index}`}>
-        {block.replace(MULTILINE_REGEX, " ")}
-      </p>
-    );
-  });
 }
