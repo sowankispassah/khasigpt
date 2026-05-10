@@ -220,18 +220,6 @@ export async function getForumOverview(
         ),
     ]);
 
-    if (categories.length > 0) {
-      await registerTranslationKeys(
-        categories.flatMap((category) =>
-          buildCategoryTranslationDefinitions({
-            slug: category.slug,
-            name: category.name,
-            description: category.description ?? null,
-          })
-        )
-      );
-    }
-
     const activeCategory =
       typeof params.categorySlug === "string"
         ? (categories.find(

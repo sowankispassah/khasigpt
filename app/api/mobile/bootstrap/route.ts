@@ -26,6 +26,18 @@ type ModelConfigSnapshot = Awaited<ReturnType<typeof loadModelConfigReadModel>>;
 type PromptSnapshot = Awaited<ReturnType<typeof loadPromptReadModel>>;
 type TranslateSnapshot = Awaited<ReturnType<typeof loadTranslateReadModel>>;
 type PricingSnapshot = Awaited<ReturnType<typeof loadPricingReadModel>>;
+type BootstrapSection =
+  | "billing"
+  | "features"
+  | "i18n"
+  | "modelConfig"
+  | "pricing"
+  | "prompts"
+  | "translate";
+type BootstrapSectionResult<T> = {
+  data: T;
+  degraded: boolean;
+};
 
 const FALLBACK_LANGUAGE = {
   id: "fallback-en",
@@ -148,12 +160,12 @@ async function safeBootstrapSection<T>({
   label: string;
   loader: () => Promise<T>;
   phase: "startup" | "full";
-}) {
+}): Promise<BootstrapSectionResult<T>> {
   const timeoutMs =
     phase === "startup" ? STARTUP_SECTION_TIMEOUT_MS : FULL_SECTION_TIMEOUT_MS;
 
   try {
-    return await withApiTiming(
+    const data = await withApiTiming(
       label,
       () =>
         withTimeout(loader(), timeoutMs, () => {
@@ -163,12 +175,13 @@ async function safeBootstrapSection<T>({
         }),
       { slowMs: phase === "startup" ? 500 : 1500 }
     );
+    return { data, degraded: false };
   } catch (error) {
     console.error(
       `[api/mobile/bootstrap] ${label} failed during ${phase}; using fallback.`,
       error
     );
-    return fallback;
+    return { data: fallback, degraded: true };
   }
 }
 
@@ -191,16 +204,19 @@ export async function GET(request: Request) {
   const userId = session?.user?.id ?? null;
 
   const [
-    languageSnapshot,
-    featureSnapshot,
-    modelConfig,
-    promptSnapshot,
-    translate,
-    pricing,
-    balance,
+    languageSnapshotResult,
+    featureSnapshotResult,
+    modelConfigResult,
+    promptSnapshotResult,
+    translateResult,
+    pricingResult,
+    balanceResult,
   ] = await Promise.all([
     isStartupPhase
-      ? Promise.resolve(buildStartupLanguageSnapshot(preferredLanguage))
+      ? Promise.resolve({
+          data: buildStartupLanguageSnapshot(preferredLanguage),
+          degraded: false,
+        } satisfies BootstrapSectionResult<LanguageSnapshot>)
       : safeBootstrapSection({
           fallback: buildStartupLanguageSnapshot(preferredLanguage),
           label: "mobile.bootstrap.languages",
@@ -208,7 +224,10 @@ export async function GET(request: Request) {
           phase,
         }),
     isStartupPhase
-      ? Promise.resolve(FALLBACK_FEATURE_SNAPSHOT)
+      ? Promise.resolve({
+          data: FALLBACK_FEATURE_SNAPSHOT,
+          degraded: false,
+        } satisfies BootstrapSectionResult<FeatureSnapshot>)
       : safeBootstrapSection({
           fallback: FALLBACK_FEATURE_SNAPSHOT,
           label: "mobile.bootstrap.features",
@@ -232,9 +251,15 @@ export async function GET(request: Request) {
             }),
           phase,
         })
-      : Promise.resolve(FALLBACK_PROMPT_SNAPSHOT),
+      : Promise.resolve({
+          data: FALLBACK_PROMPT_SNAPSHOT,
+          degraded: false,
+        } satisfies BootstrapSectionResult<PromptSnapshot>),
     isStartupPhase
-      ? Promise.resolve(FALLBACK_TRANSLATE_SNAPSHOT)
+      ? Promise.resolve({
+          data: FALLBACK_TRANSLATE_SNAPSHOT,
+          degraded: false,
+        } satisfies BootstrapSectionResult<TranslateSnapshot>)
       : safeBootstrapSection({
           fallback: FALLBACK_TRANSLATE_SNAPSHOT,
           label: "mobile.bootstrap.translate",
@@ -248,19 +273,49 @@ export async function GET(request: Request) {
           loader: loadPricingReadModel,
           phase,
         })
-      : Promise.resolve(FALLBACK_PRICING_SNAPSHOT),
+      : Promise.resolve({
+          data: FALLBACK_PRICING_SNAPSHOT,
+          degraded: false,
+        } satisfies BootstrapSectionResult<PricingSnapshot>),
     session?.user && !isStartupPhase
       ? withApiTiming("mobile.bootstrap.billing", () =>
           loadBillingReadModel(session.user.id)
-        ).catch((error) => {
-          console.error("[api/mobile/bootstrap] Failed to load billing.", error);
-          return null;
-        })
-      : Promise.resolve(null),
+        )
+          .then((data) => ({ data, degraded: false }))
+          .catch((error) => {
+            console.error("[api/mobile/bootstrap] Failed to load billing.", error);
+            return { data: null, degraded: true };
+          })
+      : Promise.resolve({ data: null, degraded: false }),
   ]);
+
+  const languageSnapshot = languageSnapshotResult.data;
+  const featureSnapshot = featureSnapshotResult.data;
+  const modelConfig = modelConfigResult.data;
+  const promptSnapshot = promptSnapshotResult.data;
+  const translate = translateResult.data;
+  const pricing = pricingResult.data;
+  const balance = balanceResult.data;
+  const deferredSections: BootstrapSection[] = isStartupPhase
+    ? ["billing", "features", "i18n", "pricing", "prompts", "translate"]
+    : [];
+  const degradedSections: BootstrapSection[] = [
+    languageSnapshotResult.degraded ? "i18n" : null,
+    featureSnapshotResult.degraded ? "features" : null,
+    modelConfigResult.degraded ? "modelConfig" : null,
+    promptSnapshotResult.degraded ? "prompts" : null,
+    translateResult.degraded ? "translate" : null,
+    pricingResult.degraded ? "pricing" : null,
+    balanceResult.degraded ? "billing" : null,
+  ].filter((section): section is BootstrapSection => Boolean(section));
 
   const response = NextResponse.json(
     {
+      meta: {
+        degradedSections,
+        deferredSections,
+        phase,
+      },
       session,
       i18n: languageSnapshot.i18n,
       featureAccess: {
