@@ -176,7 +176,8 @@ function logTranslationError(message: string, error: unknown) {
 }
 
 export async function registerTranslationKeys(
-  definitions: TranslationDefinition[]
+  definitions: TranslationDefinition[],
+  options: { invalidateCache?: boolean } = {}
 ) {
   if (!definitions.length) {
     return;
@@ -236,7 +237,9 @@ export async function registerTranslationKeys(
         },
       });
 
-    await invalidateTranslationBundleCache();
+    if (options.invalidateCache !== false) {
+      await invalidateTranslationBundleCache();
+    }
   } catch (error) {
     console.error("[i18n] Failed to register translation keys.", error);
   }

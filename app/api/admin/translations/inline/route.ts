@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/api/auth";
 import {
   createAuditLogEntry,
@@ -14,6 +14,8 @@ import { getLanguageByCode } from "@/lib/i18n/languages";
 import { withTimeout } from "@/lib/utils/async";
 
 const INLINE_TRANSLATION_AUDIT_TIMEOUT_MS = 2500;
+const INLINE_TRANSLATION_CACHE_INVALIDATION_TIMEOUT_MS = 2500;
+const INLINE_TRANSLATION_WRITE_TIMEOUT_MS = 10000;
 
 type InlineTranslationBody = {
   defaultText?: unknown;
@@ -55,6 +57,31 @@ async function auditInlineTranslationWrite(
   });
 }
 
+function scheduleInlineTranslationSideEffects({
+  audit,
+  languageCode,
+}: {
+  audit: Parameters<typeof createAuditLogEntry>[0];
+  languageCode: string;
+}) {
+  after(() => {
+    void withTimeout(
+      invalidateTranslationBundleCache([languageCode]),
+      INLINE_TRANSLATION_CACHE_INVALIDATION_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        "[admin/translations/inline] Cache invalidation failed or timed out.",
+        {
+          error,
+          languageCode,
+        }
+      );
+    });
+
+    void auditInlineTranslationWrite(audit);
+  });
+}
+
 export async function PATCH(request: Request) {
   const startedAt = Date.now();
   const authContext = await requireAdminUser(request);
@@ -87,58 +114,77 @@ export async function PATCH(request: Request) {
     return jsonError("Missing English source text", 400);
   }
 
-  const language = await getLanguageByCode(languageCode);
+  const language = await withTimeout(
+    getLanguageByCode(languageCode),
+    INLINE_TRANSLATION_WRITE_TIMEOUT_MS
+  );
   if (!language?.isActive) {
     return jsonError("Language is not active", 400);
   }
 
-  await registerTranslationKeys([
-    {
-      key,
-      defaultText,
-      description:
-        description ??
-        `Inline editable UI copy registered from ${source}.`,
-    },
-  ]);
+  await withTimeout(
+    registerTranslationKeys(
+      [
+        {
+          key,
+          defaultText,
+          description:
+            description ??
+            `Inline editable UI copy registered from ${source}.`,
+        },
+      ],
+      { invalidateCache: false }
+    ),
+    INLINE_TRANSLATION_WRITE_TIMEOUT_MS
+  );
 
-  const translationKey = await getTranslationKeyByKey(key);
+  const translationKey = await withTimeout(
+    getTranslationKeyByKey(key),
+    INLINE_TRANSLATION_WRITE_TIMEOUT_MS
+  );
   if (!translationKey) {
     return jsonError("Translation key could not be registered", 500);
   }
 
   if (normalizedValue) {
-    await upsertTranslationValueEntry({
-      translationKeyId: translationKey.id,
-      languageId: language.id,
-      value: normalizedValue,
-    });
+    await withTimeout(
+      upsertTranslationValueEntry({
+        translationKeyId: translationKey.id,
+        languageId: language.id,
+        value: normalizedValue,
+      }),
+      INLINE_TRANSLATION_WRITE_TIMEOUT_MS
+    );
   } else {
-    await deleteTranslationValueEntry({
-      translationKeyId: translationKey.id,
-      languageId: language.id,
-    });
+    await withTimeout(
+      deleteTranslationValueEntry({
+        translationKeyId: translationKey.id,
+        languageId: language.id,
+      }),
+      INLINE_TRANSLATION_WRITE_TIMEOUT_MS
+    );
   }
 
-  await invalidateTranslationBundleCache([language.code]);
-
   const { ipAddress, userAgent } = getRequestMetadata(request);
-  await auditInlineTranslationWrite({
-    actorId: authContext.user.id,
-    action: "translation.inline.save",
-    ipAddress,
-    target: {
-      languageCode: language.code,
-      translationKey: key,
-      translationKeyId: translationKey.id,
-    },
-    userAgent,
-    metadata: {
-      cleared: normalizedValue.length === 0,
-      defaultTextSnippet: defaultText.slice(0, 160),
-      durationMs: Date.now() - startedAt,
-      source,
-      valueSnippet: normalizedValue.slice(0, 160),
+  scheduleInlineTranslationSideEffects({
+    languageCode: language.code,
+    audit: {
+      actorId: authContext.user.id,
+      action: "translation.inline.save",
+      ipAddress,
+      target: {
+        languageCode: language.code,
+        translationKey: key,
+        translationKeyId: translationKey.id,
+      },
+      userAgent,
+      metadata: {
+        cleared: normalizedValue.length === 0,
+        defaultTextSnippet: defaultText.slice(0, 160),
+        durationMs: Date.now() - startedAt,
+        source,
+        valueSnippet: normalizedValue.slice(0, 160),
+      },
     },
   });
 
