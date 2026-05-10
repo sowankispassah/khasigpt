@@ -12,7 +12,6 @@ import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DEFAULT_FREE_MESSAGES_PER_DAY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
@@ -516,22 +515,6 @@ export async function restoreChatAction({ chatId }: { chatId: string }) {
   });
 
   revalidateAdminPath("/admin/chats", "chat.restore");
-}
-
-export async function updateForumAvailabilityAction(formData: FormData) {
-  "use server";
-  const actor = await withTimeout(
-    requireAdmin(),
-    FEATURE_ACCESS_SETTING_TIMEOUT_MS
-  );
-
-  await updateFeatureAccessModeSetting({
-    actorId: actor.id,
-    auditAction: "forum.toggle",
-    fieldName: "forumAccessMode",
-    formData,
-    settingKey: FORUM_FEATURE_FLAG_KEY,
-  });
 }
 
 export async function updateCalculatorAvailabilityAction(formData: FormData) {

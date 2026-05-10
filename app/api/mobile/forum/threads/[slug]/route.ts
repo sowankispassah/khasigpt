@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
 import {
-  forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabledForRole } from "@/lib/forum/config";
 import { getForumThreadDetail } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { withTimeout } from "@/lib/utils/async";
@@ -14,6 +12,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MOBILE_FORUM_READ_TIMEOUT_MS = 12_000;
+const OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS = 500;
 
 export async function GET(
   request: Request,
@@ -21,13 +20,12 @@ export async function GET(
 ) {
   const session = await withApiTiming(
     "mobile.forum.thread.auth",
-    () => getMobileSession(request),
+    () =>
+      getMobileSession(request, {
+        cookieTimeoutMs: OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS,
+      }),
     { slowMs: 750 }
   );
-
-  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
-    return forumDisabledResponse();
-  }
 
   try {
     const { slug } = await context.params;

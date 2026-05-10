@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
 import {
-  forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabledForRole } from "@/lib/forum/config";
 import { getForumOverview } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { withTimeout } from "@/lib/utils/async";
@@ -14,6 +12,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MOBILE_FORUM_READ_TIMEOUT_MS = 12_000;
+const OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS = 500;
 const FORUM_TIMEOUT_RESPONSE = {
   code: "timeout:forum",
   message: "Unable to load forum right now. Please try again.",
@@ -30,13 +29,12 @@ function parseForumLimit(value: string | null) {
 export async function GET(request: Request) {
   const session = await withApiTiming(
     "mobile.forum.auth",
-    () => getMobileSession(request),
+    () =>
+      getMobileSession(request, {
+        cookieTimeoutMs: OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS,
+      }),
     { slowMs: 750 }
   );
-
-  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
-    return forumDisabledResponse();
-  }
 
   try {
     const url = new URL(request.url);

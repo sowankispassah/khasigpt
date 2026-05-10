@@ -3,10 +3,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
-  forumDisabledResponse,
   forumErrorResponse,
 } from "@/lib/forum/api-helpers";
-import { isForumEnabledForRole } from "@/lib/forum/config";
 import { createForumThread, getForumOverview } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { withTimeout } from "@/lib/utils/async";
@@ -15,10 +13,17 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const FORUM_READ_TIMEOUT_MS = 12_000;
+const OPTIONAL_FORUM_AUTH_TIMEOUT_MS = 500;
 const FORUM_TIMEOUT_RESPONSE = {
   code: "timeout:forum",
   message: "Unable to load forum right now. Please try again.",
 };
+
+async function getForumReadSession(request: NextRequest) {
+  return getMobileSession(request, {
+    cookieTimeoutMs: OPTIONAL_FORUM_AUTH_TIMEOUT_MS,
+  });
+}
 
 const createThreadSchema = z.object({
   title: z.string().min(8).max(200),
@@ -29,10 +34,7 @@ const createThreadSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const session = await getMobileSession(request);
-  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
-    return forumDisabledResponse();
-  }
+  const session = await getForumReadSession(request);
   try {
     const url = new URL(request.url);
     const categorySlug = url.searchParams.get("category") ?? null;
@@ -74,9 +76,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const session = await getMobileSession(request);
-  if (!(await isForumEnabledForRole(session?.user?.role ?? null))) {
-    return forumDisabledResponse();
-  }
   if (!session?.user?.id) {
     return NextResponse.json(
       {

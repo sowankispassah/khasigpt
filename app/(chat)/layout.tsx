@@ -7,7 +7,6 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -18,7 +17,6 @@ import {
   getUserById,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
-import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
@@ -86,7 +84,6 @@ export default async function Layout({
     });
   const [
     studyModeSetting,
-    forumSetting,
     calculatorSetting,
     jobsSetting,
     translateSetting,
@@ -96,12 +93,6 @@ export default async function Layout({
           "study mode setting",
           STUDY_MODE_FEATURE_FLAG_KEY,
           getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-          null
-        ),
-        safeSettingRead(
-          "forum setting",
-          FORUM_FEATURE_FLAG_KEY,
-          getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
           null
         ),
         safeSettingRead(
@@ -123,15 +114,10 @@ export default async function Layout({
           null
         ),
       ])
-    : [null, null, null, null, null];
+    : [null, null, null, null];
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,
-    session?.user?.role ?? null
-  );
-  const forumAccessMode = parseForumAccessModeSetting(forumSetting);
-  const forumEnabled = isFeatureEnabledForRole(
-    forumAccessMode,
     session?.user?.role ?? null
   );
   const calculatorAccessMode =
@@ -155,7 +141,7 @@ export default async function Layout({
     <SiteShell
       activeLanguage={activeLanguage}
       dictionary={dictionary}
-      forumEnabled={forumEnabled}
+      forumEnabled={true}
       languages={languages}
       session={session ?? null}
     >

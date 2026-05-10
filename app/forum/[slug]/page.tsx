@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { ThreadDetailClient } from "@/components/forum/thread-detail-client";
-import { isForumEnabledForRole } from "@/lib/forum/config";
 import {
   type ForumPostListItem,
   type ForumThreadListItem,
@@ -45,13 +44,6 @@ type ThreadPageParams = {
 export async function generateMetadata({
   params,
 }: ThreadPageParams): Promise<Metadata> {
-  const session = await auth();
-  const forumEnabled = await isForumEnabledForRole(session?.user?.role ?? null);
-  if (!forumEnabled) {
-    return {
-      title: "Forum Thread",
-    };
-  }
   const { slug } = await params;
   const detail = await getForumThreadDetail({
     slug,
@@ -72,10 +64,6 @@ export async function generateMetadata({
 
 export default async function ThreadPage({ params }: ThreadPageParams) {
   const session = await auth();
-  const forumEnabled = await isForumEnabledForRole(session?.user?.role ?? null);
-  if (!forumEnabled) {
-    notFound();
-  }
   const { slug } = await params;
   const detail = await getForumThreadDetail({
     slug,

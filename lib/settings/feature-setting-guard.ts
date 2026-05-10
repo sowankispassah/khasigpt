@@ -1,7 +1,6 @@
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
@@ -21,7 +20,6 @@ export type FeatureSettingWriteContext = {
 };
 
 const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
-  [FORUM_FEATURE_FLAG_KEY]: new Set(["forum.toggle"]),
   [CALCULATOR_FEATURE_FLAG_KEY]: new Set(["feature.calculator.toggle"]),
   [STUDY_MODE_FEATURE_FLAG_KEY]: new Set(["feature.study_mode.toggle"]),
   [TRANSLATE_FEATURE_FLAG_KEY]: new Set(["feature.translate.toggle"]),

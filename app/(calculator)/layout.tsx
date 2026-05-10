@@ -7,14 +7,12 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
-import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
@@ -29,7 +27,6 @@ export default async function CalculatorLayout({
     cookieStore,
     session,
     calculatorSetting,
-    forumSetting,
     jobsSetting,
     studyModeSetting,
     translateSetting,
@@ -37,7 +34,6 @@ export default async function CalculatorLayout({
       cookies(),
       auth(),
       getAppSetting<string | boolean | number>(CALCULATOR_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(FORUM_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
       getAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY),
@@ -60,10 +56,6 @@ export default async function CalculatorLayout({
     notFound();
   }
 
-  const forumEnabled = isFeatureEnabledForRole(
-    parseForumAccessModeSetting(forumSetting),
-    session.user.role
-  );
   const jobsModeEnabled = isFeatureEnabledForRole(
     parseJobsAccessModeSetting(jobsSetting),
     session.user.role
@@ -83,7 +75,7 @@ export default async function CalculatorLayout({
     <SiteShell
       activeLanguage={activeLanguage}
       dictionary={dictionary}
-      forumEnabled={forumEnabled}
+      forumEnabled={true}
       languages={languages}
       session={session}
     >

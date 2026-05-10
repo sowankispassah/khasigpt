@@ -11,7 +11,6 @@ import {
   CALCULATOR_FEATURE_FLAG_KEY,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
@@ -28,7 +27,6 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
-import { parseForumAccessModeSetting } from "@/lib/forum/config";
 import {
   getFreshTranslationBundle,
   getTranslationBundle,
@@ -82,7 +80,6 @@ export async function loadFeatureAccessReadModel({
     calculatorSetting,
     customKnowledgeSetting,
     documentUploadsSetting,
-    forumSetting,
     jobsSetting,
     studySetting,
     translateSetting,
@@ -97,7 +94,6 @@ export async function loadFeatureAccessReadModel({
       DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
       null
     ),
-    safeAppSetting<string | boolean | null>(FORUM_FEATURE_FLAG_KEY, null),
     safeAppSetting<string | boolean | null>(JOBS_FEATURE_FLAG_KEY, null),
     safeAppSetting<string | boolean | null>(STUDY_MODE_FEATURE_FLAG_KEY, null),
     safeAppSetting<string | boolean | null>(TRANSLATE_FEATURE_FLAG_KEY, null),
@@ -118,7 +114,7 @@ export async function loadFeatureAccessReadModel({
       parseDocumentUploadsAccessModeSetting(documentUploadsSetting),
       role
     ),
-    forum: isFeatureEnabledForRole(parseForumAccessModeSetting(forumSetting), role),
+    forum: true,
     jobs: isFeatureEnabledForRole(parseJobsAccessModeSetting(jobsSetting), role),
     study: isFeatureEnabledForRole(
       parseStudyModeAccessModeSetting(studySetting),

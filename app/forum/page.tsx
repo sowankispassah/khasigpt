@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { ForumClient } from "@/components/forum/forum-client";
 import { ForumSidebar } from "@/components/forum/forum-sidebar";
-import { isForumEnabledForRole } from "@/lib/forum/config";
 import {
   type ForumOverviewResult,
   type ForumThreadListItem,
@@ -22,6 +20,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const FORUM_PAGE_READ_TIMEOUT_MS = 12_000;
+const OPTIONAL_FORUM_PAGE_AUTH_TIMEOUT_MS = 500;
 
 const EMPTY_FORUM_OVERVIEW: ForumOverviewResult = {
   activeCategoryId: null,
@@ -52,11 +51,10 @@ type ForumPageProps = {
 };
 
 export default async function ForumPage({ searchParams }: ForumPageProps) {
-  const session = await auth();
-  const forumEnabled = await isForumEnabledForRole(session?.user?.role ?? null);
-  if (!forumEnabled) {
-    notFound();
-  }
+  const session = await withTimeout(
+    auth(),
+    OPTIONAL_FORUM_PAGE_AUTH_TIMEOUT_MS
+  ).catch(() => null);
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const categorySlug =
     typeof resolvedSearchParams?.category === "string"

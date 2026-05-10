@@ -3,7 +3,6 @@ import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
@@ -33,10 +32,6 @@ const FEATURE_ACCESS_TIMEOUT_MS = 10_000;
 const FEATURE_ACCESS_AUDIT_TIMEOUT_MS = 3_000;
 
 const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
-  forumAccessMode: {
-    settingKey: FORUM_FEATURE_FLAG_KEY,
-    auditAction: "forum.toggle",
-  },
   calculatorAccessMode: {
     settingKey: CALCULATOR_FEATURE_FLAG_KEY,
     auditAction: "feature.calculator.toggle",

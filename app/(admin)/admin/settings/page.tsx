@@ -46,7 +46,6 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
@@ -149,7 +148,6 @@ const SETTINGS_SNAPSHOT_KEYS = [
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
@@ -172,7 +170,6 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
-  FORUM_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
@@ -402,9 +399,6 @@ async function loadAdminSettingsData(
   const comingSoonTimerSetting = getStoredSetting<unknown>(
     SITE_COMING_SOON_TIMER_SETTING_KEY
   );
-  const forumEnabledSetting = getStoredSetting<string | boolean>(
-    FORUM_FEATURE_FLAG_KEY
-  );
   const studyModeEnabledSetting = getStoredSetting<string | boolean>(
     STUDY_MODE_FEATURE_FLAG_KEY
   );
@@ -465,7 +459,6 @@ async function loadAdminSettingsData(
     siteAdminEntryPathSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
-    forumEnabledSetting,
     studyModeEnabledSetting,
     jobsEnabledSetting,
     imageGenerationEnabledSetting,
@@ -512,7 +505,6 @@ function buildFallbackAdminSettingsData() {
     siteAdminEntryPathSetting: null,
     comingSoonContentSetting: null,
     comingSoonTimerSetting: null,
-    forumEnabledSetting: null,
     studyModeEnabledSetting: null,
     jobsEnabledSetting: null,
     imageGenerationEnabledSetting: null,
@@ -694,9 +686,6 @@ export default async function AdminSettingsPage({
         calculatorEnabledSetting:
           getEssential<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY) ??
           settingsData.calculatorEnabledSetting,
-        forumEnabledSetting:
-          getEssential<string | boolean>(FORUM_FEATURE_FLAG_KEY) ??
-          settingsData.forumEnabledSetting,
         studyModeEnabledSetting:
           getEssential<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY) ??
           settingsData.studyModeEnabledSetting,
@@ -766,7 +755,6 @@ export default async function AdminSettingsPage({
     siteAdminEntryPathSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
-    forumEnabledSetting,
     studyModeEnabledSetting,
     jobsEnabledSetting,
     imageGenerationEnabledSetting,
@@ -952,7 +940,6 @@ export default async function AdminSettingsPage({
       }
     }
   }
-  const forumAccessMode = parseConfirmedFeatureAccessMode(forumEnabledSetting);
   const sitePublicLaunched = parseBooleanSetting(
     sitePublicLaunchedSetting,
     true
@@ -1285,14 +1272,6 @@ export default async function AdminSettingsPage({
           title="Feature settings"
         >
           <div className="flex flex-col gap-6">
-            <FeatureAccessModeControl
-              currentMode={forumAccessMode}
-              description="Toggle public access to the forum. When disabled, the forum link disappears and all routes return a 404."
-              fieldName="forumAccessMode"
-              successMessage="Forum availability updated."
-              title="Community forum"
-            />
-
             <FeatureAccessModeControl
               currentMode={calculatorAccessMode}
               description="Show or hide the calculator tool in sidebar navigation. When disabled, direct route access returns a 404."

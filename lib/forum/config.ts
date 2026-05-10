@@ -1,47 +1,26 @@
-import { FORUM_FEATURE_FLAG_KEY } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
-import {
-  type FeatureAccessMode,
-  type FeatureAccessRole,
-  isFeatureEnabledForRole,
-  parseFeatureAccessMode,
+import type {
+  FeatureAccessMode,
+  FeatureAccessRole,
 } from "@/lib/feature-access";
-
-function coerceBoolean(value: unknown, fallback = true): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized.length === 0) {
-      return fallback;
-    }
-    return ["true", "1", "yes", "enabled"].includes(normalized);
-  }
-  return fallback;
-}
-
-export function parseForumEnabledSetting(value: unknown): boolean {
-  return coerceBoolean(value, true);
-}
 
 export const FORUM_ACCESS_MODE_FALLBACK: FeatureAccessMode = "enabled";
 
-export function parseForumAccessModeSetting(value: unknown): FeatureAccessMode {
-  return parseFeatureAccessMode(value, FORUM_ACCESS_MODE_FALLBACK);
+export function parseForumEnabledSetting(_value: unknown): boolean {
+  return true;
 }
 
-export async function isForumEnabledForRole(role: FeatureAccessRole) {
-  const rawValue = await getAppSetting<string | boolean | number>(
-    FORUM_FEATURE_FLAG_KEY
-  );
-  const mode = parseForumAccessModeSetting(rawValue);
-  return isFeatureEnabledForRole(mode, role);
+export function parseForumAccessModeSetting(_value: unknown): FeatureAccessMode {
+  return "enabled";
+}
+
+export async function getForumAccessMode() {
+  return "enabled" satisfies FeatureAccessMode;
+}
+
+export async function isForumEnabledForRole(_role: FeatureAccessRole) {
+  return true;
 }
 
 export async function isForumEnabled() {
-  return isForumEnabledForRole(null);
+  return true;
 }

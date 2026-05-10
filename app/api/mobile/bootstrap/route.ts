@@ -118,7 +118,7 @@ const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
   calculator: false,
   customKnowledge: false,
   documentUploads: false,
-  forum: false,
+  forum: true,
   jobs: false,
   study: false,
   translate: false,
