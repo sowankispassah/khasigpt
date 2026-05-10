@@ -165,8 +165,19 @@ function parseCursor(cursor?: string | null) {
   return Number.isNaN(date.getTime()) ? null : { date, id };
 }
 
-function buildCursor(row: { updatedAt: Date; id: string }) {
-  return `${row.updatedAt.toISOString()}_${row.id}`;
+function getThreadActivityAt(row: {
+  createdAt: Date;
+  lastRepliedAt: Date | null;
+}) {
+  return row.lastRepliedAt ?? row.createdAt;
+}
+
+function buildCursor(row: {
+  createdAt: Date;
+  id: string;
+  lastRepliedAt: Date | null;
+}) {
+  return `${getThreadActivityAt(row).toISOString()}_${row.id}`;
 }
 
 export async function getForumOverview(
@@ -309,8 +320,8 @@ export async function getForumOverview(
     const cursor = parseCursor(params.cursor);
     if (cursor) {
       const cursorClause = sql<boolean>`(
-        ${forumThread.updatedAt} < ${cursor.date}
-        OR (${forumThread.updatedAt} = ${cursor.date} AND ${forumThread.id} < ${cursor.id})
+        ${forumThread.lastRepliedAt} < ${cursor.date}
+        OR (${forumThread.lastRepliedAt} = ${cursor.date} AND ${forumThread.id} < ${cursor.id})
       )`;
       filtersClause = filtersClause
         ? (and(filtersClause, cursorClause) as SQL<boolean>)
@@ -328,14 +339,10 @@ export async function getForumOverview(
       ? baseQuery.where(filtersClause)
       : baseQuery;
 
-    const coalescedActivity = sql<Date>`
-      COALESCE(${forumThread.lastRepliedAt}, ${forumThread.createdAt})
-    `;
-
     const threadRows = await queryWithFilters
       .orderBy(
         desc(forumThread.isPinned),
-        desc(coalescedActivity),
+        desc(forumThread.lastRepliedAt),
         desc(forumThread.createdAt)
       )
       .limit(limit + 1);
@@ -1090,13 +1097,12 @@ export async function toggleForumPostReaction({
 
 export async function recordForumThreadView(threadId: string) {
   try {
-    await db
-      .update(forumThread)
-      .set({
-        viewCount: sql`${forumThread.viewCount} + 1`,
-        updatedAt: sql`GREATEST(${forumThread.updatedAt}, now())`,
-      })
-      .where(eq(forumThread.id, threadId));
+      await db
+        .update(forumThread)
+        .set({
+          viewCount: sql`${forumThread.viewCount} + 1`,
+        })
+        .where(eq(forumThread.id, threadId));
   } catch (error) {
     if (error instanceof ChatSDKError) {
       throw error;

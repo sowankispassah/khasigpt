@@ -1225,6 +1225,10 @@ export const forumCategory = pgTable(
   (table) => ({
     slugIdx: uniqueIndex("ForumCategory_slug_idx").on(table.slug),
     positionIdx: index("ForumCategory_position_idx").on(table.position),
+    positionNameIdx: index("ForumCategory_position_name_idx").on(
+      table.position,
+      table.name
+    ),
   })
 );
 
@@ -1275,6 +1279,17 @@ export const forumThread = pgTable(
   (table) => ({
     slugIdx: uniqueIndex("ForumThread_slug_idx").on(table.slug),
     categoryIdx: index("ForumThread_category_idx").on(table.categoryId),
+    activityIdx: index("ForumThread_activity_idx").on(
+      table.isPinned,
+      table.lastRepliedAt,
+      table.createdAt
+    ),
+    categoryActivityIdx: index("ForumThread_category_activity_idx").on(
+      table.categoryId,
+      table.isPinned,
+      table.lastRepliedAt,
+      table.createdAt
+    ),
     statusIdx: index("ForumThread_status_idx").on(table.status),
     pinnedIdx: index("ForumThread_pinned_idx").on(table.isPinned),
   })
@@ -1301,6 +1316,10 @@ export const forumPost = pgTable(
   },
   (table) => ({
     threadIdx: index("ForumPost_thread_idx").on(table.threadId),
+    threadCreatedAtIdx: index("ForumPost_thread_createdAt_idx").on(
+      table.threadId,
+      table.createdAt
+    ),
     authorIdx: index("ForumPost_author_idx").on(table.authorId),
     parentPostFk: foreignKey({
       columns: [table.parentPostId],
@@ -1326,6 +1345,10 @@ export const forumThreadTag = pgTable(
   (table) => ({
     pk: primaryKey({ columns: [table.threadId, table.tagId] }),
     tagIdx: index("ForumThreadTag_tag_idx").on(table.tagId),
+    tagThreadIdx: index("ForumThreadTag_tag_thread_idx").on(
+      table.tagId,
+      table.threadId
+    ),
   })
 );
 
@@ -1346,6 +1369,10 @@ export const forumThreadSubscription = pgTable(
   (table) => ({
     pk: primaryKey({ columns: [table.threadId, table.userId] }),
     userIdx: index("ForumThreadSubscription_user_idx").on(table.userId),
+    userThreadIdx: index("ForumThreadSubscription_user_thread_idx").on(
+      table.userId,
+      table.threadId
+    ),
   })
 );
 
@@ -1368,6 +1395,10 @@ export const forumPostReaction = pgTable(
   },
   (table) => ({
     postIdx: index("ForumPostReaction_post_idx").on(table.postId),
+    userPostIdx: index("ForumPostReaction_user_post_idx").on(
+      table.userId,
+      table.postId
+    ),
     uniqueReactionIdx: uniqueIndex("ForumPostReaction_unique_idx").on(
       table.postId,
       table.userId,

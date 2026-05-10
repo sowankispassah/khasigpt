@@ -6,10 +6,12 @@ import { ForumClient } from "@/components/forum/forum-client";
 import { ForumSidebar } from "@/components/forum/forum-sidebar";
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import {
+  type ForumOverviewResult,
   type ForumThreadListItem,
   getForumOverview,
 } from "@/lib/forum/service";
 import type { ForumThreadListItemPayload } from "@/lib/forum/types";
+import { withTimeout } from "@/lib/utils/async";
 
 export const metadata: Metadata = {
   title: "Community Forum",
@@ -18,6 +20,19 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+const FORUM_PAGE_READ_TIMEOUT_MS = 12_000;
+
+const EMPTY_FORUM_OVERVIEW: ForumOverviewResult = {
+  activeCategoryId: null,
+  activeTagId: null,
+  categories: [],
+  hasMore: false,
+  nextCursor: null,
+  subscribedThreadIds: [],
+  tags: [],
+  threads: [],
+};
 
 function serializeThread(
   thread: ForumThreadListItem
@@ -56,11 +71,22 @@ export default async function ForumPage({ searchParams }: ForumPageProps) {
       ? resolvedSearchParams.search
       : null;
 
-  const overview = await getForumOverview({
-    categorySlug,
-    tagSlug,
-    search: searchQuery,
-    viewerUserId: session?.user?.id ?? null,
+  let loadError: string | null = null;
+  const overview = await withTimeout(
+    getForumOverview({
+      categorySlug,
+      tagSlug,
+      search: searchQuery,
+      viewerUserId: session?.user?.id ?? null,
+    }),
+    FORUM_PAGE_READ_TIMEOUT_MS,
+    () => {
+      console.warn("[forum/page] Forum overview timed out.");
+    }
+  ).catch((error) => {
+    console.error("[forum/page] Unable to load forum overview.", error);
+    loadError = "Unable to load forum right now. Please try again.";
+    return EMPTY_FORUM_OVERVIEW;
   });
 
   const initialThreads = overview.threads.map(serializeThread);
@@ -91,6 +117,7 @@ export default async function ForumPage({ searchParams }: ForumPageProps) {
             search: searchQuery,
           }}
           hasMore={overview.hasMore}
+          initialError={loadError}
           initialThreads={initialThreads}
           nextCursor={overview.nextCursor}
           subscribedThreadIds={overview.subscribedThreadIds}

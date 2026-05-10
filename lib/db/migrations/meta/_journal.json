@@ -449,6 +449,13 @@
       "when": 1765238400013,
       "tag": "0061_free_chat_usage_daily",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1765238400014,
+      "tag": "0062_forum_read_path_indexes",
+      "breakpoints": true
     }
   ]
 }

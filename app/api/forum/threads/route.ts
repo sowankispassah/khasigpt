@@ -9,8 +9,16 @@ import {
 import { isForumEnabledForRole } from "@/lib/forum/config";
 import { createForumThread, getForumOverview } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const FORUM_READ_TIMEOUT_MS = 12_000;
+const FORUM_TIMEOUT_RESPONSE = {
+  code: "timeout:forum",
+  message: "Unable to load forum right now. Please try again.",
+};
 
 const createThreadSchema = z.object({
   title: z.string().min(8).max(200),
@@ -40,17 +48,26 @@ export async function GET(request: NextRequest) {
         ? parsedLimit
         : undefined;
 
-    const overview = await getForumOverview({
-      categorySlug,
-      tagSlug,
-      search,
-      cursor,
-      limit,
-      viewerUserId: session?.user?.id ?? null,
-    });
+    const overview = await withTimeout(
+      getForumOverview({
+        categorySlug,
+        tagSlug,
+        search,
+        cursor,
+        limit,
+        viewerUserId: session?.user?.id ?? null,
+      }),
+      FORUM_READ_TIMEOUT_MS,
+      () => {
+        console.warn("[api/forum/threads] Forum overview timed out.");
+      }
+    );
 
     return NextResponse.json(overview);
   } catch (error) {
+    if (error instanceof Error && error.message === "timeout") {
+      return NextResponse.json(FORUM_TIMEOUT_RESPONSE, { status: 504 });
+    }
     return forumErrorResponse(error);
   }
 }

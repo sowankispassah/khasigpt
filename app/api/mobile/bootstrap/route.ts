@@ -115,10 +115,10 @@ function buildStartupLanguageSnapshot(
 }
 
 const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
-  calculator: true,
+  calculator: false,
   customKnowledge: false,
   documentUploads: false,
-  forum: true,
+  forum: false,
   jobs: false,
   study: false,
   translate: false,

@@ -42,6 +42,7 @@ type ComposerTag = {
 
 type ForumClientProps = {
   initialThreads: ForumThreadListItemPayload[];
+  initialError?: string | null;
   hasMore: boolean;
   nextCursor: string | null;
   subscribedThreadIds: string[];
@@ -62,6 +63,7 @@ type ForumClientProps = {
 
 export function ForumClient({
   initialThreads,
+  initialError = null,
   hasMore,
   nextCursor,
   subscribedThreadIds,
@@ -338,7 +340,19 @@ export function ForumClient({
         </section>
 
         <section className="space-y-4">
-          {threads.length === 0 ? (
+          {initialError ? (
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-10 text-center">
+              <p className="font-semibold text-lg">
+                <EditableTranslation
+                  defaultText="Unable to load forum"
+                  translationKey="forum.error.load"
+                />
+              </p>
+              <p className="mt-2 text-muted-foreground text-sm">
+                {initialError}
+              </p>
+            </div>
+          ) : threads.length === 0 ? (
             <div className="rounded-2xl border border-border border-dashed p-10 text-center">
               <p className="font-semibold text-lg">
                 <EditableTranslation
