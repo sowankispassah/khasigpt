@@ -205,7 +205,7 @@ export function normalizeIconPromptSettings(
   rawSettings: unknown,
   enabledSetting: unknown
 ) {
-  const enabled = normalizeBoolean(enabledSetting, false);
+  const enabled = parseIconPromptsAccessModeSetting(enabledSetting) !== "disabled";
   const settings =
     rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
       ? (rawSettings as StoredIconPromptSettings)

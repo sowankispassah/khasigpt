@@ -78,7 +78,6 @@ import {
   listPricingPlans,
   listTranslationFeatureLanguages,
 } from "@/lib/db/queries";
-import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
 import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
   normalizeIconPromptSettings,
@@ -96,6 +95,12 @@ import {
   normalizeComingSoonContentSetting,
   normalizeComingSoonTimerSetting,
 } from "@/lib/settings/coming-soon";
+import {
+  ADMIN_FEATURE_ACCESS_SETTINGS,
+  buildFeatureAccessSnapshotFromValues,
+  loadFeatureAccessSettingsByKeys,
+  resolveFeatureAccessControlState,
+} from "@/lib/settings/feature-access-settings";
 import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
@@ -128,6 +133,7 @@ const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 3000;
 const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3000;
 const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
+const FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS = 8000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -178,6 +184,9 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
 ] as const;
+const ADMIN_FEATURE_ACCESS_SETTING_KEYS = ADMIN_FEATURE_ACCESS_SETTINGS.map(
+  (setting) => setting.settingKey
+);
 
 function safeSettingsQuery<T>(
   label: string,
@@ -283,6 +292,13 @@ async function loadAdminSettingsData(
     };
   });
   const appSettingStatePromise = loadAppSettingValuesByKey();
+  const featureAccessStatePromise = loadFeatureAccessSettingsByKeys(
+    ADMIN_FEATURE_ACCESS_SETTING_KEYS,
+    {
+      source: "admin.settings.feature-access",
+      timeoutMs: FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS,
+    }
+  );
   const modelsRawPromise = safeSettingsQuery(
     "model configs",
     listModelConfigs({
@@ -329,6 +345,7 @@ async function loadAdminSettingsData(
   const [
     exchangeRate,
     appSettingState,
+    featureAccessState,
     modelsRaw,
     imageModelConfigs,
     plansState,
@@ -337,6 +354,7 @@ async function loadAdminSettingsData(
   ] = await Promise.all([
     exchangeRatePromise,
     appSettingStatePromise,
+    featureAccessStatePromise,
     modelsRawPromise,
     imageModelConfigsPromise,
     plansStatePromise,
@@ -344,6 +362,26 @@ async function loadAdminSettingsData(
     translationFeatureLanguagesPromise,
   ]);
   const appSettingValuesByKey = appSettingState.values;
+  const dbBackedAppSettingValues =
+    appSettingState.source === "snapshot-db" ||
+    appSettingState.source === "essential-db";
+  const resolvedFeatureAccessState =
+    featureAccessState.status === "confirmed" || !dbBackedAppSettingValues
+      ? featureAccessState
+      : buildFeatureAccessSnapshotFromValues({
+          source: `${appSettingState.source}:feature-access-fallback`,
+          status: "confirmed",
+          values: new Map(
+            ADMIN_FEATURE_ACCESS_SETTING_KEYS.flatMap((key) =>
+              appSettingValuesByKey.has(key)
+                ? ([[key, appSettingValuesByKey.get(key)]] as [
+                    string,
+                    unknown,
+                  ][])
+                : []
+            )
+          ),
+        });
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -366,14 +404,8 @@ async function loadAdminSettingsData(
   const suggestedPromptsByLanguageSetting = getStoredSetting<
     Record<string, string[]>
   >("suggestedPromptsByLanguage");
-  const suggestedPromptsEnabledSetting = getStoredSetting<string | boolean>(
-    SUGGESTED_PROMPTS_ENABLED_SETTING_KEY
-  );
   const recommendedPlanSetting = getStoredSetting<string | null>(
     RECOMMENDED_PRICING_PLAN_SETTING_KEY
-  );
-  const calculatorEnabledSetting = getStoredSetting<string | boolean>(
-    CALCULATOR_FEATURE_FLAG_KEY
   );
   const sitePublicLaunchedSetting = getStoredSetting<string | boolean>(
     SITE_PUBLIC_LAUNCHED_SETTING_KEY
@@ -399,15 +431,6 @@ async function loadAdminSettingsData(
   const comingSoonTimerSetting = getStoredSetting<unknown>(
     SITE_COMING_SOON_TIMER_SETTING_KEY
   );
-  const studyModeEnabledSetting = getStoredSetting<string | boolean>(
-    STUDY_MODE_FEATURE_FLAG_KEY
-  );
-  const jobsEnabledSetting = getStoredSetting<string | boolean>(
-    JOBS_FEATURE_FLAG_KEY
-  );
-  const imageGenerationEnabledSetting = getStoredSetting<string | boolean>(
-    IMAGE_GENERATION_FEATURE_FLAG_KEY
-  );
   const imagePromptTranslationModelSetting = getStoredSetting<string | null>(
     IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY
   );
@@ -415,15 +438,6 @@ async function loadAdminSettingsData(
     IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY
   );
   const iconPromptsSetting = getStoredSetting<unknown>(ICON_PROMPTS_SETTING_KEY);
-  const iconPromptsEnabledSetting = getStoredSetting<string | boolean>(
-    ICON_PROMPTS_ENABLED_SETTING_KEY
-  );
-  const documentUploadsEnabledSetting = getStoredSetting<string | boolean>(
-    DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
-  );
-  const translateEnabledSetting = getStoredSetting<string | boolean>(
-    TRANSLATE_FEATURE_FLAG_KEY
-  );
   const translateProviderModeSetting = getStoredSetting<string | boolean>(
     TRANSLATE_PROVIDER_MODE_SETTING_KEY
   );
@@ -433,6 +447,7 @@ async function loadAdminSettingsData(
   return {
     exchangeRate,
     appSettingReadSource: appSettingState.source,
+    featureAccessState: resolvedFeatureAccessState,
     modelsRaw,
     imageModelConfigs,
     plansRaw: plansState.plans,
@@ -445,12 +460,10 @@ async function loadAdminSettingsData(
     termsOfServiceByLanguageSetting,
     suggestedPromptsSetting,
     suggestedPromptsByLanguageSetting,
-    suggestedPromptsEnabledSetting,
     recommendedPlanSetting,
     languages,
     translationFeatureLanguages,
     freeMessageSettings,
-    calculatorEnabledSetting,
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
     sitePrelaunchInviteOnlySetting,
@@ -459,15 +472,9 @@ async function loadAdminSettingsData(
     siteAdminEntryPathSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
-    studyModeEnabledSetting,
-    jobsEnabledSetting,
-    imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
     iconPromptsSetting,
-    iconPromptsEnabledSetting,
-    documentUploadsEnabledSetting,
-    translateEnabledSetting,
     translateProviderModeSetting,
   };
 }
@@ -479,6 +486,11 @@ function buildFallbackAdminSettingsData() {
       fetchedAt: new Date(),
     },
     appSettingReadSource: "last-known" as AppSettingReadSource,
+    featureAccessState: buildFeatureAccessSnapshotFromValues({
+      source: "admin.settings.fallback",
+      status: "unavailable",
+      values: new Map(),
+    }),
     modelsRaw: [],
     imageModelConfigs: [],
     plansRaw: [],
@@ -505,15 +517,9 @@ function buildFallbackAdminSettingsData() {
     siteAdminEntryPathSetting: null,
     comingSoonContentSetting: null,
     comingSoonTimerSetting: null,
-    studyModeEnabledSetting: null,
-    jobsEnabledSetting: null,
-    imageGenerationEnabledSetting: null,
     imagePromptTranslationModelSetting: null,
     imageFilenamePrefixSetting: null,
     iconPromptsSetting: null,
-    iconPromptsEnabledSetting: null,
-    documentUploadsEnabledSetting: null,
-    translateEnabledSetting: null,
     translateProviderModeSetting: null,
   } as Awaited<ReturnType<typeof loadAdminSettingsData>>;
 }
@@ -638,12 +644,10 @@ export default async function AdminSettingsPage({
   const notice = resolvedSearchParams?.notice;
   const priorityPricingPlansPromise = loadPricingPlansForAdmin();
 
-  let settingsLoadFailed = false;
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
     settingsData = await loadAdminSettingsData(priorityPricingPlansPromise);
   } catch (error) {
-    settingsLoadFailed = true;
     console.error(
       "[admin/settings] Unexpected settings render failure. Falling back to safe defaults.",
       error
@@ -683,32 +687,29 @@ export default async function AdminSettingsPage({
         comingSoonTimerSetting:
           getEssential<unknown>(SITE_COMING_SOON_TIMER_SETTING_KEY) ??
           settingsData.comingSoonTimerSetting,
-        calculatorEnabledSetting:
-          getEssential<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY) ??
-          settingsData.calculatorEnabledSetting,
-        studyModeEnabledSetting:
-          getEssential<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY) ??
-          settingsData.studyModeEnabledSetting,
-        jobsEnabledSetting:
-          getEssential<string | boolean>(JOBS_FEATURE_FLAG_KEY) ??
-          settingsData.jobsEnabledSetting,
-        imageGenerationEnabledSetting:
-          getEssential<string | boolean>(IMAGE_GENERATION_FEATURE_FLAG_KEY) ??
-          settingsData.imageGenerationEnabledSetting,
-        documentUploadsEnabledSetting:
-          getEssential<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY) ??
-          settingsData.documentUploadsEnabledSetting,
-        suggestedPromptsEnabledSetting:
-          getEssential<string | boolean>(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY) ??
-          settingsData.suggestedPromptsEnabledSetting,
-        iconPromptsEnabledSetting:
-          getEssential<string | boolean>(ICON_PROMPTS_ENABLED_SETTING_KEY) ??
-          settingsData.iconPromptsEnabledSetting,
       };
     } catch (fallbackReadError) {
       console.error(
         "[admin/settings] Essential fallback setting read failed.",
         fallbackReadError
+      );
+    }
+
+    try {
+      settingsData = {
+        ...settingsData,
+        featureAccessState: await loadFeatureAccessSettingsByKeys(
+          ADMIN_FEATURE_ACCESS_SETTING_KEYS,
+          {
+            source: "admin.settings.feature-access.render-fallback",
+            timeoutMs: FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS,
+          }
+        ),
+      };
+    } catch (featureAccessReadError) {
+      console.error(
+        "[admin/settings] Feature access fallback setting read failed.",
+        featureAccessReadError
       );
     }
 
@@ -729,6 +730,7 @@ export default async function AdminSettingsPage({
   const {
     appSettingReadSource,
     exchangeRate,
+    featureAccessState,
     modelsRaw,
     imageModelConfigs,
     plansRaw,
@@ -741,12 +743,10 @@ export default async function AdminSettingsPage({
     termsOfServiceByLanguageSetting,
     suggestedPromptsSetting,
     suggestedPromptsByLanguageSetting,
-    suggestedPromptsEnabledSetting,
     recommendedPlanSetting,
     languages,
     translationFeatureLanguages,
     freeMessageSettings,
-    calculatorEnabledSetting,
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
     sitePrelaunchInviteOnlySetting,
@@ -755,20 +755,40 @@ export default async function AdminSettingsPage({
     siteAdminEntryPathSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
-    studyModeEnabledSetting,
-    jobsEnabledSetting,
-    imageGenerationEnabledSetting,
     imagePromptTranslationModelSetting,
     imageFilenamePrefixSetting,
     iconPromptsSetting,
-    iconPromptsEnabledSetting,
-    documentUploadsEnabledSetting,
-    translateEnabledSetting,
     translateProviderModeSetting,
   } = settingsData;
-  const featureSettingsReadConfirmed =
-    appSettingReadSource === "snapshot-db" ||
-    appSettingReadSource === "essential-db";
+  const featureAccessControlStateByField = new Map(
+    ADMIN_FEATURE_ACCESS_SETTINGS.map((setting) => [
+      setting.fieldName,
+      resolveFeatureAccessControlState({
+        settingKey: setting.settingKey,
+        snapshot: featureAccessState,
+      }),
+    ])
+  );
+  console.info("[admin/settings/feature-access] hydrated", {
+    appSettingReadSource,
+    controls: Object.fromEntries(
+      Array.from(featureAccessControlStateByField.entries()).map(
+        ([fieldName, state]) => [
+          fieldName,
+          {
+            mode: state.mode,
+            readState: state.readState,
+            settingKey: state.settingKey,
+          },
+        ]
+      )
+    ),
+    durationMs: featureAccessState.durationMs,
+    missingKeys: featureAccessState.missingKeys,
+    source: featureAccessState.source,
+    status: featureAccessState.status,
+  });
+  const featureSettingsReadConfirmed = featureAccessState.status === "confirmed";
 
   const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -797,17 +817,23 @@ export default async function AdminSettingsPage({
     ? activeModels.find((model) => model.id === imagePromptTranslationModelId) ??
       null
     : null;
+  const suggestedPromptsAccessState =
+    featureAccessControlStateByField.get("suggestedPromptsAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+      snapshot: featureAccessState,
+    });
+  const iconPromptsAccessState =
+    featureAccessControlStateByField.get("iconPromptsAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
+      snapshot: featureAccessState,
+    });
+  const suggestedPromptsAccessMode = suggestedPromptsAccessState.mode;
+  const iconPromptsAccessMode = iconPromptsAccessState.mode;
   const iconPromptSettings = normalizeIconPromptSettings(
     iconPromptsSetting,
-    iconPromptsEnabledSetting
-  );
-  const parseConfirmedFeatureAccessMode = (value: unknown) =>
-    featureSettingsReadConfirmed ? parseFeatureAccessModeStrict(value) : null;
-  const suggestedPromptsAccessMode = parseConfirmedFeatureAccessMode(
-    suggestedPromptsEnabledSetting
-  );
-  const iconPromptsAccessMode = parseConfirmedFeatureAccessMode(
-    iconPromptsEnabledSetting
+    iconPromptsAccessMode
   );
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
@@ -965,25 +991,51 @@ export default async function AdminSettingsPage({
   const comingSoonContent =
     normalizeComingSoonContentSetting(comingSoonContentSetting);
   const comingSoonTimer = normalizeComingSoonTimerSetting(comingSoonTimerSetting);
-  const calculatorAccessMode = parseConfirmedFeatureAccessMode(
-    calculatorEnabledSetting
-  );
-  const studyModeAccessMode = parseConfirmedFeatureAccessMode(
-    studyModeEnabledSetting
-  );
-  const translateAccessMode = parseConfirmedFeatureAccessMode(
-    translateEnabledSetting
-  );
+  const calculatorAccessState =
+    featureAccessControlStateByField.get("calculatorAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: CALCULATOR_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const studyModeAccessState =
+    featureAccessControlStateByField.get("studyModeAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const translateAccessState =
+    featureAccessControlStateByField.get("translateAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: TRANSLATE_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const calculatorAccessMode = calculatorAccessState.mode;
+  const studyModeAccessMode = studyModeAccessState.mode;
+  const translateAccessMode = translateAccessState.mode;
   const translateProviderMode = parseTranslateProviderModeSetting(
     translateProviderModeSetting
   );
-  const jobsAccessMode = parseConfirmedFeatureAccessMode(jobsEnabledSetting);
-  const imageGenerationAccessMode = parseConfirmedFeatureAccessMode(
-    imageGenerationEnabledSetting
-  );
-  const documentUploadsAccessMode = parseConfirmedFeatureAccessMode(
-    documentUploadsEnabledSetting
-  );
+  const jobsAccessState =
+    featureAccessControlStateByField.get("jobsAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: JOBS_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const imageGenerationAccessState =
+    featureAccessControlStateByField.get("imageGenerationAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const documentUploadsAccessState =
+    featureAccessControlStateByField.get("documentUploadsAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const jobsAccessMode = jobsAccessState.mode;
+  const imageGenerationAccessMode = imageGenerationAccessState.mode;
+  const documentUploadsAccessMode = documentUploadsAccessState.mode;
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -1114,17 +1166,17 @@ export default async function AdminSettingsPage({
     <>
       <AdminSettingsNotice notice={notice} />
 
-      {settingsLoadFailed || !featureSettingsReadConfirmed ? (
+      {!featureSettingsReadConfirmed ? (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
           <p className="font-medium text-amber-700">
-            Settings loaded in fallback mode.
+            Feature settings loaded in fallback mode.
           </p>
           <p className="mt-1 text-muted-foreground">
-            A production settings query timed out or returned stale data, so
-            feature controls that are not confirmed from the database are shown
-            as unavailable instead of pretending fallback defaults are saved.
-            Retry in a few seconds and check server logs for
-            <span className="mx-1 font-mono text-xs">[admin/settings]</span>
+            The dedicated feature access query timed out or returned stale
+            data, so feature controls show their exact read state instead of
+            pretending fallback defaults are saved database values. Retry in a
+            few seconds and check server logs for
+            <span className="mx-1 font-mono text-xs">[feature-settings]</span>
             entries if this persists.
           </p>
         </div>
@@ -1276,6 +1328,7 @@ export default async function AdminSettingsPage({
               currentMode={calculatorAccessMode}
               description="Show or hide the calculator tool in sidebar navigation. When disabled, direct route access returns a 404."
               fieldName="calculatorAccessMode"
+              readState={calculatorAccessState.readState}
               successMessage="Calculator availability updated."
               title="Calculator"
             />
@@ -1284,6 +1337,7 @@ export default async function AdminSettingsPage({
               currentMode={studyModeAccessMode}
               description="Show or hide the guided Study chat experience for exam question papers."
               fieldName="studyModeAccessMode"
+              readState={studyModeAccessState.readState}
               successMessage="Study mode availability updated."
               title="Study mode"
             />
@@ -1292,6 +1346,7 @@ export default async function AdminSettingsPage({
               currentMode={translateAccessMode}
               description="Show or hide the Translate page and sidebar entry. When disabled, end users cannot access translation routes."
               fieldName="translateAccessMode"
+              readState={translateAccessState.readState}
               successMessage="Translate availability updated."
               title="Translate"
             />
@@ -1300,6 +1355,7 @@ export default async function AdminSettingsPage({
               currentMode={jobsAccessMode}
               description="Show or hide the Jobs experience for browsing uploaded job postings."
               fieldName="jobsAccessMode"
+              readState={jobsAccessState.readState}
               successMessage="Jobs mode availability updated."
               title="Jobs mode"
             />
@@ -1308,6 +1364,7 @@ export default async function AdminSettingsPage({
               currentMode={imageGenerationAccessMode}
               description="Show or hide the image generation entry points across the chat experience."
               fieldName="imageGenerationAccessMode"
+              readState={imageGenerationAccessState.readState}
               successMessage="Image generation availability updated."
               title="AI image generation"
             />
@@ -1316,6 +1373,7 @@ export default async function AdminSettingsPage({
               currentMode={documentUploadsAccessMode}
               description="Allow users to upload PDF and DOCX files in chat."
               fieldName="documentUploadsAccessMode"
+              readState={documentUploadsAccessState.readState}
               successMessage="Document upload availability updated."
               title="Document uploads"
             />
@@ -2138,6 +2196,7 @@ export default async function AdminSettingsPage({
                     currentMode={suggestedPromptsAccessMode}
                     description="Toggle the suggested prompt chips shown on the home page."
                     fieldName="suggestedPromptsAccessMode"
+                    readState={suggestedPromptsAccessState.readState}
                     successMessage="Suggested prompts updated."
                     title="Suggested prompts"
                   />
@@ -2173,6 +2232,7 @@ export default async function AdminSettingsPage({
                     currentMode={iconPromptsAccessMode}
                     description="Toggle the icon-based prompt section shown on the home page."
                     fieldName="iconPromptsAccessMode"
+                    readState={iconPromptsAccessState.readState}
                     successMessage="Icon pre-prompts updated."
                     title="Icon pre-prompts"
                   />

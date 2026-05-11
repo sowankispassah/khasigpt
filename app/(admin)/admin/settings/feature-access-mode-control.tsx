@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import type { FeatureAccessMode } from "@/lib/feature-access";
+import type { FeatureAccessControlReadState } from "@/lib/settings/feature-access-settings";
 
 const FEATURE_ACCESS_API_ENDPOINT = "/api/admin/feature-access";
 const FEATURE_TOGGLE_SLOW_NOTICE_MS = 8000;
@@ -108,8 +109,30 @@ async function saveFeatureAccessModeWithRetry({
   throw lastError ?? new Error("save_failed");
 }
 
-function AccessModeBadge({ mode }: { mode: FeatureAccessMode | null }) {
+function AccessModeBadge({
+  mode,
+  readState,
+}: {
+  mode: FeatureAccessMode | null;
+  readState: FeatureAccessControlReadState;
+}) {
   if (mode === null) {
+    if (readState === "missing") {
+      return (
+        <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 text-xs">
+          No saved value
+        </span>
+      );
+    }
+
+    if (readState === "unreadable") {
+      return (
+        <span className="rounded-full bg-orange-100 px-2 py-0.5 font-medium text-orange-700 text-xs">
+          Invalid value
+        </span>
+      );
+    }
+
     return (
       <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 text-xs">
         Unavailable
@@ -120,7 +143,7 @@ function AccessModeBadge({ mode }: { mode: FeatureAccessMode | null }) {
   if (mode === "enabled") {
     return (
       <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 text-xs">
-        Enabled for all
+        {readState === "stale" ? "Enabled for all (stale)" : "Enabled for all"}
       </span>
     );
   }
@@ -128,14 +151,14 @@ function AccessModeBadge({ mode }: { mode: FeatureAccessMode | null }) {
   if (mode === "admin_only") {
     return (
       <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700 text-xs">
-        Admin only
+        {readState === "stale" ? "Admin only (stale)" : "Admin only"}
       </span>
     );
   }
 
   return (
     <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
-      Disabled for all
+      {readState === "stale" ? "Disabled for all (stale)" : "Disabled for all"}
     </span>
   );
 }
@@ -150,16 +173,49 @@ const MODE_BUTTONS: Array<{
   { label: "Enable for all", mode: "enabled", activeVariant: "default" },
 ];
 
+function getCurrentModeSummary({
+  mode,
+  readState,
+}: {
+  mode: FeatureAccessMode | null;
+  readState: FeatureAccessControlReadState;
+}) {
+  if (readState === "stale" && mode !== null) {
+    return "Current: showing the last confirmed value because the database refresh failed.";
+  }
+  if (readState === "missing") {
+    return "Current: no database value exists for this setting.";
+  }
+  if (readState === "unreadable") {
+    return "Current: the database value is invalid and must be resaved.";
+  }
+  if (readState === "unavailable") {
+    return "Current: database value could not be loaded.";
+  }
+  if (mode === null) {
+    return "Current: not confirmed from the database.";
+  }
+  if (mode === "enabled") {
+    return "Current: everyone can access.";
+  }
+  if (mode === "admin_only") {
+    return "Current: only admin users can access.";
+  }
+  return "Current: access is disabled for everyone.";
+}
+
 export function FeatureAccessModeControl({
   currentMode,
   description,
   fieldName,
+  readState,
   successMessage,
   title,
 }: {
   currentMode: FeatureAccessMode | null;
   description: string;
   fieldName: string;
+  readState: FeatureAccessControlReadState;
   successMessage: string;
   title: string;
 }) {
@@ -169,14 +225,22 @@ export function FeatureAccessModeControl({
   );
   const [isSaving, setIsSaving] = useState(false);
 
-  const currentModeSummary =
-    mode === null
-      ? "Current: not confirmed from the database."
-      : mode === "enabled"
-      ? "Current: everyone can access."
-      : mode === "admin_only"
-        ? "Current: only admin users can access."
-        : "Current: access is disabled for everyone.";
+  useEffect(() => {
+    if (!isSaving) {
+      setMode(currentMode);
+    }
+  }, [currentMode, isSaving]);
+
+  useEffect(() => {
+    console.info("[admin/settings/feature-access] frontend_state", {
+      currentMode,
+      fieldName,
+      readState,
+      selectedMode: mode,
+    });
+  }, [currentMode, fieldName, mode, readState]);
+
+  const currentModeSummary = getCurrentModeSummary({ mode, readState });
 
   const submitMode = async (nextMode: FeatureAccessMode) => {
     if (isSaving || nextMode === mode) {
@@ -242,7 +306,7 @@ export function FeatureAccessModeControl({
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">{title}</span>
-          <AccessModeBadge mode={mode} />
+          <AccessModeBadge mode={mode} readState={readState} />
         </div>
         <p className="text-muted-foreground text-xs">{description}</p>
       </div>
@@ -284,10 +348,25 @@ export function FeatureAccessModeControl({
           access. Enable for all: everyone can access.
         </p>
         <p className="text-muted-foreground text-xs">{currentModeSummary}</p>
-        {mode === null ? (
+        {readState === "missing" ? (
           <p className="text-amber-700 text-xs">
-            The saved value could not be confirmed. Choosing a value here will
-            write a new explicit database value for this setting.
+            The database has no saved value for this setting. Choosing a value
+            here will write a new explicit database value.
+          </p>
+        ) : readState === "unreadable" ? (
+          <p className="text-orange-700 text-xs">
+            The saved database value is not a recognized feature access mode.
+            Choosing a value here will replace it with a valid value.
+          </p>
+        ) : readState === "unavailable" ? (
+          <p className="text-amber-700 text-xs">
+            The saved value could not be loaded. This page is not treating
+            fallback data as confirmed database state.
+          </p>
+        ) : readState === "stale" ? (
+          <p className="text-amber-700 text-xs">
+            This value is stale. Saving will verify the database write before
+            showing success.
           </p>
         ) : null}
       </div>

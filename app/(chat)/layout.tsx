@@ -11,14 +11,11 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import {
-  getAppSetting,
-  getLastKnownAppSetting,
-  getUserById,
-} from "@/lib/db/queries";
+import { getUserById } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
@@ -32,7 +29,13 @@ const PROFILE_LOOKUP_TIMEOUT_MS =
   Number.isFinite(profileLookupTimeoutRaw) && profileLookupTimeoutRaw > 0
     ? profileLookupTimeoutRaw
     : 1200;
-const CHAT_LAYOUT_QUERY_TIMEOUT_MS = 1_500;
+const CHAT_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS = 8_000;
+const CHAT_LAYOUT_FEATURE_ACCESS_KEYS = [
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  CALCULATOR_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
+] as const;
 
 export default async function Layout({
   children,
@@ -71,50 +74,18 @@ export default async function Layout({
   const defaultSidebarOpen = sidebarState !== "false";
   const { languages, activeLanguage, dictionary } =
     await getTranslationBundle(preferredLanguage);
-  const safeSettingRead = <T,>(
-    label: string,
-    key: string,
-    promise: Promise<T>,
-    fallback: T
-  ) =>
-    withTimeout(promise, CHAT_LAYOUT_QUERY_TIMEOUT_MS).catch((error) => {
-      console.error(`[chat/layout] ${label} timed out or failed.`, error);
-      const remembered = getLastKnownAppSetting<T>(key);
-      return remembered ?? fallback;
-    });
-  const [
-    studyModeSetting,
-    calculatorSetting,
-    jobsSetting,
-    translateSetting,
-  ] = session
-    ? await Promise.all([
-        safeSettingRead(
-          "study mode setting",
-          STUDY_MODE_FEATURE_FLAG_KEY,
-          getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-          null
-        ),
-        safeSettingRead(
-          "calculator setting",
-          CALCULATOR_FEATURE_FLAG_KEY,
-          getAppSetting<string | boolean>(CALCULATOR_FEATURE_FLAG_KEY),
-          null
-        ),
-        safeSettingRead(
-          "jobs setting",
-          JOBS_FEATURE_FLAG_KEY,
-          getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-          null
-        ),
-        safeSettingRead(
-          "translate setting",
-          TRANSLATE_FEATURE_FLAG_KEY,
-          getAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY),
-          null
-        ),
-      ])
-    : [null, null, null, null];
+  const featureAccessSettings = session
+    ? await loadFeatureAccessSettingsByKeys(CHAT_LAYOUT_FEATURE_ACCESS_KEYS, {
+        source: "chat.layout.feature-access",
+        timeoutMs: CHAT_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS,
+      })
+    : null;
+  const getFeatureSetting = (key: string) =>
+    featureAccessSettings?.values.get(key) ?? null;
+  const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
+  const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
+  const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,

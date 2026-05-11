@@ -34,6 +34,10 @@ import {
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
+import {
+  loadFeatureAccessSettingsByKeys,
+  USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS,
+} from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -77,32 +81,37 @@ export async function loadFeatureAccessReadModel({
   userId?: string | null;
 }) {
   const [
-    calculatorSetting,
+    featureAccessSettings,
     customKnowledgeSetting,
-    documentUploadsSetting,
-    jobsSetting,
-    studySetting,
-    translateSetting,
     imageGenerationAccess,
   ] = await Promise.all([
-    safeAppSetting<string | boolean | null>(CALCULATOR_FEATURE_FLAG_KEY, null),
+    loadFeatureAccessSettingsByKeys(USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS, {
+      source: "api.read-models.feature-access",
+      timeoutMs: READ_TIMEOUT_MS + 3000,
+    }),
     safeAppSetting<string | boolean | null>(
       CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
       null
     ),
-    safeAppSetting<string | boolean | null>(
-      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-      null
-    ),
-    safeAppSetting<string | boolean | null>(JOBS_FEATURE_FLAG_KEY, null),
-    safeAppSetting<string | boolean | null>(STUDY_MODE_FEATURE_FLAG_KEY, null),
-    safeAppSetting<string | boolean | null>(TRANSLATE_FEATURE_FLAG_KEY, null),
     userId
       ? getImageGenerationAccess({ userId, userRole: role ?? "regular" }).catch(
           () => null
         )
       : Promise.resolve(null),
   ]);
+  const getFeatureSetting = (key: string): string | boolean | null => {
+    const value = featureAccessSettings.values.get(key);
+    return typeof value === "string" || typeof value === "boolean"
+      ? value
+      : null;
+  };
+  const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
+  const documentUploadsSetting = getFeatureSetting(
+    DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+  );
+  const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const studySetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
+  const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
 
   return {
     calculator: isFeatureEnabledForRole(

@@ -21,6 +21,7 @@ import {
   parseFeatureAccessModeStrict,
 } from "@/lib/feature-access";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
+import { rememberFeatureAccessSettingValue } from "@/lib/settings/feature-access-settings";
 import { withTimeout } from "@/lib/utils/async";
 
 type FeatureAccessFieldConfig = {
@@ -108,6 +109,21 @@ export async function POST(request: NextRequest) {
   const resolvedMode = mode;
 
   try {
+    const previousMode = parseFeatureAccessModeStrict(
+      await withTimeout(
+        getLiteAppSettingUncached(config.settingKey),
+        FEATURE_ACCESS_TIMEOUT_MS
+      )
+    );
+    console.info("[api/admin/feature-access] save:start", {
+      actorId: user.id,
+      fieldName,
+      previousMode,
+      requestedMode: resolvedMode,
+      settingKey: config.settingKey,
+      source: config.auditAction,
+    });
+
     await withTimeout(
       setLiteAppSetting({
         key: config.settingKey,
@@ -137,6 +153,13 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ error: "readback_mismatch" }, { status: 500 });
     }
+    rememberFeatureAccessSettingValue(config.settingKey, persistedMode);
+    console.info("[api/admin/feature-access] save:end", {
+      fieldName,
+      persistedMode,
+      settingKey: config.settingKey,
+      source: config.auditAction,
+    });
   } catch (error) {
     const status = isTimeoutError(error) ? 504 : 500;
     const responseCode = isTimeoutError(error) ? "timeout" : "save_failed";
@@ -178,7 +201,7 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json(
-    { ok: true, mode: resolvedMode },
+    { ok: true, mode: resolvedMode, settingKey: config.settingKey },
     {
       headers: {
         "Cache-Control": "no-store",
