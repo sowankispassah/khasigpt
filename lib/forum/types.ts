@@ -20,7 +20,7 @@ export type ForumCategorySummary = {
   position: number;
   isLocked: boolean;
   threadCount: number;
-  lastActivityAt: Date | null;
+  lastActivityAt: Date | string | null;
 };
 
 export type ForumTagSummary = {

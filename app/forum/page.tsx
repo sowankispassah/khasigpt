@@ -49,14 +49,19 @@ function serializeThread(
   };
 }
 
+function serializeNullableDate(value: Date | string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 function serializeCategory(
   category: ForumCategorySummary
 ): ForumCategorySummaryPayload {
   return {
     ...category,
-    lastActivityAt: category.lastActivityAt
-      ? category.lastActivityAt.toISOString()
-      : null,
+    lastActivityAt: serializeNullableDate(category.lastActivityAt),
   };
 }
 
