@@ -90,8 +90,19 @@ export type ForumThreadDetailResult = {
   viewerReactions: Record<string, ForumPostReactionType[]>;
 };
 
-export type ForumOverviewPayload = Omit<ForumOverviewResult, "threads"> & {
+export type ForumOverviewPayload = Omit<
+  ForumOverviewResult,
+  "categories" | "threads"
+> & {
+  categories: ForumCategorySummaryPayload[];
   threads: ForumThreadListItemPayload[];
+};
+
+export type ForumCategorySummaryPayload = Omit<
+  ForumCategorySummary,
+  "lastActivityAt"
+> & {
+  lastActivityAt: string | null;
 };
 
 export type ForumThreadDetailPayload = Omit<

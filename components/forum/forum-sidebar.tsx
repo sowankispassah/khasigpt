@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
-import type { ForumCategorySummary, ForumTagSummary } from "@/lib/forum/types";
+import type {
+  ForumCategorySummaryPayload,
+  ForumTagSummary,
+} from "@/lib/forum/types";
 import { cn } from "@/lib/utils";
 
 type ForumSidebarProps = {
-  categories: ForumCategorySummary[];
+  categories: ForumCategorySummaryPayload[];
   tags: ForumTagSummary[];
   activeCategorySlug?: string | null;
   activeTagSlug?: string | null;
@@ -89,7 +92,7 @@ export function ForumSidebar({
               </span>
               <span className="text-muted-foreground text-xs">
                 {categories.reduce(
-                  (acc, category) => acc + category.threadCount,
+                  (acc, category) => acc + Number(category.threadCount ?? 0),
                   0
                 )}
               </span>
@@ -116,7 +119,7 @@ export function ForumSidebar({
                 >
                   <span>{label}</span>
                   <span className="text-muted-foreground text-xs">
-                    {category.threadCount}
+                    {Number(category.threadCount ?? 0)}
                   </span>
                 </Link>
               </li>

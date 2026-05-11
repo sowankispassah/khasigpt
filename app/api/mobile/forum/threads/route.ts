@@ -27,16 +27,21 @@ function parseForumLimit(value: string | null) {
 }
 
 export async function GET(request: Request) {
-  const session = await withApiTiming(
-    "mobile.forum.auth",
-    () =>
-      getMobileSession(request, {
-        cookieTimeoutMs: OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS,
-      }),
-    { slowMs: 750 }
-  );
-
   try {
+    const session = await withApiTiming(
+      "mobile.forum.auth",
+      () =>
+        getMobileSession(request, {
+          cookieTimeoutMs: OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS,
+        }).catch((error) => {
+          console.warn(
+            "[api/mobile/forum/threads] Optional session lookup failed; continuing anonymous forum read.",
+            error
+          );
+          return null;
+        }),
+      { slowMs: 750 }
+    );
     const url = new URL(request.url);
     const overview = await withApiTiming(
       "mobile.forum.overview",

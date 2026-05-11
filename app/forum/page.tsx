@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 
 import { auth } from "@/app/(auth)/auth";
 import { ForumClient } from "@/components/forum/forum-client";
-import { ForumSidebar } from "@/components/forum/forum-sidebar";
 import {
+  type ForumCategorySummary,
   type ForumOverviewResult,
   type ForumThreadListItem,
   getForumOverview,
 } from "@/lib/forum/service";
-import type { ForumThreadListItemPayload } from "@/lib/forum/types";
+import type {
+  ForumCategorySummaryPayload,
+  ForumThreadListItemPayload,
+} from "@/lib/forum/types";
 import { withTimeout } from "@/lib/utils/async";
 
 export const metadata: Metadata = {
@@ -42,6 +45,17 @@ function serializeThread(
     updatedAt: thread.updatedAt.toISOString(),
     lastRepliedAt: thread.lastRepliedAt
       ? thread.lastRepliedAt.toISOString()
+      : null,
+  };
+}
+
+function serializeCategory(
+  category: ForumCategorySummary
+): ForumCategorySummaryPayload {
+  return {
+    ...category,
+    lastActivityAt: category.lastActivityAt
+      ? category.lastActivityAt.toISOString()
       : null,
   };
 }
@@ -88,55 +102,25 @@ export default async function ForumPage({ searchParams }: ForumPageProps) {
   });
 
   const initialThreads = overview.threads.map(serializeThread);
-  const composerCategories = overview.categories.map((category) => ({
-    id: category.id,
-    slug: category.slug,
-    name: category.name,
-    isLocked: category.isLocked,
-  }));
-  const composerTags = overview.tags.map((tag) => ({
-    id: tag.id,
-    slug: tag.slug,
-    label: tag.label,
-  }));
-  const totalThreads = overview.categories.reduce(
-    (total, category) => total + category.threadCount,
-    0
-  );
-
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10 lg:flex-row">
-      <div className="flex-1">
-        <ForumClient
-          categoriesForComposer={composerCategories}
-          filters={{
-            category: categorySlug,
-            tag: tagSlug,
-            search: searchQuery,
-          }}
-          hasMore={overview.hasMore}
-          initialError={loadError}
-          initialThreads={initialThreads}
-          nextCursor={overview.nextCursor}
-          subscribedThreadIds={overview.subscribedThreadIds}
-          tagsForComposer={composerTags}
-          totalThreads={totalThreads}
-          viewer={{
-            id: session?.user?.id ?? null,
-            name: session?.user?.name ?? null,
-            role: (session?.user?.role as "admin" | "regular" | null) ?? null,
-          }}
-        />
-      </div>
-      <div className="w-full lg:w-80">
-        <ForumSidebar
-          activeCategorySlug={categorySlug}
-          activeTagSlug={tagSlug}
-          categories={overview.categories}
-          search={searchQuery}
-          tags={overview.tags}
-        />
-      </div>
-    </div>
+    <ForumClient
+      filters={{
+        category: categorySlug,
+        tag: tagSlug,
+        search: searchQuery,
+      }}
+      hasMore={overview.hasMore}
+      initialCategories={overview.categories.map(serializeCategory)}
+      initialError={loadError}
+      initialTags={overview.tags}
+      initialThreads={initialThreads}
+      nextCursor={overview.nextCursor}
+      subscribedThreadIds={overview.subscribedThreadIds}
+      viewer={{
+        id: session?.user?.id ?? null,
+        name: session?.user?.name ?? null,
+        role: (session?.user?.role as "admin" | "regular" | null) ?? null,
+      }}
+    />
   );
 }

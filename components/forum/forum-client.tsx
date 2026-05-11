@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ForumCategoryManager } from "@/components/forum/forum-category-manager";
+import { ForumSidebar } from "@/components/forum/forum-sidebar";
 import { ThreadCard } from "@/components/forum/thread-card";
 import { LoaderIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
@@ -17,7 +18,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
+  ForumCategorySummaryPayload,
   ForumOverviewPayload,
+  ForumTagSummary,
   ForumThreadListItemPayload,
 } from "@/lib/forum/types";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
@@ -42,6 +45,8 @@ type ComposerTag = {
 
 type ForumClientProps = {
   initialThreads: ForumThreadListItemPayload[];
+  initialCategories: ForumCategorySummaryPayload[];
+  initialTags: ForumTagSummary[];
   initialError?: string | null;
   hasMore: boolean;
   nextCursor: string | null;
@@ -56,22 +61,18 @@ type ForumClientProps = {
     name: string | null;
     role: "admin" | "regular" | null;
   };
-  categoriesForComposer: ComposerCategory[];
-  tagsForComposer: ComposerTag[];
-  totalThreads: number;
 };
 
 export function ForumClient({
   initialThreads,
+  initialCategories,
+  initialTags,
   initialError = null,
   hasMore,
   nextCursor,
   subscribedThreadIds,
   filters,
   viewer,
-  categoriesForComposer,
-  tagsForComposer,
-  totalThreads,
 }: ForumClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -82,6 +83,12 @@ export function ForumClient({
   );
   const isAdmin = viewer.role === "admin";
   const [threads, setThreads] = useState(initialThreads);
+  const [categories, setCategories] = useState(initialCategories);
+  const [tags, setTags] = useState(initialTags);
+  const [loadError, setLoadError] = useState(initialError);
+  const [isRecoveringInitialLoad, setIsRecoveringInitialLoad] = useState(
+    Boolean(initialError)
+  );
   const [cursor, setCursor] = useState(nextCursor);
   const [hasMoreState, setHasMoreState] = useState(hasMore);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -93,17 +100,83 @@ export function ForumClient({
 
   useEffect(() => {
     setThreads(initialThreads);
+    setCategories(initialCategories);
+    setTags(initialTags);
+    setLoadError(initialError);
+    setIsRecoveringInitialLoad(Boolean(initialError));
     setCursor(nextCursor);
     setHasMoreState(hasMore);
     setSubscribedSet(new Set(subscribedThreadIds));
     setSearchTerm(filters.search ?? "");
   }, [
+    initialCategories,
+    initialError,
+    initialTags,
     initialThreads,
     nextCursor,
     hasMore,
     subscribedThreadIds,
     filters.search,
   ]);
+
+  const overviewQueryString = useMemo(() => {
+    const query = new URLSearchParams();
+    if (filters.category) {
+      query.set("category", filters.category);
+    }
+    if (filters.tag) {
+      query.set("tag", filters.tag);
+    }
+    if (filters.search) {
+      query.set("search", filters.search);
+    }
+    return query.toString();
+  }, [filters.category, filters.tag, filters.search]);
+
+  useEffect(() => {
+    if (!initialError) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function recoverForumOverview() {
+      setIsRecoveringInitialLoad(true);
+      try {
+        const endpoint = overviewQueryString
+          ? `/api/forum/threads?${overviewQueryString}`
+          : "/api/forum/threads";
+        const response = await fetchWithErrorHandlers(endpoint);
+        const data = (await response.json()) as ForumOverviewPayload;
+        if (cancelled) {
+          return;
+        }
+        setThreads(data.threads);
+        setCategories(data.categories);
+        setTags(data.tags);
+        setCursor(data.nextCursor);
+        setHasMoreState(data.hasMore);
+        setSubscribedSet(new Set(data.subscribedThreadIds));
+        setLoadError(null);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        console.error("[forum-client] Unable to recover forum overview.", error);
+        setLoadError("Unable to load forum right now. Please try again.");
+      } finally {
+        if (!cancelled) {
+          setIsRecoveringInitialLoad(false);
+        }
+      }
+    }
+
+    void recoverForumOverview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialError, overviewQueryString]);
 
   const handleThreadNavigateStart = () => {
     startGlobalProgress();
@@ -212,10 +285,51 @@ export function ForumClient({
     }
   };
 
+  const retryInitialLoad = async () => {
+    setIsRecoveringInitialLoad(true);
+    try {
+      const endpoint = overviewQueryString
+        ? `/api/forum/threads?${overviewQueryString}`
+        : "/api/forum/threads";
+      const response = await fetchWithErrorHandlers(endpoint);
+      const data = (await response.json()) as ForumOverviewPayload;
+      setThreads(data.threads);
+      setCategories(data.categories);
+      setTags(data.tags);
+      setCursor(data.nextCursor);
+      setHasMoreState(data.hasMore);
+      setSubscribedSet(new Set(data.subscribedThreadIds));
+      setLoadError(null);
+    } catch (error) {
+      console.error("[forum-client] Forum retry failed.", error);
+      setLoadError("Unable to load forum right now. Please try again.");
+    } finally {
+      setIsRecoveringInitialLoad(false);
+    }
+  };
+
+  const categoriesForComposer: ComposerCategory[] = categories.map(
+    (category) => ({
+      id: category.id,
+      slug: category.slug,
+      name: category.name,
+      isLocked: category.isLocked,
+    })
+  );
+  const tagsForComposer: ComposerTag[] = tags.map((tag) => ({
+    id: tag.id,
+    slug: tag.slug,
+    label: tag.label,
+  }));
+  const totalThreads = categories.reduce(
+    (total, category) => total + Number(category.threadCount ?? 0),
+    0
+  );
   const totalActiveThreads = threads.length;
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10 lg:flex-row">
+      <div className="flex-1 space-y-8">
         <section className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-8 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-6">
             <div className="space-y-4">
@@ -340,7 +454,16 @@ export function ForumClient({
         </section>
 
         <section className="space-y-4">
-          {initialError ? (
+          {loadError && isRecoveringInitialLoad ? (
+            <div className="rounded-2xl border border-border border-dashed p-10 text-center">
+              <p className="font-semibold text-lg">
+                <EditableTranslation
+                  defaultText="Loading forum discussions..."
+                  translationKey="forum.list.loading"
+                />
+              </p>
+            </div>
+          ) : loadError ? (
             <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-10 text-center">
               <p className="font-semibold text-lg">
                 <EditableTranslation
@@ -349,8 +472,19 @@ export function ForumClient({
                 />
               </p>
               <p className="mt-2 text-muted-foreground text-sm">
-                {initialError}
+                {loadError}
               </p>
+              <Button
+                className="mt-4 cursor-pointer"
+                disabled={isRecoveringInitialLoad}
+                onClick={retryInitialLoad}
+                variant="outline"
+              >
+                <EditableTranslation
+                  defaultText="Retry"
+                  translationKey="common.retry"
+                />
+              </Button>
             </div>
           ) : threads.length === 0 ? (
             <div className="rounded-2xl border border-border border-dashed p-10 text-center">
@@ -406,6 +540,16 @@ export function ForumClient({
             </div>
           ) : null}
         </section>
+      </div>
+      <div className="w-full lg:w-80">
+        <ForumSidebar
+          activeCategorySlug={filters.category}
+          activeTagSlug={filters.tag}
+          categories={categories}
+          search={filters.search}
+          tags={tags}
+        />
+      </div>
     </div>
   );
 }

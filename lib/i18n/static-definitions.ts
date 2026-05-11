@@ -7,6 +7,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Application brand name shown in app chrome.",
   },
   {
+    key: "common.retry",
+    defaultText: "Retry",
+    description: "Generic button label for retrying a failed action.",
+  },
+  {
     key: "greeting.title",
     defaultText: "Hi, {name}",
     description:
@@ -2272,6 +2277,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "forum.list.load_more",
     defaultText: "Load more discussions",
     description: "Button label to load additional forum threads.",
+  },
+  {
+    key: "forum.list.loading",
+    defaultText: "Loading forum discussions...",
+    description: "Status text shown while the forum list is recovering.",
   },
   {
     key: "forum.list.loading_more",
