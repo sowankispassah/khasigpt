@@ -34,6 +34,7 @@ export type AuthenticatedRequestContext = {
 type AuthOptions = {
   allowBearer?: boolean;
   allowCookie?: boolean;
+  bearerTimeoutMs?: number;
   cookieTimeoutMs?: number;
 };
 
@@ -105,23 +106,42 @@ export async function getAuthenticatedUser(
   {
     allowBearer = true,
     allowCookie = true,
+    bearerTimeoutMs,
     cookieTimeoutMs = DEFAULT_COOKIE_AUTH_TIMEOUT_MS,
   }: AuthOptions = {}
 ): Promise<AuthenticatedRequestContext | null> {
   if (allowBearer) {
     const token = getBearerToken(request);
     if (token) {
-      const verified = verifyMobileAuthToken(token);
-      if (verified) {
-        const user = await getUserById(verified.userId);
-        if (user?.isActive) {
-          const session = createSessionFromUser(user);
-          return {
-            source: "bearer",
-            session,
-            user: session.user,
-          };
+      const loadBearerContext = async () => {
+        const verified = verifyMobileAuthToken(token);
+        if (verified) {
+          const user = await getUserById(verified.userId);
+          if (user?.isActive) {
+            const session = createSessionFromUser(user);
+            return {
+              source: "bearer" as const,
+              session,
+              user: session.user,
+            };
+          }
         }
+        return null;
+      };
+      const bearerContext =
+        typeof bearerTimeoutMs === "number" && bearerTimeoutMs > 0
+          ? await withTimeout(loadBearerContext(), bearerTimeoutMs).catch(
+              (error) => {
+                console.warn(
+                  "[api/auth] Bearer auth lookup failed or timed out.",
+                  error
+                );
+                return null;
+              }
+            )
+          : await loadBearerContext();
+      if (bearerContext) {
+        return bearerContext;
       }
     }
   }

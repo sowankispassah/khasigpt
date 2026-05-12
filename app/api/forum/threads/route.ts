@@ -12,8 +12,8 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const FORUM_READ_TIMEOUT_MS = 12_000;
-const OPTIONAL_FORUM_AUTH_TIMEOUT_MS = 500;
+const FORUM_READ_TIMEOUT_MS = 15_000;
+const OPTIONAL_FORUM_AUTH_TIMEOUT_MS = 750;
 const FORUM_TIMEOUT_RESPONSE = {
   code: "timeout:forum",
   message: "Unable to load forum right now. Please try again.",
@@ -21,6 +21,7 @@ const FORUM_TIMEOUT_RESPONSE = {
 
 async function getForumReadSession(request: NextRequest) {
   return getMobileSession(request, {
+    bearerTimeoutMs: OPTIONAL_FORUM_AUTH_TIMEOUT_MS,
     cookieTimeoutMs: OPTIONAL_FORUM_AUTH_TIMEOUT_MS,
   });
 }
