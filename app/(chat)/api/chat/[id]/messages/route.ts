@@ -5,11 +5,13 @@ import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_PAGE_SIZE = 200;
+const CHAT_MESSAGES_DB_TIMEOUT_MS = 12_000;
 
 export async function GET(
   request: Request,
@@ -26,7 +28,10 @@ export async function GET(
     return new ChatSDKError("unauthorized:chat").toResponse();
   }
 
-  const chat = await getChatById({ id: chatId, includeDeleted: true });
+  const chat = await withTimeout(
+    getChatById({ id: chatId, includeDeleted: true }),
+    CHAT_MESSAGES_DB_TIMEOUT_MS
+  );
   if (!chat) {
     return new ChatSDKError("not_found:chat").toResponse();
   }
@@ -51,11 +56,14 @@ export async function GET(
       : CHAT_HISTORY_PAGE_SIZE;
   const before = beforeParam ? new Date(beforeParam) : null;
 
-  const { messages, hasMore } = await getMessagesByChatIdPage({
-    id: chatId,
-    limit,
-    before,
-  });
+  const { messages, hasMore } = await withTimeout(
+    getMessagesByChatIdPage({
+      id: chatId,
+      limit,
+      before,
+    }),
+    CHAT_MESSAGES_DB_TIMEOUT_MS
+  );
 
   const oldestMessage = messages[0];
   const oldestMessageAt =

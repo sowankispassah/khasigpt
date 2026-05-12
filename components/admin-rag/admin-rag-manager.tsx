@@ -113,6 +113,15 @@ const RAG_TYPES = [
 ] as const;
 const STATUS_OPTIONS: RagEntryStatus[] = ["active", "inactive", "archived"];
 const INITIAL_VISIBLE_RAG_ENTRIES = 10;
+const ADMIN_RAG_ACTION_TIMEOUT_MS = 25_000;
+
+type PendingAction =
+  | "archive"
+  | "bulk-active"
+  | "bulk-inactive"
+  | "restore"
+  | "restore-version"
+  | "submit";
 
 type RagFormState = {
   title: string;
@@ -148,6 +157,26 @@ const CHAT_SCOPE_LABELS: Record<RagChatScope, string> = {
 const sortCategories = (list: Array<{ id: string; name: string }>) =>
   [...list].sort((a, b) => a.name.localeCompare(b.name));
 
+function withClientTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(
+        new Error(`${label} timed out. Please retry; the page is still usable.`)
+      );
+    }, ADMIN_RAG_ACTION_TIMEOUT_MS);
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
 export function AdminRagManager({
   analytics,
   currentUser,
@@ -177,7 +206,7 @@ export function AdminRagManager({
   const [formState, setFormState] = useState(DEFAULT_FORM);
   const [versions, setVersions] = useState<RagVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [isCreatingCategory, startCreateCategory] = useTransition();
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -228,6 +257,29 @@ export function AdminRagManager({
   }, [clearProgressTimers]);
 
   useEffect(() => () => clearProgressTimers(), [clearProgressTimers]);
+  const isActionPending = pendingAction !== null;
+
+  const runAction = useCallback(
+    async <T,>(
+      action: PendingAction,
+      label: string,
+      task: () => Promise<T>
+    ): Promise<T> => {
+      if (pendingAction) {
+        throw new Error("Another RAG action is already running.");
+      }
+
+      setPendingAction(action);
+      beginProgress();
+      try {
+        return await withClientTimeout(task(), label);
+      } finally {
+        finishProgress();
+        setPendingAction(null);
+      }
+    },
+    [beginProgress, finishProgress, pendingAction]
+  );
 
   const filteredEntries = useMemo(() => {
     const query = deferredSearchTerm.trim().toLowerCase();
@@ -404,44 +456,37 @@ export function AdminRagManager({
       return;
     }
 
-    beginProgress();
-    startTransition(() => {
-      const action = editingEntry
+    void runAction("submit", "Saving RAG entry", () =>
+      editingEntry
         ? updateRagEntryAction({ id: editingEntry.entry.id, input: payload })
-        : createRagEntryAction(payload);
-
-      action
-        .then((entry) => {
-          if (!entry) {
-            return;
+        : createRagEntryAction(payload)
+    )
+      .then((entry) => {
+        setEntriesState((prev) => {
+          if (editingEntry) {
+            return prev.map((item) =>
+              item.entry.id === editingEntry.entry.id
+                ? serializeEntry(entry, item)
+                : item
+            );
           }
-          setEntriesState((prev) => {
-            if (editingEntry) {
-              return prev.map((item) =>
-                item.entry.id === editingEntry.entry.id
-                  ? serializeEntry(entry, item)
-                  : item
-              );
-            }
-            return [serializeEntry(entry, null), ...prev];
-          });
-          setAvailableTags((prev) => {
-            const next = new Set(prev);
-            for (const tag of entry.tags) {
-              next.add(tag);
-            }
-            return Array.from(next);
-          });
-          toast.success(editingEntry ? "Entry updated" : "Entry created");
-          setSheetOpen(false);
-        })
-        .catch((error) => {
-          toast.error(
-            error instanceof Error ? error.message : "Unable to save entry"
-          );
-        })
-        .finally(() => finishProgress());
-    });
+          return [serializeEntry(entry, null), ...prev];
+        });
+        setAvailableTags((prev) => {
+          const next = new Set(prev);
+          for (const tag of entry.tags) {
+            next.add(tag);
+          }
+          return Array.from(next);
+        });
+        toast.success(editingEntry ? "Entry updated" : "Entry created");
+        setSheetOpen(false);
+      })
+      .catch((error) => {
+        toast.error(
+          error instanceof Error ? error.message : "Unable to save entry"
+        );
+      });
   };
 
   useEffect(() => {
@@ -467,10 +512,12 @@ export function AdminRagManager({
       toast.error("Select entries first");
       return;
     }
-    beginProgress();
-    startTransition(() => {
-      bulkUpdateRagEntryStatusAction({ ids: selectedIds, status })
-        .then((updated) => {
+    void runAction(
+      status === "active" ? "bulk-active" : "bulk-inactive",
+      `Changing selected entries to ${status}`,
+      () => bulkUpdateRagEntryStatusAction({ ids: selectedIds, status })
+    )
+      .then((updated) => {
           setEntriesState((prev) =>
             prev.map((item) => {
               const match = updated.find((entry) => entry.id === item.entry.id);
@@ -480,9 +527,11 @@ export function AdminRagManager({
           toast.success("Status updated");
           setSelectedIds([]);
         })
-        .catch(() => toast.error("Unable to update status"))
-        .finally(() => finishProgress());
-    });
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to update status"
+        )
+      );
   };
 
   const handleArchiveSelected = () => {
@@ -490,9 +539,9 @@ export function AdminRagManager({
       toast.error("Select entries first");
       return;
     }
-    beginProgress();
-    startTransition(() => {
+    void runAction("archive", "Archiving selected entries", () =>
       deleteRagEntriesAction({ ids: selectedIds })
+    )
         .then(() => {
           setEntriesState((prev) =>
             prev.map((item) =>
@@ -510,15 +559,17 @@ export function AdminRagManager({
           toast.success("Entries archived");
           setSelectedIds([]);
         })
-        .catch(() => toast.error("Unable to archive entries"))
-        .finally(() => finishProgress());
-    });
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to archive entries"
+        )
+      );
   };
 
   const handleRestoreEntry = (id: string) => {
-    beginProgress();
-    startTransition(() => {
+    void runAction("restore", "Restoring RAG entry", () =>
       restoreRagEntryAction({ id })
+    )
         .then(() => {
           setEntriesState((prev) =>
             prev.map((item) =>
@@ -535,25 +586,29 @@ export function AdminRagManager({
           );
           toast.success("Entry restored");
         })
-        .catch(() => toast.error("Unable to restore entry"))
-        .finally(() => finishProgress());
-    });
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to restore entry"
+        )
+      );
   };
 
   const handleRestoreVersion = (versionId: string) => {
     if (!editingEntry) {
       return;
     }
-    beginProgress();
-    startTransition(() => {
+    void runAction("restore-version", "Restoring RAG version", () =>
       restoreRagVersionAction({ entryId: editingEntry.entry.id, versionId })
+    )
         .then(() => {
           toast.success("Version restored");
           setSheetOpen(false);
         })
-        .catch(() => toast.error("Unable to restore version"))
-        .finally(() => finishProgress());
-    });
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to restore version"
+        )
+      );
   };
 
   const formatDate = (value: string | null) => {
@@ -605,7 +660,7 @@ export function AdminRagManager({
             Curate domain knowledge for retrieval-augmented conversations.
           </p>
         </div>
-        <Button onClick={openCreateSheet} type="button">
+        <Button disabled={isActionPending} onClick={openCreateSheet} type="button">
           <PlusIcon />
           <span>New entry</span>
         </Button>
@@ -680,31 +735,52 @@ export function AdminRagManager({
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button
-            disabled={!selectedIds.length || isPending}
+            disabled={!selectedIds.length || isActionPending}
             onClick={() => handleBulkStatus("active")}
             size="sm"
             type="button"
             variant="outline"
           >
-            Activate
+            {pendingAction === "bulk-active" ? (
+              <>
+                <LoaderIcon className="animate-spin" />
+                <span>Activating...</span>
+              </>
+            ) : (
+              "Activate"
+            )}
           </Button>
           <Button
-            disabled={!selectedIds.length || isPending}
+            disabled={!selectedIds.length || isActionPending}
             onClick={() => handleBulkStatus("inactive")}
             size="sm"
             type="button"
             variant="outline"
           >
-            Deactivate
+            {pendingAction === "bulk-inactive" ? (
+              <>
+                <LoaderIcon className="animate-spin" />
+                <span>Deactivating...</span>
+              </>
+            ) : (
+              "Deactivate"
+            )}
           </Button>
           <Button
-            disabled={!selectedIds.length || isPending}
+            disabled={!selectedIds.length || isActionPending}
             onClick={handleArchiveSelected}
             size="sm"
             type="button"
             variant="destructive"
           >
-            Archive
+            {pendingAction === "archive" ? (
+              <>
+                <LoaderIcon className="animate-spin" />
+                <span>Archiving...</span>
+              </>
+            ) : (
+              "Archive"
+            )}
           </Button>
           <p className="text-muted-foreground text-sm">
             {selectedIds.length} selected
@@ -826,12 +902,20 @@ export function AdminRagManager({
                         </Button>
                         {item.entry.status === "archived" ? (
                           <Button
+                            disabled={isActionPending}
                             onClick={() => handleRestoreEntry(item.entry.id)}
                             size="sm"
                             type="button"
                             variant="secondary"
                           >
-                            Restore
+                            {pendingAction === "restore" ? (
+                              <>
+                                <LoaderIcon className="animate-spin" />
+                                <span>Restoring...</span>
+                              </>
+                            ) : (
+                              "Restore"
+                            )}
                           </Button>
                         ) : null}
                         <button
@@ -1069,16 +1153,24 @@ export function AdminRagManager({
             {editingEntry ? (
               <VersionTimeline
                 isLoading={versionsLoading}
+                isRestoring={pendingAction === "restore-version"}
                 onRestore={handleRestoreVersion}
                 versions={versions}
               />
             ) : null}
             <div className="flex items-center gap-2">
-              <Button disabled={isPending} type="submit">
-                {isPending ? <LoaderIcon /> : null}
-                <span>{editingEntry ? "Save changes" : "Create entry"}</span>
+              <Button disabled={isActionPending} type="submit">
+                {pendingAction === "submit" ? (
+                  <>
+                    <LoaderIcon className="animate-spin" />
+                    <span>{editingEntry ? "Saving..." : "Creating..."}</span>
+                  </>
+                ) : (
+                  <span>{editingEntry ? "Save changes" : "Create entry"}</span>
+                )}
               </Button>
               <Button
+                disabled={isActionPending}
                 onClick={() => {
                   setSheetOpen(false);
                   resetForm();
@@ -1286,10 +1378,12 @@ function TagInput({
 function VersionTimeline({
   versions,
   isLoading,
+  isRestoring,
   onRestore,
 }: {
   versions: RagVersion[];
   isLoading: boolean;
+  isRestoring: boolean;
   onRestore: (versionId: string) => void;
 }) {
   const PAGE_SIZE = 3;
@@ -1338,12 +1432,20 @@ function VersionTimeline({
                     ) : null}
                   </div>
                   <Button
+                    disabled={isRestoring}
                     onClick={() => onRestore(version.id)}
                     size="sm"
                     type="button"
                     variant="outline"
                   >
-                    Restore
+                    {isRestoring ? (
+                      <>
+                        <LoaderIcon className="animate-spin" />
+                        <span>Restoring...</span>
+                      </>
+                    ) : (
+                      "Restore"
+                    )}
                   </Button>
                 </div>
               </li>

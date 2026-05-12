@@ -24,7 +24,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/utils/async";
 import { isDefaultChatRagScope } from "./chat-scope";
 import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
 import {
@@ -58,88 +58,19 @@ const diffEngine = new diff_match_patch();
 const GEMINI_FILE_SEARCH_METADATA_KEY = "geminiFileSearch";
 const JOBS_RAG_KIND = "job_posting";
 const JOBS_RAG_SOURCE = "supabase_jobs_table";
-const JOBS_REBUILD_PAGE_SIZE = 1000;
+const RAG_FILE_SEARCH_SYNC_TIMEOUT_MS = 15_000;
+
+function customAdminRagEntryCondition() {
+  return sql<boolean>`NOT (
+    COALESCE(${ragEntry.metadata} ->> 'jobs_kind', '') = ${JOBS_RAG_KIND}
+    AND COALESCE(${ragEntry.metadata} ->> 'jobs_source', '') = ${JOBS_RAG_SOURCE}
+  )`;
+}
 
 function toMetadataRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function isSupabaseJobPostingEntry(entry: RagEntryModel) {
-  const metadata = toMetadataRecord(entry.metadata);
-  return (
-    metadata.jobs_kind === JOBS_RAG_KIND &&
-    metadata.jobs_source === JOBS_RAG_SOURCE
-  );
-}
-
-async function listLiveJobIds() {
-  const supabase = createSupabaseAdminClient();
-  const ids = new Set<string>();
-  let from = 0;
-
-  while (true) {
-    const to = from + JOBS_REBUILD_PAGE_SIZE - 1;
-    const { data, error } = await supabase
-      .from("jobs")
-      .select("id")
-      .order("created_at", { ascending: false })
-      .range(from, to);
-
-    if (error) {
-      throw new Error(`[rag] Failed to load live jobs: ${error.message}`);
-    }
-
-    const rows = data ?? [];
-    for (const row of rows) {
-      if (typeof row.id === "string" && row.id.trim().length > 0) {
-        ids.add(row.id.trim());
-      }
-    }
-
-    if (rows.length < JOBS_REBUILD_PAGE_SIZE) {
-      break;
-    }
-
-    from += JOBS_REBUILD_PAGE_SIZE;
-  }
-
-  return ids;
-}
-
-async function archiveOrphanedJobEntry(entry: RagEntryModel) {
-  const now = new Date();
-  const metadata = toMetadataRecord(entry.metadata);
-  const {
-    [GEMINI_FILE_SEARCH_METADATA_KEY]: _omitGeminiFileSearch,
-    ...restMetadata
-  } = metadata;
-
-  // Force the sync path down the de-index branch before marking the entry archived.
-  await syncGeminiFileSearchIndex({
-    ...entry,
-    status: "archived",
-  });
-
-  await db
-    .update(ragEntry)
-    .set({
-      status: "archived",
-      metadata: {
-        ...restMetadata,
-        jobs_orphaned_at: now.toISOString(),
-        jobs_orphaned_reason: "missing_jobs_row",
-      },
-      updatedAt: now,
-      embeddingStatus: "ready",
-      embeddingModel: "gemini-file-search",
-      embeddingDimensions: null,
-      embeddingError: null,
-      embeddingUpdatedAt: now,
-      supabaseVectorId: null,
-    })
-    .where(eq(ragEntry.id, entry.id));
 }
 
 function toSanitizedEntry(
@@ -543,6 +474,58 @@ async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
   }
 }
 
+async function markFileSearchSyncFailed({
+  entryId,
+  error,
+  source,
+}: {
+  entryId: string;
+  error: unknown;
+  source: string;
+}) {
+  await db
+    .update(ragEntry)
+    .set({
+      embeddingStatus: "failed",
+      embeddingError:
+        error instanceof Error
+          ? error.message
+          : "File Search indexing timed out or failed",
+      embeddingUpdatedAt: new Date(),
+    })
+    .where(eq(ragEntry.id, entryId));
+
+  console.warn("[rag] File Search sync failed or timed out", {
+    entryId,
+    source,
+    timeoutMs: RAG_FILE_SEARCH_SYNC_TIMEOUT_MS,
+    error,
+  });
+}
+
+async function syncGeminiFileSearchIndexBounded(
+  entry: RagEntryModel,
+  source: string
+) {
+  try {
+    await withTimeout(
+      syncGeminiFileSearchIndex(entry),
+      RAG_FILE_SEARCH_SYNC_TIMEOUT_MS,
+      () => {
+        console.warn("[rag] File Search sync timed out", {
+          entryId: entry.id,
+          source,
+          timeoutMs: RAG_FILE_SEARCH_SYNC_TIMEOUT_MS,
+        });
+      }
+    );
+    return true;
+  } catch (error) {
+    await markFileSearchSyncFailed({ entryId: entry.id, error, source });
+    return false;
+  }
+}
+
 async function normalizeModelAssignments(modelIds: string[]) {
   if (!modelIds.length) {
     return [];
@@ -657,18 +640,7 @@ export async function createRagEntry({
     editorId: actorId,
   });
 
-  try {
-    await syncGeminiFileSearchIndex(created);
-  } catch (error) {
-    await db
-      .update(ragEntry)
-      .set({
-        embeddingStatus: "failed",
-        embeddingError:
-          error instanceof Error ? error.message : "Embedding failed",
-      })
-      .where(eq(ragEntry.id, created.id));
-  }
+  await syncGeminiFileSearchIndexBounded(created, "rag.entry.create");
 
   const refreshed = await getEntryById(created.id);
   const categoryName = await getCategoryNameById(created.categoryId);
@@ -772,22 +744,7 @@ export async function updateRagEntry({
     editorId: actorId,
   });
 
-  if (shouldReembed) {
-    try {
-      await syncGeminiFileSearchIndex(updated);
-    } catch (error) {
-      await db
-        .update(ragEntry)
-        .set({
-          embeddingStatus: "failed",
-          embeddingError:
-            error instanceof Error ? error.message : "Embedding failed",
-        })
-        .where(eq(ragEntry.id, id));
-    }
-  } else {
-    await syncGeminiFileSearchIndex(updated);
-  }
+  await syncGeminiFileSearchIndexBounded(updated, "rag.entry.update");
 
   const refreshed = await getEntryById(updated.id);
   const categoryName = await getCategoryNameById(updated.categoryId);
@@ -815,7 +772,14 @@ export async function bulkUpdateRagStatus({
         updatedAt: new Date(),
         version: sql`${ragEntry.version} + 1`,
       })
-      .where(inArray(ragEntry.id, ids))
+      .where(
+        and(
+          inArray(ragEntry.id, ids),
+          isNull(ragEntry.deletedAt),
+          isNull(ragEntry.personalForUserId),
+          customAdminRagEntryCondition()
+        )
+      )
       .returning(),
   ]);
 
@@ -839,8 +803,13 @@ export async function bulkUpdateRagStatus({
       editorId: actorId,
     });
 
-    await syncGeminiFileSearchIndex(entry);
   }
+
+  await Promise.all(
+    updated.map((entry) =>
+      syncGeminiFileSearchIndexBounded(entry, "rag.entry.bulk_status")
+    )
+  );
 
   const categoryNames = await Promise.all(
     updated.map((entry) => getCategoryNameById(entry.categoryId))
@@ -852,9 +821,11 @@ export async function bulkUpdateRagStatus({
 }
 
 export async function deleteRagEntries({
+  customOnly = false,
   ids,
   actorId,
 }: {
+  customOnly?: boolean;
   ids: string[];
   actorId: string;
 }) {
@@ -871,7 +842,16 @@ export async function deleteRagEntries({
         updatedAt: new Date(),
         version: sql`${ragEntry.version} + 1`,
       })
-      .where(inArray(ragEntry.id, ids))
+      .where(
+        customOnly
+          ? and(
+              inArray(ragEntry.id, ids),
+              isNull(ragEntry.deletedAt),
+              isNull(ragEntry.personalForUserId),
+              customAdminRagEntryCondition()
+            )
+          : inArray(ragEntry.id, ids)
+      )
       .returning(),
   ]);
 
@@ -895,8 +875,13 @@ export async function deleteRagEntries({
       editorId: actorId,
     });
 
-    await syncGeminiFileSearchIndex(entry);
   }
+
+  await Promise.all(
+    updated.map((entry) =>
+      syncGeminiFileSearchIndexBounded(entry, "rag.entry.archive")
+    )
+  );
 }
 
 export async function restoreRagEntry({
@@ -941,7 +926,7 @@ export async function restoreRagEntry({
     editorId: actorId,
   });
 
-  await syncGeminiFileSearchIndex(updated);
+  await syncGeminiFileSearchIndexBounded(updated, "rag.entry.restore");
 }
 
 export function getRagVersions(entryId: string) {
@@ -1027,7 +1012,7 @@ export async function restoreRagVersion({
     editorId: actorId,
   });
 
-  await syncGeminiFileSearchIndex(updated);
+  await syncGeminiFileSearchIndexBounded(updated, "rag.entry.version.restore");
 }
 
 export async function listPersonalKnowledgeForUser(userId: string) {
@@ -1247,7 +1232,10 @@ export async function updateUserAddedKnowledgeApproval({
     editorId: actorId,
   });
 
-  await syncGeminiFileSearchIndex(updated);
+  await syncGeminiFileSearchIndexBounded(
+    updated,
+    "user.personal_knowledge.review"
+  );
 
   const categoryName = await getCategoryNameById(updated.categoryId);
   return toSanitizedEntry(updated, { categoryName });
@@ -1267,7 +1255,13 @@ export async function listAdminRagEntries(
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
     .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
-    .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)))
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        isNull(ragEntry.personalForUserId),
+        customAdminRagEntryCondition()
+      )
+    )
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
 
@@ -1295,7 +1289,13 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
       pendingEmbeddings: sql<number>`SUM(CASE WHEN ${ragEntry.embeddingStatus} <> 'ready' THEN 1 ELSE 0 END)`,
     })
     .from(ragEntry)
-    .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)));
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        isNull(ragEntry.personalForUserId),
+        customAdminRagEntryCondition()
+      )
+    );
 
   const creatorStats = await db
     .select({
@@ -1307,7 +1307,13 @@ export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
-    .where(and(isNull(ragEntry.deletedAt), isNull(ragEntry.personalForUserId)))
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        isNull(ragEntry.personalForUserId),
+        customAdminRagEntryCondition()
+      )
+    )
     .groupBy(user.id, user.firstName, user.lastName, user.email)
     .orderBy(desc(sql<number>`COUNT(${ragEntry.id})`))
     .limit(6);
@@ -1479,60 +1485,32 @@ export async function rebuildAllRagFileSearchIndexes() {
   const entries = await db
     .select()
     .from(ragEntry)
-    .where(isNull(ragEntry.deletedAt));
-  const liveJobIds = await listLiveJobIds();
+    .where(
+      and(
+        isNull(ragEntry.deletedAt),
+        isNull(ragEntry.personalForUserId),
+        customAdminRagEntryCondition()
+      )
+    );
   let reindexed = 0;
-  let archivedOrphanJobs = 0;
-  let skippedLiveJobEntries = 0;
   let failed = 0;
 
   for (const entry of entries) {
-    if (isSupabaseJobPostingEntry(entry)) {
-      if (!liveJobIds.has(entry.id)) {
-        try {
-          await archiveOrphanedJobEntry(entry);
-          archivedOrphanJobs += 1;
-        } catch (error) {
-          failed += 1;
-          console.warn("[rag] orphaned job cleanup failed during File Search rebuild", {
-            entryId: entry.id,
-            error,
-          });
-        }
-        continue;
-      }
-
-      skippedLiveJobEntries += 1;
-      continue;
-    }
-
-    try {
-      await syncGeminiFileSearchIndex(entry);
+    const synced = await syncGeminiFileSearchIndexBounded(
+      entry,
+      "rag.file_search.rebuild"
+    );
+    if (synced) {
       reindexed += 1;
-    } catch (error) {
+    } else {
       failed += 1;
-      await db
-        .update(ragEntry)
-        .set({
-          embeddingStatus: "failed",
-          embeddingError:
-            error instanceof Error
-              ? error.message
-              : "File Search re-index failed",
-        })
-        .where(eq(ragEntry.id, entry.id));
-      console.warn("[rag] rebuild File Search index failed", {
-        entryId: entry.id,
-        error,
-      });
     }
   }
 
   return {
     processed: entries.length,
     reindexed,
-    archivedOrphanJobs,
-    skippedLiveJobEntries,
     failed,
+    scope: "custom_rag",
   };
 }

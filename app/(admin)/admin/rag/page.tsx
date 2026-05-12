@@ -1,11 +1,7 @@
 import nextDynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import {
-  rebuildRagFileSearchIndexAction,
-} from "@/app/(admin)/actions";
 import { auth } from "@/app/(auth)/auth";
-import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
@@ -22,6 +18,7 @@ import {
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 import { CustomKnowledgeToggle } from "./custom-knowledge-toggle";
+import { RebuildFileSearchButton } from "./rebuild-file-search-button";
 
 export const dynamic = "force-dynamic";
 
@@ -150,14 +147,9 @@ export default async function AdminRagPage() {
           <p className="text-muted-foreground text-sm">
             Re-index all knowledge entries into Gemini File Search.
           </p>
-          <form
-            action={rebuildRagFileSearchIndexAction}
-            className="flex justify-start"
-          >
-            <ActionSubmitButton pendingLabel="Rebuilding...">
-              Rebuild now
-            </ActionSubmitButton>
-          </form>
+          <div className="flex justify-start">
+            <RebuildFileSearchButton />
+          </div>
         </div>
       </section>
 

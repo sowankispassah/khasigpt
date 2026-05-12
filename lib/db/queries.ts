@@ -1115,6 +1115,31 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
   }
 }
 
+export async function updateMessagePartsById({
+  id,
+  parts,
+  attachments = [],
+}: {
+  id: string;
+  parts: DBMessage["parts"];
+  attachments?: DBMessage["attachments"];
+}) {
+  try {
+    const [updated] = await db
+      .update(message)
+      .set({ parts, attachments })
+      .where(eq(message.id, id))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    console.error("Failed to update message parts", _error);
+    const cause =
+      _error instanceof Error ? _error.message : "Failed to update message";
+    throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
 export async function getMessagesByChatId({ id }: { id: string }) {
   try {
     return await db

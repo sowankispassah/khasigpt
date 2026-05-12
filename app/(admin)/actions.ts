@@ -4466,7 +4466,7 @@ export async function bulkUpdateRagEntryStatusAction({
 
 export async function deleteRagEntriesAction({ ids }: { ids: string[] }) {
   const actor = await requireAdmin();
-  await deleteRagEntries({ ids, actorId: actor.id });
+  await deleteRagEntries({ ids, actorId: actor.id, customOnly: true });
   await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "rag.entry.archive",

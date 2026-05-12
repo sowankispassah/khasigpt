@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { put } from "@vercel/blob";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -18,6 +19,7 @@ import {
   getChatById,
   saveChat,
   saveMessages,
+  updateMessagePartsById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
@@ -50,6 +52,7 @@ const ALLOWED_IMAGE_HOST_SUFFIXES = [
   "blob.vercel-storage.com",
   "public.blob.vercel-storage.com",
 ];
+type ImageGenerationStatus = "generating" | "completed" | "failed" | "cancelled";
 
 function hostMatchesSuffix(hostname: string, suffix: string) {
   return hostname === suffix || hostname.endsWith(`.${suffix}`);
@@ -204,6 +207,46 @@ function buildFallbackTitle(prompt: string) {
   return `${normalized.slice(0, 77).trim()}...`;
 }
 
+function buildImageGenerationStatusParts({
+  message,
+  prompt,
+  status,
+}: {
+  message?: string;
+  prompt: string;
+  status: ImageGenerationStatus;
+}) {
+  const fallbackMessage =
+    message ??
+    (status === "generating"
+      ? "Generating image..."
+      : status === "cancelled"
+        ? "Image generation was cancelled."
+        : status === "failed"
+          ? "Image generation failed."
+          : "Image generated.");
+
+  return [
+    {
+      type: "data-imageGeneration" as const,
+      data: {
+        status,
+        prompt,
+        message: fallbackMessage,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+    ...(status === "failed" || status === "cancelled"
+      ? [
+          {
+            type: "text" as const,
+            text: fallbackMessage,
+          },
+        ]
+      : []),
+  ];
+}
+
 async function enforceImageRateLimit(
   request: Request
 ): Promise<Response | null> {
@@ -300,15 +343,6 @@ export async function POST(request: Request) {
     return new ChatSDKError("forbidden:chat").toResponse();
   }
 
-  if (!existingChat) {
-    await saveChat({
-      id: chatId,
-      userId: session.user.id,
-      title: buildFallbackTitle(displayText),
-      visibility: visibility as VisibilityType,
-    });
-  }
-
   const resolvedImageUrls = Array.from(
     new Set([...(imageUrls ?? []), ...(imageUrl ? [imageUrl] : [])])
   ).filter(Boolean);
@@ -403,6 +437,39 @@ export async function POST(request: Request) {
     },
   ];
 
+  if (!existingChat) {
+    await saveChat({
+      id: chatId,
+      userId: session.user.id,
+      title: buildFallbackTitle(displayText),
+      visibility: visibility as VisibilityType,
+    });
+  }
+
+  await saveMessages({
+    messages: [
+      {
+        chatId,
+        id: resolvedUserMessageId,
+        role: "user",
+        parts: userParts,
+        attachments: [],
+        createdAt: now,
+      },
+      {
+        chatId,
+        id: assistantMessageId,
+        role: "assistant",
+        parts: buildImageGenerationStatusParts({
+          prompt: displayText,
+          status: "generating",
+        }),
+        attachments: [],
+        createdAt: new Date(),
+      },
+    ],
+  });
+
   try {
     const generationRequest = await buildGenerationRequest({
       prompt,
@@ -418,12 +485,27 @@ export async function POST(request: Request) {
       preferredLanguage,
     });
 
-    const assistantParts = images.map((image, index) => ({
-      type: "file" as const,
-      url: `data:${image.mediaType};base64,${image.base64}`,
-      mediaType: image.mediaType,
-      filename: `${imageFilenamePrefix}-${index + 1}`,
-    }));
+    const assistantParts = await Promise.all(
+      images.map(async (image, index) => {
+        const extension = image.mediaType.includes("png") ? "png" : "jpg";
+        const filename = `${imageFilenamePrefix}-${index + 1}`;
+        const blob = await put(
+          `generated-images/${session.user.id}/${chatId}/${assistantMessageId}-${index + 1}.${extension}`,
+          Buffer.from(image.base64, "base64"),
+          {
+            access: "public",
+            contentType: image.mediaType,
+          }
+        );
+
+        return {
+          type: "file" as const,
+          url: blob.url,
+          mediaType: image.mediaType,
+          filename,
+        };
+      })
+    );
 
     await deductImageCredits({
       userId: session.user.id,
@@ -432,25 +514,10 @@ export async function POST(request: Request) {
       allowManualCredits: true,
     });
 
-    await saveMessages({
-      messages: [
-        {
-          chatId,
-          id: resolvedUserMessageId,
-          role: "user",
-          parts: userParts,
-          attachments: [],
-          createdAt: now,
-        },
-        {
-          chatId,
-          id: assistantMessageId,
-          role: "assistant",
-          parts: assistantParts,
-          attachments: [],
-          createdAt: new Date(),
-        },
-      ],
+    await updateMessagePartsById({
+      id: assistantMessageId,
+      parts: assistantParts,
+      attachments: [],
     });
 
     const assistantMessage: ChatMessage = {
@@ -471,6 +538,28 @@ export async function POST(request: Request) {
       }
     );
   } catch (error) {
+    const status: ImageGenerationStatus = request.signal.aborted
+      ? "cancelled"
+      : "failed";
+    await updateMessagePartsById({
+      id: assistantMessageId,
+      parts: buildImageGenerationStatusParts({
+        message:
+          status === "cancelled"
+            ? "Image generation was cancelled before it completed."
+            : "Image generation failed. Please try again.",
+        prompt: displayText,
+        status,
+      }),
+      attachments: [],
+    }).catch((updateError) => {
+      console.error("Failed to persist image generation failure status", {
+        chatId,
+        assistantMessageId,
+        updateError,
+      });
+    });
+
     if (error instanceof ChatSDKError) {
       return error.toResponse();
     }
