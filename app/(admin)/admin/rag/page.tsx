@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import {
   rebuildRagFileSearchIndexAction,
-  updateCustomKnowledgeSettingsAction,
 } from "@/app/(admin)/actions";
 import { auth } from "@/app/(auth)/auth";
 import { ActionSubmitButton } from "@/components/action-submit-button";
@@ -12,7 +11,7 @@ import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-m
 import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
+import { getLiteAppSettingUncached } from "@/lib/db/app-settings-lite";
 import { getRagChatScope } from "@/lib/rag/chat-scope";
 import {
   getRagAnalyticsSummary,
@@ -20,7 +19,9 @@ import {
   listRagCategories,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
+import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
+import { CustomKnowledgeToggle } from "./custom-knowledge-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +97,9 @@ export default async function AdminRagPage() {
 
   const customKnowledgeEnabledSetting = await safeQuery(
     "custom knowledge setting",
-    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+    getLiteAppSettingUncached<string | boolean>(
+      CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY
+    ),
     null
   );
   const categoriesPromise = safeQuery("RAG categories", listRagCategories(), []);
@@ -126,10 +129,10 @@ export default async function AdminRagPage() {
     email: session.user.email ?? null,
   };
 
-  const customKnowledgeEnabled =
-    customKnowledgeEnabledSetting === true ||
-    (typeof customKnowledgeEnabledSetting === "string" &&
-      customKnowledgeEnabledSetting.toLowerCase() === "true");
+  const customKnowledgeEnabled = parseBooleanSetting(
+    customKnowledgeEnabledSetting,
+    false
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -138,25 +141,7 @@ export default async function AdminRagPage() {
         <p className="mt-1 text-muted-foreground text-sm">
           Enable or disable custom knowledge for chats.
         </p>
-        <form
-          action={updateCustomKnowledgeSettingsAction}
-          className="mt-4 grid gap-4"
-        >
-          <label className="flex items-center gap-3 font-medium text-sm">
-            <input
-              className="h-4 w-4 cursor-pointer"
-              defaultChecked={customKnowledgeEnabled}
-              name="customKnowledgeEnabled"
-              type="checkbox"
-            />
-            Enable custom knowledge for chats
-          </label>
-          <div className="flex justify-end">
-            <ActionSubmitButton pendingLabel="Saving...">
-              Save RAG settings
-            </ActionSubmitButton>
-          </div>
-        </form>
+        <CustomKnowledgeToggle initialEnabled={customKnowledgeEnabled} />
       </section>
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">

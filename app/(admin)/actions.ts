@@ -987,16 +987,19 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
   const enabled = parseBoolean(formData.get("customKnowledgeEnabled"));
-  await setAppSetting({
-    key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
-    value: enabled,
-  });
+  await withTimeout(
+    setAppSetting({
+      key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+      value: enabled,
+    }),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS
+  );
   revalidateAppSettingCache(
     CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
     "settings.custom_knowledge.update"
   );
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "settings.custom_knowledge.update",
     target: { setting: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY },
@@ -1004,7 +1007,6 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
   });
 
   revalidateAdminSettingsSection("settings.custom_knowledge.update");
-  revalidateAdminPath("/admin/rag", "settings.custom_knowledge.update");
 }
 
 export async function rebuildRagFileSearchIndexAction() {
