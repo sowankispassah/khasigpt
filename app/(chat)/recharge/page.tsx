@@ -15,7 +15,7 @@ import {
   listPricingPlans,
 } from "@/lib/db/queries";
 import {
-  getTranslationsForKeys,
+  getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
 
 export default async function RechargePage() {
@@ -40,22 +40,14 @@ export default async function RechargePage() {
     isImageGenerationEnabledForAllUsers(),
   ]);
 
-  const planTranslationDefinitions = plans.flatMap((plan) => [
-    {
-      key: `recharge.plan.${plan.id}.name`,
-      defaultText: plan.name,
-      description: `Pricing plan name for ${plan.name}`,
-    },
-    {
-      key: `recharge.plan.${plan.id}.description`,
-      defaultText: plan.description ?? "",
-      description: `Pricing plan details for ${plan.name}`,
-    },
+  const planTranslationKeys = plans.flatMap((plan) => [
+    `recharge.plan.${plan.id}.name`,
+    `recharge.plan.${plan.id}.description`,
   ]);
 
   const planTranslations =
-    planTranslationDefinitions.length > 0
-      ? await getTranslationsForKeys(preferredLanguage, planTranslationDefinitions)
+    planTranslationKeys.length > 0
+      ? await getTranslationValuesForKeys(preferredLanguage, planTranslationKeys)
       : {};
 
   const formatCreditValue = (credits: number) =>

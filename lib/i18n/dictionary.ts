@@ -887,3 +887,62 @@ export async function getTranslationsForKeys(
     );
   }
 }
+
+export async function getTranslationValuesForKeys(
+  preferredCode: string | null | undefined,
+  keys: string[]
+) {
+  const uniqueKeys = Array.from(
+    new Set(keys.map((key) => key.trim()).filter(Boolean))
+  );
+
+  if (!uniqueKeys.length || shouldSkipTranslationDb()) {
+    return {};
+  }
+
+  try {
+    const { activeLanguage } = await withTimeout(
+      resolveLanguage(preferredCode),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
+
+    if (activeLanguage.isDefault) {
+      return {};
+    }
+
+    const rows = await withTimeout(
+      db
+        .select({
+          key: translationKey.key,
+          value: translationValue.value,
+        })
+        .from(translationKey)
+        .innerJoin(
+          translationValue,
+          and(
+            eq(translationValue.translationKeyId, translationKey.id),
+            eq(translationValue.languageId, activeLanguage.id)
+          )
+        )
+        .where(inArray(translationKey.key, uniqueKeys)),
+      TRANSLATION_QUERY_TIMEOUT_MS
+    );
+
+    clearTranslationDbFailure();
+    return rows.reduce<Record<string, string>>((result, row) => {
+      if (row.value.trim().length > 0) {
+        result[row.key] = row.value;
+      }
+      return result;
+    }, {});
+  } catch (error) {
+    if (shouldMarkTranslationDbFailure(error)) {
+      markTranslationDbFailure();
+    }
+    logTranslationError(
+      "[i18n] Failed to load dynamic translation values.",
+      error
+    );
+    return {};
+  }
+}
