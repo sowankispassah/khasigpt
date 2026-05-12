@@ -2,13 +2,17 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
-import { loadLanguageReadModel } from "@/lib/api/read-models";
+import {
+  loadCachedLanguageReadModel,
+  loadLanguageReadModel,
+} from "@/lib/api/read-models";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const LANGUAGE_READ_TIMEOUT_MS = 8000;
+const LANGUAGE_CACHE_FALLBACK_TIMEOUT_MS = 3000;
 
 function normalizeLanguageCode(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null;
@@ -28,24 +32,49 @@ export async function GET(request: Request) {
     );
   }
 
+  let loadedFromCacheFallback = false;
+  let languageSnapshot: Awaited<ReturnType<typeof loadLanguageReadModel>>;
+
   try {
-    const languageSnapshot = await withApiTiming(
-      "mobile.i18n",
-      () =>
-        withTimeout(
-          loadLanguageReadModel(preferredLanguage, {
-            requireFresh: true,
-            timeoutMs: LANGUAGE_READ_TIMEOUT_MS,
-          }),
-          LANGUAGE_READ_TIMEOUT_MS,
-          () => {
-            console.warn(
-              `[api/mobile/i18n] Timed out while loading ${preferredLanguage}.`
-            );
-          }
-        ),
-      { slowMs: 750 }
-    );
+    try {
+      languageSnapshot = await withApiTiming(
+        "mobile.i18n.fresh",
+        () =>
+          withTimeout(
+            loadLanguageReadModel(preferredLanguage, {
+              requireFresh: true,
+              timeoutMs: LANGUAGE_READ_TIMEOUT_MS,
+            }),
+            LANGUAGE_READ_TIMEOUT_MS,
+            () => {
+              console.warn(
+                `[api/mobile/i18n] Timed out while loading fresh ${preferredLanguage}.`
+              );
+            }
+          ),
+        { slowMs: 750 }
+      );
+    } catch (freshError) {
+      loadedFromCacheFallback = true;
+      console.error("[api/mobile/i18n] Fresh language bundle failed; using cached bundle.", {
+        error: freshError,
+        language: preferredLanguage,
+      });
+      languageSnapshot = await withApiTiming(
+        "mobile.i18n.cached_fallback",
+        () =>
+          withTimeout(
+            loadCachedLanguageReadModel(preferredLanguage),
+            LANGUAGE_CACHE_FALLBACK_TIMEOUT_MS,
+            () => {
+              console.warn(
+                `[api/mobile/i18n] Timed out while loading cached ${preferredLanguage}.`
+              );
+            }
+          ),
+        { slowMs: 500 }
+      );
+    }
 
     const activeLanguageCode = normalizeLanguageCode(
       languageSnapshot.i18n.activeLanguage.code
@@ -62,6 +91,10 @@ export async function GET(request: Request) {
 
     const response = NextResponse.json(
       {
+        meta: {
+          degraded: loadedFromCacheFallback,
+          source: loadedFromCacheFallback ? "cached" : "fresh",
+        },
         i18n: languageSnapshot.i18n,
         chatLanguages: languageSnapshot.chatLanguages,
       },

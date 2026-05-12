@@ -7,14 +7,14 @@ import {
   upsertTranslationValueEntry,
 } from "@/lib/db/queries";
 import {
-  invalidateTranslationBundleCache,
+  patchTranslationBundleCacheEntry,
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
 import { getLanguageByCode } from "@/lib/i18n/languages";
 import { withTimeout } from "@/lib/utils/async";
 
 const INLINE_TRANSLATION_AUDIT_TIMEOUT_MS = 2500;
-const INLINE_TRANSLATION_CACHE_INVALIDATION_TIMEOUT_MS = 2500;
+const INLINE_TRANSLATION_CACHE_PATCH_TIMEOUT_MS = 2500;
 const INLINE_TRANSLATION_WRITE_TIMEOUT_MS = 10000;
 
 type InlineTranslationBody = {
@@ -59,25 +59,10 @@ async function auditInlineTranslationWrite(
 
 function scheduleInlineTranslationSideEffects({
   audit,
-  languageCode,
 }: {
   audit: Parameters<typeof createAuditLogEntry>[0];
-  languageCode: string;
 }) {
   after(() => {
-    void withTimeout(
-      invalidateTranslationBundleCache([languageCode]),
-      INLINE_TRANSLATION_CACHE_INVALIDATION_TIMEOUT_MS
-    ).catch((error) => {
-      console.error(
-        "[admin/translations/inline] Cache invalidation failed or timed out.",
-        {
-          error,
-          languageCode,
-        }
-      );
-    });
-
     void auditInlineTranslationWrite(audit);
   });
 }
@@ -165,9 +150,29 @@ export async function PATCH(request: Request) {
     );
   }
 
+  const responseText = normalizedValue || translationKey.defaultText;
+  const cachePatched = await withTimeout(
+    patchTranslationBundleCacheEntry({
+      defaultText: translationKey.defaultText,
+      key,
+      languageCode: language.code,
+      text: responseText,
+    }),
+    INLINE_TRANSLATION_CACHE_PATCH_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      "[admin/translations/inline] Cache patch failed or timed out.",
+      {
+        error,
+        key,
+        languageCode: language.code,
+      }
+    );
+    return false;
+  });
+
   const { ipAddress, userAgent } = getRequestMetadata(request);
   scheduleInlineTranslationSideEffects({
-    languageCode: language.code,
     audit: {
       actorId: authContext.user.id,
       action: "translation.inline.save",
@@ -189,6 +194,7 @@ export async function PATCH(request: Request) {
   });
 
   console.info("[admin/translations/inline] saved", {
+    cachePatched,
     cleared: normalizedValue.length === 0,
     durationMs: Date.now() - startedAt,
     key,
@@ -202,7 +208,7 @@ export async function PATCH(request: Request) {
       key,
       languageCode: language.code,
       ok: true,
-      text: normalizedValue || translationKey.defaultText,
+      text: responseText,
       value: normalizedValue,
     },
     {

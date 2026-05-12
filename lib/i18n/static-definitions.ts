@@ -707,12 +707,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "chat.disclaimer.text",
     defaultText:
-      "KhasiGPT or other AI Models can make mistakes. Check important details.",
+      "KhasiGPT or other AI models can make mistakes. Check important details.",
     description: "Disclaimer text displayed below the composer.",
   },
   {
     key: "chat.disclaimer.privacy_link",
-    defaultText: "See privacy policy.",
+    defaultText: "Read Privacy Policy.",
     description: "Link text for the privacy policy in the chat disclaimer.",
   },
   {

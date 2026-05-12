@@ -212,28 +212,18 @@ export async function GET(request: Request) {
     pricingResult,
     balanceResult,
   ] = await Promise.all([
-    isStartupPhase
-      ? Promise.resolve({
-          data: buildStartupLanguageSnapshot(preferredLanguage),
-          degraded: false,
-        } satisfies BootstrapSectionResult<LanguageSnapshot>)
-      : safeBootstrapSection({
-          fallback: buildStartupLanguageSnapshot(preferredLanguage),
-          label: "mobile.bootstrap.languages",
-          loader: () => loadLanguageReadModel(preferredLanguage),
-          phase,
-        }),
-    isStartupPhase
-      ? Promise.resolve({
-          data: FALLBACK_FEATURE_SNAPSHOT,
-          degraded: false,
-        } satisfies BootstrapSectionResult<FeatureSnapshot>)
-      : safeBootstrapSection({
-          fallback: FALLBACK_FEATURE_SNAPSHOT,
-          label: "mobile.bootstrap.features",
-          loader: () => loadFeatureAccessReadModel({ role, userId }),
-          phase,
-        }),
+    safeBootstrapSection({
+      fallback: buildStartupLanguageSnapshot(preferredLanguage),
+      label: "mobile.bootstrap.languages",
+      loader: () => loadLanguageReadModel(preferredLanguage),
+      phase,
+    }),
+    safeBootstrapSection({
+      fallback: FALLBACK_FEATURE_SNAPSHOT,
+      label: "mobile.bootstrap.features",
+      loader: () => loadFeatureAccessReadModel({ role, userId }),
+      phase,
+    }),
     safeBootstrapSection({
       fallback: FALLBACK_MODEL_CONFIG,
       label: "mobile.bootstrap.models",
@@ -296,9 +286,6 @@ export async function GET(request: Request) {
   const translate = translateResult.data;
   const pricing = pricingResult.data;
   const balance = balanceResult.data;
-  const deferredSections: BootstrapSection[] = isStartupPhase
-    ? ["billing", "features", "i18n", "pricing", "prompts", "translate"]
-    : [];
   const degradedSections: BootstrapSection[] = [
     languageSnapshotResult.degraded ? "i18n" : null,
     featureSnapshotResult.degraded ? "features" : null,
@@ -308,6 +295,15 @@ export async function GET(request: Request) {
     pricingResult.degraded ? "pricing" : null,
     balanceResult.degraded ? "billing" : null,
   ].filter((section): section is BootstrapSection => Boolean(section));
+  const deferredSections: BootstrapSection[] = isStartupPhase
+    ? [
+        "billing",
+        languageSnapshotResult.degraded ? "i18n" : null,
+        "pricing",
+        "prompts",
+        "translate",
+      ].filter((section): section is BootstrapSection => Boolean(section))
+    : [];
 
   const response = NextResponse.json(
     {

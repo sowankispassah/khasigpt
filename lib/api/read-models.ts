@@ -28,6 +28,7 @@ import {
 import type { UserRole } from "@/lib/db/schema";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import {
+  getCachedTranslationBundle,
   getFreshTranslationBundle,
   getTranslationBundle,
 } from "@/lib/i18n/dictionary";
@@ -148,20 +149,16 @@ export async function loadFeatureAccessReadModel({
   };
 }
 
-export async function loadLanguageReadModel(
-  preferredLanguage?: string | null,
-  options: { requireFresh?: boolean; timeoutMs?: number } = {}
+async function buildLanguageReadModelFromBundle(
+  translationBundle: Awaited<ReturnType<typeof getTranslationBundle>>
 ) {
-  const [translationBundle, languagesWithSettings] = await Promise.all([
-    options.requireFresh
-      ? getFreshTranslationBundle(preferredLanguage, options.timeoutMs)
-      : getTranslationBundle(preferredLanguage),
-    withTimeout(listLanguagesWithSettings(), READ_TIMEOUT_MS).catch((error) => {
-      console.error("[read-models] Failed to load chat languages.", error);
-      return [];
-    }),
-  ]);
-
+  const languagesWithSettings = await withTimeout(
+    listLanguagesWithSettings(),
+    READ_TIMEOUT_MS
+  ).catch((error) => {
+    console.error("[read-models] Failed to load chat languages.", error);
+    return [];
+  });
   const activeChatLanguages = languagesWithSettings
     .filter((language) => language.isActive)
     .map((language) => ({
@@ -196,6 +193,28 @@ export async function loadLanguageReadModel(
     },
     chatLanguages,
   };
+}
+
+export async function loadLanguageReadModel(
+  preferredLanguage?: string | null,
+  options: { requireFresh?: boolean; timeoutMs?: number } = {}
+) {
+  const translationBundle = options.requireFresh
+    ? await getFreshTranslationBundle(preferredLanguage, options.timeoutMs)
+    : await getTranslationBundle(preferredLanguage);
+
+  return buildLanguageReadModelFromBundle(translationBundle);
+}
+
+export async function loadCachedLanguageReadModel(
+  preferredLanguage?: string | null
+) {
+  const translationBundle = await getCachedTranslationBundle(preferredLanguage);
+  if (!translationBundle) {
+    throw new Error("No cached translation bundle is available.");
+  }
+
+  return buildLanguageReadModelFromBundle(translationBundle);
 }
 
 export async function loadModelConfigReadModel() {

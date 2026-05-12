@@ -45,8 +45,8 @@ const LANGUAGE_FALLBACK_DICTIONARIES: Record<string, Record<string, string>> = {
     "recharge.dialog.proceed": "Bteng sha ka jingsiew",
     "greeting.subtitle": "Kaei nga lah ban iarap ia phi mynta?",
     "chat.input.placeholder": "Send iaka message...",
-    "chat.disclaimer.text": "Ka KhasiGPT ne kiwei pat ki AI Models ki lah ban bakla. Peit ia ki jingtip kiba kongsan.",
-    "chat.disclaimer.privacy_link": "Pule privacy policy.",
+    "chat.disclaimer.text": "Ka KhasiGPT ne kiwei pat ki AI models ki lah ban bakla. Peit ia ki jingtip kiba kongsan.",
+    "chat.disclaimer.privacy_link": "Pule Privacy Policy.",
   },
 };
 
@@ -292,6 +292,7 @@ type CachedBundle = {
   data: TranslationBundle;
   cachedAt: number;
   inflight?: Promise<void>;
+  source: "db" | "fallback" | "patched" | "persisted";
 };
 
 type PersistedBundle = TranslationBundle & {
@@ -350,6 +351,12 @@ async function persistBundle(key: string, bundle: TranslationBundle) {
   });
 }
 
+function revalidatePersistedBundle(key: string) {
+  const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
+  revalidateTag(APP_SETTING_CACHE_TAG, "max");
+  revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
+}
+
 async function readPersistedBundle(
   key: string
 ): Promise<PersistedBundle | null> {
@@ -388,6 +395,112 @@ function cacheKeyForLanguage(code?: string | null) {
   return normalized && normalized.length > 0 ? normalized : "__default";
 }
 
+export async function patchTranslationBundleCacheEntry({
+  defaultText,
+  key,
+  languageCode,
+  text,
+}: {
+  defaultText: string;
+  key: string;
+  languageCode: string;
+  text: string;
+}) {
+  const cacheKey = cacheKeyForLanguage(languageCode);
+  const cachedEntry = BUNDLE_CACHE.get(cacheKey);
+  const cached = cachedEntry?.data;
+  const persisted = cached
+    ? null
+    : await readPersistedBundle(cacheKey).catch((error) => {
+        logTranslationError(
+          `[i18n] Failed to read persisted translation bundle before patching "${key}".`,
+          error
+        );
+        return null;
+      });
+  let bundle: TranslationBundle | null = cached ?? null;
+  if (!bundle && persisted) {
+    const { cachedAt: _cachedAt, ...rest } = persisted;
+    bundle = rest;
+  }
+
+  if (!bundle) {
+    bundle = buildFallbackBundle(languageCode);
+    console.info("[i18n] Translation bundle cache patch created fallback bundle.", {
+      cacheKey,
+      key,
+      languageCode,
+    });
+  }
+
+  const normalizedBundleLanguage = bundle.activeLanguage.code.trim().toLowerCase();
+  const normalizedTargetLanguage = languageCode.trim().toLowerCase();
+  if (normalizedBundleLanguage !== normalizedTargetLanguage) {
+    console.warn("[i18n] Translation bundle cache patch skipped; language mismatch.", {
+      activeLanguage: bundle.activeLanguage.code,
+      cacheKey,
+      key,
+      languageCode,
+    });
+    return false;
+  }
+
+  const nextBundle: TranslationBundle = {
+    ...bundle,
+    dictionary: {
+      ...bundle.dictionary,
+      [key]: text || defaultText,
+    },
+  };
+
+  BUNDLE_CACHE.set(cacheKey, {
+    data: nextBundle,
+    cachedAt: Date.now(),
+    source: "patched",
+  });
+
+  await persistBundle(cacheKey, nextBundle);
+  revalidatePersistedBundle(cacheKey);
+
+  console.info("[i18n] Translation bundle cache patched.", {
+    cacheKey,
+    key,
+    languageCode,
+  });
+
+  return true;
+}
+
+export async function getCachedTranslationBundle(
+  preferredCode?: string | null
+): Promise<TranslationBundle | null> {
+  const key = cacheKeyForLanguage(preferredCode);
+  const cached = BUNDLE_CACHE.get(key);
+  if (cached && cached.source !== "fallback") {
+    return cached.data;
+  }
+
+  const persisted = await readPersistedBundle(key).catch((error) => {
+    logTranslationError(
+      `[i18n] Failed to read persisted translation bundle for key "${key}".`,
+      error
+    );
+    return null;
+  });
+  if (!persisted) {
+    return null;
+  }
+
+  const { cachedAt, ...bundle } = persisted;
+  const parsedCachedAt = new Date(cachedAt).getTime();
+  BUNDLE_CACHE.set(key, {
+    data: bundle,
+    cachedAt: Number.isNaN(parsedCachedAt) ? Date.now() : parsedCachedAt,
+    source: "persisted",
+  });
+  return bundle;
+}
+
 function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
   const existing = BUNDLE_CACHE.get(key);
   if (existing?.inflight) {
@@ -414,7 +527,11 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
   )
     .then((bundle) => {
       clearTranslationDbFailure();
-      BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
+      BUNDLE_CACHE.set(key, {
+        data: bundle,
+        cachedAt: Date.now(),
+        source: "db",
+      });
       void persistBundle(key, bundle).catch((error) => {
         logTranslationError(
           "[i18n] Failed to persist translation bundle.",
@@ -444,6 +561,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     inflight: inflight.then(() => {
       return;
     }),
+    source: existing?.source ?? "fallback",
   });
 }
 
@@ -466,7 +584,11 @@ export async function getTranslationBundle(
       typeof preferredCode === "string" && preferredCode.trim().length > 0
         ? buildFallbackBundle(preferredCode)
         : FALLBACK_BUNDLE;
-    BUNDLE_CACHE.set(key, { data: fallbackBundle, cachedAt: Date.now() });
+    BUNDLE_CACHE.set(key, {
+      data: fallbackBundle,
+      cachedAt: Date.now(),
+      source: "fallback",
+    });
     return fallbackBundle;
   }
 
@@ -493,7 +615,11 @@ export async function getTranslationBundle(
     const resolvedCachedAt = Number.isNaN(parsedCachedAt)
       ? Date.now()
       : parsedCachedAt;
-    BUNDLE_CACHE.set(key, { data: bundle, cachedAt: resolvedCachedAt });
+    BUNDLE_CACHE.set(key, {
+      data: bundle,
+      cachedAt: resolvedCachedAt,
+      source: "persisted",
+    });
     if (Date.now() - resolvedCachedAt > TRANSLATION_CACHE_TTL_MS) {
       scheduleBundleRefresh(key, preferredCode);
     }
@@ -517,7 +643,11 @@ export async function getTranslationBundle(
       }
     );
     clearTranslationDbFailure();
-    BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
+    BUNDLE_CACHE.set(key, {
+      data: bundle,
+      cachedAt: Date.now(),
+      source: "db",
+    });
     void persistBundle(key, bundle).catch((error) => {
       logTranslationError(
         "[i18n] Failed to persist translation bundle.",
@@ -534,7 +664,11 @@ export async function getTranslationBundle(
       typeof preferredCode === "string" && preferredCode.trim().length > 0
         ? buildFallbackBundle(preferredCode)
         : FALLBACK_BUNDLE;
-    BUNDLE_CACHE.set(key, { data: fallbackBundle, cachedAt: Date.now() });
+    BUNDLE_CACHE.set(key, {
+      data: fallbackBundle,
+      cachedAt: Date.now(),
+      source: "fallback",
+    });
     scheduleBundleRefresh(key, preferredCode);
     return fallbackBundle;
   }
@@ -556,7 +690,11 @@ export async function getFreshTranslationBundle(
   );
 
   clearTranslationDbFailure();
-  BUNDLE_CACHE.set(key, { data: bundle, cachedAt: Date.now() });
+  BUNDLE_CACHE.set(key, {
+    data: bundle,
+    cachedAt: Date.now(),
+    source: "db",
+  });
   void persistBundle(key, bundle).catch((error) => {
     logTranslationError("[i18n] Failed to persist translation bundle.", error);
   });
