@@ -48,16 +48,7 @@ export async function JobDetailsChatShell({
     ),
   ]);
 
-  const cookieModelValue = cookieStore.get("chat-model")?.value ?? "";
-  const resolvedCookieModelId =
-    cookieModelValue &&
-    (models.some((model) => model.id === cookieModelValue)
-      ? cookieModelValue
-      : models.find((model) => model.key === cookieModelValue)?.id ??
-        models.find((model) => model.providerModelId === cookieModelValue)?.id ??
-        "");
-  const fallbackModelId =
-    resolvedCookieModelId || cookieModelValue || defaultModel?.id || models[0]?.id || "default";
+  const fallbackModelId = defaultModel?.id || models[0]?.id || "default";
   const initialChatLanguage =
     cookieStore.get("chat-language")?.value ?? preferredLanguage ?? "";
   const documentUploadsMode = parseDocumentUploadsAccessModeSetting(

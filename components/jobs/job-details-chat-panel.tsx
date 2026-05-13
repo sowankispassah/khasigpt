@@ -4,7 +4,6 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useState } from "react";
 import { Messages } from "@/components/messages";
-import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { MultimodalInput } from "@/components/multimodal-input";
 import { toast } from "@/components/toast";
 import type { VisibilityType } from "@/components/visibility-selector";
@@ -50,7 +49,7 @@ export function JobDetailsChatPanel({
     initialOldestMessageAt
   );
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [currentModelId, setCurrentModelId] = useState(initialChatModel);
+  const currentModelId = initialChatModel;
   const [currentLanguageCode, setCurrentLanguageCode] =
     useState(initialChatLanguage);
 
@@ -74,7 +73,6 @@ export function JobDetailsChatPanel({
           body: {
             id: request.id,
             message: request.messages.at(-1),
-            selectedChatModel: currentModelId,
             selectedLanguage: currentLanguageCode,
             selectedVisibilityType: initialVisibilityType,
             chatMode: "jobs",
@@ -183,18 +181,11 @@ export function JobDetailsChatPanel({
     <FloatingChatPopup
       controls={
         isReadonly ? null : (
-          <>
-            <VisibilitySelector
-              chatId={resolvedChatId}
-              showOnMobile={true}
-              selectedVisibilityType={initialVisibilityType}
-            />
-            <ModelSelectorCompact
-              className="shrink-0"
-              onModelChange={setCurrentModelId}
-              selectedModelId={currentModelId}
-            />
-          </>
+          <VisibilitySelector
+            chatId={resolvedChatId}
+            showOnMobile={true}
+            selectedVisibilityType={initialVisibilityType}
+          />
         )
       }
       isVisible={isVisible}
@@ -242,10 +233,8 @@ export function JobDetailsChatPanel({
               messages={messages}
               onGenerateImage={() => {}}
               onLanguageChange={handleLanguageChange}
-              onModelChange={setCurrentModelId}
               onToggleImageMode={() => {}}
               selectedLanguageCode={currentLanguageCode}
-              selectedModelId={currentModelId}
               selectedVisibilityType={initialVisibilityType}
               sendMessage={sendMessage}
               setAttachments={setAttachments}

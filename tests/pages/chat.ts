@@ -137,7 +137,13 @@ export class ChatPage {
 
   async tryChooseModelFromSelector(chatModelId: string) {
     const selector = this.page.getByTestId("model-selector");
-    await expect(selector).toBeVisible({ timeout: 5000 });
+    const isSelectorVisible = await selector
+      .waitFor({ state: "visible", timeout: 1000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!isSelectorVisible) {
+      return false;
+    }
     await selector.click();
     const directOption = this.page.getByTestId(
       `model-selector-item-${chatModelId}`

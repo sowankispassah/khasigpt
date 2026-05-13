@@ -58,11 +58,8 @@ export const postRequestBodySchema = z.object({
   studyQuizActive: z.boolean().optional(),
   jobPostingId: z.string().uuid().optional().nullable(),
   originJobPostingId: z.string().uuid().optional().nullable(),
-  // Historically this cookie stored a model `key` (not the UUID id).
-  // Accept both so older clients/cookies don't hard-fail requests. Native
-  // builds can briefly send an empty value while bootstrap is hydrating; let
-  // the route fall back to the server default model instead of rejecting the
-  // whole request.
+  // Legacy clients may still send a model value. The chat route ignores it and
+  // always uses the admin-configured default model for user-facing chats.
   selectedChatModel: z
     .preprocess(
       (value) =>

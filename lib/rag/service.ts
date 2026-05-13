@@ -25,7 +25,12 @@ import {
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import { withTimeout } from "@/lib/utils/async";
-import { isDefaultChatRagScope } from "./chat-scope";
+import {
+  isDefaultChatRagScope,
+  isJobsChatRagScope,
+  isStudyChatRagScope,
+  normalizeRagChatScope,
+} from "./chat-scope";
 import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
 import {
   deleteFileSearchDocument,
@@ -63,7 +68,8 @@ const RAG_FILE_SEARCH_SYNC_TIMEOUT_MS = 15_000;
 function customAdminRagEntryCondition() {
   return sql<boolean>`NOT (
     COALESCE(${ragEntry.metadata} ->> 'jobs_kind', '') = ${JOBS_RAG_KIND}
-    AND COALESCE(${ragEntry.metadata} ->> 'jobs_source', '') = ${JOBS_RAG_SOURCE}
+    OR COALESCE(${ragEntry.metadata} ->> 'jobs_source', '') = ${JOBS_RAG_SOURCE}
+    OR COALESCE(${ragEntry.metadata} ->> 'category', '') = 'job_postings'
   )`;
 }
 
@@ -71,6 +77,42 @@ function toMetadataRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function normalizeRagEntryMetadata(value: unknown) {
+  const metadata = { ...toMetadataRecord(value) };
+  if ("chatScope" in metadata) {
+    const scope = normalizeRagChatScope(metadata.chatScope);
+    if (scope) {
+      metadata.chatScope = scope;
+    } else {
+      delete metadata.chatScope;
+    }
+  }
+  return metadata;
+}
+
+function mergeRagEntryMetadata({
+  existing,
+  incoming,
+}: {
+  existing: unknown;
+  incoming: unknown;
+}) {
+  const incomingRecord = toMetadataRecord(incoming);
+  const metadata = {
+    ...toMetadataRecord(existing),
+    ...incomingRecord,
+  };
+
+  if (
+    Object.hasOwn(incomingRecord, "chatScope") &&
+    !normalizeRagChatScope(incomingRecord.chatScope)
+  ) {
+    delete metadata.chatScope;
+  }
+
+  return normalizeRagEntryMetadata(metadata);
 }
 
 function toSanitizedEntry(
@@ -555,6 +597,7 @@ function buildVersionDiff(previous: RagEntryModel, next: RagEntryModel) {
   compare("models");
   compare("sourceUrl");
   compare("categoryId");
+  compare("metadata");
   compare("personalForUserId");
   compare("approvedBy");
 
@@ -593,7 +636,10 @@ export async function createRagEntry({
   const title = parsed.title.trim();
   const content = sanitizeRagContent(parsed.content);
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
-  const metadata = input.metadata !== undefined ? parsed.metadata ?? {} : {};
+  const metadata =
+    input.metadata !== undefined
+      ? normalizeRagEntryMetadata(parsed.metadata)
+      : {};
   const now = new Date();
 
   const [created] = await db
@@ -684,10 +730,10 @@ export async function updateRagEntry({
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
   const metadata =
     input.metadata !== undefined
-      ? {
-          ...toMetadataRecord(existing.metadata),
-          ...(parsed.metadata ?? {}),
-        }
+      ? mergeRagEntryMetadata({
+          existing: existing.metadata,
+          incoming: parsed.metadata ?? {},
+        })
       : toMetadataRecord(existing.metadata);
   const shouldReembed =
     existing.title !== title ||
@@ -1379,6 +1425,50 @@ export async function listActiveDefaultChatRagEntryIdsForModel({
   modelConfigId: string;
   modelKey?: string | null;
 }): Promise<string[]> {
+  return listActiveRagEntryIdsForModelAndScope({
+    isScopeMatch: isDefaultChatRagScope,
+    modelConfigId,
+    modelKey,
+  });
+}
+
+export async function listActiveStudyChatRagEntryIdsForModel({
+  modelConfigId,
+  modelKey,
+}: {
+  modelConfigId: string;
+  modelKey?: string | null;
+}): Promise<string[]> {
+  return listActiveRagEntryIdsForModelAndScope({
+    isScopeMatch: isStudyChatRagScope,
+    modelConfigId,
+    modelKey,
+  });
+}
+
+export async function listActiveJobsChatRagEntryIdsForModel({
+  modelConfigId,
+  modelKey,
+}: {
+  modelConfigId: string;
+  modelKey?: string | null;
+}): Promise<string[]> {
+  return listActiveRagEntryIdsForModelAndScope({
+    isScopeMatch: isJobsChatRagScope,
+    modelConfigId,
+    modelKey,
+  });
+}
+
+async function listActiveRagEntryIdsForModelAndScope({
+  isScopeMatch,
+  modelConfigId,
+  modelKey,
+}: {
+  isScopeMatch: (metadata: Record<string, unknown>) => boolean;
+  modelConfigId: string;
+  modelKey?: string | null;
+}): Promise<string[]> {
   const rows = await db
     .select({
       id: ragEntry.id,
@@ -1399,7 +1489,7 @@ export async function listActiveDefaultChatRagEntryIdsForModel({
 
   return rows
     .filter((row) => {
-      if (!isDefaultChatRagScope(toMetadataRecord(row.metadata))) {
+      if (!isScopeMatch(toMetadataRecord(row.metadata))) {
         return false;
       }
 

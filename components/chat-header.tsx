@@ -3,7 +3,6 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useState } from "react";
 import { useWindowSize } from "usehooks-ts";
-import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
@@ -16,15 +15,11 @@ import { VisibilitySelector, type VisibilityType } from "./visibility-selector";
 function PureChatHeader({
   chatId,
   selectedVisibilityType,
-  selectedModelId,
-  onModelChange,
   isReadonly,
   showInlineControls = true,
 }: {
   chatId: string;
   selectedVisibilityType: VisibilityType;
-  selectedModelId: string;
-  onModelChange?: (modelId: string) => void;
   isReadonly: boolean;
   showInlineControls?: boolean;
 }) {
@@ -64,11 +59,6 @@ function PureChatHeader({
             chatId={chatId}
             selectedVisibilityType={selectedVisibilityType}
           />
-          <ModelSelectorCompact
-            className="shrink-0"
-            onModelChange={onModelChange}
-            selectedModelId={selectedModelId}
-          />
         </div>
       )}
 
@@ -105,7 +95,6 @@ export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
     prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
-    prevProps.selectedModelId === nextProps.selectedModelId &&
     prevProps.isReadonly === nextProps.isReadonly &&
     prevProps.showInlineControls === nextProps.showInlineControls
   );

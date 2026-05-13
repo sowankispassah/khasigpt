@@ -39,8 +39,8 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
-  createStreamId,
   consumeFreeDailyChatAllowance,
+  createStreamId,
   deleteChatById,
   getActiveSubscriptionForUser,
   getAppSetting,
@@ -57,7 +57,6 @@ import {
   updateChatTitleById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import { getMobileSession } from "@/lib/mobile-auth-session";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
@@ -84,10 +83,13 @@ import {
   listStudyPapersForJob,
 } from "@/lib/jobs/service";
 import type { JobCard } from "@/lib/jobs/types";
+import { getMobileSession } from "@/lib/mobile-auth-session";
 import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
 import {
   findBestDefaultChatRagEntryTitleMatch,
   listActiveDefaultChatRagEntryIdsForModel,
+  listActiveJobsChatRagEntryIdsForModel,
+  listActiveStudyChatRagEntryIdsForModel,
 } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -1113,7 +1115,6 @@ export async function POST(request: Request) {
     const {
       id,
       message,
-      selectedChatModel,
       selectedLanguage,
       selectedVisibilityType,
       hiddenPrompt,
@@ -1125,7 +1126,6 @@ export async function POST(request: Request) {
     }: {
       id: string;
       message: ChatMessage;
-      selectedChatModel?: string;
       selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
@@ -1206,12 +1206,13 @@ export async function POST(request: Request) {
     const enabledConfigs = registry.configs.filter(
       (config) => config.isEnabled
     );
+    // User-facing chats are controlled by the admin default model. Older web
+    // and native clients may still send selectedChatModel, but the server
+    // deliberately ignores it so model choice cannot be bypassed from a client.
+    // Existing chats do not store a durable model, so future sends consistently
+    // follow the current admin default while historical token usage remains as-is.
     const modelConfig =
-      enabledConfigs.find((config) => config.id === selectedChatModel) ??
-      enabledConfigs.find((config) => config.key === selectedChatModel) ??
-      enabledConfigs.find(
-        (config) => config.providerModelId === selectedChatModel
-      ) ??
+      registry.defaultConfig ??
       enabledConfigs.find((config) => config.isDefault) ??
       enabledConfigs[0];
 
@@ -2757,7 +2758,6 @@ export async function POST(request: Request) {
         : null;
 
     const baseInstruction = systemPrompt({
-      selectedChatModel: selectedChatModel ?? modelConfig.id,
       requestHints,
       modelSystemPrompt: modelConfig.systemPrompt ?? null,
     });
@@ -2854,15 +2854,32 @@ export async function POST(request: Request) {
       (shouldEnableDefaultModeRag || allowModeSpecificFileSearch) &&
       typeof fileSearchStoreName === "string" &&
       supportsGeminiFileSearchModel(geminiFileSearchModelId);
+    const scopedStudyRagEntryIds =
+      canUseGeminiFileSearch && resolvedChatMode === STUDY_CHAT_MODE
+        ? await listActiveStudyChatRagEntryIdsForModel({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+          })
+        : [];
+    const scopedJobsRagEntryIds =
+      canUseGeminiFileSearch && resolvedChatMode === JOBS_CHAT_MODE
+        ? await listActiveJobsChatRagEntryIdsForModel({
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+          })
+        : [];
 
     const activeEntryIds = canUseGeminiFileSearch
       ? resolvedChatMode === STUDY_CHAT_MODE
-        ? studyPaperIdsForModel ?? []
+        ? Array.from(
+            new Set([...(studyPaperIdsForModel ?? []), ...scopedStudyRagEntryIds])
+          )
         : resolvedChatMode === JOBS_CHAT_MODE
           ? Array.from(
               new Set([
                 ...(jobPostingIdsForModel ?? []),
                 ...(studyPaperIdsForModel ?? []),
+                ...scopedJobsRagEntryIds,
               ])
             )
         : await listActiveDefaultChatRagEntryIdsForModel({
@@ -2878,14 +2895,20 @@ export async function POST(request: Request) {
     const filteredEntryIds =
       resolvedChatMode === STUDY_CHAT_MODE
         ? effectiveStudyPaperId
-          ? [effectiveStudyPaperId]
-          : []
+          ? Array.from(
+              new Set([effectiveStudyPaperId, ...scopedStudyRagEntryIds])
+            )
+          : scopedStudyRagEntryIds
         : resolvedChatMode === JOBS_CHAT_MODE
           ? effectiveJobPostingId
             ? Array.from(
-                new Set([effectiveJobPostingId, ...jobsLinkedStudyPaperIds])
+                new Set([
+                  effectiveJobPostingId,
+                  ...jobsLinkedStudyPaperIds,
+                  ...scopedJobsRagEntryIds,
+                ])
               )
-            : []
+            : scopedJobsRagEntryIds
         : defaultChatTitleMatchEntry
           ? [defaultChatTitleMatchEntry.id]
         : activeEntryIds;

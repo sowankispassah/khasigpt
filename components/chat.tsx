@@ -18,7 +18,6 @@ import { unstable_serialize } from "swr/infinite";
 import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
-import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   AlertDialog,
@@ -73,9 +72,7 @@ import {
   type VisibilityType,
 } from "./visibility-selector";
 
-const MODEL_STORAGE_KEY = "chat-model-preference";
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
-const CHAT_MODEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
@@ -206,8 +203,7 @@ export function Chat({
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
-  const [currentModelId, setCurrentModelId] = useState(initialChatModel);
-  const currentModelIdRef = useRef(currentModelId);
+  const currentModelId = initialChatModel;
   const [currentLanguageCode, setCurrentLanguageCode] = useState(
     initialChatLanguage
   );
@@ -359,10 +355,6 @@ export function Chat({
   }, []);
 
   useEffect(() => {
-    currentModelIdRef.current = currentModelId;
-  }, [currentModelId]);
-
-  useEffect(() => {
     currentLanguageCodeRef.current = currentLanguageCode;
   }, [currentLanguageCode]);
 
@@ -395,32 +387,6 @@ export function Chat({
   useEffect(() => {
     studyQuizActiveRef.current = studyQuizActive;
   }, [studyQuizActive]);
-
-  const setChatModelCookie = useCallback((modelId: string) => {
-    if (typeof document === "undefined") {
-      return;
-    }
-    const encoded = encodeURIComponent(modelId);
-    document.cookie = `chat-model=${encoded}; path=/; max-age=${CHAT_MODEL_COOKIE_MAX_AGE}; samesite=lax`;
-  }, []);
-
-  const handleModelChange = useCallback((modelId: string) => {
-    if (modelId === currentModelIdRef.current) {
-      return;
-    }
-
-    currentModelIdRef.current = modelId;
-    setCurrentModelId(modelId);
-
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(MODEL_STORAGE_KEY, modelId);
-      } catch {
-        // Ignore storage errors (private mode, quotas).
-      }
-    }
-    setChatModelCookie(modelId);
-  }, [setChatModelCookie]);
 
   const setChatLanguageCookie = useCallback((languageCode: string) => {
     if (typeof document === "undefined") {
@@ -497,20 +463,6 @@ export function Chat({
     window.addEventListener("chat-language-change", handler);
     return () => window.removeEventListener("chat-language-change", handler);
   }, [handleLanguageChange]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      const storedModelId = localStorage.getItem(MODEL_STORAGE_KEY);
-      if (storedModelId && storedModelId !== currentModelId) {
-        handleModelChange(storedModelId);
-      }
-    } catch {
-      // Ignore storage errors.
-    }
-  }, [currentModelId, handleModelChange]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -685,7 +637,6 @@ export function Chat({
           body: {
             id: request.id,
             message: request.messages.at(-1),
-            selectedChatModel: currentModelIdRef.current,
             selectedLanguage: currentLanguageCodeRef.current || undefined,
             selectedVisibilityType: visibilityType,
             ...request.body,
@@ -1408,18 +1359,11 @@ export function Chat({
   const jobsPopup = isJobsMode && !isReadonly ? (
     <FloatingChatPopup
       controls={
-        <>
-          <VisibilitySelector
-            chatId={id}
-            showOnMobile={true}
-            selectedVisibilityType={visibilityType}
-          />
-          <ModelSelectorCompact
-            className="shrink-0"
-            onModelChange={handleModelChange}
-            selectedModelId={currentModelId}
-          />
-        </>
+        <VisibilitySelector
+          chatId={id}
+          showOnMobile={true}
+          selectedVisibilityType={visibilityType}
+        />
       }
       isVisible={isJobsComposerVisible}
       onClose={() => setIsJobsComposerVisible(false)}
@@ -1484,9 +1428,7 @@ export function Chat({
               input={input}
               messages={messages}
               onLanguageChange={handleLanguageChangeFromInput}
-              onModelChange={handleModelChange}
               selectedLanguageCode={currentLanguageCode}
-              selectedModelId={currentModelId}
               selectedVisibilityType={visibilityType}
               onGenerateImage={() => {}}
               jobTitleReference={jobTitleReference}
@@ -1528,8 +1470,6 @@ export function Chat({
         <ChatHeader
           chatId={id}
           isReadonly={isReadonly}
-          onModelChange={handleModelChange}
-          selectedModelId={currentModelId}
           selectedVisibilityType={initialVisibilityType}
           showInlineControls={!isJobsMode}
         />
@@ -1610,9 +1550,7 @@ export function Chat({
                     input={input}
                     messages={messages}
                     onLanguageChange={handleLanguageChangeFromInput}
-                    onModelChange={handleModelChange}
                     selectedLanguageCode={currentLanguageCode}
-                    selectedModelId={currentModelId}
                     selectedVisibilityType={visibilityType}
                     onGenerateImage={() => {
                       void generateImageFromPrompt(input);

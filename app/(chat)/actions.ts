@@ -18,15 +18,6 @@ import {
 import type { ModelConfig } from "@/lib/db/schema";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
-export async function saveChatModelAsCookie(model: string) {
-  const cookieStore = await cookies();
-  cookieStore.set("chat-model", model, {
-    path: "/",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365,
-  });
-}
-
 export async function saveChatLanguageAsCookie(languageCode: string) {
   const cookieStore = await cookies();
   cookieStore.set("chat-language", languageCode, {

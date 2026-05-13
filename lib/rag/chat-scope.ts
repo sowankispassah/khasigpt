@@ -1,13 +1,20 @@
 export const RAG_CHAT_SCOPE_OPTIONS = [
   "default",
-  "jobs",
   "study",
+  "identity",
+  "jobs",
   "shared",
 ] as const;
 
 export type RagChatScope = (typeof RAG_CHAT_SCOPE_OPTIONS)[number];
 
-const DEFAULT_CHAT_SCOPES = new Set<RagChatScope>(["default", "shared"]);
+const DEFAULT_CHAT_SCOPES = new Set<RagChatScope>([
+  "default",
+  "identity",
+  "shared",
+]);
+const STUDY_CHAT_SCOPES = new Set<RagChatScope>(["study", "shared"]);
+const JOBS_CHAT_SCOPES = new Set<RagChatScope>(["jobs", "shared"]);
 
 export function normalizeRagChatScope(value: unknown): RagChatScope | null {
   if (typeof value !== "string") {
@@ -35,4 +42,18 @@ export function isDefaultChatRagScope(
 ) {
   const scope = getRagChatScope(metadata);
   return scope ? DEFAULT_CHAT_SCOPES.has(scope) : false;
+}
+
+export function isStudyChatRagScope(
+  metadata: Record<string, unknown> | null | undefined
+) {
+  const scope = getRagChatScope(metadata);
+  return scope ? STUDY_CHAT_SCOPES.has(scope) : false;
+}
+
+export function isJobsChatRagScope(
+  metadata: Record<string, unknown> | null | undefined
+) {
+  const scope = getRagChatScope(metadata);
+  return scope ? JOBS_CHAT_SCOPES.has(scope) : false;
 }

@@ -11,7 +11,6 @@ export type RequestHints = {
 export const systemPrompt = ({
   modelSystemPrompt,
 }: {
-  selectedChatModel: string;
   requestHints: RequestHints;
   modelSystemPrompt: string | null;
 }): string | null => {

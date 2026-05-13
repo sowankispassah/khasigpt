@@ -59,7 +59,7 @@ import {
 import type { VisibilityType } from "./visibility-selector";
 
 function PureMultimodalInput({
-  chatId,
+  chatId: _chatId,
   input,
   setInput,
   status,
@@ -71,9 +71,7 @@ function PureMultimodalInput({
   sendMessage,
   className,
   selectedVisibilityType: _selectedVisibilityType,
-  selectedModelId,
   selectedLanguageCode,
-  onModelChange,
   onLanguageChange,
   imageGenerationEnabled,
   imageGenerationSelected,
@@ -104,9 +102,7 @@ function PureMultimodalInput({
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   className?: string;
   selectedVisibilityType: VisibilityType;
-  selectedModelId: string;
   selectedLanguageCode: string;
-  onModelChange?: (modelId: string) => void;
   onLanguageChange?: (languageCode: string) => void;
   imageGenerationEnabled: boolean;
   imageGenerationSelected: boolean;
@@ -173,22 +169,9 @@ function PureMultimodalInput({
     return models[0]?.id ?? null;
   }, [models, defaultModelId]);
 
-  useEffect(() => {
-    if (!models.length || !onModelChange) {
-      return;
-    }
-    const exists = models.some((model) => model.id === selectedModelId);
-    if (!exists && fallbackModelId && fallbackModelId !== selectedModelId) {
-      onModelChange(fallbackModelId);
-    }
-  }, [models, selectedModelId, fallbackModelId, onModelChange]);
-
-  const activeModel =
-    models.find((model) => model.id === selectedModelId) ||
-    (fallbackModelId
-      ? models.find((model) => model.id === fallbackModelId)
-      : undefined);
-
+  const activeModel = fallbackModelId
+    ? models.find((model) => model.id === fallbackModelId)
+    : undefined;
   const isReasoningModel = activeModel?.supportsReasoning ?? false;
 
   const adjustHeight = useCallback(() => {
@@ -608,9 +591,6 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType) {
-      return false;
-    }
-    if (prevProps.selectedModelId !== nextProps.selectedModelId) {
       return false;
     }
     if (prevProps.selectedLanguageCode !== nextProps.selectedLanguageCode) {

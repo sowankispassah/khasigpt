@@ -123,6 +123,8 @@ type PendingAction =
   | "restore-version"
   | "submit";
 
+type RagScopeFilter = RagChatScope | "all" | "legacy";
+
 type RagFormState = {
   title: string;
   content: string;
@@ -148,11 +150,43 @@ const DEFAULT_FORM: RagFormState = {
 };
 
 const CHAT_SCOPE_LABELS: Record<RagChatScope, string> = {
-  default: "Default chat",
-  jobs: "Jobs only",
-  study: "Study only",
-  shared: "Shared",
+  default: "General chat knowledge",
+  study: "Study knowledge",
+  identity: "User/company identity",
+  jobs: "Jobs knowledge",
+  shared: "Shared across modes",
 };
+
+const CHAT_SCOPE_DESCRIPTIONS: Record<RagChatScope, string> = {
+  default: "Used by normal chat only. This is the default for custom RAG.",
+  study: "Used by Study mode only. Use this for exam, lesson, or study help.",
+  identity:
+    "Used by normal chat for user, company, product, or app identity context.",
+  jobs: "Used by Jobs mode only. Job imports remain managed from Jobs admin.",
+  shared: "Available to general chat, Study mode, and Jobs mode.",
+};
+
+const QUICK_CREATE_SCOPES: Array<{
+  scope: RagChatScope;
+  label: string;
+  description: string;
+}> = [
+  {
+    scope: "default",
+    label: "New general",
+    description: "General chat",
+  },
+  {
+    scope: "study",
+    label: "New study",
+    description: "Study mode",
+  },
+  {
+    scope: "identity",
+    label: "New identity",
+    description: "User/company context",
+  },
+];
 
 const sortCategories = (list: Array<{ id: string; name: string }>) =>
   [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -198,6 +232,7 @@ export function AdminRagManager({
   const [typeFilter, setTypeFilter] = useState<
     (typeof RAG_TYPES)[number] | "all"
   >("all");
+  const [scopeFilter, setScopeFilter] = useState<RagScopeFilter>("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -288,6 +323,12 @@ export function AdminRagManager({
         statusFilter === "all" ? true : row.entry.status === statusFilter;
       const matchesType =
         typeFilter === "all" ? true : row.entry.type === typeFilter;
+      const matchesScope =
+        scopeFilter === "all"
+          ? true
+          : scopeFilter === "legacy"
+            ? row.entry.chatScope === null
+            : row.entry.chatScope === scopeFilter;
       const matchesModel =
         modelFilter === "all"
           ? true
@@ -302,6 +343,7 @@ export function AdminRagManager({
       return (
         matchesStatus &&
         matchesType &&
+        matchesScope &&
         matchesModel &&
         matchesTag &&
         matchesQuery
@@ -311,10 +353,11 @@ export function AdminRagManager({
     entriesState,
     statusFilter,
     typeFilter,
-      modelFilter,
-      tagFilter,
-      deferredSearchTerm,
-    ]);
+    scopeFilter,
+    modelFilter,
+    tagFilter,
+    deferredSearchTerm,
+  ]);
 
   const allSelected =
     filteredEntries.length > 0 &&
@@ -386,8 +429,12 @@ export function AdminRagManager({
     setVersions([]);
   }, []);
 
-  const openCreateSheet = () => {
+  const openCreateSheet = (scope: RagChatScope = "default") => {
     resetForm();
+    setFormState((prev) => ({
+      ...prev,
+      chatScope: scope,
+    }));
     setSheetOpen(true);
   };
 
@@ -446,7 +493,7 @@ export function AdminRagManager({
       status: formState.status,
       tags: formState.tags,
       models: formState.models,
-      metadata: formState.chatScope ? { chatScope: formState.chatScope } : {},
+      metadata: { chatScope: formState.chatScope || null },
       sourceUrl: formState.sourceUrl.trim() || null,
       categoryId: formState.categoryId ? formState.categoryId : null,
     };
@@ -657,13 +704,24 @@ export function AdminRagManager({
         <div>
           <h1 className="font-semibold text-2xl">RAG Knowledge Base</h1>
           <p className="text-muted-foreground text-sm">
-            Curate domain knowledge for retrieval-augmented conversations.
+            Curate general, study, and identity knowledge for retrieval-augmented conversations.
           </p>
         </div>
-        <Button disabled={isActionPending} onClick={openCreateSheet} type="button">
-          <PlusIcon />
-          <span>New entry</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {QUICK_CREATE_SCOPES.map((item) => (
+            <Button
+              disabled={isActionPending}
+              key={item.scope}
+              onClick={() => openCreateSheet(item.scope)}
+              title={item.description}
+              type="button"
+              variant={item.scope === "default" ? "default" : "outline"}
+            >
+              <PlusIcon />
+              <span>{item.label}</span>
+            </Button>
+          ))}
+        </div>
       </header>
 
       <AnalyticsSummary analytics={analytics} />
@@ -704,17 +762,18 @@ export function AdminRagManager({
           <select
             className="rounded-full border px-3 py-1 text-sm"
             onChange={(event) => {
-              setModelFilter(event.target.value);
+              setScopeFilter(event.target.value as RagScopeFilter);
               setShowAllEntries(false);
             }}
-            value={modelFilter}
+            value={scopeFilter}
           >
-            <option value="all">All models</option>
-            {modelOptions.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label}
+            <option value="all">All scopes</option>
+            {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
+              <option key={scope} value={scope}>
+                {CHAT_SCOPE_LABELS[scope]}
               </option>
             ))}
+            <option value="legacy">Legacy / unscoped</option>
           </select>
           <select
             className="rounded-full border px-3 py-1 text-sm"
@@ -732,6 +791,28 @@ export function AdminRagManager({
             ))}
           </select>
         </div>
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-muted-foreground">
+            Advanced model filter
+          </summary>
+          <div className="mt-2">
+            <select
+              className="rounded-full border px-3 py-1 text-sm"
+              onChange={(event) => {
+                setModelFilter(event.target.value);
+                setShowAllEntries(false);
+              }}
+              value={modelFilter}
+            >
+              <option value="all">All models</option>
+              {modelOptions.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </details>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button
@@ -803,7 +884,7 @@ export function AdminRagManager({
                 <th className="px-2 py-2">Scope</th>
                 <th className="px-2 py-2">Category</th>
                 <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Models</th>
+                <th className="px-2 py-2">Model restriction</th>
                 <th className="px-2 py-2">Tags</th>
                 <th className="px-2 py-2">Updated</th>
                 <th className="px-2 py-2">Actions</th>
@@ -863,7 +944,7 @@ export function AdminRagManager({
                     <td className="px-2 py-3">
                       <div className="flex flex-wrap gap-1">
                         {item.entry.models.length === 0 ? (
-                          <Badge variant="outline">All</Badge>
+                          <Badge variant="outline">All models</Badge>
                         ) : (
                           item.entry.models.map((modelId) => {
                             const model = modelOptions.find(
@@ -972,7 +1053,7 @@ export function AdminRagManager({
           </SheetHeader>
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
             <div>
-              <Label htmlFor="rag-chat-scope">Chat scope</Label>
+              <Label htmlFor="rag-chat-scope">Knowledge scope</Label>
               <select
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                 id="rag-chat-scope"
@@ -992,7 +1073,9 @@ export function AdminRagManager({
                 ))}
               </select>
               <p className="mt-1 text-muted-foreground text-xs">
-                Default chat only retrieves entries scoped to Default chat or Shared.
+                {formState.chatScope
+                  ? CHAT_SCOPE_DESCRIPTIONS[formState.chatScope]
+                  : "Legacy entries are not retrieved by new scoped chat flows until a scope is selected."}
               </p>
             </div>
             <div>
@@ -1097,11 +1180,14 @@ export function AdminRagManager({
                 value={formState.sourceUrl}
               />
             </div>
-            <div>
-              <Label>Allowed models</Label>
-              <p className="text-muted-foreground text-xs">
-                Leave empty to allow every enabled chat model to retrieve this
-                entry.
+            <details className="rounded-lg border p-3">
+              <summary className="cursor-pointer font-medium text-sm">
+                Advanced: model restrictions (optional)
+              </summary>
+              <p className="mt-2 text-muted-foreground text-xs">
+                Leave empty to apply this knowledge to all enabled chat models.
+                Only choose models when the content is intentionally
+                model-specific.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {modelOptions.map((model) => {
@@ -1126,7 +1212,7 @@ export function AdminRagManager({
                   );
                 })}
               </div>
-            </div>
+            </details>
             <div>
               <Label>Tags</Label>
               <TagInput

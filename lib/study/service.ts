@@ -155,6 +155,7 @@ export function buildQuestionPaperMetadata(
   );
 
   return {
+    chatScope: "study",
     study_kind: "question_paper",
     paper_id: input.paperId,
     paper_title: paperTitle,

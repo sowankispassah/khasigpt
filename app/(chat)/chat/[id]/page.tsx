@@ -327,18 +327,7 @@ export default async function Page(props: {
             .toISOString()
         : null;
 
-  const chatModelFromCookie = cookieStore.get("chat-model");
-  const cookieModelValue =
-    typeof chatModelFromCookie?.value === "string" ? chatModelFromCookie.value : "";
-  const resolvedCookieModelId =
-    cookieModelValue &&
-    (models.some((model) => model.id === cookieModelValue)
-      ? cookieModelValue
-      : models.find((model) => model.key === cookieModelValue)?.id ??
-        models.find((model) => model.providerModelId === cookieModelValue)?.id ??
-        "");
-  const fallbackModelId =
-    resolvedCookieModelId || defaultModel?.id || models[0]?.id || "";
+  const fallbackModelId = defaultModel?.id || models[0]?.id || "";
   const chatLanguageFromCookie = cookieStore.get("chat-language");
   const initialChatLanguage =
     typeof chatLanguageFromCookie?.value === "string"
