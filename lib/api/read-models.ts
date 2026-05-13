@@ -1,7 +1,9 @@
 import "server-only";
 
 import {
+  buildImageGenerationAccessFromAvailability,
   getImageGenerationAccess,
+  getImageGenerationAvailability,
   isImageGenerationEnabledForAllUsers,
 } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -95,9 +97,26 @@ export async function loadFeatureAccessReadModel({
       null
     ),
     userId
-      ? getImageGenerationAccess({ userId, userRole: role ?? "regular" }).catch(
-          () => null
-        )
+      ? withTimeout(
+          getImageGenerationAccess({ userId, userRole: role ?? "regular" }),
+          READ_TIMEOUT_MS
+        ).catch(async (error) => {
+          console.error(
+            "[read-models] Image generation credit access failed; falling back to feature availability.",
+            error
+          );
+          return getImageGenerationAvailability({
+            userRole: role ?? "regular",
+          })
+            .then(buildImageGenerationAccessFromAvailability)
+            .catch((fallbackError) => {
+              console.error(
+                "[read-models] Image generation availability fallback failed.",
+                fallbackError
+              );
+              return null;
+            });
+        })
       : Promise.resolve(null),
   ]);
   const getFeatureSetting = (key: string): string | boolean | null => {

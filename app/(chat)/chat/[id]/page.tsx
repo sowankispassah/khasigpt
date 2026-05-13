@@ -5,7 +5,11 @@ import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
-import { getImageGenerationAccess } from "@/lib/ai/image-generation";
+import {
+  buildImageGenerationAccessFromAvailability,
+  getImageGenerationAccess,
+  getImageGenerationAvailability,
+} from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
 import { readChatOriginUiContext } from "@/lib/chat/ui-context";
@@ -147,22 +151,32 @@ export default async function Page(props: {
         userRole: session?.user?.role ?? null,
       }),
       IMAGE_ACCESS_TIMEOUT_MS
-    ).catch((error) => {
+    ).catch(async (error) => {
       if (!isTimeoutError(error)) {
         console.error("[chat] image generation access failed.", error);
       }
-      return {
-        enabled: false,
-        canGenerate: false,
-        hasCredits: false,
-        hasPaidPlan: false,
-        hasPaidCredits: false,
-        hasManualCredits: false,
-        requiresPaidCredits: false,
-        isAdmin: session.user.role === "admin",
-        tokensPerImage: 1,
-        model: null,
-      };
+      return getImageGenerationAvailability({
+        userRole: session?.user?.role ?? null,
+      })
+        .then(buildImageGenerationAccessFromAvailability)
+        .catch((fallbackError) => {
+          console.error(
+            "[chat] image generation availability fallback failed.",
+            fallbackError
+          );
+          return {
+            enabled: false,
+            canGenerate: false,
+            hasCredits: false,
+            hasPaidPlan: false,
+            hasPaidCredits: false,
+            hasManualCredits: false,
+            requiresPaidCredits: false,
+            isAdmin: session.user.role === "admin",
+            tokensPerImage: 1,
+            model: null,
+          };
+        });
     }),
   ]);
   const { dictionary } = translationBundle;

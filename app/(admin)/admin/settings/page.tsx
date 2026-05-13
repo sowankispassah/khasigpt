@@ -68,8 +68,8 @@ import {
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
 } from "@/lib/constants";
+import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
-  getAppSettingsByKeysUncached,
   getLastKnownAppSettingsByKeys,
   getTranslationValuesForKeys,
   listImageModelConfigs,
@@ -131,9 +131,10 @@ const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const SETTINGS_DATA_QUERY_TIMEOUT_MS = 3000;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 3000;
-const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 1500;
+const SETTINGS_SNAPSHOT_TIMEOUT_MS = 5000;
+const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 4000;
 const FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS = 8000;
+const PRICING_PLANS_QUERY_TIMEOUT_MS = 5000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -204,7 +205,7 @@ function safeSettingsQuery<T>(
 
 async function loadEssentialFallbackSettingMap() {
   const settings = await withTimeout(
-    getAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
     SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS
   );
 
@@ -227,7 +228,7 @@ async function loadAppSettingValuesByKey(): Promise<{
 }> {
   try {
     const settings = await withTimeout(
-      getAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
+      getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
       SETTINGS_SNAPSHOT_TIMEOUT_MS
     );
     return {
@@ -263,6 +264,13 @@ async function loadPricingPlansForAdmin() {
   return listPricingPlans({ includeInactive: true, includeDeleted: true });
 }
 
+async function loadPricingPlansForAdminWithTimeout() {
+  return withTimeout(
+    loadPricingPlansForAdmin(),
+    PRICING_PLANS_QUERY_TIMEOUT_MS
+  );
+}
+
 function SettingsSubmitButton(
   props: ComponentProps<typeof ActionSubmitButton>
 ) {
@@ -276,7 +284,7 @@ function SettingsSubmitButton(
 
 async function loadAdminSettingsData(
   pricingPlansPromise: Promise<Awaited<ReturnType<typeof loadPricingPlansForAdmin>>> =
-    loadPricingPlansForAdmin()
+    loadPricingPlansForAdminWithTimeout()
 ) {
   const exchangeRatePromise = withTimeout(
     getUsdToInrRate(),
@@ -642,7 +650,7 @@ export default async function AdminSettingsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
-  const priorityPricingPlansPromise = loadPricingPlansForAdmin();
+  const priorityPricingPlansPromise = loadPricingPlansForAdminWithTimeout();
 
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
@@ -716,7 +724,7 @@ export default async function AdminSettingsPage({
     try {
       settingsData = {
         ...settingsData,
-        plansRaw: await loadPricingPlansForAdmin(),
+        plansRaw: await loadPricingPlansForAdminWithTimeout(),
         pricingPlansLoadFailed: false,
       };
     } catch (pricingReadError) {

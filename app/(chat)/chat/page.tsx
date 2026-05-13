@@ -2,7 +2,11 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
-import { getImageGenerationAccess } from "@/lib/ai/image-generation";
+import {
+  buildImageGenerationAccessFromAvailability,
+  getImageGenerationAccess,
+  getImageGenerationAvailability,
+} from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
 import type { CachedChatPagePayload } from "@/lib/chat/page-payload";
 import {
@@ -136,22 +140,30 @@ export default async function Page({
         userRole: session.user.role,
       }),
       IMAGE_ACCESS_TIMEOUT_MS
-    ).catch((error) => {
+    ).catch(async (error) => {
       if (!isTimeoutError(error)) {
         console.error("[chat/home] image generation access failed.", error);
       }
-      return {
-        enabled: false,
-        canGenerate: false,
-        hasCredits: false,
-        hasPaidPlan: false,
-        hasPaidCredits: false,
-        hasManualCredits: false,
-        requiresPaidCredits: false,
-        isAdmin: session.user.role === "admin",
-        tokensPerImage: 1,
-        model: null,
-      };
+      return getImageGenerationAvailability({ userRole: session.user.role })
+        .then(buildImageGenerationAccessFromAvailability)
+        .catch((fallbackError) => {
+          console.error(
+            "[chat/home] image generation availability fallback failed.",
+            fallbackError
+          );
+          return {
+            enabled: false,
+            canGenerate: false,
+            hasCredits: false,
+            hasPaidPlan: false,
+            hasPaidCredits: false,
+            hasManualCredits: false,
+            requiresPaidCredits: false,
+            isAdmin: session.user.role === "admin",
+            tokensPerImage: 1,
+            model: null,
+          };
+        });
     }),
   ]);
 

@@ -17,6 +17,7 @@ import {
 import {
   getActiveSubscriptionForUser,
   getAppSetting,
+  getLastKnownAppSetting,
   getModelConfigById,
   getPricingPlanById,
   getUserById,
@@ -28,6 +29,7 @@ import {
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
+import { withTimeout } from "@/lib/utils/async";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";
 const NANO_BANANA_MODEL_ID =
@@ -60,6 +62,11 @@ export type ImageGenerationAccess = {
   } | null;
 };
 
+type ImageGenerationAvailability = Pick<
+  ImageGenerationAccess,
+  "enabled" | "isAdmin" | "model" | "requiresPaidCredits" | "tokensPerImage"
+>;
+
 const googleClient =
   process.env.GOOGLE_API_KEY !== undefined
     ? createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
@@ -78,10 +85,90 @@ export function parseImageGenerationEnabledSetting(value: unknown): boolean {
   return parseImageGenerationAccessModeSetting(value) !== "disabled";
 }
 
-export async function isImageGenerationEnabledForAllUsers(): Promise<boolean> {
-  const rawSetting = await getAppSetting<string | boolean | number>(
-    IMAGE_GENERATION_FEATURE_FLAG_KEY
+async function loadImageGenerationSetting() {
+  try {
+    return await getAppSetting<string | boolean | number>(
+      IMAGE_GENERATION_FEATURE_FLAG_KEY
+    );
+  } catch (error) {
+    const remembered = getLastKnownAppSetting<string | boolean | number>(
+      IMAGE_GENERATION_FEATURE_FLAG_KEY
+    );
+    if (remembered !== null) {
+      console.error(
+        "[image-generation] Feature setting read failed; using last known value.",
+        error
+      );
+      return remembered;
+    }
+    throw error;
+  }
+}
+
+function buildModelSummary(activeModel: Awaited<ReturnType<typeof getActiveImageModel>>) {
+  const tokensPerImage = Math.max(
+    1,
+    Math.round(activeModel?.tokensPerImage ?? TOKENS_PER_CREDIT)
   );
+
+  return {
+    modelSummary: activeModel
+      ? {
+          id: activeModel.id,
+          provider: activeModel.provider,
+          providerModelId: activeModel.providerModelId,
+          displayName: activeModel.displayName,
+          tokensPerImage,
+        }
+      : null,
+    tokensPerImage,
+  };
+}
+
+export async function getImageGenerationAvailability({
+  userRole,
+}: {
+  userRole?: UserRole | null;
+}): Promise<ImageGenerationAvailability> {
+  const [rawSetting, activeModel] = await Promise.all([
+    loadImageGenerationSetting(),
+    getActiveImageModel(),
+  ]);
+  const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
+  const isAdmin = userRole === "admin";
+  const featureEnabled = isFeatureEnabledForRole(featureMode, userRole);
+  const modelEnabled = Boolean(activeModel?.isEnabled);
+  const { modelSummary, tokensPerImage } = buildModelSummary(activeModel);
+  const enabled = featureEnabled && modelEnabled;
+
+  return {
+    enabled,
+    isAdmin,
+    model: modelSummary,
+    requiresPaidCredits: enabled && !isAdmin,
+    tokensPerImage,
+  };
+}
+
+export function buildImageGenerationAccessFromAvailability(
+  availability: ImageGenerationAvailability
+): ImageGenerationAccess {
+  return {
+    enabled: availability.enabled,
+    canGenerate: false,
+    hasCredits: false,
+    hasPaidPlan: false,
+    hasPaidCredits: false,
+    hasManualCredits: false,
+    requiresPaidCredits: availability.requiresPaidCredits,
+    isAdmin: availability.isAdmin,
+    tokensPerImage: availability.tokensPerImage,
+    model: availability.model,
+  };
+}
+
+export async function isImageGenerationEnabledForAllUsers(): Promise<boolean> {
+  const rawSetting = await loadImageGenerationSetting();
   const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
   if (featureMode !== "enabled") {
     return false;
@@ -98,31 +185,21 @@ export async function getImageGenerationAccess({
   userId: string | null;
   userRole?: UserRole | null;
 }): Promise<ImageGenerationAccess> {
-  const rawSetting = await getAppSetting<string | boolean | number>(
-    IMAGE_GENERATION_FEATURE_FLAG_KEY
-  );
+  const [rawSetting, activeModel, resolvedRole] = await Promise.all([
+    loadImageGenerationSetting(),
+    getActiveImageModel(),
+    userRole !== undefined
+      ? Promise.resolve(userRole)
+      : userId
+        ? getUserById(userId).then((user) => user?.role ?? null)
+        : Promise.resolve(null),
+  ]);
   const featureMode = parseImageGenerationAccessModeSetting(rawSetting);
-  const resolvedRole =
-    userRole ??
-    (userId ? (await getUserById(userId))?.role ?? null : null);
   const isAdmin = resolvedRole === "admin";
   const featureEnabled = isFeatureEnabledForRole(featureMode, resolvedRole);
-  const activeModel = await getActiveImageModel();
   const modelEnabled = Boolean(activeModel?.isEnabled);
   const enabled = featureEnabled && modelEnabled;
-  const tokensPerImage = Math.max(
-    1,
-    Math.round(activeModel?.tokensPerImage ?? TOKENS_PER_CREDIT)
-  );
-  const modelSummary = activeModel
-    ? {
-        id: activeModel.id,
-        provider: activeModel.provider,
-        providerModelId: activeModel.providerModelId,
-        displayName: activeModel.displayName,
-        tokensPerImage,
-      }
-    : null;
+  const { modelSummary, tokensPerImage } = buildModelSummary(activeModel);
   if (!enabled || !userId || !modelSummary) {
     return {
       enabled,
@@ -138,7 +215,16 @@ export async function getImageGenerationAccess({
     };
   }
 
-  const subscription = await getActiveSubscriptionForUser(userId);
+  const subscription = await withTimeout(
+    getActiveSubscriptionForUser(userId),
+    4_000
+  ).catch((error) => {
+    console.error(
+      "[image-generation] Subscription read failed; keeping feature availability without credit confirmation.",
+      error
+    );
+    return null;
+  });
   if (!subscription) {
     return {
       enabled,
@@ -159,7 +245,16 @@ export async function getImageGenerationAccess({
   const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
   const hasPaidCredits = paidBalance >= tokensPerImage;
   const hasManualCredits = manualBalance >= tokensPerImage;
-  const plan = await getPricingPlanById({ id: subscription.planId });
+  const plan = await withTimeout(
+    getPricingPlanById({ id: subscription.planId }),
+    3_000
+  ).catch((error) => {
+    console.error(
+      "[image-generation] Pricing plan read failed; continuing without paid-plan confirmation.",
+      error
+    );
+    return null;
+  });
   const hasPaidPlan = (plan?.priceInPaise ?? 0) > 0;
 
   return {
