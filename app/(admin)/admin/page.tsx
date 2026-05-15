@@ -17,6 +17,13 @@ import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
+type QueryResult<T> = {
+  data: T;
+  durationMs: number;
+  label: string;
+  ok: boolean;
+};
+
 export default async function AdminOverviewPage() {
   const fallbackUsers: Awaited<ReturnType<typeof listUsers>> = [];
   const fallbackChats: Awaited<ReturnType<typeof listChats>> = [];
@@ -37,7 +44,7 @@ export default async function AdminOverviewPage() {
     label: string,
     promise: Promise<T>,
     fallback: T
-  ): Promise<T> {
+  ): Promise<QueryResult<T>> {
     const startedAt = Date.now();
     try {
       const result = await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
@@ -47,32 +54,33 @@ export default async function AdminOverviewPage() {
       });
       const duration = Date.now() - startedAt;
       console.info(`[admin] Query "${label}" succeeded in ${duration}ms.`);
-      return result;
+      return { data: result, durationMs: duration, label, ok: true };
     } catch (error) {
       const duration = Date.now() - startedAt;
       if (error instanceof Error && error.message === "timeout") {
-        return fallback;
+        return { data: fallback, durationMs: duration, label, ok: false };
       }
       console.error(
         `[admin] Failed to load ${label} after ${duration}ms`,
         error
       );
-      return fallback;
+      return { data: fallback, durationMs: duration, label, ok: false };
     }
   }
 
-  const [userCount, chatCount, contactMessageCount] = await Promise.all([
+  const [userCountResult, chatCountResult, contactMessageCountResult] =
+    await Promise.all([
     safeQuery("user count", getUserCount(), 0),
     safeQuery("chat count", getChatCount(), 0),
     safeQuery("contact message count", getContactMessageCount(), 0),
   ]);
 
-  const [recentUsers, recentChats] = await Promise.all([
+  const [recentUsersResult, recentChatsResult] = await Promise.all([
     safeQuery("recent users", listUsers({ limit: 5 }), fallbackUsers),
     safeQuery("recent chats", listChats({ limit: 5 }), fallbackChats),
   ]);
 
-  const [recentAudits, recentContactMessages] = await Promise.all([
+  const [recentAuditsResult, recentContactMessagesResult] = await Promise.all([
     safeQuery(
       "recent audit log entries",
       listAuditLog({ limit: 5 }),
@@ -84,23 +92,60 @@ export default async function AdminOverviewPage() {
       fallbackContactMessages
     ),
   ]);
+  const userCount = userCountResult.data;
+  const chatCount = chatCountResult.data;
+  const contactMessageCount = contactMessageCountResult.data;
+  const recentUsers = recentUsersResult.data;
+  const recentChats = recentChatsResult.data;
+  const recentAudits = recentAuditsResult.data;
+  const recentContactMessages = recentContactMessagesResult.data;
+  const degradedQueries = [
+    userCountResult,
+    chatCountResult,
+    contactMessageCountResult,
+    recentUsersResult,
+    recentChatsResult,
+    recentAuditsResult,
+    recentContactMessagesResult,
+  ].filter((result) => !result.ok);
 
   return (
     <div className="flex flex-col gap-10">
+      {degradedQueries.length > 0 ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm">
+          <p className="font-semibold">Admin data could not be fully confirmed.</p>
+          <p className="mt-1">
+            One or more admin reads timed out or failed, so this page is showing
+            only confirmed values. Retry shortly; do not treat missing values as
+            deleted records.
+          </p>
+        </div>
+      ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Total users" value={userCount} />
-        <MetricCard label="Total chats" value={chatCount} />
         <MetricCard
+          confirmed={userCountResult.ok}
+          label="Total users"
+          value={userCount}
+        />
+        <MetricCard
+          confirmed={chatCountResult.ok}
+          label="Total chats"
+          value={chatCount}
+        />
+        <MetricCard
+          confirmed={recentUsersResult.ok}
           description="Last 5 accounts"
           label="Recent users"
           value={recentUsers.length}
         />
         <MetricCard
+          confirmed={recentAuditsResult.ok}
           description="Last 5 records"
           label="Audit events"
           value={recentAudits.length}
         />
         <MetricCard
+          confirmed={contactMessageCountResult.ok}
           description="Total messages received"
           label="Contact requests"
           value={contactMessageCount}
@@ -448,17 +493,23 @@ function MetricCard({
   label,
   value,
   description,
+  confirmed = true,
 }: {
   label: string;
   value: number;
   description?: string;
+  confirmed?: boolean;
 }) {
   return (
     <div className="rounded-lg border bg-card p-4">
       <p className="text-muted-foreground text-xs uppercase">{label}</p>
-      <p className="mt-2 font-semibold text-2xl">{value}</p>
+      <p className="mt-2 font-semibold text-2xl">
+        {confirmed ? value : "—"}
+      </p>
       {description ? (
-        <p className="text-muted-foreground text-xs">{description}</p>
+        <p className="text-muted-foreground text-xs">
+          {confirmed ? description : "Unable to confirm from database"}
+        </p>
       ) : null}
     </div>
   );

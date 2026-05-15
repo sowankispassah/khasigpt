@@ -21,7 +21,10 @@ import {
   parseFeatureAccessModeStrict,
 } from "@/lib/feature-access";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
-import { rememberFeatureAccessSettingValue } from "@/lib/settings/feature-access-settings";
+import {
+  FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+  rememberFeatureAccessSettingValue,
+} from "@/lib/settings/feature-access-settings";
 import { withTimeout } from "@/lib/utils/async";
 
 type FeatureAccessFieldConfig = {
@@ -174,12 +177,18 @@ export async function POST(request: NextRequest) {
 
   invalidateAdminMutation({
     source: config.auditAction,
-    tags: [appSettingCacheTagForKey(config.settingKey)],
+    tags: [
+      appSettingCacheTagForKey(config.settingKey),
+      FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+    ],
   });
   console.info("[api/admin/feature-access] Scoped feature mutation invalidation.", {
     accessMode: resolvedMode,
     fieldName,
-    invalidatedTags: [appSettingCacheTagForKey(config.settingKey)],
+    invalidatedTags: [
+      appSettingCacheTagForKey(config.settingKey),
+      FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+    ],
     settingKey: config.settingKey,
     source: config.auditAction,
   });

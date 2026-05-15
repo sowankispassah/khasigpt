@@ -1,5 +1,6 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -88,6 +89,8 @@ export type FeatureAccessControlState = {
 };
 
 const DEFAULT_FEATURE_ACCESS_READ_TIMEOUT_MS = 8_000;
+const FEATURE_ACCESS_CACHE_READ_TIMEOUT_MS = 1_500;
+export const FEATURE_ACCESS_SETTINGS_CACHE_TAG = "feature-access-settings";
 const lastKnownFeatureAccessValues = new Map<string, unknown>();
 
 function normalizeKeys(keys: readonly string[]) {
@@ -139,6 +142,18 @@ function summarizeFeatureAccessValues(values: Map<string, unknown>) {
     ])
   );
 }
+
+const loadCachedFeatureAccessRows = unstable_cache(
+  async (cacheKey: string) => {
+    const keys = cacheKey.split("\n").filter(Boolean);
+    return getLiteAppSettingsByKeysUncached(keys);
+  },
+  ["feature-access-settings-by-keys"],
+  {
+    revalidate: 60 * 10,
+    tags: [FEATURE_ACCESS_SETTINGS_CACHE_TAG],
+  }
+);
 
 function buildMissingKeys(keys: readonly string[], values: Map<string, unknown>) {
   return normalizeKeys(keys).filter((key) => !values.has(key));
@@ -223,13 +238,31 @@ export async function loadFeatureAccessSettingsByKeys(
       values,
     };
   } catch (error) {
-    const values = getLastKnownFeatureAccessValues(uniqueKeys);
+    let values = getLastKnownFeatureAccessValues(uniqueKeys);
+    let fallbackSource = "memory";
+    if (values.size === 0) {
+      try {
+        const cachedRows = await withTimeout(
+          loadCachedFeatureAccessRows(uniqueKeys.join("\n")),
+          FEATURE_ACCESS_CACHE_READ_TIMEOUT_MS
+        );
+        values = new Map(cachedRows.map((row) => [row.key, row.value]));
+        rememberFeatureAccessValues(values);
+        fallbackSource = "persistent-cache";
+      } catch (cacheError) {
+        console.error("[feature-settings/load:cache-error]", {
+          keys: uniqueKeys,
+          source,
+        }, cacheError);
+      }
+    }
     const durationMs = Date.now() - startedAt;
     const status: FeatureAccessReadStatus =
       values.size > 0 ? "stale" : "unavailable";
 
     console.error("[feature-settings/load:error]", {
       durationMs,
+      fallbackSource,
       fallbackKeyCount: values.size,
       keys: uniqueKeys,
       normalizedFallbackValues: summarizeFeatureAccessValues(values),

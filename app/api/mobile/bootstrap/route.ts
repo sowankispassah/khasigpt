@@ -116,16 +116,19 @@ function buildStartupLanguageSnapshot(
 }
 
 const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
-  calculator: false,
+  // Render-only fallback for transient settings failures. Protected feature
+  // routes still enforce access server-side; the shell should not lose the
+  // whole sidebar because one optional settings read was slow.
+  calculator: true,
   customKnowledge: false,
-  documentUploads: false,
+  documentUploads: true,
   forum: true,
-  jobs: false,
-  study: false,
-  translate: false,
+  jobs: true,
+  study: true,
+  translate: true,
   imageGeneration: {
-    enabled: false,
-    canGenerate: false,
+    enabled: true,
+    canGenerate: true,
     requiresPaidCredits: false,
   },
 };

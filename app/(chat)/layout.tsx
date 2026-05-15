@@ -80,8 +80,18 @@ export default async function Layout({
         timeoutMs: CHAT_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS,
       })
     : null;
-  const getFeatureSetting = (key: string) =>
-    featureAccessSettings?.values.get(key) ?? null;
+  const featureAccessUnavailable =
+    featureAccessSettings?.status === "unavailable";
+  const getFeatureSetting = (key: string) => {
+    const value = featureAccessSettings?.values.get(key);
+    if (value !== undefined) {
+      return value;
+    }
+    // Sidebar visibility is not an authorization boundary. If the feature
+    // settings read is temporarily unavailable, keep the app shell usable
+    // instead of hiding every optional feature until a warm retry succeeds.
+    return featureAccessUnavailable ? "enabled" : null;
+  };
   const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);

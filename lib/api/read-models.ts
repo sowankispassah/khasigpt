@@ -119,11 +119,15 @@ export async function loadFeatureAccessReadModel({
         })
       : Promise.resolve(null),
   ]);
+  const featureAccessUnavailable =
+    featureAccessSettings.status === "unavailable";
   const getFeatureSetting = (key: string): string | boolean | null => {
     const value = featureAccessSettings.values.get(key);
     return typeof value === "string" || typeof value === "boolean"
       ? value
-      : null;
+      : featureAccessUnavailable
+        ? "enabled"
+        : null;
   };
   const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
   const documentUploadsSetting = getFeatureSetting(
@@ -160,6 +164,12 @@ export async function loadFeatureAccessReadModel({
           requiresPaidCredits:
             imageGenerationAccess.requiresPaidCredits ?? false,
         }
+      : featureAccessUnavailable
+        ? {
+            enabled: true,
+            canGenerate: true,
+            requiresPaidCredits: false,
+          }
       : {
           enabled: false,
           canGenerate: false,
