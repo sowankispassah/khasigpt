@@ -41,6 +41,16 @@ type AuthOptions = {
 const DEFAULT_COOKIE_AUTH_TIMEOUT_MS = 3500;
 const DEFAULT_BEARER_AUTH_TIMEOUT_MS = 2500;
 
+export class AuthLookupUnavailableError extends Error {
+  code = "auth_lookup_unavailable";
+  status = 503;
+
+  constructor(message = "Authentication lookup is temporarily unavailable.") {
+    super(message);
+    this.name = "AuthLookupUnavailableError";
+  }
+}
+
 export function getBearerToken(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
@@ -137,7 +147,7 @@ export async function getAuthenticatedUser(
                   "[api/auth] Bearer auth lookup failed or timed out.",
                   error
                 );
-                return null;
+                throw new AuthLookupUnavailableError();
               }
             )
           : await loadBearerContext();

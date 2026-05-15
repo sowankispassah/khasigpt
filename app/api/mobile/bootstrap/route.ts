@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { AuthLookupUnavailableError } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
 import {
@@ -186,15 +187,33 @@ async function safeBootstrapSection<T>({
 }
 
 export async function GET(request: Request) {
-  const session = await withApiTiming(
-    "mobile.bootstrap.auth",
-    () =>
-      getMobileSession(request, {
-        allowCookie: false,
-        bearerTimeoutMs: 2500,
-      }),
-    { slowMs: 750 }
-  );
+  let session: Awaited<ReturnType<typeof getMobileSession>>;
+  try {
+    session = await withApiTiming(
+      "mobile.bootstrap.auth",
+      () =>
+        getMobileSession(request, {
+          allowCookie: false,
+          bearerTimeoutMs: 2500,
+        }),
+      { slowMs: 750 }
+    );
+  } catch (error) {
+    if (error instanceof AuthLookupUnavailableError) {
+      return NextResponse.json(
+        {
+          code: error.code,
+          message: "Startup account data is temporarily unavailable.",
+        },
+        {
+          headers: noStoreHeaders(),
+          status: error.status,
+        }
+      );
+    }
+    throw error;
+  }
+
   const cookieStore = await cookies();
   const { searchParams } = new URL(request.url);
   const requestedLanguage = searchParams.get("lang")?.trim().toLowerCase() ?? null;
