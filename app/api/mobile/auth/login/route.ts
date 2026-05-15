@@ -1,6 +1,7 @@
 import { compare } from "bcrypt-ts";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { withApiTiming } from "@/lib/api/observability";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { getUser } from "@/lib/db/queries";
 import { createMobileSessionFromUser } from "@/lib/mobile-auth-session";
@@ -33,6 +34,10 @@ function authError(message: string, status: number) {
   );
 }
 
+function getEmailDomain(email: string) {
+  return email.split("@")[1]?.toLowerCase() ?? "unknown";
+}
+
 export async function POST(request: Request) {
   const parsed = loginSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -62,13 +67,27 @@ export async function POST(request: Request) {
     return authError("Too many login attempts. Please try again later.", 429);
   }
 
-  const [user] = await getUser(email);
+  const [user] = await withApiTiming(
+    "mobile.auth.login.user_lookup",
+    () => getUser(email),
+    {
+      metadata: {
+        emailDomain: getEmailDomain(email),
+      },
+      slowMs: 500,
+    }
+  );
   if (!user?.password) {
     await compare(parsed.data.password, DUMMY_PASSWORD);
     return authError("Invalid credentials. Please try again.", 401);
   }
 
-  const passwordsMatch = await compare(parsed.data.password, user.password);
+  const passwordHash = user.password;
+  const passwordsMatch = await withApiTiming(
+    "mobile.auth.login.password_check",
+    () => compare(parsed.data.password, passwordHash),
+    { slowMs: 1000 }
+  );
   if (!passwordsMatch) {
     return authError("Invalid credentials. Please try again.", 401);
   }

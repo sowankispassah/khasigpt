@@ -19,7 +19,6 @@ import {
   getAppSetting,
   getLastKnownAppSetting,
   getModelConfigById,
-  getPricingPlanById,
   getUserById,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -245,23 +244,15 @@ export async function getImageGenerationAccess({
   const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
   const hasPaidCredits = paidBalance >= tokensPerImage;
   const hasManualCredits = manualBalance >= tokensPerImage;
-  const plan = await withTimeout(
-    getPricingPlanById({ id: subscription.planId }),
-    3_000
-  ).catch((error) => {
-    console.error(
-      "[image-generation] Pricing plan read failed; continuing without paid-plan confirmation.",
-      error
-    );
-    return null;
-  });
-  const hasPaidPlan = (plan?.priceInPaise ?? 0) > 0;
 
   return {
     enabled,
     canGenerate: hasCredits,
     hasCredits,
-    hasPaidPlan,
+    // Credit access must not wait on pricing-plan metadata. A slow plan lookup
+    // previously caused the mobile/web bootstrap to time out and report
+    // canGenerate=false even when the user's balance was sufficient.
+    hasPaidPlan: hasPaidCredits,
     hasPaidCredits,
     hasManualCredits,
     requiresPaidCredits: false,

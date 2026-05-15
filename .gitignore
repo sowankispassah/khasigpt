@@ -45,7 +45,11 @@ native/
 .env*.local
 
 .env.example
-.codex/
+.codex/*
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/mobile-auth-startup-reliability/
+!.codex/skills/mobile-auth-startup-reliability/**
 native/.expo/
 *.tsbuildinfo
 

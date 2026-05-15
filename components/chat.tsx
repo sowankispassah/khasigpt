@@ -218,6 +218,9 @@ export function Chat({
     null
   );
   const [isImageMode, setIsImageMode] = useState(false);
+  const [verifiedImageCanGenerate, setVerifiedImageCanGenerate] = useState<
+    boolean | null
+  >(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showActionProgress, setShowActionProgress] = useState(false);
   const [actionProgress, setActionProgress] = useState(0);
@@ -266,24 +269,90 @@ export function Chat({
   const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
-  const imageUpgradeTitle = imageGeneration.requiresPaidCredits
-    ? translate(
-        "image.actions.locked.free.title",
-        "Free credits can't be used for images"
-      )
-    : translate(
-        "image.actions.locked.title",
-        "Recharge credits to generate images"
-      );
-  const imageUpgradeDescription = imageGeneration.requiresPaidCredits
-    ? translate(
-        "image.actions.locked.free.description",
-        "You are using free credits. Recharge to generate images."
-      )
-    : translate(
-        "image.actions.locked.description",
-        "Image generation is available for paid plans or users with active credits."
-      );
+  const imageUpgradeTitle = translate(
+    "image.upgrade_prompt.title",
+    "Upgrade required"
+  );
+  const imageUpgradeDescription = translate(
+    "image.upgrade_prompt.description",
+    "Please upgrade your plan to use this feature."
+  );
+  const refreshImageGenerationAccess = useCallback(async () => {
+    if (!imageGeneration.enabled) {
+      return false;
+    }
+    try {
+      const response = await fetch("/api/web/features", {
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as
+        | {
+            imageGeneration?: {
+              enabled?: boolean;
+              canGenerate?: boolean;
+            };
+          }
+        | null;
+      if (response.ok && data?.imageGeneration?.enabled) {
+        setVerifiedImageCanGenerate(Boolean(data.imageGeneration.canGenerate));
+        if (data.imageGeneration.canGenerate) {
+          return true;
+        }
+      }
+      if (response.ok && data?.imageGeneration?.enabled === false) {
+        return false;
+      }
+    } catch (error) {
+      console.info("[image-generation] Unable to refresh image access.", {
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+
+    return imageGeneration.canGenerate;
+  }, [imageGeneration.canGenerate, imageGeneration.enabled]);
+  const confirmImageGenerationAccess = useCallback(async () => {
+    if (
+      imageGeneration.enabled &&
+      (verifiedImageCanGenerate === true || imageGeneration.canGenerate)
+    ) {
+      return true;
+    }
+    if (verifiedImageCanGenerate === false) {
+      setShowImageUpgradeDialog(true);
+      void refreshImageGenerationAccess().then((latestCanGenerate) => {
+        if (latestCanGenerate) {
+          setShowImageUpgradeDialog(false);
+        }
+      });
+      return false;
+    }
+
+    if (!imageGeneration.enabled) {
+      toast({
+        type: "error",
+        description: translate(
+          "image.disabled",
+          "Image generation is currently unavailable."
+        ),
+      });
+      return false;
+    }
+
+    const latestCanGenerate = await refreshImageGenerationAccess();
+    if (latestCanGenerate) {
+      return true;
+    }
+
+    setVerifiedImageCanGenerate(false);
+    setShowImageUpgradeDialog(true);
+    return false;
+  }, [
+    imageGeneration.canGenerate,
+    imageGeneration.enabled,
+    refreshImageGenerationAccess,
+    translate,
+    verifiedImageCanGenerate,
+  ]);
 
   const refreshAndPromoteHistory = useCallback(() => {
     const historyCacheKey = unstable_serialize(historyPaginationKey);
@@ -957,35 +1026,18 @@ export function Chat({
       }
 
       if (item.selectImageMode) {
-        if (!imageGeneration.enabled) {
-          return;
-        }
-        if (!imageGeneration.canGenerate) {
-          setShowImageUpgradeDialog(true);
-          return;
-        }
         setIsImageMode(true);
+        void refreshImageGenerationAccess();
       } else {
         setIsImageMode(false);
       }
     },
-    [imageGeneration.canGenerate, imageGeneration.enabled]
+    [refreshImageGenerationAccess]
   );
 
   const generateImageFromPrompt = useCallback(
     async (prompt: string, displayPrompt?: string) => {
-      if (!imageGeneration.enabled) {
-        toast({
-          type: "error",
-          description: translate(
-            "image.disabled",
-            "Image generation is currently unavailable."
-          ),
-        });
-        return;
-      }
-      if (!imageGeneration.canGenerate) {
-        setShowImageUpgradeDialog(true);
+      if (!(await confirmImageGenerationAccess())) {
         return;
       }
 
@@ -1102,14 +1154,14 @@ export function Chat({
       }
     },
     [
-      attachments, 
-      id, 
-      imageGeneration.canGenerate, 
-      imageGeneration.enabled, 
-      refreshAndPromoteHistory, 
-      setMessages, 
-      translate, 
-      visibilityType, syncCurrentChatUrl
+      attachments,
+      confirmImageGenerationAccess,
+      id,
+      refreshAndPromoteHistory,
+      setMessages,
+      syncCurrentChatUrl,
+      translate,
+      visibilityType,
     ]
   );
 
@@ -1570,14 +1622,15 @@ export function Chat({
                     stop={stop}
                     studyQuestionReference={studyQuestionReference}
                     onToggleImageMode={() => {
-                      if (!imageGeneration.enabled || isStudyMode) {
+                      if (isStudyMode) {
                         return;
                       }
-                      if (!imageGeneration.canGenerate) {
-                        setShowImageUpgradeDialog(true);
+                      if (isImageMode) {
+                        setIsImageMode(false);
                         return;
                       }
-                      setIsImageMode((prev) => !prev);
+                      setIsImageMode(true);
+                      void refreshImageGenerationAccess();
                     }}
                   />
                   <p className="px-2 text-center text-muted-foreground text-xs">
@@ -1786,7 +1839,7 @@ export function Chat({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>
-              {translate("common.close", "Close")}
+              {translate("common.cancel", "Cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -1851,9 +1904,9 @@ export function Chat({
               {imageUpgradeDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="justify-center sm:justify-center">
             <AlertDialogCancel>
-              {translate("common.close", "Close")}
+              {translate("common.cancel", "Cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -1862,7 +1915,7 @@ export function Chat({
                 router.push("/recharge");
               }}
             >
-              {translate("image.actions.locked.cta", "Go to recharge")}
+              {translate("image.upgrade_prompt.cta", "Upgrade Plan")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

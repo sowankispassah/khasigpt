@@ -931,6 +931,22 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "CTA button label to navigate to the recharge page.",
   },
   {
+    key: "image.upgrade_prompt.title",
+    defaultText: "Upgrade required",
+    description: "Modal title shown before navigating to the upgrade page.",
+  },
+  {
+    key: "image.upgrade_prompt.description",
+    defaultText: "Please upgrade your plan to use this feature.",
+    description:
+      "Modal message shown when image generation requires more credits.",
+  },
+  {
+    key: "image.upgrade_prompt.cta",
+    defaultText: "Upgrade Plan",
+    description: "CTA button label to navigate to the upgrade plan page.",
+  },
+  {
     key: "image.page.title",
     defaultText: "Image generation",
     description: "Page title for the image generation screen.",
