@@ -269,14 +269,6 @@ export function Chat({
   const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
-  const imageUpgradeTitle = translate(
-    "image.upgrade_prompt.title",
-    "Upgrade required"
-  );
-  const imageUpgradeDescription = translate(
-    "image.upgrade_prompt.description",
-    "Please upgrade your plan to use this feature."
-  );
   const refreshImageGenerationAccess = useCallback(async () => {
     if (!imageGeneration.enabled) {
       return false;
@@ -1899,14 +1891,28 @@ export function Chat({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{imageUpgradeTitle}</AlertDialogTitle>
+            <AlertDialogTitle>
+              <EditableTranslation
+                defaultText="Upgrade required"
+                description="Title shown in the image generation upgrade-required modal."
+                translationKey="image.upgrade_prompt.title"
+              />
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {imageUpgradeDescription}
+              <EditableTranslation
+                defaultText="Please upgrade your plan to use this feature."
+                description="Description shown when image generation requires more credits."
+                translationKey="image.upgrade_prompt.description"
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="justify-center sm:justify-center">
             <AlertDialogCancel>
-              {translate("common.cancel", "Cancel")}
+              <EditableTranslation
+                defaultText="Cancel"
+                description="Cancel button label."
+                translationKey="common.cancel"
+              />
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -1915,7 +1921,11 @@ export function Chat({
                 router.push("/recharge");
               }}
             >
-              {translate("image.upgrade_prompt.cta", "Upgrade Plan")}
+              <EditableTranslation
+                defaultText="Upgrade Plan"
+                description="Button label that opens the recharge or upgrade plan screen."
+                translationKey="image.upgrade_prompt.cta"
+              />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
