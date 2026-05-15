@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/read-models";
 import {
   db,
+  getAdminOverviewSnapshot,
   getAuditLogCount,
   getChatCount,
   getContactMessageCount,
@@ -102,27 +103,28 @@ async function sectionQuery<T>(label: string, promise: Promise<T>, fallback: T) 
 }
 
 async function loadOverview() {
-  const [userCount, chatCount, contactMessageCount, recentUsers, recentChats] =
-    await Promise.all([
-      sectionQuery("overview.user-count", getUserCount(), 0),
-      sectionQuery("overview.chat-count", getChatCount(), 0),
-      sectionQuery(
-        "overview.contact-count",
-        getContactMessageCount(),
-        0
-      ),
-      sectionQuery("overview.recent-users", listUsers({ limit: 5 }), []),
-      sectionQuery("overview.recent-chats", listChats({ limit: 5 }), []),
-    ]);
+  const snapshot = await sectionQuery(
+    "overview.snapshot",
+    getAdminOverviewSnapshot(),
+    {
+      userCount: 0,
+      chatCount: 0,
+      contactMessageCount: 0,
+      recentUsers: [],
+      recentChats: [],
+      recentAudits: [],
+      recentContactMessages: [],
+    }
+  );
 
   return {
     metrics: {
-      users: userCount,
-      chats: chatCount,
-      contactMessages: contactMessageCount,
+      users: snapshot.userCount,
+      chats: snapshot.chatCount,
+      contactMessages: snapshot.contactMessageCount,
     },
-    recentUsers,
-    recentChats,
+    recentUsers: snapshot.recentUsers,
+    recentChats: snapshot.recentChats,
   };
 }
 

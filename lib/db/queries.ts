@@ -180,9 +180,12 @@ function normalizeCouponCode(code: string) {
   return code.trim().toUpperCase();
 }
 
-function toInteger(value: number | string | null | undefined): number {
+function toInteger(value: number | string | bigint | null | undefined): number {
   if (value === null || value === undefined) {
     return 0;
+  }
+  if (typeof value === "bigint") {
+    return Number(value);
   }
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -398,6 +401,200 @@ function isMissingTranslationSpeechModelColumnError(error: unknown) {
 }
 
 export type ChatListItem = Chat & { userEmail: string | null };
+
+export type AdminOverviewUser = Pick<
+  User,
+  "id" | "email" | "role" | "isActive" | "createdAt"
+>;
+
+export type AdminOverviewChat = Pick<
+  ChatListItem,
+  | "id"
+  | "createdAt"
+  | "title"
+  | "userId"
+  | "mode"
+  | "visibility"
+  | "lastContext"
+  | "deletedAt"
+  | "userEmail"
+>;
+
+export type AdminOverviewAudit = Pick<
+  AuditLog,
+  "id" | "actorId" | "action" | "target" | "createdAt"
+>;
+
+export type AdminOverviewContactMessage = Pick<
+  ContactMessage,
+  "id" | "name" | "email" | "phone" | "subject" | "message" | "createdAt"
+>;
+
+export type AdminOverviewSnapshot = {
+  userCount: number;
+  chatCount: number;
+  contactMessageCount: number;
+  recentUsers: AdminOverviewUser[];
+  recentChats: AdminOverviewChat[];
+  recentAudits: AdminOverviewAudit[];
+  recentContactMessages: AdminOverviewContactMessage[];
+};
+
+type AdminOverviewRawSnapshot = Omit<
+  AdminOverviewSnapshot,
+  | "recentUsers"
+  | "recentChats"
+  | "recentAudits"
+  | "recentContactMessages"
+> & {
+  userCount: number | string | bigint;
+  chatCount: number | string | bigint;
+  contactMessageCount: number | string | bigint;
+  recentUsers: Array<
+    Omit<AdminOverviewUser, "createdAt"> & { createdAt: Date | string }
+  >;
+  recentChats: Array<Omit<AdminOverviewChat, "createdAt" | "deletedAt"> & {
+    createdAt: Date | string;
+    deletedAt: Date | string | null;
+  }>;
+  recentAudits: Array<
+    Omit<AdminOverviewAudit, "createdAt"> & { createdAt: Date | string }
+  >;
+  recentContactMessages: Array<
+    Omit<AdminOverviewContactMessage, "createdAt"> & { createdAt: Date | string }
+  >;
+};
+
+function toRequiredDate(value: Date | string) {
+  return toDate(value) ?? new Date(0);
+}
+
+export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot> {
+  const startedAt = Date.now();
+
+  try {
+    const [row] = await client<AdminOverviewRawSnapshot[]>`
+      SELECT
+        (SELECT COUNT(*)::integer FROM "User") AS "userCount",
+        (SELECT COUNT(*)::integer FROM "Chat" WHERE "deletedAt" IS NULL) AS "chatCount",
+        (SELECT COUNT(*)::integer FROM "ContactMessage") AS "contactMessageCount",
+        (
+          SELECT COALESCE(
+            jsonb_agg(to_jsonb(recent_users) ORDER BY recent_users."createdAt" DESC),
+            '[]'::jsonb
+          )
+          FROM (
+            SELECT
+              "id",
+              "email",
+              "role",
+              "isActive",
+              "createdAt"
+            FROM "User"
+            ORDER BY "createdAt" DESC
+            LIMIT 5
+          ) recent_users
+        ) AS "recentUsers",
+        (
+          SELECT COALESCE(
+            jsonb_agg(to_jsonb(recent_chats) ORDER BY recent_chats."createdAt" DESC),
+            '[]'::jsonb
+          )
+          FROM (
+            SELECT
+              c."id",
+              c."createdAt",
+              c."title",
+              c."userId",
+              c."mode",
+              c."visibility",
+              c."lastContext",
+              c."deletedAt",
+              u."email" AS "userEmail"
+            FROM "Chat" c
+            LEFT JOIN "User" u ON u."id" = c."userId"
+            WHERE c."deletedAt" IS NULL
+            ORDER BY c."createdAt" DESC
+            LIMIT 5
+          ) recent_chats
+        ) AS "recentChats",
+        (
+          SELECT COALESCE(
+            jsonb_agg(to_jsonb(recent_audits) ORDER BY recent_audits."createdAt" DESC),
+            '[]'::jsonb
+          )
+          FROM (
+            SELECT
+              "id",
+              "actorId",
+              "action",
+              "target",
+              "createdAt"
+            FROM "AuditLog"
+            ORDER BY "createdAt" DESC
+            LIMIT 5
+          ) recent_audits
+        ) AS "recentAudits",
+        (
+          SELECT COALESCE(
+            jsonb_agg(to_jsonb(recent_contact_messages) ORDER BY recent_contact_messages."createdAt" DESC),
+            '[]'::jsonb
+          )
+          FROM (
+            SELECT
+              "id",
+              "name",
+              "email",
+              "phone",
+              "subject",
+              "message",
+              "createdAt"
+            FROM "ContactMessage"
+            ORDER BY "createdAt" DESC
+            LIMIT 5
+          ) recent_contact_messages
+        ) AS "recentContactMessages"
+    `;
+
+    const snapshot: AdminOverviewSnapshot = {
+      userCount: toInteger(row?.userCount),
+      chatCount: toInteger(row?.chatCount),
+      contactMessageCount: toInteger(row?.contactMessageCount),
+      recentUsers: (row?.recentUsers ?? []).map((item) => ({
+        ...item,
+        createdAt: toRequiredDate(item.createdAt),
+      })),
+      recentChats: (row?.recentChats ?? []).map((item) => ({
+        ...item,
+        createdAt: toRequiredDate(item.createdAt),
+        deletedAt: item.deletedAt ? toDate(item.deletedAt) : null,
+      })),
+      recentAudits: (row?.recentAudits ?? []).map((item) => ({
+        ...item,
+        createdAt: toRequiredDate(item.createdAt),
+      })),
+      recentContactMessages: (row?.recentContactMessages ?? []).map((item) => ({
+        ...item,
+        createdAt: toRequiredDate(item.createdAt),
+      })),
+    };
+
+    console.info(
+      `[admin.overview.snapshot] loaded in ${Date.now() - startedAt}ms`
+    );
+
+    return snapshot;
+  } catch (error) {
+    console.error(
+      `[admin.overview.snapshot] failed after ${Date.now() - startedAt}ms`,
+      error
+    );
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load admin overview snapshot"
+    );
+  }
+}
 
 export async function getUser(email: string): Promise<User[]> {
   try {

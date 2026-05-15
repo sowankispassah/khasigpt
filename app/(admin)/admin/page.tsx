@@ -3,15 +3,7 @@ import Link from "next/link";
 
 import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminLiveActivityPanelDeferred } from "@/components/admin-live-activity-panel-deferred";
-import {
-  getChatCount,
-  getContactMessageCount,
-  getUserCount,
-  listAuditLog,
-  listChats,
-  listContactMessages,
-  listUsers,
-} from "@/lib/db/queries";
+import { getAdminOverviewSnapshot } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -25,11 +17,17 @@ type QueryResult<T> = {
 };
 
 export default async function AdminOverviewPage() {
-  const fallbackUsers: Awaited<ReturnType<typeof listUsers>> = [];
-  const fallbackChats: Awaited<ReturnType<typeof listChats>> = [];
-  const fallbackAudits: Awaited<ReturnType<typeof listAuditLog>> = [];
-  const fallbackContactMessages: Awaited<ReturnType<typeof listContactMessages>> =
-    [];
+  const fallbackOverview: Awaited<
+    ReturnType<typeof getAdminOverviewSnapshot>
+  > = {
+    userCount: 0,
+    chatCount: 0,
+    contactMessageCount: 0,
+    recentUsers: [],
+    recentChats: [],
+    recentAudits: [],
+    recentContactMessages: [],
+  };
 
   const queryTimeoutRaw = Number.parseInt(
     process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
@@ -68,46 +66,19 @@ export default async function AdminOverviewPage() {
     }
   }
 
-  const [userCountResult, chatCountResult, contactMessageCountResult] =
-    await Promise.all([
-    safeQuery("user count", getUserCount(), 0),
-    safeQuery("chat count", getChatCount(), 0),
-    safeQuery("contact message count", getContactMessageCount(), 0),
-  ]);
-
-  const [recentUsersResult, recentChatsResult] = await Promise.all([
-    safeQuery("recent users", listUsers({ limit: 5 }), fallbackUsers),
-    safeQuery("recent chats", listChats({ limit: 5 }), fallbackChats),
-  ]);
-
-  const [recentAuditsResult, recentContactMessagesResult] = await Promise.all([
-    safeQuery(
-      "recent audit log entries",
-      listAuditLog({ limit: 5 }),
-      fallbackAudits
-    ),
-    safeQuery(
-      "recent contact messages",
-      listContactMessages({ limit: 5 }),
-      fallbackContactMessages
-    ),
-  ]);
-  const userCount = userCountResult.data;
-  const chatCount = chatCountResult.data;
-  const contactMessageCount = contactMessageCountResult.data;
-  const recentUsers = recentUsersResult.data;
-  const recentChats = recentChatsResult.data;
-  const recentAudits = recentAuditsResult.data;
-  const recentContactMessages = recentContactMessagesResult.data;
-  const degradedQueries = [
-    userCountResult,
-    chatCountResult,
-    contactMessageCountResult,
-    recentUsersResult,
-    recentChatsResult,
-    recentAuditsResult,
-    recentContactMessagesResult,
-  ].filter((result) => !result.ok);
+  const overviewResult = await safeQuery(
+    "overview snapshot",
+    getAdminOverviewSnapshot(),
+    fallbackOverview
+  );
+  const userCount = overviewResult.data.userCount;
+  const chatCount = overviewResult.data.chatCount;
+  const contactMessageCount = overviewResult.data.contactMessageCount;
+  const recentUsers = overviewResult.data.recentUsers;
+  const recentChats = overviewResult.data.recentChats;
+  const recentAudits = overviewResult.data.recentAudits;
+  const recentContactMessages = overviewResult.data.recentContactMessages;
+  const degradedQueries = overviewResult.ok ? [] : [overviewResult];
 
   return (
     <div className="flex flex-col gap-10">
@@ -123,29 +94,29 @@ export default async function AdminOverviewPage() {
       ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard
-          confirmed={userCountResult.ok}
+          confirmed={overviewResult.ok}
           label="Total users"
           value={userCount}
         />
         <MetricCard
-          confirmed={chatCountResult.ok}
+          confirmed={overviewResult.ok}
           label="Total chats"
           value={chatCount}
         />
         <MetricCard
-          confirmed={recentUsersResult.ok}
+          confirmed={overviewResult.ok}
           description="Last 5 accounts"
           label="Recent users"
           value={recentUsers.length}
         />
         <MetricCard
-          confirmed={recentAuditsResult.ok}
+          confirmed={overviewResult.ok}
           description="Last 5 records"
           label="Audit events"
           value={recentAudits.length}
         />
         <MetricCard
-          confirmed={contactMessageCountResult.ok}
+          confirmed={overviewResult.ok}
           description="Total messages received"
           label="Contact requests"
           value={contactMessageCount}
@@ -167,7 +138,8 @@ export default async function AdminOverviewPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60 text-sm">
-                {recentUsers.map((user) => (
+                {overviewResult.ok ? (
+                  recentUsers.map((user) => (
                   <tr
                     className="bg-card/70 transition hover:bg-muted/20"
                     key={user.id}
@@ -196,12 +168,16 @@ export default async function AdminOverviewPage() {
                       })}
                     </td>
                   </tr>
-                ))}
+                  ))
+                ) : (
+                  <UnconfirmedTableRow colSpan={4} />
+                )}
               </tbody>
             </table>
           </div>
           <div className="flex flex-col gap-3 text-sm md:hidden">
-            {recentUsers.map((user) => (
+            {overviewResult.ok ? (
+              recentUsers.map((user) => (
               <div
                 className="rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm"
                 key={user.id}
@@ -244,7 +220,10 @@ export default async function AdminOverviewPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              ))
+            ) : (
+              <UnconfirmedPanelMessage />
+            )}
           </div>
         </AdminDataPanel>
 
@@ -260,7 +239,9 @@ export default async function AdminOverviewPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60 text-sm">
-                {recentContactMessages.length === 0 ? (
+                {!overviewResult.ok ? (
+                  <UnconfirmedTableRow colSpan={4} />
+                ) : recentContactMessages.length === 0 ? (
                   <tr>
                     <td
                       className="px-4 py-8 text-center text-muted-foreground"
@@ -302,7 +283,9 @@ export default async function AdminOverviewPage() {
             </table>
           </div>
           <div className="flex flex-col gap-3 text-sm md:hidden">
-            {recentContactMessages.length === 0 ? (
+            {!overviewResult.ok ? (
+              <UnconfirmedPanelMessage />
+            ) : recentContactMessages.length === 0 ? (
               <p className="py-6 text-center text-muted-foreground">
                 No contact requests yet.
               </p>
@@ -361,7 +344,8 @@ export default async function AdminOverviewPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60 text-sm">
-              {recentChats.map((chat) => (
+              {overviewResult.ok ? (
+                recentChats.map((chat) => (
                 <tr
                   className="bg-card/70 transition hover:bg-muted/20"
                   key={chat.id}
@@ -394,12 +378,16 @@ export default async function AdminOverviewPage() {
                     })}
                   </td>
                 </tr>
-              ))}
+                ))
+              ) : (
+                <UnconfirmedTableRow colSpan={4} />
+              )}
             </tbody>
           </table>
         </div>
         <div className="flex flex-col gap-3 text-sm md:hidden">
-          {recentChats.map((chat) => (
+          {overviewResult.ok ? (
+            recentChats.map((chat) => (
             <Link
               className="cursor-pointer rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm transition hover:bg-muted/20"
               href={`/chat/${chat.id}?admin=1`}
@@ -425,7 +413,10 @@ export default async function AdminOverviewPage() {
                 </p>
               </div>
             </Link>
-          ))}
+            ))
+          ) : (
+            <UnconfirmedPanelMessage />
+          )}
         </div>
       </AdminDataPanel>
 
@@ -441,7 +432,8 @@ export default async function AdminOverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {recentAudits.map((entry) => (
+              {overviewResult.ok ? (
+                recentAudits.map((entry) => (
                 <tr className="border-t text-sm" key={entry.id}>
                   <td className="py-2 font-medium">{entry.action}</td>
                   <td className="py-2">{entry.actorId}</td>
@@ -454,12 +446,16 @@ export default async function AdminOverviewPage() {
                     })}
                   </td>
                 </tr>
-              ))}
+                ))
+              ) : (
+                <UnconfirmedTableRow colSpan={4} />
+              )}
             </tbody>
           </table>
         </div>
         <div className="flex flex-col gap-3 text-sm md:hidden">
-          {recentAudits.map((entry) => (
+          {overviewResult.ok ? (
+            recentAudits.map((entry) => (
             <div
               className="rounded-lg border border-border/70 bg-card/70 p-4 shadow-sm"
               key={entry.id}
@@ -482,10 +478,34 @@ export default async function AdminOverviewPage() {
                 </p>
               </div>
             </div>
-          ))}
+            ))
+          ) : (
+            <UnconfirmedPanelMessage />
+          )}
         </div>
       </AdminDataPanel>
     </div>
+  );
+}
+
+function UnconfirmedTableRow({ colSpan }: { colSpan: number }) {
+  return (
+    <tr>
+      <td
+        className="px-4 py-8 text-center text-muted-foreground"
+        colSpan={colSpan}
+      >
+        Unable to confirm this data from the database right now.
+      </td>
+    </tr>
+  );
+}
+
+function UnconfirmedPanelMessage() {
+  return (
+    <p className="py-6 text-center text-muted-foreground">
+      Unable to confirm this data from the database right now.
+    </p>
   );
 }
 
