@@ -188,7 +188,11 @@ async function safeBootstrapSection<T>({
 export async function GET(request: Request) {
   const session = await withApiTiming(
     "mobile.bootstrap.auth",
-    () => getMobileSession(request),
+    () =>
+      getMobileSession(request, {
+        allowCookie: false,
+        bearerTimeoutMs: 2500,
+      }),
     { slowMs: 750 }
   );
   const cookieStore = await cookies();

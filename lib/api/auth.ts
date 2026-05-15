@@ -39,6 +39,7 @@ type AuthOptions = {
 };
 
 const DEFAULT_COOKIE_AUTH_TIMEOUT_MS = 3500;
+const DEFAULT_BEARER_AUTH_TIMEOUT_MS = 2500;
 
 export function getBearerToken(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
@@ -106,7 +107,7 @@ export async function getAuthenticatedUser(
   {
     allowBearer = true,
     allowCookie = true,
-    bearerTimeoutMs,
+    bearerTimeoutMs = DEFAULT_BEARER_AUTH_TIMEOUT_MS,
     cookieTimeoutMs = DEFAULT_COOKIE_AUTH_TIMEOUT_MS,
   }: AuthOptions = {}
 ): Promise<AuthenticatedRequestContext | null> {

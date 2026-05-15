@@ -9,7 +9,11 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const session = await withApiTiming(
     "mobile.auth.session",
-    () => getMobileSession(request),
+    () =>
+      getMobileSession(request, {
+        allowCookie: false,
+        bearerTimeoutMs: 2500,
+      }),
     { slowMs: 500 }
   );
   if (!session?.user?.id) {

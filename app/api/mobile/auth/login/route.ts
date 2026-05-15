@@ -10,6 +10,7 @@ import {
   incrementRateLimit,
   resetRateLimit,
 } from "@/lib/security/rate-limit";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,10 +20,12 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-function authError(message: string, status: number) {
+function authError(message: string, status: number, code?: string) {
   return NextResponse.json(
     {
-      code: status === 429 ? "rate_limit:auth" : "unauthorized:auth",
+      code:
+        code ??
+        (status === 429 ? "rate_limit:auth" : "unauthorized:auth"),
       message,
     },
     {
@@ -57,26 +60,57 @@ export async function POST(request: Request) {
 
   const email = parsed.data.email.trim().toLowerCase();
   const rateLimitKey = `mobile-login:${email || "unknown"}`;
-  const { allowed } = await incrementRateLimit(rateLimitKey, {
-    limit: 5,
-    windowMs: 10 * 60 * 1000,
-  });
+  const { allowed } = await withApiTiming(
+    "mobile.auth.login.rate_limit",
+    () =>
+      incrementRateLimit(rateLimitKey, {
+        limit: 5,
+        windowMs: 10 * 60 * 1000,
+      }),
+    {
+      metadata: {
+        emailDomain: getEmailDomain(email),
+      },
+      slowMs: 300,
+    }
+  );
 
   if (!allowed) {
     await compare(parsed.data.password, DUMMY_PASSWORD);
     return authError("Too many login attempts. Please try again later.", 429);
   }
 
-  const [user] = await withApiTiming(
-    "mobile.auth.login.user_lookup",
-    () => getUser(email),
-    {
-      metadata: {
-        emailDomain: getEmailDomain(email),
-      },
-      slowMs: 500,
-    }
-  );
+  let userRecords: Awaited<ReturnType<typeof getUser>>;
+  try {
+    userRecords = await withApiTiming(
+      "mobile.auth.login.user_lookup",
+      () =>
+        withTimeout(getUser(email), 5000, () => {
+          console.warn("[mobile-auth] User lookup timed out.", {
+            emailDomain: getEmailDomain(email),
+          });
+        }),
+      {
+        metadata: {
+          emailDomain: getEmailDomain(email),
+        },
+        slowMs: 500,
+      }
+    );
+  } catch (error) {
+    console.error("[mobile-auth] User lookup failed.", {
+      emailDomain: getEmailDomain(email),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await compare(parsed.data.password, DUMMY_PASSWORD);
+    return authError(
+      "Sign in is temporarily unavailable. Please try again.",
+      503,
+      "unavailable:auth"
+    );
+  }
+
+  const [user] = userRecords;
   if (!user?.password) {
     await compare(parsed.data.password, DUMMY_PASSWORD);
     return authError("Invalid credentials. Please try again.", 401);

@@ -1,10 +1,11 @@
-import { fetchWithTimeout } from "@/lib/utils/async";
+import { fetchWithTimeout, withTimeout } from "@/lib/utils/async";
 
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_LIMIT = 100;
-const KV_FETCH_TIMEOUT_MS = 1500;
+const KV_FETCH_TIMEOUT_MS = 750;
 const REDIS_CONNECT_TIMEOUT_MS = 750;
 const REDIS_FAILURE_COOLDOWN_MS = 30_000;
+const REMOTE_RATE_LIMIT_TIMEOUT_MS = 1000;
 
 type RedisClientType = import("redis").RedisClientType;
 declare const EdgeRuntime: string | undefined;
@@ -67,6 +68,10 @@ function clearRedisBlock() {
   redisBlockedUntil = 0;
 }
 
+function getRateLimitNamespace(key: string) {
+  return key.split(":")[0] || "unknown";
+}
+
 async function getRedisClient(): Promise<RedisClientType | null> {
   if (typeof EdgeRuntime !== "undefined") {
     return null;
@@ -110,7 +115,10 @@ async function getRedisClient(): Promise<RedisClientType | null> {
               redisConnectPromise = null;
             });
         }
-        await redisConnectPromise;
+        await withTimeout(redisConnectPromise, REDIS_CONNECT_TIMEOUT_MS + 250, () => {
+          console.warn("[rate-limit] Redis connection timed out");
+          blockRedisTemporarily();
+        });
       }
     }
 
@@ -235,6 +243,37 @@ async function incrementRestKv(
   }
 }
 
+async function incrementRemoteRateLimit(
+  key: string,
+  options: Required<RateLimitOptions>
+): Promise<RateLimitResult | null> {
+  try {
+    return await withTimeout(
+      (async () => {
+        const kvResult = await incrementRestKv(key, options);
+        if (kvResult) {
+          return kvResult;
+        }
+        return incrementRedis(key, options);
+      })(),
+      REMOTE_RATE_LIMIT_TIMEOUT_MS,
+      () => {
+        blockRedisTemporarily();
+        console.warn("[rate-limit] Remote limiter timed out; using fallback.", {
+          namespace: getRateLimitNamespace(key),
+        });
+      }
+    );
+  } catch (error) {
+    blockRedisTemporarily();
+    console.warn("[rate-limit] Remote limiter failed; using fallback.", {
+      namespace: getRateLimitNamespace(key),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function deleteRedisKey(key: string) {
   const client = await getRedisClient();
   if (!client) {
@@ -275,14 +314,9 @@ export async function incrementRateLimit(
   key: string,
   { windowMs = DEFAULT_WINDOW_MS, limit = DEFAULT_LIMIT }: RateLimitOptions = {}
 ): Promise<RateLimitResult> {
-  const kvResult = await incrementRestKv(key, { windowMs, limit });
-  if (kvResult) {
-    return kvResult;
-  }
-
-  const redisResult = await incrementRedis(key, { windowMs, limit });
-  if (redisResult) {
-    return redisResult;
+  const remoteResult = await incrementRemoteRateLimit(key, { windowMs, limit });
+  if (remoteResult) {
+    return remoteResult;
   }
 
   const now = Date.now();
