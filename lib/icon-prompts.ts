@@ -53,6 +53,16 @@ export type IconPromptAction = {
   suggestions: IconPromptSuggestion[];
 };
 
+function buildPromptSuggestions(
+  prompts: Array<{ label: string; prompt?: string }>
+): IconPromptSuggestion[] {
+  return prompts.map((suggestion) => ({
+    label: suggestion.label,
+    prompt: suggestion.prompt ?? suggestion.label,
+    isEditable: true,
+  }));
+}
+
 type StoredIconPromptItem = {
   id?: unknown;
   label?: unknown;
@@ -357,8 +367,11 @@ export function getDefaultIconPromptActions(
         iconUrl: null,
         behavior: "replace",
         selectImageMode: true,
-        showSuggestions: false,
-        suggestions: [],
+        showSuggestions: true,
+        suggestions: buildPromptSuggestions([
+          { label: "Tirot Sing kum u briew Shisha" },
+          { label: "Shillong Police Bazar ha ka snem 2050" },
+        ]),
       },
       {
         id: "thoh-jingrwai",
@@ -367,8 +380,11 @@ export function getDefaultIconPromptActions(
         iconUrl: null,
         behavior: "replace",
         selectImageMode: false,
-        showSuggestions: false,
-        suggestions: [],
+        showSuggestions: true,
+        suggestions: buildPromptSuggestions([
+          { label: "Jingrwai shaphang ka jingitynnad ka Meghalaya" },
+          { label: "Jingrwai shaphang ka jingieid" },
+        ]),
       },
     ];
   }
@@ -381,8 +397,11 @@ export function getDefaultIconPromptActions(
       iconUrl: null,
       behavior: "replace",
       selectImageMode: true,
-      showSuggestions: false,
-      suggestions: [],
+      showSuggestions: true,
+      suggestions: buildPromptSuggestions([
+        { label: "Tirot Sing as a real person" },
+        { label: "Shillong Police Bazar in 2050" },
+      ]),
     },
     {
       id: "write-lyrics",
@@ -391,8 +410,11 @@ export function getDefaultIconPromptActions(
       iconUrl: null,
       behavior: "replace",
       selectImageMode: false,
-      showSuggestions: false,
-      suggestions: [],
+      showSuggestions: true,
+      suggestions: buildPromptSuggestions([
+        { label: "Lyrics about the beauty of Meghalaya" },
+        { label: "Lyrics about love" },
+      ]),
     },
   ];
 }
