@@ -34,7 +34,10 @@ import {
   getFreshTranslationBundle,
   getTranslationBundle,
 } from "@/lib/i18n/dictionary";
-import { loadIconPromptActions } from "@/lib/icon-prompts";
+import {
+  getDefaultIconPromptActions,
+  loadIconPromptActions,
+} from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import {
@@ -280,7 +283,9 @@ export async function loadPromptReadModel({
       DEFERRED_READ_TIMEOUT_MS
     ).catch((error) => {
       console.error("[read-models] Failed to load icon prompts.", error);
-      return [];
+      return getDefaultIconPromptActions(
+        preferredLanguage?.trim().toLowerCase() ?? "en"
+      );
     }),
   ]);
 

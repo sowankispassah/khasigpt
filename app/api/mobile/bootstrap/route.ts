@@ -12,6 +12,7 @@ import {
   loadPromptReadModel,
   loadTranslateReadModel,
 } from "@/lib/api/read-models";
+import { getDefaultIconPromptActions } from "@/lib/icon-prompts";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -138,10 +139,16 @@ const FALLBACK_MODEL_CONFIG: ModelConfigSnapshot = {
   models: [],
 };
 
-const FALLBACK_PROMPT_SNAPSHOT: PromptSnapshot = {
-  iconPromptActions: [],
-  suggestedPrompts: [],
-};
+function buildFallbackPromptSnapshot(
+  preferredLanguage: string | null
+): PromptSnapshot {
+  return {
+    iconPromptActions: getDefaultIconPromptActions(
+      preferredLanguage?.trim().toLowerCase() ?? "en"
+    ),
+    suggestedPrompts: [],
+  };
+}
 
 const FALLBACK_TRANSLATE_SNAPSHOT: TranslateSnapshot = {
   providerMode: "ai",
@@ -258,7 +265,7 @@ export async function GET(request: Request) {
     }),
     session?.user && !isStartupPhase
       ? safeBootstrapSection({
-          fallback: FALLBACK_PROMPT_SNAPSHOT,
+          fallback: buildFallbackPromptSnapshot(preferredLanguage),
           label: "mobile.bootstrap.prompts",
           loader: () =>
             loadPromptReadModel({
@@ -268,7 +275,7 @@ export async function GET(request: Request) {
           phase,
         })
       : Promise.resolve({
-          data: FALLBACK_PROMPT_SNAPSHOT,
+          data: buildFallbackPromptSnapshot(preferredLanguage),
           degraded: false,
         } satisfies BootstrapSectionResult<PromptSnapshot>),
     isStartupPhase

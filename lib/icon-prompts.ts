@@ -345,7 +345,9 @@ function resolveLocalizedBooleanList(
   return fallback;
 }
 
-function getDefaultIconPromptActions(activeCode: string): IconPromptAction[] {
+export function getDefaultIconPromptActions(
+  activeCode: string
+): IconPromptAction[] {
   if (activeCode === "kha") {
     return [
       {
