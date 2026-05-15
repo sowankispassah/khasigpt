@@ -3,14 +3,17 @@ import {
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
 } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
+import {
+  getAppSettingsByKeys,
+  getLastKnownAppSettingsByKeys,
+} from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import {
   type FeatureAccessMode,
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { resolveLanguage } from "@/lib/i18n/languages";
 
 export type IconPromptBehavior = "append" | "replace";
 
@@ -342,23 +345,90 @@ function resolveLocalizedBooleanList(
   return fallback;
 }
 
+function getDefaultIconPromptActions(activeCode: string): IconPromptAction[] {
+  if (activeCode === "kha") {
+    return [
+      {
+        id: "shna-dur",
+        label: "Shna dur",
+        prompt: "Shna dur...",
+        iconUrl: null,
+        behavior: "replace",
+        selectImageMode: true,
+        showSuggestions: false,
+        suggestions: [],
+      },
+      {
+        id: "thoh-jingrwai",
+        label: "Thoh jingrwai",
+        prompt: "Thoh jingrwai ba...",
+        iconUrl: null,
+        behavior: "replace",
+        selectImageMode: false,
+        showSuggestions: false,
+        suggestions: [],
+      },
+    ];
+  }
+
+  return [
+    {
+      id: "create-image",
+      label: "Create image",
+      prompt: "Create an image of...",
+      iconUrl: null,
+      behavior: "replace",
+      selectImageMode: true,
+      showSuggestions: false,
+      suggestions: [],
+    },
+    {
+      id: "write-lyrics",
+      label: "Write Lyrics",
+      prompt: "Write lyrics about...",
+      iconUrl: null,
+      behavior: "replace",
+      selectImageMode: false,
+      showSuggestions: false,
+      suggestions: [],
+    },
+  ];
+}
+
+async function loadIconPromptSettings() {
+  const keys = [ICON_PROMPTS_SETTING_KEY, ICON_PROMPTS_ENABLED_SETTING_KEY];
+
+  try {
+    const settings = await getAppSettingsByKeys(keys);
+    const byKey = new Map(settings.map((setting) => [setting.key, setting.value]));
+
+    return {
+      confirmed: true,
+      enabledSetting: byKey.get(ICON_PROMPTS_ENABLED_SETTING_KEY) ?? null,
+      rawSettings: byKey.get(ICON_PROMPTS_SETTING_KEY) ?? null,
+    };
+  } catch (error) {
+    console.warn("Failed to load icon prompt settings.", error);
+    const remembered = getLastKnownAppSettingsByKeys(keys);
+
+    return {
+      confirmed: false,
+      enabledSetting: remembered.get(ICON_PROMPTS_ENABLED_SETTING_KEY) ?? "enabled",
+      rawSettings: remembered.get(ICON_PROMPTS_SETTING_KEY) ?? null,
+    };
+  }
+}
+
 async function fetchIconPromptActions(
   preferredLanguage?: string | null,
   userRole?: UserRole | null
 ) {
-  const { activeLanguage, languages } =
-    await getTranslationBundle(preferredLanguage);
-  let rawSettings: unknown = null;
-  let enabledSetting: unknown = null;
-
-  try {
-    [rawSettings, enabledSetting] = await Promise.all([
-      getAppSetting(ICON_PROMPTS_SETTING_KEY),
-      getAppSetting(ICON_PROMPTS_ENABLED_SETTING_KEY),
-    ]);
-  } catch (error) {
-    console.warn("Failed to load icon prompt settings.", error);
-  }
+  const startedAt = Date.now();
+  const [{ activeLanguage, languages }, settings] = await Promise.all([
+    resolveLanguage(preferredLanguage),
+    loadIconPromptSettings(),
+  ]);
+  const { confirmed, enabledSetting, rawSettings } = settings;
 
   const { enabled, items } = normalizeIconPromptSettings(
     rawSettings,
@@ -440,30 +510,18 @@ async function fetchIconPromptActions(
         (item.showSuggestions && item.suggestions.length > 0)
     );
 
-  if (processedItems.length === 0 && activeLanguage.code === "kha") {
-    return [
-      {
-        id: "shna-dur",
-        label: "Shna dur",
-        prompt: "Shna dur...",
-        iconUrl: null,
-        behavior: "replace" as IconPromptBehavior,
-        selectImageMode: true,
-        showSuggestions: false,
-        suggestions: [],
-      },
-      {
-        id: "thoh-jingrwai",
-        label: "Thoh jingrwai",
-        prompt: "Thoh jingrwai ba...",
-        iconUrl: null,
-        behavior: "replace" as IconPromptBehavior,
-        selectImageMode: false,
-        showSuggestions: false,
-        suggestions: [],
-      },
-    ];
+  if (processedItems.length === 0 && !confirmed) {
+    console.warn(
+      `[icon-prompts] Using render-only defaults after unconfirmed settings read for language "${activeLanguage.code}".`
+    );
+    return getDefaultIconPromptActions(activeLanguage.code);
   }
+
+  console.info(
+    `[icon-prompts] loaded ${processedItems.length} action(s) in ${
+      Date.now() - startedAt
+    }ms for language "${activeLanguage.code}".`
+  );
 
   return processedItems;
 }

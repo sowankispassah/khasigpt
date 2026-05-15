@@ -3857,6 +3857,40 @@ export async function getAppSettingsByKeysUncached(
   }
 }
 
+export async function getAppSettingsByKeys(keys: string[]): Promise<AppSetting[]> {
+  const uniqueKeys = Array.from(
+    new Set(
+      keys
+        .map((key) => key.trim())
+        .filter((key): key is string => key.length > 0)
+    )
+  );
+
+  if (uniqueKeys.length === 0) {
+    return [];
+  }
+
+  if (!shouldUseAppSettingCache("__keys__")) {
+    return getAppSettingsByKeysUncached(uniqueKeys);
+  }
+
+  const cacheKey = uniqueKeys.toSorted().join("|");
+  const cached = unstable_cache(
+    () => getAppSettingsByKeysUncached(uniqueKeys),
+    [APP_SETTING_CACHE_TAG, "keys", cacheKey],
+    {
+      tags: [
+        APP_SETTING_CACHE_TAG,
+        ...uniqueKeys.map((key) => appSettingCacheTagForKey(key)),
+      ],
+    }
+  );
+
+  const settings = await cached();
+  rememberAppSettings(settings);
+  return settings;
+}
+
 export async function getAppSetting<T>(key: string): Promise<T | null> {
   if (!shouldUseAppSettingCache(key)) {
     return getAppSettingRaw(key);

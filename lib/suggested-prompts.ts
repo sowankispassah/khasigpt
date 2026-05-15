@@ -3,14 +3,17 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
+import {
+  getAppSettingsByKeys,
+  getLastKnownAppSettingsByKeys,
+} from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import {
   type FeatureAccessMode,
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { resolveLanguage } from "@/lib/i18n/languages";
 
 type SuggestedPromptsMap = Record<string, string[]>;
 
@@ -40,72 +43,65 @@ export function parseSuggestedPromptsAccessModeSetting(
   return parseFeatureAccessMode(value, SUGGESTED_PROMPTS_ACCESS_MODE_FALLBACK);
 }
 
+const SUGGESTED_PROMPT_SETTING_KEYS = [
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  "suggestedPromptsByLanguage",
+  "suggestedPrompts",
+];
+
+async function loadSuggestedPromptSettings() {
+  try {
+    const settings = await getAppSettingsByKeys(SUGGESTED_PROMPT_SETTING_KEYS);
+    return new Map(settings.map((setting) => [setting.key, setting.value]));
+  } catch (error) {
+    console.warn("Failed to load suggested prompt settings; falling back.", error);
+    return getLastKnownAppSettingsByKeys(SUGGESTED_PROMPT_SETTING_KEYS);
+  }
+}
+
 async function fetchSuggestedPrompts(
   preferredLanguageCode?: string | null,
   userRole?: UserRole | null
 ): Promise<string[]> {
-  const { activeLanguage, languages } = await getTranslationBundle(
-    preferredLanguageCode
-  );
+  const [{ activeLanguage, languages }, settings] = await Promise.all([
+    resolveLanguage(preferredLanguageCode),
+    loadSuggestedPromptSettings(),
+  ]);
 
-  try {
-    const enabledSetting = await getAppSetting<unknown>(
-      SUGGESTED_PROMPTS_ENABLED_SETTING_KEY
-    );
-    const mode = parseSuggestedPromptsAccessModeSetting(enabledSetting);
-    const enabled = isFeatureEnabledForRole(mode, userRole ?? null);
-    if (!enabled && process.env.PLAYWRIGHT !== "true") {
-      return [];
-    }
-  } catch (error) {
-    console.warn(
-      "Failed to load suggested prompts availability; falling back.",
-      error
-    );
+  const enabledSetting = settings.get(SUGGESTED_PROMPTS_ENABLED_SETTING_KEY);
+  const mode = parseSuggestedPromptsAccessModeSetting(enabledSetting);
+  const enabled = isFeatureEnabledForRole(mode, userRole ?? null);
+  if (!enabled && process.env.PLAYWRIGHT !== "true") {
+    return [];
   }
 
-  try {
-    const storedMap = await getAppSetting<unknown>(
-      "suggestedPromptsByLanguage"
-    );
+  const storedMap = settings.get("suggestedPromptsByLanguage");
 
-    if (isPromptsMap(storedMap)) {
-      const fromLanguage = storedMap[activeLanguage.code];
-      if (isPromptsArray(fromLanguage) && fromLanguage.length > 0) {
-        return fromLanguage.map((prompt) => prompt.trim());
-      }
+  if (isPromptsMap(storedMap)) {
+    const fromLanguage = storedMap[activeLanguage.code];
+    if (isPromptsArray(fromLanguage) && fromLanguage.length > 0) {
+      return fromLanguage.map((prompt) => prompt.trim());
+    }
 
-      const defaultLanguage =
-        languages.find((language) => language.isDefault) ??
-        languages[0] ??
-        null;
+    const defaultLanguage =
+      languages.find((language) => language.isDefault) ?? languages[0] ?? null;
 
-      if (defaultLanguage) {
-        const defaultPrompts = storedMap[defaultLanguage.code];
-        if (isPromptsArray(defaultPrompts) && defaultPrompts.length > 0) {
-          return defaultPrompts.map((prompt) => prompt.trim());
-        }
+    if (defaultLanguage) {
+      const defaultPrompts = storedMap[defaultLanguage.code];
+      if (isPromptsArray(defaultPrompts) && defaultPrompts.length > 0) {
+        return defaultPrompts.map((prompt) => prompt.trim());
       }
     }
-  } catch (error) {
-    console.warn(
-      "Failed to load language-specific prompts; falling back.",
-      error
-    );
   }
 
-  try {
-    const stored = await getAppSetting<unknown>("suggestedPrompts");
+  const stored = settings.get("suggestedPrompts");
 
-    if (isPromptsArray(stored)) {
-      const prompts = stored.map((item) => item.trim()).filter(Boolean);
+  if (isPromptsArray(stored)) {
+    const prompts = stored.map((item) => item.trim()).filter(Boolean);
 
-      if (prompts.length > 0) {
-        return prompts;
-      }
+    if (prompts.length > 0) {
+      return prompts;
     }
-  } catch (error) {
-    console.warn("Failed to load suggested prompts, using defaults.", error);
   }
 
   return [...DEFAULT_SUGGESTED_PROMPTS];
