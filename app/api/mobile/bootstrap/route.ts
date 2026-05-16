@@ -14,13 +14,9 @@ import {
 } from "@/lib/api/read-models";
 import { getDefaultIconPromptActions } from "@/lib/icon-prompts";
 import { getMobileSession } from "@/lib/mobile-auth-session";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const STARTUP_SECTION_TIMEOUT_MS = 2500;
-const FULL_SECTION_TIMEOUT_MS = 8000;
 
 type LanguageSnapshot = Awaited<ReturnType<typeof loadLanguageReadModel>>;
 type FeatureSnapshot = Awaited<ReturnType<typeof loadFeatureAccessReadModel>>;
@@ -172,18 +168,10 @@ async function safeBootstrapSection<T>({
   loader: () => Promise<T>;
   phase: "startup" | "full";
 }): Promise<BootstrapSectionResult<T>> {
-  const timeoutMs =
-    phase === "startup" ? STARTUP_SECTION_TIMEOUT_MS : FULL_SECTION_TIMEOUT_MS;
-
   try {
     const data = await withApiTiming(
       label,
-      () =>
-        withTimeout(loader(), timeoutMs, () => {
-          console.warn(
-            `[api/mobile/bootstrap] ${label} timed out during ${phase}; using fallback.`
-          );
-        }),
+      () => loader(),
       { slowMs: phase === "startup" ? 500 : 1500 }
     );
     return { data, degraded: false };

@@ -28,7 +28,6 @@ import {
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
-import { withTimeout } from "@/lib/utils/async";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";
 const NANO_BANANA_MODEL_ID =
@@ -214,10 +213,7 @@ export async function getImageGenerationAccess({
     };
   }
 
-  const subscription = await withTimeout(
-    getActiveSubscriptionForUser(userId),
-    4_000
-  ).catch((error) => {
+  const subscription = await getActiveSubscriptionForUser(userId).catch((error) => {
     console.error(
       "[image-generation] Subscription read failed; keeping feature availability without credit confirmation.",
       error

@@ -2,7 +2,6 @@ import "server-only";
 
 import { listModelConfigs } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
-import { withTimeout } from "@/lib/utils/async";
 import {
   getModelRegistry,
   MODEL_REGISTRY_CACHE_TAG,
@@ -11,23 +10,6 @@ import {
 } from "./model-registry";
 
 export type ChatModel = ModelSummary;
-
-const modelLoadTimeoutRaw = Number.parseInt(
-  process.env.MODEL_REGISTRY_TIMEOUT_MS ?? "",
-  10
-);
-const MODEL_LOAD_TIMEOUT_MS =
-  Number.isFinite(modelLoadTimeoutRaw) && modelLoadTimeoutRaw > 0
-    ? modelLoadTimeoutRaw
-    : 7000;
-const directModelLoadTimeoutRaw = Number.parseInt(
-  process.env.MODEL_REGISTRY_DB_FALLBACK_TIMEOUT_MS ?? "",
-  10
-);
-const DIRECT_MODEL_LOAD_TIMEOUT_MS =
-  Number.isFinite(directModelLoadTimeoutRaw) && directModelLoadTimeoutRaw > 0
-    ? directModelLoadTimeoutRaw
-    : Math.max(MODEL_LOAD_TIMEOUT_MS + 5000, 12000);
 
 type ChatModelsResult = {
   models: ModelSummary[];
@@ -85,15 +67,7 @@ function requireUsableChatModels(
 }
 
 async function loadChatModelsFromRegistry(): Promise<ChatModelsResult> {
-  const { configs, defaultConfig } = await withTimeout(
-    getModelRegistry(),
-    MODEL_LOAD_TIMEOUT_MS,
-    () => {
-      console.warn(
-        `[models] Model registry timed out after ${MODEL_LOAD_TIMEOUT_MS}ms; retrying with direct database read.`
-      );
-    }
-  );
+  const { configs, defaultConfig } = await getModelRegistry();
 
   return requireUsableChatModels(
     buildChatModelsResult(configs, defaultConfig),
@@ -102,15 +76,7 @@ async function loadChatModelsFromRegistry(): Promise<ChatModelsResult> {
 }
 
 async function loadChatModelsDirectly(): Promise<ChatModelsResult> {
-  const configs = await withTimeout(
-    listModelConfigs(),
-    DIRECT_MODEL_LOAD_TIMEOUT_MS,
-    () => {
-      console.warn(
-        `[models] Direct model config query timed out after ${DIRECT_MODEL_LOAD_TIMEOUT_MS}ms.`
-      );
-    }
-  );
+  const configs = await listModelConfigs();
 
   return requireUsableChatModels(buildChatModelsResult(configs), "direct");
 }

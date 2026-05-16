@@ -10,7 +10,6 @@ import {
 } from "@/lib/db/queries";
 import { translationKey, translationValue } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
-import { withTimeout } from "@/lib/utils/async";
 
 import {
   getAllLanguages,
@@ -84,13 +83,6 @@ const mergeWithStaticDictionary = (dictionary: Record<string, string>) => {
   return { ...STATIC_DICTIONARY_BASE, ...dictionary };
 };
 
-const parsedTimeout = Number.parseInt(
-  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "2500",
-  10
-);
-const TRANSLATION_QUERY_TIMEOUT_MS =
-  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 1200;
-
 const parsedInitialTimeout = Number.parseInt(
   process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "2500",
   10
@@ -121,8 +113,6 @@ const TRANSLATION_FAILURE_COOLDOWN_MS =
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
 const LANGUAGE_CACHE_KEY_REGEX = /^[a-z0-9-]{2,16}$/;
 
-const SHOULD_LOG_TRANSLATION_TIMEOUTS =
-  typeof process !== "undefined" && process.env.NODE_ENV === "development";
 const SHOULD_LOG_TRANSLATION_ERRORS =
   typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 
@@ -158,12 +148,6 @@ function isTimeoutError(error: unknown): boolean {
 
 function shouldMarkTranslationDbFailure(error: unknown): boolean {
   return !isTimeoutError(error);
-}
-
-function logTranslationTimeout(message: string) {
-  if (SHOULD_LOG_TRANSLATION_TIMEOUTS) {
-    console.warn(message);
-  }
 }
 
 function logTranslationError(message: string, error: unknown) {
@@ -529,15 +513,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
       ? buildFallbackBundle(preferredCode)
       : FALLBACK_BUNDLE;
 
-  const inflight = withTimeout(
-    loadTranslationBundle(preferredCode),
-    TRANSLATION_QUERY_TIMEOUT_MS,
-    () => {
-      logTranslationTimeout(
-        `[i18n] Bundle refresh timed out after ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${key}".`
-      );
-    }
-  )
+  const inflight = loadTranslationBundle(preferredCode)
     .then((bundle) => {
       clearTranslationDbFailure();
       BUNDLE_CACHE.set(key, {
@@ -605,15 +581,7 @@ export async function getTranslationBundle(
     return fallbackBundle;
   }
 
-  let persistedTimedOut = false;
-  const persisted = await withTimeout(
-    readPersistedBundle(key),
-    TRANSLATION_INITIAL_TIMEOUT_MS
-  ).catch((error) => {
-    if (isTimeoutError(error)) {
-      persistedTimedOut = true;
-      return null;
-    }
+  const persisted = await readPersistedBundle(key).catch((error) => {
     logTranslationError(
       "[i18n] Failed to load persisted translation bundle.",
       error
@@ -639,22 +607,8 @@ export async function getTranslationBundle(
     return bundle;
   }
 
-  if (persistedTimedOut) {
-    logTranslationTimeout(
-      `[i18n] Persisted bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
-    );
-  }
-
   try {
-    const bundle = await withTimeout(
-      loadTranslationBundle(preferredCode),
-      TRANSLATION_INITIAL_TIMEOUT_MS,
-      () => {
-        logTranslationTimeout(
-          `[i18n] Initial bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
-        );
-      }
-    );
+    const bundle = await loadTranslationBundle(preferredCode);
     clearTranslationDbFailure();
     BUNDLE_CACHE.set(key, {
       data: bundle,
@@ -689,18 +643,10 @@ export async function getTranslationBundle(
 
 export async function getFreshTranslationBundle(
   preferredCode?: string | null,
-  timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
+  _timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
 ): Promise<TranslationBundle> {
   const key = cacheKeyForLanguage(preferredCode);
-  const bundle = await withTimeout(
-    loadTranslationBundle(preferredCode),
-    timeoutMs,
-    () => {
-      logTranslationTimeout(
-        `[i18n] Fresh bundle load timed out after ${timeoutMs}ms for key "${key}".`
-      );
-    }
-  );
+  const bundle = await loadTranslationBundle(preferredCode);
 
   clearTranslationDbFailure();
   BUNDLE_CACHE.set(key, {
@@ -795,29 +741,23 @@ export async function getTranslationForKey(
   }
 
   try {
-    const { activeLanguage } = await withTimeout(
-      resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+    const { activeLanguage } = await resolveLanguage(preferredCode);
 
-    const [result] = await withTimeout(
-      db
-        .select({
-          value: translationValue.value,
-          defaultText: translationKey.defaultText,
-        })
-        .from(translationKey)
-        .leftJoin(
-          translationValue,
-          and(
-            eq(translationValue.translationKeyId, translationKey.id),
-            eq(translationValue.languageId, activeLanguage.id)
-          )
+    const [result] = await db
+      .select({
+        value: translationValue.value,
+        defaultText: translationKey.defaultText,
+      })
+      .from(translationKey)
+      .leftJoin(
+        translationValue,
+        and(
+          eq(translationValue.translationKeyId, translationKey.id),
+          eq(translationValue.languageId, activeLanguage.id)
         )
-        .where(eq(translationKey.key, definition.key))
-        .limit(1),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+      )
+      .where(eq(translationKey.key, definition.key))
+      .limit(1);
 
     clearTranslationDbFailure();
     return result?.value ?? result?.defaultText ?? definition.defaultText;
@@ -850,30 +790,24 @@ export async function getTranslationsForKeys(
   }
 
   try {
-    const { activeLanguage } = await withTimeout(
-      resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+    const { activeLanguage } = await resolveLanguage(preferredCode);
     const keys = definitions.map((definition) => definition.key);
 
-    const rows = await withTimeout(
-      db
-        .select({
-          key: translationKey.key,
-          defaultText: translationKey.defaultText,
-          value: translationValue.value,
-        })
-        .from(translationKey)
-        .leftJoin(
-          translationValue,
-          and(
-            eq(translationValue.translationKeyId, translationKey.id),
-            eq(translationValue.languageId, activeLanguage.id)
-          )
+    const rows = await db
+      .select({
+        key: translationKey.key,
+        defaultText: translationKey.defaultText,
+        value: translationValue.value,
+      })
+      .from(translationKey)
+      .leftJoin(
+        translationValue,
+        and(
+          eq(translationValue.translationKeyId, translationKey.id),
+          eq(translationValue.languageId, activeLanguage.id)
         )
-        .where(inArray(translationKey.key, keys)),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+      )
+      .where(inArray(translationKey.key, keys));
 
     clearTranslationDbFailure();
     const result: Record<string, string> = {};
@@ -913,32 +847,26 @@ export async function getTranslationValuesForKeys(
   }
 
   try {
-    const { activeLanguage } = await withTimeout(
-      resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+    const { activeLanguage } = await resolveLanguage(preferredCode);
 
     if (activeLanguage.isDefault) {
       return {};
     }
 
-    const rows = await withTimeout(
-      db
-        .select({
-          key: translationKey.key,
-          value: translationValue.value,
-        })
-        .from(translationKey)
-        .innerJoin(
-          translationValue,
-          and(
-            eq(translationValue.translationKeyId, translationKey.id),
-            eq(translationValue.languageId, activeLanguage.id)
-          )
+    const rows = await db
+      .select({
+        key: translationKey.key,
+        value: translationValue.value,
+      })
+      .from(translationKey)
+      .innerJoin(
+        translationValue,
+        and(
+          eq(translationValue.translationKeyId, translationKey.id),
+          eq(translationValue.languageId, activeLanguage.id)
         )
-        .where(inArray(translationKey.key, uniqueKeys)),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+      )
+      .where(inArray(translationKey.key, uniqueKeys));
 
     clearTranslationDbFailure();
     return rows.reduce<Record<string, string>>((result, row) => {

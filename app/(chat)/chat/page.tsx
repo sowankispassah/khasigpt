@@ -30,11 +30,6 @@ import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
-import { withTimeout } from "@/lib/utils/async";
-
-function isTimeoutError(error: unknown) {
-  return error instanceof Error && error.message === "timeout";
-}
 
 export default async function Page({
   searchParams,
@@ -64,11 +59,9 @@ export default async function Page({
   const isEmbeddedNative = resolvedSearchParams?.embedded === "native";
   const shouldLoadHomePrompts = !isStudyMode && !isJobsMode;
 
-  const CHAT_HOME_QUERY_TIMEOUT_MS = 8_000;
-  const IMAGE_ACCESS_TIMEOUT_MS = 6_000;
   const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
-    withTimeout(promise, CHAT_HOME_QUERY_TIMEOUT_MS).catch((error) => {
-      console.error(`[chat/home] ${label} query timed out or failed.`, error);
+    promise.catch((error) => {
+      console.error(`[chat/home] ${label} query failed.`, error);
       return fallback;
     });
   const safeAppSettingQuery = <T,>(
@@ -77,8 +70,8 @@ export default async function Page({
     promise: Promise<T>,
     fallback: T
   ) =>
-    withTimeout(promise, CHAT_HOME_QUERY_TIMEOUT_MS).catch((error) => {
-      console.error(`[chat/home] ${label} query timed out or failed.`, error);
+    promise.catch((error) => {
+      console.error(`[chat/home] ${label} query failed.`, error);
       const remembered = getLastKnownAppSetting<T>(key);
       return remembered ?? fallback;
     });
@@ -134,16 +127,11 @@ export default async function Page({
       getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
       null
     ),
-    withTimeout(
-      getImageGenerationAccess({
-        userId: session.user.id,
-        userRole: session.user.role,
-      }),
-      IMAGE_ACCESS_TIMEOUT_MS
-    ).catch(async (error) => {
-      if (!isTimeoutError(error)) {
-        console.error("[chat/home] image generation access failed.", error);
-      }
+    getImageGenerationAccess({
+      userId: session.user.id,
+      userRole: session.user.role,
+    }).catch(async (error) => {
+      console.error("[chat/home] image generation access failed.", error);
       return getImageGenerationAvailability({ userRole: session.user.role })
         .then(buildImageGenerationAccessFromAvailability)
         .catch((fallbackError) => {
@@ -218,15 +206,12 @@ export default async function Page({
   const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
   const initialJobEntry =
     chatMode === "jobs" && requestedJobId
-      ? await withTimeout(
-          getJobPostingById({
-            id: requestedJobId,
-            includeInactive: false,
-            includeRagState: false,
-          }),
-          CHAT_HOME_QUERY_TIMEOUT_MS
-        ).catch((error) => {
-          console.error("[chat/home] job lookup timed out or failed.", error);
+      ? await getJobPostingById({
+          id: requestedJobId,
+          includeInactive: false,
+          includeRagState: false,
+        }).catch((error) => {
+          console.error("[chat/home] job lookup failed.", error);
           return null;
         })
       : null;
@@ -235,14 +220,10 @@ export default async function Page({
     chatMode === "jobs"
       ? isEmbeddedNative
         ? []
-        : await withTimeout(
-            listJobListItems(),
-            CHAT_HOME_QUERY_TIMEOUT_MS
-          )
-            .catch((error) => {
-              console.error("[chat/home] jobs listing query timed out or failed.", error);
-              return [];
-            })
+        : await listJobListItems().catch((error) => {
+            console.error("[chat/home] jobs listing query failed.", error);
+            return [];
+          })
       : [];
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)

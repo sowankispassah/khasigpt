@@ -16,7 +16,6 @@ import {
   type FeatureAccessMode,
   parseFeatureAccessModeStrict,
 } from "@/lib/feature-access";
-import { withTimeout } from "@/lib/utils/async";
 
 export const ADMIN_FEATURE_ACCESS_SETTINGS = [
   {
@@ -89,7 +88,6 @@ export type FeatureAccessControlState = {
 };
 
 const DEFAULT_FEATURE_ACCESS_READ_TIMEOUT_MS = 8_000;
-const FEATURE_ACCESS_CACHE_READ_TIMEOUT_MS = 1_500;
 export const FEATURE_ACCESS_SETTINGS_CACHE_TAG = "feature-access-settings";
 const lastKnownFeatureAccessValues = new Map<string, unknown>();
 
@@ -208,10 +206,7 @@ export async function loadFeatureAccessSettingsByKeys(
   });
 
   try {
-    const rows = await withTimeout(
-      getLiteAppSettingsByKeysUncached(uniqueKeys),
-      timeoutMs
-    );
+    const rows = await getLiteAppSettingsByKeysUncached(uniqueKeys);
     const values = new Map(rows.map((row) => [row.key, row.value]));
     const missingKeys = buildMissingKeys(uniqueKeys, values);
 
@@ -242,9 +237,8 @@ export async function loadFeatureAccessSettingsByKeys(
     let fallbackSource = "memory";
     if (values.size === 0) {
       try {
-        const cachedRows = await withTimeout(
-          loadCachedFeatureAccessRows(uniqueKeys.join("\n")),
-          FEATURE_ACCESS_CACHE_READ_TIMEOUT_MS
+        const cachedRows = await loadCachedFeatureAccessRows(
+          uniqueKeys.join("\n")
         );
         values = new Map(cachedRows.map((row) => [row.key, row.value]));
         rememberFeatureAccessValues(values);

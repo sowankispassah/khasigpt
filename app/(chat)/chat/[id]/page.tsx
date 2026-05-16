@@ -39,17 +39,6 @@ import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import { convertToUIMessages } from "@/lib/utils";
-import { withTimeout } from "@/lib/utils/async";
-
-const chatPageTimeoutRaw = Number.parseInt(
-  process.env.CHAT_PAGE_LOAD_TIMEOUT_MS ?? "",
-  10
-);
-const CHAT_PAGE_LOAD_TIMEOUT_MS =
-  Number.isFinite(chatPageTimeoutRaw) && chatPageTimeoutRaw > 0
-    ? chatPageTimeoutRaw
-    : 15000;
-const IMAGE_ACCESS_TIMEOUT_MS = 6_000;
 
 const chatPageInitialLimitRaw = Number.parseInt(
   process.env.CHAT_PAGE_INITIAL_MESSAGE_LIMIT ?? "",
@@ -67,10 +56,6 @@ const getChatByIdCached = unstable_cache(
   ["chat-page:get-chat-by-id"],
   { revalidate: CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS }
 );
-
-function isTimeoutError(error: unknown) {
-  return error instanceof Error && error.message === "timeout";
-}
 
 function parseRecentChatIdCookieValue(value: string | undefined) {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -111,16 +96,7 @@ export default async function Page(props: {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
   }
 
-  const chat = await withTimeout(
-    getChatByIdCached(id),
-    CHAT_PAGE_LOAD_TIMEOUT_MS,
-    () => {
-      console.warn(`[chat] getChatById timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`);
-    }
-  ).catch((error) => {
-    if (isTimeoutError(error)) {
-      return null;
-    }
+  const chat = await getChatByIdCached(id).catch((error) => {
     throw error;
   });
 
@@ -145,16 +121,11 @@ export default async function Page(props: {
     getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
     getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-    withTimeout(
-      getImageGenerationAccess({
-        userId: session?.user?.id ?? null,
-        userRole: session?.user?.role ?? null,
-      }),
-      IMAGE_ACCESS_TIMEOUT_MS
-    ).catch(async (error) => {
-      if (!isTimeoutError(error)) {
-        console.error("[chat] image generation access failed.", error);
-      }
+    getImageGenerationAccess({
+      userId: session?.user?.id ?? null,
+      userRole: session?.user?.role ?? null,
+    }).catch(async (error) => {
+      console.error("[chat] image generation access failed.", error);
       return getImageGenerationAvailability({
         userRole: session?.user?.role ?? null,
       })
@@ -250,22 +221,12 @@ export default async function Page(props: {
     const originJobPostingId = originUiContext.jobPostingId;
 
     if (originJobPostingId) {
-      const originJob = await withTimeout(
-        getJobPostingById({
-          id: originJobPostingId,
-          includeInactive: false,
-          includeRagState: false,
-        }),
-        CHAT_PAGE_LOAD_TIMEOUT_MS,
-        () => {
-          console.warn(
-            `[chat] getJobPostingById timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`
-          );
-        }
-      ).catch((error) => {
-        if (!isTimeoutError(error)) {
-          console.error("[chat] Failed to load origin job for redirect", error);
-        }
+      const originJob = await getJobPostingById({
+        id: originJobPostingId,
+        includeInactive: false,
+        includeRagState: false,
+      }).catch((error) => {
+        console.error("[chat] Failed to load origin job for redirect", error);
         return null;
       });
 
@@ -276,39 +237,18 @@ export default async function Page(props: {
   }
   const jobsListItems =
     chatMode === "jobs"
-      ? await withTimeout(
-          listJobListItems(),
-          CHAT_PAGE_LOAD_TIMEOUT_MS,
-          () => {
-            console.warn(
-              `[chat] listJobPostings timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms`
-            );
-          }
-        )
+      ? await listJobListItems()
           .catch((error) => {
-            if (!isTimeoutError(error)) {
-              console.error("[chat] Failed to load jobs list for jobs mode", error);
-            }
+            console.error("[chat] Failed to load jobs list for jobs mode", error);
             return [];
           })
       : [];
 
   const { messages: messagesFromDb, hasMore: hasMoreMessages } = chat
-    ? await withTimeout(
-        getMessagesByChatIdPage({
-          id,
-          limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
-        }),
-        CHAT_PAGE_LOAD_TIMEOUT_MS,
-        () => {
-          console.warn(
-            `[chat] getMessagesByChatIdPage timed out after ${CHAT_PAGE_LOAD_TIMEOUT_MS}ms (limit=${CHAT_PAGE_INITIAL_MESSAGE_LIMIT})`
-          );
-        }
-      ).catch((error) => {
-        if (isTimeoutError(error)) {
-          return { messages: [], hasMore: false };
-        }
+    ? await getMessagesByChatIdPage({
+        id,
+        limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
+      }).catch((error) => {
         throw error;
       })
     : { messages: [], hasMore: false };

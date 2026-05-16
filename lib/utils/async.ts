@@ -9,34 +9,25 @@ export function withTimeout<T>(
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
-    let timedOut = false;
     const cancelable = promise as Promise<T> & { cancel?: () => void };
-    const canCancel = typeof cancelable.cancel === "function";
 
     const timer = setTimeout(() => {
       if (settled) {
         return;
       }
 
-      timedOut = true;
+      settled = true;
       try {
         onTimeout?.();
       } catch {
         // ignore errors inside timeout callback
       }
-
-      // Non-cancellable promises, especially postgres/drizzle queries, must be
-      // allowed to settle so serverless functions do not abandon DB reads and
-      // leave Supavisor sessions stuck in ClientRead.
-      if (canCancel) {
-        settled = true;
-        try {
-          cancelable.cancel?.();
-        } catch {
-          // ignore cancellation failures
-        }
-        reject(new Error("timeout"));
+      try {
+        cancelable.cancel?.();
+      } catch {
+        // ignore cancellation failures
       }
+      reject(new Error("timeout"));
     }, timeoutMs);
 
     promise
@@ -47,11 +38,7 @@ export function withTimeout<T>(
 
         settled = true;
         clearTimeout(timer);
-        if (timedOut) {
-          reject(new Error("timeout"));
-        } else {
-          resolve(value);
-        }
+        resolve(value);
       })
       .catch((error) => {
         if (settled) {

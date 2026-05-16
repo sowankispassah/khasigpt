@@ -6,7 +6,6 @@ import { auth } from "@/app/(auth)/auth";
 import { getUserById } from "@/lib/db/queries";
 import type { User } from "@/lib/db/schema";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
-import { withTimeout } from "@/lib/utils/async";
 
 export type AuthenticatedRouteUser = {
   id: string;
@@ -37,9 +36,6 @@ type AuthOptions = {
   bearerTimeoutMs?: number;
   cookieTimeoutMs?: number;
 };
-
-const DEFAULT_COOKIE_AUTH_TIMEOUT_MS = 3500;
-const DEFAULT_BEARER_AUTH_TIMEOUT_MS = 2500;
 
 export class AuthLookupUnavailableError extends Error {
   code = "auth_lookup_unavailable";
@@ -117,8 +113,8 @@ export async function getAuthenticatedUser(
   {
     allowBearer = true,
     allowCookie = true,
-    bearerTimeoutMs = DEFAULT_BEARER_AUTH_TIMEOUT_MS,
-    cookieTimeoutMs = DEFAULT_COOKIE_AUTH_TIMEOUT_MS,
+    bearerTimeoutMs: _bearerTimeoutMs,
+    cookieTimeoutMs: _cookieTimeoutMs,
   }: AuthOptions = {}
 ): Promise<AuthenticatedRequestContext | null> {
   if (allowBearer) {
@@ -139,18 +135,10 @@ export async function getAuthenticatedUser(
         }
         return null;
       };
-      const bearerContext =
-        typeof bearerTimeoutMs === "number" && bearerTimeoutMs > 0
-          ? await withTimeout(loadBearerContext(), bearerTimeoutMs).catch(
-              (error) => {
-                console.warn(
-                  "[api/auth] Bearer auth lookup failed or timed out.",
-                  error
-                );
-                throw new AuthLookupUnavailableError();
-              }
-            )
-          : await loadBearerContext();
+      const bearerContext = await loadBearerContext().catch((error) => {
+        console.warn("[api/auth] Bearer auth lookup failed.", error);
+        throw new AuthLookupUnavailableError();
+      });
       if (bearerContext) {
         return bearerContext;
       }
@@ -162,7 +150,7 @@ export async function getAuthenticatedUser(
   }
 
   try {
-    const cookieSession = await withTimeout(auth(), cookieTimeoutMs);
+    const cookieSession = await auth();
     const session = cookieSession
       ? createSessionFromAuthSession(cookieSession)
       : null;
@@ -176,7 +164,7 @@ export async function getAuthenticatedUser(
       user: session.user,
     };
   } catch (error) {
-    console.warn("[api/auth] Cookie auth lookup failed or timed out.", error);
+    console.warn("[api/auth] Cookie auth lookup failed.", error);
     return null;
   }
 }

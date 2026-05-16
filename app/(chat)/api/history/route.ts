@@ -4,11 +4,9 @@ import { ChatSDKError } from "@/lib/errors";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { isStudyModeEnabledForRole } from "@/lib/study/config";
-import { withTimeout } from "@/lib/utils/async";
 
 const DEFAULT_HISTORY_LIMIT = 10;
 const MAX_HISTORY_LIMIT = 100;
-const HISTORY_QUERY_TIMEOUT_MS = 12_000;
 
 function isTransientDatabaseConnectionError(details: string) {
   if (!details.trim()) {
@@ -90,21 +88,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const chats = await withTimeout(
-      getChatsByUserId({
-        id: session.user.id,
-        limit,
-        startingAfter,
-        endingBefore,
-        mode,
-      }),
-      HISTORY_QUERY_TIMEOUT_MS,
-      () => {
-        console.warn(
-          `[api/history] getChatsByUserId timed out after ${HISTORY_QUERY_TIMEOUT_MS}ms`
-        );
-      }
-    );
+    const chats = await getChatsByUserId({
+      id: session.user.id,
+      limit,
+      startingAfter,
+      endingBefore,
+      mode,
+    });
 
     return Response.json(chats);
   } catch (error) {

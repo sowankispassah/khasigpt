@@ -10,7 +10,6 @@ import {
   incrementRateLimit,
   resetRateLimit,
 } from "@/lib/security/rate-limit";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -84,12 +83,7 @@ export async function POST(request: Request) {
   try {
     userRecords = await withApiTiming(
       "mobile.auth.login.user_lookup",
-      () =>
-        withTimeout(getUser(email), 5000, () => {
-          console.warn("[mobile-auth] User lookup timed out.", {
-            emailDomain: getEmailDomain(email),
-          });
-        }),
+      () => getUser(email),
       {
         metadata: {
           emailDomain: getEmailDomain(email),

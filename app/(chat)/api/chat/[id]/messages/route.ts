@@ -5,17 +5,11 @@ import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_PAGE_SIZE = 200;
-const CHAT_MESSAGES_DB_TIMEOUT_MS = 12_000;
-
-function isTimeoutError(error: unknown) {
-  return error instanceof Error && error.message === "timeout";
-}
 
 function getErrorDetails(error: unknown) {
   if (error instanceof ChatSDKError && typeof error.cause === "string") {
@@ -64,13 +58,10 @@ export async function GET(
 
   let chat: Awaited<ReturnType<typeof getChatById>>;
   try {
-    chat = await withTimeout(
-      getChatById({ id: chatId, includeDeleted: true }),
-      CHAT_MESSAGES_DB_TIMEOUT_MS
-    );
+    chat = await getChatById({ id: chatId, includeDeleted: true });
   } catch (error) {
     const details = getErrorDetails(error);
-    if (isTimeoutError(error) || isTransientDatabaseConnectionError(details)) {
+    if (isTransientDatabaseConnectionError(details)) {
       return unavailableChatMessagesResponse(details || "chat_lookup_timeout");
     }
     if (error instanceof ChatSDKError) {
@@ -104,17 +95,14 @@ export async function GET(
 
   let messagesResult: Awaited<ReturnType<typeof getMessagesByChatIdPage>>;
   try {
-    messagesResult = await withTimeout(
-      getMessagesByChatIdPage({
-        id: chatId,
-        limit,
-        before,
-      }),
-      CHAT_MESSAGES_DB_TIMEOUT_MS
-    );
+    messagesResult = await getMessagesByChatIdPage({
+      id: chatId,
+      limit,
+      before,
+    });
   } catch (error) {
     const details = getErrorDetails(error);
-    if (isTimeoutError(error) || isTransientDatabaseConnectionError(details)) {
+    if (isTransientDatabaseConnectionError(details)) {
       return unavailableChatMessagesResponse(details || "message_query_timeout");
     }
     if (error instanceof ChatSDKError) {

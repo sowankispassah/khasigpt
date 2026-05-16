@@ -18,17 +18,8 @@ import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
-import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../(auth)/auth";
 
-const profileLookupTimeoutRaw = Number.parseInt(
-  process.env.PROFILE_LOOKUP_TIMEOUT_MS ?? "1200",
-  10
-);
-const PROFILE_LOOKUP_TIMEOUT_MS =
-  Number.isFinite(profileLookupTimeoutRaw) && profileLookupTimeoutRaw > 0
-    ? profileLookupTimeoutRaw
-    : 1200;
 const CHAT_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS = 8_000;
 const CHAT_LAYOUT_FEATURE_ACCESS_KEYS = [
   STUDY_MODE_FEATURE_FLAG_KEY,
@@ -55,10 +46,7 @@ export default async function Layout({
       !profileUser.firstName ||
       !profileUser.lastName;
     if (needsProfileDetails) {
-      const dbUser = await withTimeout(
-        getUserById(profileUser.id),
-        PROFILE_LOOKUP_TIMEOUT_MS
-      ).catch(() => null);
+      const dbUser = await getUserById(profileUser.id).catch(() => null);
       const hasCompletedProfile = Boolean(
         (dbUser?.dateOfBirth ?? profileUser.dateOfBirth) &&
           (dbUser?.firstName ?? profileUser.firstName) &&

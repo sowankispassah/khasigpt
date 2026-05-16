@@ -51,10 +51,8 @@ import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
-import { withTimeout } from "@/lib/utils/async";
 
 const READ_TIMEOUT_MS = 5000;
-const DEFERRED_READ_TIMEOUT_MS = 10_000;
 
 const serializeDate = (value: Date | string | null | undefined) =>
   value instanceof Date ? value.toISOString() : value ?? null;
@@ -71,7 +69,7 @@ function parseBooleanSetting(value: unknown) {
 
 async function safeAppSetting<T>(key: string, fallback: T) {
   try {
-    const value = await withTimeout(getAppSetting<T>(key), READ_TIMEOUT_MS);
+    const value = await getAppSetting<T>(key);
     return value ?? fallback;
   } catch (error) {
     console.error(`[read-models] Failed to load setting "${key}".`, error);
@@ -100,10 +98,10 @@ export async function loadFeatureAccessReadModel({
       null
     ),
     userId
-      ? withTimeout(
-          getImageGenerationAccess({ userId, userRole: role ?? "regular" }),
-          READ_TIMEOUT_MS
-        ).catch(async (error) => {
+      ? getImageGenerationAccess({
+          userId,
+          userRole: role ?? "regular",
+        }).catch(async (error) => {
           console.error(
             "[read-models] Image generation credit access failed; falling back to feature availability.",
             error
@@ -184,10 +182,7 @@ export async function loadFeatureAccessReadModel({
 async function buildLanguageReadModelFromBundle(
   translationBundle: Awaited<ReturnType<typeof getTranslationBundle>>
 ) {
-  const languagesWithSettings = await withTimeout(
-    listLanguagesWithSettings(),
-    READ_TIMEOUT_MS
-  ).catch((error) => {
+  const languagesWithSettings = await listLanguagesWithSettings().catch((error) => {
     console.error("[read-models] Failed to load chat languages.", error);
     return [];
   });
@@ -271,17 +266,11 @@ export async function loadPromptReadModel({
   role: UserRole;
 }) {
   const [suggestedPrompts, iconPromptActions] = await Promise.all([
-    withTimeout(
-      loadSuggestedPrompts(preferredLanguage, role),
-      DEFERRED_READ_TIMEOUT_MS
-    ).catch((error) => {
+    loadSuggestedPrompts(preferredLanguage, role).catch((error) => {
       console.error("[read-models] Failed to load suggested prompts.", error);
       return [];
     }),
-    withTimeout(
-      loadIconPromptActions(preferredLanguage, role),
-      DEFERRED_READ_TIMEOUT_MS
-    ).catch((error) => {
+    loadIconPromptActions(preferredLanguage, role).catch((error) => {
       console.error("[read-models] Failed to load icon prompts.", error);
       return getDefaultIconPromptActions(
         preferredLanguage?.trim().toLowerCase() ?? "en"
@@ -306,10 +295,7 @@ export async function loadTranslateReadModel({
       null
     ),
     includeLanguages
-      ? withTimeout(
-          listTranslationFeatureLanguagesWithModels(),
-          DEFERRED_READ_TIMEOUT_MS
-        ).catch((error) => {
+      ? listTranslationFeatureLanguagesWithModels().catch((error) => {
           console.error("[read-models] Failed to load translate languages.", error);
           return [];
         })
@@ -334,10 +320,7 @@ export async function loadTranslateReadModel({
 export async function loadPricingReadModel() {
   const [pricingPlans, recommendedPlanId, imageGenerationEnabledForAll] =
     await Promise.all([
-      withTimeout(
-        listPricingPlans({ includeInactive: false }),
-        DEFERRED_READ_TIMEOUT_MS
-      ),
+      listPricingPlans({ includeInactive: false }),
       safeAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY, null),
       isImageGenerationEnabledForAllUsers().catch(() => false),
     ]);
@@ -362,10 +345,7 @@ export async function loadPricingReadModel() {
 }
 
 export async function loadBillingReadModel(userId: string) {
-  const balance = await withTimeout(
-    getUserBalanceSummary(userId),
-    DEFERRED_READ_TIMEOUT_MS
-  );
+  const balance = await getUserBalanceSummary(userId);
 
   return {
     tokensRemaining: balance.tokensRemaining,
