@@ -322,8 +322,15 @@ const FALLBACK_BUNDLE: TranslationBundle = buildFallbackBundle();
 
 const skipTranslationCache =
   typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
+const usePersistedTranslationCache =
+  typeof process !== "undefined" &&
+  process.env.TRANSLATION_PERSISTED_CACHE === "1";
 
 async function persistBundle(key: string, bundle: TranslationBundle) {
+  if (!usePersistedTranslationCache) {
+    return;
+  }
+
   if (key !== "__default" && bundle.activeLanguage.code !== key) {
     console.warn("[i18n] Skipping persisted translation bundle for unresolved language.", {
       activeLanguage: bundle.activeLanguage.code,
@@ -351,6 +358,10 @@ function revalidatePersistedBundle(key: string) {
 async function readPersistedBundle(
   key: string
 ): Promise<PersistedBundle | null> {
+  if (!usePersistedTranslationCache) {
+    return null;
+  }
+
   const stored = await getAppSetting<PersistedBundle>(
     `${TRANSLATION_CACHE_PREFIX}${key}`
   );
@@ -683,23 +694,33 @@ export async function invalidateTranslationBundleCache(
     BUNDLE_CACHE.delete(key);
   }
 
-  await Promise.all(
-    targets.map((key) => {
-      const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
-      return deleteAppSetting(persistedKey, {
-        revalidateCache: false,
-      })
-        .catch((error) => {
-          console.error(
-            `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
-            error
-          );
+  if (usePersistedTranslationCache) {
+    await Promise.all(
+      targets.map((key) => {
+        const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
+        return deleteAppSetting(persistedKey, {
+          revalidateCache: false,
         })
-        .finally(() => {
-          revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
-        });
-    })
-  );
+          .catch((error) => {
+            console.error(
+              `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
+              error
+            );
+          })
+          .finally(() => {
+            revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
+          });
+      })
+    );
+    return;
+  }
+
+  for (const key of targets) {
+    revalidateTag(
+      appSettingCacheTagForKey(`${TRANSLATION_CACHE_PREFIX}${key}`),
+      "max"
+    );
+  }
 }
 
 export async function publishAllTranslations() {
