@@ -323,22 +323,84 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-const defaultPoolSize = process.env.NODE_ENV === "development" ? 5 : 3;
+const defaultPoolSize = process.env.NODE_ENV === "development" ? 5 : 1;
 const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 0;
 const defaultConnectTimeout =
   process.env.NODE_ENV === "development" ? 12 : 5;
+
+function isSupabasePoolerUrl(value: string | undefined | null) {
+  if (!value) {
+    return false;
+  }
+  try {
+    return new URL(value).hostname.endsWith(".pooler.supabase.com");
+  } catch {
+    return value.includes(".pooler.supabase.com");
+  }
+}
+
+function getDirectSupabaseUrlFromPooler(value: string | undefined | null) {
+  if (!value || !isSupabasePoolerUrl(value)) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const [userName = "", projectRef = ""] = decodeURIComponent(
+      parsed.username
+    ).split(".");
+    if (!projectRef || userName !== "postgres") {
+      return null;
+    }
+
+    parsed.hostname = `db.${projectRef}.supabase.co`;
+    parsed.port = "5432";
+    parsed.username = userName;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function pickPostgresUrl() {
+  const candidates = [
+    process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_DIRECT_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter((value): value is string => Boolean(value));
+
+  if (process.env.POSTGRES_USE_POOLER === "true") {
+    return process.env.POSTGRES_POOLER_URL ?? candidates[0] ?? null;
+  }
+
+  const directCandidate = candidates.find(
+    (value) => !isSupabasePoolerUrl(value)
+  );
+  if (directCandidate) {
+    return directCandidate;
+  }
+
+  for (const candidate of [
+    ...candidates,
+    process.env.POSTGRES_POOLER_URL,
+  ].filter((value): value is string => Boolean(value))) {
+    const converted = getDirectSupabaseUrlFromPooler(candidate);
+    if (converted) {
+      console.warn(
+        "[db] Converted Supabase pooler URL to direct database URL. Set POSTGRES_DIRECT_URL to avoid relying on derived configuration."
+      );
+      return converted;
+    }
+  }
+
+  return process.env.POSTGRES_POOLER_URL ?? candidates[0] ?? null;
+}
 // Use the direct database URL by default. The Supabase pooler has repeatedly
 // left tiny reads waiting on ClientRead, which exhausts the app's DB slots and
 // breaks auth/chat/subscription routes. Pooler use is now explicit opt-in.
-const shouldUsePooler = process.env.POSTGRES_USE_POOLER === "true";
-const postgresUrl =
-  (shouldUsePooler
-    ? process.env.POSTGRES_POOLER_URL
-    : process.env.POSTGRES_URL ?? process.env.DATABASE_URL) ??
-  process.env.POSTGRES_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_POOLER_URL;
+const postgresUrl = pickPostgresUrl();
 
 if (!postgresUrl) {
   throw new ChatSDKError(
