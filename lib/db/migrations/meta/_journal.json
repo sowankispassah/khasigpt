@@ -477,6 +477,13 @@
       "when": 1765238400017,
       "tag": "0065_guard_app_setting_value_size",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1765238400018,
+      "tag": "0066_prevent_inline_message_image_data_urls",
+      "breakpoints": true
     }
   ]
 }

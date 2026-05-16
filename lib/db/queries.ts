@@ -328,7 +328,14 @@ const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 0;
 const defaultConnectTimeout =
   process.env.NODE_ENV === "development" ? 12 : 5;
-const postgresUrl = process.env.POSTGRES_POOLER_URL ?? process.env.POSTGRES_URL;
+// Use the direct database URL by default. The Supabase pooler has repeatedly
+// left tiny reads waiting on ClientRead, which exhausts the app's DB slots and
+// breaks auth/chat/subscription routes. Pooler use is now explicit opt-in.
+const shouldUsePooler = process.env.POSTGRES_USE_POOLER === "true";
+const postgresUrl =
+  (shouldUsePooler ? process.env.POSTGRES_POOLER_URL : process.env.POSTGRES_URL) ??
+  process.env.POSTGRES_URL ??
+  process.env.POSTGRES_POOLER_URL;
 
 if (!postgresUrl) {
   throw new ChatSDKError(
