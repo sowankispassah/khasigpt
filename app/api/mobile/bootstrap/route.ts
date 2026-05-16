@@ -228,10 +228,6 @@ export async function GET(request: Request) {
     languageSnapshotResult,
     featureSnapshotResult,
     modelConfigResult,
-    promptSnapshotResult,
-    translateResult,
-    pricingResult,
-    balanceResult,
   ] = await Promise.all([
     safeBootstrapSection({
       fallback: buildStartupLanguageSnapshot(preferredLanguage),
@@ -251,54 +247,63 @@ export async function GET(request: Request) {
       loader: loadModelConfigReadModel,
       phase,
     }),
-    session?.user && !isStartupPhase
-      ? safeBootstrapSection({
-          fallback: buildFallbackPromptSnapshot(preferredLanguage),
-          label: "mobile.bootstrap.prompts",
-          loader: () =>
-            loadPromptReadModel({
-              preferredLanguage,
-              role: session.user.role,
-            }),
-          phase,
-        })
-      : Promise.resolve({
-          data: buildFallbackPromptSnapshot(preferredLanguage),
-          degraded: false,
-        } satisfies BootstrapSectionResult<PromptSnapshot>),
-    isStartupPhase
-      ? Promise.resolve({
-          data: FALLBACK_TRANSLATE_SNAPSHOT,
-          degraded: false,
-        } satisfies BootstrapSectionResult<TranslateSnapshot>)
-      : safeBootstrapSection({
-          fallback: FALLBACK_TRANSLATE_SNAPSHOT,
-          label: "mobile.bootstrap.translate",
-          loader: () => loadTranslateReadModel({ includeLanguages: true }),
-          phase,
-        }),
-    session?.user && !isStartupPhase
-      ? safeBootstrapSection({
-          fallback: FALLBACK_PRICING_SNAPSHOT,
-          label: "mobile.bootstrap.pricing",
-          loader: loadPricingReadModel,
-          phase,
-        })
-      : Promise.resolve({
-          data: FALLBACK_PRICING_SNAPSHOT,
-          degraded: false,
-        } satisfies BootstrapSectionResult<PricingSnapshot>),
-    session?.user && !isStartupPhase
-      ? withApiTiming("mobile.bootstrap.billing", () =>
-          loadBillingReadModel(session.user.id)
-        )
-          .then((data) => ({ data, degraded: false }))
-          .catch((error) => {
-            console.error("[api/mobile/bootstrap] Failed to load billing.", error);
-            return { data: null, degraded: true };
-          })
-      : Promise.resolve({ data: null, degraded: false }),
   ]);
+
+  let promptSnapshotResult: BootstrapSectionResult<PromptSnapshot> = {
+    data: buildFallbackPromptSnapshot(preferredLanguage),
+    degraded: false,
+  };
+  let translateResult: BootstrapSectionResult<TranslateSnapshot> = {
+    data: FALLBACK_TRANSLATE_SNAPSHOT,
+    degraded: false,
+  };
+  let pricingResult: BootstrapSectionResult<PricingSnapshot> = {
+    data: FALLBACK_PRICING_SNAPSHOT,
+    degraded: false,
+  };
+  let balanceResult: BootstrapSectionResult<
+    Awaited<ReturnType<typeof loadBillingReadModel>> | null
+  > = { data: null, degraded: false };
+
+  // Keep full bootstrap compatible, but do not run all optional DB reads at
+  // once. In production the Supabase pooler has repeatedly left concurrent
+  // read batches idle on ClientRead while the request waited indefinitely.
+  // Startup remains small; optional sections also have dedicated endpoints.
+  if (session?.user && !isStartupPhase) {
+    promptSnapshotResult = await safeBootstrapSection({
+      fallback: buildFallbackPromptSnapshot(preferredLanguage),
+      label: "mobile.bootstrap.prompts",
+      loader: () =>
+        loadPromptReadModel({
+          preferredLanguage,
+          role: session.user.role,
+        }),
+      phase,
+    });
+
+    translateResult = await safeBootstrapSection({
+      fallback: FALLBACK_TRANSLATE_SNAPSHOT,
+      label: "mobile.bootstrap.translate",
+      loader: () => loadTranslateReadModel({ includeLanguages: true }),
+      phase,
+    });
+
+    pricingResult = await safeBootstrapSection({
+      fallback: FALLBACK_PRICING_SNAPSHOT,
+      label: "mobile.bootstrap.pricing",
+      loader: loadPricingReadModel,
+      phase,
+    });
+
+    balanceResult = await withApiTiming("mobile.bootstrap.billing", () =>
+      loadBillingReadModel(session.user.id)
+    )
+      .then((data) => ({ data, degraded: false }))
+      .catch((error) => {
+        console.error("[api/mobile/bootstrap] Failed to load billing.", error);
+        return { data: null, degraded: true };
+      });
+  }
 
   const languageSnapshot = languageSnapshotResult.data;
   const featureSnapshot = featureSnapshotResult.data;
