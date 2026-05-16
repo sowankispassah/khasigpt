@@ -323,7 +323,10 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-const defaultPoolSize = process.env.NODE_ENV === "development" ? 5 : 1;
+// Keep a small pool even in production. A single postgres.js connection creates
+// head-of-line blocking when independent serverless reads overlap, and any
+// abandoned legacy timeout can leave later tiny reads queued behind it.
+const defaultPoolSize = process.env.NODE_ENV === "development" ? 5 : 3;
 const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 20_000;
 const defaultConnectTimeout =
@@ -360,7 +363,7 @@ function pickPostgresUrl() {
   }
 
   console.warn(
-    "[db] Using Supabase pooler URL because no direct IPv4-reachable database URL is configured. Pooler mode is constrained to one connection and no pipelining."
+    "[db] Using Supabase pooler URL because no direct IPv4-reachable database URL is configured. Pooler mode disables prepared statements and pipelining."
   );
   return process.env.POSTGRES_POOLER_URL ?? candidates[0] ?? null;
 }

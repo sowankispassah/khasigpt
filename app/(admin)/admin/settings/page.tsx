@@ -130,11 +130,7 @@ const PROVIDER_OPTIONS = [
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
-const SETTINGS_DATA_QUERY_TIMEOUT_MS = 3000;
-const SETTINGS_SNAPSHOT_TIMEOUT_MS = 5000;
-const SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS = 4000;
 const FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS = 8000;
-const PRICING_PLANS_QUERY_TIMEOUT_MS = 5000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -194,9 +190,9 @@ function safeSettingsQuery<T>(
   promise: Promise<T>,
   fallbackValue: T
 ): Promise<T> {
-  return withTimeout(promise, SETTINGS_DATA_QUERY_TIMEOUT_MS).catch((error) => {
+  return promise.catch((error) => {
     console.error(
-      `[admin/settings] ${label} query timed out or failed. Using fallback value.`,
+      `[admin/settings] ${label} query failed. Using fallback value.`,
       error
     );
     return fallbackValue;
@@ -204,10 +200,9 @@ function safeSettingsQuery<T>(
 }
 
 async function loadEssentialFallbackSettingMap() {
-  const settings = await withTimeout(
-    getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
-    SETTINGS_ESSENTIAL_FALLBACK_TIMEOUT_MS
-  );
+  const settings = await getLiteAppSettingsByKeysUncached([
+    ...ESSENTIAL_FALLBACK_SETTING_KEYS,
+  ]);
 
   const map = new Map<string, unknown>();
   for (const setting of settings) {
@@ -227,17 +222,16 @@ async function loadAppSettingValuesByKey(): Promise<{
   values: Map<string, unknown>;
 }> {
   try {
-    const settings = await withTimeout(
-      getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
-      SETTINGS_SNAPSHOT_TIMEOUT_MS
-    );
+    const settings = await getLiteAppSettingsByKeysUncached([
+      ...SETTINGS_SNAPSHOT_KEYS,
+    ]);
     return {
       source: "snapshot-db",
       values: new Map(settings.map((setting) => [setting.key, setting.value])),
     };
   } catch (error) {
     console.error(
-      "[admin/settings] App settings snapshot query timed out or failed. Retrying with uncached per-key reads.",
+      "[admin/settings] App settings snapshot query failed. Retrying with essential setting reads.",
       error
     );
 
@@ -264,11 +258,8 @@ async function loadPricingPlansForAdmin() {
   return listPricingPlans({ includeInactive: true, includeDeleted: true });
 }
 
-async function loadPricingPlansForAdminWithTimeout() {
-  return withTimeout(
-    loadPricingPlansForAdmin(),
-    PRICING_PLANS_QUERY_TIMEOUT_MS
-  );
+async function loadPricingPlansForAdminSnapshot() {
+  return loadPricingPlansForAdmin();
 }
 
 function SettingsSubmitButton(
@@ -284,7 +275,7 @@ function SettingsSubmitButton(
 
 async function loadAdminSettingsData(
   pricingPlansPromise: Promise<Awaited<ReturnType<typeof loadPricingPlansForAdmin>>> =
-    loadPricingPlansForAdminWithTimeout()
+    loadPricingPlansForAdminSnapshot()
 ) {
   const exchangeRatePromise = withTimeout(
     getUsdToInrRate(),
@@ -650,7 +641,7 @@ export default async function AdminSettingsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
-  const priorityPricingPlansPromise = loadPricingPlansForAdminWithTimeout();
+  const priorityPricingPlansPromise = loadPricingPlansForAdminSnapshot();
 
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
@@ -724,7 +715,7 @@ export default async function AdminSettingsPage({
     try {
       settingsData = {
         ...settingsData,
-        plansRaw: await loadPricingPlansForAdminWithTimeout(),
+        plansRaw: await loadPricingPlansForAdminSnapshot(),
         pricingPlansLoadFailed: false,
       };
     } catch (pricingReadError) {

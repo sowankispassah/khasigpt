@@ -6,12 +6,10 @@ import {
 } from "@/lib/forum/api-helpers";
 import { getForumThreadDetail } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const MOBILE_FORUM_READ_TIMEOUT_MS = 15_000;
 const OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS = 750;
 
 export async function GET(
@@ -39,18 +37,10 @@ export async function GET(
     const detail = await withApiTiming(
       "mobile.forum.thread.detail",
       () =>
-        withTimeout(
-          getForumThreadDetail({
-            slug,
-            viewerUserId: session?.user?.id ?? null,
-          }),
-          MOBILE_FORUM_READ_TIMEOUT_MS,
-          () => {
-            console.warn("[api/mobile/forum/thread] Detail timed out.", {
-              slug,
-            });
-          }
-        ),
+        getForumThreadDetail({
+          slug,
+          viewerUserId: session?.user?.id ?? null,
+        }),
       { slowMs: 1500 }
     );
 
@@ -66,15 +56,6 @@ export async function GET(
 
     return NextResponse.json(detail, { headers: noStoreHeaders() });
   } catch (error) {
-    if (error instanceof Error && error.message === "timeout") {
-      return NextResponse.json(
-        {
-          code: "timeout:forum",
-          message: "Unable to load this discussion right now. Please try again.",
-        },
-        { headers: noStoreHeaders(), status: 504 }
-      );
-    }
     return forumErrorResponse(error);
   }
 }

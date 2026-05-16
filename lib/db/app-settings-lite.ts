@@ -96,7 +96,10 @@ function getLiteSqlClient() {
     const postgresUrl = getPostgresUrl();
     const usesPooler = isSupabasePoolerUrl(postgresUrl);
     const poolConfig = {
-      max: parseOr(process.env.POSTGRES_LITE_POOL_SIZE, 1),
+      max: parseOr(
+        process.env.POSTGRES_LITE_POOL_SIZE,
+        process.env.NODE_ENV === "development" ? 5 : 3
+      ),
       idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
       max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
       connect_timeout: parseOr(

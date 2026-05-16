@@ -5,7 +5,6 @@ import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminLiveActivityPanelDeferred } from "@/components/admin-live-activity-panel-deferred";
 import { getAdminOverviewSnapshot } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
@@ -29,15 +28,6 @@ export default async function AdminOverviewPage() {
     recentContactMessages: [],
   };
 
-  const queryTimeoutRaw = Number.parseInt(
-    process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
-    10
-  );
-  const QUERY_TIMEOUT_MS =
-    Number.isFinite(queryTimeoutRaw) && queryTimeoutRaw > 0
-      ? queryTimeoutRaw
-      : 6000;
-
   async function safeQuery<T>(
     label: string,
     promise: Promise<T>,
@@ -45,19 +35,12 @@ export default async function AdminOverviewPage() {
   ): Promise<QueryResult<T>> {
     const startedAt = Date.now();
     try {
-      const result = await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
-        console.warn(
-          `[admin] Query "${label}" timed out after ${QUERY_TIMEOUT_MS}ms.`
-        );
-      });
+      const result = await promise;
       const duration = Date.now() - startedAt;
       console.info(`[admin] Query "${label}" succeeded in ${duration}ms.`);
       return { data: result, durationMs: duration, label, ok: true };
     } catch (error) {
       const duration = Date.now() - startedAt;
-      if (error instanceof Error && error.message === "timeout") {
-        return { data: fallback, durationMs: duration, label, ok: false };
-      }
       console.error(
         `[admin] Failed to load ${label} after ${duration}ms`,
         error

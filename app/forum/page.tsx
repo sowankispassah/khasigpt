@@ -12,7 +12,6 @@ import type {
   ForumCategorySummaryPayload,
   ForumThreadListItemPayload,
 } from "@/lib/forum/types";
-import { withTimeout } from "@/lib/utils/async";
 
 export const metadata: Metadata = {
   title: "Community Forum",
@@ -21,9 +20,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-const FORUM_PAGE_READ_TIMEOUT_MS = 12_000;
-const OPTIONAL_FORUM_PAGE_AUTH_TIMEOUT_MS = 500;
 
 const EMPTY_FORUM_OVERVIEW: ForumOverviewResult = {
   activeCategoryId: null,
@@ -70,10 +66,10 @@ type ForumPageProps = {
 };
 
 export default async function ForumPage({ searchParams }: ForumPageProps) {
-  const session = await withTimeout(
-    auth(),
-    OPTIONAL_FORUM_PAGE_AUTH_TIMEOUT_MS
-  ).catch(() => null);
+  const session = await auth().catch((error) => {
+    console.warn("[forum/page] Optional auth lookup failed.", error);
+    return null;
+  });
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const categorySlug =
     typeof resolvedSearchParams?.category === "string"
@@ -89,18 +85,12 @@ export default async function ForumPage({ searchParams }: ForumPageProps) {
       : null;
 
   let loadError: string | null = null;
-  const overview = await withTimeout(
-    getForumOverview({
-      categorySlug,
-      tagSlug,
-      search: searchQuery,
-      viewerUserId: session?.user?.id ?? null,
-    }),
-    FORUM_PAGE_READ_TIMEOUT_MS,
-    () => {
-      console.warn("[forum/page] Forum overview timed out.");
-    }
-  ).catch((error) => {
+  const overview = await getForumOverview({
+    categorySlug,
+    tagSlug,
+    search: searchQuery,
+    viewerUserId: session?.user?.id ?? null,
+  }).catch((error) => {
     console.error("[forum/page] Unable to load forum overview.", error);
     loadError = "Unable to load forum right now. Please try again.";
     return EMPTY_FORUM_OVERVIEW;

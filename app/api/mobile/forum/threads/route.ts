@@ -6,17 +6,11 @@ import {
 } from "@/lib/forum/api-helpers";
 import { getForumOverview } from "@/lib/forum/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const MOBILE_FORUM_READ_TIMEOUT_MS = 15_000;
 const OPTIONAL_MOBILE_FORUM_AUTH_TIMEOUT_MS = 750;
-const FORUM_TIMEOUT_RESPONSE = {
-  code: "timeout:forum",
-  message: "Unable to load forum right now. Please try again.",
-};
 
 function parseForumLimit(value: string | null) {
   if (!value) {
@@ -47,31 +41,19 @@ export async function GET(request: Request) {
     const overview = await withApiTiming(
       "mobile.forum.overview",
       () =>
-        withTimeout(
-          getForumOverview({
-            categorySlug: url.searchParams.get("category") ?? null,
-            cursor: url.searchParams.get("cursor") ?? null,
-            limit: parseForumLimit(url.searchParams.get("limit")),
-            search: url.searchParams.get("search") ?? null,
-            tagSlug: url.searchParams.get("tag") ?? null,
-            viewerUserId: session?.user?.id ?? null,
-          }),
-          MOBILE_FORUM_READ_TIMEOUT_MS,
-          () => {
-            console.warn("[api/mobile/forum/threads] Forum overview timed out.");
-          }
-        ),
+        getForumOverview({
+          categorySlug: url.searchParams.get("category") ?? null,
+          cursor: url.searchParams.get("cursor") ?? null,
+          limit: parseForumLimit(url.searchParams.get("limit")),
+          search: url.searchParams.get("search") ?? null,
+          tagSlug: url.searchParams.get("tag") ?? null,
+          viewerUserId: session?.user?.id ?? null,
+        }),
       { slowMs: 1500 }
     );
 
     return NextResponse.json(overview, { headers: noStoreHeaders() });
   } catch (error) {
-    if (error instanceof Error && error.message === "timeout") {
-      return NextResponse.json(FORUM_TIMEOUT_RESPONSE, {
-        headers: noStoreHeaders(),
-        status: 504,
-      });
-    }
     return forumErrorResponse(error);
   }
 }
