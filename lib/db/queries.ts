@@ -3752,7 +3752,10 @@ function shouldUseAppSettingCache(key: string) {
 
 async function getAppSettingsRaw(): Promise<AppSetting[]> {
   try {
-    const settings = await db.select().from(appSetting);
+    const settings = await db
+      .select()
+      .from(appSetting)
+      .where(sql`${appSetting.key} not like 'translation_bundle:%'`);
     rememberAppSettings(settings);
     return settings;
   } catch (_error) {
@@ -6951,7 +6954,7 @@ export async function getActiveSubscriptionForUser(
   const now = new Date();
 
   try {
-    return await getActiveSubscriptionInternal(db, userId, now);
+    return await getActiveSubscriptionReadOnly(db, userId, now);
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return null;
@@ -7328,17 +7331,6 @@ export async function getUserBalanceSummary(
       return EMPTY_BALANCE;
     }
 
-    const [plan] = await db
-      .select()
-      .from(pricingPlan)
-      .where(
-        and(
-          eq(pricingPlan.id, latestSubscription.planId),
-          isNull(pricingPlan.deletedAt)
-        )
-      )
-      .limit(1);
-
     if (!activeSubscription) {
       return {
         subscription: null,
@@ -7353,6 +7345,17 @@ export async function getUserBalanceSummary(
         startedAt: null,
       };
     }
+
+    const [plan] = await db
+      .select()
+      .from(pricingPlan)
+      .where(
+        and(
+          eq(pricingPlan.id, latestSubscription.planId),
+          isNull(pricingPlan.deletedAt)
+        )
+      )
+      .limit(1);
 
     const tokensRemaining = Math.max(0, activeSubscription.tokenBalance);
     const tokensTotal = Math.max(0, activeSubscription.tokenAllowance);
@@ -8194,6 +8197,28 @@ async function ensureManualPlan(executor: any, now: Date) {
     .returning();
 
   return created;
+}
+
+async function getActiveSubscriptionReadOnly(
+  executor: any,
+  userId: string,
+  now: Date
+): Promise<UserSubscription | null> {
+  const [subscription] = await executor
+    .select()
+    .from(userSubscription)
+    .where(
+      and(
+        eq(userSubscription.userId, userId),
+        eq(userSubscription.status, "active"),
+        gt(userSubscription.expiresAt, now),
+        gt(userSubscription.tokenBalance, 0)
+      )
+    )
+    .orderBy(desc(userSubscription.expiresAt))
+    .limit(1);
+
+  return subscription ?? null;
 }
 
 async function getActiveSubscriptionInternal(

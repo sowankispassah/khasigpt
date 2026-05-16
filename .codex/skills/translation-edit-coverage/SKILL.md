@@ -74,6 +74,10 @@ Modal content must use editable components for title, body, and action labels.
 - Do not reset the selected language or dictionary because a page-specific request fails.
 - Do not clear cached dictionaries while a refresh is pending.
 - New translation keys must not block login, bootstrap, sidebar, chat history, billing, or forum loading.
+- Inline translation saves must invalidate only translation-bundle cache for the affected language/key. They must not revalidate global app-setting tags, root layouts, admin overview, feature settings, billing, prompts, or user-facing routes.
+- Do not store translation cache entries under arbitrary route/query/cookie values. Language cache keys must be validated and must resolve to an active language or the default bundle before they are persisted.
+- Translation bundle caches are render caches. They must never be treated as source data and must not live in shared settings reads that drive feature flags, prompt actions, billing, login, or admin settings.
+- Inline save cache patching must never create and persist a fallback dictionary. If a full bundle is not already cached, load a fresh full bundle from translation tables or leave the cache unpatched and rely on client optimistic state.
 
 ## Checklist Before Shipping UI Text
 

@@ -2,7 +2,6 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 
 import {
-  APP_SETTING_CACHE_TAG,
   appSettingCacheTagForKey,
   db,
   deleteAppSetting,
@@ -120,6 +119,7 @@ const TRANSLATION_FAILURE_COOLDOWN_MS =
     : 30000;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
+const LANGUAGE_CACHE_KEY_REGEX = /^[a-z0-9-]{2,16}$/;
 
 const SHOULD_LOG_TRANSLATION_TIMEOUTS =
   typeof process !== "undefined" && process.env.NODE_ENV === "development";
@@ -340,6 +340,14 @@ const skipTranslationCache =
   typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
 
 async function persistBundle(key: string, bundle: TranslationBundle) {
+  if (key !== "__default" && bundle.activeLanguage.code !== key) {
+    console.warn("[i18n] Skipping persisted translation bundle for unresolved language.", {
+      activeLanguage: bundle.activeLanguage.code,
+      cacheKey: key,
+    });
+    return;
+  }
+
   await setAppSetting({
     key: `${TRANSLATION_CACHE_PREFIX}${key}`,
     value: {
@@ -353,7 +361,6 @@ async function persistBundle(key: string, bundle: TranslationBundle) {
 
 function revalidatePersistedBundle(key: string) {
   const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
-  revalidateTag(APP_SETTING_CACHE_TAG, "max");
   revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
 }
 
@@ -392,7 +399,10 @@ async function readPersistedBundle(
 
 function cacheKeyForLanguage(code?: string | null) {
   const normalized = code?.trim().toLowerCase();
-  return normalized && normalized.length > 0 ? normalized : "__default";
+  if (!normalized || normalized.length === 0) {
+    return "__default";
+  }
+  return LANGUAGE_CACHE_KEY_REGEX.test(normalized) ? normalized : "__default";
 }
 
 export async function patchTranslationBundleCacheEntry({
@@ -425,12 +435,15 @@ export async function patchTranslationBundleCacheEntry({
   }
 
   if (!bundle) {
-    bundle = buildFallbackBundle(languageCode);
-    console.info("[i18n] Translation bundle cache patch created fallback bundle.", {
-      cacheKey,
-      key,
-      languageCode,
-    });
+    try {
+      bundle = await loadTranslationBundle(languageCode);
+    } catch (error) {
+      logTranslationError(
+        `[i18n] Failed to load full translation bundle before patching "${key}".`,
+        error
+      );
+      return false;
+    }
   }
 
   const normalizedBundleLanguage = bundle.activeLanguage.code.trim().toLowerCase();
@@ -737,7 +750,6 @@ export async function invalidateTranslationBundleCache(
           );
         })
         .finally(() => {
-          revalidateTag(APP_SETTING_CACHE_TAG, "max");
           revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
         });
     })

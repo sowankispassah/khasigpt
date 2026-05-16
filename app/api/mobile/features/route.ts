@@ -15,7 +15,26 @@ export async function GET(request: Request) {
       role: user?.role ?? null,
       userId: user?.id ?? null,
     })
-  );
+  ).catch((error) => {
+    console.error(
+      "[api/mobile/features] Failed to confirm feature access; returning render-only shell fallback.",
+      error
+    );
+    return {
+      calculator: true,
+      customKnowledge: false,
+      documentUploads: true,
+      forum: true,
+      jobs: true,
+      study: true,
+      translate: true,
+      imageGeneration: {
+        enabled: true,
+        canGenerate: true,
+        requiresPaidCredits: false,
+      },
+    };
+  });
 
   return NextResponse.json(
     {

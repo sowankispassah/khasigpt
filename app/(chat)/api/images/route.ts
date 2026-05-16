@@ -305,7 +305,23 @@ export async function POST(request: Request) {
   const access = await getImageGenerationAccess({
     userId: session.user.id,
     userRole: session.user.role,
+  }).catch((error) => {
+    console.error("[api/images] Failed to confirm image generation access.", {
+      error: error instanceof Error ? error.message : String(error),
+      userId: session.user.id,
+    });
+    return null;
   });
+  if (!access) {
+    return Response.json(
+      {
+        code: "service_unavailable:image_access",
+        message:
+          "Image generation access could not be confirmed. Please try again.",
+      },
+      { status: 503 }
+    );
+  }
   if (!access.enabled || !access.model) {
     return new ChatSDKError("forbidden:auth").toResponse();
   }
