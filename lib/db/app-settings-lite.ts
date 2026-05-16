@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { setDefaultResultOrder } from "node:dns";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import {
   assertFeatureSettingWriteAllowed,
@@ -33,14 +34,54 @@ const globalForLiteDb = globalThis as typeof globalThis & {
   __appSettingsLiteClient?: LiteSqlClient;
 };
 
+try {
+  setDefaultResultOrder("ipv4first");
+} catch {
+  // Older Node runtimes may not support setDefaultResultOrder; ignore.
+}
+
 export function appSettingCacheTagForKey(key: string) {
   return `app-setting:${key}`;
 }
 
+function isSupabasePoolerUrl(value: string | undefined | null) {
+  if (!value) {
+    return false;
+  }
+  try {
+    return new URL(value).hostname.endsWith(".pooler.supabase.com");
+  } catch {
+    return value.includes(".pooler.supabase.com");
+  }
+}
+
 function getPostgresUrl() {
-  const postgresUrl = process.env.POSTGRES_URL ?? process.env.DATABASE_URL;
+  const candidates = [
+    process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_DIRECT_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter((value): value is string => Boolean(value));
+
+  if (process.env.POSTGRES_USE_POOLER === "true") {
+    const poolerUrl = process.env.POSTGRES_POOLER_URL ?? candidates[0];
+    if (!poolerUrl) {
+      throw new Error(
+        "POSTGRES_URL, DATABASE_URL, or POSTGRES_POOLER_URL is not configured"
+      );
+    }
+    return poolerUrl;
+  }
+
+  const directCandidate = candidates.find(
+    (value) => !isSupabasePoolerUrl(value)
+  );
+  const postgresUrl =
+    directCandidate ?? process.env.POSTGRES_POOLER_URL ?? candidates[0];
   if (!postgresUrl) {
-    throw new Error("POSTGRES_URL or DATABASE_URL is not configured");
+    throw new Error(
+      "POSTGRES_URL, DATABASE_URL, or POSTGRES_POOLER_URL is not configured"
+    );
   }
   return postgresUrl;
 }
@@ -52,7 +93,9 @@ function parseOr(value: string | undefined, fallback: number) {
 
 function getLiteSqlClient() {
   if (!globalForLiteDb.__appSettingsLiteClient) {
-    globalForLiteDb.__appSettingsLiteClient = postgres(getPostgresUrl(), {
+    const postgresUrl = getPostgresUrl();
+    const usesPooler = isSupabasePoolerUrl(postgresUrl);
+    const poolConfig = {
       max: parseOr(process.env.POSTGRES_LITE_POOL_SIZE, 1),
       idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
       max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
@@ -60,8 +103,15 @@ function getLiteSqlClient() {
         process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
         10
       ),
+      statement_timeout: parseOr(process.env.POSTGRES_STATEMENT_TIMEOUT, 20_000),
+      application_name:
+        process.env.POSTGRES_APPLICATION_NAME ??
+        `ai-chatbot-lite-${process.env.NODE_ENV ?? "development"}`,
+      fetch_types: !usesPooler,
+      max_pipeline: usesPooler ? 1 : 100,
       prepare: false,
-    });
+    };
+    globalForLiteDb.__appSettingsLiteClient = postgres(postgresUrl, poolConfig);
   }
 
   return globalForLiteDb.__appSettingsLiteClient;
