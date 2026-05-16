@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import {
   assertFeatureSettingWriteAllowed,
   type FeatureSettingWriteContext,
@@ -161,6 +162,11 @@ options?: {
     throw new Error("invalid_setting_key");
   }
 
+  const normalizedValue = normalizeAppSettingValueForWrite(
+    normalizedKey,
+    value
+  );
+
   const sql = getLiteSqlClient();
   let previousValue: unknown = null;
   if (isFeatureAccessSettingKey(normalizedKey)) {
@@ -177,11 +183,11 @@ options?: {
     context: options?.featureSettingWrite,
     key: normalizedKey,
     previousValue,
-    value,
+    value: normalizedValue,
     writer: "setLiteAppSetting",
   });
 
-  const jsonValue = value as Parameters<typeof sql.json>[0];
+  const jsonValue = normalizedValue as Parameters<typeof sql.json>[0];
   await sql`
     insert into "AppSetting" ("key", "value", "updatedAt")
     values (${normalizedKey}, ${sql.json(jsonValue)}, now())

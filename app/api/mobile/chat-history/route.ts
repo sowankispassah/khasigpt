@@ -148,11 +148,15 @@ export async function GET(request: NextRequest) {
         details,
       });
       return Response.json(
-        { chats: [], hasMore: false },
         {
+          code: "service_unavailable:history",
+          degraded: true,
+          message: "Chat history could not be confirmed. Please try again.",
+        },
+        {
+          status: 503,
           headers: {
             "Cache-Control": "no-store",
-            "X-History-Fallback": "transient_database_connection_error",
           },
         }
       );

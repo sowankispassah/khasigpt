@@ -32,6 +32,7 @@ import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
+import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import {
   assertFeatureSettingWriteAllowed,
   type FeatureSettingWriteContext,
@@ -1345,9 +1346,10 @@ export async function getMessagesByChatId({ id }: { id: string }) {
       .where(eq(message.chatId, id))
       .orderBy(asc(message.createdAt));
   } catch (_error) {
+    const cause = getErrorCause(_error, "Failed to get messages by chat id");
     throw new ChatSDKError(
       "bad_request:database",
-      "Failed to get messages by chat id"
+      cause
     );
   }
 }
@@ -1383,9 +1385,10 @@ export async function getMessagesByChatIdPage({
 
     return { messages: trimmed.reverse(), hasMore };
   } catch (_error) {
+    const cause = getErrorCause(_error, "Failed to load paged chat messages");
     throw new ChatSDKError(
       "bad_request:database",
-      "Failed to load paged chat messages"
+      cause
     );
   }
 }
@@ -3770,19 +3773,24 @@ async function getAppSettingsRaw(): Promise<AppSetting[]> {
 }
 
 async function getAppSettingRaw<T>(key: string): Promise<T | null> {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    return null;
+  }
+
   try {
     const [setting] = await db
       .select()
       .from(appSetting)
-      .where(eq(appSetting.key, key))
+      .where(eq(appSetting.key, normalizedKey))
       .limit(1);
 
     if (!setting) {
-      clearRememberedAppSetting(key);
+      clearRememberedAppSetting(normalizedKey);
       return null;
     }
 
-    rememberAppSettingValue(key, setting.value);
+    rememberAppSettingValue(normalizedKey, setting.value);
     return setting.value as T;
   } catch (_error) {
     if (isTableMissingError(_error)) {
@@ -3956,27 +3964,49 @@ options?: {
   featureSettingWrite?: FeatureSettingWriteContext;
   revalidateCache?: boolean;
 }) {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update application setting"
+    );
+  }
+
+  let normalizedValue: T;
+  try {
+    normalizedValue = normalizeAppSettingValueForWrite(normalizedKey, value);
+  } catch (_error) {
+    console.error("[app-settings] Rejected invalid setting write.", {
+      key: normalizedKey,
+      error: _error instanceof Error ? _error.message : String(_error),
+    });
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update application setting"
+    );
+  }
+
   const now = new Date();
-  const previousValue = isFeatureAccessSettingKey(key)
-    ? await getAppSettingRaw<unknown>(key).catch(() => null)
+  const previousValue = isFeatureAccessSettingKey(normalizedKey)
+    ? await getAppSettingRaw<unknown>(normalizedKey).catch(() => null)
     : null;
 
   assertFeatureSettingWriteAllowed({
     context: options?.featureSettingWrite,
-    key,
+    key: normalizedKey,
     previousValue,
-    value,
+    value: normalizedValue,
     writer: "setAppSetting",
   });
 
   try {
     await db
       .insert(appSetting)
-      .values({ key, value: value as unknown, updatedAt: now })
+      .values({ key: normalizedKey, value: normalizedValue as unknown, updatedAt: now })
       .onConflictDoUpdate({
         target: appSetting.key,
         set: {
-          value: value as unknown,
+          value: normalizedValue as unknown,
           updatedAt: now,
         },
       });
@@ -3987,11 +4017,11 @@ options?: {
     );
   }
 
-  rememberAppSettingValue(key, value);
+  rememberAppSettingValue(normalizedKey, normalizedValue);
 
   if (options?.revalidateCache !== false) {
     revalidateTag(APP_SETTING_CACHE_TAG, "max");
-    revalidateTag(appSettingCacheTagForKey(key), "max");
+    revalidateTag(appSettingCacheTagForKey(normalizedKey), "max");
   }
 }
 

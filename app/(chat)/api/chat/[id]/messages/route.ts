@@ -13,6 +13,40 @@ export const runtime = "nodejs";
 const MAX_PAGE_SIZE = 200;
 const CHAT_MESSAGES_DB_TIMEOUT_MS = 12_000;
 
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && error.message === "timeout";
+}
+
+function getErrorDetails(error: unknown) {
+  if (error instanceof ChatSDKError && typeof error.cause === "string") {
+    return error.cause;
+  }
+  return error instanceof Error ? error.message : "";
+}
+
+function isTransientDatabaseConnectionError(details: string) {
+  return /connect_timeout|econnrefused|econnreset|etimedout|connection terminated|network|timeout/i.test(
+    details
+  );
+}
+
+function unavailableChatMessagesResponse(details: string) {
+  console.warn("[api/chat/messages] transient chat read failure", { details });
+  return NextResponse.json(
+    {
+      code: "service_unavailable:chat_messages",
+      degraded: true,
+      message: "Chat messages could not be confirmed. Please try again.",
+    },
+    {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -28,10 +62,22 @@ export async function GET(
     return new ChatSDKError("unauthorized:chat").toResponse();
   }
 
-  const chat = await withTimeout(
-    getChatById({ id: chatId, includeDeleted: true }),
-    CHAT_MESSAGES_DB_TIMEOUT_MS
-  );
+  let chat: Awaited<ReturnType<typeof getChatById>>;
+  try {
+    chat = await withTimeout(
+      getChatById({ id: chatId, includeDeleted: true }),
+      CHAT_MESSAGES_DB_TIMEOUT_MS
+    );
+  } catch (error) {
+    const details = getErrorDetails(error);
+    if (isTimeoutError(error) || isTransientDatabaseConnectionError(details)) {
+      return unavailableChatMessagesResponse(details || "chat_lookup_timeout");
+    }
+    if (error instanceof ChatSDKError) {
+      return error.toResponse();
+    }
+    throw error;
+  }
   if (!chat) {
     return new ChatSDKError("not_found:chat").toResponse();
   }
@@ -56,14 +102,27 @@ export async function GET(
       : CHAT_HISTORY_PAGE_SIZE;
   const before = beforeParam ? new Date(beforeParam) : null;
 
-  const { messages, hasMore } = await withTimeout(
-    getMessagesByChatIdPage({
-      id: chatId,
-      limit,
-      before,
-    }),
-    CHAT_MESSAGES_DB_TIMEOUT_MS
-  );
+  let messagesResult: Awaited<ReturnType<typeof getMessagesByChatIdPage>>;
+  try {
+    messagesResult = await withTimeout(
+      getMessagesByChatIdPage({
+        id: chatId,
+        limit,
+        before,
+      }),
+      CHAT_MESSAGES_DB_TIMEOUT_MS
+    );
+  } catch (error) {
+    const details = getErrorDetails(error);
+    if (isTimeoutError(error) || isTransientDatabaseConnectionError(details)) {
+      return unavailableChatMessagesResponse(details || "message_query_timeout");
+    }
+    if (error instanceof ChatSDKError) {
+      return error.toResponse();
+    }
+    throw error;
+  }
+  const { messages, hasMore } = messagesResult;
 
   const oldestMessage = messages[0];
   const oldestMessageAt =

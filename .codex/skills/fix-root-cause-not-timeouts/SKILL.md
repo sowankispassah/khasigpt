@@ -32,6 +32,7 @@ For this project, a slow path with one user is usually caused by architecture, c
    - One optional endpoint controls global auth, language, feature, or sidebar state.
    - Failed reads are converted into authoritative empty arrays, `0`, disabled flags, or English fallback.
    - Broad invalidation forces unrelated surfaces to reload together.
+   - Shared settings rows have become oversized or corrupted, especially when a scalar setting is accidentally written as a serialized blob. Always inspect top `AppSetting` value sizes when admin, home, chat, feature, or translation reads start timing out together.
 
 4. Fix the cause before relying on timeout handling.
    - Combine related dashboard reads into one compact snapshot query.
@@ -42,6 +43,7 @@ For this project, a slow path with one user is usually caused by architecture, c
    - Make optional data fail locally, not globally.
    - Scope invalidation to exact keys/tags/sections.
    - Remove fallback writes and broad reset logic.
+   - Repair corrupt shared rows and add write-side validation or database constraints so the same oversized setting cannot be written again.
 
 5. Keep timeouts only as guardrails.
    - A timeout may prevent infinite loading, but it must show unconfirmed/degraded state.
@@ -64,6 +66,7 @@ For this project, a slow path with one user is usually caused by architecture, c
 - If feature settings cannot be read, do not silently disable sidebar features.
 - If translation dictionaries cannot be refreshed, do not reset the selected language or clear the session.
 - If a user-facing API fails, do not clear native cached bootstrap unless lightweight session validation confirms the token is invalid.
+- Do not return a successful empty list for transient database failure. Return an error/degraded response so clients preserve last-known-good cache instead of replacing valid history/features with empty state.
 
 ## Required Final Report
 
