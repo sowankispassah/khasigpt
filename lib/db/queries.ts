@@ -333,14 +333,17 @@ const defaultConnectTimeout =
 // breaks auth/chat/subscription routes. Pooler use is now explicit opt-in.
 const shouldUsePooler = process.env.POSTGRES_USE_POOLER === "true";
 const postgresUrl =
-  (shouldUsePooler ? process.env.POSTGRES_POOLER_URL : process.env.POSTGRES_URL) ??
+  (shouldUsePooler
+    ? process.env.POSTGRES_POOLER_URL
+    : process.env.POSTGRES_URL ?? process.env.DATABASE_URL) ??
   process.env.POSTGRES_URL ??
+  process.env.DATABASE_URL ??
   process.env.POSTGRES_POOLER_URL;
 
 if (!postgresUrl) {
   throw new ChatSDKError(
     "bad_request:configuration",
-    "POSTGRES_URL or POSTGRES_POOLER_URL is not configured"
+    "POSTGRES_URL, DATABASE_URL, or POSTGRES_POOLER_URL is not configured"
   );
 }
 
