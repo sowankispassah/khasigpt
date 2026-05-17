@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminLiveActivityPanelDeferred } from "@/components/admin-live-activity-panel-deferred";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import { getAdminOverviewSnapshot } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 
@@ -35,10 +36,20 @@ export default async function AdminOverviewPage() {
   ): Promise<QueryResult<T>> {
     const startedAt = Date.now();
     try {
-      const result = await promise;
+      const result = await adminQueryOr({
+        fallback,
+        label,
+        promise,
+        timeoutMs: 5000,
+      });
       const duration = Date.now() - startedAt;
       console.info(`[admin] Query "${label}" succeeded in ${duration}ms.`);
-      return { data: result, durationMs: duration, label, ok: true };
+      return {
+        data: result,
+        durationMs: duration,
+        label,
+        ok: result !== fallback,
+      };
     } catch (error) {
       const duration = Date.now() - startedAt;
       console.error(

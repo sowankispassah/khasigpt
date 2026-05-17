@@ -1,5 +1,6 @@
 import nextDynamic from "next/dynamic";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import { listCharactersForAdmin } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,11 @@ const AdminCharactersManager = nextDynamic(
 );
 
 export default async function AdminCharactersPage() {
-  const characters = await listCharactersForAdmin();
+  const characters = await adminQueryOr({
+    fallback: [] as Awaited<ReturnType<typeof listCharactersForAdmin>>,
+    label: "characters.list",
+    promise: listCharactersForAdmin(),
+  });
 
   const serialized = characters.map((character) => ({
     ...character,

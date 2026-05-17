@@ -10,6 +10,7 @@ import { AdminForumConfirmForm } from "@/components/admin-forum-confirm-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import { db } from "@/lib/db/queries";
 import {
   type ForumThreadStatus,
@@ -451,7 +452,21 @@ const tableSelectClass =
 
 export default async function AdminForumPage() {
   await requireAdmin();
-  const { categories, threads, posts, metrics } = await getAdminForumData();
+  const { categories, threads, posts, metrics } = await adminQueryOr({
+    fallback: {
+      categories: [],
+      threads: [],
+      posts: [],
+      metrics: {
+        totalThreads: 0,
+        archivedThreads: 0,
+        lockedThreads: 0,
+        hiddenPosts: 0,
+      },
+    } as Awaited<ReturnType<typeof getAdminForumData>>,
+    label: "forum.snapshot",
+    promise: getAdminForumData(),
+  });
   const categoryOptions = categories.map((category) => ({
     id: category.id,
     name: category.name,

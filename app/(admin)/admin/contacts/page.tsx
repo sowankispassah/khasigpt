@@ -2,6 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { Metadata } from "next";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   getContactMessageCount,
   listContactMessages,
@@ -33,32 +34,36 @@ export default async function AdminContactsPage({
   let messages: ContactMessage[] = [];
   let totalMessages = 0;
 
-  try {
-    const offset = (requestedPage - 1) * CONTACTS_PAGE_SIZE;
-    [messages, totalMessages] = await Promise.all([
-      listContactMessages({
+  const offset = (requestedPage - 1) * CONTACTS_PAGE_SIZE;
+  [messages, totalMessages] = await Promise.all([
+    adminQueryOr({
+      fallback: [] as ContactMessage[],
+      label: "contacts.messages",
+      promise: listContactMessages({
         limit: CONTACTS_PAGE_SIZE,
         offset,
       }),
-      getContactMessageCount(),
-    ]);
-  } catch (error) {
-    console.error("Failed to load contact messages", error);
-  }
+    }),
+    adminQueryOr({
+      fallback: 0,
+      label: "contacts.count",
+      promise: getContactMessageCount(),
+    }),
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(totalMessages / CONTACTS_PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
 
   if (page !== requestedPage) {
     const offset = (page - 1) * CONTACTS_PAGE_SIZE;
-    try {
-      messages = await listContactMessages({
+    messages = await adminQueryOr({
+      fallback: [] as ContactMessage[],
+      label: "contacts.corrected-page",
+      promise: listContactMessages({
         limit: CONTACTS_PAGE_SIZE,
         offset,
-      });
-    } catch (error) {
-      console.error("Failed to load contact messages for corrected page", error);
-    }
+      }),
+    });
   }
 
   return (

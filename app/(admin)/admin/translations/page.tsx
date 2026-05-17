@@ -4,6 +4,7 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   listTranslationEntries,
   type TranslationTableEntry,
@@ -105,10 +106,23 @@ export default async function AdminTranslationsPage({
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
+  await adminQueryOr({
+    fallback: null,
+    label: "translations.register-static-keys",
+    promise: registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS),
+    timeoutMs: 3000,
+  });
   const [languages, entries] = await Promise.all([
-    getAllLanguages(),
-    listTranslationEntries(),
+    adminQueryOr({
+      fallback: [] as LanguageOption[],
+      label: "translations.languages",
+      promise: getAllLanguages(),
+    }),
+    adminQueryOr({
+      fallback: [] as TranslationTableEntry[],
+      label: "translations.entries",
+      promise: listTranslationEntries(),
+    }),
   ]);
 
   const queryParam = resolvedSearchParams?.q;

@@ -10,6 +10,7 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import { AdminUserCreditHistoryMenu } from "@/components/admin-user-credit-history-menu";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   getUserBalanceSummaries,
   getUserCount,
@@ -18,11 +19,10 @@ import {
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_USERS_QUERY_TIMEOUT_MS = 10_000;
+const ADMIN_USERS_QUERY_TIMEOUT_MS = 5000;
 const USERS_PAGE_SIZE = 25;
 
 const EMPTY_USER_BALANCE: UserBalanceSummary = {
@@ -55,23 +55,28 @@ export default async function AdminUsersPage({
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const offset = (requestedPage - 1) * USERS_PAGE_SIZE;
 
-  const withQueryFallback = async <T,>(promise: Promise<T>, fallback: T) => {
-    try {
-      return await withTimeout(promise, ADMIN_USERS_QUERY_TIMEOUT_MS);
-    } catch {
-      return fallback;
-    }
-  };
+  const withQueryFallback = async <T,>(
+    label: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
+    adminQueryOr({
+      fallback,
+      label,
+      promise,
+      timeoutMs: ADMIN_USERS_QUERY_TIMEOUT_MS,
+    });
 
   const [users, totalUsers] = await Promise.all([
     withQueryFallback(
+      "users.list",
       listUsers({
         limit: USERS_PAGE_SIZE,
         offset,
       }),
       []
     ),
-    withQueryFallback(getUserCount(), 0),
+    withQueryFallback("users.count", getUserCount(), 0),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE));
@@ -81,6 +86,7 @@ export default async function AdminUsersPage({
     pageOffset === offset
       ? users
       : await withQueryFallback(
+          "users.corrected-page",
           listUsers({
             limit: USERS_PAGE_SIZE,
             offset: pageOffset,
@@ -89,10 +95,12 @@ export default async function AdminUsersPage({
         );
 
   const balanceByUserIdPromise = withQueryFallback(
+    "users.balance-summaries",
     getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
     new Map<string, UserBalanceSummary>()
   );
   const activeSubscriptionsPromise = withQueryFallback(
+    "users.active-subscriptions",
     listActiveSubscriptionSummaries({ limit: 20 }),
     []
   );

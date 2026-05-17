@@ -1,5 +1,6 @@
 import nextDynamic from "next/dynamic";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import { type ChatListItem, getChatCount, listChats } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +11,26 @@ const AdminChatTables = nextDynamic(() => import("./tables").then((module) => mo
 
 export default async function AdminChatsPage() {
   const [activeChats, deletedChats, activeTotal, deletedTotal] = await Promise.all([
-    listChats({ limit: 10 }),
-    listChats({ limit: 10, onlyDeleted: true }),
-    getChatCount(),
-    getChatCount({ onlyDeleted: true }),
+    adminQueryOr({
+      fallback: [] as Awaited<ReturnType<typeof listChats>>,
+      label: "chats.active",
+      promise: listChats({ limit: 10 }),
+    }),
+    adminQueryOr({
+      fallback: [] as Awaited<ReturnType<typeof listChats>>,
+      label: "chats.deleted",
+      promise: listChats({ limit: 10, onlyDeleted: true }),
+    }),
+    adminQueryOr({
+      fallback: 0,
+      label: "chats.active-count",
+      promise: getChatCount(),
+    }),
+    adminQueryOr({
+      fallback: 0,
+      label: "chats.deleted-count",
+      promise: getChatCount({ onlyDeleted: true }),
+    }),
   ]);
 
   return (

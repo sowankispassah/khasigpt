@@ -9,6 +9,7 @@ import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
   JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
@@ -93,7 +94,7 @@ const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
 const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
 const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
-const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 12_000;
+const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 5_000;
 const ADMIN_JOBS_PAGE_SIZE = 25;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
@@ -862,15 +863,17 @@ async function updateJobStatusAction(formData: FormData) {
 }
 
 async function withTimeoutFallback<T>(
+  label: string,
   promise: Promise<T>,
   fallback: T,
   timeoutMs = JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
 ) {
-  try {
-    return await withTimeout(promise, timeoutMs);
-  } catch {
-    return fallback;
-  }
+  return adminQueryOr({
+    fallback,
+    label,
+    promise,
+    timeoutMs,
+  });
 }
 
 function parsePage(value: string | string[] | undefined) {
@@ -893,11 +896,13 @@ export default async function AdminJobsPage({
   const jobsOffset = (requestedPage - 1) * ADMIN_JOBS_PAGE_SIZE;
 
   const scrapeProgressPromise = withTimeoutFallback(
+    "jobs.scrape-progress",
     getJobsScrapeProgressSnapshot(),
     null,
-    10_000
+    JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
   const jobsPageRowsPromise = withTimeoutFallback(
+    "jobs.rows",
     listJobPostingEntries({
       includeInactive: true,
       includeRagState: false,
@@ -905,22 +910,34 @@ export default async function AdminJobsPage({
       offset: jobsOffset,
     }),
     [],
-    20_000
+    JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
   const totalJobsPromise = withTimeoutFallback(
+    "jobs.count",
     getJobPostingCount({ includeInactive: true }),
     0,
-    20_000
+    JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
-  const managedSourcesPromise = withTimeoutFallback(listManagedJobSources(), [], 10_000);
+  const managedSourcesPromise = withTimeoutFallback(
+    "jobs.managed-sources",
+    listManagedJobSources(),
+    [],
+    JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
+  );
   const jobSettingsPromise = withTimeoutFallback(
+    "jobs.settings",
     getAppSettingsByKeysUncached([...JOBS_SCRAPE_SETTINGS_KEYS]),
     [],
-    10_000
+    JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
   const scrapeHistoryPromise = withTimeoutFallback<
     Awaited<ReturnType<typeof getJobsScrapeHistory>> | null
-  >(getJobsScrapeHistory({ limit: 50 }), null, 10_000);
+  >(
+    "jobs.scrape-history",
+    getJobsScrapeHistory({ limit: 50 }),
+    null,
+    JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
+  );
 
   const [jobsPageRows, totalJobs, jobSettings] = await Promise.all([
     jobsPageRowsPromise,
@@ -934,6 +951,7 @@ export default async function AdminJobsPage({
     jobsPage === requestedPage
       ? jobsPageRows
       : await withTimeoutFallback(
+          "jobs.corrected-page-rows",
           listJobPostingEntries({
             includeInactive: true,
             includeRagState: false,
@@ -941,7 +959,7 @@ export default async function AdminJobsPage({
             offset: (jobsPage - 1) * ADMIN_JOBS_PAGE_SIZE,
           }),
           [],
-          20_000
+          JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
         );
   const jobSettingsByKey = new Map(jobSettings.map((setting) => [setting.key, setting.value]));
   const enabledRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.enabled) ?? null;

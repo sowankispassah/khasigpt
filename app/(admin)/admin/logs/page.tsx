@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from "date-fns";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import { getAuditLogCount, listAuditLog } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +24,19 @@ export default async function AdminAuditLogPage({
   const offset = (requestedPage - 1) * AUDIT_LOG_PAGE_SIZE;
 
   const [auditEntries, totalEntries] = await Promise.all([
-    listAuditLog({
-      limit: AUDIT_LOG_PAGE_SIZE,
-      offset,
+    adminQueryOr({
+      fallback: [] as Awaited<ReturnType<typeof listAuditLog>>,
+      label: "audit-log.entries",
+      promise: listAuditLog({
+        limit: AUDIT_LOG_PAGE_SIZE,
+        offset,
+      }),
     }),
-    getAuditLogCount(),
+    adminQueryOr({
+      fallback: 0,
+      label: "audit-log.count",
+      promise: getAuditLogCount(),
+    }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalEntries / AUDIT_LOG_PAGE_SIZE));
@@ -35,9 +44,13 @@ export default async function AdminAuditLogPage({
   const pagedEntries =
     page === requestedPage
       ? auditEntries
-      : await listAuditLog({
-          limit: AUDIT_LOG_PAGE_SIZE,
-          offset: (page - 1) * AUDIT_LOG_PAGE_SIZE,
+      : await adminQueryOr({
+          fallback: [] as Awaited<ReturnType<typeof listAuditLog>>,
+          label: "audit-log.corrected-page",
+          promise: listAuditLog({
+            limit: AUDIT_LOG_PAGE_SIZE,
+            offset: (page - 1) * AUDIT_LOG_PAGE_SIZE,
+          }),
         });
 
   return (

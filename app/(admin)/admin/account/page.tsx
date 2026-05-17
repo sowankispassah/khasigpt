@@ -3,6 +3,7 @@ import Link from "next/link";
 import { type ReactNode, Suspense } from "react";
 import { InlineExpandableRows } from "@/components/admin/inline-expandable-rows";
 import { Button } from "@/components/ui/button";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   type ChatFinancialSummary,
@@ -14,7 +15,10 @@ import {
   type RechargeRecord,
 } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
-import { getUsdToInrRate } from "@/lib/services/exchange-rate";
+import {
+  getFallbackUsdToInrRate,
+  getUsdToInrRate,
+} from "@/lib/services/exchange-rate";
 import { cn } from "@/lib/utils";
 import { RechargeExportButton } from "./recharge-export-button";
 import { ExportButton } from "./transaction-export-button";
@@ -41,6 +45,33 @@ type CostBreakdownResult = Awaited<ReturnType<typeof getAdminApiCostBreakdown>>;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_SECTION_PREVIEW_ROWS = 5;
+const ADMIN_ACCOUNT_QUERY_TIMEOUT_MS = 5000;
+
+const EMPTY_CHAT_SUMMARIES: ChatSummariesResult = {
+  total: 0,
+  totals: {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    userChargeInr: 0,
+    providerCostUsd: 0,
+  },
+  records: [],
+};
+
+const EMPTY_RECHARGE_RECORDS: RechargeRecordsResult = {
+  total: 0,
+  records: [],
+};
+
+const EMPTY_COST_BREAKDOWN: CostBreakdownResult = {
+  totalCostUsd: 0,
+  exactCostUsd: 0,
+  estimatedCostUsd: 0,
+  featureSummaries: [],
+  modelSummaries: [],
+  dailySummaries: [],
+  otherUsageSummaries: [],
+};
 
 type MetricCard = {
   title: string;
@@ -745,24 +776,54 @@ export default async function AdminAccountPage({
     MAX_PAGE_SIZE
   );
 
-  const usdToInrPromise = getUsdToInrRate().then((result) => result.rate);
-  const costBreakdownPromise = getAdminApiCostBreakdown({
-    range: costFrom || costTo ? { start: costFrom, end: costTo } : undefined,
+  const usdToInrPromise = adminQueryOr({
+    fallback: getFallbackUsdToInrRate(),
+    label: "account.usd-to-inr",
+    promise: getUsdToInrRate().then((result) => result.rate),
+    timeoutMs: 1500,
   });
-  const chatSummariesPromise = listChatFinancialSummaries({
-    range: { start: from, end: to },
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+  const costBreakdownPromise = adminQueryOr({
+    fallback: EMPTY_COST_BREAKDOWN,
+    label: "account.cost-breakdown",
+    promise: getAdminApiCostBreakdown({
+      range: costFrom || costTo ? { start: costFrom, end: costTo } : undefined,
+    }),
+    timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const rechargeSummariesPromise = listPaidRechargeTotals();
-  const rechargeRecordsPromise = listRechargeRecords({
-    range: { start: from, end: to },
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+  const chatSummariesPromise = adminQueryOr({
+    fallback: EMPTY_CHAT_SUMMARIES,
+    label: "account.chat-financial-summaries",
+    promise: listChatFinancialSummaries({
+      range: { start: from, end: to },
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    }),
+    timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const modelConfigsPromise = listModelConfigs({
-    includeDeleted: false,
-    includeDisabled: true,
+  const rechargeSummariesPromise = adminQueryOr({
+    fallback: [] as RechargeSummariesResult,
+    label: "account.recharge-totals",
+    promise: listPaidRechargeTotals(),
+    timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
+  });
+  const rechargeRecordsPromise = adminQueryOr({
+    fallback: EMPTY_RECHARGE_RECORDS,
+    label: "account.recharge-records",
+    promise: listRechargeRecords({
+      range: { start: from, end: to },
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    }),
+    timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
+  });
+  const modelConfigsPromise = adminQueryOr({
+    fallback: [] as ModelConfig[],
+    label: "account.model-configs",
+    promise: listModelConfigs({
+      includeDeleted: false,
+      includeDisabled: true,
+    }),
+    timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
 
   return (

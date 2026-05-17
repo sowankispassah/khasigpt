@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
+import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   getCouponPayoutsForAdmin,
   getCouponRedemptionsForAdmin,
@@ -34,18 +35,34 @@ export default async function AdminCouponsPage() {
   }
 
   const [coupons, creators] = await Promise.all([
-    listCouponsWithStats(),
-    listCreators(),
+    adminQueryOr({
+      fallback: [] as Awaited<ReturnType<typeof listCouponsWithStats>>,
+      label: "coupons.list",
+      promise: listCouponsWithStats(),
+    }),
+    adminQueryOr({
+      fallback: [] as Awaited<ReturnType<typeof listCreators>>,
+      label: "coupons.creators",
+      promise: listCreators(),
+    }),
   ]);
   const couponIdList = coupons.map((coupon) => coupon.id);
   const [redemptionsMap, payoutsMap] = await Promise.all([
-    getCouponRedemptionsForAdmin({
-      couponIds: couponIdList,
-      limitPerCoupon: 8,
+    adminQueryOr({
+      fallback: {} as Awaited<ReturnType<typeof getCouponRedemptionsForAdmin>>,
+      label: "coupons.redemptions",
+      promise: getCouponRedemptionsForAdmin({
+        couponIds: couponIdList,
+        limitPerCoupon: 8,
+      }),
     }),
-    getCouponPayoutsForAdmin({
-      couponIds: couponIdList,
-      limitPerCoupon: 5,
+    adminQueryOr({
+      fallback: {} as Awaited<ReturnType<typeof getCouponPayoutsForAdmin>>,
+      label: "coupons.payouts",
+      promise: getCouponPayoutsForAdmin({
+        couponIds: couponIdList,
+        limitPerCoupon: 5,
+      }),
     }),
   ]);
   const fallbackNowIso = new Date().toISOString();
