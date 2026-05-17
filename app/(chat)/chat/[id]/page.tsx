@@ -53,6 +53,21 @@ const CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS = 15;
 const CHAT_PAGE_PENDING_WINDOW_MS = 15_000;
 const CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS = 4000;
 
+function buildUnavailableImageGenerationAccess(userRole: string | null) {
+  return {
+    enabled: false,
+    canGenerate: false,
+    hasCredits: false,
+    hasPaidPlan: false,
+    hasPaidCredits: false,
+    hasManualCredits: false,
+    requiresPaidCredits: false,
+    isAdmin: userRole === "admin",
+    tokensPerImage: 1,
+    model: null,
+  };
+}
+
 const getChatByIdCached = unstable_cache(
   async (chatId: string) => getChatById({ id: chatId, includeDeleted: true }),
   ["chat-page:get-chat-by-id"],
@@ -165,27 +180,26 @@ export default async function Page(props: {
       }
     ).catch(async (error) => {
       console.error("[chat] image generation access failed.", error);
-      return getImageGenerationAvailability({
-        userRole: session?.user?.role ?? null,
-      })
+      return withTimeout(
+        getImageGenerationAvailability({
+          userRole: session?.user?.role ?? null,
+        }),
+        CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
+        () => {
+          console.error("[chat] image generation availability timed out.", {
+            timeoutMs: CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
+          });
+        }
+      )
         .then(buildImageGenerationAccessFromAvailability)
         .catch((fallbackError) => {
           console.error(
             "[chat] image generation availability fallback failed.",
             fallbackError
           );
-          return {
-            enabled: false,
-            canGenerate: false,
-            hasCredits: false,
-            hasPaidPlan: false,
-            hasPaidCredits: false,
-            hasManualCredits: false,
-            requiresPaidCredits: false,
-            isAdmin: session.user.role === "admin",
-            tokensPerImage: 1,
-            model: null,
-          };
+          return buildUnavailableImageGenerationAccess(
+            session?.user?.role ?? null
+          );
         });
     }),
   ]);

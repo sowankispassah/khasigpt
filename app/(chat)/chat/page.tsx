@@ -34,6 +34,21 @@ import { withTimeout } from "@/lib/utils/async";
 
 const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 4000;
 
+function buildUnavailableImageGenerationAccess(userRole: string | null) {
+  return {
+    enabled: false,
+    canGenerate: false,
+    hasCredits: false,
+    hasPaidPlan: false,
+    hasPaidCredits: false,
+    hasManualCredits: false,
+    requiresPaidCredits: false,
+    isAdmin: userRole === "admin",
+    tokensPerImage: 1,
+    model: null,
+  };
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -151,25 +166,22 @@ export default async function Page({
       }
     ).catch(async (error) => {
       console.error("[chat/home] image generation access failed.", error);
-      return getImageGenerationAvailability({ userRole: session.user.role })
+      return withTimeout(
+        getImageGenerationAvailability({ userRole: session.user.role }),
+        CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+        () => {
+          console.error("[chat/home] image generation availability timed out.", {
+            timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+          });
+        }
+      )
         .then(buildImageGenerationAccessFromAvailability)
         .catch((fallbackError) => {
           console.error(
             "[chat/home] image generation availability fallback failed.",
             fallbackError
           );
-          return {
-            enabled: false,
-            canGenerate: false,
-            hasCredits: false,
-            hasPaidPlan: false,
-            hasPaidCredits: false,
-            hasManualCredits: false,
-            requiresPaidCredits: false,
-            isAdmin: session.user.role === "admin",
-            tokensPerImage: 1,
-            model: null,
-          };
+          return buildUnavailableImageGenerationAccess(session.user.role);
         });
     }),
   ]);
