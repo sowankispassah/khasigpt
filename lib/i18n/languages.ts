@@ -13,8 +13,34 @@ export type LanguageOption = {
   syncUiLanguage: boolean;
 };
 
+const FALLBACK_LANGUAGE: LanguageOption = {
+  id: "fallback-en",
+  code: "en",
+  name: "English",
+  isDefault: true,
+  isActive: true,
+  syncUiLanguage: true,
+};
+
+const FALLBACK_LANGUAGES: LanguageOption[] = [
+  FALLBACK_LANGUAGE,
+  {
+    id: "fallback-kha",
+    code: "kha",
+    name: "Khasi",
+    isDefault: false,
+    isActive: true,
+    syncUiLanguage: true,
+  },
+];
+
 const shouldBypassCache =
   typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
+
+const isProductionBuildPhase = () =>
+  typeof process !== "undefined" &&
+  (process.env.APP_BUILD_PHASE === "production-build" ||
+    process.env.NEXT_PHASE === "phase-production-build");
 
 const serializeLanguage = (
   entry: typeof language.$inferSelect
@@ -38,6 +64,10 @@ const getAllLanguagesCached = unstable_cache(
 );
 
 export const getAllLanguages = async (): Promise<LanguageOption[]> => {
+  if (isProductionBuildPhase()) {
+    return [...FALLBACK_LANGUAGES];
+  }
+
   if (shouldBypassCache) {
     const rows = await db.select().from(language).orderBy(asc(language.name));
     return rows.map(serializeLanguage);
@@ -60,6 +90,10 @@ const getActiveLanguagesCached = unstable_cache(
 );
 
 export const getActiveLanguages = async (): Promise<LanguageOption[]> => {
+  if (isProductionBuildPhase()) {
+    return [...FALLBACK_LANGUAGES];
+  }
+
   if (shouldBypassCache) {
     const rows = await db
       .select()
@@ -86,6 +120,13 @@ const getLanguageByCodeCached = unstable_cache(
 );
 
 export const getLanguageByCode = async (code: string) => {
+  if (isProductionBuildPhase()) {
+    const normalizedCode = code.trim().toLowerCase();
+    return (
+      FALLBACK_LANGUAGES.find((entry) => entry.code === normalizedCode) ?? null
+    );
+  }
+
   if (shouldBypassCache) {
     const [row] = await db
       .select()
@@ -98,6 +139,10 @@ export const getLanguageByCode = async (code: string) => {
 };
 
 export const getDefaultLanguage = async () => {
+  if (isProductionBuildPhase()) {
+    return FALLBACK_LANGUAGE;
+  }
+
   const active = await getActiveLanguages();
   const activeDefault = active.find((entry) => entry.isDefault);
   if (activeDefault) {

@@ -118,8 +118,13 @@ const SHOULD_LOG_TRANSLATION_ERRORS =
 
 let translationDbBlockedUntil = 0;
 
+const isProductionBuildPhase = () =>
+  typeof process !== "undefined" &&
+  (process.env.APP_BUILD_PHASE === "production-build" ||
+    process.env.NEXT_PHASE === "phase-production-build");
+
 function shouldSkipTranslationDb() {
-  return Date.now() < translationDbBlockedUntil;
+  return isProductionBuildPhase() || Date.now() < translationDbBlockedUntil;
 }
 
 function markTranslationDbFailure() {
@@ -163,6 +168,10 @@ export async function registerTranslationKeys(
   definitions: TranslationDefinition[],
   options: { invalidateCache?: boolean } = {}
 ) {
+  if (isProductionBuildPhase()) {
+    return;
+  }
+
   if (!definitions.length) {
     return;
   }
@@ -656,6 +665,12 @@ export async function getFreshTranslationBundle(
   preferredCode?: string | null,
   _timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
 ): Promise<TranslationBundle> {
+  if (isProductionBuildPhase()) {
+    return typeof preferredCode === "string" && preferredCode.trim().length > 0
+      ? buildFallbackBundle(preferredCode)
+      : FALLBACK_BUNDLE;
+  }
+
   const key = cacheKeyForLanguage(preferredCode);
   const bundle = await loadTranslationBundle(preferredCode);
 
@@ -724,6 +739,10 @@ export async function invalidateTranslationBundleCache(
 }
 
 export async function publishAllTranslations() {
+  if (isProductionBuildPhase()) {
+    return;
+  }
+
   await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
   await invalidateTranslationBundleCache();
 
