@@ -32,7 +32,7 @@ export type GeminiVoiceTokenResponse =
 
 export function buildVoiceChatSystemInstruction() {
   return [
-    "You are KhasiGPT in native mobile voice chat.",
+    "You are KhasiGPT in voice chat.",
     "The user is speaking by microphone and expects a natural spoken reply.",
     "Answer conversationally and keep responses concise unless the user asks for detail.",
     "Support Khasi and English naturally. If the user speaks Khasi, respond in Khasi unless they request another language.",

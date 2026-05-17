@@ -2,8 +2,8 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
-  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -47,7 +47,7 @@ function buildFallbackTitle(text: string) {
 
 export async function POST(request: Request) {
   const authContext = await getAuthenticatedUser(request, {
-    allowCookie: false,
+    allowBearer: false,
   });
 
   if (!authContext?.user) {
@@ -65,17 +65,13 @@ export async function POST(request: Request) {
 
   const rawVoiceSettings = await withTimeout(
     Promise.all([
-      getAppSetting<string | boolean | number>(
-        VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY
-      ),
-      getAppSetting<string | boolean | number>(
-        VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
-      ),
+      getAppSetting<string | boolean | number>(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean | number>(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
     ]),
     VOICE_SETTING_TIMEOUT_MS
   ).catch(() => [
     getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY
+      VOICE_CHAT_WEB_FEATURE_FLAG_KEY
     ),
     getLastKnownAppSetting<string | boolean | number>(
       VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
@@ -84,9 +80,9 @@ export async function POST(request: Request) {
 
   const voiceMode = parseVoiceChatAccessModeSetting(
     resolvePlatformVoiceChatSetting({
-      androidValue: rawVoiceSettings[0],
       legacyValue: rawVoiceSettings[1],
-    }).android
+      webValue: rawVoiceSettings[0],
+    }).web
   );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
     return Response.json(
@@ -95,12 +91,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const {
-    assistantText,
-    chatId,
-    selectedVisibilityType,
-    userText,
-  } = parsedBody.data;
+  const { assistantText, chatId, selectedVisibilityType, userText } =
+    parsedBody.data;
   const userMessageId = parsedBody.data.userMessageId ?? generateUUID();
   const assistantMessageId =
     parsedBody.data.assistantMessageId ?? generateUUID();
@@ -146,12 +138,7 @@ export async function POST(request: Request) {
             chatId,
             createdAt: assistantCreatedAt,
             id: assistantMessageId,
-            parts: [
-              {
-                type: "text",
-                text: assistantText,
-              },
-            ],
+            parts: [{ type: "text", text: assistantText }],
             role: "assistant",
           },
         ],

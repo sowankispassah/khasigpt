@@ -28,6 +28,7 @@ export type ChatPageLoaderPayload = {
   };
   documentUploadsEnabled: boolean;
   customKnowledgeEnabled: boolean;
+  voiceChatEnabled: boolean;
 };
 
 export type ChatPageModelConfigPayload = {

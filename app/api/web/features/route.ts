@@ -29,6 +29,7 @@ export async function GET(request: Request) {
         jobs: snapshot.jobs,
         study: snapshot.study,
         translate: snapshot.translate,
+        voiceChat: snapshot.voiceChatWeb,
       },
       imageGeneration: snapshot.imageGeneration,
     },

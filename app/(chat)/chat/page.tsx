@@ -13,6 +13,8 @@ import {
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getActiveLanguages } from "@/lib/i18n/languages";
@@ -27,6 +29,10 @@ import {
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
+import {
+  parseVoiceChatAccessModeSetting,
+  resolvePlatformVoiceChatSetting,
+} from "@/lib/voice/config";
 
 const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 2500;
 const CHAT_HOME_FEATURE_ACCESS_TIMEOUT_MS = 2000;
@@ -36,6 +42,8 @@ const CHAT_HOME_FEATURE_ACCESS_KEYS = [
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
 ] as const;
 
 function buildUnavailableImageGenerationAccess(userRole: string | null) {
@@ -187,6 +195,14 @@ export default async function Page({
   const jobsModeSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
+  const voiceChatSettings = resolvePlatformVoiceChatSetting({
+    legacyValue: getFeatureSetting(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
+    webValue: getFeatureSetting(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
+  });
+  const voiceChatEnabled = isFeatureEnabledForRole(
+    parseVoiceChatAccessModeSetting(voiceChatSettings.web),
+    session.user.role
+  );
   const requestedJobId =
     typeof resolvedSearchParams?.jobId === "string" &&
     resolvedSearchParams.jobId.trim().length > 0
@@ -262,6 +278,7 @@ export default async function Page({
         requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
       },
       documentUploadsEnabled,
+      voiceChatEnabled,
       initialChatLanguage,
       initialChatModel: fallbackModelId,
       initialJobContext: initialJobContext ?? null,

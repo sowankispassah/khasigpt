@@ -19,6 +19,8 @@ import {
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -40,6 +42,10 @@ import {
 } from "@/lib/uploads/document-uploads";
 import { convertToUIMessages } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
+import {
+  parseVoiceChatAccessModeSetting,
+  resolvePlatformVoiceChatSetting,
+} from "@/lib/voice/config";
 
 const chatPageInitialLimitRaw = Number.parseInt(
   process.env.CHAT_PAGE_INITIAL_MESSAGE_LIMIT ?? "",
@@ -141,6 +147,8 @@ export default async function Page(props: {
     documentUploadsSetting,
     studyModeSetting,
     jobsModeSetting,
+    voiceChatWebSetting,
+    voiceChatLegacySetting,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
@@ -165,6 +173,16 @@ export default async function Page(props: {
     safeOptionalQuery(
       "jobs mode flag",
       getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeOptionalQuery(
+      "web voice chat flag",
+      getAppSetting<string | boolean>(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeOptionalQuery(
+      "legacy voice chat flag",
+      getAppSetting<string | boolean>(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
       null
     ),
     withTimeout(
@@ -222,6 +240,14 @@ export default async function Page(props: {
   const studyModeEnabled = isFeatureEnabledForRole(studyModeMode, userRole);
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, userRole);
+  const voiceChatSettings = resolvePlatformVoiceChatSetting({
+    legacyValue: voiceChatLegacySetting,
+    webValue: voiceChatWebSetting,
+  });
+  const voiceChatEnabled = isFeatureEnabledForRole(
+    parseVoiceChatAccessModeSetting(voiceChatSettings.web),
+    userRole
+  );
   const [suggestedPrompts, iconPromptActions] = await Promise.all([
     safeOptionalQuery(
       "suggested prompts",
@@ -360,6 +386,7 @@ export default async function Page(props: {
         requiresPaidCredits: imageGenerationAccess.requiresPaidCredits ?? false,
       },
       documentUploadsEnabled,
+      voiceChatEnabled,
       initialChatLanguage,
       initialChatModel: fallbackModelId,
       jobsListItems,

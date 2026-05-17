@@ -224,6 +224,7 @@ export function JobDetailsChatPanel({
               autoFocus={isVisible}
               chatId={resolvedChatId}
               documentUploadsEnabled={documentUploadsEnabled}
+              voiceChatEnabled={false}
               imageGenerationCanGenerate={false}
               imageGenerationEnabled={false}
               imageGenerationRequiresPaidCredits={false}

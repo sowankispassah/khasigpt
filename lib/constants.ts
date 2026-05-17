@@ -49,7 +49,11 @@ export const ADMIN_ENTRY_PASS_COOKIE_MAX_AGE_SECONDS = 60 * 15;
 export const TRANSLATE_TARGET_LANGUAGE_COOKIE_NAME = "translate-target-language";
 export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
 export const TRANSLATE_FEATURE_FLAG_KEY = "chat.translate.enabled";
-export const VOICE_CHAT_FEATURE_FLAG_KEY = "chat.voice.enabled";
+export const VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY = "chat.voice.enabled";
+export const VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY =
+  "chat.voice.android.enabled";
+export const VOICE_CHAT_WEB_FEATURE_FLAG_KEY = "chat.voice.web.enabled";
+export const VOICE_CHAT_FEATURE_FLAG_KEY = VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY;
 export const TRANSLATE_PROVIDER_MODE_SETTING_KEY = "chat.translate.providerMode";
 export const JOBS_FEATURE_FLAG_KEY = "chat.jobs.enabled";
 export const JOBS_SCRAPE_ENABLED_SETTING_KEY = "jobs.scrape.enabled";

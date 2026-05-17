@@ -127,6 +127,7 @@ export function Chat({
   iconPromptActions = [],
   imageGeneration,
   documentUploadsEnabled,
+  voiceChatEnabled,
   customKnowledgeEnabled: _customKnowledgeEnabled,
 }: {
   id: string;
@@ -150,6 +151,7 @@ export function Chat({
     requiresPaidCredits: boolean;
   };
   documentUploadsEnabled: boolean;
+  voiceChatEnabled: boolean;
   customKnowledgeEnabled: boolean;
 }) {
   const router = useRouter();
@@ -1464,6 +1466,7 @@ export function Chat({
               autoFocus={isJobsComposerVisible}
               chatId={id}
               documentUploadsEnabled={documentUploadsEnabled}
+              voiceChatEnabled={voiceChatEnabled}
               imageGenerationCanGenerate={false}
               imageGenerationEnabled={false}
               imageGenerationRequiresPaidCredits={false}
@@ -1490,6 +1493,10 @@ export function Chat({
               stop={stop}
               studyQuestionReference={studyQuestionReference}
               onToggleImageMode={() => {}}
+              onVoiceTurnSaved={() => {
+                syncCurrentChatUrl();
+                void refreshAndPromoteHistory();
+              }}
             />
           </div>
         </div>
@@ -1582,6 +1589,7 @@ export function Chat({
                     attachments={attachments}
                     chatId={id}
                     documentUploadsEnabled={documentUploadsEnabled}
+                    voiceChatEnabled={voiceChatEnabled}
                     imageGenerationCanGenerate={
                       imageGeneration.canGenerate && !isStudyMode
                     }
@@ -1623,6 +1631,10 @@ export function Chat({
                       }
                       setIsImageMode(true);
                       void refreshImageGenerationAccess();
+                    }}
+                    onVoiceTurnSaved={() => {
+                      syncCurrentChatUrl();
+                      void refreshAndPromoteHistory();
                     }}
                   />
                   <p className="px-2 text-center text-muted-foreground text-xs">

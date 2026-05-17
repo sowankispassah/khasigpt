@@ -9,8 +9,8 @@ import {
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
-  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getAppSetting, getLastKnownAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
@@ -55,7 +55,7 @@ function fallbackResponse(
 
 export async function POST(request: Request) {
   const authContext = await getAuthenticatedUser(request, {
-    allowCookie: false,
+    allowBearer: false,
   });
 
   if (!authContext?.user) {
@@ -64,17 +64,13 @@ export async function POST(request: Request) {
 
   const rawVoiceSettings = await withTimeout(
     Promise.all([
-      getAppSetting<string | boolean | number>(
-        VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY
-      ),
-      getAppSetting<string | boolean | number>(
-        VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
-      ),
+      getAppSetting<string | boolean | number>(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
+      getAppSetting<string | boolean | number>(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
     ]),
     VOICE_SETTING_TIMEOUT_MS
   ).catch(() => [
     getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY
+      VOICE_CHAT_WEB_FEATURE_FLAG_KEY
     ),
     getLastKnownAppSetting<string | boolean | number>(
       VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
@@ -83,9 +79,9 @@ export async function POST(request: Request) {
 
   const voiceMode = parseVoiceChatAccessModeSetting(
     resolvePlatformVoiceChatSetting({
-      androidValue: rawVoiceSettings[0],
       legacyValue: rawVoiceSettings[1],
-    }).android
+      webValue: rawVoiceSettings[0],
+    }).web
   );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
     return fallbackResponse(
@@ -144,7 +140,7 @@ export async function POST(request: Request) {
     }),
     VOICE_TOKEN_TIMEOUT_MS
   ).catch((error) => {
-    console.error("[api/mobile/chat/voice-token] Token creation failed.", error);
+    console.error("[api/chat/voice-token] Token creation failed.", error);
     throw error;
   });
 

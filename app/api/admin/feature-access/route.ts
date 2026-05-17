@@ -9,7 +9,8 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
-  VOICE_CHAT_FEATURE_FLAG_KEY,
+  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
@@ -61,9 +62,13 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
     settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
     auditAction: "feature.document_uploads.toggle",
   },
-  voiceChatAccessMode: {
-    settingKey: VOICE_CHAT_FEATURE_FLAG_KEY,
-    auditAction: "feature.voice_chat.toggle",
+  voiceChatAndroidAccessMode: {
+    settingKey: VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+    auditAction: "feature.voice_chat.android.toggle",
+  },
+  voiceChatWebAccessMode: {
+    settingKey: VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+    auditAction: "feature.voice_chat.web.toggle",
   },
   suggestedPromptsAccessMode: {
     settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,

@@ -72,7 +72,9 @@ import {
   TOKENS_PER_CREDIT,
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
-  VOICE_CHAT_FEATURE_FLAG_KEY,
+  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSettingsByKeys,
@@ -189,8 +191,11 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
 ] as const;
-const ADMIN_FEATURE_ACCESS_SETTING_KEYS = ADMIN_FEATURE_ACCESS_SETTINGS.map(
-  (setting) => setting.settingKey
+const ADMIN_FEATURE_ACCESS_SETTING_KEYS = Array.from(
+  new Set([
+    ...ADMIN_FEATURE_ACCESS_SETTINGS.map((setting) => setting.settingKey),
+    VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  ])
 );
 const ESSENTIAL_SETTING_KEY_SET = new Set<string>(
   ESSENTIAL_FALLBACK_SETTING_KEYS
@@ -1228,16 +1233,37 @@ export default async function AdminSettingsPage({
       settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
-  const voiceChatAccessState =
-    featureAccessControlStateByField.get("voiceChatAccessMode") ??
+  const legacyVoiceChatAccessState = resolveFeatureAccessControlState({
+    settingKey: VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+    snapshot: featureAccessState,
+  });
+  const voiceChatAndroidAccessState =
+    featureAccessControlStateByField.get("voiceChatAndroidAccessMode") ??
     resolveFeatureAccessControlState({
-      settingKey: VOICE_CHAT_FEATURE_FLAG_KEY,
+      settingKey: VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const voiceChatWebAccessState =
+    featureAccessControlStateByField.get("voiceChatWebAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
   const jobsAccessMode = jobsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
-  const voiceChatAccessMode = voiceChatAccessState.mode;
+  const voiceChatAndroidAccessMode =
+    voiceChatAndroidAccessState.mode ?? legacyVoiceChatAccessState.mode;
+  const voiceChatAndroidReadState =
+    (voiceChatAndroidAccessState.mode ?? !legacyVoiceChatAccessState.mode)
+      ? voiceChatAndroidAccessState.readState
+      : legacyVoiceChatAccessState.readState;
+  const voiceChatWebAccessMode =
+    voiceChatWebAccessState.mode ?? legacyVoiceChatAccessState.mode;
+  const voiceChatWebReadState =
+    (voiceChatWebAccessState.mode ?? !legacyVoiceChatAccessState.mode)
+      ? voiceChatWebAccessState.readState
+      : legacyVoiceChatAccessState.readState;
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -1581,12 +1607,21 @@ export default async function AdminSettingsPage({
             />
 
             <FeatureAccessModeControl
-              currentMode={voiceChatAccessMode}
-              description="Allow native mobile users to talk to chat with Gemini Live voice."
-              fieldName="voiceChatAccessMode"
-              readState={voiceChatAccessState.readState}
-              successMessage="Voice chat availability updated."
-              title="Voice chat"
+              currentMode={voiceChatAndroidAccessMode}
+              description="Allow Android native users to talk to chat with Gemini Live voice."
+              fieldName="voiceChatAndroidAccessMode"
+              readState={voiceChatAndroidReadState}
+              successMessage="Android voice chat availability updated."
+              title="Voice chat - Android"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={voiceChatWebAccessMode}
+              description="Allow web users to talk to chat with Gemini Live voice from supported browsers."
+              fieldName="voiceChatWebAccessMode"
+              readState={voiceChatWebReadState}
+              successMessage="Web voice chat availability updated."
+              title="Voice chat - Web"
             />
           </div>
         </CollapsibleSection>

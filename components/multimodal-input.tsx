@@ -4,6 +4,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { Trigger } from "@radix-ui/react-select";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
+import { Mic } from "lucide-react";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -29,6 +30,11 @@ import type { StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
+import {
+  startWebGeminiVoiceTurn,
+  type WebGeminiVoiceTurnController,
+  type WebGeminiVoiceTurnStatus,
+} from "@/lib/voice/web-live-voice";
 import {
   PromptInput,
   PromptInputModelSelect,
@@ -87,8 +93,10 @@ function PureMultimodalInput({
   onBeforeSubmit,
   onGenerateImage,
   onToggleImageMode,
+  onVoiceTurnSaved,
   autoFocus = true,
   documentUploadsEnabled,
+  voiceChatEnabled,
 }: {
   chatId: string;
   input: string;
@@ -118,8 +126,10 @@ function PureMultimodalInput({
   onBeforeSubmit?: () => void | Promise<void>;
   onGenerateImage: () => void;
   onToggleImageMode: () => void;
+  onVoiceTurnSaved?: () => void;
   autoFocus?: boolean;
   documentUploadsEnabled: boolean;
+  voiceChatEnabled: boolean;
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -208,12 +218,37 @@ function PureMultimodalInput({
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const voiceTurnControllerRef = useRef<WebGeminiVoiceTurnController | null>(
+    null
+  );
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] =
+    useState<WebGeminiVoiceTurnStatus>("connecting");
+  const [voiceUserTranscript, setVoiceUserTranscript] = useState("");
+  const [voiceAssistantTranscript, setVoiceAssistantTranscript] = useState("");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [isVoiceSaving, setIsVoiceSaving] = useState(false);
   const acceptedFileTypes = useMemo(
     () => getAttachmentAcceptValue(documentUploadsEnabled),
     [documentUploadsEnabled]
   );
   const shouldSubmitOnEnter = !(width && width <= 768);
+  const voiceStatusLabel = useMemo(() => {
+    if (voiceError) {
+      return translate("voice.chat.error", "Voice chat failed");
+    }
+    switch (voiceStatus) {
+      case "listening":
+        return translate("voice.chat.listening", "Listening...");
+      case "thinking":
+        return translate("voice.chat.thinking", "Thinking...");
+      case "speaking":
+        return translate("voice.chat.speaking", "Speaking...");
+      default:
+        return translate("voice.chat.connecting", "Connecting...");
+    }
+  }, [translate, voiceError, voiceStatus]);
 
   const submitForm = useCallback(async () => {
     try {
@@ -292,6 +327,141 @@ function PureMultimodalInput({
   const isResponsePending =
     status === "submitted" || status === "streaming";
   const isBusy = (status !== "ready" && status !== "error") || isGeneratingImage;
+  const canStopVoice =
+    isVoiceDialogOpen && !voiceError && !isVoiceSaving && voiceStatus !== "connecting";
+
+  const resetVoiceState = useCallback(() => {
+    setVoiceStatus("connecting");
+    setVoiceUserTranscript("");
+    setVoiceAssistantTranscript("");
+    setVoiceError(null);
+    setIsVoiceSaving(false);
+  }, []);
+
+  const cancelVoiceChat = useCallback(() => {
+    voiceTurnControllerRef.current?.cancel();
+    voiceTurnControllerRef.current = null;
+    setIsVoiceDialogOpen(false);
+    resetVoiceState();
+  }, [resetVoiceState]);
+
+  const finishVoiceChat = useCallback(async () => {
+    const controller = voiceTurnControllerRef.current;
+    if (!controller || isVoiceSaving) {
+      return;
+    }
+
+    setIsVoiceSaving(true);
+    try {
+      const result = await controller.stop();
+      const userText = result.userText.trim();
+      const assistantText = result.assistantText.trim();
+      if (!userText || !assistantText) {
+        throw new Error(
+          translate(
+            "voice.chat.empty_result",
+            "I could not hear enough speech. Please try again."
+          )
+        );
+      }
+
+      const userMessageId = crypto.randomUUID();
+      const assistantMessageId = crypto.randomUUID();
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: userMessageId,
+          metadata: { createdAt: new Date().toISOString() },
+          parts: [{ type: "text", text: userText }],
+          role: "user",
+        },
+        {
+          id: assistantMessageId,
+          metadata: { createdAt: new Date().toISOString() },
+          parts: [{ type: "text", text: assistantText }],
+          role: "assistant",
+        },
+      ]);
+
+      const response = await fetch("/api/chat/voice-turn", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assistantMessageId,
+          assistantText,
+          chatId: _chatId,
+          selectedVisibilityType: _selectedVisibilityType,
+          userMessageId,
+          userText,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          translate("voice.chat.save_failed", "Unable to save this voice chat.")
+        );
+      }
+
+      voiceTurnControllerRef.current = null;
+      setIsVoiceDialogOpen(false);
+      resetVoiceState();
+      onVoiceTurnSaved?.();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : translate("voice.chat.failed", "Voice chat failed. Please try again.");
+      setVoiceError(message);
+      setIsVoiceSaving(false);
+    }
+  }, [
+    _chatId,
+    _selectedVisibilityType,
+    isVoiceSaving,
+    onVoiceTurnSaved,
+    resetVoiceState,
+    setMessages,
+    translate,
+  ]);
+
+  const startVoiceChat = useCallback(async () => {
+    if (!voiceChatEnabled) {
+      toast.error(
+        translate("voice.chat.disabled", "Voice chat is currently unavailable.")
+      );
+      return;
+    }
+    if (isBusy || imageGenerationSelected) {
+      return;
+    }
+
+    resetVoiceState();
+    setIsVoiceDialogOpen(true);
+    try {
+      const controller = await startWebGeminiVoiceTurn({
+        onAssistantTranscript: setVoiceAssistantTranscript,
+        onError: (error) => {
+          setVoiceError(error.message);
+        },
+        onStatus: setVoiceStatus,
+        onUserTranscript: setVoiceUserTranscript,
+      });
+      voiceTurnControllerRef.current = controller;
+    } catch (error) {
+      setVoiceError(
+        error instanceof Error
+          ? error.message
+          : translate("voice.chat.failed", "Voice chat failed. Please try again.")
+      );
+    }
+  }, [
+    imageGenerationSelected,
+    isBusy,
+    resetVoiceState,
+    translate,
+    voiceChatEnabled,
+  ]);
 
   const uploadFile = useCallback(
     async (file: File) => {
@@ -538,18 +708,115 @@ function PureMultimodalInput({
           {isResponsePending ? (
             <StopButton setMessages={setMessages} stop={stop} />
           ) : (
-            <PromptInputSubmit
-              aria-label="Send message"
-              className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
-              data-testid="send-button"
-              disabled={!input.trim() || uploadQueue.length > 0 || isBusy}
-              status={status}
-            >
-              <ArrowUpIcon size={14} />
-            </PromptInputSubmit>
+            <div className="flex items-center gap-1">
+              {voiceChatEnabled && !imageGenerationSelected ? (
+                <Button
+                  aria-label={translate("voice.chat.open", "Start voice chat")}
+                  className="size-8 rounded-full p-0 transition-colors"
+                  disabled={isBusy || uploadQueue.length > 0}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void startVoiceChat();
+                  }}
+                  type="button"
+                  variant="ghost"
+                >
+                  <Mic className="size-4" />
+                </Button>
+              ) : null}
+              <PromptInputSubmit
+                aria-label="Send message"
+                className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
+                data-testid="send-button"
+                disabled={!input.trim() || uploadQueue.length > 0 || isBusy}
+                status={status}
+              >
+                <ArrowUpIcon size={14} />
+              </PromptInputSubmit>
+            </div>
           )}
         </PromptInputToolbar>
       </PromptInput>
+
+      {isVoiceDialogOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-xl border bg-background p-6 shadow-xl">
+            <div className="flex items-center gap-4">
+              <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+                <Mic className="size-7" />
+              </div>
+              <div>
+                <EditableTranslation
+                  className="font-semibold text-lg"
+                  defaultText="Voice chat"
+                  description="Title for the web voice chat dialog."
+                  translationKey="voice.chat.title"
+                />
+                <p className="text-muted-foreground text-sm">{voiceStatusLabel}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-5">
+              <div>
+                <EditableTranslation
+                  className="font-semibold text-muted-foreground text-xs uppercase"
+                  defaultText="You"
+                  description="Label for the user's voice transcript."
+                  translationKey="voice.chat.you"
+                />
+                <p className="mt-2 min-h-7 text-sm">
+                  {voiceUserTranscript ||
+                    translate(
+                      "voice.chat.waiting_for_speech",
+                      "Waiting for speech..."
+                    )}
+                </p>
+              </div>
+              <div>
+                <EditableTranslation
+                  className="font-semibold text-muted-foreground text-xs uppercase"
+                  defaultText="KhasiGPT"
+                  description="Label for the assistant's voice transcript."
+                  translationKey="voice.chat.assistant"
+                />
+                <p className="mt-2 min-h-7 text-sm">
+                  {voiceAssistantTranscript ||
+                    translate(
+                      "voice.chat.waiting_for_response",
+                      "Waiting for response..."
+                    )}
+                </p>
+              </div>
+            </div>
+
+            {voiceError ? (
+              <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
+                {voiceError}
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                disabled={isVoiceSaving}
+                onClick={cancelVoiceChat}
+                type="button"
+                variant="outline"
+              >
+                {translate("voice.chat.cancel", "Cancel")}
+              </Button>
+              <Button
+                disabled={!canStopVoice}
+                onClick={() => void finishVoiceChat()}
+                type="button"
+              >
+                {isVoiceSaving
+                  ? translate("voice.chat.thinking", "Thinking...")
+                  : translate("voice.chat.stop", "Stop and send")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -585,6 +852,9 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.documentUploadsEnabled !== nextProps.documentUploadsEnabled) {
+      return false;
+    }
+    if (prevProps.voiceChatEnabled !== nextProps.voiceChatEnabled) {
       return false;
     }
     if (!equal(prevProps.attachments, nextProps.attachments)) {

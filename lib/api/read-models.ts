@@ -18,7 +18,9 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
-  VOICE_CHAT_FEATURE_FLAG_KEY,
+  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -52,7 +54,10 @@ import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
-import { parseVoiceChatAccessModeSetting } from "@/lib/voice/config";
+import {
+  parseVoiceChatAccessModeSetting,
+  resolvePlatformVoiceChatSetting,
+} from "@/lib/voice/config";
 
 const READ_TIMEOUT_MS = 5000;
 
@@ -139,7 +144,11 @@ export async function loadFeatureAccessReadModel({
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const studySetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
-  const voiceChatSetting = getFeatureSetting(VOICE_CHAT_FEATURE_FLAG_KEY);
+  const voiceChatSettings = resolvePlatformVoiceChatSetting({
+    androidValue: getFeatureSetting(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY),
+    legacyValue: getFeatureSetting(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
+    webValue: getFeatureSetting(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
+  });
 
   return {
     calculator: isFeatureEnabledForRole(
@@ -162,7 +171,15 @@ export async function loadFeatureAccessReadModel({
       role
     ),
     voiceChat: isFeatureEnabledForRole(
-      parseVoiceChatAccessModeSetting(voiceChatSetting),
+      parseVoiceChatAccessModeSetting(voiceChatSettings.android),
+      role
+    ),
+    voiceChatAndroid: isFeatureEnabledForRole(
+      parseVoiceChatAccessModeSetting(voiceChatSettings.android),
+      role
+    ),
+    voiceChatWeb: isFeatureEnabledForRole(
+      parseVoiceChatAccessModeSetting(voiceChatSettings.web),
       role
     ),
     imageGeneration: imageGenerationAccess
