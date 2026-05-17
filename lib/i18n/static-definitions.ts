@@ -818,6 +818,96 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
       "Status message shown when the user stops an in-progress chat response.",
   },
   {
+    key: "voice.chat.open",
+    defaultText: "Start voice chat",
+    description: "Accessibility label for the native voice chat microphone button.",
+  },
+  {
+    key: "voice.chat.title",
+    defaultText: "Voice chat",
+    description: "Title for the native voice chat dialog.",
+  },
+  {
+    key: "voice.chat.connecting",
+    defaultText: "Connecting...",
+    description: "Native voice chat status while connecting to Gemini Live.",
+  },
+  {
+    key: "voice.chat.listening",
+    defaultText: "Listening...",
+    description: "Native voice chat status while recording the user's speech.",
+  },
+  {
+    key: "voice.chat.thinking",
+    defaultText: "Thinking...",
+    description: "Native voice chat status after the user stops speaking.",
+  },
+  {
+    key: "voice.chat.speaking",
+    defaultText: "Speaking...",
+    description: "Native voice chat status while Gemini audio is playing.",
+  },
+  {
+    key: "voice.chat.error",
+    defaultText: "Voice chat failed",
+    description: "Native voice chat error status.",
+  },
+  {
+    key: "voice.chat.ready",
+    defaultText: "Ready",
+    description: "Native voice chat idle status.",
+  },
+  {
+    key: "voice.chat.you",
+    defaultText: "You",
+    description: "Label for the user's voice transcript.",
+  },
+  {
+    key: "voice.chat.assistant",
+    defaultText: "KhasiGPT",
+    description: "Label for the assistant's voice transcript.",
+  },
+  {
+    key: "voice.chat.waiting_for_speech",
+    defaultText: "Waiting for speech...",
+    description: "Placeholder shown before user speech is transcribed.",
+  },
+  {
+    key: "voice.chat.waiting_for_response",
+    defaultText: "Waiting for response...",
+    description: "Placeholder shown before Gemini's voice response transcript arrives.",
+  },
+  {
+    key: "voice.chat.cancel",
+    defaultText: "Cancel",
+    description: "Button label to cancel native voice chat.",
+  },
+  {
+    key: "voice.chat.stop",
+    defaultText: "Stop and send",
+    description: "Button label to stop recording and save the voice chat turn.",
+  },
+  {
+    key: "voice.chat.disabled",
+    defaultText: "Voice chat is currently unavailable.",
+    description: "Error shown when native voice chat is disabled.",
+  },
+  {
+    key: "voice.chat.failed",
+    defaultText: "Voice chat failed. Please try again.",
+    description: "Generic native voice chat failure message.",
+  },
+  {
+    key: "voice.chat.empty_result",
+    defaultText: "I could not hear enough speech. Please try again.",
+    description: "Error shown when the voice chat turn has no transcript.",
+  },
+  {
+    key: "voice.chat.save_failed",
+    defaultText: "Unable to save this voice chat.",
+    description: "Error shown when saving a completed native voice turn fails.",
+  },
+  {
     key: "chat.header.new_chat",
     defaultText: "New Chat",
     description: "Header button label for starting a new chat.",

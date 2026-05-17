@@ -10,6 +10,7 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  VOICE_CHAT_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
@@ -44,6 +45,10 @@ export const ADMIN_FEATURE_ACCESS_SETTINGS = [
     settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   },
   {
+    fieldName: "voiceChatAccessMode",
+    settingKey: VOICE_CHAT_FEATURE_FLAG_KEY,
+  },
+  {
     fieldName: "suggestedPromptsAccessMode",
     settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   },
@@ -59,6 +64,7 @@ export const USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS = [
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  VOICE_CHAT_FEATURE_FLAG_KEY,
 ] as const;
 
 export type FeatureAccessReadStatus =

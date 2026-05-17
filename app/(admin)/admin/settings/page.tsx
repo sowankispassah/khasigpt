@@ -72,6 +72,7 @@ import {
   TOKENS_PER_CREDIT,
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+  VOICE_CHAT_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   getAppSettingsByKeys,
@@ -1227,9 +1228,16 @@ export default async function AdminSettingsPage({
       settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
+  const voiceChatAccessState =
+    featureAccessControlStateByField.get("voiceChatAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: VOICE_CHAT_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
   const jobsAccessMode = jobsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
+  const voiceChatAccessMode = voiceChatAccessState.mode;
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -1570,6 +1578,15 @@ export default async function AdminSettingsPage({
               readState={documentUploadsAccessState.readState}
               successMessage="Document upload availability updated."
               title="Document uploads"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={voiceChatAccessMode}
+              description="Allow native mobile users to talk to chat with Gemini Live voice."
+              fieldName="voiceChatAccessMode"
+              readState={voiceChatAccessState.readState}
+              successMessage="Voice chat availability updated."
+              title="Voice chat"
             />
           </div>
         </CollapsibleSection>

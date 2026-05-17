@@ -28,6 +28,7 @@ export async function GET(request: Request) {
       jobs: true,
       study: true,
       translate: true,
+      voiceChat: false,
       imageGeneration: {
         enabled: true,
         canGenerate: true,
@@ -46,6 +47,7 @@ export async function GET(request: Request) {
         jobs: snapshot.jobs,
         study: snapshot.study,
         translate: snapshot.translate,
+        voiceChat: snapshot.voiceChat,
       },
       imageGeneration: snapshot.imageGeneration,
     },

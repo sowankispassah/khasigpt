@@ -123,6 +123,7 @@ const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
   jobs: true,
   study: true,
   translate: true,
+  voiceChat: false,
   imageGeneration: {
     enabled: true,
     canGenerate: true,
@@ -348,6 +349,7 @@ export async function GET(request: Request) {
         jobs: featureSnapshot.jobs,
         study: featureSnapshot.study,
         translate: featureSnapshot.translate,
+        voiceChat: featureSnapshot.voiceChat,
       },
       modelConfig,
       chat: {
