@@ -98,6 +98,7 @@ import {
 import {
   ADMIN_FEATURE_ACCESS_SETTINGS,
   buildFeatureAccessSnapshotFromValues,
+  loadFeatureAccessSettingsByKeys,
   resolveFeatureAccessControlState,
 } from "@/lib/settings/feature-access-settings";
 import {
@@ -390,6 +391,13 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
+  const featureAccessStatePromise = loadFeatureAccessSettingsByKeys(
+    [...ADMIN_FEATURE_ACCESS_SETTING_KEYS],
+    {
+      source: "admin.settings.feature-access",
+      timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+    }
+  );
   const appSettingState = await loadAppSettingValuesByKey();
   const plansStatePromise = () =>
     loadPricingPlansForAdminSnapshot()
@@ -466,6 +474,13 @@ async function loadAdminSettingsData() {
         : "unavailable",
     values: featureAccessValues,
   });
+  const dedicatedFeatureAccessState = await featureAccessStatePromise;
+  const featureAccessState =
+    dedicatedFeatureAccessState.status === "confirmed"
+      ? dedicatedFeatureAccessState
+      : resolvedFeatureAccessState.status === "confirmed"
+        ? resolvedFeatureAccessState
+        : dedicatedFeatureAccessState;
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -531,7 +546,7 @@ async function loadAdminSettingsData() {
   return {
     exchangeRate,
     appSettingReadSource: appSettingState.source,
-    featureAccessState: resolvedFeatureAccessState,
+    featureAccessState,
     modelsRaw,
     imageModelConfigs,
     plansRaw: plansState.plans,
