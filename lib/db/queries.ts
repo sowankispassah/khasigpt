@@ -339,6 +339,13 @@ function isSupabasePoolerUrl(value: string | undefined | null) {
   }
 }
 
+function isProductionBuildPhase() {
+  return (
+    process.env.APP_BUILD_PHASE === "production-build" ||
+    process.env.NEXT_PHASE === "phase-production-build"
+  );
+}
+
 function pickPostgresUrl() {
   const candidates = [
     process.env.POSTGRES_URL,
@@ -349,6 +356,10 @@ function pickPostgresUrl() {
 
   if (process.env.POSTGRES_USE_POOLER === "true") {
     return process.env.POSTGRES_POOLER_URL ?? candidates[0] ?? null;
+  }
+
+  if (process.env.VERCEL === "1" && process.env.POSTGRES_POOLER_URL) {
+    return process.env.POSTGRES_POOLER_URL;
   }
 
   const directCandidate = candidates.find(
@@ -3801,6 +3812,10 @@ function shouldUseAppSettingCache(key: string) {
 }
 
 async function getAppSettingsRaw(): Promise<AppSetting[]> {
+  if (isProductionBuildPhase()) {
+    return [];
+  }
+
   try {
     const settings = await db
       .select()
@@ -3823,6 +3838,9 @@ async function getAppSettingRaw<T>(key: string): Promise<T | null> {
   const normalizedKey = key.trim();
   if (!normalizedKey) {
     return null;
+  }
+  if (isProductionBuildPhase()) {
+    return getLastKnownAppSetting<T>(normalizedKey);
   }
 
   try {
@@ -3885,6 +3903,9 @@ export async function getAppSettingsByKeysUncached(
   );
 
   if (uniqueKeys.length === 0) {
+    return [];
+  }
+  if (isProductionBuildPhase()) {
     return [];
   }
 

@@ -55,6 +55,13 @@ function isSupabasePoolerUrl(value: string | undefined | null) {
   }
 }
 
+function isProductionBuildPhase() {
+  return (
+    process.env.APP_BUILD_PHASE === "production-build" ||
+    process.env.NEXT_PHASE === "phase-production-build"
+  );
+}
+
 function getPostgresUrl() {
   const candidates = [
     process.env.POSTGRES_URL,
@@ -71,6 +78,10 @@ function getPostgresUrl() {
       );
     }
     return poolerUrl;
+  }
+
+  if (process.env.VERCEL === "1" && process.env.POSTGRES_POOLER_URL) {
+    return process.env.POSTGRES_POOLER_URL;
   }
 
   const directCandidate = candidates.find(
@@ -160,6 +171,9 @@ export async function getLiteAppSettingsByKeysUncached(keys: string[]) {
   if (uniqueKeys.length === 0) {
     return [];
   }
+  if (isProductionBuildPhase()) {
+    return [];
+  }
 
   try {
     const sql = getLiteSqlClient();
@@ -180,6 +194,9 @@ export async function getLiteAppSettingsByKeysUncached(keys: string[]) {
 export async function getLiteAppSettingUncached<T>(key: string) {
   const normalizedKey = key.trim();
   if (!normalizedKey) {
+    return null;
+  }
+  if (isProductionBuildPhase()) {
     return null;
   }
 

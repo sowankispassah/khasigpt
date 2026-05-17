@@ -5,6 +5,8 @@ if (!process.env.NEXT_TRACE_SPAN_THRESHOLD_MS) {
   process.env.NEXT_TRACE_SPAN_THRESHOLD_MS = "999999999";
 }
 
+process.env.APP_BUILD_PHASE = "production-build";
+
 const nextBin = path.join(
   __dirname,
   "..",
