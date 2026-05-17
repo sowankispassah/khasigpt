@@ -129,8 +129,8 @@ const PROVIDER_OPTIONS = [
 ];
 
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
-const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = 6000;
-const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = 10_000;
+const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = 3500;
+const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = 6000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const SETTINGS_SNAPSHOT_KEYS = [
@@ -309,6 +309,22 @@ async function loadAppSettingValuesByKey(): Promise<{
   source: AppSettingReadSource;
   values: Map<string, unknown>;
 }> {
+  const essentialSettingsPromise = withTimeout(
+    getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+    () => {
+      console.error("[admin/settings] Essential app settings timed out.", {
+        timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    console.error(
+      "[admin/settings] Essential app settings query failed. Retrying with last known values.",
+      error
+    );
+    return null;
+  });
+
   try {
     const settings = await withTimeout(
       getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
@@ -330,16 +346,8 @@ async function loadAppSettingValuesByKey(): Promise<{
     );
   }
 
-  try {
-    const essentialSettings = await withTimeout(
-      getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
-      ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-      () => {
-        console.error("[admin/settings] Essential app settings timed out.", {
-          timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-        });
-      }
-    );
+  const essentialSettings = await essentialSettingsPromise;
+  if (essentialSettings) {
     const values = new Map(
       essentialSettings.map((setting) => [setting.key, setting.value])
     );
@@ -353,11 +361,6 @@ async function loadAppSettingValuesByKey(): Promise<{
       source: "essential-db",
       values,
     };
-  } catch (error) {
-    console.error(
-      "[admin/settings] Essential app settings query failed. Retrying with last known values.",
-      error
-    );
   }
 
   return {
