@@ -4,7 +4,6 @@ import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
 import {
   buildImageGenerationAccessFromAvailability,
-  getImageGenerationAccess,
   getImageGenerationAvailability,
 } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -15,15 +14,12 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import {
-  getAppSetting,
-  getLastKnownAppSetting,
-} from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
+import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
@@ -32,7 +28,15 @@ import {
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 
-const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 4000;
+const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 2500;
+const CHAT_HOME_FEATURE_ACCESS_TIMEOUT_MS = 2000;
+const CHAT_HOME_IMAGE_AVAILABILITY_TIMEOUT_MS = 2000;
+const CHAT_HOME_FEATURE_ACCESS_KEYS = [
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+] as const;
 
 function buildUnavailableImageGenerationAccess(userRole: string | null) {
   return {
@@ -86,31 +90,13 @@ export default async function Page({
       console.error(`[chat/home] ${label} query failed.`, error);
       return fallback;
     });
-  const safeAppSettingQuery = <T,>(
-    label: string,
-    key: string,
-    promise: Promise<T>,
-    fallback: T
-  ) =>
-    withTimeout(promise, CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS, () => {
-      console.error(`[chat/home] ${label} query timed out.`, {
-        timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
-      });
-    }).catch((error) => {
-      console.error(`[chat/home] ${label} query failed.`, error);
-      const remembered = getLastKnownAppSetting<T>(key);
-      return remembered ?? fallback;
-    });
 
   const [
     modelsResult,
     suggestedPrompts,
     iconPromptActions,
     languageSettings,
-    customKnowledgeSetting,
-    documentUploadsSetting,
-    studyModeSetting,
-    jobsModeSetting,
+    featureAccessSettings,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
@@ -129,60 +115,23 @@ export default async function Page({
         )
       : Promise.resolve([]),
     safeQuery("languages", getActiveLanguages(), []),
-    safeAppSettingQuery(
-      "custom knowledge flag",
-      CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
-      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-      null
-    ),
-    safeAppSettingQuery(
-      "document uploads flag",
-      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
-      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
-      null
-    ),
-    safeAppSettingQuery(
-      "study mode flag",
-      STUDY_MODE_FEATURE_FLAG_KEY,
-      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-      null
-    ),
-    safeAppSettingQuery(
-      "jobs mode flag",
-      JOBS_FEATURE_FLAG_KEY,
-      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-      null
-    ),
+    loadFeatureAccessSettingsByKeys(CHAT_HOME_FEATURE_ACCESS_KEYS, {
+      source: "chat.home.feature-access",
+      timeoutMs: CHAT_HOME_FEATURE_ACCESS_TIMEOUT_MS,
+    }),
     withTimeout(
-      getImageGenerationAccess({
-        userId: session.user.id,
+      getImageGenerationAvailability({
         userRole: session.user.role,
-      }),
-      CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+      }).then(buildImageGenerationAccessFromAvailability),
+      CHAT_HOME_IMAGE_AVAILABILITY_TIMEOUT_MS,
       () => {
-        console.error("[chat/home] image generation access timed out.", {
-          timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+        console.error("[chat/home] image generation availability timed out.", {
+          timeoutMs: CHAT_HOME_IMAGE_AVAILABILITY_TIMEOUT_MS,
         });
       }
     ).catch(async (error) => {
-      console.error("[chat/home] image generation access failed.", error);
-      return withTimeout(
-        getImageGenerationAvailability({ userRole: session.user.role }),
-        CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
-        () => {
-          console.error("[chat/home] image generation availability timed out.", {
-            timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
-          });
-        }
-      )
-        .then(buildImageGenerationAccessFromAvailability)
-        .catch((fallbackError) => {
-          console.error(
-            "[chat/home] image generation availability fallback failed.",
-            fallbackError
-          );
-          return buildUnavailableImageGenerationAccess(session.user.role);
-        });
+      console.error("[chat/home] image generation availability failed.", error);
+      return buildUnavailableImageGenerationAccess(session.user.role);
     }),
   ]);
 
@@ -201,13 +150,27 @@ export default async function Page({
     typeof chatLanguageFromCookie?.value === "string"
       ? chatLanguageFromCookie.value
       : preferredLanguage ?? "";
+  const featureAccessUnavailable = featureAccessSettings.status === "unavailable";
+  const getFeatureSetting = (key: string): string | boolean | null => {
+    const value = featureAccessSettings.values.get(key);
+    if (typeof value === "string" || typeof value === "boolean") {
+      return value;
+    }
+    return featureAccessUnavailable ? "enabled" : null;
+  };
 
+  const customKnowledgeSetting = getFeatureSetting(
+    CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY
+  );
   const customKnowledgeEnabled =
     typeof customKnowledgeSetting === "boolean"
       ? customKnowledgeSetting
       : typeof customKnowledgeSetting === "string"
         ? customKnowledgeSetting.toLowerCase() === "true"
         : false;
+  const documentUploadsSetting = getFeatureSetting(
+    DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+  );
   const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
     documentUploadsSetting
   );
@@ -215,11 +178,13 @@ export default async function Page({
     documentUploadsMode,
     session.user.role
   );
+  const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const studyModeMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeMode,
     session.user.role
   );
+  const jobsModeSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
   const requestedJobId =

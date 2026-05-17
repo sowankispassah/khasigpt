@@ -329,6 +329,12 @@ const buildFallbackBundle = (
 
 const FALLBACK_BUNDLE: TranslationBundle = buildFallbackBundle();
 
+export function getFallbackTranslationBundle(preferredCode?: string | null) {
+  return typeof preferredCode === "string" && preferredCode.trim().length > 0
+    ? buildFallbackBundle(preferredCode)
+    : FALLBACK_BUNDLE;
+}
+
 const skipTranslationCache =
   typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
 const usePersistedTranslationCache =

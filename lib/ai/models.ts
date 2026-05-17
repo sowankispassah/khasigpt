@@ -35,7 +35,7 @@ const chatModelsCacheState =
 
 globalChatModelsState.__chatModelsCacheState ??= chatModelsCacheState;
 
-const MODEL_LOAD_TIMEOUT_MS = 3500;
+const MODEL_LOAD_TIMEOUT_MS = 2500;
 
 function buildChatModelsResult(
   configs: ModelConfig[],
@@ -104,23 +104,36 @@ export async function loadChatModels() {
   try {
     return rememberChatModels(await loadChatModelsFromRegistry());
   } catch (registryError) {
-    try {
-      console.warn(
-        "[models] Falling back to direct model query after registry load failure."
-      );
-      return rememberChatModels(await loadChatModelsDirectly());
-    } catch (directError) {
-      if (chatModelsCacheState.lastSuccessfulResult) {
+    const registryTimedOut =
+      registryError instanceof Error && registryError.message === "timeout";
+    if (!registryTimedOut) {
+      try {
         console.warn(
-          "[models] Using last successful model list after transient load failure."
+          "[models] Falling back to direct model query after registry load failure."
         );
-        return chatModelsCacheState.lastSuccessfulResult;
-      }
+        return rememberChatModels(await loadChatModelsDirectly());
+      } catch (directError) {
+        if (chatModelsCacheState.lastSuccessfulResult) {
+          console.warn(
+            "[models] Using last successful model list after transient load failure."
+          );
+          return chatModelsCacheState.lastSuccessfulResult;
+        }
 
-      console.error("Failed to load chat models, using fallback model.", {
-        registryError,
-        directError,
-      });
+        console.error("Failed to load chat models, using fallback model.", {
+          registryError,
+          directError,
+        });
+      }
+    } else if (chatModelsCacheState.lastSuccessfulResult) {
+      console.warn(
+        "[models] Using last successful model list after registry timeout."
+      );
+      return chatModelsCacheState.lastSuccessfulResult;
+    } else {
+      console.warn(
+        "[models] Registry model load timed out. Using fallback model without a second blocking DB attempt."
+      );
     }
 
     const fallbackModel: ModelSummary = {
