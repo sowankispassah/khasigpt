@@ -68,9 +68,8 @@ import {
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
 } from "@/lib/constants";
-import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
-  getAppSettingsByKeysUncached,
+  getAppSettingsByKeys,
   getLastKnownAppSettingsByKeys,
   getTranslationValuesForKeys,
   listImageModelConfigs,
@@ -283,7 +282,7 @@ function safeSettingsQuery<T>(
 
 async function loadEssentialFallbackSettingMap() {
   const settings = await withTimeout(
-    getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    getAppSettingsByKeys([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
     ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
     () => {
       console.error("[admin/settings] Essential setting fallback timed out.", {
@@ -310,7 +309,7 @@ async function loadAppSettingValuesByKey(): Promise<{
   values: Map<string, unknown>;
 }> {
   const essentialSettingsPromise = withTimeout(
-    getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    getAppSettingsByKeys([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
     ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
     () => {
       console.error("[admin/settings] Essential app settings timed out.", {
@@ -327,7 +326,7 @@ async function loadAppSettingValuesByKey(): Promise<{
 
   try {
     const settings = await withTimeout(
-      getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
+      getAppSettingsByKeys([...SETTINGS_SNAPSHOT_KEYS]),
       ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
       () => {
         console.error("[admin/settings] App settings snapshot timed out.", {
@@ -383,7 +382,7 @@ async function loadAdminFeatureAccessState() {
 
   try {
     const rows = await withTimeout(
-      getAppSettingsByKeysUncached([...ADMIN_FEATURE_ACCESS_SETTING_KEYS]),
+      getAppSettingsByKeys([...ADMIN_FEATURE_ACCESS_SETTING_KEYS]),
       ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
       () => {
         console.error(
