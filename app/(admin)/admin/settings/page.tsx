@@ -70,6 +70,7 @@ import {
 } from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
+  getAppSettingsByKeysUncached,
   getLastKnownAppSettingsByKeys,
   getTranslationValuesForKeys,
   listImageModelConfigs,
@@ -350,6 +351,45 @@ async function loadAppSettingValuesByKey(): Promise<{
   };
 }
 
+async function loadAdminFeatureAccessState() {
+  const liteSnapshot = await loadFeatureAccessSettingsByKeys(
+    [...ADMIN_FEATURE_ACCESS_SETTING_KEYS],
+    {
+      source: "admin.settings.feature-access",
+      timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+    }
+  );
+  if (liteSnapshot.status === "confirmed") {
+    return liteSnapshot;
+  }
+
+  try {
+    const rows = await withTimeout(
+      getAppSettingsByKeysUncached([...ADMIN_FEATURE_ACCESS_SETTING_KEYS]),
+      ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+      () => {
+        console.error(
+          "[admin/settings] Main feature access settings query timed out.",
+          {
+            timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+          }
+        );
+      }
+    );
+    return buildFeatureAccessSnapshotFromValues({
+      source: "admin.settings.feature-access:main-db",
+      status: "confirmed",
+      values: new Map(rows.map((row) => [row.key, row.value])),
+    });
+  } catch (error) {
+    console.error(
+      "[admin/settings] Main feature access settings query failed.",
+      error
+    );
+    return liteSnapshot;
+  }
+}
+
 async function loadPricingPlansForAdmin() {
   return listPricingPlans({ includeInactive: true, includeDeleted: true });
 }
@@ -391,13 +431,7 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
-  const featureAccessStatePromise = loadFeatureAccessSettingsByKeys(
-    [...ADMIN_FEATURE_ACCESS_SETTING_KEYS],
-    {
-      source: "admin.settings.feature-access",
-      timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-    }
-  );
+  const featureAccessStatePromise = loadAdminFeatureAccessState();
   const appSettingState = await loadAppSettingValuesByKey();
   const plansStatePromise = () =>
     loadPricingPlansForAdminSnapshot()
