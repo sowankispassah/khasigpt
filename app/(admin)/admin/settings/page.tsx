@@ -222,7 +222,15 @@ function shouldSerializeAdminSettingsDbReads() {
     process.env.POSTGRES_PRISMA_URL,
   ].filter(Boolean);
 
-  return !candidates.some((value) => !isSupabasePoolerUrl(value));
+  const hasPoolerUrl = candidates.some((value) => isSupabasePoolerUrl(value));
+  if (process.env.POSTGRES_USE_POOLER === "true") {
+    return hasPoolerUrl;
+  }
+  if (process.env.VERCEL === "1" && hasPoolerUrl) {
+    return true;
+  }
+
+  return candidates.length > 0 && candidates.every(isSupabasePoolerUrl);
 }
 
 async function resolveAdminDbReadGroup<const T extends readonly unknown[]>(
@@ -431,7 +439,10 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
-  const featureAccessStatePromise = loadAdminFeatureAccessState();
+  const serializeDbReads = shouldSerializeAdminSettingsDbReads();
+  const featureAccessStatePromise = serializeDbReads
+    ? null
+    : loadAdminFeatureAccessState();
   const appSettingState = await loadAppSettingValuesByKey();
   const plansStatePromise = () =>
     loadPricingPlansForAdminSnapshot()
@@ -508,7 +519,10 @@ async function loadAdminSettingsData() {
         : "unavailable",
     values: featureAccessValues,
   });
-  const dedicatedFeatureAccessState = await featureAccessStatePromise;
+  const dedicatedFeatureAccessState =
+    featureAccessStatePromise !== null
+      ? await featureAccessStatePromise
+      : await loadAdminFeatureAccessState();
   const featureAccessState =
     dedicatedFeatureAccessState.status === "confirmed"
       ? dedicatedFeatureAccessState
