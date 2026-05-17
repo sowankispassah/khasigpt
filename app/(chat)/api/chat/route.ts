@@ -2401,8 +2401,25 @@ export async function POST(request: Request) {
         (part) => !(part.type === "file" && isDocumentMimeType(part.mediaType ?? ""))
       ),
     });
+    const stripAssistantNonTextPartsForModel = (entry: ChatMessage) => {
+      if (entry.role !== "assistant") {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        parts: entry.parts.filter(
+          (part) => part.type === "text" && part.text.trim().length > 0
+        ),
+      };
+    };
     const uiMessagesFromDb = convertToUIMessages(messagesFromDb);
-    const baseUiMessages = uiMessagesFromDb.map(stripDocumentParts);
+    const baseUiMessages = uiMessagesFromDb
+      .map(stripDocumentParts)
+      .map(stripAssistantNonTextPartsForModel)
+      .filter(
+        (entry) => entry.role !== "assistant" || entry.parts.length > 0
+      );
     const normalizedHiddenPrompt =
       typeof hiddenPrompt === "string" ? hiddenPrompt.trim() : "";
     const studyUserText = getTextFromMessage(message).trim();

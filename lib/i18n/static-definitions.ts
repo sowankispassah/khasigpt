@@ -801,6 +801,23 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Placeholder text for the main chat input.",
   },
   {
+    key: "chat.send_message",
+    defaultText: "Send message",
+    description: "Accessibility label for the chat send button.",
+  },
+  {
+    key: "chat.stop_generation",
+    defaultText: "Stop generation",
+    description:
+      "Accessibility label for the chat stop button while a response is generating.",
+  },
+  {
+    key: "chat.generation_stopped",
+    defaultText: "Response stopped.",
+    description:
+      "Status message shown when the user stops an in-progress chat response.",
+  },
+  {
     key: "chat.header.new_chat",
     defaultText: "New Chat",
     description: "Header button label for starting a new chat.",

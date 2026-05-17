@@ -16,6 +16,7 @@ import {
   type FeatureAccessMode,
   parseFeatureAccessModeStrict,
 } from "@/lib/feature-access";
+import { withTimeout } from "@/lib/utils/async";
 
 export const ADMIN_FEATURE_ACCESS_SETTINGS = [
   {
@@ -206,7 +207,18 @@ export async function loadFeatureAccessSettingsByKeys(
   });
 
   try {
-    const rows = await getLiteAppSettingsByKeysUncached(uniqueKeys);
+    const rows = await withTimeout(
+      getLiteAppSettingsByKeysUncached(uniqueKeys),
+      timeoutMs,
+      () => {
+        console.error("[feature-settings/load:timeout]", {
+          keyCount: uniqueKeys.length,
+          keys: uniqueKeys,
+          source,
+          timeoutMs,
+        });
+      }
+    );
     const values = new Map(rows.map((row) => [row.key, row.value]));
     const missingKeys = buildMissingKeys(uniqueKeys, values);
 

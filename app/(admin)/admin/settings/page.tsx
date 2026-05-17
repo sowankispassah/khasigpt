@@ -98,7 +98,6 @@ import {
 import {
   ADMIN_FEATURE_ACCESS_SETTINGS,
   buildFeatureAccessSnapshotFromValues,
-  loadFeatureAccessSettingsByKeys,
   resolveFeatureAccessControlState,
 } from "@/lib/settings/feature-access-settings";
 import {
@@ -128,9 +127,10 @@ const PROVIDER_OPTIONS = [
 ];
 
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
+const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = 6000;
+const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = 4000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
-const FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS = 8000;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -188,9 +188,14 @@ const ADMIN_FEATURE_ACCESS_SETTING_KEYS = ADMIN_FEATURE_ACCESS_SETTINGS.map(
 function safeSettingsQuery<T>(
   label: string,
   promise: Promise<T>,
-  fallbackValue: T
+  fallbackValue: T,
+  timeoutMs = ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS
 ): Promise<T> {
-  return promise.catch((error) => {
+  return withTimeout(promise, timeoutMs, () => {
+    console.error(`[admin/settings] ${label} query timed out.`, {
+      timeoutMs,
+    });
+  }).catch((error) => {
     console.error(
       `[admin/settings] ${label} query failed. Using fallback value.`,
       error
@@ -200,9 +205,15 @@ function safeSettingsQuery<T>(
 }
 
 async function loadEssentialFallbackSettingMap() {
-  const settings = await getLiteAppSettingsByKeysUncached([
-    ...ESSENTIAL_FALLBACK_SETTING_KEYS,
-  ]);
+  const settings = await withTimeout(
+    getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
+    ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+    () => {
+      console.error("[admin/settings] Essential setting fallback timed out.", {
+        timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+      });
+    }
+  );
 
   const map = new Map<string, unknown>();
   for (const setting of settings) {
@@ -222,9 +233,15 @@ async function loadAppSettingValuesByKey(): Promise<{
   values: Map<string, unknown>;
 }> {
   try {
-    const settings = await getLiteAppSettingsByKeysUncached([
-      ...SETTINGS_SNAPSHOT_KEYS,
-    ]);
+    const settings = await withTimeout(
+      getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
+      ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+      () => {
+        console.error("[admin/settings] App settings snapshot timed out.", {
+          timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+        });
+      }
+    );
     return {
       source: "snapshot-db",
       values: new Map(settings.map((setting) => [setting.key, setting.value])),
@@ -259,7 +276,15 @@ async function loadPricingPlansForAdmin() {
 }
 
 async function loadPricingPlansForAdminSnapshot() {
-  return loadPricingPlansForAdmin();
+  return withTimeout(
+    loadPricingPlansForAdmin(),
+    ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS,
+    () => {
+      console.error("[admin/settings] Pricing plans snapshot timed out.", {
+        timeoutMs: ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS,
+      });
+    }
+  );
 }
 
 function SettingsSubmitButton(
@@ -291,13 +316,6 @@ async function loadAdminSettingsData(
     };
   });
   const appSettingStatePromise = loadAppSettingValuesByKey();
-  const featureAccessStatePromise = loadFeatureAccessSettingsByKeys(
-    ADMIN_FEATURE_ACCESS_SETTING_KEYS,
-    {
-      source: "admin.settings.feature-access",
-      timeoutMs: FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS,
-    }
-  );
   const modelsRawPromise = safeSettingsQuery(
     "model configs",
     listModelConfigs({
@@ -344,7 +362,6 @@ async function loadAdminSettingsData(
   const [
     exchangeRate,
     appSettingState,
-    featureAccessState,
     modelsRaw,
     imageModelConfigs,
     plansState,
@@ -353,7 +370,6 @@ async function loadAdminSettingsData(
   ] = await Promise.all([
     exchangeRatePromise,
     appSettingStatePromise,
-    featureAccessStatePromise,
     modelsRawPromise,
     imageModelConfigsPromise,
     plansStatePromise,
@@ -364,23 +380,22 @@ async function loadAdminSettingsData(
   const dbBackedAppSettingValues =
     appSettingState.source === "snapshot-db" ||
     appSettingState.source === "essential-db";
-  const resolvedFeatureAccessState =
-    featureAccessState.status === "confirmed" || !dbBackedAppSettingValues
-      ? featureAccessState
-      : buildFeatureAccessSnapshotFromValues({
-          source: `${appSettingState.source}:feature-access-fallback`,
-          status: "confirmed",
-          values: new Map(
-            ADMIN_FEATURE_ACCESS_SETTING_KEYS.flatMap((key) =>
-              appSettingValuesByKey.has(key)
-                ? ([[key, appSettingValuesByKey.get(key)]] as [
-                    string,
-                    unknown,
-                  ][])
-                : []
-            )
-          ),
-        });
+  const featureAccessValues = new Map(
+    ADMIN_FEATURE_ACCESS_SETTING_KEYS.flatMap((key) =>
+      appSettingValuesByKey.has(key)
+        ? ([[key, appSettingValuesByKey.get(key)]] as [string, unknown][])
+        : []
+    )
+  );
+  const resolvedFeatureAccessState = buildFeatureAccessSnapshotFromValues({
+    source: `${appSettingState.source}:feature-access`,
+    status: dbBackedAppSettingValues
+      ? "confirmed"
+      : featureAccessValues.size > 0
+        ? "stale"
+        : "unavailable",
+    values: featureAccessValues,
+  });
   const getStoredSetting = <T,>(key: string): T | null => {
     const value = appSettingValuesByKey.get(key);
     return value === undefined ? null : (value as T);
@@ -697,20 +712,13 @@ export default async function AdminSettingsPage({
     try {
       settingsData = {
         ...settingsData,
-        featureAccessState: await loadFeatureAccessSettingsByKeys(
-          ADMIN_FEATURE_ACCESS_SETTING_KEYS,
-          {
-            source: "admin.settings.feature-access.render-fallback",
-            timeoutMs: FEATURE_ACCESS_SETTINGS_QUERY_TIMEOUT_MS,
-          }
-        ),
+        featureAccessState: buildFeatureAccessSnapshotFromValues({
+          source: "admin.settings.render-fallback",
+          status: "unavailable",
+          values: new Map(),
+        }),
       };
-    } catch (featureAccessReadError) {
-      console.error(
-        "[admin/settings] Feature access fallback setting read failed.",
-        featureAccessReadError
-      );
-    }
+    } catch {}
 
     try {
       settingsData = {
