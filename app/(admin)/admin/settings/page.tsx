@@ -431,10 +431,7 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
-  const serializeDbReads = shouldSerializeAdminSettingsDbReads();
-  const featureAccessStatePromise = serializeDbReads
-    ? null
-    : loadAdminFeatureAccessState();
+  const dedicatedFeatureAccessState = await loadAdminFeatureAccessState();
   const appSettingState = await loadAppSettingValuesByKey();
   const plansStatePromise = () =>
     loadPricingPlansForAdminSnapshot()
@@ -511,10 +508,6 @@ async function loadAdminSettingsData() {
         : "unavailable",
     values: featureAccessValues,
   });
-  const dedicatedFeatureAccessState =
-    featureAccessStatePromise !== null
-      ? await featureAccessStatePromise
-      : resolvedFeatureAccessState;
   const featureAccessState =
     dedicatedFeatureAccessState.status === "confirmed"
       ? dedicatedFeatureAccessState
