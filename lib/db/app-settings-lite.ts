@@ -112,7 +112,7 @@ function getLiteSqlClient() {
     const poolConfig = {
       max: parseOr(
         process.env.POSTGRES_LITE_POOL_SIZE,
-        usesPooler ? 1 : process.env.NODE_ENV === "development" ? 5 : 3
+        usesPooler ? 3 : process.env.NODE_ENV === "development" ? 5 : 3
       ),
       idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
       max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),

@@ -390,11 +390,11 @@ if (!postgresUrl) {
 }
 
 const usesSupabasePooler = isSupabasePoolerUrl(postgresUrl);
-// Keep pooler-backed serverless functions to one DB connection per instance.
-// Supabase pooler mode disables pipelining, so a burst of parallel queries can
-// otherwise queue behind slow connection setup and make tiny reads time out.
+// Supabase pooler mode disables pipelining, so each connection can only make
+// one query progress at a time. Keep a small bounded pool so an abandoned slow
+// render cannot block the next request's tiny settings reads behind one socket.
 const defaultPoolSize =
-  process.env.NODE_ENV === "development" ? 5 : usesSupabasePooler ? 1 : 3;
+  process.env.NODE_ENV === "development" ? 5 : usesSupabasePooler ? 3 : 3;
 
 const poolConfig = {
   max: parseOr(process.env.POSTGRES_POOL_SIZE, defaultPoolSize),
