@@ -204,6 +204,19 @@ function isSupabasePoolerUrl(value: string | undefined | null) {
   }
 }
 
+function parsePositiveInteger(value: string | undefined | null) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getConfiguredAdminSettingsPoolSize() {
+  return (
+    parsePositiveInteger(process.env.POSTGRES_LITE_POOL_SIZE) ??
+    parsePositiveInteger(process.env.POSTGRES_POOL_SIZE) ??
+    (process.env.NODE_ENV === "development" ? 5 : 3)
+  );
+}
+
 function shouldSerializeAdminSettingsDbReads() {
   if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "true") {
     return true;
@@ -211,8 +224,9 @@ function shouldSerializeAdminSettingsDbReads() {
   if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "false") {
     return false;
   }
+  const onlyOneDbConnection = getConfiguredAdminSettingsPoolSize() <= 1;
   if (process.env.POSTGRES_USE_POOLER === "true") {
-    return true;
+    return onlyOneDbConnection;
   }
 
   const candidates = [
@@ -223,14 +237,15 @@ function shouldSerializeAdminSettingsDbReads() {
   ].filter(Boolean);
 
   const hasPoolerUrl = candidates.some((value) => isSupabasePoolerUrl(value));
-  if (process.env.POSTGRES_USE_POOLER === "true") {
-    return hasPoolerUrl;
-  }
   if (process.env.VERCEL === "1" && hasPoolerUrl) {
-    return true;
+    return onlyOneDbConnection;
   }
 
-  return candidates.length > 0 && candidates.every(isSupabasePoolerUrl);
+  return (
+    onlyOneDbConnection &&
+    candidates.length > 0 &&
+    candidates.every(isSupabasePoolerUrl)
+  );
 }
 
 async function resolveAdminDbReadGroup<const T extends readonly unknown[]>(
@@ -431,8 +446,15 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
-  const dedicatedFeatureAccessState = await loadAdminFeatureAccessState();
-  const appSettingState = await loadAppSettingValuesByKey();
+  const serializeDbReads = shouldSerializeAdminSettingsDbReads();
+  const dedicatedFeatureAccessStatePromise = loadAdminFeatureAccessState();
+  const appSettingStatePromise = serializeDbReads
+    ? dedicatedFeatureAccessStatePromise.then(() => loadAppSettingValuesByKey())
+    : loadAppSettingValuesByKey();
+  const [dedicatedFeatureAccessState, appSettingState] = await Promise.all([
+    dedicatedFeatureAccessStatePromise,
+    appSettingStatePromise,
+  ]);
   const plansStatePromise = () =>
     loadPricingPlansForAdminSnapshot()
       .then((plans) => ({
