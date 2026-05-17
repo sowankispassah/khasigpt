@@ -295,6 +295,27 @@ async function loadAppSettingValuesByKey(): Promise<{
   values: Map<string, unknown>;
 }> {
   try {
+    const settings = await withTimeout(
+      getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
+      ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+      () => {
+        console.error("[admin/settings] App settings snapshot timed out.", {
+          timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+        });
+      }
+    );
+    return {
+      source: "snapshot-db",
+      values: new Map(settings.map((setting) => [setting.key, setting.value])),
+    };
+  } catch (error) {
+    console.error(
+      "[admin/settings] App settings snapshot failed. Retrying essential settings with last-known optional values.",
+      error
+    );
+  }
+
+  try {
     const essentialSettings = await withTimeout(
       getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
       ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
@@ -307,45 +328,16 @@ async function loadAppSettingValuesByKey(): Promise<{
     const values = new Map(
       essentialSettings.map((setting) => [setting.key, setting.value])
     );
-
-    try {
-      const nonEssentialSettings = await withTimeout(
-        getLiteAppSettingsByKeysUncached([
-          ...NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS,
-        ]),
-        ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-        () => {
-          console.error(
-            "[admin/settings] Non-essential app settings timed out.",
-            {
-              timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
-            }
-          );
-        }
-      );
-      for (const setting of nonEssentialSettings) {
-        values.set(setting.key, setting.value);
-      }
-      return {
-        source: "snapshot-db",
-        values,
-      };
-    } catch (nonEssentialError) {
-      console.error(
-        "[admin/settings] Non-essential app settings failed. Rendering critical settings with last-known optional values.",
-        nonEssentialError
-      );
-      const lastKnownOptionalValues = getLastKnownAppSettingsByKeys([
-        ...NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS,
-      ]);
-      for (const [key, value] of lastKnownOptionalValues) {
-        values.set(key, value);
-      }
-      return {
-        source: "essential-db",
-        values,
-      };
+    const lastKnownOptionalValues = getLastKnownAppSettingsByKeys([
+      ...NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS,
+    ]);
+    for (const [key, value] of lastKnownOptionalValues) {
+      values.set(key, value);
     }
+    return {
+      source: "essential-db",
+      values,
+    };
   } catch (error) {
     console.error(
       "[admin/settings] Essential app settings query failed. Retrying with last known values.",
@@ -522,7 +514,7 @@ async function loadAdminSettingsData() {
   const dedicatedFeatureAccessState =
     featureAccessStatePromise !== null
       ? await featureAccessStatePromise
-      : await loadAdminFeatureAccessState();
+      : resolvedFeatureAccessState;
   const featureAccessState =
     dedicatedFeatureAccessState.status === "confirmed"
       ? dedicatedFeatureAccessState
