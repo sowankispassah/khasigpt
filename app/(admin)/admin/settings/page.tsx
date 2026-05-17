@@ -184,14 +184,66 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
 const ADMIN_FEATURE_ACCESS_SETTING_KEYS = ADMIN_FEATURE_ACCESS_SETTINGS.map(
   (setting) => setting.settingKey
 );
+const ESSENTIAL_SETTING_KEY_SET = new Set<string>(
+  ESSENTIAL_FALLBACK_SETTING_KEYS
+);
+const NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS = SETTINGS_SNAPSHOT_KEYS.filter(
+  (key) => !ESSENTIAL_SETTING_KEY_SET.has(key)
+);
+
+function isSupabasePoolerUrl(value: string | undefined | null) {
+  if (!value) {
+    return false;
+  }
+  try {
+    return new URL(value).hostname.endsWith(".pooler.supabase.com");
+  } catch {
+    return value.includes(".pooler.supabase.com");
+  }
+}
+
+function shouldSerializeAdminSettingsDbReads() {
+  if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "true") {
+    return true;
+  }
+  if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "false") {
+    return false;
+  }
+  if (process.env.POSTGRES_USE_POOLER === "true") {
+    return true;
+  }
+
+  const candidates = [
+    process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_DIRECT_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter(Boolean);
+
+  return !candidates.some((value) => !isSupabasePoolerUrl(value));
+}
+
+async function resolveAdminDbReadGroup<const T extends readonly unknown[]>(
+  tasks: { [K in keyof T]: () => Promise<T[K]> }
+): Promise<T> {
+  if (!shouldSerializeAdminSettingsDbReads()) {
+    return Promise.all(tasks.map((task) => task())) as unknown as Promise<T>;
+  }
+
+  const results: unknown[] = [];
+  for (const task of tasks) {
+    results.push(await task());
+  }
+  return results as unknown as T;
+}
 
 function safeSettingsQuery<T>(
   label: string,
-  promise: Promise<T>,
+  query: () => Promise<T>,
   fallbackValue: T,
   timeoutMs = ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS
 ): Promise<T> {
-  return withTimeout(promise, timeoutMs, () => {
+  return withTimeout(query(), timeoutMs, () => {
     console.error(`[admin/settings] ${label} query timed out.`, {
       timeoutMs,
     });
@@ -233,36 +285,62 @@ async function loadAppSettingValuesByKey(): Promise<{
   values: Map<string, unknown>;
 }> {
   try {
-    const settings = await withTimeout(
-      getLiteAppSettingsByKeysUncached([...SETTINGS_SNAPSHOT_KEYS]),
+    const essentialSettings = await withTimeout(
+      getLiteAppSettingsByKeysUncached([...ESSENTIAL_FALLBACK_SETTING_KEYS]),
       ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
       () => {
-        console.error("[admin/settings] App settings snapshot timed out.", {
+        console.error("[admin/settings] Essential app settings timed out.", {
           timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
         });
       }
     );
-    return {
-      source: "snapshot-db",
-      values: new Map(settings.map((setting) => [setting.key, setting.value])),
-    };
-  } catch (error) {
-    console.error(
-      "[admin/settings] App settings snapshot query failed. Retrying with essential setting reads.",
-      error
+    const values = new Map(
+      essentialSettings.map((setting) => [setting.key, setting.value])
     );
 
     try {
+      const nonEssentialSettings = await withTimeout(
+        getLiteAppSettingsByKeysUncached([
+          ...NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS,
+        ]),
+        ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+        () => {
+          console.error(
+            "[admin/settings] Non-essential app settings timed out.",
+            {
+              timeoutMs: ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS,
+            }
+          );
+        }
+      );
+      for (const setting of nonEssentialSettings) {
+        values.set(setting.key, setting.value);
+      }
+      return {
+        source: "snapshot-db",
+        values,
+      };
+    } catch (nonEssentialError) {
+      console.error(
+        "[admin/settings] Non-essential app settings failed. Rendering critical settings with last-known optional values.",
+        nonEssentialError
+      );
+      const lastKnownOptionalValues = getLastKnownAppSettingsByKeys([
+        ...NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS,
+      ]);
+      for (const [key, value] of lastKnownOptionalValues) {
+        values.set(key, value);
+      }
       return {
         source: "essential-db",
-        values: await loadEssentialFallbackSettingMap(),
+        values,
       };
-    } catch (retryError) {
-      console.error(
-        "[admin/settings] Per-key app setting retry failed. Using last known values or defaults for missing values.",
-        retryError
-      );
     }
+  } catch (error) {
+    console.error(
+      "[admin/settings] Essential app settings query failed. Retrying with last known values.",
+      error
+    );
   }
 
   return {
@@ -298,10 +376,7 @@ function SettingsSubmitButton(
   );
 }
 
-async function loadAdminSettingsData(
-  pricingPlansPromise: Promise<Awaited<ReturnType<typeof loadPricingPlansForAdmin>>> =
-    loadPricingPlansForAdminSnapshot()
-) {
+async function loadAdminSettingsData() {
   const exchangeRatePromise = withTimeout(
     getUsdToInrRate(),
     EXCHANGE_RATE_QUERY_TIMEOUT_MS
@@ -315,67 +390,62 @@ async function loadAdminSettingsData(
       fetchedAt: new Date(),
     };
   });
-  const appSettingStatePromise = loadAppSettingValuesByKey();
-  const modelsRawPromise = safeSettingsQuery(
-    "model configs",
-    listModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-    []
-  );
-  const imageModelConfigsPromise = safeSettingsQuery(
-    "image model configs",
-    listImageModelConfigs({
-      includeDisabled: true,
-      includeDeleted: true,
-      limit: 200,
-    }),
-    []
-  );
-  const plansStatePromise = pricingPlansPromise
-    .then((plans) => ({
-      failed: false,
-      plans,
-    }))
-    .catch((error) => {
-      console.error(
-        "[admin/settings] Pricing plans query timed out or failed. Rendering settings without pricing plans.",
-        error
-      );
-      return {
-        failed: true,
-        plans: [],
-      };
-    });
-  const languagesPromise = safeSettingsQuery(
-    "languages",
-    listLanguagesWithSettings(),
-    []
-  );
-  const translationFeatureLanguagesPromise = safeSettingsQuery(
-    "translation feature languages",
-    listTranslationFeatureLanguages(),
-    []
-  );
+  const appSettingState = await loadAppSettingValuesByKey();
+  const plansStatePromise = () =>
+    loadPricingPlansForAdminSnapshot()
+      .then((plans) => ({
+        failed: false,
+        plans,
+      }))
+      .catch((error) => {
+        console.error(
+          "[admin/settings] Pricing plans query timed out or failed. Rendering settings without pricing plans.",
+          error
+        );
+        return {
+          failed: true,
+          plans: [],
+        };
+      });
   const [
-    exchangeRate,
-    appSettingState,
     modelsRaw,
     imageModelConfigs,
     plansState,
     languages,
     translationFeatureLanguages,
-  ] = await Promise.all([
-    exchangeRatePromise,
-    appSettingStatePromise,
-    modelsRawPromise,
-    imageModelConfigsPromise,
+  ] = await resolveAdminDbReadGroup([
+    () =>
+      safeSettingsQuery(
+        "model configs",
+        () =>
+          listModelConfigs({
+            includeDisabled: true,
+            includeDeleted: true,
+            limit: 200,
+          }),
+        []
+      ),
+    () =>
+      safeSettingsQuery(
+        "image model configs",
+        () =>
+          listImageModelConfigs({
+            includeDisabled: true,
+            includeDeleted: true,
+            limit: 200,
+          }),
+        []
+      ),
     plansStatePromise,
-    languagesPromise,
-    translationFeatureLanguagesPromise,
+    () => safeSettingsQuery("languages", () => listLanguagesWithSettings(), []),
+    () =>
+      safeSettingsQuery(
+        "translation feature languages",
+        () => listTranslationFeatureLanguages(),
+        []
+      ),
   ]);
+  const exchangeRate = await exchangeRatePromise;
   const appSettingValuesByKey = appSettingState.values;
   const dbBackedAppSettingValues =
     appSettingState.source === "snapshot-db" ||
@@ -656,11 +726,10 @@ export default async function AdminSettingsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const notice = resolvedSearchParams?.notice;
-  const priorityPricingPlansPromise = loadPricingPlansForAdminSnapshot();
 
   let settingsData: Awaited<ReturnType<typeof loadAdminSettingsData>>;
   try {
-    settingsData = await loadAdminSettingsData(priorityPricingPlansPromise);
+    settingsData = await loadAdminSettingsData();
   } catch (error) {
     console.error(
       "[admin/settings] Unexpected settings render failure. Falling back to safe defaults.",

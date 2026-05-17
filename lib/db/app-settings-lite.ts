@@ -1,5 +1,5 @@
-import postgres from "postgres";
 import { setDefaultResultOrder } from "node:dns";
+import postgres from "postgres";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import {
   assertFeatureSettingWriteAllowed,
@@ -98,13 +98,13 @@ function getLiteSqlClient() {
     const poolConfig = {
       max: parseOr(
         process.env.POSTGRES_LITE_POOL_SIZE,
-        process.env.NODE_ENV === "development" ? 5 : 3
+        usesPooler ? 1 : process.env.NODE_ENV === "development" ? 5 : 3
       ),
       idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
       max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
       connect_timeout: parseOr(
         process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
-        10
+        usesPooler ? 5 : 10
       ),
       statement_timeout: parseOr(process.env.POSTGRES_STATEMENT_TIMEOUT, 20_000),
       application_name:

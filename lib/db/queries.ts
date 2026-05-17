@@ -323,10 +323,6 @@ type GlobalDbState = {
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
 
-// Keep a small pool even in production. A single postgres.js connection creates
-// head-of-line blocking when independent serverless reads overlap, and any
-// abandoned legacy timeout can leave later tiny reads queued behind it.
-const defaultPoolSize = process.env.NODE_ENV === "development" ? 5 : 3;
 const defaultStatementTimeout =
   process.env.NODE_ENV === "development" ? 15_000 : 20_000;
 const defaultConnectTimeout =
@@ -379,6 +375,13 @@ if (!postgresUrl) {
   );
 }
 
+const usesSupabasePooler = isSupabasePoolerUrl(postgresUrl);
+// Keep pooler-backed serverless functions to one DB connection per instance.
+// Supabase pooler mode disables pipelining, so a burst of parallel queries can
+// otherwise queue behind slow connection setup and make tiny reads time out.
+const defaultPoolSize =
+  process.env.NODE_ENV === "development" ? 5 : usesSupabasePooler ? 1 : 3;
+
 const poolConfig = {
   max: parseOr(process.env.POSTGRES_POOL_SIZE, defaultPoolSize),
   idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
@@ -394,8 +397,8 @@ const poolConfig = {
   application_name:
     process.env.POSTGRES_APPLICATION_NAME ??
     `ai-chatbot-${process.env.NODE_ENV ?? "development"}`,
-  fetch_types: !isSupabasePoolerUrl(postgresUrl),
-  max_pipeline: isSupabasePoolerUrl(postgresUrl) ? 1 : 100,
+  fetch_types: !usesSupabasePooler,
+  max_pipeline: usesSupabasePooler ? 1 : 100,
   prepare:
     process.env.POSTGRES_PREPARE === "true"
       ? true
@@ -403,7 +406,7 @@ const poolConfig = {
         ? false
         : process.env.NODE_ENV === "development"
           ? false
-          : !postgresUrl?.includes(".pooler.supabase.com"),
+          : !usesSupabasePooler,
 };
 
 // Dev setups sometimes intentionally use the direct Supabase endpoint.
