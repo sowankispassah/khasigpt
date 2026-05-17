@@ -183,7 +183,7 @@ export async function getLiteAppSettingsByKeysUncached(keys: string[]) {
     const rows = await sql<LiteAppSetting[]>`
       select "key", "value", "updatedAt"
       from "AppSetting"
-      where "key" = any(${sql.array(uniqueKeys)})
+      where "key" in ${sql(uniqueKeys)}
     `;
     return rows;
   } catch (error) {
