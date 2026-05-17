@@ -69,9 +69,12 @@ function getPostgresUrl() {
     process.env.POSTGRES_DIRECT_URL,
     process.env.POSTGRES_PRISMA_URL,
   ].filter((value): value is string => Boolean(value));
+  const poolerCandidate =
+    process.env.POSTGRES_POOLER_URL ??
+    candidates.find((value) => isSupabasePoolerUrl(value));
 
   if (process.env.POSTGRES_USE_POOLER === "true") {
-    const poolerUrl = process.env.POSTGRES_POOLER_URL ?? candidates[0];
+    const poolerUrl = poolerCandidate ?? candidates[0];
     if (!poolerUrl) {
       throw new Error(
         "POSTGRES_URL, DATABASE_URL, or POSTGRES_POOLER_URL is not configured"
@@ -80,15 +83,15 @@ function getPostgresUrl() {
     return poolerUrl;
   }
 
-  if (process.env.VERCEL === "1" && process.env.POSTGRES_POOLER_URL) {
-    return process.env.POSTGRES_POOLER_URL;
+  if (process.env.VERCEL === "1" && poolerCandidate) {
+    return poolerCandidate;
   }
 
   const directCandidate = candidates.find(
     (value) => !isSupabasePoolerUrl(value)
   );
   const postgresUrl =
-    directCandidate ?? process.env.POSTGRES_POOLER_URL ?? candidates[0];
+    directCandidate ?? poolerCandidate ?? candidates[0];
   if (!postgresUrl) {
     throw new Error(
       "POSTGRES_URL, DATABASE_URL, or POSTGRES_POOLER_URL is not configured"

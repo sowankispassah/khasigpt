@@ -353,13 +353,16 @@ function pickPostgresUrl() {
     process.env.POSTGRES_DIRECT_URL,
     process.env.POSTGRES_PRISMA_URL,
   ].filter((value): value is string => Boolean(value));
+  const poolerCandidate =
+    process.env.POSTGRES_POOLER_URL ??
+    candidates.find((value) => isSupabasePoolerUrl(value));
 
   if (process.env.POSTGRES_USE_POOLER === "true") {
-    return process.env.POSTGRES_POOLER_URL ?? candidates[0] ?? null;
+    return poolerCandidate ?? candidates[0] ?? null;
   }
 
-  if (process.env.VERCEL === "1" && process.env.POSTGRES_POOLER_URL) {
-    return process.env.POSTGRES_POOLER_URL;
+  if (process.env.VERCEL === "1" && poolerCandidate) {
+    return poolerCandidate;
   }
 
   const directCandidate = candidates.find(
@@ -372,11 +375,11 @@ function pickPostgresUrl() {
   console.warn(
     "[db] Using Supabase pooler URL because no direct IPv4-reachable database URL is configured. Pooler mode disables prepared statements and pipelining."
   );
-  return process.env.POSTGRES_POOLER_URL ?? candidates[0] ?? null;
+  return poolerCandidate ?? candidates[0] ?? null;
 }
-// Use the direct database URL by default. The Supabase pooler has repeatedly
-// left tiny reads waiting on ClientRead, which exhausts the app's DB slots and
-// breaks auth/chat/subscription routes. Pooler use is now explicit opt-in.
+// Use a direct database URL by default where it is reachable. On Vercel,
+// Supabase's direct host can resolve to IPv6-only addresses, so prefer a pooler
+// URL when one is configured under any supported database env var.
 const postgresUrl = pickPostgresUrl();
 
 if (!postgresUrl) {
