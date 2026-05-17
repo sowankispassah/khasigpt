@@ -2,6 +2,8 @@ import "server-only";
 
 import { revalidatePath, revalidateTag } from "next/cache";
 
+export const ADMIN_SETTINGS_CACHE_TAG = "admin-settings";
+
 type AdminInvalidationPath = {
   path: string;
   type?: "layout" | "page";
@@ -49,4 +51,3 @@ export function invalidateAdminMutation({
     }
   }
 }
-

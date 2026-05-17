@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
+import { unstable_cache } from "next/cache";
 import type { ComponentProps, ReactNode } from "react";
 import {
   createImageModelConfigAction,
@@ -38,6 +39,9 @@ import {
   updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { ADMIN_SETTINGS_CACHE_TAG } from "@/lib/admin/cache-invalidation";
+import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DEFAULT_ABOUT_US,
@@ -53,6 +57,7 @@ import {
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -132,6 +137,7 @@ const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = 3500;
 const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = 6000;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
+const ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS = 300;
 const SETTINGS_SNAPSHOT_KEYS = [
   "privacyPolicy",
   "termsOfService",
@@ -190,6 +196,56 @@ const ESSENTIAL_SETTING_KEY_SET = new Set<string>(
 );
 const NON_ESSENTIAL_SETTINGS_SNAPSHOT_KEYS = SETTINGS_SNAPSHOT_KEYS.filter(
   (key) => !ESSENTIAL_SETTING_KEY_SET.has(key)
+);
+const listAdminModelConfigsCached = unstable_cache(
+  () =>
+    listModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
+    }),
+  ["admin-settings:model-configs:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
+  }
+);
+const listAdminImageModelConfigsCached = unstable_cache(
+  () =>
+    listImageModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
+    }),
+  ["admin-settings:image-model-configs:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_CACHE_TAG, IMAGE_MODEL_REGISTRY_CACHE_TAG],
+  }
+);
+const listAdminPricingPlansCached = unstable_cache(
+  () => listPricingPlans({ includeInactive: true, includeDeleted: true }),
+  ["admin-settings:pricing-plans:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_CACHE_TAG, PRICING_PLAN_CACHE_TAG],
+  }
+);
+const listAdminLanguagesCached = unstable_cache(
+  () => listLanguagesWithSettings(),
+  ["admin-settings:languages:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_CACHE_TAG, "languages"],
+  }
+);
+const listAdminTranslationFeatureLanguagesCached = unstable_cache(
+  () => listTranslationFeatureLanguages(),
+  ["admin-settings:translation-feature-languages:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_CACHE_TAG],
+  }
 );
 
 function isSupabasePoolerUrl(value: string | undefined | null) {
@@ -408,7 +464,7 @@ async function loadAdminFeatureAccessState() {
 }
 
 async function loadPricingPlansForAdmin() {
-  return listPricingPlans({ includeInactive: true, includeDeleted: true });
+  return listAdminPricingPlansCached();
 }
 
 async function loadPricingPlansForAdminSnapshot() {
@@ -483,31 +539,21 @@ async function loadAdminSettingsData() {
     () =>
       safeSettingsQuery(
         "model configs",
-        () =>
-          listModelConfigs({
-            includeDisabled: true,
-            includeDeleted: true,
-            limit: 200,
-          }),
+        () => listAdminModelConfigsCached(),
         []
       ),
     () =>
       safeSettingsQuery(
         "image model configs",
-        () =>
-          listImageModelConfigs({
-            includeDisabled: true,
-            includeDeleted: true,
-            limit: 200,
-          }),
+        () => listAdminImageModelConfigsCached(),
         []
       ),
     plansStatePromise,
-    () => safeSettingsQuery("languages", () => listLanguagesWithSettings(), []),
+    () => safeSettingsQuery("languages", () => listAdminLanguagesCached(), []),
     () =>
       safeSettingsQuery(
         "translation feature languages",
-        () => listTranslationFeatureLanguages(),
+        () => listAdminTranslationFeatureLanguagesCached(),
         []
       ),
   ]);

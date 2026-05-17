@@ -4,7 +4,10 @@ import { put } from "@vercel/blob";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
+import {
+  ADMIN_SETTINGS_CACHE_TAG,
+  invalidateAdminMutation,
+} from "@/lib/admin/cache-invalidation";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -179,6 +182,10 @@ function revalidateAppSettingCache(key: string, source = "admin.appSetting") {
 }
 
 function revalidateAdminSettingsSection(source = "admin.settings") {
+  invalidateAdminMutation({
+    source,
+    tags: [ADMIN_SETTINGS_CACHE_TAG],
+  });
   if (process.env.ADMIN_SETTINGS_FULL_ROUTE_REVALIDATE_ON_SAVE === "1") {
     invalidateAdminMutation({
       paths: [{ path: "/admin/settings" }],
