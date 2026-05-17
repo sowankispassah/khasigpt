@@ -1,13 +1,13 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
   createAuditLogEntry,
   ensureOAuthUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
-import { verifyMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
 import { createMobileOAuthHandoffToken } from "@/lib/mobile-auth-token";
+import { verifyMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
-import { createHash } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +29,38 @@ type GoogleUserInfo = {
 
 const MAX_OAUTH_ERROR_DETAIL_LENGTH = 180;
 const HANDOFF_COOKIE_MAX_AGE_SECONDS = 10 * 60;
+const CALLBACK_EXCHANGE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type MobileGoogleOAuthStatePayload = {
+  attemptId: string;
+  issuedAt: number | null;
+};
+
+type MobileGoogleExchangeResult =
+  | {
+      handoff: string;
+      type: "handoff";
+    }
+  | {
+      params: Record<string, string>;
+      type: "error";
+    };
+
+type CallbackExchangeCacheEntry = {
+  createdAt: number;
+  promise: Promise<MobileGoogleExchangeResult>;
+};
+
+const globalForMobileGoogleOAuth = globalThis as typeof globalThis & {
+  __mobileGoogleCallbackExchanges?: Map<string, CallbackExchangeCacheEntry>;
+};
+
+const callbackExchangeCache =
+  globalForMobileGoogleOAuth.__mobileGoogleCallbackExchanges ??
+  new Map<string, CallbackExchangeCacheEntry>();
+
+globalForMobileGoogleOAuth.__mobileGoogleCallbackExchanges ??=
+  callbackExchangeCache;
 
 function createHandoffUrl(origin: string, handoff: string) {
   const url = new URL("/api/mobile/auth/google-complete", origin);
@@ -42,6 +74,21 @@ function getHandoffCookieName(state: string) {
     .digest("base64url")
     .slice(0, 32);
   return `mobile_google_handoff_${hash}`;
+}
+
+function getCallbackExchangeKey(state: string, code: string) {
+  return createHash("sha256")
+    .update(`${state}\n${code}`)
+    .digest("base64url")
+    .slice(0, 32);
+}
+
+function pruneCallbackExchangeCache(now = Date.now()) {
+  for (const [key, entry] of callbackExchangeCache) {
+    if (now - entry.createdAt > CALLBACK_EXCHANGE_CACHE_TTL_MS) {
+      callbackExchangeCache.delete(key);
+    }
+  }
 }
 
 function getCookieValue(request: Request, name: string) {
@@ -99,36 +146,19 @@ function sanitizeOAuthErrorDetail(value: string | undefined) {
     .slice(0, MAX_OAUTH_ERROR_DETAIL_LENGTH);
 }
 
-export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const state = requestUrl.searchParams.get("state");
-  const oauthError = requestUrl.searchParams.get("error");
-
-  if (oauthError) {
-    return redirectToApp({ error: oauthError });
-  }
-
-  const statePayload = verifyMobileGoogleOAuthState(state);
-  if (!code || !state || !statePayload) {
-    return redirectToApp({ error: "invalid_oauth_state" });
-  }
-
-  const handoffCookieName = getHandoffCookieName(state);
-  const cachedHandoff = getCookieValue(request, handoffCookieName);
-  if (cachedHandoff) {
-    console.info("[mobile-google-oauth] Reused cached mobile handoff.", {
-      attemptId: statePayload.attemptId,
-    });
-    return noStoreRedirect(createHandoffUrl(requestUrl.origin, cachedHandoff));
-  }
-
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    return redirectToApp({ error: "google_not_configured" });
-  }
-
+async function exchangeGoogleCodeForHandoff({
+  clientId,
+  clientSecret,
+  code,
+  requestUrl,
+  statePayload,
+}: {
+  clientId: string;
+  clientSecret: string;
+  code: string;
+  requestUrl: URL;
+  statePayload: MobileGoogleOAuthStatePayload;
+}): Promise<MobileGoogleExchangeResult> {
   try {
     const redirectUri = `${requestUrl.origin}/api/mobile/auth/google-callback`;
     console.info("[mobile-google-oauth] Callback exchange started.", {
@@ -169,12 +199,15 @@ export async function GET(request: Request) {
         redirectUri,
         status: tokenResponse.status,
       });
-      return redirectToApp({
-        attempt: statePayload.attemptId,
-        error: `token_exchange_${tokenError}`,
-        status: String(tokenResponse.status),
-        ...(tokenDetail ? { detail: tokenDetail } : {}),
-      });
+      return {
+        params: {
+          attempt: statePayload.attemptId,
+          error: `token_exchange_${tokenError}`,
+          status: String(tokenResponse.status),
+          ...(tokenDetail ? { detail: tokenDetail } : {}),
+        },
+        type: "error",
+      };
     }
 
     const userInfoResponse = await fetch(
@@ -191,7 +224,7 @@ export async function GET(request: Request) {
       !userInfo.email ||
       userInfo.email_verified === false
     ) {
-      return redirectToApp({ error: "google_email_unverified" });
+      return { params: { error: "google_email_unverified" }, type: "error" };
     }
 
     const fallbackName = splitFullName(userInfo.name);
@@ -222,16 +255,10 @@ export async function GET(request: Request) {
       console.error("[mobile-google-oauth] Failed to record audit log.", error);
     });
 
-    const handoff = createMobileOAuthHandoffToken(user.id);
-    const response = noStoreRedirect(createHandoffUrl(requestUrl.origin, handoff));
-    response.cookies.set(handoffCookieName, handoff, {
-      httpOnly: true,
-      maxAge: HANDOFF_COOKIE_MAX_AGE_SECONDS,
-      path: "/api/mobile/auth",
-      sameSite: "lax",
-      secure: true,
-    });
-    return response;
+    return {
+      handoff: createMobileOAuthHandoffToken(user.id),
+      type: "handoff",
+    };
   } catch (error) {
     if (error instanceof ChatSDKError) {
       console.error("[mobile-google-oauth] Callback failed with app error.", {
@@ -241,17 +268,104 @@ export async function GET(request: Request) {
       });
 
       if (error.cause === "account_inactive") {
-        return redirectToApp({ error: "account_inactive" });
+        return { params: { error: "account_inactive" }, type: "error" };
       }
 
-      return redirectToApp({
-        error:
-          error.surface === "database"
-            ? "oauth_database_failed"
-            : "oauth_account_failed",
-      });
+      return {
+        params: {
+          error:
+            error.surface === "database"
+              ? "oauth_database_failed"
+              : "oauth_account_failed",
+        },
+        type: "error",
+      };
     }
     console.error("[mobile-google-oauth] Callback failed.", error);
-    return redirectToApp({ error: "oauth_callback_failed" });
+    return { params: { error: "oauth_callback_failed" }, type: "error" };
   }
+}
+
+function createHandoffResponse({
+  handoff,
+  handoffCookieName,
+  origin,
+}: {
+  handoff: string;
+  handoffCookieName: string;
+  origin: string;
+}) {
+  const response = noStoreRedirect(createHandoffUrl(origin, handoff));
+  response.cookies.set(handoffCookieName, handoff, {
+    httpOnly: true,
+    maxAge: HANDOFF_COOKIE_MAX_AGE_SECONDS,
+    path: "/api/mobile/auth",
+    sameSite: "lax",
+    secure: true,
+  });
+  return response;
+}
+
+export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const state = requestUrl.searchParams.get("state");
+  const oauthError = requestUrl.searchParams.get("error");
+
+  if (oauthError) {
+    return redirectToApp({ error: oauthError });
+  }
+
+  const statePayload = verifyMobileGoogleOAuthState(state);
+  if (!code || !state || !statePayload) {
+    return redirectToApp({ error: "invalid_oauth_state" });
+  }
+
+  const handoffCookieName = getHandoffCookieName(state);
+  const cachedHandoff = getCookieValue(request, handoffCookieName);
+  if (cachedHandoff) {
+    console.info("[mobile-google-oauth] Reused cached mobile handoff.", {
+      attemptId: statePayload.attemptId,
+    });
+    return noStoreRedirect(createHandoffUrl(requestUrl.origin, cachedHandoff));
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return redirectToApp({ error: "google_not_configured" });
+  }
+
+  pruneCallbackExchangeCache();
+  const exchangeKey = getCallbackExchangeKey(state, code);
+  const cachedExchange = callbackExchangeCache.get(exchangeKey);
+  if (cachedExchange) {
+    console.info("[mobile-google-oauth] Reusing in-flight callback exchange.", {
+      attemptId: statePayload.attemptId,
+    });
+  }
+  const exchange =
+    cachedExchange ??
+    {
+      createdAt: Date.now(),
+      promise: exchangeGoogleCodeForHandoff({
+        clientId,
+        clientSecret,
+        code,
+        requestUrl,
+        statePayload,
+      }),
+    };
+  callbackExchangeCache.set(exchangeKey, exchange);
+
+  const result = await exchange.promise;
+  if (result.type === "error") {
+    return redirectToApp(result.params);
+  }
+
+  return createHandoffResponse({
+    handoff: result.handoff,
+    handoffCookieName,
+    origin: requestUrl.origin,
+  });
 }
