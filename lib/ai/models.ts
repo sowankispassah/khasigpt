@@ -2,6 +2,7 @@ import "server-only";
 
 import { listModelConfigs } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
+import { withTimeout } from "@/lib/utils/async";
 import {
   getModelRegistry,
   MODEL_REGISTRY_CACHE_TAG,
@@ -33,6 +34,8 @@ const chatModelsCacheState =
   } satisfies ChatModelsCacheState);
 
 globalChatModelsState.__chatModelsCacheState ??= chatModelsCacheState;
+
+const MODEL_LOAD_TIMEOUT_MS = 3500;
 
 function buildChatModelsResult(
   configs: ModelConfig[],
@@ -67,7 +70,15 @@ function requireUsableChatModels(
 }
 
 async function loadChatModelsFromRegistry(): Promise<ChatModelsResult> {
-  const { configs, defaultConfig } = await getModelRegistry();
+  const { configs, defaultConfig } = await withTimeout(
+    getModelRegistry(),
+    MODEL_LOAD_TIMEOUT_MS,
+    () => {
+      console.error("[models] Registry model load timed out.", {
+        timeoutMs: MODEL_LOAD_TIMEOUT_MS,
+      });
+    }
+  );
 
   return requireUsableChatModels(
     buildChatModelsResult(configs, defaultConfig),
@@ -76,7 +87,15 @@ async function loadChatModelsFromRegistry(): Promise<ChatModelsResult> {
 }
 
 async function loadChatModelsDirectly(): Promise<ChatModelsResult> {
-  const configs = await listModelConfigs();
+  const configs = await withTimeout(
+    listModelConfigs(),
+    MODEL_LOAD_TIMEOUT_MS,
+    () => {
+      console.error("[models] Direct model load timed out.", {
+        timeoutMs: MODEL_LOAD_TIMEOUT_MS,
+      });
+    }
+  );
 
   return requireUsableChatModels(buildChatModelsResult(configs), "direct");
 }

@@ -1179,13 +1179,7 @@ export async function getChatsByUserId({
       baseConditions.push(eq(chat.mode, mode));
     }
     const baseCondition = and(...baseConditions);
-    const chatActivityAt = sql<Date>`greatest(
-      coalesce(
-        (select max(${message.createdAt}) from ${message} where ${message.chatId} = ${chat.id}),
-        ${chat.createdAt}
-      ),
-      ${chat.createdAt}
-    )`;
+    const chatActivityAt = chat.createdAt;
 
     const query = (whereCondition?: SQL<any>) =>
       db

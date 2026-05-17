@@ -18,9 +18,9 @@ import {
 import {
   getAppSetting,
   getLastKnownAppSetting,
-  listLanguagesWithSettings,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { getActiveLanguages } from "@/lib/i18n/languages";
 import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
@@ -30,6 +30,9 @@ import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
+
+const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 4000;
 
 export default async function Page({
   searchParams,
@@ -60,7 +63,11 @@ export default async function Page({
   const shouldLoadHomePrompts = !isStudyMode && !isJobsMode;
 
   const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
-    promise.catch((error) => {
+    withTimeout(promise, CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS, () => {
+      console.error(`[chat/home] ${label} query timed out.`, {
+        timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+      });
+    }).catch((error) => {
       console.error(`[chat/home] ${label} query failed.`, error);
       return fallback;
     });
@@ -70,7 +77,11 @@ export default async function Page({
     promise: Promise<T>,
     fallback: T
   ) =>
-    promise.catch((error) => {
+    withTimeout(promise, CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS, () => {
+      console.error(`[chat/home] ${label} query timed out.`, {
+        timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+      });
+    }).catch((error) => {
       console.error(`[chat/home] ${label} query failed.`, error);
       const remembered = getLastKnownAppSetting<T>(key);
       return remembered ?? fallback;
@@ -102,7 +113,7 @@ export default async function Page({
           []
         )
       : Promise.resolve([]),
-    safeQuery("languages", listLanguagesWithSettings(), []),
+    safeQuery("languages", getActiveLanguages(), []),
     safeAppSettingQuery(
       "custom knowledge flag",
       CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -127,10 +138,18 @@ export default async function Page({
       getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
       null
     ),
-    getImageGenerationAccess({
-      userId: session.user.id,
-      userRole: session.user.role,
-    }).catch(async (error) => {
+    withTimeout(
+      getImageGenerationAccess({
+        userId: session.user.id,
+        userRole: session.user.role,
+      }),
+      CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+      () => {
+        console.error("[chat/home] image generation access timed out.", {
+          timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+        });
+      }
+    ).catch(async (error) => {
       console.error("[chat/home] image generation access failed.", error);
       return getImageGenerationAvailability({ userRole: session.user.role })
         .then(buildImageGenerationAccessFromAvailability)
@@ -220,7 +239,15 @@ export default async function Page({
     chatMode === "jobs"
       ? isEmbeddedNative
         ? []
-        : await listJobListItems().catch((error) => {
+        : await withTimeout(
+            listJobListItems(),
+            CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+            () => {
+              console.error("[chat/home] jobs listing query timed out.", {
+                timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
+              });
+            }
+          ).catch((error) => {
             console.error("[chat/home] jobs listing query failed.", error);
             return [];
           })

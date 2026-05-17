@@ -39,6 +39,7 @@ import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
 import { convertToUIMessages } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 const chatPageInitialLimitRaw = Number.parseInt(
   process.env.CHAT_PAGE_INITIAL_MESSAGE_LIMIT ?? "",
@@ -50,6 +51,7 @@ const CHAT_PAGE_INITIAL_MESSAGE_LIMIT =
     : CHAT_HISTORY_PAGE_SIZE;
 const CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS = 15;
 const CHAT_PAGE_PENDING_WINDOW_MS = 15_000;
+const CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS = 4000;
 
 const getChatByIdCached = unstable_cache(
   async (chatId: string) => getChatById({ id: chatId, includeDeleted: true }),
@@ -103,6 +105,19 @@ export default async function Page(props: {
   const isPendingRecentChat =
     recentChatCookie?.chatId === id &&
     Date.now() - recentChatCookie.timestamp <= CHAT_PAGE_PENDING_WINDOW_MS;
+  const safeOptionalQuery = <T,>(
+    label: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
+    withTimeout(promise, CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS, () => {
+      console.error(`[chat] ${label} query timed out.`, {
+        timeoutMs: CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
+      });
+    }).catch((error) => {
+      console.error(`[chat] ${label} query failed.`, error);
+      return fallback;
+    });
   const [
     modelsResult,
     translationBundle,
@@ -116,15 +131,39 @@ export default async function Page(props: {
     loadChatModels(),
     getTranslationBundle(preferredLanguage),
     // Cached via `unstable_cache` and avoids a per-request DB query.
-    getActiveLanguages(),
-    getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-    getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
-    getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-    getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-    getImageGenerationAccess({
-      userId: session?.user?.id ?? null,
-      userRole: session?.user?.role ?? null,
-    }).catch(async (error) => {
+    safeOptionalQuery("languages", getActiveLanguages(), []),
+    safeOptionalQuery(
+      "custom knowledge flag",
+      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
+      null
+    ),
+    safeOptionalQuery(
+      "document uploads flag",
+      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeOptionalQuery(
+      "study mode flag",
+      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
+      null
+    ),
+    safeOptionalQuery(
+      "jobs mode flag",
+      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
+      null
+    ),
+    withTimeout(
+      getImageGenerationAccess({
+        userId: session?.user?.id ?? null,
+        userRole: session?.user?.role ?? null,
+      }),
+      CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
+      () => {
+        console.error("[chat] image generation access timed out.", {
+          timeoutMs: CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
+        });
+      }
+    ).catch(async (error) => {
       console.error("[chat] image generation access failed.", error);
       return getImageGenerationAvailability({
         userRole: session?.user?.role ?? null,
@@ -170,8 +209,16 @@ export default async function Page(props: {
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, userRole);
   const [suggestedPrompts, iconPromptActions] = await Promise.all([
-    loadSuggestedPrompts(preferredLanguage, userRole),
-    loadIconPromptActions(preferredLanguage, userRole),
+    safeOptionalQuery(
+      "suggested prompts",
+      loadSuggestedPrompts(preferredLanguage, userRole),
+      []
+    ),
+    safeOptionalQuery(
+      "icon prompt actions",
+      loadIconPromptActions(preferredLanguage, userRole),
+      []
+    ),
   ]);
   const activeLanguageSettings = languageSettings.map((language) => ({
     id: language.id,
