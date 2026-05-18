@@ -888,6 +888,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label to stop recording and save the voice chat turn.",
   },
   {
+    key: "voice.chat.end",
+    defaultText: "End voice chat",
+    description: "Button label to end an active live voice chat session.",
+  },
+  {
+    key: "voice.chat.saving",
+    defaultText: "Saving...",
+    description: "Button label while a completed voice chat is being saved.",
+  },
+  {
     key: "voice.chat.disabled",
     defaultText: "Voice chat is currently unavailable.",
     description: "Error shown when native voice chat is disabled.",

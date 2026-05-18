@@ -8,9 +8,14 @@ export type WebGeminiVoiceTurnStatus =
   | "thinking"
   | "speaking";
 
+export type WebGeminiVoiceConversationMessage = {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+};
+
 export type WebGeminiVoiceTurnResult = {
-  assistantText: string;
-  userText: string;
+  messages: WebGeminiVoiceConversationMessage[];
 };
 
 export type WebGeminiVoiceTurnController = {
@@ -21,6 +26,7 @@ export type WebGeminiVoiceTurnController = {
 type WebGeminiVoiceCallbacks = {
   onAssistantTranscript?: (text: string) => void;
   onError?: (error: Error) => void;
+  onMessages?: (messages: WebGeminiVoiceConversationMessage[]) => void;
   onStatus?: (status: WebGeminiVoiceTurnStatus) => void;
   onUserTranscript?: (text: string) => void;
 };
@@ -44,6 +50,10 @@ function appendTranscript(current: string, next: unknown) {
     return normalized;
   }
   return `${current} ${normalized}`.trim();
+}
+
+function createMessageId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
 
 async function parseServerMessage(data: unknown) {
@@ -172,6 +182,7 @@ async function requestVoiceToken() {
 export async function startWebGeminiVoiceTurn({
   onAssistantTranscript,
   onError,
+  onMessages,
   onStatus,
   onUserTranscript,
 }: WebGeminiVoiceCallbacks = {}): Promise<WebGeminiVoiceTurnController> {
@@ -196,6 +207,9 @@ export async function startWebGeminiVoiceTurn({
 
   let userText = "";
   let assistantText = "";
+  let messages: WebGeminiVoiceConversationMessage[] = [];
+  let activeUserMessageId: string | null = null;
+  let activeAssistantMessageId: string | null = null;
   let hasStoppedInput = false;
   let isSetupComplete = false;
   let isSettled = false;
@@ -218,6 +232,39 @@ export async function startWebGeminiVoiceTurn({
       tokenResponse.token
     )}`
   );
+
+  const emitMessages = () => {
+    onMessages?.(messages.map((message) => ({ ...message })));
+  };
+
+  const updateActiveMessage = (
+    role: WebGeminiVoiceConversationMessage["role"],
+    text: string
+  ) => {
+    const normalizedText = text.trim();
+    if (!normalizedText) {
+      return;
+    }
+
+    const activeId =
+      role === "user" ? activeUserMessageId : activeAssistantMessageId;
+    if (activeId) {
+      messages = messages.map((message) =>
+        message.id === activeId ? { ...message, text: normalizedText } : message
+      );
+      emitMessages();
+      return;
+    }
+
+    const id = createMessageId();
+    if (role === "user") {
+      activeUserMessageId = id;
+    } else {
+      activeAssistantMessageId = id;
+    }
+    messages = [...messages, { id, role, text: normalizedText }];
+    emitMessages();
+  };
 
   const cleanup = async () => {
     if (setupTimeout) {
@@ -344,6 +391,7 @@ export async function startWebGeminiVoiceTurn({
       serverContent.inputTranscription?.text
     );
     if (userText) {
+      updateActiveMessage("user", userText);
       onUserTranscript?.(userText);
     }
 
@@ -352,6 +400,7 @@ export async function startWebGeminiVoiceTurn({
       serverContent.outputTranscription?.text
     );
     if (assistantText) {
+      updateActiveMessage("assistant", assistantText);
       onAssistantTranscript?.(assistantText);
     }
 
@@ -376,11 +425,16 @@ export async function startWebGeminiVoiceTurn({
       }
     }
 
-    if (serverContent.turnComplete && hasStoppedInput) {
-      settle({
-        assistantText: assistantText.trim(),
-        userText: userText.trim(),
-      });
+    if (serverContent.turnComplete) {
+      userText = "";
+      assistantText = "";
+      activeUserMessageId = null;
+      activeAssistantMessageId = null;
+      if (hasStoppedInput) {
+        settle({ messages });
+      } else {
+        onStatus?.("listening");
+      }
     }
   };
 
@@ -391,7 +445,7 @@ export async function startWebGeminiVoiceTurn({
       }
       isSettled = true;
       cleanup().catch(() => undefined);
-      resolveResult?.({ assistantText: "", userText: "" });
+      resolveResult?.({ messages: [] });
     },
     stop: async () => {
       if (!hasStoppedInput) {
@@ -411,10 +465,7 @@ export async function startWebGeminiVoiceTurn({
           );
         }
         stopTimeout = setTimeout(() => {
-          settle({
-            assistantText: assistantText.trim(),
-            userText: userText.trim(),
-          });
+          settle({ messages });
         }, TURN_RESULT_TIMEOUT_MS);
       }
       return resultPromise;

@@ -32,6 +32,7 @@ import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn } from "@/lib/utils";
 import {
   startWebGeminiVoiceTurn,
+  type WebGeminiVoiceConversationMessage,
   type WebGeminiVoiceTurnController,
   type WebGeminiVoiceTurnStatus,
 } from "@/lib/voice/web-live-voice";
@@ -63,6 +64,57 @@ import {
   TooltipTrigger,
 } from "./ui/tooltip";
 import type { VisibilityType } from "./visibility-selector";
+
+type VoiceConversationPair = {
+  assistantText: string;
+  userText: string;
+};
+
+function buildVoiceConversationPairs(
+  voiceMessages: WebGeminiVoiceConversationMessage[]
+) {
+  const pairs: VoiceConversationPair[] = [];
+  let pendingUserText: string | null = null;
+
+  for (const message of voiceMessages) {
+    const text = message.text.trim();
+    if (!text) {
+      continue;
+    }
+    if (message.role === "user") {
+      pendingUserText = text;
+      continue;
+    }
+    if (pendingUserText) {
+      pairs.push({ assistantText: text, userText: pendingUserText });
+      pendingUserText = null;
+    }
+  }
+
+  return pairs;
+}
+
+function hasPendingVoiceUserMessage(
+  voiceMessages: WebGeminiVoiceConversationMessage[]
+) {
+  let hasPendingUser = false;
+
+  for (const message of voiceMessages) {
+    const text = message.text.trim();
+    if (!text) {
+      continue;
+    }
+    if (message.role === "user") {
+      hasPendingUser = true;
+      continue;
+    }
+    if (hasPendingUser) {
+      hasPendingUser = false;
+    }
+  }
+
+  return hasPendingUser;
+}
 
 function PureMultimodalInput({
   chatId: _chatId,
@@ -225,8 +277,9 @@ function PureMultimodalInput({
   const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] =
     useState<WebGeminiVoiceTurnStatus>("connecting");
-  const [voiceUserTranscript, setVoiceUserTranscript] = useState("");
-  const [voiceAssistantTranscript, setVoiceAssistantTranscript] = useState("");
+  const [voiceMessages, setVoiceMessages] = useState<
+    WebGeminiVoiceConversationMessage[]
+  >([]);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [isVoiceSaving, setIsVoiceSaving] = useState(false);
   const acceptedFileTypes = useMemo(
@@ -332,8 +385,7 @@ function PureMultimodalInput({
 
   const resetVoiceState = useCallback(() => {
     setVoiceStatus("connecting");
-    setVoiceUserTranscript("");
-    setVoiceAssistantTranscript("");
+    setVoiceMessages([]);
     setVoiceError(null);
     setIsVoiceSaving(false);
   }, []);
@@ -345,50 +397,61 @@ function PureMultimodalInput({
     resetVoiceState();
   }, [resetVoiceState]);
 
-  const saveVoiceTurn = useCallback(
-    async ({
-      assistantText,
-      userText,
-    }: {
-      assistantText: string;
-      userText: string;
-    }) => {
-      const userMessageId = crypto.randomUUID();
-      const assistantMessageId = crypto.randomUUID();
+  const saveVoiceConversation = useCallback(
+    async (conversationMessages: WebGeminiVoiceConversationMessage[]) => {
+      const pairs = buildVoiceConversationPairs(conversationMessages);
+      if (pairs.length === 0) {
+        throw new Error(
+          translate(
+            "voice.chat.empty_result",
+            "I could not hear enough speech. Please try again."
+          )
+        );
+      }
+
+      const messagePairs = pairs.map((pair) => ({
+        ...pair,
+        assistantMessageId: crypto.randomUUID(),
+        userMessageId: crypto.randomUUID(),
+      }));
       setMessages((currentMessages) => [
         ...currentMessages,
-        {
-          id: userMessageId,
-          metadata: { createdAt: new Date().toISOString() },
-          parts: [{ type: "text", text: userText }],
-          role: "user",
-        },
-        {
-          id: assistantMessageId,
-          metadata: { createdAt: new Date().toISOString() },
-          parts: [{ type: "text", text: assistantText }],
-          role: "assistant",
-        },
+        ...messagePairs.flatMap((pair) => [
+          {
+            id: pair.userMessageId,
+            metadata: { createdAt: new Date().toISOString() },
+            parts: [{ type: "text" as const, text: pair.userText }],
+            role: "user" as const,
+          },
+          {
+            id: pair.assistantMessageId,
+            metadata: { createdAt: new Date().toISOString() },
+            parts: [{ type: "text" as const, text: pair.assistantText }],
+            role: "assistant" as const,
+          },
+        ]),
       ]);
 
-      const response = await fetch("/api/chat/voice-turn", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          assistantMessageId,
-          assistantText,
-          chatId: _chatId,
-          selectedVisibilityType: _selectedVisibilityType,
-          userMessageId,
-          userText,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(
-          translate("voice.chat.save_failed", "Unable to save this voice chat.")
-        );
+      for (const pair of messagePairs) {
+        const response = await fetch("/api/chat/voice-turn", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            assistantMessageId: pair.assistantMessageId,
+            assistantText: pair.assistantText,
+            chatId: _chatId,
+            selectedVisibilityType: _selectedVisibilityType,
+            userMessageId: pair.userMessageId,
+            userText: pair.userText,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            translate("voice.chat.save_failed", "Unable to save this voice chat.")
+          );
+        }
       }
 
       onVoiceTurnSaved?.();
@@ -402,17 +465,16 @@ function PureMultimodalInput({
       return;
     }
 
-    const capturedUserText = voiceUserTranscript.trim();
-    const capturedAssistantText = voiceAssistantTranscript.trim();
-    if (capturedUserText && capturedAssistantText) {
+    const completedPairs = buildVoiceConversationPairs(voiceMessages);
+    if (
+      completedPairs.length > 0 &&
+      !hasPendingVoiceUserMessage(voiceMessages)
+    ) {
       controller.cancel();
       voiceTurnControllerRef.current = null;
       setIsVoiceDialogOpen(false);
       resetVoiceState();
-      void saveVoiceTurn({
-        assistantText: capturedAssistantText,
-        userText: capturedUserText,
-      }).catch((error) => {
+      void saveVoiceConversation(voiceMessages).catch((error) => {
         toast.error(
           error instanceof Error
             ? error.message
@@ -425,18 +487,7 @@ function PureMultimodalInput({
     setIsVoiceSaving(true);
     try {
       const result = await controller.stop();
-      const userText = result.userText.trim();
-      const assistantText = result.assistantText.trim();
-      if (!userText || !assistantText) {
-        throw new Error(
-          translate(
-            "voice.chat.empty_result",
-            "I could not hear enough speech. Please try again."
-          )
-        );
-      }
-
-      await saveVoiceTurn({ assistantText, userText });
+      await saveVoiceConversation(result.messages);
       voiceTurnControllerRef.current = null;
       setIsVoiceDialogOpen(false);
       resetVoiceState();
@@ -451,10 +502,9 @@ function PureMultimodalInput({
   }, [
     isVoiceSaving,
     resetVoiceState,
-    saveVoiceTurn,
+    saveVoiceConversation,
     translate,
-    voiceAssistantTranscript,
-    voiceUserTranscript,
+    voiceMessages,
   ]);
 
   const startVoiceChat = useCallback(async () => {
@@ -472,12 +522,11 @@ function PureMultimodalInput({
     setIsVoiceDialogOpen(true);
     try {
       const controller = await startWebGeminiVoiceTurn({
-        onAssistantTranscript: setVoiceAssistantTranscript,
         onError: (error) => {
           setVoiceError(error.message);
         },
+        onMessages: setVoiceMessages,
         onStatus: setVoiceStatus,
-        onUserTranscript: setVoiceUserTranscript,
       });
       voiceTurnControllerRef.current = controller;
     } catch (error) {
@@ -788,37 +837,53 @@ function PureMultimodalInput({
               </div>
             </div>
 
-            <div className="mt-6 space-y-5">
-              <div>
-                <EditableTranslation
-                  className="font-semibold text-muted-foreground text-xs uppercase"
-                  defaultText="You"
-                  description="Label for the user's voice transcript."
-                  translationKey="voice.chat.you"
-                />
-                <p className="mt-2 min-h-7 text-sm">
-                  {voiceUserTranscript ||
-                    translate(
-                      "voice.chat.waiting_for_speech",
-                      "Waiting for speech..."
-                    )}
+            <div className="mt-6 max-h-[48vh] space-y-3 overflow-y-auto pr-1">
+              {voiceMessages.length > 0 ? (
+                voiceMessages.map((message) => {
+                  const isUserMessage = message.role === "user";
+                  return (
+                    <div
+                      className={cn(
+                        "flex",
+                        isUserMessage ? "justify-end" : "justify-start"
+                      )}
+                      key={message.id}
+                    >
+                      <div
+                        className={cn(
+                          "max-w-[82%] rounded-2xl px-3 py-2 text-sm",
+                          isUserMessage
+                            ? "rounded-br-md bg-primary text-primary-foreground"
+                            : "rounded-bl-md bg-muted text-foreground"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "mb-1 font-semibold text-[10px] uppercase",
+                            isUserMessage
+                              ? "text-primary-foreground/75"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {isUserMessage
+                            ? translate("voice.chat.you", "You")
+                            : translate("voice.chat.assistant", "KhasiGPT")}
+                        </div>
+                        <p className="whitespace-pre-wrap break-words">
+                          {message.text}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">
+                  {translate(
+                    "voice.chat.waiting_for_speech",
+                    "Waiting for speech..."
+                  )}
                 </p>
-              </div>
-              <div>
-                <EditableTranslation
-                  className="font-semibold text-muted-foreground text-xs uppercase"
-                  defaultText="KhasiGPT"
-                  description="Label for the assistant's voice transcript."
-                  translationKey="voice.chat.assistant"
-                />
-                <p className="mt-2 min-h-7 text-sm">
-                  {voiceAssistantTranscript ||
-                    translate(
-                      "voice.chat.waiting_for_response",
-                      "Waiting for response..."
-                    )}
-                </p>
-              </div>
+              )}
             </div>
 
             {voiceError ? (
@@ -842,8 +907,8 @@ function PureMultimodalInput({
                 type="button"
               >
                 {isVoiceSaving
-                  ? translate("voice.chat.thinking", "Thinking...")
-                  : translate("voice.chat.stop", "Stop and send")}
+                  ? translate("voice.chat.saving", "Saving...")
+                  : translate("voice.chat.end", "End voice chat")}
               </Button>
             </div>
           </div>
