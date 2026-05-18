@@ -84,16 +84,18 @@ export function LiveVoiceProfitabilityFields({
     const safeMultiplier = normalizeLiveVoiceCreditMultiplier(multiplier);
     const baseCredits = LIVE_VOICE_BASE_CREDIT_UNITS;
     const finalCredits = baseCredits * safeMultiplier;
-    const tokensPerInteraction =
+    const chargedTokens =
       calculateLiveVoiceTokensPerInteraction(safeMultiplier);
+    const baseProviderUsageTokens =
+      LIVE_VOICE_BASE_CREDIT_UNITS * TOKENS_PER_CREDIT;
     const inputProviderRateUsd = parsePositiveNumber(inputCost);
     const outputProviderRateUsd = parsePositiveNumber(outputCost);
     const providerRateUsd =
       inputProviderRateUsd + outputProviderRateUsd;
     const providerInputCostUsd =
-      (inputProviderRateUsd * tokensPerInteraction) / 1_000_000;
+      (inputProviderRateUsd * baseProviderUsageTokens) / 1_000_000;
     const providerOutputCostUsd =
-      (outputProviderRateUsd * tokensPerInteraction) / 1_000_000;
+      (outputProviderRateUsd * baseProviderUsageTokens) / 1_000_000;
     const providerCostUsd = providerInputCostUsd + providerOutputCostUsd;
     const hasCreditValue =
       recommendedPlanPriceInPaise > 0 &&
@@ -116,6 +118,8 @@ export function LiveVoiceProfitabilityFields({
 
     return {
       baseCredits,
+      baseProviderUsageTokens,
+      chargedTokens,
       creditValueInr,
       creditValueUsd,
       finalCredits,
@@ -132,7 +136,6 @@ export function LiveVoiceProfitabilityFields({
       revenueInr,
       revenueUsd,
       safeMultiplier,
-      tokensPerInteraction,
     };
   }, [
     inputCost,
@@ -236,7 +239,7 @@ export function LiveVoiceProfitabilityFields({
           </div>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
-          This deducts about {formatTokens(preview.tokensPerInteraction)}{" "}
+          This deducts about {formatTokens(preview.chargedTokens)}{" "}
           internal usage tokens from the shared credits balance.
         </p>
       </div>
@@ -250,6 +253,9 @@ export function LiveVoiceProfitabilityFields({
             <p className="mt-1 text-muted-foreground text-xs">
               Credit value uses the current recommended pricing plan
               {recommendedPlanName ? `: ${recommendedPlanName}.` : "."}
+              {" "}The API cost estimate uses the base provider usage for one
+              voice interaction, while the multiplier changes only the user
+              charge.
             </p>
           </div>
           <span
@@ -341,10 +347,12 @@ export function LiveVoiceProfitabilityFields({
           </p>
           <p>
             Input estimate: {formatUsd(preview.providerInputCostUsd)} from{" "}
+            {formatTokens(preview.baseProviderUsageTokens)} provider tokens at{" "}
             {formatUsd(preview.inputProviderRateUsd)} / 1M.
           </p>
           <p>
             Output estimate: {formatUsd(preview.providerOutputCostUsd)} from{" "}
+            {formatTokens(preview.baseProviderUsageTokens)} provider tokens at{" "}
             {formatUsd(preview.outputProviderRateUsd)} / 1M.
           </p>
         </div>
