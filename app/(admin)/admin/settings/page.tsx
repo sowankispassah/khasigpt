@@ -131,7 +131,7 @@ import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
-import { LiveVoiceCreditMultiplierField } from "./live-voice-credit-multiplier-field";
+import { LiveVoiceProfitabilityFields } from "./live-voice-profitability-fields";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
@@ -3890,52 +3890,15 @@ export default async function AdminSettingsPage({
                     </div>
 
                     <div className="md:col-span-2">
-                      <LiveVoiceCreditMultiplierField
-                        initialMultiplier={3}
-                        inputId="live-voice-create-credit-multiplier"
+                      <LiveVoiceProfitabilityFields
+                        inputIdPrefix="live-voice-create"
+                        recommendedPlanName={recommendedPlanName}
+                        recommendedPlanPriceInPaise={recommendedPlanPriceInPaise}
+                        recommendedPlanTokenAllowance={
+                          recommendedPlanTokenAllowance
+                        }
+                        usdToInr={usdToInr}
                       />
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceInputProviderCostPerMillion"
-                      >
-                        Provider input cost (USD / 1M tokens)
-                      </label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue={0}
-                        id="liveVoiceInputProviderCostPerMillion"
-                        min={0}
-                        name="inputProviderCostPerMillion"
-                        step="0.000001"
-                        type="number"
-                      />
-                      <p className="text-muted-foreground text-xs">
-                        Private reference for tracking realtime input/audio cost.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label
-                        className="font-medium text-sm"
-                        htmlFor="liveVoiceOutputProviderCostPerMillion"
-                      >
-                        Provider output cost (USD / 1M tokens)
-                      </label>
-                      <input
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                        defaultValue={0}
-                        id="liveVoiceOutputProviderCostPerMillion"
-                        min={0}
-                        name="outputProviderCostPerMillion"
-                        step="0.000001"
-                        type="number"
-                      />
-                      <p className="text-muted-foreground text-xs">
-                        Private reference for tracking realtime response/audio cost.
-                      </p>
                     </div>
 
                     <div className="flex flex-col gap-2 md:col-span-2">
@@ -4253,49 +4216,26 @@ export default async function AdminSettingsPage({
                                 </div>
 
                                 <div className="md:col-span-2">
-                                  <LiveVoiceCreditMultiplierField
-                                    initialMultiplier={Number(model.creditMultiplier ?? 1)}
-                                    inputId={`live-voice-credit-multiplier-${model.id}`}
+                                  <LiveVoiceProfitabilityFields
+                                    initialInputProviderCostPerMillion={
+                                      model.inputProviderCostPerMillion ?? 0
+                                    }
+                                    initialMultiplier={Number(
+                                      model.creditMultiplier ?? 1
+                                    )}
+                                    initialOutputProviderCostPerMillion={
+                                      model.outputProviderCostPerMillion ?? 0
+                                    }
+                                    inputIdPrefix={`live-voice-${model.id}`}
+                                    recommendedPlanName={recommendedPlanName}
+                                    recommendedPlanPriceInPaise={
+                                      recommendedPlanPriceInPaise
+                                    }
+                                    recommendedPlanTokenAllowance={
+                                      recommendedPlanTokenAllowance
+                                    }
+                                    usdToInr={usdToInr}
                                   />
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-input-cost-${model.id}`}
-                                  >
-                                    Provider input cost (USD / 1M tokens)
-                                  </label>
-                                  <input
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.inputProviderCostPerMillion ?? 0}
-                                    id={`live-voice-input-cost-${model.id}`}
-                                    min={0}
-                                    name="inputProviderCostPerMillion"
-                                    step="0.000001"
-                                    type="number"
-                                  />
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                  <label
-                                    className="font-medium text-sm"
-                                    htmlFor={`live-voice-output-cost-${model.id}`}
-                                  >
-                                    Provider output cost (USD / 1M tokens)
-                                  </label>
-                                  <input
-                                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                                    defaultValue={model.outputProviderCostPerMillion ?? 0}
-                                    id={`live-voice-output-cost-${model.id}`}
-                                    min={0}
-                                    name="outputProviderCostPerMillion"
-                                    step="0.000001"
-                                    type="number"
-                                  />
-                                  <p className="text-muted-foreground text-xs">
-                                    Private reference only. Credit charging still uses the live voice multiplier.
-                                  </p>
                                 </div>
 
                                 <div className="flex flex-col gap-2 md:col-span-2">
