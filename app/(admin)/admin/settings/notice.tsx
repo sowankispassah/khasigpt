@@ -126,6 +126,11 @@ const NOTICE_MESSAGES: Record<
     type: "error",
     message: "That live voice model no longer exists.",
   },
+  "live-voice-model-update-error": {
+    type: "error",
+    message:
+      "Failed to update the live voice model configuration. Check the model values and try again.",
+  },
   "privacy-updated": { type: "success", message: "Privacy policy updated." },
   "terms-updated": { type: "success", message: "Terms of service updated." },
   "about-updated": { type: "success", message: "About page content updated." },

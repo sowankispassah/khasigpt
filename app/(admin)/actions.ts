@@ -1803,13 +1803,22 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
   const isDefaultValue = parseBooleanFromEntries(formData, "isDefault");
   const shouldSetDefault = isDefaultValue === true;
 
-  const updated = await updateLiveVoiceModelConfig(patch);
-  if (!updated) {
-    redirect("/admin/settings?notice=live-voice-model-update-missing");
-  }
+  let updated: Awaited<ReturnType<typeof updateLiveVoiceModelConfig>>;
+  try {
+    updated = await updateLiveVoiceModelConfig(patch);
+    if (!updated) {
+      redirect("/admin/settings?notice=live-voice-model-update-missing");
+    }
 
-  if (shouldSetDefault) {
-    await setDefaultLiveVoiceModelConfig(id);
+    if (shouldSetDefault) {
+      await setDefaultLiveVoiceModelConfig(id);
+    }
+  } catch (error) {
+    if (isRedirectErrorLike(error)) {
+      throw error;
+    }
+    console.error("Failed to update live voice model configuration", error);
+    redirect("/admin/settings?notice=live-voice-model-update-error");
   }
 
   await createAuditLogEntrySafely({
@@ -1820,6 +1829,8 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.update");
+
+  redirect("/admin/settings?notice=live-voice-model-updated");
 }
 
 export async function deleteLiveVoiceModelConfigAction(formData: FormData) {
