@@ -160,8 +160,12 @@ export function SiteAccessSettingsPanel({
   const [savingField, setSavingField] = useState<string | null>(null);
   const [pathInput, setPathInput] = useState(initialState.adminEntryPath);
   const [codeInput, setCodeInput] = useState("");
-  const [syncedAt, setSyncedAt] = useState<Date | null>(new Date());
+  const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [currentOrigin, setCurrentOrigin] = useState("");
+
+  useEffect(() => {
+    setSyncedAt(new Date());
+  }, []);
 
   const syncFromServer = useCallback(async () => {
     setIsLoading(true);

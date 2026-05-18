@@ -222,10 +222,15 @@ function revalidateAdminImageModelSettings(source = "admin.imageModels") {
 
 function revalidateAdminLiveVoiceModelSettings(source = "admin.liveVoiceModels") {
   invalidateAdminMutation({
+    cacheMode: "update",
     source,
     tags: [LIVE_VOICE_MODEL_CONFIG_CACHE_TAG],
   });
-  revalidateAdminSettingsSection(source);
+  invalidateAdminMutation({
+    cacheMode: "update",
+    source,
+    tags: [ADMIN_SETTINGS_CACHE_TAG],
+  });
 }
 
 function revalidateAdminPricingSettings(source = "admin.pricing") {
@@ -1829,8 +1834,6 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminLiveVoiceModelSettings("live_voice_model.update");
-
-  redirect("/admin/settings?notice=live-voice-model-updated");
 }
 
 export async function deleteLiveVoiceModelConfigAction(formData: FormData) {

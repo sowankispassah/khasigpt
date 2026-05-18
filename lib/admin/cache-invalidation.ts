@@ -1,6 +1,6 @@
 import "server-only";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 
 export const ADMIN_SETTINGS_CACHE_TAG = "admin-settings";
 
@@ -10,6 +10,7 @@ type AdminInvalidationPath = {
 };
 
 type AdminInvalidationInput = {
+  cacheMode?: "stale" | "expire" | "update";
   paths?: AdminInvalidationPath[];
   source: string;
   tags?: string[];
@@ -20,6 +21,7 @@ function uniqueValues(values: string[]) {
 }
 
 export function invalidateAdminMutation({
+  cacheMode = "stale",
   paths = [],
   source,
   tags = [],
@@ -34,13 +36,20 @@ export function invalidateAdminMutation({
   );
 
   console.info("[admin/invalidation]", {
+    cacheMode,
     paths: uniquePaths,
     source,
     tags: uniqueTags,
   });
 
   for (const tag of uniqueTags) {
-    revalidateTag(tag, "max");
+    if (cacheMode === "update") {
+      updateTag(tag);
+    } else if (cacheMode === "expire") {
+      revalidateTag(tag, { expire: 0 });
+    } else {
+      revalidateTag(tag, "max");
+    }
   }
 
   for (const entry of uniquePaths) {
