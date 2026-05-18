@@ -261,16 +261,14 @@ export async function startWebGeminiVoiceTurn({
     ws.send(
       JSON.stringify({
         realtimeInput: {
-          mediaChunks: [
-            {
-              data: floatToPcm16Base64(
-                input,
-                audioContext.sampleRate,
-                tokenResponse.inputSampleRate
-              ),
-              mimeType: tokenResponse.inputAudioMimeType,
-            },
-          ],
+          audio: {
+            data: floatToPcm16Base64(
+              input,
+              audioContext.sampleRate,
+              tokenResponse.inputSampleRate
+            ),
+            mimeType: tokenResponse.inputAudioMimeType,
+          },
         },
       })
     );
