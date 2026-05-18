@@ -38,6 +38,7 @@ import {
   createCharacterWithAliases,
   createImageModelConfig,
   createLanguageEntry,
+  createLiveVoiceModelConfig,
   createModelConfig,
   createPrelaunchInviteToken,
   createPricingPlan,
@@ -46,6 +47,7 @@ import {
   deleteChatById,
   deleteImageModelConfig,
   deleteLanguageById,
+  deleteLiveVoiceModelConfig,
   deleteModelConfig,
   deletePrelaunchInviteToken,
   deletePricingPlan,
@@ -55,6 +57,7 @@ import {
   getAppSettingUncached,
   getImageModelConfigByKey,
   getLanguageByIdRaw,
+  getLiveVoiceModelConfigByKey,
   getModelConfigById,
   getModelConfigByKey,
   getPricingPlanById,
@@ -63,6 +66,7 @@ import {
   grantUserCredits,
   hardDeleteChatById,
   hardDeleteImageModelConfig,
+  hardDeleteLiveVoiceModelConfig,
   hardDeleteModelConfig,
   hardDeletePricingPlan,
   recordCouponRewardPayout,
@@ -73,12 +77,14 @@ import {
   setAppSetting,
   setCouponRewardStatus,
   setCouponStatus,
+  setDefaultLiveVoiceModelConfig,
   setDefaultModelConfig,
   setMarginBaselineModel,
   updateCharacterWithAliases,
   updateImageModelConfig,
   updateLanguageActiveState,
   updateLanguageDetails,
+  updateLiveVoiceModelConfig,
   updateModelConfig,
   updatePricingPlan,
   updateTranslationFeatureLanguageActiveState,
@@ -158,6 +164,10 @@ import {
 } from "@/lib/uploads/document-uploads";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
+import {
+  LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+  normalizeLiveVoiceCreditMultiplier,
+} from "@/lib/voice/live";
 
 async function requireAdmin() {
   const session = await withTimeout(auth(), ADMIN_ACTION_AUTH_TIMEOUT_MS).catch(
@@ -206,6 +216,14 @@ function revalidateAdminImageModelSettings(source = "admin.imageModels") {
   invalidateAdminMutation({
     source,
     tags: [IMAGE_MODEL_REGISTRY_CACHE_TAG],
+  });
+  revalidateAdminSettingsSection(source);
+}
+
+function revalidateAdminLiveVoiceModelSettings(source = "admin.liveVoiceModels") {
+  invalidateAdminMutation({
+    source,
+    tags: [LIVE_VOICE_MODEL_CONFIG_CACHE_TAG],
   });
   revalidateAdminSettingsSection(source);
 }
@@ -1635,6 +1653,223 @@ export async function setMarginBaselineModelAction(formData: FormData) {
   revalidateAdminModelSettings("model.setMarginBaseline");
 
   redirect("/admin/settings?notice=model-margin-baseline");
+}
+
+export async function createLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const key = formData.get("key")?.toString().trim();
+  const provider = formData.get("provider")?.toString().trim();
+  const providerModelId = formData.get("providerModelId")?.toString().trim();
+  const displayName = formData.get("displayName")?.toString().trim();
+
+  if (!key || !provider || !providerModelId || !displayName) {
+    throw new Error("Missing required live voice model configuration fields");
+  }
+
+  const existingConfig = await getLiveVoiceModelConfigByKey({
+    key,
+    includeDeleted: true,
+  });
+
+  if (existingConfig) {
+    if (existingConfig.deletedAt) {
+      redirect("/admin/settings?notice=live-voice-model-key-soft-deleted");
+    } else {
+      redirect("/admin/settings?notice=live-voice-model-key-conflict");
+    }
+  }
+
+  let created: Awaited<ReturnType<typeof createLiveVoiceModelConfig>>;
+  try {
+    created = await createLiveVoiceModelConfig({
+      key,
+      provider: provider as any,
+      providerModelId,
+      displayName,
+      description: formData.get("description")?.toString() ?? "",
+      systemInstruction:
+        formData.get("systemInstruction")?.toString().trim() ?? "",
+      voiceName: formData.get("voiceName")?.toString().trim() || "Zephyr",
+      mediaResolution:
+        formData.get("mediaResolution")?.toString().trim() ||
+        "MEDIA_RESOLUTION_MEDIUM",
+      creditMultiplier: normalizeLiveVoiceCreditMultiplier(
+        formData.get("creditMultiplier")
+      ),
+      config: parseJson(formData.get("configJson")),
+      isEnabled: parseBoolean(formData.get("isEnabled")),
+      enabledOnWeb: parseBoolean(formData.get("enabledOnWeb")),
+      enabledOnNative: parseBoolean(formData.get("enabledOnNative")),
+      isDefault: parseBoolean(formData.get("isDefault")),
+    });
+  } catch (error) {
+    console.error("Failed to create live voice model configuration", error);
+    redirect("/admin/settings?notice=live-voice-model-create-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.create",
+    target: { liveVoiceModelId: created.id },
+    metadata: { key, provider, providerModelId },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.create");
+
+  redirect("/admin/settings?notice=live-voice-model-created");
+}
+
+export async function updateLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  const patch: Parameters<typeof updateLiveVoiceModelConfig>[0] = { id };
+
+  const provider = formData.get("provider");
+  if (provider) {
+    patch.provider = provider.toString() as any;
+  }
+  const providerModelId = formData.get("providerModelId");
+  if (providerModelId) {
+    patch.providerModelId = providerModelId.toString();
+  }
+  const displayName = formData.get("displayName");
+  if (displayName) {
+    patch.displayName = displayName.toString();
+  }
+  if (formData.has("description")) {
+    patch.description = formData.get("description")?.toString() ?? "";
+  }
+  if (formData.has("systemInstruction")) {
+    patch.systemInstruction =
+      formData.get("systemInstruction")?.toString().trim() ?? "";
+  }
+  if (formData.has("voiceName")) {
+    patch.voiceName = formData.get("voiceName")?.toString().trim() || "Zephyr";
+  }
+  if (formData.has("mediaResolution")) {
+    patch.mediaResolution =
+      formData.get("mediaResolution")?.toString().trim() ||
+      "MEDIA_RESOLUTION_MEDIUM";
+  }
+  if (formData.has("creditMultiplier")) {
+    patch.creditMultiplier = normalizeLiveVoiceCreditMultiplier(
+      formData.get("creditMultiplier")
+    );
+  }
+  if (formData.has("configJson")) {
+    patch.config = parseJson(formData.get("configJson"));
+  }
+
+  const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
+  if (isEnabledValue !== null) {
+    patch.isEnabled = isEnabledValue;
+  }
+  const enabledOnWebValue = parseBooleanFromEntries(formData, "enabledOnWeb");
+  if (enabledOnWebValue !== null) {
+    patch.enabledOnWeb = enabledOnWebValue;
+  }
+  const enabledOnNativeValue = parseBooleanFromEntries(
+    formData,
+    "enabledOnNative"
+  );
+  if (enabledOnNativeValue !== null) {
+    patch.enabledOnNative = enabledOnNativeValue;
+  }
+
+  const isDefaultValue = parseBooleanFromEntries(formData, "isDefault");
+  const shouldSetDefault = isDefaultValue === true;
+
+  const updated = await updateLiveVoiceModelConfig(patch);
+  if (!updated) {
+    redirect("/admin/settings?notice=live-voice-model-update-missing");
+  }
+
+  if (shouldSetDefault) {
+    await setDefaultLiveVoiceModelConfig(id);
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.update",
+    target: { liveVoiceModelId: id },
+    metadata: { ...patch, setDefault: shouldSetDefault },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.update");
+}
+
+export async function deleteLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  await deleteLiveVoiceModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.delete",
+    target: { liveVoiceModelId: id },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.delete");
+
+  redirect("/admin/settings?notice=live-voice-model-deleted");
+}
+
+export async function hardDeleteLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  await hardDeleteLiveVoiceModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.hard_delete",
+    target: { liveVoiceModelId: id },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.hard_delete");
+
+  redirect("/admin/settings?notice=live-voice-model-hard-deleted");
+}
+
+export async function setDefaultLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  await setDefaultLiveVoiceModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.setDefault",
+    target: { liveVoiceModelId: id },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.setDefault");
+
+  redirect("/admin/settings?notice=live-voice-model-defaulted");
 }
 
 export async function createImageModelConfigAction(formData: FormData) {

@@ -8,10 +8,12 @@ import {
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
   getChatById,
+  recordTokenUsage,
   saveChat,
   saveMessages,
   touchChatActivityById,
 } from "@/lib/db/queries";
+import { ChatSDKError } from "@/lib/errors";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
@@ -19,6 +21,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -97,6 +100,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const liveVoiceModel = await resolveLiveVoiceModelConfig({
+    platform: "web",
+  });
+  if (!liveVoiceModel) {
+    return Response.json(
+      { message: "Not found" },
+      { headers: noStoreHeaders(), status: 404 }
+    );
+  }
+
   const { assistantText, chatId, selectedVisibilityType, userText } =
     parsedBody.data;
   const userMessageId = parsedBody.data.userMessageId ?? generateUUID();
@@ -129,28 +142,63 @@ export async function POST(request: Request) {
           mode: "default",
         });
       }
-      await saveMessages({
-        messages: [
-          {
-            attachments: [],
-            chatId,
-            createdAt,
-            id: userMessageId,
-            parts: [{ type: "text", text: userText }],
-            role: "user",
-          },
-          {
-            attachments: [],
-            chatId,
-            createdAt: assistantCreatedAt,
-            id: assistantMessageId,
-            parts: [{ type: "text", text: assistantText }],
-            role: "assistant",
-          },
-        ],
-      });
       return null;
     })(),
+    VOICE_TURN_SAVE_TIMEOUT_MS
+  );
+
+  const inputTokens = Math.ceil(liveVoiceModel.tokensPerVoiceInteraction / 2);
+  const outputTokens = Math.max(
+    1,
+    liveVoiceModel.tokensPerVoiceInteraction - inputTokens
+  );
+
+  try {
+    await withTimeout(
+      recordTokenUsage({
+        chatId,
+        inputTokens,
+        liveVoiceModelConfigId: liveVoiceModel.id,
+        modelConfigId: null,
+        outputTokens,
+        userId: authContext.user.id,
+      }),
+      VOICE_TURN_SAVE_TIMEOUT_MS
+    );
+  } catch (error) {
+    if (
+      error instanceof ChatSDKError &&
+      error.type === "payment_required"
+    ) {
+      return Response.json(
+        { message: "Insufficient credits remaining" },
+        { headers: noStoreHeaders(), status: 402 }
+      );
+    }
+    throw error;
+  }
+
+  await withTimeout(
+    saveMessages({
+      messages: [
+        {
+          attachments: [],
+          chatId,
+          createdAt,
+          id: userMessageId,
+          parts: [{ type: "text", text: userText }],
+          role: "user",
+        },
+        {
+          attachments: [],
+          chatId,
+          createdAt: assistantCreatedAt,
+          id: assistantMessageId,
+          parts: [{ type: "text", text: assistantText }],
+          role: "assistant",
+        },
+      ],
+    }),
     VOICE_TURN_SAVE_TIMEOUT_MS
   );
 

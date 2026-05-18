@@ -82,7 +82,9 @@ import {
   inviteRedemption,
   inviteToken,
   type Language,
+  type LiveVoiceModelConfig,
   language,
+  liveVoiceModelConfig,
   type ModelConfig,
   message,
   modelConfig,
@@ -5335,6 +5337,486 @@ export async function setActiveImageModelConfig(id: string) {
   }
 }
 
+export async function createLiveVoiceModelConfig({
+  key,
+  provider,
+  providerModelId,
+  displayName,
+  description = "",
+  systemInstruction = "",
+  voiceName = "Zephyr",
+  mediaResolution = "MEDIA_RESOLUTION_MEDIUM",
+  creditMultiplier = 3,
+  config = null,
+  isEnabled = true,
+  enabledOnWeb = true,
+  enabledOnNative = true,
+  isDefault = false,
+}: {
+  key: string;
+  provider: LiveVoiceModelConfig["provider"];
+  providerModelId: string;
+  displayName: string;
+  description?: string;
+  systemInstruction?: string;
+  voiceName?: string;
+  mediaResolution?: string;
+  creditMultiplier?: number;
+  config?: Record<string, unknown> | null;
+  isEnabled?: boolean;
+  enabledOnWeb?: boolean;
+  enabledOnNative?: boolean;
+  isDefault?: boolean;
+}): Promise<LiveVoiceModelConfig> {
+  const now = new Date();
+  const resolvedMultiplier =
+    Number.isFinite(creditMultiplier) && creditMultiplier > 0
+      ? creditMultiplier
+      : 1;
+
+  try {
+    const [created] = await db
+      .insert(liveVoiceModelConfig)
+      .values({
+        key,
+        provider,
+        providerModelId,
+        displayName,
+        description,
+        systemInstruction,
+        voiceName,
+        mediaResolution,
+        creditMultiplier: resolvedMultiplier,
+        config,
+        isEnabled,
+        enabledOnWeb,
+        enabledOnNative,
+        isDefault,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      })
+      .returning();
+
+    if (!created) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Failed to create live voice model configuration"
+      );
+    }
+
+    if (isDefault) {
+      await setDefaultLiveVoiceModelConfig(created.id);
+      return { ...created, isDefault: true };
+    }
+
+    return created;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to create live voice model configuration"
+    );
+  }
+}
+
+export async function getLiveVoiceModelConfigById({
+  id,
+  includeDeleted = false,
+}: {
+  id: string;
+  includeDeleted?: boolean;
+}): Promise<LiveVoiceModelConfig | null> {
+  try {
+    const condition = includeDeleted
+      ? eq(liveVoiceModelConfig.id, id)
+      : and(
+          eq(liveVoiceModelConfig.id, id),
+          isNull(liveVoiceModelConfig.deletedAt)
+        );
+
+    const [configResult] = await db
+      .select()
+      .from(liveVoiceModelConfig)
+      .where(condition)
+      .limit(1);
+
+    return configResult ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load live voice model configuration"
+    );
+  }
+}
+
+export async function getLiveVoiceModelConfigByKey({
+  key,
+  includeDeleted = false,
+}: {
+  key: string;
+  includeDeleted?: boolean;
+}): Promise<LiveVoiceModelConfig | null> {
+  try {
+    const condition = includeDeleted
+      ? eq(liveVoiceModelConfig.key, key)
+      : and(
+          eq(liveVoiceModelConfig.key, key),
+          isNull(liveVoiceModelConfig.deletedAt)
+        );
+
+    const [configResult] = await db
+      .select()
+      .from(liveVoiceModelConfig)
+      .where(condition)
+      .limit(1);
+
+    return configResult ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load live voice model configuration"
+    );
+  }
+}
+
+export async function listLiveVoiceModelConfigs({
+  includeDisabled = false,
+  includeDeleted = false,
+  onlyDeleted = false,
+  platform,
+  limit = 100,
+}: {
+  includeDisabled?: boolean;
+  includeDeleted?: boolean;
+  onlyDeleted?: boolean;
+  platform?: "native" | "web";
+  limit?: number;
+} = {}): Promise<LiveVoiceModelConfig[]> {
+  try {
+    const baseBuilder = db.select().from(liveVoiceModelConfig);
+
+    const deletedCondition = onlyDeleted
+      ? (isNotNull(liveVoiceModelConfig.deletedAt) as SQL<boolean>)
+      : includeDeleted
+        ? undefined
+        : (isNull(liveVoiceModelConfig.deletedAt) as SQL<boolean>);
+
+    const enabledCondition = includeDisabled
+      ? undefined
+      : (eq(liveVoiceModelConfig.isEnabled, true) as SQL<boolean>);
+
+    const platformCondition =
+      platform === "web"
+        ? (eq(liveVoiceModelConfig.enabledOnWeb, true) as SQL<boolean>)
+        : platform === "native"
+          ? (eq(liveVoiceModelConfig.enabledOnNative, true) as SQL<boolean>)
+          : undefined;
+
+    const conditions = [
+      deletedCondition,
+      enabledCondition,
+      platformCondition,
+    ].filter((condition): condition is SQL<boolean> => condition !== undefined);
+
+    const builder =
+      conditions.length > 0
+        ? baseBuilder.where(and(...conditions) as SQL<boolean>)
+        : baseBuilder;
+
+    return await builder.orderBy(desc(liveVoiceModelConfig.createdAt)).limit(limit);
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    console.error("listLiveVoiceModelConfigs failed", _error);
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list live voice model configurations"
+    );
+  }
+}
+
+export async function getDefaultLiveVoiceModelConfig({
+  platform,
+}: {
+  platform: "native" | "web";
+}): Promise<LiveVoiceModelConfig | null> {
+  try {
+    const platformCondition =
+      platform === "web"
+        ? eq(liveVoiceModelConfig.enabledOnWeb, true)
+        : eq(liveVoiceModelConfig.enabledOnNative, true);
+    const commonConditions = and(
+      eq(liveVoiceModelConfig.isEnabled, true),
+      platformCondition,
+      isNull(liveVoiceModelConfig.deletedAt)
+    );
+
+    const [defaultModel] = await db
+      .select()
+      .from(liveVoiceModelConfig)
+      .where(and(commonConditions, eq(liveVoiceModelConfig.isDefault, true)))
+      .orderBy(desc(liveVoiceModelConfig.updatedAt))
+      .limit(1);
+
+    if (defaultModel) {
+      return defaultModel;
+    }
+
+    const [fallbackModel] = await db
+      .select()
+      .from(liveVoiceModelConfig)
+      .where(commonConditions)
+      .orderBy(desc(liveVoiceModelConfig.updatedAt))
+      .limit(1);
+
+    return fallbackModel ?? null;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return null;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load default live voice model configuration"
+    );
+  }
+}
+
+export async function hasLiveVoiceModelConfigTable(): Promise<boolean> {
+  try {
+    await db.select({ id: liveVoiceModelConfig.id }).from(liveVoiceModelConfig).limit(1);
+    return true;
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return false;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to inspect live voice model configuration table"
+    );
+  }
+}
+
+export async function updateLiveVoiceModelConfig({
+  id,
+  ...patch
+}: {
+  id: string;
+  provider?: LiveVoiceModelConfig["provider"];
+  providerModelId?: string;
+  displayName?: string;
+  description?: string | null;
+  systemInstruction?: string | null;
+  voiceName?: string;
+  mediaResolution?: string;
+  creditMultiplier?: number;
+  config?: Record<string, unknown> | null;
+  isEnabled?: boolean;
+  enabledOnWeb?: boolean;
+  enabledOnNative?: boolean;
+}): Promise<LiveVoiceModelConfig | null> {
+  try {
+    const updateData: Partial<typeof liveVoiceModelConfig.$inferInsert> = {};
+
+    if (patch.provider !== undefined) {
+      updateData.provider = patch.provider;
+    }
+    if (patch.providerModelId !== undefined) {
+      updateData.providerModelId = patch.providerModelId;
+    }
+    if (patch.displayName !== undefined) {
+      updateData.displayName = patch.displayName;
+    }
+    if (patch.description !== undefined) {
+      updateData.description = patch.description ?? "";
+    }
+    if (patch.systemInstruction !== undefined) {
+      updateData.systemInstruction = patch.systemInstruction ?? "";
+    }
+    if (patch.voiceName !== undefined) {
+      updateData.voiceName = patch.voiceName;
+    }
+    if (patch.mediaResolution !== undefined) {
+      updateData.mediaResolution = patch.mediaResolution;
+    }
+    if (patch.creditMultiplier !== undefined) {
+      updateData.creditMultiplier =
+        Number.isFinite(patch.creditMultiplier) && patch.creditMultiplier > 0
+          ? patch.creditMultiplier
+          : 1;
+    }
+    if (patch.config !== undefined) {
+      updateData.config = patch.config ?? null;
+    }
+    if (patch.isEnabled !== undefined) {
+      updateData.isEnabled = patch.isEnabled;
+    }
+    if (patch.enabledOnWeb !== undefined) {
+      updateData.enabledOnWeb = patch.enabledOnWeb;
+    }
+    if (patch.enabledOnNative !== undefined) {
+      updateData.enabledOnNative = patch.enabledOnNative;
+    }
+
+    const [updated] = await db
+      .update(liveVoiceModelConfig)
+      .set({
+        ...updateData,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(liveVoiceModelConfig.id, id), isNull(liveVoiceModelConfig.deletedAt))
+      )
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update live voice model configuration"
+    );
+  }
+}
+
+export async function deleteLiveVoiceModelConfig(id: string) {
+  try {
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .update(liveVoiceModelConfig)
+        .set({
+          deletedAt: now,
+          isDefault: false,
+          isEnabled: false,
+          updatedAt: now,
+        })
+        .where(
+          and(eq(liveVoiceModelConfig.id, id), isNull(liveVoiceModelConfig.deletedAt))
+        )
+        .returning();
+
+      if (!deleted) {
+        throw new Error("Live voice model configuration not found");
+      }
+
+      if (deleted.isDefault) {
+        const [fallback] = await tx
+          .select()
+          .from(liveVoiceModelConfig)
+          .where(
+            and(
+              eq(liveVoiceModelConfig.isEnabled, true),
+              isNull(liveVoiceModelConfig.deletedAt),
+              ne(liveVoiceModelConfig.id, id)
+            )
+          )
+          .orderBy(desc(liveVoiceModelConfig.updatedAt))
+          .limit(1);
+
+        if (fallback) {
+          await tx
+            .update(liveVoiceModelConfig)
+            .set({ isDefault: true, updatedAt: now })
+            .where(eq(liveVoiceModelConfig.id, fallback.id));
+        }
+      }
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to delete live voice model configuration"
+    );
+  }
+}
+
+export async function hardDeleteLiveVoiceModelConfig(id: string) {
+  try {
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select()
+        .from(liveVoiceModelConfig)
+        .where(eq(liveVoiceModelConfig.id, id))
+        .limit(1);
+
+      if (!target) {
+        throw new Error("Live voice model configuration not found");
+      }
+
+      await tx.delete(liveVoiceModelConfig).where(eq(liveVoiceModelConfig.id, id));
+
+      if (target.isDefault) {
+        const [fallback] = await tx
+          .select()
+          .from(liveVoiceModelConfig)
+          .where(
+            and(
+              eq(liveVoiceModelConfig.isEnabled, true),
+              isNull(liveVoiceModelConfig.deletedAt),
+              ne(liveVoiceModelConfig.id, id)
+            )
+          )
+          .orderBy(desc(liveVoiceModelConfig.updatedAt))
+          .limit(1);
+
+        if (fallback) {
+          await tx
+            .update(liveVoiceModelConfig)
+            .set({ isDefault: true, updatedAt: now })
+            .where(eq(liveVoiceModelConfig.id, fallback.id));
+        }
+      }
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to hard delete live voice model configuration"
+    );
+  }
+}
+
+export async function setDefaultLiveVoiceModelConfig(id: string) {
+  const now = new Date();
+
+  try {
+    await db.transaction(async (tx) => {
+      const [target] = await tx
+        .update(liveVoiceModelConfig)
+        .set({ isDefault: true, isEnabled: true, updatedAt: now })
+        .where(
+          and(eq(liveVoiceModelConfig.id, id), isNull(liveVoiceModelConfig.deletedAt))
+        )
+        .returning();
+
+      if (!target) {
+        throw new Error("Live voice model configuration not found");
+      }
+
+      await tx
+        .update(liveVoiceModelConfig)
+        .set({ isDefault: false, updatedAt: now })
+        .where(
+          and(
+            eq(liveVoiceModelConfig.isDefault, true),
+            isNull(liveVoiceModelConfig.deletedAt),
+            ne(liveVoiceModelConfig.id, id)
+          )
+        );
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to set default live voice model configuration"
+    );
+  }
+}
+
 function buildNormalizedAliases({
   canonicalName,
   aliases,
@@ -7659,6 +8141,7 @@ export async function recordTokenUsage({
   userId,
   chatId,
   modelConfigId,
+  liveVoiceModelConfigId = null,
   inputTokens,
   outputTokens,
   deductCredits = true,
@@ -7666,6 +8149,7 @@ export async function recordTokenUsage({
   userId: string;
   chatId: string;
   modelConfigId: string | null;
+  liveVoiceModelConfigId?: string | null;
   inputTokens: number;
   outputTokens: number;
   deductCredits?: boolean;
@@ -7830,6 +8314,7 @@ export async function recordTokenUsage({
           userId,
           chatId,
           modelConfigId: modelConfigId ?? null,
+          liveVoiceModelConfigId: liveVoiceModelConfigId ?? null,
           subscriptionId: subscription?.id ?? null,
           inputTokens,
           outputTokens,

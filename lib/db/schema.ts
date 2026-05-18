@@ -223,6 +223,53 @@ export const imageModelConfig = pgTable(
 
 export type ImageModelConfig = InferSelectModel<typeof imageModelConfig>;
 
+export const liveVoiceModelConfig = pgTable(
+  "LiveVoiceModelConfig",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    key: varchar("key", { length: 64 }).notNull().unique(),
+    provider: modelProviderEnum("provider").notNull(),
+    providerModelId: varchar("providerModelId", { length: 128 }).notNull(),
+    displayName: varchar("displayName", { length: 128 }).notNull(),
+    description: text("description").notNull().default(""),
+    systemInstruction: text("systemInstruction").notNull().default(""),
+    voiceName: varchar("voiceName", { length: 64 }).notNull().default("Zephyr"),
+    mediaResolution: varchar("mediaResolution", { length: 64 })
+      .notNull()
+      .default("MEDIA_RESOLUTION_MEDIUM"),
+    creditMultiplier: doublePrecision("creditMultiplier")
+      .notNull()
+      .default(3),
+    config: jsonb("config"),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    enabledOnWeb: boolean("enabledOnWeb").notNull().default(true),
+    enabledOnNative: boolean("enabledOnNative").notNull().default(true),
+    isDefault: boolean("isDefault").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  (table) => ({
+    defaultIdx: uniqueIndex("LiveVoiceModelConfig_default_idx")
+      .on(table.isDefault)
+      .where(sql`${table.isDefault} = true AND ${table.deletedAt} IS NULL`),
+    webIdx: index("LiveVoiceModelConfig_web_idx").on(
+      table.isEnabled,
+      table.enabledOnWeb,
+      table.deletedAt
+    ),
+    nativeIdx: index("LiveVoiceModelConfig_native_idx").on(
+      table.isEnabled,
+      table.enabledOnNative,
+      table.deletedAt
+    ),
+  })
+);
+
+export type LiveVoiceModelConfig = InferSelectModel<
+  typeof liveVoiceModelConfig
+>;
+
 export type CharacterRefImage = {
   imageId?: string | null;
   storageKey?: string | null;
@@ -1140,6 +1187,10 @@ export const tokenUsage = pgTable(
     modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
       onDelete: "set null",
     }),
+    liveVoiceModelConfigId: uuid("liveVoiceModelConfigId").references(
+      () => liveVoiceModelConfig.id,
+      { onDelete: "set null" }
+    ),
     subscriptionId: uuid("subscriptionId").references(
       () => userSubscription.id,
       { onDelete: "set null" }

@@ -484,6 +484,13 @@
       "when": 1765238400018,
       "tag": "0066_prevent_inline_message_image_data_urls",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1779068700000,
+      "tag": "0067_live_voice_model_config",
+      "breakpoints": true
     }
   ]
 }

@@ -4,18 +4,22 @@ import type { ComponentProps, ReactNode } from "react";
 import {
   createImageModelConfigAction,
   createLanguageAction,
+  createLiveVoiceModelConfigAction,
   createModelConfigAction,
   createPricingPlanAction,
   createTranslationFeatureLanguageAction,
   deleteImageModelConfigAction,
   deleteLanguageAction,
+  deleteLiveVoiceModelConfigAction,
   deleteModelConfigAction,
   deletePricingPlanAction,
   deleteTranslationFeatureLanguageAction,
   hardDeleteImageModelConfigAction,
+  hardDeleteLiveVoiceModelConfigAction,
   hardDeleteModelConfigAction,
   hardDeletePricingPlanAction,
   setActiveImageModelConfigAction,
+  setDefaultLiveVoiceModelConfigAction,
   setDefaultModelConfigAction,
   setImagePromptTranslationModelAction,
   setMarginBaselineModelAction,
@@ -29,6 +33,7 @@ import {
   updateImageModelConfigAction,
   updateLanguageSettingsAction,
   updateLanguageStatusAction,
+  updateLiveVoiceModelConfigAction,
   updateModelConfigAction,
   updatePlanTranslationAction,
   updatePrivacyPolicyByLanguageAction,
@@ -82,6 +87,7 @@ import {
   getTranslationValuesForKeys,
   listImageModelConfigs,
   listLanguagesWithSettings,
+  listLiveVoiceModelConfigs,
   listModelConfigs,
   listPricingPlans,
   listTranslationFeatureLanguages,
@@ -115,11 +121,17 @@ import {
 import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
 import { cn } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
+import {
+  GOOGLE_LIVE_VOICE_OPTIONS,
+  LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS,
+  LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+} from "@/lib/voice/live";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
+import { LiveVoiceCreditMultiplierField } from "./live-voice-credit-multiplier-field";
 import { AdminSettingsNotice } from "./notice";
 import { PlanPricingFields } from "./plan-pricing-fields";
 import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
@@ -227,6 +239,19 @@ const listAdminImageModelConfigsCached = unstable_cache(
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
     tags: [ADMIN_SETTINGS_CACHE_TAG, IMAGE_MODEL_REGISTRY_CACHE_TAG],
+  }
+);
+const listAdminLiveVoiceModelConfigsCached = unstable_cache(
+  () =>
+    listLiveVoiceModelConfigs({
+      includeDisabled: true,
+      includeDeleted: true,
+      limit: 200,
+    }),
+  ["admin-settings:live-voice-model-configs:v1"],
+  {
+    revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
+    tags: [ADMIN_SETTINGS_CACHE_TAG, LIVE_VOICE_MODEL_CONFIG_CACHE_TAG],
   }
 );
 const listAdminPricingPlansCached = unstable_cache(
@@ -538,6 +563,7 @@ async function loadAdminSettingsData() {
   const [
     modelsRaw,
     imageModelConfigs,
+    liveVoiceModelConfigs,
     plansState,
     languages,
     translationFeatureLanguages,
@@ -552,6 +578,12 @@ async function loadAdminSettingsData() {
       safeSettingsQuery(
         "image model configs",
         () => listAdminImageModelConfigsCached(),
+        []
+      ),
+    () =>
+      safeSettingsQuery(
+        "live voice model configs",
+        () => listAdminLiveVoiceModelConfigsCached(),
         []
       ),
     plansStatePromise,
@@ -658,6 +690,7 @@ async function loadAdminSettingsData() {
     featureAccessState,
     modelsRaw,
     imageModelConfigs,
+    liveVoiceModelConfigs,
     plansRaw: plansState.plans,
     pricingPlansLoadFailed: plansState.failed,
     privacyPolicySetting,
@@ -701,6 +734,7 @@ function buildFallbackAdminSettingsData() {
     }),
     modelsRaw: [],
     imageModelConfigs: [],
+    liveVoiceModelConfigs: [],
     plansRaw: [],
     pricingPlansLoadFailed: false,
     privacyPolicySetting: null,
@@ -803,6 +837,28 @@ function ActiveBadge({ active }: { active: boolean }) {
   return (
     <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
       Active
+    </span>
+  );
+}
+
+function PlatformBadge({
+  enabledOnNative,
+  enabledOnWeb,
+}: {
+  enabledOnNative: boolean;
+  enabledOnWeb: boolean;
+}) {
+  const label =
+    enabledOnWeb && enabledOnNative
+      ? "Web + Native"
+      : enabledOnWeb
+        ? "Web only"
+        : enabledOnNative
+          ? "Native only"
+          : "No platform";
+  return (
+    <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700 text-xs">
+      {label}
     </span>
   );
 }
@@ -933,6 +989,7 @@ export default async function AdminSettingsPage({
     featureAccessState,
     modelsRaw,
     imageModelConfigs,
+    liveVoiceModelConfigs,
     plansRaw,
     pricingPlansLoadFailed,
     privacyPolicySetting,
@@ -995,6 +1052,12 @@ export default async function AdminSettingsPage({
   const deletedModels = modelsRaw.filter((model) => model.deletedAt);
   const activeImageModels = imageModelConfigs.filter((model) => !model.deletedAt);
   const deletedImageModels = imageModelConfigs.filter((model) => model.deletedAt);
+  const activeLiveVoiceModels = liveVoiceModelConfigs.filter(
+    (model) => !model.deletedAt
+  );
+  const deletedLiveVoiceModels = liveVoiceModelConfigs.filter(
+    (model) => model.deletedAt
+  );
   const enabledModels = activeModels.filter((model) => model.isEnabled);
   const enabledLiveSpeechModels = enabledModels.filter((model) =>
     isGoogleLiveTranslationModel(model)
@@ -3702,6 +3765,624 @@ export default async function AdminSettingsPage({
                   </div>
                 </div>
               )}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              description="Configure realtime audio models separately from normal text chat models."
+              title="Live voice models"
+            >
+              <div className="space-y-6">
+                <CollapsibleSection
+                  description="Add a Gemini Live or future realtime audio model with platform visibility and credit behavior."
+                  title="Add live voice model"
+                >
+                  <form
+                    action={createLiveVoiceModelConfigAction}
+                    className="grid gap-4 md:grid-cols-2"
+                  >
+                    <div className="flex flex-col gap-2">
+                      <label className="font-medium text-sm" htmlFor="liveVoiceKey">
+                        Model key
+                      </label>
+                      <input
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        id="liveVoiceKey"
+                        name="key"
+                        placeholder="gemini-3-1-flash-live-preview"
+                        required
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Internal identifier that must be unique.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="font-medium text-sm" htmlFor="liveVoiceProvider">
+                        Provider
+                      </label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue="google"
+                        id="liveVoiceProvider"
+                        name="provider"
+                        required
+                      >
+                        {PROVIDER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceProviderModelId"
+                      >
+                        Provider model ID
+                      </label>
+                      <input
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue="gemini-3.1-flash-live-preview"
+                        id="liveVoiceProviderModelId"
+                        name="providerModelId"
+                        required
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceDisplayName"
+                      >
+                        Display name
+                      </label>
+                      <input
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue="Gemini 3.1 Flash Live Preview"
+                        id="liveVoiceDisplayName"
+                        name="displayName"
+                        required
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="font-medium text-sm" htmlFor="liveVoiceName">
+                        Voice
+                      </label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue="Zephyr"
+                        id="liveVoiceName"
+                        name="voiceName"
+                      >
+                        {GOOGLE_LIVE_VOICE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label} - {option.description}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-muted-foreground text-xs">
+                        Provider-driven list based on Google Live voice support.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceMediaResolution"
+                      >
+                        Media resolution
+                      </label>
+                      <select
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue="MEDIA_RESOLUTION_MEDIUM"
+                        id="liveVoiceMediaResolution"
+                        name="mediaResolution"
+                      >
+                        {LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label} - {option.description}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <LiveVoiceCreditMultiplierField
+                        initialMultiplier={3}
+                        inputId="live-voice-create-credit-multiplier"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2 md:col-span-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceDescription"
+                      >
+                        Description
+                      </label>
+                      <textarea
+                        className="min-h-[60px] rounded-md border bg-background px-3 py-2 text-sm"
+                        id="liveVoiceDescription"
+                        name="description"
+                        placeholder="Explain when this realtime voice model should be used."
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2 md:col-span-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceSystemInstruction"
+                      >
+                        System instructions
+                      </label>
+                      <textarea
+                        className="min-h-[120px] rounded-md border bg-background px-3 py-2 text-sm"
+                        id="liveVoiceSystemInstruction"
+                        name="systemInstruction"
+                        placeholder="Optional tone, style, or behavior instructions for the voice session."
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2 md:col-span-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceConfigJson"
+                      >
+                        Provider config (JSON, optional)
+                      </label>
+                      <textarea
+                        className="min-h-[90px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
+                        id="liveVoiceConfigJson"
+                        name="configJson"
+                        placeholder='{"thinkingLevel":"minimal"}'
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        className="h-4 w-4"
+                        defaultChecked
+                        id="liveVoiceIsEnabled"
+                        name="isEnabled"
+                        type="checkbox"
+                      />
+                      <label className="font-medium text-sm" htmlFor="liveVoiceIsEnabled">
+                        Enabled
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        className="h-4 w-4"
+                        defaultChecked
+                        id="liveVoiceEnabledOnWeb"
+                        name="enabledOnWeb"
+                        type="checkbox"
+                      />
+                      <label className="font-medium text-sm" htmlFor="liveVoiceEnabledOnWeb">
+                        Web app
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        className="h-4 w-4"
+                        defaultChecked
+                        id="liveVoiceEnabledOnNative"
+                        name="enabledOnNative"
+                        type="checkbox"
+                      />
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceEnabledOnNative"
+                      >
+                        Native app
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        className="h-4 w-4"
+                        id="liveVoiceIsDefault"
+                        name="isDefault"
+                        type="checkbox"
+                      />
+                      <label className="font-medium text-sm" htmlFor="liveVoiceIsDefault">
+                        Set as default live voice model
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end md:col-span-2">
+                      <SettingsSubmitButton pendingLabel="Creating...">
+                        Create live voice model
+                      </SettingsSubmitButton>
+                    </div>
+                  </form>
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Configured live voice models">
+                  <div className="space-y-6">
+                    {activeLiveVoiceModels.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">
+                        No live voice models configured yet.
+                      </p>
+                    ) : (
+                      activeLiveVoiceModels.map((model) => {
+                        const tokensPerInteraction = Math.max(
+                          1,
+                          Math.round(Number(model.creditMultiplier ?? 1) * TOKENS_PER_CREDIT)
+                        );
+                        return (
+                          <details
+                            className="rounded-md border bg-background p-4"
+                            key={model.id}
+                          >
+                            <summary className="flex cursor-pointer flex-col gap-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{model.displayName}</span>
+                                <ProviderBadge value={model.provider} />
+                                <EnabledBadge enabled={model.isEnabled} />
+                                <PlatformBadge
+                                  enabledOnNative={model.enabledOnNative}
+                                  enabledOnWeb={model.enabledOnWeb}
+                                />
+                                {model.isDefault && (
+                                  <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono text-muted-foreground text-xs">
+                                {model.providerModelId}
+                              </span>
+                            </summary>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
+                                <h4 className="font-semibold text-foreground text-sm">
+                                  Live voice credit behavior
+                                </h4>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                      Multiplier
+                                    </p>
+                                    <p>{Number(model.creditMultiplier ?? 1).toFixed(2)}x</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                      Preview
+                                    </p>
+                                    <p>
+                                      1 voice interaction ≈{" "}
+                                      {Number(model.creditMultiplier ?? 1).toFixed(2)} chats
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                      Usage tokens
+                                    </p>
+                                    <p>{tokensPerInteraction.toLocaleString()}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <form
+                                action={updateLiveVoiceModelConfigAction}
+                                className="grid gap-4 md:col-span-2 md:grid-cols-2"
+                              >
+                                <input name="id" type="hidden" value={model.id} />
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-display-name-${model.id}`}
+                                  >
+                                    Display name
+                                  </label>
+                                  <input
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.displayName}
+                                    id={`live-voice-display-name-${model.id}`}
+                                    name="displayName"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-provider-${model.id}`}
+                                  >
+                                    Provider
+                                  </label>
+                                  <select
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.provider}
+                                    id={`live-voice-provider-${model.id}`}
+                                    name="provider"
+                                  >
+                                    {PROVIDER_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-provider-id-${model.id}`}
+                                  >
+                                    Provider model ID
+                                  </label>
+                                  <input
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.providerModelId}
+                                    id={`live-voice-provider-id-${model.id}`}
+                                    name="providerModelId"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-name-${model.id}`}
+                                  >
+                                    Voice
+                                  </label>
+                                  <select
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.voiceName}
+                                    id={`live-voice-name-${model.id}`}
+                                    name="voiceName"
+                                  >
+                                    {GOOGLE_LIVE_VOICE_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label} - {option.description}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-media-resolution-${model.id}`}
+                                  >
+                                    Media resolution
+                                  </label>
+                                  <select
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.mediaResolution}
+                                    id={`live-voice-media-resolution-${model.id}`}
+                                    name="mediaResolution"
+                                  >
+                                    {LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label} - {option.description}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="md:col-span-2">
+                                  <LiveVoiceCreditMultiplierField
+                                    initialMultiplier={Number(model.creditMultiplier ?? 1)}
+                                    inputId={`live-voice-credit-multiplier-${model.id}`}
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2 md:col-span-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-description-${model.id}`}
+                                  >
+                                    Description
+                                  </label>
+                                  <textarea
+                                    className="min-h-[70px] rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.description ?? ""}
+                                    id={`live-voice-description-${model.id}`}
+                                    name="description"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2 md:col-span-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-system-instruction-${model.id}`}
+                                  >
+                                    System instructions
+                                  </label>
+                                  <textarea
+                                    className="min-h-[120px] rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.systemInstruction ?? ""}
+                                    id={`live-voice-system-instruction-${model.id}`}
+                                    name="systemInstruction"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2 md:col-span-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-config-json-${model.id}`}
+                                  >
+                                    Provider config (JSON, optional)
+                                  </label>
+                                  <textarea
+                                    className="min-h-[90px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
+                                    defaultValue={
+                                      model.config
+                                        ? JSON.stringify(model.config, null, 2)
+                                        : ""
+                                    }
+                                    id={`live-voice-config-json-${model.id}`}
+                                    name="configJson"
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <input name="isEnabled" type="hidden" value="false" />
+                                  <input
+                                    className="h-4 w-4"
+                                    defaultChecked={model.isEnabled}
+                                    id={`live-voice-enabled-${model.id}`}
+                                    name="isEnabled"
+                                    type="checkbox"
+                                    value="true"
+                                  />
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-enabled-${model.id}`}
+                                  >
+                                    Enabled
+                                  </label>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <input name="enabledOnWeb" type="hidden" value="false" />
+                                  <input
+                                    className="h-4 w-4"
+                                    defaultChecked={model.enabledOnWeb}
+                                    id={`live-voice-web-${model.id}`}
+                                    name="enabledOnWeb"
+                                    type="checkbox"
+                                    value="true"
+                                  />
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-web-${model.id}`}
+                                  >
+                                    Web app
+                                  </label>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    name="enabledOnNative"
+                                    type="hidden"
+                                    value="false"
+                                  />
+                                  <input
+                                    className="h-4 w-4"
+                                    defaultChecked={model.enabledOnNative}
+                                    id={`live-voice-native-${model.id}`}
+                                    name="enabledOnNative"
+                                    type="checkbox"
+                                    value="true"
+                                  />
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-native-${model.id}`}
+                                  >
+                                    Native app
+                                  </label>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <input name="isDefault" type="hidden" value="false" />
+                                  <input
+                                    className="h-4 w-4"
+                                    defaultChecked={model.isDefault}
+                                    id={`live-voice-default-${model.id}`}
+                                    name="isDefault"
+                                    type="checkbox"
+                                    value="true"
+                                  />
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-default-${model.id}`}
+                                  >
+                                    Default live voice model
+                                  </label>
+                                </div>
+
+                                <div className="flex justify-end md:col-span-2">
+                                  <SettingsSubmitButton
+                                    pendingLabel="Saving..."
+                                    successMessage="Live voice model updated."
+                                  >
+                                    Save changes
+                                  </SettingsSubmitButton>
+                                </div>
+                              </form>
+
+                              <div className="flex flex-wrap gap-3 md:col-span-2">
+                                {!model.isDefault && (
+                                  <form action={setDefaultLiveVoiceModelConfigAction}>
+                                    <input name="id" type="hidden" value={model.id} />
+                                    <SettingsSubmitButton
+                                      pendingLabel="Updating..."
+                                      size="sm"
+                                      variant="outline"
+                                    >
+                                      Set as default
+                                    </SettingsSubmitButton>
+                                  </form>
+                                )}
+
+                                <form action={deleteLiveVoiceModelConfigAction}>
+                                  <input name="id" type="hidden" value={model.id} />
+                                  <SettingsSubmitButton
+                                    className="border border-destructive text-destructive hover:bg-destructive/10"
+                                    pendingLabel="Soft deleting..."
+                                    size="sm"
+                                    variant="outline"
+                                  >
+                                    Soft delete
+                                  </SettingsSubmitButton>
+                                </form>
+                              </div>
+                            </div>
+                          </details>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {deletedLiveVoiceModels.length > 0 && (
+                    <div className="mt-8 space-y-3">
+                      <h3 className="font-semibold text-muted-foreground text-sm">
+                        Deleted live voice models
+                      </h3>
+                      <div className="grid gap-2">
+                        {deletedLiveVoiceModels.map((model) => (
+                          <div
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
+                            key={model.id}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{model.displayName}</span>
+                              <span className="text-muted-foreground text-xs">
+                                Deleted{" "}
+                                {model.deletedAt
+                                  ? formatDistanceToNow(new Date(model.deletedAt), {
+                                      addSuffix: true,
+                                    })
+                                  : "recently"}
+                              </span>
+                            </div>
+                            <form action={hardDeleteLiveVoiceModelConfigAction}>
+                              <input name="id" type="hidden" value={model.id} />
+                              <SettingsSubmitButton
+                                pendingLabel="Hard deleting..."
+                                size="sm"
+                                variant="destructive"
+                              >
+                                Hard delete
+                              </SettingsSubmitButton>
+                            </form>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CollapsibleSection>
+              </div>
             </CollapsibleSection>
 
             <CollapsibleSection

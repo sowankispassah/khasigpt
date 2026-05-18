@@ -5,14 +5,15 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
+import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
-  getAppSetting,
   getChatById,
-  getLastKnownAppSetting,
+  recordTokenUsage,
   saveChat,
   saveMessages,
   touchChatActivityById,
 } from "@/lib/db/queries";
+import { ChatSDKError } from "@/lib/errors";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
@@ -20,6 +21,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -63,32 +65,48 @@ export async function POST(request: Request) {
     );
   }
 
-  const rawVoiceSettings = await withTimeout(
-    Promise.all([
-      getAppSetting<string | boolean | number>(
-        VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY
-      ),
-      getAppSetting<string | boolean | number>(
-        VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
-      ),
+  const voiceSettingRows = await withTimeout(
+    getLiteAppSettingsByKeysUncached([
+      VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
     ]),
     VOICE_SETTING_TIMEOUT_MS
-  ).catch(() => [
-    getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY
-    ),
-    getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
-    ),
-  ]);
+  ).catch((error) => {
+    console.error(
+      "[api/mobile/chat/voice-turn] Feature setting read failed.",
+      error
+    );
+    return null;
+  });
+
+  if (!voiceSettingRows) {
+    return Response.json(
+      { message: "Voice chat settings could not be confirmed." },
+      { headers: noStoreHeaders(), status: 503 }
+    );
+  }
+
+  const voiceSettings = new Map(
+    voiceSettingRows.map((row) => [row.key, row.value])
+  );
 
   const voiceMode = parseVoiceChatAccessModeSetting(
     resolvePlatformVoiceChatSetting({
-      androidValue: rawVoiceSettings[0],
-      legacyValue: rawVoiceSettings[1],
+      androidValue: voiceSettings.get(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY),
+      legacyValue: voiceSettings.get(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
     }).android
   );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
+    return Response.json(
+      { message: "Not found" },
+      { headers: noStoreHeaders(), status: 404 }
+    );
+  }
+
+  const liveVoiceModel = await resolveLiveVoiceModelConfig({
+    platform: "native",
+  });
+  if (!liveVoiceModel) {
     return Response.json(
       { message: "Not found" },
       { headers: noStoreHeaders(), status: 404 }
@@ -131,33 +149,68 @@ export async function POST(request: Request) {
           mode: "default",
         });
       }
-      await saveMessages({
-        messages: [
-          {
-            attachments: [],
-            chatId,
-            createdAt,
-            id: userMessageId,
-            parts: [{ type: "text", text: userText }],
-            role: "user",
-          },
-          {
-            attachments: [],
-            chatId,
-            createdAt: assistantCreatedAt,
-            id: assistantMessageId,
-            parts: [
-              {
-                type: "text",
-                text: assistantText,
-              },
-            ],
-            role: "assistant",
-          },
-        ],
-      });
       return null;
     })(),
+    VOICE_TURN_SAVE_TIMEOUT_MS
+  );
+
+  const inputTokens = Math.ceil(liveVoiceModel.tokensPerVoiceInteraction / 2);
+  const outputTokens = Math.max(
+    1,
+    liveVoiceModel.tokensPerVoiceInteraction - inputTokens
+  );
+
+  try {
+    await withTimeout(
+      recordTokenUsage({
+        chatId,
+        inputTokens,
+        liveVoiceModelConfigId: liveVoiceModel.id,
+        modelConfigId: null,
+        outputTokens,
+        userId: authContext.user.id,
+      }),
+      VOICE_TURN_SAVE_TIMEOUT_MS
+    );
+  } catch (error) {
+    if (
+      error instanceof ChatSDKError &&
+      error.type === "payment_required"
+    ) {
+      return Response.json(
+        { message: "Insufficient credits remaining" },
+        { headers: noStoreHeaders(), status: 402 }
+      );
+    }
+    throw error;
+  }
+
+  await withTimeout(
+    saveMessages({
+      messages: [
+        {
+          attachments: [],
+          chatId,
+          createdAt,
+          id: userMessageId,
+          parts: [{ type: "text", text: userText }],
+          role: "user",
+        },
+        {
+          attachments: [],
+          chatId,
+          createdAt: assistantCreatedAt,
+          id: assistantMessageId,
+          parts: [
+            {
+              type: "text",
+              text: assistantText,
+            },
+          ],
+          role: "assistant",
+        },
+      ],
+    }),
     VOICE_TURN_SAVE_TIMEOUT_MS
   );
 
