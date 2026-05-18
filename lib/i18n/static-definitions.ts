@@ -2,9 +2,20 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "app.brand",
+    defaultText: "KhasiGPT",
+    description: "Application brand name shown in app chrome.",
+  },
+  {
+    key: "common.retry",
+    defaultText: "Retry",
+    description: "Generic button label for retrying a failed action.",
+  },
+  {
     key: "greeting.title",
-    defaultText: "Hello there!",
-    description: "Greeting headline above the chat input.",
+    defaultText: "Hi, {name}",
+    description:
+      "Greeting headline above the chat input. Use {name} as the placeholder for the user's first name.",
   },
   {
     key: "greeting.subtitle",
@@ -32,6 +43,31 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Helper text shown while a new language is being applied.",
   },
   {
+    key: "user_menu.language.chat_prompt.title",
+    defaultText: "Also change chat language?",
+    description: "Title for the chat language confirmation dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.description",
+    defaultText: "Update the chat language to {language} as well?",
+    description: "Body text for the chat language confirmation dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.cancel",
+    defaultText: "No, keep chat language",
+    description: "Cancel button label for the chat language dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.confirm",
+    defaultText: "Yes, update chat language",
+    description: "Confirm button label for the chat language dialog.",
+  },
+  {
+    key: "user_menu.language.chat_prompt.loading",
+    defaultText: "Switching chat language...",
+    description: "Loading message shown while chat language preference is being applied.",
+  },
+  {
     key: "user_menu.theme.light",
     defaultText: "Light mode",
     description: "Menu action to switch to light theme.",
@@ -55,6 +91,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "user_menu.manage_subscriptions_status_checking",
     defaultText: "Checking plan...",
     description: "Helper text while subscription plan is loading.",
+  },
+  {
+    key: "user_menu.manage_subscriptions_status_loading",
+    defaultText: "Loading plan...",
+    description: "Helper text while native subscription plan is loading.",
+  },
+  {
+    key: "user_menu.manage_subscriptions_status_unavailable",
+    defaultText: "Plan unavailable",
+    description: "Helper text when subscription plan could not be loaded.",
   },
   {
     key: "user_menu.manage_subscriptions_status_fallback",
@@ -87,6 +133,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "SR-only label for the unauthenticated menu button.",
   },
   {
+    key: "user_menu.creator_dashboard",
+    defaultText: "Creator dashboard",
+    description: "Menu item linking to the creator performance dashboard.",
+  },
+  {
+    key: "user_menu.community_forum",
+    defaultText: "Community Forum",
+    description: "Menu item linking to the community forum.",
+  },
+  {
     key: "common.cancel",
     defaultText: "Cancel",
     description: "Generic cancel action label.",
@@ -95,6 +151,102 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "common.close",
     defaultText: "Close",
     description: "Generic close action label.",
+  },
+  {
+    key: "common.clear",
+    defaultText: "Clear",
+    description: "Generic clear/reset action label.",
+  },
+  {
+    key: "common.loading",
+    defaultText: "Loading...",
+    description: "Generic loading label.",
+  },
+  {
+    key: "common.try_again",
+    defaultText: "Try again",
+    description: "Generic retry action label.",
+  },
+  {
+    key: "common.continue",
+    defaultText: "Continue",
+    description: "Generic continue action label.",
+  },
+  {
+    key: "common.delete",
+    defaultText: "Delete",
+    description: "Generic delete action label.",
+  },
+  {
+    key: "translation_edit.mode.enable",
+    defaultText: "Enable translation edit mode",
+    description: "Admin menu action that enables inline localization editing.",
+  },
+  {
+    key: "translation_edit.mode.disable",
+    defaultText: "Disable translation edit mode",
+    description: "Admin menu action that disables inline localization editing.",
+  },
+  {
+    key: "translation_edit.modal.title",
+    defaultText: "Edit translation",
+    description: "Title for the inline translation editor dialog.",
+  },
+  {
+    key: "translation_edit.modal.description",
+    defaultText: "Save translated UI text for the selected language.",
+    description: "Description for the inline translation editor dialog.",
+  },
+  {
+    key: "translation_edit.source_label",
+    defaultText: "English source",
+    description: "Label for English source text in the inline translation editor.",
+  },
+  {
+    key: "translation_edit.language_label",
+    defaultText: "Language",
+    description: "Label for selected language in the inline translation editor.",
+  },
+  {
+    key: "translation_edit.value_label",
+    defaultText: "Translated value",
+    description: "Accessibility label for the inline translation text input.",
+  },
+  {
+    key: "translation_edit.default_language_locked",
+    defaultText:
+      "Inline edit saves translated values only. Edit English source text from Admin Translations.",
+    description: "Notice shown when inline editing is opened while English is active.",
+  },
+  {
+    key: "translation_edit.save",
+    defaultText: "Save translation",
+    description: "Submit button for the inline translation editor.",
+  },
+  {
+    key: "translation_edit.saving",
+    defaultText: "Saving...",
+    description: "Saving state label for the inline translation editor.",
+  },
+  {
+    key: "translation_edit.saved",
+    defaultText: "Translation saved",
+    description: "Success toast after saving an inline translation.",
+  },
+  {
+    key: "translation_edit.cleared",
+    defaultText: "Translation cleared",
+    description: "Success toast after clearing an inline translation.",
+  },
+  {
+    key: "translation_edit.save_failed",
+    defaultText: "Unable to save translation.",
+    description: "Error toast when inline translation saving fails.",
+  },
+  {
+    key: "translation_edit.edit_short",
+    defaultText: "Edit",
+    description: "Short edit label for non-text inline translation affordances.",
   },
   {
     key: "user_menu.resources.about",
@@ -120,6 +272,51 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "navigation.back_to_home",
     defaultText: "Back to home",
     description: "Text for links that return to the home page.",
+  },
+  {
+    key: "navigation.back",
+    defaultText: "Back",
+    description: "Back navigation button label.",
+  },
+  {
+    key: "navigation.opening",
+    defaultText: "Opening...",
+    description: "Navigation pending label.",
+  },
+  {
+    key: "sidebar.new_chat",
+    defaultText: "New chat",
+    description: "Sidebar action for starting a new chat.",
+  },
+  {
+    key: "sidebar.translate",
+    defaultText: "Translate",
+    description: "Sidebar link to the translate tool.",
+  },
+  {
+    key: "sidebar.study_mode",
+    defaultText: "Study Mode",
+    description: "Sidebar link for the study chat mode.",
+  },
+  {
+    key: "sidebar.jobs",
+    defaultText: "Jobs",
+    description: "Sidebar link for jobs mode.",
+  },
+  {
+    key: "sidebar.calculator",
+    defaultText: "Calculator",
+    description: "Sidebar link for calculator.",
+  },
+  {
+    key: "sidebar.loading_tools",
+    defaultText: "Loading tools...",
+    description: "Sidebar loading label while feature links are loading.",
+  },
+  {
+    key: "sidebar.history.title",
+    defaultText: "Chat History",
+    description: "Sidebar chat history section title.",
   },
   {
     key: "about.title",
@@ -152,6 +349,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText:
       "KhasiGPT is your smart AI assistant designed to understand and speak Khasi language.",
     description: "Subtitle displayed on authentication pages.",
+  },
+  {
+    key: "auth.signing_in",
+    defaultText: "Signing you in...",
+    description: "Loading label while authentication is in progress.",
+  },
+  {
+    key: "auth.google.completing",
+    defaultText: "Completing Google sign in",
+    description: "Loading title while Google authentication completes.",
+  },
+  {
+    key: "auth.loading_account",
+    defaultText: "Loading your account...",
+    description: "Loading detail while account bootstrap is being loaded.",
   },
   {
     key: "login.title",
@@ -207,6 +419,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Error shown when the user account is inactive.",
   },
   {
+    key: "login.error.link_required",
+    defaultText:
+      "Please use the sign-in link sent to your email before continuing.",
+    description: "Error shown when the account requires email link sign-in.",
+  },
+  {
     key: "register.title",
     defaultText: "Sign Up To KhasiGPT",
     description: "Heading for the registration page.",
@@ -242,6 +460,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText:
       "You must accept the Terms of Service and Privacy Policy to continue.",
     description: "Toast message when the user has not accepted terms.",
+  },
+  {
+    key: "register.error.rate_limited",
+    defaultText: "Too many attempts. Please wait and try again.",
+    description: "Toast message when registration is rate limited.",
   },
   {
     key: "register.success.verification_sent",
@@ -296,6 +519,147 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Suffix text after the login link on the register page.",
   },
   {
+    key: "register.legal.error",
+    defaultText: "Unable to load this document.",
+    description: "Error shown when a legal document fails to load in native registration.",
+  },
+  {
+    key: "register.legal.empty",
+    defaultText: "No content is available yet.",
+    description: "Empty state for legal documents in native registration.",
+  },
+  {
+    key: "forgot_password.title",
+    defaultText: "Forgot password",
+    description: "Heading for the forgot password page.",
+  },
+  {
+    key: "forgot_password.subtitle",
+    defaultText:
+      "Enter your email and we will send you a link to reset your password.",
+    description: "Supporting copy on the forgot password page.",
+  },
+  {
+    key: "forgot_password.email_label",
+    defaultText: "Email address",
+    description: "Label for the email input on the forgot password form.",
+  },
+  {
+    key: "forgot_password.email_placeholder",
+    defaultText: "you@example.com",
+    description: "Placeholder text for the forgot password email input.",
+  },
+  {
+    key: "forgot_password.sending",
+    defaultText: "Sending...",
+    description: "Button label while the reset link is being sent.",
+  },
+  {
+    key: "forgot_password.submit",
+    defaultText: "Send reset link",
+    description: "Button label to request a password reset link.",
+  },
+  {
+    key: "forgot_password.remembered",
+    defaultText: "Remembered your password?",
+    description: "Prompt before the back-to-sign-in link.",
+  },
+  {
+    key: "forgot_password.back_to_sign_in",
+    defaultText: "Back to sign in",
+    description: "Link text back to the sign-in page.",
+  },
+  {
+    key: "reset_password.title",
+    defaultText: "Reset password",
+    description: "Heading for the reset password page.",
+  },
+  {
+    key: "reset_password.subtitle",
+    defaultText: "Choose a new password for your account.",
+    description: "Supporting copy on the reset password page.",
+  },
+  {
+    key: "reset_password.invalid_title",
+    defaultText: "Invalid link",
+    description: "Heading shown when reset password link is invalid.",
+  },
+  {
+    key: "reset_password.invalid_message",
+    defaultText:
+      "This password reset link is missing or malformed. Request a new link and try again.",
+    description: "Message shown when reset password link is invalid.",
+  },
+  {
+    key: "verify_email.title.verified",
+    defaultText: "Email verified",
+    description: "Heading shown when the email is verified.",
+  },
+  {
+    key: "verify_email.message.verified",
+    defaultText:
+      "Your account is now active. You can sign in using your email and password.",
+    description: "Message shown after successful email verification.",
+  },
+  {
+    key: "verify_email.title.already_verified",
+    defaultText: "Email already verified",
+    description: "Heading shown when the email is already verified.",
+  },
+  {
+    key: "verify_email.message.already_verified",
+    defaultText: "You can sign in right away using your credentials.",
+    description: "Message shown when the email was already verified.",
+  },
+  {
+    key: "verify_email.title.expired",
+    defaultText: "Verification link expired",
+    description: "Heading shown when the verification link is expired.",
+  },
+  {
+    key: "verify_email.message.expired",
+    defaultText:
+      "The verification link has expired. Please retry signup to receive a new email.",
+    description: "Message shown when the verification link is expired.",
+  },
+  {
+    key: "verify_email.title.invalid",
+    defaultText: "Invalid verification link",
+    description: "Heading shown when the verification link is invalid.",
+  },
+  {
+    key: "verify_email.message.invalid",
+    defaultText:
+      "The verification token is invalid or has already been used. Please request a new verification email.",
+    description: "Message shown when the verification link is invalid.",
+  },
+  {
+    key: "verify_email.continue_prompt",
+    defaultText: "Continue to sign in once your account is ready.",
+    description: "Prompt beneath the verification status message.",
+  },
+  {
+    key: "verify_email.sign_in_button",
+    defaultText: "Go to sign in",
+    description: "Button text linking to the sign-in page.",
+  },
+  {
+    key: "offline.title",
+    defaultText: "You're offline",
+    description: "Heading for the offline page.",
+  },
+  {
+    key: "offline.message",
+    defaultText:
+      "No internet connection detected. Once you're back online, you can keep chatting with KhasiGPT in the browser or installed app.",
+    description: "Message shown on the offline page.",
+  },
+  {
+    key: "offline.retry",
+    defaultText: "Retry connection",
+    description: "Button label to retry connection on the offline page.",
+  },
+  {
     key: "auth.email_label",
     defaultText: "Email Address",
     description: "Label for the email input on auth forms.",
@@ -343,12 +707,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "chat.disclaimer.text",
     defaultText:
-      "KhasiGPT or other AI Models can make mistakes. Check important details.",
+      "KhasiGPT or other AI models can make mistakes. Check important details.",
     description: "Disclaimer text displayed below the composer.",
   },
   {
     key: "chat.disclaimer.privacy_link",
-    defaultText: "See privacy policy.",
+    defaultText: "Read Privacy Policy.",
     description: "Link text for the privacy policy in the chat disclaimer.",
   },
   {
@@ -407,13 +771,435 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "chat.deleted_notice",
-    defaultText: "This chat has been deleted. You are viewing it in read-only mode.",
+    defaultText:
+      "This chat has been deleted. You are viewing it in read-only mode.",
     description: "Banner text shown to admins when viewing a deleted chat.",
+  },
+  {
+    key: "chat.history.load_more",
+    defaultText: "Load earlier messages",
+    description: "Button label to fetch older chat messages.",
+  },
+  {
+    key: "chat.history.loading",
+    defaultText: "Loading earlier messages...",
+    description: "Label shown while older messages are loading.",
+  },
+  {
+    key: "chat.history.show_older",
+    defaultText: "Show {count} earlier messages",
+    description: "Button label to reveal older messages already loaded.",
+  },
+  {
+    key: "chat.history.load_failed",
+    defaultText: "Unable to load earlier messages.",
+    description: "Toast message when loading chat history fails.",
   },
   {
     key: "chat.input.placeholder",
     defaultText: "Send a message...",
     description: "Placeholder text for the main chat input.",
+  },
+  {
+    key: "chat.send_message",
+    defaultText: "Send message",
+    description: "Accessibility label for the chat send button.",
+  },
+  {
+    key: "chat.stop_generation",
+    defaultText: "Stop generation",
+    description:
+      "Accessibility label for the chat stop button while a response is generating.",
+  },
+  {
+    key: "chat.generation_stopped",
+    defaultText: "Response stopped.",
+    description:
+      "Status message shown when the user stops an in-progress chat response.",
+  },
+  {
+    key: "voice.chat.open",
+    defaultText: "Start voice chat",
+    description: "Accessibility label for the native voice chat microphone button.",
+  },
+  {
+    key: "voice.chat.title",
+    defaultText: "Voice chat",
+    description: "Title for the native voice chat dialog.",
+  },
+  {
+    key: "voice.chat.connecting",
+    defaultText: "Connecting...",
+    description: "Native voice chat status while connecting to Gemini Live.",
+  },
+  {
+    key: "voice.chat.listening",
+    defaultText: "Listening...",
+    description: "Native voice chat status while recording the user's speech.",
+  },
+  {
+    key: "voice.chat.thinking",
+    defaultText: "Thinking...",
+    description: "Native voice chat status after the user stops speaking.",
+  },
+  {
+    key: "voice.chat.speaking",
+    defaultText: "Speaking...",
+    description: "Native voice chat status while Gemini audio is playing.",
+  },
+  {
+    key: "voice.chat.error",
+    defaultText: "Voice chat failed",
+    description: "Native voice chat error status.",
+  },
+  {
+    key: "voice.chat.ready",
+    defaultText: "Ready",
+    description: "Native voice chat idle status.",
+  },
+  {
+    key: "voice.chat.you",
+    defaultText: "You",
+    description: "Label for the user's voice transcript.",
+  },
+  {
+    key: "voice.chat.assistant",
+    defaultText: "KhasiGPT",
+    description: "Label for the assistant's voice transcript.",
+  },
+  {
+    key: "voice.chat.waiting_for_speech",
+    defaultText: "Waiting for speech...",
+    description: "Placeholder shown before user speech is transcribed.",
+  },
+  {
+    key: "voice.chat.waiting_for_response",
+    defaultText: "Waiting for response...",
+    description: "Placeholder shown before Gemini's voice response transcript arrives.",
+  },
+  {
+    key: "voice.chat.cancel",
+    defaultText: "Cancel",
+    description: "Button label to cancel native voice chat.",
+  },
+  {
+    key: "voice.chat.stop",
+    defaultText: "Stop and send",
+    description: "Button label to stop recording and save the voice chat turn.",
+  },
+  {
+    key: "voice.chat.end",
+    defaultText: "End voice chat",
+    description: "Button label to end an active live voice chat session.",
+  },
+  {
+    key: "voice.chat.saving",
+    defaultText: "Saving...",
+    description: "Button label while a completed voice chat is being saved.",
+  },
+  {
+    key: "voice.chat.disabled",
+    defaultText: "Voice chat is currently unavailable.",
+    description: "Error shown when native voice chat is disabled.",
+  },
+  {
+    key: "voice.chat.failed",
+    defaultText: "Voice chat failed. Please try again.",
+    description: "Generic native voice chat failure message.",
+  },
+  {
+    key: "voice.chat.empty_result",
+    defaultText: "I could not hear enough speech. Please try again.",
+    description: "Error shown when the voice chat turn has no transcript.",
+  },
+  {
+    key: "voice.chat.save_failed",
+    defaultText: "Unable to save this voice chat.",
+    description: "Error shown when saving a completed native voice turn fails.",
+  },
+  {
+    key: "chat.header.new_chat",
+    defaultText: "New Chat",
+    description: "Header button label for starting a new chat.",
+  },
+  {
+    key: "chat.error.unable_to_load",
+    defaultText: "Unable to load chat",
+    description: "Chat detail error heading when a chat cannot be loaded.",
+  },
+  {
+    key: "study.empty.subtitle",
+    defaultText: "What would you like to study today?",
+    description: "Empty study chat subtitle shown above the composer.",
+  },
+  {
+    key: "study.empty.change_exam",
+    defaultText: "Change exam",
+    description: "Button label for changing the selected study exam.",
+  },
+  {
+    key: "chat.language.ui_prompt.title",
+    defaultText: "Change interface language?",
+    description: "Title for the UI language change confirmation dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.description",
+    defaultText:
+      "Do you also want the interface language to change to {language}?",
+    description: "Body text for the UI language change confirmation dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.cancel",
+    defaultText: "No, keep interface",
+    description: "Cancel button label for the UI language change dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.confirm",
+    defaultText: "Yes, change interface",
+    description: "Confirm button label for the UI language change dialog.",
+  },
+  {
+    key: "chat.language.ui_prompt.loading",
+    defaultText: "Switching interface language...",
+    description: "Loading text shown while the UI language is changing.",
+  },
+  {
+    key: "image.mode.toggle",
+    defaultText: "Generate image",
+    description: "Label for the image generation mode toggle.",
+  },
+  {
+    key: "image.input.placeholder",
+    defaultText: "Describe the image you want to generate...",
+    description: "Placeholder text shown in image generation mode.",
+  },
+  {
+    key: "image.disabled",
+    defaultText: "Image generation is currently unavailable.",
+    description: "Toast message when image generation is disabled.",
+  },
+  {
+    key: "image.actions.title",
+    defaultText: "Generate images",
+    description: "Heading for the image generation shortcut on the chat home.",
+  },
+  {
+    key: "image.actions.subtitle",
+    defaultText: "Use Nano Banana to create visuals without leaving chat.",
+    description: "Supporting copy under the image generation shortcut.",
+  },
+  {
+    key: "image.actions.text_to_image.title",
+    defaultText: "Text to image",
+    description: "Card label for the text-to-image option.",
+  },
+  {
+    key: "image.actions.text_to_image.description",
+    defaultText: "Describe a scene and let Nano Banana render it.",
+    description: "Helper text for the text-to-image option card.",
+  },
+  {
+    key: "image.actions.image_to_image.title",
+    defaultText: "Image to image",
+    description: "Card label for the image-to-image option.",
+  },
+  {
+    key: "image.actions.image_to_image.description",
+    defaultText: "Transform an existing image with a new prompt.",
+    description: "Helper text for the image-to-image option card.",
+  },
+  {
+    key: "image.actions.locked.tooltip",
+    defaultText: "Recharge credits to generate images.",
+    description: "Tooltip shown when image generation is locked.",
+  },
+  {
+    key: "image.actions.locked.free.tooltip",
+    defaultText: "Free credits can't be used for images.",
+    description:
+      "Tooltip shown when image generation requires paid credits only.",
+  },
+  {
+    key: "image.actions.locked.title",
+    defaultText: "Recharge credits to generate images",
+    description: "Modal title shown to free users attempting image generation.",
+  },
+  {
+    key: "image.actions.locked.free.title",
+    defaultText: "Free credits can't be used for images",
+    description:
+      "Modal title shown when paid credits are required for image generation.",
+  },
+  {
+    key: "image.actions.locked.description",
+    defaultText:
+      "Image generation is available for paid plans or users with active credits.",
+    description: "Modal description shown when image generation is locked.",
+  },
+  {
+    key: "image.actions.locked.free.description",
+    defaultText: "You are using free credits. Recharge to generate images.",
+    description:
+      "Modal description shown when users only have free credits.",
+  },
+  {
+    key: "image.actions.locked.cta",
+    defaultText: "Go to recharge",
+    description: "CTA button label to navigate to the recharge page.",
+  },
+  {
+    key: "image.upgrade_prompt.title",
+    defaultText: "Upgrade required",
+    description: "Modal title shown before navigating to the upgrade page.",
+  },
+  {
+    key: "image.upgrade_prompt.description",
+    defaultText: "Please upgrade your plan to use this feature.",
+    description:
+      "Modal message shown when image generation requires more credits.",
+  },
+  {
+    key: "image.upgrade_prompt.cta",
+    defaultText: "Upgrade Plan",
+    description: "CTA button label to navigate to the upgrade plan page.",
+  },
+  {
+    key: "image.page.title",
+    defaultText: "Image generation",
+    description: "Page title for the image generation screen.",
+  },
+  {
+    key: "image.page.subtitle",
+    defaultText:
+      "Create visuals with Nano Banana. Switch between text-to-image and image-to-image anytime.",
+    description: "Subtitle on the image generation page.",
+  },
+  {
+    key: "image.mode.text",
+    defaultText: "Text to image",
+    description: "Toggle label for text-to-image mode.",
+  },
+  {
+    key: "image.mode.image",
+    defaultText: "Image to image",
+    description: "Toggle label for image-to-image mode.",
+  },
+  {
+    key: "image.prompt.label",
+    defaultText: "Prompt",
+    description: "Label for the image generation prompt field.",
+  },
+  {
+    key: "image.prompt.placeholder",
+    defaultText: "Enter image prompt here...",
+    description: "Placeholder text for the image generation prompt field.",
+  },
+  {
+    key: "lyrics.prompt.placeholder",
+    defaultText: "Enter lyrics details...",
+    description: "Placeholder text for the lyrics prompt field.",
+  },
+  {
+    key: "image.prompt.helper",
+    defaultText:
+      "Describe the image you want. Be specific with style, lighting, and mood.",
+    description: "Helper text under the image generation prompt.",
+  },
+  {
+    key: "image.prompt.required",
+    defaultText: "Add a prompt before generating.",
+    description: "Validation message for missing image prompt.",
+  },
+  {
+    key: "image.upload.label",
+    defaultText: "Reference image",
+    description: "Label for the image-to-image upload area.",
+  },
+  {
+    key: "image.upload.helper",
+    defaultText: "Upload a PNG or JPG (max 5MB).",
+    description: "Helper text for the image-to-image file uploader.",
+  },
+  {
+    key: "image.upload.clear",
+    defaultText: "Remove",
+    description: "Button label to clear the uploaded reference image.",
+  },
+  {
+    key: "image.upload.preview",
+    defaultText: "Reference preview",
+    description: "Alt text for the reference image preview.",
+  },
+  {
+    key: "image.upload.empty",
+    defaultText: "Add a reference image to guide the generation.",
+    description: "Placeholder text when no reference image is uploaded.",
+  },
+  {
+    key: "image.upload.invalid_type",
+    defaultText: "Please upload a PNG or JPG file.",
+    description: "Validation message for unsupported image types.",
+  },
+  {
+    key: "image.upload.too_large",
+    defaultText: "Images must be 5MB or smaller.",
+    description: "Validation message for oversized images.",
+  },
+  {
+    key: "image.upload.failed",
+    defaultText: "Failed to read the uploaded image.",
+    description: "Error message when the image file cannot be read.",
+  },
+  {
+    key: "image.upload.required",
+    defaultText: "Upload a reference image to continue.",
+    description: "Validation message when image-to-image is missing a file.",
+  },
+  {
+    key: "image.generate.cta",
+    defaultText: "Generate image",
+    description: "Primary CTA for starting image generation.",
+  },
+  {
+    key: "image.generate.loading",
+    defaultText: "Generating...",
+    description: "Loading label while an image is being generated.",
+  },
+  {
+    key: "image.generate.failed",
+    defaultText: "Image generation failed. Please try again.",
+    description: "Fallback error message when generation fails.",
+  },
+  {
+    key: "image.generate.empty",
+    defaultText: "No image was returned. Try a different prompt.",
+    description: "Message shown when the API returns no images.",
+  },
+  {
+    key: "image.results.title",
+    defaultText: "Generated output",
+    description: "Title for the image results panel.",
+  },
+  {
+    key: "image.results.count",
+    defaultText: "Results",
+    description: "Label prefix for the image results count.",
+  },
+  {
+    key: "image.results.alt",
+    defaultText: "Generated image",
+    description: "Alt text for generated images.",
+  },
+  {
+    key: "image.results.empty",
+    defaultText: "Your generated images will appear here.",
+    description: "Placeholder text when no images have been generated yet.",
+  },
+  {
+    key: "image.access.locked",
+    defaultText:
+      "Image generation is available for users with active credits or a paid plan.",
+    description: "Banner text shown when image generation is locked.",
   },
   {
     key: "profile.title",
@@ -424,6 +1210,46 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.subtitle",
     defaultText: "Update your account information and security preferences.",
     description: "Subheading on the profile page.",
+  },
+  {
+    key: "profile.name.title",
+    defaultText: "Personal details",
+    description: "Heading for the name section on the profile page.",
+  },
+  {
+    key: "profile.name.description",
+    defaultText: "Update how your name appears across the app.",
+    description: "Supporting copy for the name section on the profile page.",
+  },
+  {
+    key: "profile.name.first_label",
+    defaultText: "First name",
+    description: "Label for the first name field on the profile page.",
+  },
+  {
+    key: "profile.name.last_label",
+    defaultText: "Last name",
+    description: "Label for the last name field on the profile page.",
+  },
+  {
+    key: "profile.name.success",
+    defaultText: "Your name has been updated.",
+    description: "Toast message when the name update succeeds.",
+  },
+  {
+    key: "profile.name.error",
+    defaultText: "Unable to update profile.",
+    description: "Error shown when profile details cannot be updated.",
+  },
+  {
+    key: "profile.name.saving",
+    defaultText: "Saving...",
+    description: "Button label while name update is saving.",
+  },
+  {
+    key: "profile.name.save_button",
+    defaultText: "Save changes",
+    description: "Button label to save profile name changes.",
   },
   {
     key: "profile.picture.title",
@@ -447,9 +1273,24 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label for opening the file picker.",
   },
   {
+    key: "profile.picture.preparing",
+    defaultText: "Preparing image...",
+    description: "Status label while a chosen profile image is being prepared.",
+  },
+  {
+    key: "profile.picture.ready",
+    defaultText: "Image selected. Upload to save.",
+    description: "Status label after selecting a profile image.",
+  },
+  {
     key: "profile.picture.upload",
     defaultText: "Upload",
     description: "Button label when no file has been selected yet.",
+  },
+  {
+    key: "profile.picture.uploading",
+    defaultText: "Uploading image...",
+    description: "Status label while the profile image is uploading.",
   },
   {
     key: "profile.picture.save_changes",
@@ -465,6 +1306,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.picture.remove",
     defaultText: "Remove",
     description: "Button label for removing a profile image.",
+  },
+  {
+    key: "profile.picture.removing",
+    defaultText: "Removing image...",
+    description: "Status label while the profile image is being removed.",
   },
   {
     key: "profile.picture.error.file_type",
@@ -483,26 +1329,22 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "profile.picture.error.upload_generic",
-    defaultText:
-      "Failed to update profile image. Please try again.",
+    defaultText: "Failed to update profile image. Please try again.",
     description: "Generic error for failed uploads.",
   },
   {
     key: "profile.picture.error.unexpected",
-    defaultText:
-      "Unexpected error while uploading image. Please try again.",
+    defaultText: "Unexpected error while uploading image. Please try again.",
     description: "Error when an unexpected upload issue occurs.",
   },
   {
     key: "profile.picture.error.remove_generic",
-    defaultText:
-      "Failed to remove profile image. Please try again.",
+    defaultText: "Failed to remove profile image. Please try again.",
     description: "Generic error when removing the profile image fails.",
   },
   {
     key: "profile.picture.error.unexpected_remove",
-    defaultText:
-      "Unexpected error while removing image. Please try again.",
+    defaultText: "Unexpected error while removing image. Please try again.",
     description: "Unexpected error when removing the image.",
   },
   {
@@ -524,6 +1366,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "profile.account_email.description",
     defaultText: "To change your login email, please contact support.",
     description: "Description in the account email card.",
+  },
+  {
+    key: "profile.account_email.email_label",
+    defaultText: "Email",
+    description: "Label for the account email field.",
   },
   {
     key: "profile.account_email.link_text",
@@ -576,6 +1423,31 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Success message after updating the password.",
   },
   {
+    key: "profile.password.error",
+    defaultText: "Unable to update password.",
+    description: "Error shown when the password update fails.",
+  },
+  {
+    key: "profile.dob.label",
+    defaultText: "Date of birth",
+    description: "Label for the date of birth field.",
+  },
+  {
+    key: "profile.dob.placeholder",
+    defaultText: "YYYY-MM-DD",
+    description: "Placeholder format for the date of birth field.",
+  },
+  {
+    key: "profile.dob.locked_helper",
+    defaultText: "To correct your date of birth, contact support.",
+    description: "Helper shown when date of birth is locked.",
+  },
+  {
+    key: "profile.dob.editable_helper",
+    defaultText: "You can set your date of birth once.",
+    description: "Helper shown before date of birth is saved.",
+  },
+  {
     key: "profile.deactivate.title",
     defaultText: "Deactivate account",
     description: "Heading for the deactivate account section.",
@@ -620,7 +1492,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "sidebar.history.login_prompt",
     defaultText: "Login to save and revisit previous chats!",
-    description: "Message shown when history is unavailable because the user is signed out.",
+    description:
+      "Message shown when history is unavailable because the user is signed out.",
   },
   {
     key: "sidebar.history.empty",
@@ -653,6 +1526,37 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Label for chats created more than a month ago.",
   },
   {
+    key: "sidebar.history.loading_more",
+    defaultText: "Loading more...",
+    description: "Sidebar loading label while more chat history rows load.",
+  },
+  {
+    key: "sidebar.history.action.share",
+    defaultText: "Share",
+    description: "Sidebar chat history menu share heading.",
+  },
+  {
+    key: "sidebar.history.action.private",
+    defaultText: "Private",
+    description: "Sidebar chat history menu private visibility option.",
+  },
+  {
+    key: "sidebar.history.action.public",
+    defaultText: "Public",
+    description: "Sidebar chat history menu public visibility option.",
+  },
+  {
+    key: "sidebar.history.delete_confirm.title",
+    defaultText: "Are you absolutely sure?",
+    description: "Title for the sidebar chat deletion confirmation dialog.",
+  },
+  {
+    key: "sidebar.history.delete_confirm.description",
+    defaultText:
+      "This will remove the chat from your history. The record is kept safely in the backend unless an administrator purges it.",
+    description: "Body text for the sidebar chat deletion confirmation dialog.",
+  },
+  {
     key: "sidebar.history.toast.loading",
     defaultText: "Deleting chat...",
     description: "Toast message while a chat deletion is in progress.",
@@ -676,7 +1580,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "sidebar.history.delete_dialog.description",
     defaultText:
       "This action cannot be undone. This will permanently delete your chat and remove it from our servers.",
-    description: "Delete confirmation dialog description in chat history sidebar.",
+    description:
+      "Delete confirmation dialog description in chat history sidebar.",
   },
   {
     key: "sidebar.history.delete_dialog.confirm",
@@ -707,6 +1612,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.subtitle",
     defaultText: "Track your current plan, credit balance, and recent usage.",
     description: "Subheading for the subscriptions page.",
+  },
+  {
+    key: "subscriptions.loading_details",
+    defaultText: "Loading subscription details...",
+    description: "Loading label while subscription details are fetched.",
+  },
+  {
+    key: "subscriptions.error.load_details",
+    defaultText: "Unable to load subscription details.",
+    description: "Error shown when subscription details cannot be loaded.",
   },
   {
     key: "subscriptions.metric.total_used",
@@ -750,13 +1665,101 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "subscriptions.plan_overview.credits_allocated",
-    defaultText: "Credits allocated",
-    description: "Row label for credits allocated.",
+    defaultText: "Admin credits remaining",
+    description:
+      "Row label for remaining credits that were manually granted by an admin.",
+  },
+  {
+    key: "subscriptions.plan_overview.credits_recharged",
+    defaultText: "Paid credits remaining",
+    description: "Row label for remaining credits purchased via recharges.",
   },
   {
     key: "subscriptions.plan_overview.plan_expires",
     defaultText: "Plan expires",
     description: "Row label for plan expiry.",
+  },
+  {
+    key: "subscriptions.recharge_history.title",
+    defaultText: "Recharge history",
+    description: "Heading for the recharge history section.",
+  },
+  {
+    key: "subscriptions.recharge_history.subtitle",
+    defaultText: "Recent top-ups you've completed.",
+    description: "Subtitle explaining the recharge history section.",
+  },
+  {
+    key: "subscriptions.recharge_history.empty",
+    defaultText: "You haven't recharged your account yet.",
+    description: "Fallback text when there are no recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.plan",
+    defaultText: "Plan",
+    description: "Column label for plan name in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.amount",
+    defaultText: "Amount",
+    description: "Column label for amount in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.status",
+    defaultText: "Status",
+    description: "Column label for status in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.column.date",
+    defaultText: "Date",
+    description: "Column label for date in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.unknown_plan",
+    defaultText: "Plan unavailable",
+    description:
+      "Fallback text when a plan name is missing in recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.trigger_label",
+    defaultText: "View recharge history",
+    description: "Aria-label for the icon button that opens recharge history.",
+  },
+  {
+    key: "subscriptions.recharge_history.close_button",
+    defaultText: "Close",
+    description:
+      "Label for the close button inside the recharge history dialog.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.pending",
+    defaultText: "Pending",
+    description: "Status label for pending recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.processing",
+    defaultText: "Processing",
+    description: "Status label for processing recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.paid",
+    defaultText: "Paid",
+    description: "Status label for successful recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.failed",
+    defaultText: "Failed",
+    description: "Status label for failed recharge entries.",
+  },
+  {
+    key: "subscriptions.recharge_history.status.unknown",
+    defaultText: "Unknown",
+    description: "Fallback status label when recharge status is missing.",
+  },
+  {
+    key: "subscriptions.recharge_history.try_again",
+    defaultText: "Try again",
+    description: "Tooltip text for the retry icon in recharge history.",
   },
   {
     key: "subscriptions.plan_overview.days_remaining",
@@ -765,7 +1768,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "subscriptions.plan_overview.no_plan",
-    defaultText: "No plan yet",
+    defaultText: "Free Plan",
     description: "Fallback label when user has no plan.",
   },
   {
@@ -799,6 +1802,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Recharge link text.",
   },
   {
+    key: "subscriptions.quick_actions.recharge_hint",
+    defaultText: "Need more credits? Visit the recharge page.",
+    description: "Native quick action hint for opening the recharge page.",
+  },
+  {
+    key: "subscriptions.quick_actions.recharge_button",
+    defaultText: "Recharge",
+    description: "Button label for opening the recharge page.",
+  },
+  {
     key: "subscriptions.quick_actions.support",
     defaultText:
       "Prefer emailed invoices or receipts? Contact support and we'll help out.",
@@ -823,6 +1836,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.daily_usage.peak_day",
     defaultText: "Peak day: {date} • {credits} credits",
     description: "Label summarising the peak usage day.",
+  },
+  {
+    key: "subscriptions.chart.area",
+    defaultText: "Area",
+    description: "Chart type selector label for area chart.",
+  },
+  {
+    key: "subscriptions.chart.bar",
+    defaultText: "Bar",
+    description: "Chart type selector label for bar chart.",
+  },
+  {
+    key: "subscriptions.chart.line",
+    defaultText: "Line",
+    description: "Chart type selector label for line chart.",
   },
   {
     key: "subscriptions.range.label",
@@ -850,14 +1878,59 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Column header for the chat ID.",
   },
   {
+    key: "subscriptions.session_usage.headers.chat",
+    defaultText: "Chat",
+    description: "Column header for the session chat details.",
+  },
+  {
+    key: "subscriptions.session_usage.headers.created",
+    defaultText: "Started on",
+    description: "Column header for the chat creation date.",
+  },
+  {
+    key: "subscriptions.session_usage.headers.last_used",
+    defaultText: "Last activity",
+    description: "Column header for the last usage timestamp.",
+  },
+  {
     key: "subscriptions.session_usage.headers.credits_used",
     defaultText: "Credits used",
     description: "Column header for credits used.",
   },
   {
+    key: "subscriptions.session_usage.sort.label",
+    defaultText: "Sort sessions",
+    description: "Label for the session usage sort select.",
+  },
+  {
+    key: "subscriptions.session_usage.sort.latest",
+    defaultText: "Latest activity",
+    description: "Sort option label for ordering by most recent sessions.",
+  },
+  {
+    key: "subscriptions.session_usage.sort.usage",
+    defaultText: "Highest credits used",
+    description: "Sort option label for ordering by usage totals.",
+  },
+  {
     key: "subscriptions.session_usage.empty",
     defaultText: "No usage recorded yet.",
     description: "Empty state text for the session usage table.",
+  },
+  {
+    key: "subscriptions.session_usage.untitled_chat",
+    defaultText: "Untitled chat",
+    description: "Fallback title when a chat is missing a name.",
+  },
+  {
+    key: "subscriptions.session_usage.created.unknown",
+    defaultText: "Not available",
+    description: "Fallback text when the chat start date is missing.",
+  },
+  {
+    key: "subscriptions.session_usage.last_used.unknown",
+    defaultText: "Not available",
+    description: "Fallback text when no last usage timestamp is present.",
   },
   {
     key: "subscriptions.pagination.updating",
@@ -870,6 +1943,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label for viewing fewer sessions.",
   },
   {
+    key: "subscriptions.pagination.prev_short",
+    defaultText: "View fewer",
+    description: "Short button label for viewing fewer sessions on native.",
+  },
+  {
     key: "subscriptions.pagination.page",
     defaultText: "Page {current} of {total}",
     description: "Pagination status text.",
@@ -878,6 +1956,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.pagination.next",
     defaultText: "View more sessions",
     description: "Button label for viewing more sessions.",
+  },
+  {
+    key: "subscriptions.pagination.next_short",
+    defaultText: "View more",
+    description: "Short button label for viewing more sessions on native.",
   },
   {
     key: "subscriptions.pagination.no_more",
@@ -934,6 +2017,115 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "recharge.status.error_generic",
     defaultText: "Something went wrong while processing the payment.",
     description: "Fallback status message when an unexpected error occurs.",
+  },
+  {
+    key: "recharge.dialog.title",
+    defaultText: "Review your recharge",
+    description:
+      "Title for the order confirmation dialog on the recharge page.",
+  },
+  {
+    key: "recharge.dialog.description",
+    defaultText:
+      "Confirm the plan details and apply a coupon before continuing to payment.",
+    description: "Helper text shown in the order confirmation dialog.",
+  },
+  {
+    key: "recharge.dialog.plan_placeholder",
+    defaultText: "Selected plan",
+    description:
+      "Fallback label when the plan name is loading inside the dialog.",
+  },
+  {
+    key: "recharge.dialog.summary.discount",
+    defaultText: "Coupon discount",
+    description: "Label for the discount row in the order summary.",
+  },
+  {
+    key: "recharge.dialog.summary.total",
+    defaultText: "Total due",
+    description: "Label for the final amount row in the order summary.",
+  },
+  {
+    key: "recharge.dialog.coupon_label",
+    defaultText: "Coupon code",
+    description: "Label for the coupon input inside the order dialog.",
+  },
+  {
+    key: "recharge.dialog.coupon_helper",
+    defaultText: "Coupons are optional. Leave blank if you don't have one.",
+    description: "Helper text below the coupon input.",
+  },
+  {
+    key: "recharge.dialog.coupon_required",
+    defaultText: "Enter a coupon code to validate.",
+    description:
+      "Inline error shown when the user tries to validate with an empty code.",
+  },
+  {
+    key: "recharge.dialog.coupon_invalid",
+    defaultText: "Coupon is invalid or expired.",
+    description: "Fallback error when coupon validation fails.",
+  },
+  {
+    key: "recharge.dialog.coupon_applied",
+    defaultText: "Coupon applied successfully.",
+    description: "Status message after a coupon validates in the dialog.",
+  },
+  {
+    key: "recharge.dialog.validate",
+    defaultText: "Validate coupon",
+    description: "Button label for validating a coupon in the dialog.",
+  },
+  {
+    key: "recharge.dialog.validating",
+    defaultText: "Validating...",
+    description: "Button label while the coupon validation request is pending.",
+  },
+  {
+    key: "recharge.dialog.proceed",
+    defaultText: "Proceed to payment",
+    description: "Primary CTA label in the order confirmation dialog.",
+  },
+  {
+    key: "recharge.status.coupon_applied",
+    defaultText: "Coupon {code} applied. You save {amount} on this recharge.",
+    description: "Toast message shown when a coupon is successfully applied.",
+  },
+  {
+    key: "recharge.coupon.label",
+    defaultText: "Have a coupon code?",
+    description: "Heading for the recharge coupon input section.",
+  },
+  {
+    key: "recharge.coupon.help",
+    defaultText: "Enter a creator coupon to unlock discounts during checkout.",
+    description: "Helper text beneath the coupon input label.",
+  },
+  {
+    key: "recharge.coupon.input_label",
+    defaultText: "Coupon code",
+    description: "Accessible label for the coupon code input.",
+  },
+  {
+    key: "recharge.coupon.placeholder",
+    defaultText: "CREATOR10",
+    description: "Placeholder text for the coupon input field.",
+  },
+  {
+    key: "recharge.coupon.clear",
+    defaultText: "Clear",
+    description: "Button label to clear the current coupon input.",
+  },
+  {
+    key: "recharge.coupon.applied_summary",
+    defaultText: "Coupon {code} will save you ₹{amount} on the next recharge.",
+    description: "Helper text displayed when a coupon is queued for checkout.",
+  },
+  {
+    key: "recharge.coupon.pending",
+    defaultText: "Coupons are validated when you start the payment.",
+    description: "Helper text shown when no coupon is active yet.",
   },
   {
     key: "recharge.plan.badge.recommended",
@@ -1127,5 +2319,847 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "complete_profile.submit",
     defaultText: "Save and continue",
     description: "Submit button label on the profile completion form.",
+  },
+  {
+    key: "forum.hero.tagline",
+    defaultText: "Community Forum",
+    description: "Eyebrow label above the forum hero heading.",
+  },
+  {
+    key: "forum.hero.title",
+    defaultText: "Discuss issues, bugs, suggest features, etc.",
+    description: "Headline shown at the top of the forum page.",
+  },
+  {
+    key: "forum.hero.subtitle",
+    defaultText:
+      "Ask for help, share language resources, or report issues. Our team and community reply quickly with actionable guidance.",
+    description: "Supporting paragraph beneath the forum hero heading.",
+  },
+  {
+    key: "forum.hero.stats.total_label",
+    defaultText: "Total topics",
+    description: "Label beneath the total thread count in the hero stats.",
+  },
+  {
+    key: "forum.hero.stats.visible_label",
+    defaultText: "Visible now",
+    description: "Label beneath the currently visible thread count.",
+  },
+  {
+    key: "forum.hero.image_alt",
+    defaultText: "KhasiGPT community badge",
+    description: "Alt text for the badge image displayed on the forum hero.",
+  },
+  {
+    key: "forum.search.placeholder",
+    defaultText: "Search discussions, tags, or keywords",
+    description: "Placeholder text for the forum search input.",
+  },
+  {
+    key: "forum.search.submit",
+    defaultText: "Search",
+    description: "Search button label on the forum page.",
+  },
+  {
+    key: "forum.search.pending",
+    defaultText: "Searching…",
+    description: "Button label while the forum search is running.",
+  },
+  {
+    key: "forum.filters.label",
+    defaultText: "Active filters:",
+    description: "Label preceding the list of applied forum filters.",
+  },
+  {
+    key: "forum.filters.category",
+    defaultText: "Category: {value}",
+    description: "Badge label describing the active category filter.",
+  },
+  {
+    key: "forum.filters.tag",
+    defaultText: "Tag: #{value}",
+    description: "Badge label describing the active tag filter.",
+  },
+  {
+    key: "forum.filters.search",
+    defaultText: 'Search: "{value}"',
+    description: "Badge label describing the current search query filter.",
+  },
+  {
+    key: "forum.filters.all_tags",
+    defaultText: "All tags",
+    description: "Forum tag filter option that clears the selected tag.",
+  },
+  {
+    key: "forum.error.load",
+    defaultText: "Unable to load forum",
+    description: "Error heading when the forum listing cannot be loaded.",
+  },
+  {
+    key: "forum.empty.title",
+    defaultText: "No discussions yet",
+    description: "Heading for the empty state when no forum threads exist.",
+  },
+  {
+    key: "forum.empty.subtitle",
+    defaultText: "Be the first to start a topic in this category.",
+    description: "Supporting text for the empty forum state.",
+  },
+  {
+    key: "forum.list.load_more",
+    defaultText: "Load more discussions",
+    description: "Button label to load additional forum threads.",
+  },
+  {
+    key: "forum.list.loading",
+    defaultText: "Loading forum discussions...",
+    description: "Status text shown while the forum list is recovering.",
+  },
+  {
+    key: "forum.list.loading_more",
+    defaultText: "Loading…",
+    description: "Status text shown while more threads are loading.",
+  },
+  {
+    key: "forum.toast.load_more_error",
+    defaultText: "Unable to load more discussions right now.",
+    description: "Toast message shown when the load-more request fails.",
+  },
+  {
+    key: "forum.sidebar.categories.title",
+    defaultText: "Categories",
+    description: "Heading for the forum categories sidebar card.",
+  },
+  {
+    key: "forum.sidebar.categories.reset",
+    defaultText: "Reset",
+    description: "Link that clears all forum filters.",
+  },
+  {
+    key: "forum.sidebar.categories.all",
+    defaultText: "All discussions",
+    description: "Link that shows all forum threads regardless of category.",
+  },
+  {
+    key: "forum.sidebar.tags.title",
+    defaultText: "Trending Tags",
+    description: "Heading for the trending tags sidebar card.",
+  },
+  {
+    key: "forum.sidebar.tags.empty",
+    defaultText: "No tags available yet.",
+    description: "Message shown when no forum tags are available.",
+  },
+  {
+    key: "forum.composer.button",
+    defaultText: "Start a discussion",
+    description: "CTA button that opens the forum thread composer.",
+  },
+  {
+    key: "forum.composer.button_tooltip",
+    defaultText: "Sign in to start a discussion.",
+    description: "Tooltip shown when unauthenticated users hover the CTA.",
+  },
+  {
+    key: "forum.composer.sheet_title",
+    defaultText: "Start a discussion",
+    description: "Default heading inside the forum composer sheet.",
+  },
+  {
+    key: "forum.composer.sheet_title_with_name",
+    defaultText: "Hi {name}, share an update",
+    description: "Personalized heading when the user has a first name.",
+  },
+  {
+    key: "forum.composer.error.max_tags",
+    defaultText: "You can only select up to 5 tags.",
+    description: "Error shown when the tag selection limit is exceeded.",
+  },
+  {
+    key: "forum.composer.error.title_short",
+    defaultText: "Title must be at least 8 characters long.",
+    description: "Validation error for short thread titles.",
+  },
+  {
+    key: "forum.composer.error.category_required",
+    defaultText: "Please select a category.",
+    description: "Validation error when no category is selected.",
+  },
+  {
+    key: "forum.composer.error.content_short",
+    defaultText: "Describe your discussion in more detail.",
+    description: "Validation error for short thread bodies.",
+  },
+  {
+    key: "forum.composer.title.label",
+    defaultText: "Title",
+    description: "Label for the thread title input.",
+  },
+  {
+    key: "forum.composer.title.placeholder",
+    defaultText: "What would you like to discuss?",
+    description: "Placeholder for the thread title input.",
+  },
+  {
+    key: "forum.composer.category.label",
+    defaultText: "Category",
+    description: "Label for the category select input.",
+  },
+  {
+    key: "forum.composer.category.placeholder",
+    defaultText: "Select a category",
+    description: "Placeholder text for the category select input.",
+  },
+  {
+    key: "forum.composer.category.locked",
+    defaultText: "(locked)",
+    description: "Suffix shown next to locked categories.",
+  },
+  {
+    key: "forum.composer.details.label",
+    defaultText: "Details",
+    description: "Label for the discussion details textarea.",
+  },
+  {
+    key: "forum.composer.details.note",
+    defaultText: "(Markdown formatting supported soon)",
+    description: "Helper note beneath the composer details label.",
+  },
+  {
+    key: "forum.composer.details.placeholder",
+    defaultText:
+      "Share the full context, code snippets, or anything that helps the community respond faster.",
+    description: "Placeholder text for the thread body textarea.",
+  },
+  {
+    key: "forum.composer.tags.label",
+    defaultText: "Tags",
+    description: "Label for the tag chips selector.",
+  },
+  {
+    key: "forum.composer.tags.count",
+    defaultText: "{count}/5 selected",
+    description: "Helper text showing how many tags are selected.",
+  },
+  {
+    key: "forum.composer.tags.empty",
+    defaultText: "No tags available yet.",
+    description: "Message shown when there are no tags to choose from.",
+  },
+  {
+    key: "forum.composer.tags.empty_short",
+    defaultText: "No tags yet",
+    description: "Short helper text when no forum tags exist.",
+  },
+  {
+    key: "forum.composer.tags.empty_publish",
+    defaultText: "No tags have been added yet. You can publish without tags.",
+    description: "Composer helper shown when publishing without tags is allowed.",
+  },
+  {
+    key: "forum.composer.submit",
+    defaultText: "Publish discussion",
+    description: "Primary action button inside the composer sheet.",
+  },
+  {
+    key: "forum.composer.submit_pending",
+    defaultText: "Publishing…",
+    description: "Loading label shown while a thread is being published.",
+  },
+  {
+    key: "forum.composer.login_required.title",
+    defaultText: "Sign in to continue",
+    description: "Alert title shown when unauthenticated users open composer.",
+  },
+  {
+    key: "forum.composer.login_required.body",
+    defaultText:
+      "You need to be logged in to start a discussion. Please sign in and then return to the forum.",
+    description: "Description in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.body_short",
+    defaultText: "You need to be logged in to start a discussion.",
+    description: "Short login-required message in the native forum composer.",
+  },
+  {
+    key: "forum.composer.login_required.cancel",
+    defaultText: "Not now",
+    description: "Cancel button text in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.login_required.confirm",
+    defaultText: "Go to login",
+    description: "Confirm button text in the login-required dialog.",
+  },
+  {
+    key: "forum.composer.toast.created",
+    defaultText: "Discussion created! Redirecting...",
+    description: "Toast shown after a new forum discussion is created.",
+  },
+  {
+    key: "forum.category_manager.button",
+    defaultText: "Add category",
+    description: "Button label that opens the forum category manager sheet.",
+  },
+  {
+    key: "forum.category_manager.sheet_title",
+    defaultText: "Add a new forum category",
+    description: "Heading for the forum category manager sheet.",
+  },
+  {
+    key: "forum.category_manager.field.name.label",
+    defaultText: "Name",
+    description: "Label for the forum category name field.",
+  },
+  {
+    key: "forum.category_manager.field.name.placeholder",
+    defaultText: "e.g. Product Help",
+    description: "Placeholder for the forum category name field.",
+  },
+  {
+    key: "forum.category_manager.field.slug.label",
+    defaultText: "Slug",
+    description: "Label for the forum category slug field.",
+  },
+  {
+    key: "forum.category_manager.field.slug.placeholder",
+    defaultText: "product-help",
+    description: "Placeholder for the forum category slug field.",
+  },
+  {
+    key: "forum.category_manager.field.description.label",
+    defaultText: "Description",
+    description: "Label for the forum category description field.",
+  },
+  {
+    key: "forum.category_manager.field.description.placeholder",
+    defaultText: "Visible on the forum page to describe what belongs here.",
+    description: "Placeholder for the forum category description field.",
+  },
+  {
+    key: "forum.category_manager.field.position.label",
+    defaultText: "Position",
+    description: "Label for the forum category position field.",
+  },
+  {
+    key: "forum.category_manager.field.locked.label",
+    defaultText: "Locked",
+    description: "Label for the forum category lock toggle.",
+  },
+  {
+    key: "forum.category_manager.field.locked.helper",
+    defaultText: "Prevent new threads in this category",
+    description: "Helper text for the forum category lock toggle.",
+  },
+  {
+    key: "forum.category_manager.submit",
+    defaultText: "Save category",
+    description: "Submit button label for the forum category manager form.",
+  },
+  {
+    key: "forum.category_manager.submit_pending",
+    defaultText: "Saving…",
+    description:
+      "Submit button label while the forum category manager form is saving.",
+  },
+  {
+    key: "forum.category_manager.error.name_short",
+    defaultText: "Category name must be at least 3 characters long.",
+    description: "Validation error for short forum category names.",
+  },
+  {
+    key: "forum.category_manager.error.slug_required",
+    defaultText: "Slug cannot be empty.",
+    description: "Validation error when the forum category slug is blank.",
+  },
+  {
+    key: "forum.category_manager.toast.created",
+    defaultText: "Category created.",
+    description: "Toast shown after creating a forum category.",
+  },
+  {
+    key: "forum.thread.pinned",
+    defaultText: "Pinned",
+    description: "Badge shown on pinned forum threads.",
+  },
+  {
+    key: "forum.thread.resolved",
+    defaultText: "Resolved",
+    description: "Badge shown on threads marked as resolved.",
+  },
+  {
+    key: "forum.thread.locked",
+    defaultText: "Locked",
+    description: "Badge shown on locked discussion threads.",
+  },
+  {
+    key: "forum.thread.subscribed",
+    defaultText: "Subscribed",
+    description: "Badge shown when the viewer follows a thread.",
+  },
+  {
+    key: "forum.thread.no_excerpt",
+    defaultText: "This discussion does not include a preview yet.",
+    description: "Fallback text when a thread lacks an excerpt.",
+  },
+  {
+    key: "forum.thread.meta.replies",
+    defaultText: "{count} replies",
+    description: "Label displaying the number of replies on a thread.",
+  },
+  {
+    key: "forum.thread.meta.views",
+    defaultText: "{count} views",
+    description: "Label displaying the number of views on a thread.",
+  },
+  {
+    key: "forum.badge.official",
+    defaultText: "Official",
+    description: "Label shown on forum content posted by an administrator.",
+  },
+  {
+    key: "forum.thread.relative.just_now",
+    defaultText: "just now",
+    description: "Fallback text for very recent timestamps.",
+  },
+  {
+    key: "forum.thread.relative.ago",
+    defaultText: "{count} {unit} ago",
+    description: "Relative time label for past forum activity.",
+  },
+  {
+    key: "forum.thread.relative.from_now",
+    defaultText: "{count} {unit} from now",
+    description: "Relative time label for future forum activity.",
+  },
+  {
+    key: "forum.thread.relative.unit.minute",
+    defaultText: "minute",
+    description: "Singular minute unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.minutes",
+    defaultText: "minutes",
+    description: "Plural minutes unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.hour",
+    defaultText: "hour",
+    description: "Singular hour unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.hours",
+    defaultText: "hours",
+    description: "Plural hours unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.day",
+    defaultText: "day",
+    description: "Singular day unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.relative.unit.days",
+    defaultText: "days",
+    description: "Plural days unit for forum relative time.",
+  },
+  {
+    key: "forum.thread.error.load",
+    defaultText: "Unable to load discussion",
+    description: "Error heading when a forum discussion cannot be loaded.",
+  },
+  {
+    key: "forum.thread.toast.reply_posted",
+    defaultText: "Reply posted!",
+    description: "Toast shown after a reply is successfully created.",
+  },
+  {
+    key: "forum.thread.toast.resolve_success",
+    defaultText: "Thread marked as solved.",
+    description: "Toast shown after resolving a thread.",
+  },
+  {
+    key: "forum.thread.toast.reopen_success",
+    defaultText: "Thread reopened.",
+    description: "Toast shown after reopening a thread.",
+  },
+  {
+    key: "forum.thread.toast.delete_success",
+    defaultText: "Thread deleted.",
+    description: "Toast shown after deleting a thread.",
+  },
+  {
+    key: "forum.thread.toast.action_error",
+    defaultText: "Unable to update the thread. Please try again.",
+    description: "Generic error shown when a thread action fails.",
+  },
+  {
+    key: "forum.thread.toast.subscription_error",
+    defaultText: "Unable to update subscription right now.",
+    description: "Toast shown when following or unfollowing a thread fails.",
+  },
+  {
+    key: "forum.thread.toast.reaction_error",
+    defaultText: "Unable to update reaction.",
+    description: "Toast shown when toggling a reaction fails.",
+  },
+  {
+    key: "forum.thread.meta.started",
+    defaultText: "Started {date}",
+    description: "Label describing when the thread was created.",
+  },
+  {
+    key: "forum.thread.meta.updated",
+    defaultText: "Updated {timestamp}",
+    description: "Label describing the last reply timestamp.",
+  },
+  {
+    key: "forum.thread.action.follow",
+    defaultText: "Follow",
+    description: "Button text to subscribe to a thread.",
+  },
+  {
+    key: "forum.thread.action.unfollow",
+    defaultText: "Unfollow",
+    description: "Button text to unsubscribe from a thread.",
+  },
+  {
+    key: "forum.thread.action.updating",
+    defaultText: "Updating…",
+    description: "Label shown while the follow/unfollow action is pending.",
+  },
+  {
+    key: "forum.thread.back_to_forum",
+    defaultText: "Back to forum",
+    description:
+      "Button label that returns the viewer to the forum listing page.",
+  },
+  {
+    key: "forum.thread.post.no_content",
+    defaultText: "This post does not include any content.",
+    description: "Fallback text when a reply has no body.",
+  },
+  {
+    key: "forum.thread.replies.empty",
+    defaultText: "No replies yet. Be the first to respond.",
+    description:
+      "Empty state message on the thread detail page when there are no replies.",
+  },
+  {
+    key: "forum.thread.reaction.like",
+    defaultText: "Helpful",
+    description: "Label for the helpful reaction button.",
+  },
+  {
+    key: "forum.thread.reaction.insightful",
+    defaultText: "Insightful",
+    description: "Label for the insightful reaction button.",
+  },
+  {
+    key: "forum.thread.reaction.support",
+    defaultText: "Support",
+    description: "Label for the support reaction button.",
+  },
+  {
+    key: "forum.thread.section.add_reply",
+    defaultText: "Add a reply",
+    description: "Heading above the reply composer on the thread detail view.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_in",
+    defaultText: "Share your insights, {name}…",
+    description: "Placeholder shown in the reply composer for signed-in users.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_in_short",
+    defaultText: "Share your insights...",
+    description: "Short native placeholder shown in the reply composer.",
+  },
+  {
+    key: "forum.thread.reply.placeholder_signed_out",
+    defaultText: "Sign in to join the conversation.",
+    description: "Placeholder shown when the viewer is logged out.",
+  },
+  {
+    key: "forum.thread.reply.submit",
+    defaultText: "Post reply",
+    description: "Submit button text for the reply composer.",
+  },
+  {
+    key: "forum.thread.reply.submit_pending",
+    defaultText: "Posting…",
+    description: "Button label while the reply submit request is pending.",
+  },
+  {
+    key: "forum.thread.reply.error_too_short",
+    defaultText: "Replies should be at least 8 characters.",
+    description: "Validation error when a reply is too short.",
+  },
+  {
+    key: "forum.thread.actions.menu",
+    defaultText: "Thread actions",
+    description: "Label for the thread actions dropdown menu.",
+  },
+  {
+    key: "forum.thread.actions.resolve",
+    defaultText: "Mark as solved",
+    description: "Menu item to mark a thread as resolved.",
+  },
+  {
+    key: "forum.thread.actions.reopen",
+    defaultText: "Reopen discussion",
+    description: "Menu item to reopen a resolved thread.",
+  },
+  {
+    key: "forum.thread.actions.delete",
+    defaultText: "Delete thread",
+    description: "Menu item to delete a thread.",
+  },
+  {
+    key: "forum.thread.actions.delete_confirm",
+    defaultText:
+      "Are you sure you want to delete this thread? This action cannot be undone.",
+    description: "Confirmation message before deleting a thread.",
+  },
+  {
+    key: "creator_dashboard.tagline",
+    defaultText: "Creator dashboard",
+    description: "Tagline shown at the top of the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.title",
+    defaultText: "Share coupons and track performance",
+    description: "Main heading for the creator dashboard page.",
+  },
+  {
+    key: "creator_dashboard.subtitle",
+    defaultText:
+      "Monitor how your community redeems coupons, how much revenue you helped generate, and when each code expires.",
+    description: "Subtitle describing the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.metrics.redemptions",
+    defaultText: "Total redemptions",
+    description:
+      "Metric label indicating the total number of coupon redemptions.",
+  },
+  {
+    key: "creator_dashboard.metrics.revenue",
+    defaultText: "Recharge volume",
+    description:
+      "Metric label for total recharge revenue generated by coupons.",
+  },
+  {
+    key: "creator_dashboard.metrics.savings",
+    defaultText: "User savings",
+    description: "Metric label showing the total discount unlocked for users.",
+  },
+  {
+    key: "creator_dashboard.metrics.rewards",
+    defaultText: "Your rewards",
+    description: "Metric label summarising creator reward payouts.",
+  },
+  {
+    key: "creator_dashboard.metrics.paid",
+    defaultText: "Payouts completed",
+    description: "Metric label for the total rewards already paid out.",
+  },
+  {
+    key: "creator_dashboard.metrics.pending_payout",
+    defaultText: "Pending payout",
+    description: "Metric label for rewards awaiting payment.",
+  },
+  {
+    key: "coupon.reward_status.pending",
+    defaultText: "Payment pending",
+    description: "Badge label when creator rewards are pending payment.",
+  },
+  {
+    key: "coupon.reward_status.paid",
+    defaultText: "Paid",
+    description: "Badge label when creator rewards are paid.",
+  },
+  {
+    key: "coupon.reward_status.none",
+    defaultText: "No redemptions yet",
+    description:
+      "Helper text when rewards are unavailable due to zero redemptions.",
+  },
+  {
+    key: "creator_dashboard.coupons.title",
+    defaultText: "Your coupon codes",
+    description: "Section title for the coupon table on the creator dashboard.",
+  },
+  {
+    key: "creator_dashboard.coupons.subtitle",
+    defaultText:
+      "Review status, validity, and performance for every code assigned to you.",
+    description: "Helper text beneath the coupon section heading.",
+  },
+  {
+    key: "creator_dashboard.coupons.empty",
+    defaultText:
+      "No coupons are assigned to you yet. Once an admin shares a code, it will appear here.",
+    description: "Empty-state text when a creator has no coupons.",
+  },
+  {
+    key: "creator_dashboard.table.code",
+    defaultText: "Code",
+    description: "Table column label for the coupon code.",
+  },
+  {
+    key: "creator_dashboard.table.discount",
+    defaultText: "Discount",
+    description: "Table column label for the coupon discount percentage.",
+  },
+  {
+    key: "creator_dashboard.table.validity",
+    defaultText: "Validity",
+    description: "Table column label for coupon validity dates.",
+  },
+  {
+    key: "creator_dashboard.table.status",
+    defaultText: "Status",
+    description: "Table column label for coupon status.",
+  },
+  {
+    key: "creator_dashboard.table.usage",
+    defaultText: "Usage",
+    description: "Table column label for coupon redemption counts.",
+  },
+  {
+    key: "creator_dashboard.table.revenue",
+    defaultText: "Revenue",
+    description: "Table column label for revenue generated per coupon.",
+  },
+  {
+    key: "creator_dashboard.table.reward",
+    defaultText: "Reward",
+    description: "Table column label for creator reward percentage and payout.",
+  },
+  {
+    key: "creator_dashboard.table.payouts",
+    defaultText: "Payouts",
+    description: "Table column label for paid vs pending rewards.",
+  },
+  {
+    key: "creator_dashboard.payouts.pending",
+    defaultText: "Pending {amount}",
+    description: "Helper text indicating the remaining unpaid reward amount.",
+  },
+  {
+    key: "creator_dashboard.table.no_end",
+    defaultText: "No end date",
+    description: "Helper text when a coupon has no expiration.",
+  },
+  {
+    key: "creator_dashboard.status.expired",
+    defaultText: "Expired",
+    description: "Badge label for expired coupons.",
+  },
+  {
+    key: "creator_dashboard.status.active",
+    defaultText: "Active",
+    description: "Badge label for active coupons.",
+  },
+  {
+    key: "creator_dashboard.status.inactive",
+    defaultText: "Inactive",
+    description: "Badge label for inactive coupons.",
+  },
+  {
+    key: "creator_dashboard.redemptions.title",
+    defaultText: "Recent redemptions",
+    description: "Section heading for the creator redemption history table.",
+  },
+  {
+    key: "creator_dashboard.redemptions.subtitle",
+    defaultText: "Track every subscription that used your coupon code.",
+    description: "Helper text explaining the redemption history section.",
+  },
+  {
+    key: "creator_dashboard.redemptions.empty",
+    defaultText:
+      "No redemptions are recorded yet. Share your code to see activity here.",
+    description: "Empty-state message when no coupon redemptions exist.",
+  },
+  {
+    key: "creator_dashboard.redemptions.user",
+    defaultText: "User",
+    description: "Table column label for the masked user identifier.",
+  },
+  {
+    key: "creator_dashboard.redemptions.coupon",
+    defaultText: "Coupon",
+    description: "Table column label for the coupon code used in a redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.payment",
+    defaultText: "Payment",
+    description:
+      "Table column label for the payment amount collected from the user.",
+  },
+  {
+    key: "creator_dashboard.redemptions.discount",
+    defaultText: "Discount",
+    description:
+      "Table column label for the discount applied to the redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.reward",
+    defaultText: "Your reward",
+    description:
+      "Table column label for the creator reward amount per redemption.",
+  },
+  {
+    key: "creator_dashboard.redemptions.date",
+    defaultText: "Redeemed at",
+    description: "Table column label for the redemption date.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.label",
+    defaultText: "Sort by",
+    description: "Label preceding the redemption sorting controls.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.newest",
+    defaultText: "Newest",
+    description: "Button label to sort redemptions by newest first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.oldest",
+    defaultText: "Oldest",
+    description: "Button label to sort redemptions by oldest first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.highest",
+    defaultText: "Highest payment",
+    description: "Button label to sort redemptions by highest payment first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.sort.lowest",
+    defaultText: "Lowest payment",
+    description: "Button label to sort redemptions by lowest payment first.",
+  },
+  {
+    key: "creator_dashboard.redemptions.pagination",
+    defaultText: "Page {current} of {total}",
+    description: "Helper text describing the current pagination state.",
+  },
+  {
+    key: "common.previous",
+    defaultText: "Previous",
+    description: "Label for pagination controls that go to the previous page.",
+  },
+  {
+    key: "common.next",
+    defaultText: "Next",
+    description: "Label for pagination controls that go to the next page.",
+  },
+  {
+    key: "creator_dashboard.table.last_used",
+    defaultText: "Last: {date}",
+    description: "Helper text showing the last redemption date for a coupon.",
   },
 ];

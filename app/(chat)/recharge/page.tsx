@@ -1,21 +1,21 @@
 "use server";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
+import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
-import {
-  getUserBalanceSummary,
-  listPricingPlans,
-  getAppSetting,
-} from "@/lib/db/queries";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import { isImageGenerationEnabledForAllUsers } from "@/lib/ai/image-generation";
 import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
 import {
-  getTranslationBundle,
-  getTranslationsForKeys,
+  getAppSetting,
+  getUserBalanceSummary,
+  listPricingPlans,
+} from "@/lib/db/queries";
+import {
+  getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
 
 export default async function RechargePage() {
@@ -28,35 +28,33 @@ export default async function RechargePage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [plans, balance, recommendedPlanSetting] = await Promise.all([
+  const [
+    plans,
+    balance,
+    recommendedPlanSetting,
+    imageGenerationEnabledForAll,
+  ] = await Promise.all([
     listPricingPlans({ includeInactive: false }),
     getUserBalanceSummary(session.user.id),
     getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
+    isImageGenerationEnabledForAllUsers(),
   ]);
 
-  const planTranslationDefinitions = plans.flatMap((plan) => [
-    {
-      key: `recharge.plan.${plan.id}.name`,
-      defaultText: plan.name,
-      description: `Pricing plan name for ${plan.name}`,
-    },
-    {
-      key: `recharge.plan.${plan.id}.description`,
-      defaultText: plan.description ?? "",
-      description: `Pricing plan details for ${plan.name}`,
-    },
+  const planTranslationKeys = plans.flatMap((plan) => [
+    `recharge.plan.${plan.id}.name`,
+    `recharge.plan.${plan.id}.description`,
   ]);
 
-  const [bundle, planTranslations] = await Promise.all([
-    getTranslationBundle(preferredLanguage),
-    planTranslationDefinitions.length > 0
-      ? getTranslationsForKeys(preferredLanguage, planTranslationDefinitions)
-      : Promise.resolve<Record<string, string>>({}),
-  ]);
+  const planTranslations =
+    planTranslationKeys.length > 0
+      ? await getTranslationValuesForKeys(preferredLanguage, planTranslationKeys)
+      : {};
 
-  const dictionary = bundle.dictionary;
-
-  const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
+  const formatCreditValue = (credits: number) =>
+    credits.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   const activePlanId = balance.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
@@ -67,17 +65,19 @@ export default async function RechargePage() {
   });
 
   let recommendedPlanId: string | null =
-    recommendedPlanSetting && sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
+    recommendedPlanSetting &&
+    sortedPlans.some((plan) => plan.id === recommendedPlanSetting)
       ? recommendedPlanSetting
       : null;
 
   if (!recommendedPlanId) {
-    let highestPrice = -Infinity;
-    let highestAllowance = -Infinity;
+    let highestPrice = Number.NEGATIVE_INFINITY;
+    let highestAllowance = Number.NEGATIVE_INFINITY;
     for (const plan of sortedPlans) {
       if (
         plan.priceInPaise > highestPrice ||
-        (plan.priceInPaise === highestPrice && plan.tokenAllowance > highestAllowance)
+        (plan.priceInPaise === highestPrice &&
+          plan.tokenAllowance > highestAllowance)
       ) {
         recommendedPlanId = plan.id;
         highestPrice = plan.priceInPaise;
@@ -93,13 +93,13 @@ export default async function RechargePage() {
     const nameKey = `recharge.plan.${plan.id}.name`;
     const descriptionKey = `recharge.plan.${plan.id}.description`;
 
-    const localizedName =
-      planTranslations[nameKey]?.trim().length
-        ? planTranslations[nameKey]
-        : plan.name;
+    const localizedName = planTranslations[nameKey]?.trim().length
+      ? planTranslations[nameKey]
+      : plan.name;
 
     const rawDescription = plan.description ?? "";
-    const translatedDescription = planTranslations[descriptionKey]?.trim() ?? "";
+    const translatedDescription =
+      planTranslations[descriptionKey]?.trim() ?? "";
     const localizedDescription =
       translatedDescription.length > 0
         ? translatedDescription
@@ -118,31 +118,33 @@ export default async function RechargePage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
       <header className="flex flex-col gap-6">
         <div>
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-            href="/"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            {t("navigation.back_to_home", "Back to home")}
-          </Link>
+          <BackToHomeButton
+            label="Back to home"
+            translationKey="navigation.back_to_home"
+          />
         </div>
         <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center">
-          <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("recharge.tagline", "Pricing")}
+          <span className="font-semibold text-muted-foreground text-sm uppercase tracking-wide">
+            <EditableTranslation defaultText="Pricing" translationKey="recharge.tagline" />
           </span>
-          <h1 className="text-3xl font-semibold md:text-4xl">
-            {t("recharge.title", "Choose your plan")}
+          <h1 className="font-semibold text-3xl md:text-4xl">
+            <EditableTranslation
+              defaultText="Choose your plan"
+              translationKey="recharge.title"
+            />
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            {t(
-              "recharge.subtitle",
-              "Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
-            )}
+            <EditableTranslation
+              defaultText="Unlock more capacity and features by picking a plan that scales with your needs. Activate instantly and start building without interruption."
+              translationKey="recharge.subtitle"
+            />
           </p>
         </div>
       </header>
 
       <RechargePlans
+        activePlanId={activePlanId}
+        imageGenerationEnabledForAll={imageGenerationEnabledForAll}
         plans={localizedPlans.map((plan) => ({
           id: plan.id,
           name: plan.name,
@@ -152,7 +154,6 @@ export default async function RechargePage() {
           billingCycleDays: plan.billingCycleDays,
           isActive: plan.isActive,
         }))}
-        activePlanId={activePlanId}
         recommendedPlanId={recommendedPlanId}
         user={{
           name: session.user.name ?? null,
@@ -162,27 +163,36 @@ export default async function RechargePage() {
       />
 
       <section className="rounded-2xl border bg-card/80 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">
-          {t("recharge.current_balance.title", "Current balance")}
+        <h2 className="font-semibold text-lg">
+          <EditableTranslation
+            defaultText="Current balance"
+            translationKey="recharge.current_balance.title"
+          />
         </h2>
         <dl className="mt-4 grid gap-6 sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-              {t("recharge.current_balance.remaining", "Credits remaining")}
+              <EditableTranslation
+                defaultText="Credits remaining"
+                translationKey="recharge.current_balance.remaining"
+              />
             </dt>
-            <dd className="mt-2 text-2xl font-semibold">
-              {balance.creditsRemaining.toLocaleString()}{" "}
-              <span className="text-muted-foreground text-sm font-normal">
-                / {balance.creditsTotal.toLocaleString()}
+            <dd className="mt-2 font-semibold text-2xl">
+              {formatCreditValue(balance.creditsRemaining)}{" "}
+              <span className="font-normal text-muted-foreground text-sm">
+                / {formatCreditValue(balance.creditsTotal)}
               </span>
             </dd>
           </div>
           {balance.expiresAt ? (
             <div>
               <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                {t("recharge.current_balance.valid_until", "Credits valid until")}
+                <EditableTranslation
+                  defaultText="Credits valid until"
+                  translationKey="recharge.current_balance.valid_until"
+                />
               </dt>
-              <dd className="mt-2 text-lg font-semibold">
+              <dd className="mt-2 font-semibold text-lg">
                 {expiryFormatter.format(balance.expiresAt)}
               </dd>
             </div>
@@ -192,5 +202,3 @@ export default async function RechargePage() {
     </div>
   );
 }
-
-

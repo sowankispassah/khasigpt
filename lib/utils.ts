@@ -122,18 +122,63 @@ export function getTrailingMessageId({
   return trailingMessage.id;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+function decodeHtmlEntities(value: string) {
+  const decodeOnce = (input: string) => {
+    let decoded = input;
+
+    decoded = decoded
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#x27;/gi, "'");
+
+    decoded = decoded.replace(/&#(\d+);/g, (match, code) => {
+      const parsed = Number(code);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 0x10ffff) {
+        return match;
+      }
+      try {
+        return String.fromCodePoint(parsed);
+      } catch {
+        return match;
+      }
+    });
+
+    decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+      const parsed = Number.parseInt(hex, 16);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 0x10ffff) {
+        return match;
+      }
+      try {
+        return String.fromCodePoint(parsed);
+      } catch {
+        return match;
+      }
+    });
+
+    return decoded;
+  };
+
+  let current = value;
+  for (let i = 0; i < 2; i += 1) {
+    const next = decodeOnce(current);
+    if (next === current) {
+      break;
+    }
+    current = next;
+  }
+
+  return current;
 }
 
 export function sanitizeText(text: string) {
   const withoutMarkers = text.replaceAll("<has_function_call>", "");
-  return escapeHtml(withoutMarkers);
+  // React already escapes string children; keep content readable and decode
+  // any legacy HTML entity encoding (e.g. &amp;#39;, &amp;lt;).
+  return decodeHtmlEntities(withoutMarkers);
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {

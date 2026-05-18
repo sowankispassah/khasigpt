@@ -1,23 +1,24 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
+  type PropsWithChildren,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
-  useTransition,
-  type PropsWithChildren,
+  useState,
 } from "react";
-import { useRouter } from "next/navigation";
-
-import type { LanguageOption } from "@/lib/i18n/languages";
 import { setPreferredLanguageAction } from "@/app/actions/language";
+import type { LanguageOption } from "@/lib/i18n/languages";
 
 type TranslationContextValue = {
   languages: LanguageOption[];
   activeLanguage: LanguageOption;
   dictionary: Record<string, string>;
   translate: (key: string, defaultText: string) => string;
+  upsertLocalTranslation: (key: string, value: string) => void;
   setLanguage: (code: string) => void;
   isUpdating: boolean;
 };
@@ -30,11 +31,18 @@ const TranslationContext = createContext<TranslationContextValue>({
     name: "English",
     isDefault: true,
     isActive: true,
+    syncUiLanguage: false,
   },
   dictionary: {},
   translate: (_key, defaultText) => defaultText,
-  // eslint-disable-next-line @typescript-eslint/no-empty-function -- default noop
-  setLanguage: () => {},
+  upsertLocalTranslation: () => {
+    // default noop
+    return;
+  },
+  setLanguage: () => {
+    // default noop
+    return;
+  }, // default noop
   isUpdating: false,
 });
 
@@ -51,41 +59,113 @@ export function LanguageProvider({
   children,
 }: LanguageProviderProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const pathname = usePathname();
+  const [isPending, setIsPending] = useState(false);
+  const [localDictionary, setLocalDictionary] = useState(dictionary);
+
+  useEffect(() => {
+    setLocalDictionary(dictionary);
+  }, [dictionary]);
+  const languageCodeSet = useMemo(() => {
+    const codes = new Set<string>();
+    for (const language of languages) {
+      codes.add(language.code);
+    }
+    if (activeLanguage?.code) {
+      codes.add(activeLanguage.code);
+    }
+    return codes;
+  }, [languages, activeLanguage?.code]);
 
   const translate = useCallback(
     (key: string, defaultText: string) => {
-      return dictionary[key] ?? defaultText;
+      return localDictionary[key] ?? defaultText;
     },
-    [dictionary]
+    [localDictionary]
+  );
+
+  const upsertLocalTranslation = useCallback(
+    (key: string, value: string) => {
+      const normalizedKey = key.trim();
+      if (!normalizedKey) {
+        return;
+      }
+      setLocalDictionary((current) => ({
+        ...current,
+        [normalizedKey]: value,
+      }));
+    },
+    []
   );
 
   const setLanguage = useCallback(
     (code: string) => {
-      if (code === activeLanguage.code) {
+      const normalized = typeof code === "string" ? code.trim().toLowerCase() : "";
+      if (!normalized || normalized === activeLanguage.code) {
         return;
       }
 
-      startTransition(() => {
-        void (async () => {
-          await setPreferredLanguageAction(code);
-          router.refresh();
-        })();
-      });
+      setIsPending(true);
+      void (async () => {
+        let nextLocalizedPath: string | null = null;
+        try {
+          if (typeof document !== "undefined") {
+            const encoded = encodeURIComponent(normalized);
+            document.cookie = `lang=${encoded}; path=/; max-age=${
+              60 * 60 * 24 * 365
+            }; samesite=lax`;
+          }
+
+          await setPreferredLanguageAction(normalized);
+        } catch (error) {
+          console.error("[language/provider] Failed to persist language choice.", error);
+        } finally {
+          if (pathname) {
+            const segments = pathname.split("/").filter(Boolean);
+            if (segments.length > 0 && languageCodeSet.has(segments[0])) {
+              segments[0] = normalized;
+              const nextPath = `/${segments.join("/")}`;
+              const querySuffix =
+                typeof window !== "undefined" ? window.location.search ?? "" : "";
+              nextLocalizedPath = `${nextPath}${querySuffix}`;
+            }
+          }
+        }
+
+        if (nextLocalizedPath) {
+          router.replace(nextLocalizedPath);
+          setIsPending(false);
+          return;
+        }
+
+        router.refresh();
+        window.setTimeout(() => {
+          setIsPending(false);
+        }, 300);
+      })();
     },
-    [activeLanguage.code, router]
+    [activeLanguage.code, languageCodeSet, pathname, router]
   );
 
   const value = useMemo<TranslationContextValue>(
     () => ({
       languages,
       activeLanguage,
-      dictionary,
+      dictionary: localDictionary,
       translate,
+      upsertLocalTranslation,
       setLanguage,
       isUpdating: isPending,
     }),
-    [languages, activeLanguage, dictionary, translate, setLanguage, isPending]
+    [
+      languages,
+      activeLanguage,
+      localDictionary,
+      translate,
+      upsertLocalTranslation,
+      setLanguage,
+      isPending,
+    ]
   );
 
   return (

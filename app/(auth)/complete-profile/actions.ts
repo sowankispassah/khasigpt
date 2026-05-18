@@ -1,9 +1,12 @@
 "use server";
 
 import { z } from "zod";
-
-import { auth } from "../auth";
-import { updateUserProfile } from "@/lib/db/queries";
+import { getUserById, updateUserProfile } from "@/lib/db/queries";
+import {
+  DATE_OF_BIRTH_LOCK_MESSAGE,
+  isDateOfBirthChangeBlocked,
+} from "@/lib/utils/date-of-birth";
+import { auth, unstable_update } from "../auth";
 
 export type CompleteProfileState =
   | { status: "idle" }
@@ -72,11 +75,71 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  await updateUserProfile({
-    id: session.user.id,
-    dateOfBirth: parsed.data.dob,
-    firstName: parsed.data.firstName,
-    lastName: parsed.data.lastName,
+  let currentUser: Awaited<ReturnType<typeof getUserById>> = null;
+  try {
+    currentUser = await getUserById(session.user.id);
+  } catch (error) {
+    console.error("[complete-profile] Failed to load user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return {
+      status: "error",
+      message:
+        "Profile service is taking too long. Please wait a moment and try again.",
+    };
+  }
+
+  const currentDateOfBirth = currentUser?.dateOfBirth ?? session.user.dateOfBirth;
+  if (isDateOfBirthChangeBlocked(currentDateOfBirth, parsed.data.dob)) {
+    return {
+      status: "error",
+      message: DATE_OF_BIRTH_LOCK_MESSAGE,
+    };
+  }
+
+  let updatedProfile: Awaited<ReturnType<typeof updateUserProfile>> | null =
+    null;
+  try {
+    updatedProfile = await updateUserProfile({
+      id: session.user.id,
+      dateOfBirth: parsed.data.dob,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+    });
+  } catch (error) {
+    console.error("[complete-profile] Failed to update user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return {
+      status: "error",
+      message:
+        "Profile service is taking too long. Please wait a moment and try again.",
+    };
+  }
+
+  if (!updatedProfile) {
+    return {
+      status: "error",
+      message: "Unable to update your profile right now. Please try again.",
+    };
+  }
+
+  await unstable_update({
+    user: {
+      dateOfBirth: parsed.data.dob,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      name: [parsed.data.firstName, parsed.data.lastName]
+        .filter(Boolean)
+        .join(" "),
+    },
+  }).catch((error) => {
+    console.error("[complete-profile] Failed to refresh session profile.", {
+      userId: session.user.id,
+      error,
+    });
   });
 
   return { status: "success" };

@@ -1,4 +1,8 @@
-import * as Brevo from "@getbrevo/brevo";
+import {
+  SendSmtpEmail,
+  TransactionalEmailsApi,
+  TransactionalEmailsApiApiKeys,
+} from "@getbrevo/brevo";
 
 import { ChatSDKError } from "@/lib/errors";
 
@@ -14,8 +18,7 @@ type PasswordResetEmailPayload = {
   resetUrl: string;
 };
 
-let brevoEmailClient: InstanceType<typeof Brevo.TransactionalEmailsApi> | null =
-  null;
+let brevoEmailClient: TransactionalEmailsApi | null = null;
 
 function getBrevoClient() {
   if (brevoEmailClient) {
@@ -31,12 +34,12 @@ function getBrevoClient() {
     );
   }
 
-  const client = new Brevo.TransactionalEmailsApi();
-  client.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
+  const client = new TransactionalEmailsApi();
+  client.setApiKey(TransactionalEmailsApiApiKeys.apiKey, apiKey);
 
   const partnerKey = process.env.BREVO_PARTNER_KEY;
   if (partnerKey) {
-    client.setApiKey(Brevo.TransactionalEmailsApiApiKeys.partnerKey, partnerKey);
+    client.setApiKey(TransactionalEmailsApiApiKeys.partnerKey, partnerKey);
   }
 
   brevoEmailClient = client;
@@ -59,16 +62,16 @@ export async function sendVerificationEmail({
   }
 
   const client = getBrevoClient();
-  const email = new Brevo.SendSmtpEmail();
+  const email = new SendSmtpEmail();
 
   email.subject = "Please verify your email address";
   email.sender = { email: senderEmail, name: senderName };
   email.replyTo = { email: senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName ?? undefined }];
   email.textContent =
-    `Thanks for signing up for AI Chatbot!\n\n` +
+    "Thanks for signing up for AI Chatbot!\n\n" +
     `Please confirm your address by opening the link below:\n${verificationUrl}\n\n` +
-    `If you didn’t create an account, you can ignore this message.`;
+    "If you didn’t create an account, you can ignore this message.";
   email.htmlContent = `
     <html>
       <body style="font-family: Arial, sans-serif;">
@@ -96,7 +99,9 @@ export async function sendVerificationEmail({
   } catch (error) {
     throw new ChatSDKError(
       "bad_request:api",
-      error instanceof Error ? error.message : "Failed to send verification email"
+      error instanceof Error
+        ? error.message
+        : "Failed to send verification email"
     );
   }
 }
@@ -117,14 +122,14 @@ export async function sendPasswordResetEmail({
   }
 
   const client = getBrevoClient();
-  const email = new Brevo.SendSmtpEmail();
+  const email = new SendSmtpEmail();
 
   email.subject = "Reset your AI Chatbot password";
   email.sender = { email: senderEmail, name: senderName };
   email.replyTo = { email: senderEmail, name: senderName };
   email.to = [{ email: toEmail, name: toName ?? undefined }];
   email.textContent =
-    `We received a request to reset your AI Chatbot password.\n\n` +
+    "We received a request to reset your AI Chatbot password.\n\n" +
     `You can choose a new password using the link below:\n${resetUrl}\n\n` +
     `If you didn't make this request, you can safely ignore this email.`;
   email.htmlContent = `
@@ -159,7 +164,9 @@ export async function sendPasswordResetEmail({
   } catch (error) {
     throw new ChatSDKError(
       "bad_request:api",
-      error instanceof Error ? error.message : "Failed to send password reset email"
+      error instanceof Error
+        ? error.message
+        : "Failed to send password reset email"
     );
   }
 }
@@ -188,7 +195,7 @@ export async function sendContactMessageEmail({
   }
 
   const client = getBrevoClient();
-  const email = new Brevo.SendSmtpEmail();
+  const email = new SendSmtpEmail();
 
   email.subject = subject.trim().length > 0 ? subject : "New contact request";
   email.sender = { email: supportEmail, name: supportName };
