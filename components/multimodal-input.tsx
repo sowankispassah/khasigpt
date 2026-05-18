@@ -345,26 +345,14 @@ function PureMultimodalInput({
     resetVoiceState();
   }, [resetVoiceState]);
 
-  const finishVoiceChat = useCallback(async () => {
-    const controller = voiceTurnControllerRef.current;
-    if (!controller || isVoiceSaving) {
-      return;
-    }
-
-    setIsVoiceSaving(true);
-    try {
-      const result = await controller.stop();
-      const userText = result.userText.trim();
-      const assistantText = result.assistantText.trim();
-      if (!userText || !assistantText) {
-        throw new Error(
-          translate(
-            "voice.chat.empty_result",
-            "I could not hear enough speech. Please try again."
-          )
-        );
-      }
-
+  const saveVoiceTurn = useCallback(
+    async ({
+      assistantText,
+      userText,
+    }: {
+      assistantText: string;
+      userText: string;
+    }) => {
       const userMessageId = crypto.randomUUID();
       const assistantMessageId = crypto.randomUUID();
       setMessages((currentMessages) => [
@@ -403,10 +391,55 @@ function PureMultimodalInput({
         );
       }
 
+      onVoiceTurnSaved?.();
+    },
+    [_chatId, _selectedVisibilityType, onVoiceTurnSaved, setMessages, translate]
+  );
+
+  const finishVoiceChat = useCallback(async () => {
+    const controller = voiceTurnControllerRef.current;
+    if (!controller || isVoiceSaving) {
+      return;
+    }
+
+    const capturedUserText = voiceUserTranscript.trim();
+    const capturedAssistantText = voiceAssistantTranscript.trim();
+    if (capturedUserText && capturedAssistantText) {
+      controller.cancel();
       voiceTurnControllerRef.current = null;
       setIsVoiceDialogOpen(false);
       resetVoiceState();
-      onVoiceTurnSaved?.();
+      void saveVoiceTurn({
+        assistantText: capturedAssistantText,
+        userText: capturedUserText,
+      }).catch((error) => {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : translate("voice.chat.save_failed", "Unable to save this voice chat.")
+        );
+      });
+      return;
+    }
+
+    setIsVoiceSaving(true);
+    try {
+      const result = await controller.stop();
+      const userText = result.userText.trim();
+      const assistantText = result.assistantText.trim();
+      if (!userText || !assistantText) {
+        throw new Error(
+          translate(
+            "voice.chat.empty_result",
+            "I could not hear enough speech. Please try again."
+          )
+        );
+      }
+
+      await saveVoiceTurn({ assistantText, userText });
+      voiceTurnControllerRef.current = null;
+      setIsVoiceDialogOpen(false);
+      resetVoiceState();
     } catch (error) {
       const message =
         error instanceof Error
@@ -416,13 +449,12 @@ function PureMultimodalInput({
       setIsVoiceSaving(false);
     }
   }, [
-    _chatId,
-    _selectedVisibilityType,
     isVoiceSaving,
-    onVoiceTurnSaved,
     resetVoiceState,
-    setMessages,
+    saveVoiceTurn,
     translate,
+    voiceAssistantTranscript,
+    voiceUserTranscript,
   ]);
 
   const startVoiceChat = useCallback(async () => {
