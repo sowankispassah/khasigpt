@@ -1197,6 +1197,10 @@ export default async function AdminSettingsPage({
         providerCostPerMillionInr: providerCostPerMillionUsd * usdToInr,
       };
     });
+  const marginBaselineCostSummary =
+    providerCostSummaries.find((model) => model.isMarginBaseline) ??
+    providerCostSummaries[0] ??
+    null;
 
   const suggestedPromptsList = Array.isArray(suggestedPromptsSetting)
     ? suggestedPromptsSetting.filter(
@@ -3891,6 +3895,10 @@ export default async function AdminSettingsPage({
 
                     <div className="md:col-span-2">
                       <LiveVoiceProfitabilityFields
+                        baselineModelName={marginBaselineCostSummary?.name}
+                        baselineProviderCostPerMillionUsd={
+                          marginBaselineCostSummary?.providerCostPerMillionUsd
+                        }
                         inputIdPrefix="live-voice-create"
                         recommendedPlanName={recommendedPlanName}
                         recommendedPlanPriceInPaise={recommendedPlanPriceInPaise}
@@ -4217,6 +4225,12 @@ export default async function AdminSettingsPage({
 
                                 <div className="md:col-span-2">
                                   <LiveVoiceProfitabilityFields
+                                    baselineModelName={
+                                      marginBaselineCostSummary?.name
+                                    }
+                                    baselineProviderCostPerMillionUsd={
+                                      marginBaselineCostSummary?.providerCostPerMillionUsd
+                                    }
                                     initialInputProviderCostPerMillion={
                                       model.inputProviderCostPerMillion ?? 0
                                     }

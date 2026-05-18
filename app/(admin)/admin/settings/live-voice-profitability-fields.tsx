@@ -10,6 +10,8 @@ import {
 } from "@/lib/voice/live";
 
 type LiveVoiceProfitabilityFieldsProps = {
+  baselineModelName?: string | null;
+  baselineProviderCostPerMillionUsd?: number;
   initialInputProviderCostPerMillion?: number;
   initialMultiplier?: number;
   initialOutputProviderCostPerMillion?: number;
@@ -55,6 +57,8 @@ function parsePositiveNumber(value: string) {
 }
 
 export function LiveVoiceProfitabilityFields({
+  baselineModelName = null,
+  baselineProviderCostPerMillionUsd = 0,
   initialInputProviderCostPerMillion = 0,
   initialMultiplier = 3,
   initialOutputProviderCostPerMillion = 0,
@@ -111,7 +115,25 @@ export function LiveVoiceProfitabilityFields({
       creditValueInr > 0 && usdToInr > 0 ? creditValueInr / usdToInr : 0;
     const revenueInr = finalCredits * creditValueInr;
     const revenueUsd = finalCredits * creditValueUsd;
-    const profitUsd = revenueUsd - providerCostUsd;
+    const baselineProviderRateUsd = Math.max(
+      0,
+      Number.isFinite(baselineProviderCostPerMillionUsd)
+        ? baselineProviderCostPerMillionUsd
+        : 0
+    );
+    const baselineProviderCostPerCreditUsd =
+      (baselineProviderRateUsd * TOKENS_PER_CREDIT) / 1_000_000;
+    const baselineProviderCostPerCreditInr =
+      baselineProviderCostPerCreditUsd * usdToInr;
+    const baselineProfitPerCreditUsd = Math.max(
+      0,
+      creditValueUsd - baselineProviderCostPerCreditUsd
+    );
+    const baselineProfitPerCreditInr =
+      baselineProfitPerCreditUsd * usdToInr;
+    const baselineProfitUsd = finalCredits * baselineProfitPerCreditUsd;
+    const baselineProfitInr = baselineProfitUsd * usdToInr;
+    const profitUsd = baselineProfitUsd - providerCostUsd;
     const profitInr = profitUsd * usdToInr;
     const marginPercent =
       revenueUsd > 0 ? (profitUsd / revenueUsd) * 100 : null;
@@ -119,6 +141,14 @@ export function LiveVoiceProfitabilityFields({
     return {
       baseCredits,
       baseProviderUsageTokens,
+      baselineModelName,
+      baselineProfitInr,
+      baselineProfitPerCreditInr,
+      baselineProfitPerCreditUsd,
+      baselineProfitUsd,
+      baselineProviderCostPerCreditInr,
+      baselineProviderCostPerCreditUsd,
+      baselineProviderRateUsd,
       chargedTokens,
       creditValueInr,
       creditValueUsd,
@@ -139,6 +169,8 @@ export function LiveVoiceProfitabilityFields({
     };
   }, [
     inputCost,
+    baselineModelName,
+    baselineProviderCostPerMillionUsd,
     multiplier,
     outputCost,
     recommendedPlanPriceInPaise,
@@ -253,9 +285,10 @@ export function LiveVoiceProfitabilityFields({
             <p className="mt-1 text-muted-foreground text-xs">
               Credit value uses the current recommended pricing plan
               {recommendedPlanName ? `: ${recommendedPlanName}.` : "."}
-              {" "}The API cost estimate uses the base provider usage for one
-              voice interaction, while the multiplier changes only the user
-              charge.
+              {" "}Voice profit uses the margin baseline model
+              {preview.baselineModelName
+                ? `: ${preview.baselineModelName}.`
+                : "."}
             </p>
           </div>
           <span
@@ -276,7 +309,7 @@ export function LiveVoiceProfitabilityFields({
           </span>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-5">
+        <div className="mt-4 grid gap-3 md:grid-cols-6">
           <div className="rounded-md border bg-background/80 p-3">
             <p className="text-muted-foreground text-xs uppercase tracking-wide">
               User charge
@@ -302,13 +335,28 @@ export function LiveVoiceProfitabilityFields({
           </div>
           <div className="rounded-md border bg-background/80 p-3">
             <p className="text-muted-foreground text-xs uppercase tracking-wide">
+              Baseline profit
+            </p>
+            <p className="mt-1 font-semibold">
+              {preview.hasCreditValue
+                ? formatInr(preview.baselineProfitInr)
+                : "No plan value"}
+            </p>
+            {preview.hasCreditValue ? (
+              <p className="text-muted-foreground text-xs">
+                {formatUsd(preview.baselineProfitUsd)}
+              </p>
+            ) : null}
+          </div>
+          <div className="rounded-md border bg-background/80 p-3">
+            <p className="text-muted-foreground text-xs uppercase tracking-wide">
               API cost
             </p>
             <p className="mt-1 font-semibold">
               {formatUsd(preview.providerCostUsd)}
             </p>
             <p className="text-muted-foreground text-xs">
-              {formatUsd(preview.providerRateUsd)} / 1M tokens
+              Voice: {formatUsd(preview.providerRateUsd)} / 1M
             </p>
           </div>
           <div className="rounded-md border bg-background/80 p-3">
@@ -346,14 +394,19 @@ export function LiveVoiceProfitabilityFields({
               : "select a paid recommended plan to estimate revenue"}
           </p>
           <p>
-            Input estimate: {formatUsd(preview.providerInputCostUsd)} from{" "}
-            {formatTokens(preview.baseProviderUsageTokens)} provider tokens at{" "}
-            {formatUsd(preview.inputProviderRateUsd)} / 1M.
+            Baseline profit:{" "}
+            {preview.hasCreditValue
+              ? `${formatInr(preview.baselineProfitPerCreditInr)} (${formatUsd(
+                  preview.baselineProfitPerCreditUsd
+                )}) per credit after ${formatUsd(
+                  preview.baselineProviderRateUsd
+                )} / 1M baseline model cost.`
+              : "select a paid recommended plan to estimate baseline profit"}
           </p>
           <p>
-            Output estimate: {formatUsd(preview.providerOutputCostUsd)} from{" "}
-            {formatTokens(preview.baseProviderUsageTokens)} provider tokens at{" "}
-            {formatUsd(preview.outputProviderRateUsd)} / 1M.
+            Voice API estimate: {formatUsd(preview.providerInputCostUsd)} input
+            + {formatUsd(preview.providerOutputCostUsd)} output from{" "}
+            {formatTokens(preview.baseProviderUsageTokens)} provider tokens.
           </p>
         </div>
       </div>
