@@ -1698,6 +1698,12 @@ export async function createLiveVoiceModelConfigAction(formData: FormData) {
       creditMultiplier: normalizeLiveVoiceCreditMultiplier(
         formData.get("creditMultiplier")
       ),
+      inputProviderCostPerMillion: parseNumber(
+        formData.get("inputProviderCostPerMillion")
+      ),
+      outputProviderCostPerMillion: parseNumber(
+        formData.get("outputProviderCostPerMillion")
+      ),
       config: parseJson(formData.get("configJson")),
       isEnabled: parseBoolean(formData.get("isEnabled")),
       enabledOnWeb: parseBoolean(formData.get("enabledOnWeb")),
@@ -1762,6 +1768,16 @@ export async function updateLiveVoiceModelConfigAction(formData: FormData) {
   if (formData.has("creditMultiplier")) {
     patch.creditMultiplier = normalizeLiveVoiceCreditMultiplier(
       formData.get("creditMultiplier")
+    );
+  }
+  if (formData.has("inputProviderCostPerMillion")) {
+    patch.inputProviderCostPerMillion = parseNumber(
+      formData.get("inputProviderCostPerMillion")
+    );
+  }
+  if (formData.has("outputProviderCostPerMillion")) {
+    patch.outputProviderCostPerMillion = parseNumber(
+      formData.get("outputProviderCostPerMillion")
     );
   }
   if (formData.has("configJson")) {

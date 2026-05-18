@@ -5347,6 +5347,8 @@ export async function createLiveVoiceModelConfig({
   voiceName = "Zephyr",
   mediaResolution = "MEDIA_RESOLUTION_MEDIUM",
   creditMultiplier = 3,
+  inputProviderCostPerMillion = 0,
+  outputProviderCostPerMillion = 0,
   config = null,
   isEnabled = true,
   enabledOnWeb = true,
@@ -5362,6 +5364,8 @@ export async function createLiveVoiceModelConfig({
   voiceName?: string;
   mediaResolution?: string;
   creditMultiplier?: number;
+  inputProviderCostPerMillion?: number;
+  outputProviderCostPerMillion?: number;
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   enabledOnWeb?: boolean;
@@ -5387,6 +5391,8 @@ export async function createLiveVoiceModelConfig({
         voiceName,
         mediaResolution,
         creditMultiplier: resolvedMultiplier,
+        inputProviderCostPerMillion,
+        outputProviderCostPerMillion,
         config,
         isEnabled,
         enabledOnWeb,
@@ -5616,6 +5622,8 @@ export async function updateLiveVoiceModelConfig({
   voiceName?: string;
   mediaResolution?: string;
   creditMultiplier?: number;
+  inputProviderCostPerMillion?: number;
+  outputProviderCostPerMillion?: number;
   config?: Record<string, unknown> | null;
   isEnabled?: boolean;
   enabledOnWeb?: boolean;
@@ -5650,6 +5658,14 @@ export async function updateLiveVoiceModelConfig({
         Number.isFinite(patch.creditMultiplier) && patch.creditMultiplier > 0
           ? patch.creditMultiplier
           : 1;
+    }
+    if (patch.inputProviderCostPerMillion !== undefined) {
+      updateData.inputProviderCostPerMillion =
+        patch.inputProviderCostPerMillion;
+    }
+    if (patch.outputProviderCostPerMillion !== undefined) {
+      updateData.outputProviderCostPerMillion =
+        patch.outputProviderCostPerMillion;
     }
     if (patch.config !== undefined) {
       updateData.config = patch.config ?? null;

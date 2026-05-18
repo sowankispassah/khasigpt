@@ -3896,6 +3896,48 @@ export default async function AdminSettingsPage({
                       />
                     </div>
 
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceInputProviderCostPerMillion"
+                      >
+                        Provider input cost (USD / 1M tokens)
+                      </label>
+                      <input
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue={0}
+                        id="liveVoiceInputProviderCostPerMillion"
+                        min={0}
+                        name="inputProviderCostPerMillion"
+                        step="0.000001"
+                        type="number"
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Private reference for tracking realtime input/audio cost.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label
+                        className="font-medium text-sm"
+                        htmlFor="liveVoiceOutputProviderCostPerMillion"
+                      >
+                        Provider output cost (USD / 1M tokens)
+                      </label>
+                      <input
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        defaultValue={0}
+                        id="liveVoiceOutputProviderCostPerMillion"
+                        min={0}
+                        name="outputProviderCostPerMillion"
+                        step="0.000001"
+                        type="number"
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Private reference for tracking realtime response/audio cost.
+                      </p>
+                    </div>
+
                     <div className="flex flex-col gap-2 md:col-span-2">
                       <label
                         className="font-medium text-sm"
@@ -4015,6 +4057,21 @@ export default async function AdminSettingsPage({
                           1,
                           Math.round(Number(model.creditMultiplier ?? 1) * TOKENS_PER_CREDIT)
                         );
+                        const providerInputRate = Number(
+                          model.inputProviderCostPerMillion ?? 0
+                        );
+                        const providerOutputRate = Number(
+                          model.outputProviderCostPerMillion ?? 0
+                        );
+                        const totalProviderRate =
+                          providerInputRate + providerOutputRate;
+                        const formatUsd = (value: number) =>
+                          value.toLocaleString("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                            minimumFractionDigits: value >= 1 ? 2 : 4,
+                            maximumFractionDigits: 6,
+                          });
                         return (
                           <details
                             className="rounded-md border bg-background p-4"
@@ -4066,6 +4123,32 @@ export default async function AdminSettingsPage({
                                       Usage tokens
                                     </p>
                                     <p>{tokensPerInteraction.toLocaleString()}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-xs sm:text-sm md:col-span-2">
+                                <h4 className="font-semibold text-foreground text-sm">
+                                  Provider cost reference (per 1M tokens)
+                                </h4>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                      Input cost
+                                    </p>
+                                    <p>{formatUsd(providerInputRate)}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                      Output cost
+                                    </p>
+                                    <p>{formatUsd(providerOutputRate)}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                                      Total
+                                    </p>
+                                    <p>{formatUsd(totalProviderRate)}</p>
                                   </div>
                                 </div>
                               </div>
@@ -4174,6 +4257,45 @@ export default async function AdminSettingsPage({
                                     initialMultiplier={Number(model.creditMultiplier ?? 1)}
                                     inputId={`live-voice-credit-multiplier-${model.id}`}
                                   />
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-input-cost-${model.id}`}
+                                  >
+                                    Provider input cost (USD / 1M tokens)
+                                  </label>
+                                  <input
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.inputProviderCostPerMillion ?? 0}
+                                    id={`live-voice-input-cost-${model.id}`}
+                                    min={0}
+                                    name="inputProviderCostPerMillion"
+                                    step="0.000001"
+                                    type="number"
+                                  />
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  <label
+                                    className="font-medium text-sm"
+                                    htmlFor={`live-voice-output-cost-${model.id}`}
+                                  >
+                                    Provider output cost (USD / 1M tokens)
+                                  </label>
+                                  <input
+                                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                                    defaultValue={model.outputProviderCostPerMillion ?? 0}
+                                    id={`live-voice-output-cost-${model.id}`}
+                                    min={0}
+                                    name="outputProviderCostPerMillion"
+                                    step="0.000001"
+                                    type="number"
+                                  />
+                                  <p className="text-muted-foreground text-xs">
+                                    Private reference only. Credit charging still uses the live voice multiplier.
+                                  </p>
                                 </div>
 
                                 <div className="flex flex-col gap-2 md:col-span-2">

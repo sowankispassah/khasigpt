@@ -491,6 +491,13 @@
       "when": 1779068700000,
       "tag": "0067_live_voice_model_config",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1779068700001,
+      "tag": "0068_live_voice_provider_costs",
+      "breakpoints": true
     }
   ]
 }

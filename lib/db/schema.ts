@@ -240,6 +240,12 @@ export const liveVoiceModelConfig = pgTable(
     creditMultiplier: doublePrecision("creditMultiplier")
       .notNull()
       .default(3),
+    inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
+      .notNull()
+      .default(0),
+    outputProviderCostPerMillion: doublePrecision("outputProviderCostPerMillion")
+      .notNull()
+      .default(0),
     config: jsonb("config"),
     isEnabled: boolean("isEnabled").notNull().default(true),
     enabledOnWeb: boolean("enabledOnWeb").notNull().default(true),
