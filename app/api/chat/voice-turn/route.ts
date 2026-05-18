@@ -5,10 +5,9 @@ import {
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
+import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
-  getAppSetting,
   getChatById,
-  getLastKnownAppSetting,
   saveChat,
   saveMessages,
   touchChatActivityById,
@@ -63,25 +62,32 @@ export async function POST(request: Request) {
     );
   }
 
-  const rawVoiceSettings = await withTimeout(
-    Promise.all([
-      getAppSetting<string | boolean | number>(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean | number>(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
+  const voiceSettingRows = await withTimeout(
+    getLiteAppSettingsByKeysUncached([
+      VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
     ]),
     VOICE_SETTING_TIMEOUT_MS
-  ).catch(() => [
-    getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_WEB_FEATURE_FLAG_KEY
-    ),
-    getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
-    ),
-  ]);
+  ).catch((error) => {
+    console.error("[api/chat/voice-turn] Feature setting read failed.", error);
+    return null;
+  });
+
+  if (!voiceSettingRows) {
+    return Response.json(
+      { message: "Voice chat settings could not be confirmed." },
+      { headers: noStoreHeaders(), status: 503 }
+    );
+  }
+
+  const voiceSettings = new Map(
+    voiceSettingRows.map((row) => [row.key, row.value])
+  );
 
   const voiceMode = parseVoiceChatAccessModeSetting(
     resolvePlatformVoiceChatSetting({
-      legacyValue: rawVoiceSettings[1],
-      webValue: rawVoiceSettings[0],
+      legacyValue: voiceSettings.get(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
+      webValue: voiceSettings.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
     }).web
   );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {

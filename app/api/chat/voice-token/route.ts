@@ -12,7 +12,7 @@ import {
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { getAppSetting, getLastKnownAppSetting } from "@/lib/db/queries";
+import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { withTimeout } from "@/lib/utils/async";
 import {
@@ -62,25 +62,33 @@ export async function POST(request: Request) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const rawVoiceSettings = await withTimeout(
-    Promise.all([
-      getAppSetting<string | boolean | number>(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean | number>(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
+  const voiceSettingRows = await withTimeout(
+    getLiteAppSettingsByKeysUncached([
+      VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
     ]),
     VOICE_SETTING_TIMEOUT_MS
-  ).catch(() => [
-    getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_WEB_FEATURE_FLAG_KEY
-    ),
-    getLastKnownAppSetting<string | boolean | number>(
-      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
-    ),
-  ]);
+  ).catch((error) => {
+    console.error("[api/chat/voice-token] Feature setting read failed.", error);
+    return null;
+  });
+
+  if (!voiceSettingRows) {
+    return fallbackResponse(
+      "feature-disabled",
+      "Voice chat settings could not be confirmed. Please try again.",
+      503
+    );
+  }
+
+  const voiceSettings = new Map(
+    voiceSettingRows.map((row) => [row.key, row.value])
+  );
 
   const voiceMode = parseVoiceChatAccessModeSetting(
     resolvePlatformVoiceChatSetting({
-      legacyValue: rawVoiceSettings[1],
-      webValue: rawVoiceSettings[0],
+      legacyValue: voiceSettings.get(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
+      webValue: voiceSettings.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
     }).web
   );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
