@@ -87,6 +87,45 @@ const NOTICE_MESSAGES: Record<
     message:
       "Failed to create the image model configuration. Check your inputs and try again.",
   },
+  "live-voice-model-created": {
+    type: "success",
+    message: "Live voice model configuration created.",
+  },
+  "live-voice-model-updated": {
+    type: "success",
+    message: "Live voice model configuration updated.",
+  },
+  "live-voice-model-deleted": {
+    type: "success",
+    message: "Live voice model configuration deleted.",
+  },
+  "live-voice-model-hard-deleted": {
+    type: "success",
+    message: "Live voice model configuration permanently deleted.",
+  },
+  "live-voice-model-defaulted": {
+    type: "success",
+    message: "Default live voice model updated.",
+  },
+  "live-voice-model-key-conflict": {
+    type: "error",
+    message:
+      "Live voice model key already exists. Edit the existing model or choose a different key.",
+  },
+  "live-voice-model-key-soft-deleted": {
+    type: "error",
+    message:
+      "A soft-deleted live voice model uses this key. Hard delete it before creating a new one.",
+  },
+  "live-voice-model-create-error": {
+    type: "error",
+    message:
+      "Failed to create the live voice model configuration. Check that the database migration is applied and try again.",
+  },
+  "live-voice-model-update-missing": {
+    type: "error",
+    message: "That live voice model no longer exists.",
+  },
   "privacy-updated": { type: "success", message: "Privacy policy updated." },
   "terms-updated": { type: "success", message: "Terms of service updated." },
   "about-updated": { type: "success", message: "About page content updated." },

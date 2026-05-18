@@ -5391,7 +5391,7 @@ export async function createLiveVoiceModelConfig({
         isEnabled,
         enabledOnWeb,
         enabledOnNative,
-        isDefault,
+        isDefault: false,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -5786,6 +5786,17 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
 
   try {
     await db.transaction(async (tx) => {
+      await tx
+        .update(liveVoiceModelConfig)
+        .set({ isDefault: false, updatedAt: now })
+        .where(
+          and(
+            eq(liveVoiceModelConfig.isDefault, true),
+            isNull(liveVoiceModelConfig.deletedAt),
+            ne(liveVoiceModelConfig.id, id)
+          )
+        );
+
       const [target] = await tx
         .update(liveVoiceModelConfig)
         .set({ isDefault: true, isEnabled: true, updatedAt: now })
@@ -5797,17 +5808,6 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
       if (!target) {
         throw new Error("Live voice model configuration not found");
       }
-
-      await tx
-        .update(liveVoiceModelConfig)
-        .set({ isDefault: false, updatedAt: now })
-        .where(
-          and(
-            eq(liveVoiceModelConfig.isDefault, true),
-            isNull(liveVoiceModelConfig.deletedAt),
-            ne(liveVoiceModelConfig.id, id)
-          )
-        );
     });
   } catch (_error) {
     throw new ChatSDKError(
