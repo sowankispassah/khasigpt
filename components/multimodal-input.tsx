@@ -67,6 +67,8 @@ import type { VisibilityType } from "./visibility-selector";
 
 type VoiceConversationPair = {
   assistantText: string;
+  inputTokens?: number;
+  outputTokens?: number;
   userText: string;
 };
 
@@ -86,7 +88,12 @@ function buildVoiceConversationPairs(
       continue;
     }
     if (pendingUserText) {
-      pairs.push({ assistantText: text, userText: pendingUserText });
+      pairs.push({
+        assistantText: text,
+        inputTokens: message.usage?.inputTokens,
+        outputTokens: message.usage?.outputTokens,
+        userText: pendingUserText,
+      });
       pendingUserText = null;
     }
   }
@@ -442,6 +449,8 @@ function PureMultimodalInput({
             assistantMessageId: pair.assistantMessageId,
             assistantText: pair.assistantText,
             chatId: _chatId,
+            inputTokens: pair.inputTokens,
+            outputTokens: pair.outputTokens,
             selectedVisibilityType: _selectedVisibilityType,
             userMessageId: pair.userMessageId,
             userText: pair.userText,
@@ -470,11 +479,12 @@ function PureMultimodalInput({
       completedPairs.length > 0 &&
       !hasPendingVoiceUserMessage(voiceMessages)
     ) {
+      const controllerMessages = controller.getMessages();
       controller.cancel();
       voiceTurnControllerRef.current = null;
       setIsVoiceDialogOpen(false);
       resetVoiceState();
-      void saveVoiceConversation(voiceMessages).catch((error) => {
+      void saveVoiceConversation(controllerMessages).catch((error) => {
         toast.error(
           error instanceof Error
             ? error.message

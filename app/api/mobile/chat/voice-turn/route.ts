@@ -22,6 +22,7 @@ import {
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
+import { resolveLiveVoiceTurnUsage } from "@/lib/voice/usage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,6 +35,8 @@ const voiceTurnSchema = z.object({
   assistantMessageId: z.string().uuid().optional(),
   assistantText: z.string().trim().min(1).max(MAX_VOICE_TURN_TEXT_LENGTH),
   chatId: z.string().uuid(),
+  inputTokens: z.number().int().positive().optional(),
+  outputTokens: z.number().int().positive().optional(),
   selectedVisibilityType: z.enum(["private", "public"]).default("private"),
   userMessageId: z.string().uuid().optional(),
   userText: z.string().trim().min(1).max(MAX_VOICE_TURN_TEXT_LENGTH),
@@ -154,11 +157,14 @@ export async function POST(request: Request) {
     VOICE_TURN_SAVE_TIMEOUT_MS
   );
 
-  const inputTokens = Math.ceil(liveVoiceModel.tokensPerVoiceInteraction / 2);
-  const outputTokens = Math.max(
-    1,
-    liveVoiceModel.tokensPerVoiceInteraction - inputTokens
-  );
+  const { inputTokens, outputTokens } = resolveLiveVoiceTurnUsage({
+    assistantText,
+    fallbackTokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
+    inputTokens: parsedBody.data.inputTokens,
+    multiplier: liveVoiceModel.creditMultiplier,
+    outputTokens: parsedBody.data.outputTokens,
+    userText,
+  });
 
   try {
     await withTimeout(

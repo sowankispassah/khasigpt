@@ -12,14 +12,21 @@ export type WebGeminiVoiceConversationMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
+  usage?: WebGeminiVoiceTurnUsage;
 };
 
 export type WebGeminiVoiceTurnResult = {
   messages: WebGeminiVoiceConversationMessage[];
 };
 
+export type WebGeminiVoiceTurnUsage = {
+  inputTokens: number;
+  outputTokens: number;
+};
+
 export type WebGeminiVoiceTurnController = {
   cancel: () => void;
+  getMessages: () => WebGeminiVoiceConversationMessage[];
   stop: () => Promise<WebGeminiVoiceTurnResult>;
 };
 
@@ -54,6 +61,38 @@ function appendTranscript(current: string, next: unknown) {
 
 function createMessageId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+}
+
+function toPositiveTokenCount(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+}
+
+function readUsageMetadata(value: unknown): WebGeminiVoiceTurnUsage | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const metadata = value as Record<string, unknown>;
+  const inputTokens = toPositiveTokenCount(
+    metadata.promptTokenCount ?? metadata.prompt_token_count
+  );
+  const outputTokens = toPositiveTokenCount(
+    metadata.responseTokenCount ?? metadata.response_token_count
+  );
+  const totalTokens = toPositiveTokenCount(
+    metadata.totalTokenCount ?? metadata.total_token_count
+  );
+
+  if (inputTokens > 0 || outputTokens > 0) {
+    return { inputTokens, outputTokens };
+  }
+  if (totalTokens > 0) {
+    return {
+      inputTokens: Math.ceil(totalTokens / 2),
+      outputTokens: Math.max(1, Math.floor(totalTokens / 2)),
+    };
+  }
+  return null;
 }
 
 async function parseServerMessage(data: unknown) {
@@ -213,6 +252,14 @@ export async function startWebGeminiVoiceTurn({
   let messages: WebGeminiVoiceConversationMessage[] = [];
   let activeUserMessageId: string | null = null;
   let activeAssistantMessageId: string | null = null;
+  let currentTurnUsage: WebGeminiVoiceTurnUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+  let lastUsageSnapshot: WebGeminiVoiceTurnUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+  };
   let hasStoppedInput = false;
   let isSetupComplete = false;
   let isSettled = false;
@@ -266,6 +313,27 @@ export async function startWebGeminiVoiceTurn({
       activeAssistantMessageId = id;
     }
     messages = [...messages, { id, role, text: normalizedText }];
+    emitMessages();
+  };
+
+  const applyUsageToActiveAssistantMessage = () => {
+    if (
+      !activeAssistantMessageId ||
+      (currentTurnUsage.inputTokens <= 0 && currentTurnUsage.outputTokens <= 0)
+    ) {
+      return;
+    }
+    messages = messages.map((message) =>
+      message.id === activeAssistantMessageId
+        ? {
+            ...message,
+            usage: {
+              inputTokens: currentTurnUsage.inputTokens,
+              outputTokens: currentTurnUsage.outputTokens,
+            },
+          }
+        : message
+    );
     emitMessages();
   };
 
@@ -384,6 +452,24 @@ export async function startWebGeminiVoiceTurn({
       return;
     }
 
+    const usageSnapshot = readUsageMetadata(message.usageMetadata);
+    if (usageSnapshot) {
+      const inputDelta =
+        usageSnapshot.inputTokens >= lastUsageSnapshot.inputTokens
+          ? usageSnapshot.inputTokens - lastUsageSnapshot.inputTokens
+          : usageSnapshot.inputTokens;
+      const outputDelta =
+        usageSnapshot.outputTokens >= lastUsageSnapshot.outputTokens
+          ? usageSnapshot.outputTokens - lastUsageSnapshot.outputTokens
+          : usageSnapshot.outputTokens;
+      lastUsageSnapshot = usageSnapshot;
+      currentTurnUsage = {
+        inputTokens: currentTurnUsage.inputTokens + inputDelta,
+        outputTokens: currentTurnUsage.outputTokens + outputDelta,
+      };
+      applyUsageToActiveAssistantMessage();
+    }
+
     const serverContent = message.serverContent;
     if (!serverContent || typeof serverContent !== "object") {
       return;
@@ -429,10 +515,15 @@ export async function startWebGeminiVoiceTurn({
     }
 
     if (serverContent.turnComplete) {
+      applyUsageToActiveAssistantMessage();
       userText = "";
       assistantText = "";
       activeUserMessageId = null;
       activeAssistantMessageId = null;
+      currentTurnUsage = {
+        inputTokens: 0,
+        outputTokens: 0,
+      };
       if (hasStoppedInput) {
         settle({ messages });
       } else {
@@ -450,6 +541,7 @@ export async function startWebGeminiVoiceTurn({
       cleanup().catch(() => undefined);
       resolveResult?.({ messages: [] });
     },
+    getMessages: () => messages.map((message) => ({ ...message })),
     stop: async () => {
       if (!hasStoppedInput) {
         hasStoppedInput = true;
