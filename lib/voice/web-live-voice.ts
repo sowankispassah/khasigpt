@@ -46,12 +46,20 @@ function appendTranscript(current: string, next: unknown) {
   return `${current} ${normalized}`.trim();
 }
 
-function parseServerMessage(data: unknown) {
-  if (typeof data !== "string") {
+async function parseServerMessage(data: unknown) {
+  let rawMessage: string;
+  if (typeof data === "string") {
+    rawMessage = data;
+  } else if (data instanceof Blob) {
+    rawMessage = await data.text();
+  } else if (data instanceof ArrayBuffer) {
+    rawMessage = new TextDecoder().decode(data);
+  } else {
     return null;
   }
+
   try {
-    return JSON.parse(data) as Record<string, any>;
+    return JSON.parse(rawMessage) as Record<string, any>;
   } catch {
     return null;
   }
@@ -78,6 +86,7 @@ function buildSetupMessage(model: string) {
         turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY",
       },
       systemInstruction: {
+        role: "user",
         parts: [
           {
             text: [
@@ -188,6 +197,7 @@ export async function startWebGeminiVoiceTurn({
   let userText = "";
   let assistantText = "";
   let hasStoppedInput = false;
+  let isSetupComplete = false;
   let isSettled = false;
   let setupTimeout: ReturnType<typeof setTimeout> | null = null;
   let stopTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -254,7 +264,11 @@ export async function startWebGeminiVoiceTurn({
   };
 
   processor.onaudioprocess = (event) => {
-    if (hasStoppedInput || ws.readyState !== WebSocket.OPEN) {
+    if (
+      hasStoppedInput ||
+      !isSetupComplete ||
+      ws.readyState !== WebSocket.OPEN
+    ) {
       return;
     }
     const input = event.inputBuffer.getChannelData(0);
@@ -304,13 +318,14 @@ export async function startWebGeminiVoiceTurn({
     }
   };
 
-  ws.onmessage = (event) => {
-    const message = parseServerMessage(event.data);
+  ws.onmessage = async (event) => {
+    const message = await parseServerMessage(event.data);
     if (!message) {
       return;
     }
 
     if (message.setupComplete) {
+      isSetupComplete = true;
       if (setupTimeout) {
         clearTimeout(setupTimeout);
         setupTimeout = null;
