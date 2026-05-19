@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
-import { JobsAutoScrapeTrigger } from "@/components/jobs-auto-scrape-trigger";
 import { SiteShell } from "@/components/site-shell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
@@ -159,7 +158,6 @@ export default async function Layout({
     >
       {session ? (
         <SidebarProvider defaultOpen={defaultSidebarOpen}>
-          {jobsModeEnabled ? <JobsAutoScrapeTrigger /> : null}
           <AppSidebar
             calculatorEnabled={calculatorEnabled}
             jobsModeEnabled={jobsModeEnabled}

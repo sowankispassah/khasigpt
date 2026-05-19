@@ -1645,14 +1645,14 @@ async function JobsScrapeHistorySection({
   return (
     <CollapsibleSectionCard contentClassName="space-y-3 text-sm" title="Scraping History">
       <p className="text-muted-foreground">
-        Latest 50 scrape runs across auto schedule and manual runs.
+        Latest 50 scrape runs across cron, auto, and manual runs.
       </p>
       <p className="text-muted-foreground text-xs">
-        Next auto run at:{" "}
+        Next scheduled run at:{" "}
         <span className="font-medium text-foreground">
           {scheduleSettings.enabled
             ? formatMaybeDateTime(nextDueAt, scheduleSettings.timezone)
-            : "Auto scrape disabled"}
+            : "Scheduled scrape disabled"}
         </span>
       </p>
       {scrapeHistoryUnavailable ? (
@@ -1704,7 +1704,7 @@ async function JobsSourceManagementSection({
         Managed sources: {managedSources.length} total / {enabledSourcesCount} enabled.
         {enabledSourcesCount === 0
           ? " No enabled source is configured, so fallback sources from config/jobSources.ts will be used."
-          : " Enabled sources are used for all manual and automatic scrape runs."}
+          : " Enabled sources are used for all manual and scheduled scrape runs."}
       </p>
       <p className="text-muted-foreground text-xs">
         Use <strong>Auto</strong> for most sites. The scraper will try generic extraction

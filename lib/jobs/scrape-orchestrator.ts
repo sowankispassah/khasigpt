@@ -105,6 +105,10 @@ const DEFAULT_JOBS_SCRAPE_STALE_RUNNING_MS = 8 * 60 * 1000;
 const DEFAULT_JOBS_SCRAPE_CANCEL_REQUESTED_STALE_MS = 15 * 1000;
 const DEFAULT_JOBS_SCRAPE_PROGRESS_HEARTBEAT_MS = 20 * 1000;
 
+function isScheduledJobsScrapeTrigger(trigger: JobsScrapeTrigger) {
+  return trigger === "auto" || trigger === "cron";
+}
+
 function parseLookbackDays(rawValue: unknown) {
   if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
     return Math.max(
@@ -202,7 +206,9 @@ function normalizeProgressSnapshot(rawValue: unknown): JobsScrapeProgressSnapsho
   }
 
   const trigger: JobsScrapeTrigger =
-    candidate.trigger === "manual" || candidate.trigger === "auto"
+    candidate.trigger === "manual" ||
+    candidate.trigger === "auto" ||
+    candidate.trigger === "cron"
       ? candidate.trigger
       : "manual";
   const state = (() => {
@@ -352,7 +358,9 @@ function normalizeHistoryEntry(rawValue: unknown): JobsScrapeHistoryEntry | null
       ? value.runId.trim()
       : "";
   const trigger =
-    value.trigger === "manual" || value.trigger === "auto" ? value.trigger : null;
+    value.trigger === "manual" || value.trigger === "auto" || value.trigger === "cron"
+      ? value.trigger
+      : null;
   const status =
     value.status === "success" ||
     value.status === "failed" ||
@@ -784,11 +792,11 @@ export async function runJobsScrapeWithScheduling({
     now: startedAt,
   });
   const oneTimeDue =
-    trigger === "auto" &&
+    isScheduledJobsScrapeTrigger(trigger) &&
     runtime.oneTimeAt !== null &&
     startedAt.getTime() >= runtime.oneTimeAt.getTime();
   const oneTimeUpcoming =
-    trigger === "auto" &&
+    isScheduledJobsScrapeTrigger(trigger) &&
     runtime.oneTimeAt !== null &&
     startedAt.getTime() < runtime.oneTimeAt.getTime()
       ? runtime.oneTimeAt
@@ -1010,7 +1018,7 @@ export async function runJobsScrapeWithScheduling({
   try {
     const scrapeResult = await runJobsScraper(sourceResolution.scraperSources, {
       lookbackDays: runtime.lookbackDays,
-      skipExistingSourceUrls: trigger === "auto",
+      skipExistingSourceUrls: isScheduledJobsScrapeTrigger(trigger),
       shouldCancel,
       onSourceStart: async ({ source }) => {
         startedSourcesCount = Math.min(totalSources, startedSourcesCount + 1);

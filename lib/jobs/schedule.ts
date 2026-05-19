@@ -25,7 +25,7 @@ const TIMEZONE_OFFSETS_MINUTES = {
 type SupportedTimezone = keyof typeof TIMEZONE_OFFSETS_MINUTES;
 
 export type JobsScrapeRunStatus = "success" | "failed" | "skipped";
-export type JobsScrapeTrigger = "auto" | "manual";
+export type JobsScrapeTrigger = "auto" | "cron" | "manual";
 export type JobsScrapeSkipReason =
   | "disabled"
   | "locked"

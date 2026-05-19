@@ -9,7 +9,7 @@ const RUN_START_GRACE_MS = 8_000;
 
 type JobsScrapeProgressSnapshot = {
   runId: string;
-  trigger: "manual" | "auto";
+  trigger: "manual" | "auto" | "cron";
   state: "idle" | "running" | "success" | "failed" | "cancelled" | "skipped";
   startedAt: string;
   updatedAt: string;
