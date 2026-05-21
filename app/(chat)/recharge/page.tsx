@@ -7,13 +7,8 @@ import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
 import { EditableTranslation } from "@/components/translation-edit-provider";
-import { isImageGenerationEnabledForAllUsers } from "@/lib/ai/image-generation";
-import { RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
-import {
-  getAppSetting,
-  getUserBalanceSummary,
-  listPricingPlans,
-} from "@/lib/db/queries";
+import { loadPricingReadModel } from "@/lib/api/read-models";
+import { getUserBalanceSummary } from "@/lib/db/queries";
 import {
   getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
@@ -28,17 +23,15 @@ export default async function RechargePage() {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const [
-    plans,
-    balance,
-    recommendedPlanSetting,
-    imageGenerationEnabledForAll,
-  ] = await Promise.all([
-    listPricingPlans({ includeInactive: false }),
+  const [pricing, balance] = await Promise.all([
+    loadPricingReadModel(),
     getUserBalanceSummary(session.user.id),
-    getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY),
-    isImageGenerationEnabledForAllUsers(),
   ]);
+  const {
+    imageGenerationEnabledForAll,
+    plans,
+    recommendedPlanId: recommendedPlanSetting,
+  } = pricing;
 
   const planTranslationKeys = plans.flatMap((plan) => [
     `recharge.plan.${plan.id}.name`,

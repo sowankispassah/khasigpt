@@ -380,13 +380,28 @@ async function loadSettings(module: string | null) {
     case "features":
       return loadFeatureAccessReadModel({ role: "admin" });
     case "pricing":
-      return {
-        ...(await loadPricingReadModel()),
-        adminPlans: await listPricingPlans({
-          includeDeleted: true,
-          includeInactive: true,
-        }),
-      };
+      {
+        const [pricing, adminPlans] = await Promise.all([
+          sectionQuery("settings.pricing.read-model", loadPricingReadModel(), {
+            imageGenerationEnabledForAll: false,
+            plans: [],
+            recommendedPlanId: null,
+          }),
+          sectionQuery(
+            "settings.pricing.admin-plans",
+            listPricingPlans({
+              includeDeleted: true,
+              includeInactive: true,
+            }),
+            []
+          ),
+        ]);
+        return {
+          ...pricing,
+          adminPlans,
+          degraded: pricing.plans.length === 0 && adminPlans.length === 0,
+        };
+      }
     case "languages":
       return {
         chat: await listLanguagesWithSettings(),

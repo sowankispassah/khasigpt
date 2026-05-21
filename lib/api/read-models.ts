@@ -54,12 +54,14 @@ import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
+import { withTimeout } from "@/lib/utils/async";
 import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
 
 const READ_TIMEOUT_MS = 5000;
+const PRICING_READ_TIMEOUT_MS = 8000;
 
 const serializeDate = (value: Date | string | null | undefined) =>
   value instanceof Date ? value.toISOString() : value ?? null;
@@ -76,7 +78,15 @@ function parseBooleanSetting(value: unknown) {
 
 async function safeAppSetting<T>(key: string, fallback: T) {
   try {
-    const value = await getAppSetting<T>(key);
+    const value = await withTimeout(
+      getAppSetting<T>(key),
+      READ_TIMEOUT_MS,
+      () => {
+        console.error(`[read-models] Setting "${key}" timed out.`, {
+          timeoutMs: READ_TIMEOUT_MS,
+        });
+      }
+    );
     return value ?? fallback;
   } catch (error) {
     console.error(`[read-models] Failed to load setting "${key}".`, error);
@@ -344,9 +354,31 @@ export async function loadTranslateReadModel({
 export async function loadPricingReadModel() {
   const [pricingPlans, recommendedPlanId, imageGenerationEnabledForAll] =
     await Promise.all([
-      listPricingPlans({ includeInactive: false }),
+      withTimeout(
+        listPricingPlans({ includeInactive: false }),
+        PRICING_READ_TIMEOUT_MS,
+        () => {
+          console.error("[read-models] Pricing plans read timed out.", {
+            timeoutMs: PRICING_READ_TIMEOUT_MS,
+          });
+        }
+      ),
       safeAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY, null),
-      isImageGenerationEnabledForAllUsers().catch(() => false),
+      withTimeout(
+        isImageGenerationEnabledForAllUsers(),
+        READ_TIMEOUT_MS,
+        () => {
+          console.error("[read-models] Image generation access read timed out.", {
+            timeoutMs: READ_TIMEOUT_MS,
+          });
+        }
+      ).catch((error) => {
+        console.error(
+          "[read-models] Image generation access read failed. Using disabled fallback for pricing read model.",
+          error
+        );
+        return false;
+      }),
     ]);
 
   const sortedPricingPlans = sortPricingPlansForDisplay(pricingPlans);

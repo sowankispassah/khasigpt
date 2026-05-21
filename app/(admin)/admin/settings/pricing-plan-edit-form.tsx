@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
@@ -35,6 +36,7 @@ export function PricingPlanEditForm({
   plan: PricingPlanForEdit;
   usdToInr: number;
 }) {
+  const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -75,6 +77,7 @@ export function PricingPlanEditForm({
       }
 
       toast({ type: "success", description: "Plan updated" });
+      router.refresh();
     } catch (error) {
       toast({
         type: "error",

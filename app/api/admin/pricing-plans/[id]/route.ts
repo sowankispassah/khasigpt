@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
+import {
+  ADMIN_SETTINGS_CACHE_TAG,
+  invalidateAdminMutation,
+} from "@/lib/admin/cache-invalidation";
 import { PRICING_PLAN_CACHE_TAG } from "@/lib/constants";
 import {
   createAuditLogEntry,
@@ -13,6 +16,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const PRICING_PLAN_AUDIT_TIMEOUT_MS = 3_000;
+const PRICING_PLAN_UPDATE_TIMEOUT_MS = 8_000;
 
 function parseBooleanInput(value: unknown): boolean | null {
   if (typeof value === "boolean") {
@@ -122,19 +126,28 @@ export async function PATCH(
   }
 
   try {
-    const plan = await updatePricingPlan({
-      id,
-      updates: {
-        name,
-        description:
-          typeof body.description === "string" ? body.description.trim() : "",
-        androidProductId,
-        priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
-        tokenAllowance,
-        billingCycleDays,
-        isActive,
-      },
-    });
+    const plan = await withTimeout(
+      updatePricingPlan({
+        id,
+        updates: {
+          name,
+          description:
+            typeof body.description === "string" ? body.description.trim() : "",
+          androidProductId,
+          priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
+          tokenAllowance,
+          billingCycleDays,
+          isActive,
+        },
+      }),
+      PRICING_PLAN_UPDATE_TIMEOUT_MS,
+      () => {
+        console.error(
+          `[api/admin/pricing-plans] Update timed out for plan "${id}".`,
+          { timeoutMs: PRICING_PLAN_UPDATE_TIMEOUT_MS }
+        );
+      }
+    );
 
     if (!plan) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -142,7 +155,7 @@ export async function PATCH(
 
     invalidateAdminMutation({
       source: "billing.plan.update",
-      tags: [PRICING_PLAN_CACHE_TAG],
+      tags: [PRICING_PLAN_CACHE_TAG, ADMIN_SETTINGS_CACHE_TAG],
     });
 
     void withTimeout(
