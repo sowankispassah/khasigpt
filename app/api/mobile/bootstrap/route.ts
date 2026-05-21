@@ -12,7 +12,11 @@ import {
   loadPromptReadModel,
   loadTranslateReadModel,
 } from "@/lib/api/read-models";
-import { getDefaultIconPromptActions } from "@/lib/icon-prompts";
+import type { UserRole } from "@/lib/db/schema";
+import {
+  getDefaultIconPromptActions,
+  loadIconPromptActions,
+} from "@/lib/icon-prompts";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +153,24 @@ function buildFallbackPromptSnapshot(
   };
 }
 
+async function loadStartupPromptSnapshot({
+  preferredLanguage,
+  role,
+}: {
+  preferredLanguage: string | null;
+  role: UserRole | null;
+}): Promise<PromptSnapshot> {
+  const iconPromptActions = await loadIconPromptActions(
+    preferredLanguage,
+    role
+  );
+
+  return {
+    iconPromptActions,
+    suggestedPrompts: [],
+  };
+}
+
 const FALLBACK_TRANSLATE_SNAPSHOT: TranslateSnapshot = {
   providerMode: "ai",
   languages: [],
@@ -267,6 +289,19 @@ export async function GET(request: Request) {
   let balanceResult: BootstrapSectionResult<
     Awaited<ReturnType<typeof loadBillingReadModel>> | null
   > = { data: null, degraded: false };
+
+  if (session?.user && isStartupPhase) {
+    promptSnapshotResult = await safeBootstrapSection({
+      fallback: buildFallbackPromptSnapshot(preferredLanguage),
+      label: "mobile.bootstrap.icon-prompts",
+      loader: () =>
+        loadStartupPromptSnapshot({
+          preferredLanguage,
+          role: session.user.role,
+        }),
+      phase,
+    });
+  }
 
   // Keep full bootstrap compatible, but do not run all optional DB reads at
   // once. In production the Supabase pooler has repeatedly left concurrent
