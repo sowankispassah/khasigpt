@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
+import { withApiTiming } from "@/lib/api/observability";
 import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
@@ -81,12 +82,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const voiceSettingRows = await withTimeout(
-    getLiteAppSettingsByKeysUncached([
-      VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
-      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
-    ]),
-    VOICE_SETTING_TIMEOUT_MS
+  const voiceSettingRowsPromise = withApiTiming(
+    "mobile.voice-token.settings",
+    () =>
+      withTimeout(
+        getLiteAppSettingsByKeysUncached([
+          VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+          VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+        ]),
+        VOICE_SETTING_TIMEOUT_MS
+      ),
+    { slowMs: 750 }
   ).catch((error) => {
     console.error(
       "[api/mobile/chat/voice-token] Feature setting read failed.",
@@ -94,6 +100,27 @@ export async function POST(request: Request) {
     );
     return null;
   });
+
+  const liveVoiceModelPromise = withApiTiming(
+    "mobile.voice-token.model",
+    () =>
+      resolveLiveVoiceModelConfig({
+        modelId: parsedBody.data?.modelId,
+        platform: "native",
+      }),
+    { slowMs: 750 }
+  ).catch((error) => {
+    console.error(
+      "[api/mobile/chat/voice-token] Model config read failed.",
+      error
+    );
+    return null;
+  });
+
+  const [voiceSettingRows, liveVoiceModel] = await Promise.all([
+    voiceSettingRowsPromise,
+    liveVoiceModelPromise,
+  ]);
 
   if (!voiceSettingRows) {
     return fallbackResponse(
@@ -121,10 +148,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const liveVoiceModel = await resolveLiveVoiceModelConfig({
-    modelId: parsedBody.data?.modelId,
-    platform: "native",
-  });
   if (!liveVoiceModel) {
     return fallbackResponse(
       "feature-disabled",
@@ -133,10 +156,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const hasCredits = await hasEnoughCreditsForLiveVoice({
-    tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
-    userId: authContext.user.id,
-  }).catch((error) => {
+  const hasCredits = await withApiTiming(
+    "mobile.voice-token.credits",
+    () =>
+      hasEnoughCreditsForLiveVoice({
+        tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
+        userId: authContext.user.id,
+      }),
+    { slowMs: 750 }
+  ).catch((error) => {
     console.error("[api/mobile/chat/voice-token] Credit read failed.", error);
     return false;
   });
@@ -169,52 +197,61 @@ export async function POST(request: Request) {
   ).toISOString();
   const expireTime = new Date(now + VOICE_TOKEN_SESSION_WINDOW_MS).toISOString();
 
-  const token = await withTimeout(
-    ai.authTokens.create({
-      config: {
-        uses: 1,
-        newSessionExpireTime,
-        expireTime,
-        liveConnectConstraints: {
-          model: liveVoiceModel.providerModelId,
+  const token = await withApiTiming(
+    "mobile.voice-token.google-token",
+    () =>
+      withTimeout(
+        ai.authTokens.create({
           config: {
-            responseModalities: [Modality.AUDIO],
-            mediaResolution:
-              liveVoiceModel.mediaResolution as unknown as MediaResolution,
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: liveVoiceModel.voiceName,
+            uses: 1,
+            newSessionExpireTime,
+            expireTime,
+            liveConnectConstraints: {
+              model: liveVoiceModel.providerModelId,
+              config: {
+                responseModalities: [Modality.AUDIO],
+                mediaResolution:
+                  liveVoiceModel.mediaResolution as unknown as MediaResolution,
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: {
+                      voiceName: liveVoiceModel.voiceName,
+                    },
+                  },
                 },
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
+                realtimeInputConfig: {
+                  activityHandling:
+                    ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+                  automaticActivityDetection: {
+                    endOfSpeechSensitivity:
+                      EndSensitivity.END_SENSITIVITY_HIGH,
+                    prefixPaddingMs: 120,
+                    silenceDurationMs: 500,
+                    startOfSpeechSensitivity:
+                      StartSensitivity.START_SENSITIVITY_HIGH,
+                  },
+                  turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
+                },
+                systemInstruction: liveVoiceModel.systemInstruction,
               },
             },
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-            realtimeInputConfig: {
-              activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
-              automaticActivityDetection: {
-                endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
-                prefixPaddingMs: 120,
-                silenceDurationMs: 500,
-                startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
-              },
-              turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
-            },
-            systemInstruction: liveVoiceModel.systemInstruction,
           },
-        },
-      },
-    }),
-    VOICE_TOKEN_TIMEOUT_MS
+        }),
+        VOICE_TOKEN_TIMEOUT_MS
+      ),
+    { slowMs: 1500 }
   ).catch((error) => {
     console.error("[api/mobile/chat/voice-token] Token creation failed.", error);
-    throw error;
+    return null;
   });
 
-  if (!token.name?.trim()) {
-    return Response.json(
-      { message: "Voice chat token could not be created." },
-      { headers: noStoreHeaders(), status: 500 }
+  if (!token?.name?.trim()) {
+    return fallbackResponse(
+      "live-api-unavailable",
+      "Voice chat token could not be created. Please try again.",
+      503
     );
   }
 
