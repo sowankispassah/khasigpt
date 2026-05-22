@@ -1,15 +1,7 @@
 import { Suspense } from "react";
-import {
-  grantUserCreditsAction,
-  setUserActiveStateAction,
-  setUserPersonalKnowledgePermissionAction,
-  setUserRoleAction,
-} from "@/app/(admin)/actions";
 import { auth } from "@/app/(auth)/auth";
-import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
-import { AdminUserCreditHistoryMenu } from "@/components/admin-user-credit-history-menu";
 import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   getUserBalanceSummaries,
@@ -19,6 +11,7 @@ import {
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
+import { AddCreditsForm } from "./add-credits-form";
 
 export const dynamic = "force-dynamic";
 
@@ -200,31 +193,13 @@ async function UsersTableSection({
                         currentRole={user.role as UserRole}
                         isActive={user.isActive}
                         isSelf={user.id === currentUserId}
-                        onSetRole={async (role) => {
-                          "use server";
-                          await setUserRoleAction({
-                            userId: user.id,
-                            role,
-                          });
-                        }}
-                        onSuspend={async () => {
-                          "use server";
-                          await setUserActiveStateAction({
-                            userId: user.id,
-                            isActive: !user.isActive,
-                          });
-                        }}
-                        onToggleRag={async () => {
-                          "use server";
-                          await setUserPersonalKnowledgePermissionAction({
-                            userId: user.id,
-                            allowed: !user.allowPersonalKnowledge,
-                          });
-                        }}
                         userId={user.id}
                       />
                       <AddCreditsForm
-                        balance={balanceByUserId.get(user.id) ?? EMPTY_USER_BALANCE}
+                        creditsRemaining={
+                          (balanceByUserId.get(user.id) ?? EMPTY_USER_BALANCE)
+                            .creditsRemaining
+                        }
                         userId={user.id}
                       />
                     </div>
@@ -346,51 +321,5 @@ function SubscriptionsFallback() {
         ))}
       </div>
     </div>
-  );
-}
-
-function AddCreditsForm({
-  userId,
-  balance,
-}: {
-  userId: string;
-  balance: UserBalanceSummary;
-}) {
-  const creditsRemaining = balance.creditsRemaining;
-  const creditsLabel = `${creditsRemaining.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} credits available`;
-
-  return (
-    <form
-      action={grantUserCreditsAction}
-      className="flex flex-nowrap items-center gap-2 whitespace-nowrap"
-    >
-      <input name="userId" type="hidden" value={userId} />
-      <input name="billingCycleDays" type="hidden" value="90" />
-      <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-muted-foreground text-xs">
-        <span>{creditsLabel}</span>
-        <AdminUserCreditHistoryMenu userId={userId} />
-      </div>
-      <input
-        aria-label="Credits to grant"
-        className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm"
-        min={0}
-        name="credits"
-        placeholder="Credits"
-        required
-        step="0.5"
-        type="number"
-      />
-      <ActionSubmitButton
-        pendingLabel="Adding..."
-        size="sm"
-        successMessage="Credits granted"
-        variant="secondary"
-      >
-        Add credits
-      </ActionSubmitButton>
-    </form>
   );
 }

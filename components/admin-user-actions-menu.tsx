@@ -1,10 +1,17 @@
 "use client";
 
 import { MoreVertical } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { useFormStatus } from "react-dom";
-import { ActionSubmitButton } from "@/components/action-submit-button";
+import { useRouter } from "next/navigation";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+  useTransition,
+} from "react";
+import { LoaderIcon } from "@/components/icons";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
+import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,24 +28,52 @@ type AdminUserActionsMenuProps = {
   isActive: boolean;
   allowPersonalKnowledge: boolean;
   isSelf: boolean;
-  onSuspend: (formData: FormData) => Promise<void>;
-  onToggleRag: (formData: FormData) => Promise<void>;
-  onSetRole: (role: "admin" | "creator" | "regular") => Promise<void>;
   currentRole: "admin" | "creator" | "regular";
 };
 
-function CloseAfterSubmit({ onDone }: { onDone: () => void }) {
-  const { pending } = useFormStatus();
-  const wasPending = useRef(false);
-
-  useEffect(() => {
-    if (wasPending.current && !pending) {
-      onDone();
+async function readUserActionError(response: Response) {
+  const data = await response.json().catch(() => null);
+  if (data && typeof data === "object" && "message" in data) {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
     }
-    wasPending.current = pending;
-  }, [pending, onDone]);
+  }
+  return "Unable to update user.";
+}
 
-  return null;
+type UserUpdatePayload =
+  | { allowPersonalKnowledge: boolean }
+  | { isActive: boolean }
+  | { role: "admin" | "creator" | "regular" };
+
+function roleLabel(role: "admin" | "creator" | "regular") {
+  if (role === "admin") {
+    return "Admin";
+  }
+  if (role === "creator") {
+    return "Creator";
+  }
+  return "Regular";
+}
+
+function LoadingMenuLabel({
+  children,
+  loading,
+}: {
+  children: ReactNode;
+  loading: boolean;
+}) {
+  return loading ? (
+    <span className="flex items-center gap-2">
+      <span className="h-4 w-4 animate-spin">
+        <LoaderIcon size={16} />
+      </span>
+      <span>{children}</span>
+    </span>
+  ) : (
+    children
+  );
 }
 
 export function AdminUserActionsMenu({
@@ -46,9 +81,6 @@ export function AdminUserActionsMenu({
   isActive,
   allowPersonalKnowledge,
   isSelf,
-  onSuspend,
-  onToggleRag,
-  onSetRole,
   currentRole,
 }: AdminUserActionsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -57,11 +89,58 @@ export function AdminUserActionsMenu({
   );
   const [impersonateError, setImpersonateError] = useState<string | null>(null);
   const [impersonateLoading, setImpersonateLoading] = useState(false);
-  const [_impersonatePending, _startImpersonate] = useTransition();
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [isRefreshing, startRefresh] = useTransition();
+  const router = useRouter();
 
   const handleDone = useCallback(() => {
     setOpen(false);
   }, []);
+
+  const runUserUpdate = useCallback(
+    async ({
+      payload,
+      pendingKey,
+      successMessage,
+    }: {
+      payload: UserUpdatePayload;
+      pendingKey: string;
+      successMessage: string;
+    }) => {
+      if (pendingAction) {
+        return;
+      }
+
+      setPendingAction(pendingKey);
+      try {
+        const response = await fetch(`/api/admin/users/${userId}`, {
+          body: JSON.stringify(payload),
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        });
+
+        if (!response.ok) {
+          throw new Error(await readUserActionError(response));
+        }
+
+        toast({ description: successMessage, type: "success" });
+        handleDone();
+        startRefresh(() => {
+          router.refresh();
+        });
+      } catch (error) {
+        toast({
+          description:
+            error instanceof Error ? error.message : "Unable to update user.",
+          type: "error",
+        });
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [handleDone, pendingAction, router, userId]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -121,18 +200,28 @@ export function AdminUserActionsMenu({
           className="p-0"
           onSelect={(event) => event.preventDefault()}
         >
-          <form action={onSuspend} className="w-full">
-            <CloseAfterSubmit onDone={handleDone} />
-            <ActionSubmitButton
-              className="w-full justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted"
-              disabled={isSelf}
-              pendingLabel={isActive ? "Suspending..." : "Restoring..."}
-              size="sm"
-              variant="ghost"
-            >
-              {isActive ? "Suspend" : "Restore"}
-            </ActionSubmitButton>
-          </form>
+          <button
+            className="flex w-full cursor-pointer items-center justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSelf || Boolean(pendingAction) || isRefreshing}
+            onClick={() =>
+              runUserUpdate({
+                payload: { isActive: !isActive },
+                pendingKey: "active",
+                successMessage: isActive ? "User suspended" : "User restored",
+              })
+            }
+            type="button"
+          >
+            <LoadingMenuLabel loading={pendingAction === "active"}>
+              {pendingAction === "active"
+                ? isActive
+                  ? "Suspending..."
+                  : "Restoring..."
+                : isActive
+                  ? "Suspend"
+                  : "Restore"}
+            </LoadingMenuLabel>
+          </button>
         </DropdownMenuItem>
 
         <DropdownMenuItem
@@ -151,18 +240,26 @@ export function AdminUserActionsMenu({
           className="p-0"
           onSelect={(event) => event.preventDefault()}
         >
-          <form action={onToggleRag} className="w-full">
-            <CloseAfterSubmit onDone={handleDone} />
-            <ActionSubmitButton
-              className="w-full justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted"
-              disabled={isSelf}
-              pendingLabel="Updating..."
-              size="sm"
-              variant="ghost"
-            >
-              {allowPersonalKnowledge ? "Disable RAG" : "Allow RAG"}
-            </ActionSubmitButton>
-          </form>
+          <button
+            className="flex w-full cursor-pointer items-center justify-start rounded-sm px-3 py-2 font-normal text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSelf || Boolean(pendingAction) || isRefreshing}
+            onClick={() =>
+              runUserUpdate({
+                payload: { allowPersonalKnowledge: !allowPersonalKnowledge },
+                pendingKey: "rag",
+                successMessage: "Personal knowledge setting updated",
+              })
+            }
+            type="button"
+          >
+            <LoadingMenuLabel loading={pendingAction === "rag"}>
+              {pendingAction === "rag"
+                ? "Updating..."
+                : allowPersonalKnowledge
+                  ? "Disable RAG"
+                  : "Allow RAG"}
+            </LoadingMenuLabel>
+          </button>
         </DropdownMenuItem>
 
         <DropdownMenuItem className="p-0">
@@ -199,28 +296,30 @@ export function AdminUserActionsMenu({
                 key={role}
                 onSelect={(event) => event.preventDefault()}
               >
-                <form
-                  action={async () => {
-                    await onSetRole(role);
-                  }}
-                  className="w-full"
+                <button
+                  className="flex w-full cursor-pointer items-center justify-start rounded-sm px-3 py-1.5 font-normal text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={
+                    isSelf ||
+                    currentRole === role ||
+                    Boolean(pendingAction) ||
+                    isRefreshing
+                  }
+                  onClick={() =>
+                    runUserUpdate({
+                      payload: { role },
+                      pendingKey: `role:${role}`,
+                      successMessage: "User role updated",
+                    })
+                  }
+                  type="button"
                 >
-                  <CloseAfterSubmit onDone={handleDone} />
-                  <ActionSubmitButton
-                    className="w-full justify-start rounded-sm px-3 py-1.5 font-normal text-sm hover:bg-muted"
-                    disabled={isSelf || currentRole === role}
-                    pendingLabel="Updating..."
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {role === "admin"
-                      ? "Admin"
-                      : role === "creator"
-                        ? "Creator"
-                        : "Regular"}
+                  <LoadingMenuLabel loading={pendingAction === `role:${role}`}>
+                    {pendingAction === `role:${role}`
+                      ? "Updating..."
+                      : roleLabel(role)}
                     {currentRole === role ? " (current)" : ""}
-                  </ActionSubmitButton>
-                </form>
+                  </LoadingMenuLabel>
+                </button>
               </DropdownMenuItem>
             ))}
           </DropdownMenuSubContent>

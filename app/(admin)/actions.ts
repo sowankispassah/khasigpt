@@ -280,6 +280,7 @@ const ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS = 6000;
 const ADMIN_ACTION_INVITE_TIMEOUT_MS = 12000;
 const ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS = 10000;
 const ADMIN_PRICING_TRANSLATION_SYNC_TIMEOUT_MS = 1500;
+const ADMIN_USER_MUTATION_TIMEOUT_MS = 8000;
 const FEATURE_ACCESS_SETTING_TIMEOUT_MS = 12000;
 
 async function createAuditLogEntrySafely(
@@ -450,8 +451,17 @@ export async function setUserRoleAction({
 }) {
   const actor = await requireAdmin();
 
-  await updateUserRole({ id: userId, role });
-  await createAuditLogEntrySafely({
+  await withTimeout(
+    updateUserRole({ id: userId, role }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(`[admin/actions] User role update timed out.`, {
+        timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+        userId,
+      });
+    }
+  );
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.role.update",
     target: { userId },
@@ -470,8 +480,17 @@ export async function setUserActiveStateAction({
 }) {
   const actor = await requireAdmin();
 
-  await updateUserActiveState({ id: userId, isActive });
-  await createAuditLogEntrySafely({
+  await withTimeout(
+    updateUserActiveState({ id: userId, isActive }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(`[admin/actions] User active-state update timed out.`, {
+        timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+        userId,
+      });
+    }
+  );
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.active.update",
     target: { userId },
@@ -490,12 +509,24 @@ export async function setUserPersonalKnowledgePermissionAction({
 }) {
   const actor = await requireAdmin();
 
-  await updateUserPersonalKnowledgePermission({
-    id: userId,
-    allowPersonalKnowledge: allowed,
-  });
+  await withTimeout(
+    updateUserPersonalKnowledgePermission({
+      allowPersonalKnowledge: allowed,
+      id: userId,
+    }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] User personal-knowledge update timed out.`,
+        {
+          timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+          userId,
+        }
+      );
+    }
+  );
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.personal_knowledge.toggle",
     target: { userId },
@@ -3447,13 +3478,22 @@ export async function grantUserCreditsAction(formData: FormData) {
 
   const tokens = Math.max(1, Math.round(credits * TOKENS_PER_CREDIT));
 
-  const subscription = await grantUserCredits({
-    userId,
-    tokens,
-    expiresInDays,
-  });
+  const subscription = await withTimeout(
+    grantUserCredits({
+      expiresInDays,
+      tokens,
+      userId,
+    }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(`[admin/actions] Manual credit grant timed out.`, {
+        timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+        userId,
+      });
+    }
+  );
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.manual_credit.grant",
     target: { userId, subscriptionId: subscription.id },
