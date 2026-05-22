@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { AdminUserCreditHistoryMenu } from "@/components/admin-user-credit-history-menu";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
@@ -38,8 +37,6 @@ export function AddCreditsForm({
   const [localCreditsRemaining, setLocalCreditsRemaining] =
     useState(creditsRemaining);
   const [isSaving, setIsSaving] = useState(false);
-  const [_isRefreshing, startRefresh] = useTransition();
-  const router = useRouter();
 
   useEffect(() => {
     setLocalCreditsRemaining(creditsRemaining);
@@ -81,9 +78,6 @@ export function AddCreditsForm({
           setLocalCreditsRemaining((current) => current + credits);
           setCreditInput("");
           toast({ description: "Credits granted", type: "success" });
-          startRefresh(() => {
-            router.refresh();
-          });
         } catch (error) {
           toast({
             description:

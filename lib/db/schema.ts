@@ -667,6 +667,10 @@ export const userSubscription = pgTable(
       table.userId,
       table.updatedAt
     ),
+    statusUpdatedAtIdx: index("UserSubscription_status_updatedAt_idx").on(
+      table.status,
+      table.updatedAt
+    ),
   })
 );
 

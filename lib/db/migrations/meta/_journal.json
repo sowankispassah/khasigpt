@@ -498,6 +498,13 @@
       "when": 1779068700001,
       "tag": "0068_live_voice_provider_costs",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1779068700002,
+      "tag": "0069_user_subscription_admin_active_index",
+      "breakpoints": true
     }
   ]
 }
