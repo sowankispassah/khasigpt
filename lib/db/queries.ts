@@ -9356,14 +9356,18 @@ export async function getTokenUsageTotals(
         providerCostUsd: sql<number>`
           COALESCE(SUM(
             (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
             ) / 1000000.0
           ), 0)
         `,
       })
       .from(tokenUsage)
-      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+      .leftJoin(
+        liveVoiceModelConfig,
+        eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+      );
 
     const query = conditions.length
       ? baseQuery.where(and(...conditions))
@@ -9441,14 +9445,18 @@ export async function getDailyFinancialMetrics(
         providerCostUsd: sql<number>`
           COALESCE(SUM(
             (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
             ) / 1000000.0
           ), 0)
         `,
       })
       .from(tokenUsage)
-      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+      .leftJoin(
+        liveVoiceModelConfig,
+        eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+      );
 
     const usageWhere =
       usageConditions.length > 0 ? and(...usageConditions) : undefined;
@@ -9636,7 +9644,7 @@ function getEstimatedEmbeddingCostUsdPerMillion(model: string | null | undefined
 export type AdminApiCostMethod = "exact" | "estimated" | "untracked";
 
 export type AdminApiCostFeatureSummary = {
-  featureKey: "chat_completions" | "embeddings" | "other_api_usage";
+  featureKey: "chat_completions" | "embeddings" | "live_voice" | "other_api_usage";
   featureLabel: string;
   method: AdminApiCostMethod;
   totalCostUsd: number | null;
@@ -9650,7 +9658,7 @@ export type AdminApiCostFeatureSummary = {
 };
 
 export type AdminApiCostModelSummary = {
-  featureKey: "chat_completions" | "embeddings";
+  featureKey: "chat_completions" | "embeddings" | "live_voice";
   featureLabel: string;
   modelKey: string;
   modelLabel: string;
@@ -9758,6 +9766,69 @@ export async function getAdminApiCostBreakdown({
         ), 0)
       `));
 
+    const liveVoiceModelRows = await (chatWhere
+      ? db
+          .select({
+            modelConfigId: liveVoiceModelConfig.id,
+            displayName: liveVoiceModelConfig.displayName,
+            provider: liveVoiceModelConfig.provider,
+            providerModelId: liveVoiceModelConfig.providerModelId,
+            usageCount: sql<number>`COUNT(*)`,
+            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(
+            liveVoiceModelConfig,
+            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+          )
+          .where(chatWhere)
+      : db
+          .select({
+            modelConfigId: liveVoiceModelConfig.id,
+            displayName: liveVoiceModelConfig.displayName,
+            provider: liveVoiceModelConfig.provider,
+            providerModelId: liveVoiceModelConfig.providerModelId,
+            usageCount: sql<number>`COUNT(*)`,
+            inputTokens: sql<number>`COALESCE(SUM(${tokenUsage.inputTokens}), 0)`,
+            outputTokens: sql<number>`COALESCE(SUM(${tokenUsage.outputTokens}), 0)`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(
+            liveVoiceModelConfig,
+            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+          ))
+      .groupBy(
+        liveVoiceModelConfig.id,
+        liveVoiceModelConfig.displayName,
+        liveVoiceModelConfig.provider,
+        liveVoiceModelConfig.providerModelId
+      )
+      .orderBy(desc(sql<number>`
+        COALESCE(SUM(
+          (
+            ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+            ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
+          ) / 1000000.0
+        ), 0)
+      `));
+
     const chatDailyRows = await (chatWhere
       ? db
           .select({
@@ -9791,6 +9862,45 @@ export async function getAdminApiCostBreakdown({
       .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
       .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
 
+    const liveVoiceDailyRows = await (chatWhere
+      ? db
+          .select({
+            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(
+            liveVoiceModelConfig,
+            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+          )
+          .where(chatWhere)
+      : db
+          .select({
+            date: sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`,
+            totalCostUsd: sql<number>`
+              COALESCE(SUM(
+                (
+                  ${tokenUsage.inputTokens} * COALESCE(${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
+                ) / 1000000.0
+              ), 0)
+            `,
+          })
+          .from(tokenUsage)
+          .innerJoin(
+            liveVoiceModelConfig,
+            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+          ))
+      .groupBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`)
+      .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
+
     const embeddingConditions: SQL<boolean>[] = [
       isNull(ragEntry.deletedAt) as SQL<boolean>,
       isNotNull(ragEntry.embeddingUpdatedAt) as SQL<boolean>,
@@ -9817,6 +9927,7 @@ export async function getAdminApiCostBreakdown({
 
     const otherUsageConditions: SQL<boolean>[] = [
       isNull(tokenUsage.modelConfigId) as SQL<boolean>,
+      isNull(tokenUsage.liveVoiceModelConfigId) as SQL<boolean>,
       ...buildDateRangeConditions(tokenUsage.createdAt, range),
     ];
 
@@ -9832,6 +9943,10 @@ export async function getAdminApiCostBreakdown({
       .orderBy(sql<string>`date_trunc('day', ${tokenUsage.createdAt})::date`);
 
     const chatCostUsd = chatModelRows.reduce(
+      (total, row) => total + toFiniteNumber(row.totalCostUsd),
+      0
+    );
+    const liveVoiceCostUsd = liveVoiceModelRows.reduce(
       (total, row) => total + toFiniteNumber(row.totalCostUsd),
       0
     );
@@ -9851,6 +9966,22 @@ export async function getAdminApiCostBreakdown({
       indexedChars: 0,
       note: "Exact provider cost from token usage records.",
     }));
+    const liveVoiceModelSummaries: AdminApiCostModelSummary[] =
+      liveVoiceModelRows.map((row) => ({
+        featureKey: "live_voice",
+        featureLabel: "Live voice",
+        modelKey: row.modelConfigId,
+        modelLabel: row.displayName,
+        providerLabel: `${row.provider}/${row.providerModelId}`,
+        method: "exact",
+        totalCostUsd: toFiniteNumber(row.totalCostUsd),
+        usageCount: toFiniteNumber(row.usageCount),
+        inputTokens: toFiniteNumber(row.inputTokens),
+        outputTokens: toFiniteNumber(row.outputTokens),
+        indexedEntries: 0,
+        indexedChars: 0,
+        note: "Exact provider cost from live voice token usage records.",
+      }));
 
     const embeddingModelMap = new Map<
       string,
@@ -9998,6 +10129,30 @@ export async function getAdminApiCostBreakdown({
           "Estimated from indexed content size because provider-reported embedding token usage is not stored.",
       },
     ];
+    if (liveVoiceModelRows.length > 0) {
+      featureSummaries.splice(1, 0, {
+        featureKey: "live_voice",
+        featureLabel: "Live voice",
+        method: "exact",
+        totalCostUsd: liveVoiceCostUsd,
+        usageCount: liveVoiceModelRows.reduce(
+          (total, row) => total + toFiniteNumber(row.usageCount),
+          0
+        ),
+        modelCount: liveVoiceModelRows.length,
+        inputTokens: liveVoiceModelRows.reduce(
+          (total, row) => total + toFiniteNumber(row.inputTokens),
+          0
+        ),
+        outputTokens: liveVoiceModelRows.reduce(
+          (total, row) => total + toFiniteNumber(row.outputTokens),
+          0
+        ),
+        indexedEntries: 0,
+        indexedChars: 0,
+        note: "Exact provider cost from live voice token usage records.",
+      });
+    }
 
     const otherUsageSummaries: AdminTrackedOtherApiUsageSummary[] = [];
     if (otherUsageCount > 0) {
@@ -10047,6 +10202,11 @@ export async function getAdminApiCostBreakdown({
       daily.chatCostUsd += toFiniteNumber(row.totalCostUsd);
     }
 
+    for (const row of liveVoiceDailyRows) {
+      const daily = ensureDailySummary(row.date);
+      daily.chatCostUsd += toFiniteNumber(row.totalCostUsd);
+    }
+
     for (const [date, row] of embeddingDailyMap.entries()) {
       const daily = ensureDailySummary(date);
       daily.embeddingCostUsd += toFiniteNumber(row.embeddingCostUsd);
@@ -10065,11 +10225,15 @@ export async function getAdminApiCostBreakdown({
       .sort((a, b) => b.date.localeCompare(a.date));
 
     return {
-      totalCostUsd: chatCostUsd + embeddingCostUsd,
-      exactCostUsd: chatCostUsd,
+      totalCostUsd: chatCostUsd + liveVoiceCostUsd + embeddingCostUsd,
+      exactCostUsd: chatCostUsd + liveVoiceCostUsd,
       estimatedCostUsd: embeddingCostUsd,
       featureSummaries,
-      modelSummaries: [...modelSummaries, ...embeddingModelSummaries].sort(
+      modelSummaries: [
+        ...modelSummaries,
+        ...liveVoiceModelSummaries,
+        ...embeddingModelSummaries,
+      ].sort(
         (a, b) =>
           toFiniteNumber(b.totalCostUsd) - toFiniteNumber(a.totalCostUsd) ||
           b.usageCount - a.usageCount
@@ -10089,6 +10253,7 @@ export async function getAdminApiCostBreakdown({
         otherUsageSummaries: [],
       };
     }
+    console.error("[admin.api-cost] Failed to load API cost breakdown", error);
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load API cost breakdown"
@@ -10169,14 +10334,18 @@ export async function getUserFinancialRecords({
         providerCostUsd: sql<number>`
           COALESCE(SUM(
             (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
             ) / 1000000.0
           ), 0)
         `,
       })
       .from(tokenUsage)
-      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id));
+      .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+      .leftJoin(
+        liveVoiceModelConfig,
+        eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+      );
 
     const usageWhere =
       usageConditions.length > 0 ? and(...usageConditions) : undefined;
@@ -10338,14 +10507,18 @@ export async function listChatFinancialSummaries({
             providerCostUsd: sql<number>`
               COALESCE(SUM(
                 (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
                 ) / 1000000.0
               ), 0)
             `,
           })
           .from(tokenUsage)
           .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+          .leftJoin(
+            liveVoiceModelConfig,
+            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+          )
           .leftJoin(
             userSubscription,
             eq(tokenUsage.subscriptionId, userSubscription.id)
@@ -10372,14 +10545,18 @@ export async function listChatFinancialSummaries({
             providerCostUsd: sql<number>`
               COALESCE(SUM(
                 (
-                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+                  ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+                  ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
                 ) / 1000000.0
               ), 0)
             `,
           })
           .from(tokenUsage)
           .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+          .leftJoin(
+            liveVoiceModelConfig,
+            eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+          )
           .leftJoin(
             userSubscription,
             eq(tokenUsage.subscriptionId, userSubscription.id)
@@ -10410,14 +10587,18 @@ export async function listChatFinancialSummaries({
         providerCostUsd: sql<number>`
           COALESCE(SUM(
             (
-              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, 0) +
-              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, 0)
+              ${tokenUsage.inputTokens} * COALESCE(${modelConfig.inputProviderCostPerMillion}, ${liveVoiceModelConfig.inputProviderCostPerMillion}, 0) +
+              ${tokenUsage.outputTokens} * COALESCE(${modelConfig.outputProviderCostPerMillion}, ${liveVoiceModelConfig.outputProviderCostPerMillion}, 0)
             ) / 1000000.0
           ), 0)
         `,
       })
       .from(tokenUsage)
       .leftJoin(modelConfig, eq(tokenUsage.modelConfigId, modelConfig.id))
+      .leftJoin(
+        liveVoiceModelConfig,
+        eq(tokenUsage.liveVoiceModelConfigId, liveVoiceModelConfig.id)
+      )
       .leftJoin(chat, eq(tokenUsage.chatId, chat.id))
       .leftJoin(user, eq(tokenUsage.userId, user.id))
       .leftJoin(

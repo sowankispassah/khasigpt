@@ -7,6 +7,7 @@ import {
 } from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
+  deleteChatById,
   getChatById,
   recordTokenUsage,
   saveChat,
@@ -132,6 +133,8 @@ export async function POST(request: Request) {
     );
   }
 
+  let createdChatForTurn = false;
+
   await withTimeout(
     (async () => {
       if (chat) {
@@ -144,6 +147,7 @@ export async function POST(request: Request) {
           visibility: selectedVisibilityType,
           mode: "default",
         });
+        createdChatForTurn = true;
       }
       return null;
     })(),
@@ -176,37 +180,50 @@ export async function POST(request: Request) {
       error instanceof ChatSDKError &&
       error.type === "payment_required"
     ) {
+      if (createdChatForTurn) {
+        await deleteChatById({ id: chatId }).catch(() => undefined);
+      }
       return Response.json(
         { message: "Insufficient credits remaining" },
         { headers: noStoreHeaders(), status: 402 }
       );
     }
+    if (createdChatForTurn) {
+      await deleteChatById({ id: chatId }).catch(() => undefined);
+    }
     throw error;
   }
 
-  await withTimeout(
-    saveMessages({
-      messages: [
-        {
-          attachments: [],
-          chatId,
-          createdAt,
-          id: userMessageId,
-          parts: [{ type: "text", text: userText }],
-          role: "user",
-        },
-        {
-          attachments: [],
-          chatId,
-          createdAt: assistantCreatedAt,
-          id: assistantMessageId,
-          parts: [{ type: "text", text: assistantText }],
-          role: "assistant",
-        },
-      ],
-    }),
-    VOICE_TURN_SAVE_TIMEOUT_MS
-  );
+  try {
+    await withTimeout(
+      saveMessages({
+        messages: [
+          {
+            attachments: [],
+            chatId,
+            createdAt,
+            id: userMessageId,
+            parts: [{ type: "text", text: userText }],
+            role: "user",
+          },
+          {
+            attachments: [],
+            chatId,
+            createdAt: assistantCreatedAt,
+            id: assistantMessageId,
+            parts: [{ type: "text", text: assistantText }],
+            role: "assistant",
+          },
+        ],
+      }),
+      VOICE_TURN_SAVE_TIMEOUT_MS
+    );
+  } catch (error) {
+    if (createdChatForTurn) {
+      await deleteChatById({ id: chatId }).catch(() => undefined);
+    }
+    throw error;
+  }
 
   return Response.json(
     {
