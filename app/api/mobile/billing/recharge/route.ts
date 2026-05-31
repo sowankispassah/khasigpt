@@ -100,15 +100,12 @@ export async function GET(request: Request) {
       }),
     ]);
 
-  if (!plans || !balance) {
+  if (!plans) {
     return NextResponse.json(
       {
         meta: {
           degraded: true,
-          degradedSections: [
-            !plans ? "plans" : null,
-            !balance ? "balance" : null,
-          ].filter((section): section is string => Boolean(section)),
+          degradedSections: ["plans"],
         },
         message: "Recharge plans could not be loaded right now. Please retry.",
       },
@@ -147,31 +144,35 @@ export async function GET(request: Request) {
 
   return NextResponse.json(
     {
-      activePlanId: balance.plan?.id ?? null,
+      activePlanId: balance?.plan?.id ?? null,
       imageGenerationEnabledForAll,
       recommendedPlanId,
       meta: {
-        degraded: degradedSections.length > 0,
-        degradedSections,
+        degraded: degradedSections.length > 0 || !balance,
+        degradedSections: balance
+          ? degradedSections
+          : [...degradedSections, "balance"],
       },
-      balance: {
-        tokensRemaining: balance.tokensRemaining,
-        tokensTotal: balance.tokensTotal,
-        creditsRemaining: balance.creditsRemaining,
-        creditsTotal: balance.creditsTotal,
-        allocatedCredits: balance.allocatedCredits,
-        rechargedCredits: balance.rechargedCredits,
-        expiresAt: serializeDate(balance.expiresAt),
-        startedAt: serializeDate(balance.startedAt),
-        plan: balance.plan
-          ? {
-              id: balance.plan.id,
-              name: balance.plan.name,
-              priceInPaise: balance.plan.priceInPaise,
-              billingCycleDays: balance.plan.billingCycleDays,
-            }
-          : null,
-      },
+      balance: balance
+        ? {
+            tokensRemaining: balance.tokensRemaining,
+            tokensTotal: balance.tokensTotal,
+            creditsRemaining: balance.creditsRemaining,
+            creditsTotal: balance.creditsTotal,
+            allocatedCredits: balance.allocatedCredits,
+            rechargedCredits: balance.rechargedCredits,
+            expiresAt: serializeDate(balance.expiresAt),
+            startedAt: serializeDate(balance.startedAt),
+            plan: balance.plan
+              ? {
+                  id: balance.plan.id,
+                  name: balance.plan.name,
+                  priceInPaise: balance.plan.priceInPaise,
+                  billingCycleDays: balance.plan.billingCycleDays,
+                }
+              : null,
+          }
+        : null,
       plans: sortedPlans.map((plan) => ({
         id: plan.id,
         name: plan.name,

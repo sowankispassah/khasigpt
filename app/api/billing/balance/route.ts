@@ -1,7 +1,11 @@
 "use server";
 
 import { auth } from "@/app/(auth)/auth";
+import { noStoreHeaders } from "@/lib/api/cache";
 import { getUserBalanceSummary } from "@/lib/db/queries";
+import { withTimeout } from "@/lib/utils/async";
+
+const BALANCE_TIMEOUT_MS = 7000;
 
 export async function GET() {
   const session = await auth();
@@ -10,7 +14,31 @@ export async function GET() {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const summary = await getUserBalanceSummary(session.user.id);
+  const summary = await withTimeout(
+    getUserBalanceSummary(session.user.id),
+    BALANCE_TIMEOUT_MS,
+    () => {
+      console.error("[api/billing/balance] Balance read timed out.", {
+        timeoutMs: BALANCE_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    console.error("[api/billing/balance] Balance read failed.", error);
+    return null;
+  });
+
+  if (!summary) {
+    return Response.json(
+      {
+        meta: {
+          degraded: true,
+          degradedSections: ["balance"],
+        },
+        message: "Balance could not be loaded right now. Please retry.",
+      },
+      { headers: noStoreHeaders(), status: 503 }
+    );
+  }
 
   const body = {
     tokensRemaining: summary.tokensRemaining,

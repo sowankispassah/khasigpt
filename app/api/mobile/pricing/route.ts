@@ -48,15 +48,12 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  if (!pricing || !balance) {
+  if (!pricing) {
     return NextResponse.json(
       {
         meta: {
           degraded: true,
-          degradedSections: [
-            !pricing ? "pricing" : null,
-            !balance ? "balance" : null,
-          ].filter((section): section is string => Boolean(section)),
+          degradedSections: ["pricing"],
         },
         message: "Pricing could not be loaded right now. Please retry.",
       },
@@ -68,8 +65,8 @@ export async function GET(request: Request) {
     {
       ...pricing,
       meta: {
-        degraded: false,
-        degradedSections: [],
+        degraded: !balance,
+        degradedSections: balance ? [] : ["balance"],
       },
       balance,
     },
