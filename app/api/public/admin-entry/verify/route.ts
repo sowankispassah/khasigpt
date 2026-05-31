@@ -8,7 +8,11 @@ import {
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
+import {
+  getAppSetting,
+  getAppSettingsByKeys,
+  getLastKnownAppSettingsByKeys,
+} from "@/lib/db/queries";
 import {
   createAdminEntryPassToken,
   normalizeAdminEntryCodeInput,
@@ -16,11 +20,18 @@ import {
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
+import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 
 const ADMIN_ENTRY_RATE_LIMIT_MAX = 10;
 const ADMIN_ENTRY_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const ADMIN_ENTRY_SETTINGS_TIMEOUT_MS = 2_000;
+const ADMIN_ENTRY_GATE_SETTING_KEYS = [
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+] as const;
 
 function getEnvAdminEntryCode() {
   return normalizeAdminEntryCodeInput(process.env.SITE_ADMIN_ENTRY_CODE ?? null);
@@ -32,14 +43,34 @@ async function resolveSubmittedCode(code: string) {
     return true;
   }
 
-  const storedCodeHash = await getAppSetting<string | null>(
-    SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY
+  const storedCodeHash = await withTimeout(
+    getAppSetting<string | null>(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY),
+    ADMIN_ENTRY_SETTINGS_TIMEOUT_MS
   );
   if (typeof storedCodeHash !== "string" || storedCodeHash.trim().length === 0) {
     return false;
   }
 
   return compare(code, storedCodeHash);
+}
+
+async function loadAdminEntryGateSettings() {
+  const rows = await withTimeout(
+    getAppSettingsByKeys([...ADMIN_ENTRY_GATE_SETTING_KEYS]),
+    ADMIN_ENTRY_SETTINGS_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      "[api/public/admin-entry/verify] Gate settings read failed; using last known values.",
+      error
+    );
+    return null;
+  });
+
+  if (!rows) {
+    return getLastKnownAppSettingsByKeys([...ADMIN_ENTRY_GATE_SETTING_KEYS]);
+  }
+
+  return new Map(rows.map((row) => [row.key, row.value]));
 }
 
 export async function POST(request: Request) {
@@ -85,12 +116,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const [publicLaunchedSetting, underMaintenanceSetting, adminAccessEnabledSetting] =
-    await Promise.all([
-      getAppSetting<string | boolean | number>(SITE_PUBLIC_LAUNCHED_SETTING_KEY),
-      getAppSetting<string | boolean | number>(SITE_UNDER_MAINTENANCE_SETTING_KEY),
-      getAppSetting<string | boolean | number>(SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY),
-    ]);
+  const gateSettings = await loadAdminEntryGateSettings();
+  const publicLaunchedSetting = gateSettings.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY);
+  const underMaintenanceSetting = gateSettings.get(SITE_UNDER_MAINTENANCE_SETTING_KEY);
+  const adminAccessEnabledSetting = gateSettings.get(
+    SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY
+  );
 
   const publicLaunched = parseBooleanSetting(publicLaunchedSetting, true);
   const underMaintenance = parseBooleanSetting(underMaintenanceSetting, false);
@@ -126,7 +157,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const isValidCode = await resolveSubmittedCode(code).catch(() => false);
+  const isValidCode = await resolveSubmittedCode(code).catch((error) => {
+    console.error(
+      "[api/public/admin-entry/verify] Code hash could not be confirmed.",
+      error
+    );
+    return null;
+  });
+  if (isValidCode === null) {
+    return NextResponse.json(
+      {
+        error: "admin_entry_unavailable",
+        message: "Admin access code could not be confirmed. Please try again.",
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
   if (!isValidCode) {
     return NextResponse.json(
       {

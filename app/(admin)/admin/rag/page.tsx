@@ -55,17 +55,18 @@ async function safeQuery<T>(
   label: string,
   promise: Promise<T>,
   fallback: T
-): Promise<T> {
+): Promise<{ data: T; degraded: boolean; label: string }> {
   try {
-    return await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
+    const data = await withTimeout(promise, QUERY_TIMEOUT_MS, () => {
       console.warn(`[admin] Query "${label}" timed out after ${QUERY_TIMEOUT_MS}ms.`);
     });
+    return { data, degraded: false, label };
   } catch (error) {
     if (error instanceof Error && error.message === "timeout") {
-      return fallback;
+      return { data: fallback, degraded: true, label };
     }
     console.error(`[admin] Failed to load "${label}"`, error);
-    return fallback;
+    return { data: fallback, degraded: true, label };
   }
 }
 
@@ -127,7 +128,7 @@ export default async function AdminRagPage() {
   };
 
   const customKnowledgeEnabled = parseBooleanSetting(
-    customKnowledgeEnabledSetting,
+    customKnowledgeEnabledSetting.data,
     false
   );
 
@@ -138,7 +139,16 @@ export default async function AdminRagPage() {
         <p className="mt-1 text-muted-foreground text-sm">
           Enable or disable custom knowledge for chats.
         </p>
-        <CustomKnowledgeToggle initialEnabled={customKnowledgeEnabled} />
+        {customKnowledgeEnabledSetting.degraded ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+            Custom knowledge status could not be confirmed. The saved value is
+            not being shown as authoritative; retry before changing it.
+          </p>
+        ) : null}
+        <CustomKnowledgeToggle
+          initialEnabled={customKnowledgeEnabled}
+          isDegraded={customKnowledgeEnabledSetting.degraded}
+        />
       </section>
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
@@ -188,26 +198,47 @@ async function RagManagerSection({
   entriesPromise,
   modelConfigsPromise,
 }: {
-  analyticsPromise: Promise<Awaited<ReturnType<typeof getRagAnalyticsSummary>>>;
-  categoriesPromise: Promise<Awaited<ReturnType<typeof listRagCategories>>>;
+  analyticsPromise: Promise<{
+    data: Awaited<ReturnType<typeof getRagAnalyticsSummary>>;
+    degraded: boolean;
+    label: string;
+  }>;
+  categoriesPromise: Promise<{
+    data: Awaited<ReturnType<typeof listRagCategories>>;
+    degraded: boolean;
+    label: string;
+  }>;
   currentUser: {
     id: string;
     name: string | null;
     email: string | null;
   };
-  entriesPromise: Promise<Awaited<ReturnType<typeof listAdminRagEntries>>>;
+  entriesPromise: Promise<{
+    data: Awaited<ReturnType<typeof listAdminRagEntries>>;
+    degraded: boolean;
+    label: string;
+  }>;
   modelConfigsPromise: Promise<
-    Awaited<ReturnType<typeof getModelRegistry>>["configs"]
+    {
+      data: Awaited<ReturnType<typeof getModelRegistry>>["configs"];
+      degraded: boolean;
+      label: string;
+    }
   >;
 }) {
-  const [categories, modelConfigs, entries, analytics] = await Promise.all([
+  const [
+    categoriesState,
+    modelConfigsState,
+    entriesState,
+    analyticsState,
+  ] = await Promise.all([
     categoriesPromise,
     modelConfigsPromise,
     entriesPromise,
     analyticsPromise,
   ]);
 
-  const serializedEntries: SerializedAdminRagEntry[] = entries.map((entry) => ({
+  const serializedEntries: SerializedAdminRagEntry[] = entriesState.data.map((entry) => ({
     entry: {
       id: entry.entry.id,
       title: entry.entry.title,
@@ -226,7 +257,7 @@ async function RagManagerSection({
     creator: entry.creator,
   }));
 
-  const modelOptions = modelConfigs
+  const modelOptions = modelConfigsState.data
     .filter((config) => config.isEnabled)
     .map((config) => ({
       id: config.id,
@@ -237,12 +268,19 @@ async function RagManagerSection({
   const tagOptions = Array.from(
     new Set(serializedEntries.flatMap((entry) => entry.entry.tags))
   ).sort();
+  const degradedSections = [
+    analyticsState.degraded ? analyticsState.label : null,
+    categoriesState.degraded ? categoriesState.label : null,
+    entriesState.degraded ? entriesState.label : null,
+    modelConfigsState.degraded ? modelConfigsState.label : null,
+  ].filter((section): section is string => Boolean(section));
 
   return (
     <AdminRagManager
-      analytics={analytics}
-      categories={categories}
+      analytics={analyticsState.data}
+      categories={categoriesState.data}
       currentUser={currentUser}
+      degradedSections={degradedSections}
       entries={serializedEntries}
       modelOptions={modelOptions}
       tagOptions={tagOptions}
@@ -254,12 +292,16 @@ async function UserKnowledgeSection({
   userAddedKnowledgePromise,
 }: {
   userAddedKnowledgePromise: Promise<
-    Awaited<ReturnType<typeof listUserAddedKnowledgeEntries>>
+    {
+      data: Awaited<ReturnType<typeof listUserAddedKnowledgeEntries>>;
+      degraded: boolean;
+      label: string;
+    }
   >;
 }) {
-  const userAddedKnowledge = await userAddedKnowledgePromise;
+  const userAddedKnowledgeState = await userAddedKnowledgePromise;
   const serializedUserKnowledge: SerializedUserKnowledgeEntry[] =
-    userAddedKnowledge.map((row) => ({
+    userAddedKnowledgeState.data.map((row) => ({
       entry: {
         id: row.entry.id,
         title: row.entry.title,
@@ -273,5 +315,15 @@ async function UserKnowledgeSection({
       creator: row.creator,
     }));
 
-  return <AdminUserKnowledgeTable entries={serializedUserKnowledge} />;
+  return (
+    <>
+      {userAddedKnowledgeState.degraded ? (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+          User-added knowledge could not be confirmed. Retry before treating
+          this list as complete.
+        </p>
+      ) : null}
+      <AdminUserKnowledgeTable entries={serializedUserKnowledge} />
+    </>
+  );
 }

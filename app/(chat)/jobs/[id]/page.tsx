@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { readChatOriginUiContext } from "@/lib/chat/ui-context";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
-import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { getJobsAccessForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
@@ -100,9 +100,9 @@ export default async function JobPostingDetailPage(props: {
     ? await props.searchParams
     : undefined;
   const session = await auth();
-  const jobsEnabled = await isJobsEnabledForRole(session?.user?.role ?? null);
+  const jobsAccess = await getJobsAccessForRole(session?.user?.role ?? null);
 
-  if (!jobsEnabled) {
+  if (!jobsAccess.enabled) {
     notFound();
   }
 
@@ -220,6 +220,12 @@ export default async function JobPostingDetailPage(props: {
       </header>
 
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+        {jobsAccess.degraded ? (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-800 text-sm dark:text-amber-300">
+            Jobs access could not be fully verified. Showing the listing with
+            available data.
+          </div>
+        ) : null}
         <Card>
           <CardHeader className="space-y-2">
             <CardTitle className="break-words text-xl sm:text-2xl">{job.title}</CardTitle>

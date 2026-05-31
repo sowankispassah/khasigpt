@@ -13,6 +13,7 @@ import {
   SESSION_SORT_DEFAULT,
   type SessionSortOption,
 } from "@/lib/subscriptions/session-sort";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,6 +22,8 @@ const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
 const RANGE_OPTIONS = [7, 14, 30, 60, 90] as const;
 const SESSIONS_PAGE_SIZE = 10;
 const IST_OFFSET_MS = 330 * 60 * 1000;
+const BALANCE_TIMEOUT_MS = 7000;
+const SECTION_TIMEOUT_MS = 6000;
 
 type RangeOption = (typeof RANGE_OPTIONS)[number];
 
@@ -136,35 +139,102 @@ export async function GET(request: Request) {
   const sessionSort: SessionSortOption = isSessionSortOption(sortParam)
     ? sortParam
     : SESSION_SORT_DEFAULT;
+  const degradedSections: string[] = [];
 
-  const [balance, rawDailyUsage, sessionUsage, rechargeHistory] = await Promise.all([
-    getUserBalanceSummary(session.user.id),
-    getDailyTokenUsageForUser(session.user.id, range).catch((error) => {
-      console.error(
-        "[api/mobile/subscriptions] Failed to load daily usage.",
-        error
-      );
-      return [];
-    }),
-    getSessionTokenUsageForUser(session.user.id, { sortBy: sessionSort }).catch(
-      (error) => {
+  const [balance, rawDailyUsage, sessionUsage, rechargeHistory] =
+    await Promise.all([
+      withTimeout(
+        getUserBalanceSummary(session.user.id),
+        BALANCE_TIMEOUT_MS,
+        () => {
+          console.error("[api/mobile/subscriptions] Balance read timed out.", {
+            timeoutMs: BALANCE_TIMEOUT_MS,
+          });
+        }
+      ).catch((error) => {
+        console.error(
+          "[api/mobile/subscriptions] Failed to load balance.",
+          error
+        );
+        return null;
+      }),
+      withTimeout(
+        getDailyTokenUsageForUser(session.user.id, range),
+        SECTION_TIMEOUT_MS,
+        () => {
+          console.error(
+            "[api/mobile/subscriptions] Daily usage read timed out.",
+            {
+              timeoutMs: SECTION_TIMEOUT_MS,
+            }
+          );
+        }
+      ).catch((error) => {
+        console.error(
+          "[api/mobile/subscriptions] Failed to load daily usage.",
+          error
+        );
+        degradedSections.push("dailyUsage");
+        return [];
+      }),
+      withTimeout(
+        getSessionTokenUsageForUser(session.user.id, { sortBy: sessionSort }),
+        SECTION_TIMEOUT_MS,
+        () => {
+          console.error(
+            "[api/mobile/subscriptions] Session usage read timed out.",
+            {
+              timeoutMs: SECTION_TIMEOUT_MS,
+            }
+          );
+        }
+      ).catch((error) => {
         console.error(
           "[api/mobile/subscriptions] Failed to load session usage.",
           error
         );
+        degradedSections.push("sessions");
         return [];
-      }
-    ),
-    listUserRechargeHistory({ userId: session.user.id, limit: 10 }).catch(
-      (error) => {
+      }),
+      withTimeout(
+        listUserRechargeHistory({ userId: session.user.id, limit: 10 }),
+        SECTION_TIMEOUT_MS,
+        () => {
+          console.error(
+            "[api/mobile/subscriptions] Recharge history read timed out.",
+            {
+              timeoutMs: SECTION_TIMEOUT_MS,
+            }
+          );
+        }
+      ).catch((error) => {
         console.error(
           "[api/mobile/subscriptions] Failed to load recharge history.",
           error
         );
+        degradedSections.push("rechargeHistory");
         return [];
+      }),
+    ]);
+
+  if (!balance) {
+    return NextResponse.json(
+      {
+        meta: {
+          degraded: true,
+          degradedSections: ["balance"],
+        },
+        message:
+          "Subscription balance could not be loaded right now. Please retry.",
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+        status: 503,
       }
-    ),
-  ]);
+    );
+  }
 
   const now = new Date();
   const isExpiredBalance =
@@ -231,6 +301,10 @@ export async function GET(request: Request) {
       sessionSort,
       sessionsPage,
       totalSessionPages,
+      meta: {
+        degraded: degradedSections.length > 0,
+        degradedSections,
+      },
       balance: {
         tokensRemaining: effectiveTokensRemaining,
         tokensTotal: effectiveTokensTotal,

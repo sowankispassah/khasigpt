@@ -2,13 +2,8 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
-  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
-  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-} from "@/lib/constants";
-import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
-import {
   deleteChatById,
-  getChatById,
+  getActiveChatOwnerById,
   recordTokenUsage,
   saveChat,
   saveMessages,
@@ -18,17 +13,14 @@ import { ChatSDKError } from "@/lib/errors";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
-import {
-  parseVoiceChatAccessModeSetting,
-  resolvePlatformVoiceChatSetting,
-} from "@/lib/voice/config";
+import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
 import { resolveLiveVoiceTurnUsage } from "@/lib/voice/usage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const VOICE_SETTING_TIMEOUT_MS = 5_000;
+const VOICE_MODEL_CONFIG_TIMEOUT_MS = 5_000;
 const VOICE_TURN_SAVE_TIMEOUT_MS = 12_000;
 const MAX_VOICE_TURN_TEXT_LENGTH = 20_000;
 
@@ -51,6 +43,13 @@ function buildFallbackTitle(text: string) {
   return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
 }
 
+function voicePersistenceUnavailable() {
+  return Response.json(
+    { message: "Voice chat could not be saved. Please retry." },
+    { headers: noStoreHeaders(), status: 503 }
+  );
+}
+
 export async function POST(request: Request) {
   const authContext = await getAuthenticatedUser(request, {
     allowBearer: false,
@@ -69,34 +68,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const voiceSettingRows = await withTimeout(
-    getLiteAppSettingsByKeysUncached([
-      VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-      VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
-    ]),
-    VOICE_SETTING_TIMEOUT_MS
-  ).catch((error) => {
+  const voiceMode = await getVoiceChatAccessModeForPlatform("web").catch((error) => {
     console.error("[api/chat/voice-turn] Feature setting read failed.", error);
-    return null;
+    return "enabled" as const;
   });
 
-  if (!voiceSettingRows) {
-    return Response.json(
-      { message: "Voice chat settings could not be confirmed." },
-      { headers: noStoreHeaders(), status: 503 }
-    );
-  }
-
-  const voiceSettings = new Map(
-    voiceSettingRows.map((row) => [row.key, row.value])
-  );
-
-  const voiceMode = parseVoiceChatAccessModeSetting(
-    resolvePlatformVoiceChatSetting({
-      legacyValue: voiceSettings.get(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
-      webValue: voiceSettings.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
-    }).web
-  );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
     return Response.json(
       { message: "Not found" },
@@ -104,9 +80,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const liveVoiceModel = await resolveLiveVoiceModelConfig({
-    platform: "web",
+  const liveVoiceModel = await withTimeout(
+    resolveLiveVoiceModelConfig({
+      platform: "web",
+    }),
+    VOICE_MODEL_CONFIG_TIMEOUT_MS
+  ).catch((error) => {
+    console.error("[api/chat/voice-turn] Voice model read failed.", error);
+    return undefined;
   });
+  if (liveVoiceModel === undefined) {
+    return Response.json(
+      { message: "Voice chat settings could not be confirmed." },
+      { headers: noStoreHeaders(), status: 503 }
+    );
+  }
   if (!liveVoiceModel) {
     return Response.json(
       { message: "Not found" },
@@ -123,9 +111,15 @@ export async function POST(request: Request) {
   const assistantCreatedAt = new Date(createdAt.getTime() + 1);
 
   const chat = await withTimeout(
-    getChatById({ id: chatId }),
+    getActiveChatOwnerById({ id: chatId }),
     VOICE_TURN_SAVE_TIMEOUT_MS
-  );
+  ).catch((error) => {
+    console.error("[api/chat/voice-turn] Chat read failed.", error);
+    return undefined;
+  });
+  if (chat === undefined) {
+    return voicePersistenceUnavailable();
+  }
   if (chat && chat.userId !== authContext.user.id) {
     return Response.json(
       { message: "Forbidden" },
@@ -135,7 +129,7 @@ export async function POST(request: Request) {
 
   let createdChatForTurn = false;
 
-  await withTimeout(
+  const chatSaved = await withTimeout(
     (async () => {
       if (chat) {
         await touchChatActivityById({ chatId });
@@ -152,7 +146,15 @@ export async function POST(request: Request) {
       return null;
     })(),
     VOICE_TURN_SAVE_TIMEOUT_MS
-  );
+  )
+    .then(() => true)
+    .catch((error) => {
+      console.error("[api/chat/voice-turn] Chat activity write failed.", error);
+      return false;
+    });
+  if (!chatSaved) {
+    return voicePersistenceUnavailable();
+  }
 
   const { inputTokens, outputTokens } = resolveLiveVoiceTurnUsage({
     assistantText,
@@ -191,7 +193,8 @@ export async function POST(request: Request) {
     if (createdChatForTurn) {
       await deleteChatById({ id: chatId }).catch(() => undefined);
     }
-    throw error;
+    console.error("[api/chat/voice-turn] Token usage write failed.", error);
+    return voicePersistenceUnavailable();
   }
 
   try {
@@ -222,7 +225,8 @@ export async function POST(request: Request) {
     if (createdChatForTurn) {
       await deleteChatById({ id: chatId }).catch(() => undefined);
     }
-    throw error;
+    console.error("[api/chat/voice-turn] Message write failed.", error);
+    return voicePersistenceUnavailable();
   }
 
   return Response.json(

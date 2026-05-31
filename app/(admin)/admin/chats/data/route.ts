@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
+import { noStoreHeaders } from "@/lib/api/cache";
 import { getChatCount, listChats } from "@/lib/db/queries";
+import { withTimeout } from "@/lib/utils/async";
+
+const ADMIN_CHATS_DATA_TIMEOUT_MS = 5000;
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -19,16 +23,41 @@ export async function GET(request: Request) {
   const safeLimit =
     Number.isFinite(limit) && limit > 0 && limit <= 100 ? limit : 10;
 
-  const [chats, total] = await Promise.all([
-    listChats({
-      limit: safeLimit,
-      offset: safeOffset,
-      onlyDeleted: deleted,
-    }),
-    getChatCount({
-      onlyDeleted: deleted,
-    }),
-  ]);
+  try {
+    const [chats, total] = await withTimeout(
+      Promise.all([
+        listChats({
+          limit: safeLimit,
+          offset: safeOffset,
+          onlyDeleted: deleted,
+        }),
+        getChatCount({
+          onlyDeleted: deleted,
+        }),
+      ]),
+      ADMIN_CHATS_DATA_TIMEOUT_MS,
+      () => {
+        console.error("[admin/chats/data] Chat table read timed out.", {
+          deleted,
+          limit: safeLimit,
+          offset: safeOffset,
+          timeoutMs: ADMIN_CHATS_DATA_TIMEOUT_MS,
+        });
+      }
+    );
 
-  return NextResponse.json({ items: chats, total });
+    return NextResponse.json(
+      { items: chats, total },
+      { headers: noStoreHeaders() }
+    );
+  } catch (error) {
+    console.error("[admin/chats/data] Failed to load chat rows.", error);
+    return NextResponse.json(
+      {
+        error: "chats_unavailable",
+        message: "Chat rows are unavailable. Retry this section.",
+      },
+      { headers: noStoreHeaders(), status: 503 }
+    );
+  }
 }

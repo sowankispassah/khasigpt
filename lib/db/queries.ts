@@ -129,6 +129,13 @@ export type DateRange = {
   end?: Date;
 };
 
+export type ChatHistoryListItem = Pick<
+  Chat,
+  "createdAt" | "id" | "mode" | "title" | "visibility"
+> & {
+  updatedAt: Chat["createdAt"];
+};
+
 function normalizeEndOfDay(date: Date) {
   const end = new Date(date);
   end.setHours(23, 59, 59, 999);
@@ -1188,12 +1195,10 @@ export async function getChatsByUserId({
         .select({
           id: chat.id,
           createdAt: chatActivityAt,
+          updatedAt: chatActivityAt,
           title: chat.title,
-          userId: chat.userId,
           mode: chat.mode,
           visibility: chat.visibility,
-          lastContext: chat.lastContext,
-          deletedAt: chat.deletedAt,
         })
         .from(chat)
         .where(
@@ -1202,7 +1207,7 @@ export async function getChatsByUserId({
         .orderBy(desc(chatActivityAt), desc(chat.id))
         .limit(extendedLimit);
 
-    let filteredChats: Chat[] = [];
+    let filteredChats: ChatHistoryListItem[] = [];
 
     if (startingAfter) {
       const [selectedChat] = await db
@@ -1349,6 +1354,31 @@ export async function getChatById({
   } catch (_error) {
     const cause =
       _error instanceof Error ? _error.message : "Failed to get chat by id";
+    throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
+export async function getActiveChatOwnerById({ id }: { id: string }) {
+  if (!isValidUUID(id)) {
+    return null;
+  }
+
+  try {
+    const [selectedChat] = await db
+      .select({
+        id: chat.id,
+        userId: chat.userId,
+      })
+      .from(chat)
+      .where(and(eq(chat.id, id), isNull(chat.deletedAt)))
+      .limit(1);
+
+    return selectedChat ?? null;
+  } catch (_error) {
+    const cause =
+      _error instanceof Error
+        ? _error.message
+        : "Failed to get active chat owner by id";
     throw new ChatSDKError("bad_request:database", cause);
   }
 }
@@ -3578,7 +3608,7 @@ export async function listUsers({
     return await query.orderBy(desc(user.createdAt)).limit(limit).offset(offset);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError("bad_request:database", "User table is not available");
     }
     throw new ChatSDKError("bad_request:database", "Failed to list users");
   }
@@ -3593,7 +3623,7 @@ export async function listCreators(): Promise<User[]> {
       .orderBy(asc(user.firstName), asc(user.lastName));
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError("bad_request:database", "User table is not available");
     }
     throw new ChatSDKError("bad_request:database", "Failed to list creators");
   }
@@ -3710,7 +3740,7 @@ export async function listChats({
       .offset(offset);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError("bad_request:database", "Chat table is not available");
     }
     throw new ChatSDKError("bad_request:database", "Failed to list chats");
   }
@@ -3759,7 +3789,7 @@ export async function getChatCount({
     return Number(result?.total ?? 0);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return 0;
+      throw new ChatSDKError("bad_request:database", "Chat table is not available");
     }
     throw new ChatSDKError("bad_request:database", "Failed to count chats");
   }
@@ -3824,7 +3854,10 @@ async function getAppSettingsRaw(): Promise<AppSetting[]> {
     return settings;
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "App settings table is not available"
+      );
     }
     throw new ChatSDKError(
       "bad_request:database",
@@ -3957,10 +3990,7 @@ export async function getAppSettingsByKeys(keys: string[]): Promise<AppSetting[]
     () => getAppSettingsByKeysUncached(uniqueKeys),
     [APP_SETTING_CACHE_TAG, "keys", cacheKey],
     {
-      tags: [
-        APP_SETTING_CACHE_TAG,
-        ...uniqueKeys.map((key) => appSettingCacheTagForKey(key)),
-      ],
+      tags: uniqueKeys.map((key) => appSettingCacheTagForKey(key)),
     }
   );
 
@@ -3978,7 +4008,7 @@ export async function getAppSetting<T>(key: string): Promise<T | null> {
     () => getAppSettingRaw<T>(key),
     [APP_SETTING_CACHE_TAG, key],
     {
-      tags: [APP_SETTING_CACHE_TAG, appSettingCacheTagForKey(key)],
+      tags: [appSettingCacheTagForKey(key)],
     }
   );
 
@@ -4030,6 +4060,7 @@ export async function setAppSetting<T>({
 options?: {
   featureSettingWrite?: FeatureSettingWriteContext;
   revalidateCache?: boolean;
+  revalidateGlobalCache?: boolean;
 }) {
   const normalizedKey = key.trim();
   if (!normalizedKey) {
@@ -4087,8 +4118,10 @@ options?: {
   rememberAppSettingValue(normalizedKey, normalizedValue);
 
   if (options?.revalidateCache !== false) {
-    revalidateTag(APP_SETTING_CACHE_TAG, "max");
     revalidateTag(appSettingCacheTagForKey(normalizedKey), "max");
+    if (options?.revalidateGlobalCache === true) {
+      revalidateTag(APP_SETTING_CACHE_TAG, "max");
+    }
   }
 }
 
@@ -4096,6 +4129,7 @@ export async function deleteAppSetting(
   key: string,
   options?: {
     revalidateCache?: boolean;
+    revalidateGlobalCache?: boolean;
   }
 ) {
   try {
@@ -4110,8 +4144,10 @@ export async function deleteAppSetting(
   clearRememberedAppSetting(key);
 
   if (options?.revalidateCache !== false) {
-    revalidateTag(APP_SETTING_CACHE_TAG, "max");
     revalidateTag(appSettingCacheTagForKey(key), "max");
+    if (options?.revalidateGlobalCache === true) {
+      revalidateTag(APP_SETTING_CACHE_TAG, "max");
+    }
   }
 }
 
@@ -4205,7 +4241,10 @@ export async function listAuditLog({
       .offset(offset);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Audit log table is not available"
+      );
     }
     throw new ChatSDKError(
       "bad_request:database",
@@ -4237,7 +4276,10 @@ export async function getAuditLogCount({
     return Number(result?.total ?? 0);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return 0;
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Audit log table is not available"
+      );
     }
     throw new ChatSDKError(
       "bad_request:database",
@@ -4341,7 +4383,10 @@ export async function listContactMessages({
     return await finalQuery;
   } catch (error) {
     if (isTableMissingError(error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Contact messages table is not available"
+      );
     }
     throw new ChatSDKError(
       "bad_request:database",
@@ -4384,7 +4429,10 @@ export async function getContactMessageCount({
     return result?.value ?? 0;
   } catch (error) {
     if (isTableMissingError(error)) {
-      return 0;
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Contact messages table is not available"
+      );
     }
     throw new ChatSDKError(
       "bad_request:database",
@@ -4470,11 +4518,95 @@ export async function listUserCreditHistory({
     return entries as CreditHistoryEntry[];
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Credit history table is not available"
+      );
     }
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load credit history"
+    );
+  }
+}
+
+export async function getUserEmailsByIds(
+  userIds: string[]
+): Promise<Map<string, string>> {
+  const validUserIds = Array.from(
+    new Set(userIds.filter((userId) => isValidUUID(userId)))
+  );
+
+  if (validUserIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const rows = await db
+      .select({
+        email: user.email,
+        id: user.id,
+      })
+      .from(user)
+      .where(inArray(user.id, validUserIds));
+
+    return new Map(rows.map((row) => [row.id, row.email]));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "User table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load user emails"
+    );
+  }
+}
+
+export async function getPricingPlanNamesByIds({
+  includeDeleted = false,
+  planIds,
+}: {
+  includeDeleted?: boolean;
+  planIds: string[];
+}): Promise<Map<string, string>> {
+  const validPlanIds = Array.from(
+    new Set(planIds.filter((planId) => isValidUUID(planId)))
+  );
+
+  if (validPlanIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const rows = await db
+      .select({
+        id: pricingPlan.id,
+        name: pricingPlan.name,
+      })
+      .from(pricingPlan)
+      .where(
+        includeDeleted
+          ? inArray(pricingPlan.id, validPlanIds)
+          : and(
+              inArray(pricingPlan.id, validPlanIds),
+              isNull(pricingPlan.deletedAt)
+            )
+      );
+
+    return new Map(rows.map((row) => [row.id, row.name]));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Pricing plan table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load pricing plan names"
     );
   }
 }
@@ -4667,7 +4799,10 @@ export async function listModelConfigs({
     return await builder.orderBy(desc(modelConfig.createdAt)).limit(limit);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Model configuration table is not available"
+      );
     }
     console.error("listModelConfigs failed", _error);
     throw new ChatSDKError(
@@ -5109,7 +5244,10 @@ export async function listImageModelConfigs({
     return await builder.orderBy(desc(imageModelConfig.createdAt)).limit(limit);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Image model configuration table is not available"
+      );
     }
     console.error("listImageModelConfigs failed", _error);
     throw new ChatSDKError(
@@ -5538,7 +5676,10 @@ export async function listLiveVoiceModelConfigs({
     return await builder.orderBy(desc(liveVoiceModelConfig.createdAt)).limit(limit);
   } catch (_error) {
     if (isTableMissingError(_error)) {
-      return [];
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Live voice model configuration table is not available"
+      );
     }
     console.error("listLiveVoiceModelConfigs failed", _error);
     throw new ChatSDKError(
@@ -6495,44 +6636,10 @@ export async function listCouponsWithStats(): Promise<CouponWithStats[]> {
     });
   } catch (error) {
     if (isTableMissingError(error)) {
-      const rows = await fetchCouponStats(false);
-      return rows.map((row) => {
-        const computedName = [row.creatorFirstName, row.creatorLastName]
-          .filter((value): value is string => Boolean(value?.trim()))
-          .join(" ");
-
-        const totalRevenueInPaise = toInteger(row.totalRevenueInPaise);
-        const totalDiscountInPaise = toInteger(row.totalDiscountInPaise);
-        const grossRevenue = totalRevenueInPaise + totalDiscountInPaise;
-        const estimatedRewardInPaise = calculateRewardAmount(
-          grossRevenue,
-          row.creatorRewardPercentage ?? 0
-        );
-        const lastRedemptionAt = toDate(row.lastRedemptionAt);
-
-        return {
-          id: row.id,
-          code: row.code,
-          discountPercentage: row.discountPercentage,
-          creatorRewardPercentage: row.creatorRewardPercentage ?? 0,
-          creatorRewardStatus: row.creatorRewardStatus ?? "pending",
-          creatorId: row.creatorId,
-          validFrom: row.validFrom,
-          validTo: row.validTo,
-          isActive: row.isActive,
-          description: row.description,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-          creatorName: computedName || row.creatorEmail || null,
-          creatorEmail: row.creatorEmail,
-          usageCount: row.usageCount ?? 0,
-          totalRevenueInPaise,
-          totalDiscountInPaise,
-          lastRedemptionAt,
-          estimatedRewardInPaise,
-          totalPaidInPaise: 0,
-        };
-      });
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Coupon analytics tables are not available"
+      );
     }
     console.error("listCouponsWithStats failed", error);
     throw new ChatSDKError(
@@ -7081,7 +7188,10 @@ export async function getCouponPayoutsForAdmin({
     return Object.fromEntries(grouped.entries());
   } catch (error) {
     if (isTableMissingError(error)) {
-      return {};
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Coupon payout table is not available"
+      );
     }
     console.error("getCouponPayoutsForAdmin failed", error);
     throw new ChatSDKError(
@@ -7294,7 +7404,10 @@ export async function getCouponRedemptionsForAdmin({
     return Object.fromEntries(grouped.entries());
   } catch (error) {
     if (isTableMissingError(error)) {
-      return {};
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Coupon redemption table is not available"
+      );
     }
     console.error("getCouponRedemptionsForAdmin failed", error);
     throw new ChatSDKError(

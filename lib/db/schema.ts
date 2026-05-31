@@ -312,6 +312,7 @@ export const character = pgTable(
       sql`lower(${table.canonicalName})`
     ),
     enabledIdx: index("Character_enabled_idx").on(table.enabled),
+    updatedAtIdx: index("Character_updatedAt_idx").on(table.updatedAt),
   })
 );
 
@@ -526,6 +527,7 @@ export const coupon = pgTable(
   (table) => ({
     codeIdx: uniqueIndex("Coupon_code_idx").on(table.code),
     creatorIdx: index("Coupon_creator_idx").on(table.creatorId),
+    createdAtIdx: index("Coupon_createdAt_idx").on(table.createdAt),
   })
 );
 
@@ -571,6 +573,13 @@ export const paymentTransaction = pgTable(
     userIdx: index("PaymentTransaction_user_idx").on(table.userId),
     planIdx: index("PaymentTransaction_plan_idx").on(table.planId),
     statusIdx: index("PaymentTransaction_status_idx").on(table.status),
+    statusCreatedAtIdx: index("PaymentTransaction_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    userStatusCreatedAtIdx: index(
+      "PaymentTransaction_user_status_createdAt_idx"
+    ).on(table.userId, table.status, table.createdAt),
     couponIdx: index("PaymentTransaction_coupon_idx").on(table.couponId),
     providerPurchaseTokenHashIdx: uniqueIndex(
       "PaymentTransaction_provider_purchase_token_hash_idx"
@@ -607,6 +616,10 @@ export const couponRedemption = pgTable(
   },
   (table) => ({
     couponIdx: index("CouponRedemption_coupon_idx").on(table.couponId),
+    couponCreatedAtIdx: index("CouponRedemption_coupon_createdAt_idx").on(
+      table.couponId,
+      table.createdAt
+    ),
     creatorIdx: index("CouponRedemption_creator_idx").on(table.creatorId),
     userIdx: index("CouponRedemption_user_idx").on(table.userId),
     orderIdx: uniqueIndex("CouponRedemption_order_idx").on(table.orderId),
@@ -631,6 +644,10 @@ export const couponRewardPayout = pgTable(
   },
   (table) => ({
     couponIdx: index("CouponRewardPayout_coupon_idx").on(table.couponId),
+    couponCreatedAtIdx: index("CouponRewardPayout_coupon_createdAt_idx").on(
+      table.couponId,
+      table.createdAt
+    ),
   })
 );
 
@@ -699,6 +716,7 @@ export const language = pgTable(
   },
   (table) => ({
     codeIdx: uniqueIndex("language_code_idx").on(table.code),
+    activeIdx: index("language_active_idx").on(table.isActive),
   })
 );
 
@@ -801,11 +819,23 @@ export const chat = pgTable(
   },
   (table) => ({
     createdAtIdx: index("Chat_createdAt_idx").on(table.createdAt),
+    activeCreatedAtIdx: index("Chat_active_createdAt_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    deletedCreatedAtIdx: index("Chat_deleted_createdAt_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NOT NULL`),
     userCreatedAtActiveIdx: index("Chat_user_createdAt_active_idx")
       .on(table.userId, table.createdAt)
       .where(sql`${table.deletedAt} IS NULL`),
+    userCreatedAtIdActiveIdx: index("Chat_user_createdAt_id_active_idx")
+      .on(table.userId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
     userModeCreatedAtActiveIdx: index("Chat_user_mode_createdAt_active_idx")
       .on(table.userId, table.mode, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    userModeCreatedAtIdActiveIdx: index("Chat_user_mode_createdAt_id_active_idx")
+      .on(table.userId, table.mode, table.createdAt, table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   })
 );
@@ -1147,7 +1177,15 @@ export const auditLog = pgTable(
   },
   (table) => ({
     actorIdx: index("AuditLog_actor_idx").on(table.actorId),
+    actorCreatedAtIdx: index("AuditLog_actor_createdAt_idx").on(
+      table.actorId,
+      table.createdAt
+    ),
     subjectUserIdx: index("AuditLog_subjectUser_idx").on(table.subjectUserId),
+    subjectUserCreatedAtIdx: index("AuditLog_subjectUser_createdAt_idx").on(
+      table.subjectUserId,
+      table.createdAt
+    ),
     createdAtIdx: index("AuditLog_createdAt_idx").on(table.createdAt),
   })
 );
@@ -1178,6 +1216,10 @@ export const contactMessage = pgTable(
   },
   (table) => ({
     statusIdx: index("ContactMessage_status_idx").on(table.status),
+    statusCreatedAtIdx: index("ContactMessage_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
     createdIdx: index("ContactMessage_created_idx").on(table.createdAt),
   })
 );
@@ -1223,6 +1265,13 @@ export const tokenUsage = pgTable(
       table.userId,
       table.createdAt
     ),
+    createdIdx: index("token_usage_created_idx").on(table.createdAt),
+    modelCreatedIdx: index("token_usage_model_created_idx")
+      .on(table.modelConfigId, table.createdAt)
+      .where(sql`${table.modelConfigId} IS NOT NULL`),
+    liveVoiceModelCreatedIdx: index("token_usage_live_voice_model_created_idx")
+      .on(table.liveVoiceModelConfigId, table.createdAt)
+      .where(sql`${table.liveVoiceModelConfigId} IS NOT NULL`),
     subscriptionIdx: index("token_usage_subscription_idx").on(
       table.subscriptionId
     ),
@@ -1345,13 +1394,30 @@ export const forumThread = pgTable(
       table.lastRepliedAt,
       table.createdAt
     ),
+    activityCursorIdx: index("ForumThread_activity_cursor_idx").using(
+      "btree",
+      table.isPinned,
+      sql`COALESCE("lastRepliedAt", "createdAt")`,
+      table.id
+    ),
     categoryActivityIdx: index("ForumThread_category_activity_idx").on(
       table.categoryId,
       table.isPinned,
       table.lastRepliedAt,
       table.createdAt
     ),
+    categoryActivityCursorIdx: index(
+      "ForumThread_category_activity_cursor_idx"
+    ).using(
+      "btree",
+      table.categoryId,
+      table.isPinned,
+      sql`COALESCE("lastRepliedAt", "createdAt")`,
+      table.id
+    ),
+    updatedAtIdx: index("ForumThread_updatedAt_idx").on(table.updatedAt),
     statusIdx: index("ForumThread_status_idx").on(table.status),
+    isLockedIdx: index("ForumThread_isLocked_idx").on(table.isLocked),
     pinnedIdx: index("ForumThread_pinned_idx").on(table.isPinned),
   })
 );
@@ -1380,6 +1446,12 @@ export const forumPost = pgTable(
     threadCreatedAtIdx: index("ForumPost_thread_createdAt_idx").on(
       table.threadId,
       table.createdAt
+    ),
+    updatedAtIdx: index("ForumPost_updatedAt_idx").on(table.updatedAt),
+    isDeletedIdx: index("ForumPost_isDeleted_idx").on(table.isDeleted),
+    isDeletedUpdatedAtIdx: index("ForumPost_isDeleted_updatedAt_idx").on(
+      table.isDeleted,
+      table.updatedAt
     ),
     authorIdx: index("ForumPost_author_idx").on(table.authorId),
     parentPostFk: foreignKey({

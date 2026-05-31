@@ -4,7 +4,7 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   listTranslationEntries,
   type TranslationTableEntry,
@@ -106,24 +106,26 @@ export default async function AdminTranslationsPage({
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  await adminQueryOr({
+  const staticKeysState = await adminQueryResult({
     fallback: null,
     label: "translations.register-static-keys",
     promise: registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS),
     timeoutMs: 3000,
   });
-  const [languages, entries] = await Promise.all([
-    adminQueryOr({
+  const [languagesState, entriesState] = await Promise.all([
+    adminQueryResult({
       fallback: [] as LanguageOption[],
       label: "translations.languages",
       promise: getAllLanguages(),
     }),
-    adminQueryOr({
+    adminQueryResult({
       fallback: [] as TranslationTableEntry[],
       label: "translations.entries",
       promise: listTranslationEntries(),
     }),
   ]);
+  const languages = languagesState.data;
+  const entries = entriesState.data;
 
   const queryParam = resolvedSearchParams?.q;
   const rawQuery = Array.isArray(queryParam)
@@ -191,13 +193,33 @@ export default async function AdminTranslationsPage({
       <TranslationSearchForm defaultValue={rawQuery} />
 
       <TranslationSummary
+        entriesConfirmed={entriesState.ok}
+        languagesConfirmed={languagesState.ok}
         languages={activeLanguages}
         searchQuery={searchQuery}
         totalEntries={entries.length}
         visibleEntries={filteredEntries.length}
       />
 
-      {entries.length === 0 ? (
+      {(!staticKeysState.ok || !languagesState.ok || !entriesState.ok) && (
+        <AdminTranslationsWarning
+          message={[
+            !staticKeysState.ok
+              ? "Static translation key registration failed."
+              : null,
+            !languagesState.ok ? "Languages could not be confirmed." : null,
+            !entriesState.ok ? "Translation rows could not be confirmed." : null,
+          ]
+            .filter((message): message is string => Boolean(message))
+            .join(" ")}
+        />
+      )}
+
+      {!entriesState.ok ? (
+        <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
+          Unable to load translation keys. Refresh this admin section to retry.
+        </div>
+      ) : entries.length === 0 ? (
         <div className="rounded-lg border border-border border-dashed bg-muted/40 p-8 text-center text-muted-foreground">
           No translation keys have been registered yet. Introduce translations
           in your components using the translation helper to populate this list.
@@ -233,11 +255,15 @@ export default async function AdminTranslationsPage({
 }
 
 function TranslationSummary({
+  entriesConfirmed,
+  languagesConfirmed,
   languages,
   visibleEntries,
   totalEntries,
   searchQuery,
 }: {
+  entriesConfirmed: boolean;
+  languagesConfirmed: boolean;
   languages: LanguageOption[];
   visibleEntries: number;
   totalEntries: number;
@@ -258,10 +284,15 @@ function TranslationSummary({
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
       <div className="flex flex-col">
-        <span className="font-semibold text-base">{showingLabel}</span>
+        <span className="font-semibold text-base">
+          {entriesConfirmed ? showingLabel : "Translation strings unavailable"}
+        </span>
         <span className="text-muted-foreground">
-          {uniqueLanguages.length} active{" "}
-          {uniqueLanguages.length === 1 ? "language" : "languages"}
+          {languagesConfirmed
+            ? `${uniqueLanguages.length} active ${
+                uniqueLanguages.length === 1 ? "language" : "languages"
+              }`
+            : "Active languages unavailable"}
         </span>
       </div>
       <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
@@ -288,6 +319,7 @@ function TranslationSummary({
         </div>
         <form action={publishTranslationsAction}>
           <TranslationSubmitButton
+            disabled={!entriesConfirmed || !languagesConfirmed}
             pendingLabel="Publishing..."
             size="sm"
             successMessage="Translations published"
@@ -507,6 +539,14 @@ function TranslationSectionNavigation({
         ))}
       </div>
     </nav>
+  );
+}
+
+function AdminTranslationsWarning({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {message} Fallback data is not treated as saved translation state.
+    </div>
   );
 }
 

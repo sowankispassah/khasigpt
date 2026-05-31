@@ -190,6 +190,23 @@ export function buildFeatureAccessSnapshotFromValues({
   };
 }
 
+export function getFeatureAccessModeSettingValue(
+  snapshot: FeatureAccessSettingsSnapshot,
+  key: string
+) {
+  const value = snapshot.values.get(key);
+  if (value !== undefined) {
+    if (snapshot.status === "confirmed") {
+      return value;
+    }
+    if (parseFeatureAccessModeStrict(value)) {
+      return value;
+    }
+  }
+
+  return snapshot.status !== "confirmed" ? "enabled" : null;
+}
+
 export async function loadFeatureAccessSettingsByKeys(
   keys: readonly string[],
   {

@@ -17,7 +17,10 @@ import {
   getTranslationBundle,
 } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
@@ -113,7 +116,10 @@ export default async function Layout({
   const featureAccessUnavailable =
     featureAccessSettings?.status === "unavailable";
   const getFeatureSetting = (key: string) => {
-    const value = featureAccessSettings?.values.get(key);
+    if (!featureAccessSettings) {
+      return null;
+    }
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
     if (value !== undefined) {
       return value;
     }

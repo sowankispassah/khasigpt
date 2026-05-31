@@ -58,6 +58,7 @@ import {
 } from "@/lib/study/context-store";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
+import { setClientCookie } from "@/lib/ui/client-cookies";
 import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -75,6 +76,21 @@ import {
 const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
+const PROMPTS_API_ROUTE = "/api/prompts";
+
+type PromptActionsPayload = {
+  iconPromptActions?: IconPromptAction[];
+  prompts?: string[];
+};
+
+type JobsListPayload =
+  | JobListItem[]
+  | {
+      items?: JobListItem[];
+      meta?: {
+        degradedSections?: string[];
+      };
+    };
 
 const FloatingChatPopup = dynamic(
   () =>
@@ -112,6 +128,7 @@ const buildJobTitleReference = (job: JobCard): JobTitleReference => ({
 export function Chat({
   id,
   initialMessages,
+  initialMessagesDegraded = false,
   initialHasMoreHistory,
   initialOldestMessageAt,
   initialChatModel,
@@ -132,6 +149,7 @@ export function Chat({
 }: {
   id: string;
   initialMessages: ChatMessage[];
+  initialMessagesDegraded?: boolean;
   initialHasMoreHistory: boolean;
   initialOldestMessageAt: string | null;
   initialChatModel: string;
@@ -256,18 +274,48 @@ export function Chat({
   const shouldLoadJobsListFromApi = isJobsMode && jobsListItems.length === 0;
   const {
     data: jobsModeListItemsData,
+    error: jobsModeListError,
     isLoading: isJobsModeListLoading,
-  } = useSWR<JobListItem[]>(
+    mutate: retryJobsModeList,
+  } = useSWR<JobsListPayload>(
     shouldLoadJobsListFromApi ? JOBS_LIST_API_ROUTE : null,
     fetcher,
     {
       revalidateOnFocus: false,
     }
   );
+  const jobsModeListApiItems = Array.isArray(jobsModeListItemsData)
+    ? jobsModeListItemsData
+    : jobsModeListItemsData?.items;
   const resolvedJobsListItems =
-    jobsModeListItemsData && jobsModeListItemsData.length > 0
-      ? jobsModeListItemsData
+    jobsModeListApiItems && jobsModeListApiItems.length > 0
+      ? jobsModeListApiItems
       : jobsListItems;
+  const jobsModeListDegraded = Boolean(
+    !Array.isArray(jobsModeListItemsData) &&
+      jobsModeListItemsData?.meta?.degradedSections?.length
+  );
+  const jobsModeListErrorMessage =
+    jobsModeListError && resolvedJobsListItems.length === 0
+      ? "Jobs could not be loaded right now."
+      : null;
+  const shouldLoadPromptActions = !isJobsMode && !isStudyMode;
+  const hasInitialPromptActions =
+    suggestedPrompts.length > 0 || iconPromptActions.length > 0;
+  const { data: promptActionsData } = useSWR<PromptActionsPayload>(
+    shouldLoadPromptActions ? PROMPTS_API_ROUTE : null,
+    fetcher,
+    {
+      fallbackData: hasInitialPromptActions
+        ? { iconPromptActions, prompts: suggestedPrompts }
+        : undefined,
+      revalidateOnFocus: false,
+    }
+  );
+  const resolvedSuggestedPrompts =
+    promptActionsData?.prompts ?? suggestedPrompts;
+  const resolvedIconPromptActions =
+    promptActionsData?.iconPromptActions ?? iconPromptActions;
   const historyRevalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -285,8 +333,14 @@ export function Chat({
               enabled?: boolean;
               canGenerate?: boolean;
             };
+            meta?: {
+              degraded?: boolean;
+            };
           }
         | null;
+      if (response.ok && data?.meta?.degraded) {
+        return imageGeneration.canGenerate;
+      }
       if (response.ok && data?.imageGeneration?.enabled) {
         setVerifiedImageCanGenerate(Boolean(data.imageGeneration.canGenerate));
         if (data.imageGeneration.canGenerate) {
@@ -452,11 +506,11 @@ export function Chat({
   }, [studyQuizActive]);
 
   const setChatLanguageCookie = useCallback((languageCode: string) => {
-    if (typeof document === "undefined") {
-      return;
-    }
-    const encoded = encodeURIComponent(languageCode);
-    document.cookie = `chat-language=${encoded}; path=/; max-age=${CHAT_LANGUAGE_COOKIE_MAX_AGE}; samesite=lax`;
+    setClientCookie({
+      maxAge: CHAT_LANGUAGE_COOKIE_MAX_AGE,
+      name: "chat-language",
+      value: languageCode,
+    });
   }, []);
 
   const handleLanguageChange = useCallback(
@@ -679,7 +733,6 @@ export function Chat({
   } = useChat<ChatMessage>({
     id,
     messages: initialMessages,
-    experimental_throttle: 100,
     generateId: generateUUID,
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -952,9 +1005,11 @@ export function Chat({
       return;
     }
 
-    document.cookie = `recent-chat-id=${encodeURIComponent(
-      `${id}|${Date.now()}`
-    )}; path=/; max-age=30; samesite=lax`;
+    setClientCookie({
+      maxAge: 30,
+      name: "recent-chat-id",
+      value: `${id}|${Date.now()}`,
+    });
 
     const nextHref = getCurrentChatHref(id);
     const currentHref = `${window.location.pathname}${window.location.search}`;
@@ -1372,12 +1427,59 @@ export function Chat({
   const jobsHeader = isJobsMode ? (
     <div className="flex flex-col gap-3">
       <JobsModeListPanel
+        errorMessage={jobsModeListErrorMessage}
+        isDegraded={jobsModeListDegraded}
         isLoading={isJobsModeListLoading && resolvedJobsListItems.length === 0}
         jobs={resolvedJobsListItems}
+        onRetry={() => {
+          void retryJobsModeList();
+        }}
       />
     </div>
   ) : null;
-  const modeHeader = isStudyMode ? studyHeader : isJobsMode ? jobsHeader : null;
+  const historyUnavailableBanner = initialMessagesDegraded ? (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
+      <div className="font-medium">
+        <EditableTranslation
+          defaultText="Previous messages could not be loaded."
+          description="Title for the chat history degraded-state banner."
+          translationKey="chat.history.initial_load_failed.title"
+        />
+      </div>
+      <p className="mt-1 text-amber-800">
+        <EditableTranslation
+          defaultText="You can keep using the composer. Retry to confirm the saved history."
+          description="Body text for the chat history degraded-state banner."
+          translationKey="chat.history.initial_load_failed.description"
+        />
+      </p>
+      <Button
+        className="mt-3 cursor-pointer"
+        onClick={() => router.refresh()}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        <EditableTranslation
+          defaultText="Retry history"
+          description="Button label that retries loading initial chat history."
+          translationKey="chat.history.initial_load_failed.retry"
+        />
+      </Button>
+    </div>
+  ) : null;
+  const modeHeaderContent = isStudyMode
+    ? studyHeader
+    : isJobsMode
+      ? jobsHeader
+      : null;
+  const modeHeader =
+    historyUnavailableBanner || modeHeaderContent ? (
+      <div className="flex flex-col gap-3">
+        {historyUnavailableBanner}
+        {modeHeaderContent}
+      </div>
+    ) : null;
 
   const studyActions = isStudyMode
     ? {
@@ -1555,8 +1657,12 @@ export function Chat({
               sendMessage={sendMessage}
               setMessages={setMessages}
               status={status}
-              suggestedPrompts={isJobsMode || isStudyMode ? [] : suggestedPrompts}
-              iconPromptActions={isJobsMode || isStudyMode ? [] : iconPromptActions}
+              suggestedPrompts={
+                isJobsMode || isStudyMode ? [] : resolvedSuggestedPrompts
+              }
+              iconPromptActions={
+                isJobsMode || isStudyMode ? [] : resolvedIconPromptActions
+              }
               onIconPromptSelect={handleIconPromptSelect}
               jobActions={jobActions}
               studyActions={studyActions}

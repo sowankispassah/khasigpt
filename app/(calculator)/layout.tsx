@@ -11,41 +11,76 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import {
+  getFallbackTranslationBundle,
+  getTranslationBundle,
+} from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
+import { withTimeout } from "@/lib/utils/async";
+
+const CALCULATOR_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
+const CALCULATOR_LAYOUT_TRANSLATION_TIMEOUT_MS = 1_500;
+const CALCULATOR_LAYOUT_FEATURE_ACCESS_KEYS = [
+  CALCULATOR_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
+] as const;
 
 export default async function CalculatorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [
-    cookieStore,
-    session,
-    calculatorSetting,
-    jobsSetting,
-    studyModeSetting,
-    translateSetting,
-  ] = await Promise.all([
-      cookies(),
-      auth(),
-      getAppSetting<string | boolean | number>(CALCULATOR_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-      getAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY),
-    ]);
+  const [cookieStore, session] = await Promise.all([cookies(), auth()]);
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/calculator");
   }
 
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const { languages, activeLanguage, dictionary } =
-    await getTranslationBundle(preferredLanguage);
+  const [translationBundle, featureAccessSettings] = await Promise.all([
+    withTimeout(
+      getTranslationBundle(preferredLanguage),
+      CALCULATOR_LAYOUT_TRANSLATION_TIMEOUT_MS,
+      () => {
+        console.error("[calculator/layout] Translation bundle timed out.", {
+          timeoutMs: CALCULATOR_LAYOUT_TRANSLATION_TIMEOUT_MS,
+        });
+      }
+    ).catch((error) => {
+      console.error(
+        "[calculator/layout] Translation bundle failed. Using static fallback.",
+        error
+      );
+      return getFallbackTranslationBundle(preferredLanguage);
+    }),
+    loadFeatureAccessSettingsByKeys(CALCULATOR_LAYOUT_FEATURE_ACCESS_KEYS, {
+      source: "calculator.layout.feature-access",
+      timeoutMs: CALCULATOR_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS,
+    }),
+  ]);
+
+  const featureAccessUnavailable = featureAccessSettings.status === "unavailable";
+  const getFeatureSetting = (key: string) => {
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
+    if (value !== undefined) {
+      return value;
+    }
+    return featureAccessUnavailable ? "enabled" : null;
+  };
+
+  const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
+  const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
+  const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
 
   const calculatorEnabled = isFeatureEnabledForRole(
     parseCalculatorAccessModeSetting(calculatorSetting),
@@ -68,6 +103,7 @@ export default async function CalculatorLayout({
     parseTranslateAccessModeSetting(translateSetting),
     session.user.role
   );
+  const { languages, activeLanguage, dictionary } = translationBundle;
   const sidebarState = cookieStore.get("sidebar_state")?.value;
   const defaultSidebarOpen = sidebarState !== "false";
 

@@ -15,6 +15,12 @@ type CreditHistoryMenuEntry = {
   id: string;
 };
 
+const CREDIT_HISTORY_TIMEOUT_MS = 10_000;
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 export function AdminUserCreditHistoryMenu({
   userId,
 }: {
@@ -26,26 +32,33 @@ export function AdminUserCreditHistoryMenu({
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!open || entries !== null || isLoading) {
+    if (!open || entries !== null || error || isLoading) {
       return;
     }
 
     let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      CREDIT_HISTORY_TIMEOUT_MS
+    );
 
     setIsLoading(true);
-    setError(null);
 
     fetch(`/api/admin/users/${userId}/credit-history`, {
       cache: "no-store",
       credentials: "same-origin",
+      signal: controller.signal,
     })
       .then(async (response) => {
         const body = (await response.json().catch(() => null)) as
-          | { entries?: CreditHistoryMenuEntry[]; error?: string }
+          | { entries?: CreditHistoryMenuEntry[]; error?: string; message?: string }
           | null;
 
         if (!response.ok) {
-          throw new Error(body?.error ?? "Unable to load credit history");
+          throw new Error(
+            body?.message ?? body?.error ?? "Unable to load credit history"
+          );
         }
 
         if (!cancelled) {
@@ -55,13 +68,16 @@ export function AdminUserCreditHistoryMenu({
       .catch((fetchError) => {
         if (!cancelled) {
           setError(
-            fetchError instanceof Error
+            isAbortError(fetchError)
+              ? "Credit history timed out. Retry this section."
+              : fetchError instanceof Error
               ? fetchError.message
               : "Unable to load credit history"
           );
         }
       })
       .finally(() => {
+        window.clearTimeout(timeoutId);
         if (!cancelled) {
           setIsLoading(false);
         }
@@ -69,8 +85,10 @@ export function AdminUserCreditHistoryMenu({
 
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
     };
-  }, [entries, isLoading, open, userId]);
+  }, [entries, error, isLoading, open, userId]);
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
@@ -91,7 +109,19 @@ export function AdminUserCreditHistoryMenu({
         {isLoading ? (
           <p className="text-muted-foreground text-xs">Loading credit history...</p>
         ) : error ? (
-          <p className="text-destructive text-xs">{error}</p>
+          <div className="space-y-2">
+            <p className="text-destructive text-xs">{error}</p>
+            <button
+              className="cursor-pointer rounded-md border px-2 py-1 text-xs"
+              onClick={() => {
+                setEntries(null);
+                setError(null);
+              }}
+              type="button"
+            >
+              Retry
+            </button>
+          </div>
         ) : entries && entries.length > 0 ? (
           entries.map((entry) => (
             <div className="rounded-md border bg-background p-2 shadow-sm" key={entry.id}>

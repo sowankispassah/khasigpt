@@ -90,6 +90,7 @@ type AdminRagManagerProps = {
   modelOptions: Array<{ id: string; label: string; provider: string }>;
   tagOptions: string[];
   categories: Array<{ id: string; name: string }>;
+  degradedSections?: string[];
 };
 
 type RagVersion = {
@@ -218,6 +219,7 @@ export function AdminRagManager({
   modelOptions,
   tagOptions,
   categories,
+  degradedSections = [],
 }: AdminRagManagerProps) {
   const [entriesState, setEntriesState] = useState(entries);
   const [availableTags, setAvailableTags] = useState(tagOptions);
@@ -724,7 +726,18 @@ export function AdminRagManager({
         </div>
       </header>
 
-      <AnalyticsSummary analytics={analytics} />
+      {degradedSections.length > 0 ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+          RAG data is partially unavailable. Failed sections:{" "}
+          {degradedSections.join(", ")}. Existing database values were not
+          confirmed, so fallback counts and empty lists are not authoritative.
+        </div>
+      ) : null}
+
+      <AnalyticsSummary
+        analytics={analytics}
+        isDegraded={degradedSections.includes("RAG analytics")}
+      />
 
       <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
@@ -897,7 +910,9 @@ export function AdminRagManager({
                     className="px-2 py-6 text-center text-muted-foreground"
                       colSpan={9}
                     >
-                      No entries match your filters.
+                      {degradedSections.includes("RAG entries")
+                        ? "RAG entries could not be confirmed. Retry before treating this table as empty."
+                        : "No entries match your filters."}
                     </td>
                 </tr>
               ) : (
@@ -1326,22 +1341,64 @@ export function AdminRagManager({
   );
 }
 
-function AnalyticsSummary({ analytics }: { analytics: RagAnalyticsSummary }) {
+function AnalyticsSummary({
+  analytics,
+  isDegraded = false,
+}: {
+  analytics: RagAnalyticsSummary;
+  isDegraded?: boolean;
+}) {
+  if (isDegraded) {
+    const degradedCards = [
+      "Active entries",
+      "Inactive entries",
+      "Pending indexing",
+      "Top creator",
+    ];
+
+    return (
+      <section className="grid gap-3 md:grid-cols-4">
+        {degradedCards.map((label) => (
+          <div
+            className="rounded-2xl border bg-card/70 p-4 shadow-sm"
+            key={label}
+          >
+            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+              {label}
+            </p>
+            <p className="font-semibold text-2xl">Unavailable</p>
+            <p className="text-muted-foreground text-xs">
+              Analytics read failed
+            </p>
+          </div>
+        ))}
+      </section>
+    );
+  }
+
   const cards = [
     {
       label: "Active entries",
-      value: analytics.activeEntries.toLocaleString(),
-      description: `${analytics.totalEntries.toLocaleString()} total`,
+      value: isDegraded ? "Unavailable" : analytics.activeEntries.toLocaleString(),
+      description: isDegraded
+        ? "Analytics read failed"
+        : `${analytics.totalEntries.toLocaleString()} total`,
     },
     {
       label: "Inactive entries",
-      value: analytics.inactiveEntries.toLocaleString(),
-      description: `${analytics.archivedEntries.toLocaleString()} archived`,
+      value: isDegraded
+        ? "Unavailable"
+        : analytics.inactiveEntries.toLocaleString(),
+      description: isDegraded
+        ? "Analytics read failed"
+        : `${analytics.archivedEntries.toLocaleString()} archived`,
     },
     {
       label: "Pending indexing",
-      value: analytics.pendingEmbeddings.toLocaleString(),
-      description: "Needs syncing",
+      value: isDegraded
+        ? "Unavailable"
+        : analytics.pendingEmbeddings.toLocaleString(),
+      description: isDegraded ? "Analytics read failed" : "Needs syncing",
     },
     {
       label: "Top creator",

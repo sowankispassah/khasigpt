@@ -15,9 +15,13 @@ import type { ChatListItem } from "@/lib/db/queries";
 
 type Props = {
   initialActiveChats: ChatListItem[];
+  initialActiveConfirmed: boolean;
   initialDeletedChats: ChatListItem[];
+  initialDeletedConfirmed: boolean;
   initialActiveTotal: number;
+  initialActiveTotalConfirmed: boolean;
   initialDeletedTotal: number;
+  initialDeletedTotalConfirmed: boolean;
   pageSize?: number;
 };
 
@@ -25,9 +29,13 @@ type ChatRow = ChatListItem;
 
 export function AdminChatTables({
   initialActiveChats,
+  initialActiveConfirmed,
   initialDeletedChats,
+  initialDeletedConfirmed,
   initialActiveTotal,
+  initialActiveTotalConfirmed,
   initialDeletedTotal,
+  initialDeletedTotalConfirmed,
   pageSize = 10,
 }: Props) {
   const [activeChats, setActiveChats] = useState<ChatRow[]>(initialActiveChats);
@@ -35,13 +43,33 @@ export function AdminChatTables({
     useState<ChatRow[]>(initialDeletedChats);
   const [activeTotal, setActiveTotal] = useState(initialActiveTotal);
   const [deletedTotal, setDeletedTotal] = useState(initialDeletedTotal);
+  const [activeTotalConfirmed, setActiveTotalConfirmed] = useState(
+    initialActiveTotalConfirmed
+  );
+  const [deletedTotalConfirmed, setDeletedTotalConfirmed] = useState(
+    initialDeletedTotalConfirmed
+  );
+  const [activeError, setActiveError] = useState(
+    initialActiveConfirmed
+      ? null
+      : "Active chat rows or totals could not be confirmed. Retry this section."
+  );
+  const [deletedError, setDeletedError] = useState(
+    initialDeletedConfirmed
+      ? null
+      : "Deleted chat rows or totals could not be confirmed. Retry this section."
+  );
   const [loadingActive, setLoadingActive] = useState(false);
   const [loadingDeleted, setLoadingDeleted] = useState(false);
   const [hasNextActive, setHasNextActive] = useState(
-    initialActiveChats.length < initialActiveTotal
+    activeTotalConfirmed
+      ? initialActiveChats.length < initialActiveTotal
+      : initialActiveChats.length >= pageSize
   );
   const [hasNextDeleted, setHasNextDeleted] = useState(
-    initialDeletedChats.length < initialDeletedTotal
+    deletedTotalConfirmed
+      ? initialDeletedChats.length < initialDeletedTotal
+      : initialDeletedChats.length >= pageSize
   );
   const [pageActive, setPageActive] = useState(0);
   const [pageDeleted, setPageDeleted] = useState(0);
@@ -51,15 +79,44 @@ export function AdminChatTables({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const formatRange = ({
+    page,
+    rows,
+    total,
+    totalConfirmed,
+  }: {
+    page: number;
+    rows: ChatRow[];
+    total: number;
+    totalConfirmed: boolean;
+  }) => {
+    if (!totalConfirmed) {
+      return rows.length > 0
+        ? `Showing ${rows.length} rows; total unavailable`
+        : "Total unavailable";
+    }
+
+    return `Showing ${
+      rows.length === 0 ? 0 : page * pageSize + 1
+    }-${Math.min((page + 1) * pageSize, total)} of ${total}`;
+  };
+
   const loadPage = async (opts: { deleted: boolean; page: number }) => {
     const setter = opts.deleted ? setDeletedChats : setActiveChats;
     const setHasNext = opts.deleted ? setHasNextDeleted : setHasNextActive;
     const setLoading = opts.deleted ? setLoadingDeleted : setLoadingActive;
     const setPage = opts.deleted ? setPageDeleted : setPageActive;
     const setTotal = opts.deleted ? setDeletedTotal : setActiveTotal;
+    const setTotalConfirmed = opts.deleted
+      ? setDeletedTotalConfirmed
+      : setActiveTotalConfirmed;
+    const setError = opts.deleted ? setDeletedError : setActiveError;
     const offset = opts.page * pageSize;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
 
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         offset: offset.toString(),
@@ -68,20 +125,36 @@ export function AdminChatTables({
       });
       const response = await fetch(`/admin/chats/data?${params.toString()}`, {
         cache: "no-store",
+        signal: controller.signal,
       });
       if (!response.ok) {
-        throw new Error("Failed to load chats");
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? "Failed to load chats");
       }
-      const json = (await response.json()) as { items: ChatRow[]; total?: number };
+      const json = (await response.json()) as {
+        items: ChatRow[];
+        total?: number;
+      };
       const items = Array.isArray(json.items) ? json.items : [];
       const total = Number.isFinite(json.total) ? Number(json.total) : items.length;
       setter(items);
       setPage(opts.page);
       setTotal(total);
+      setTotalConfirmed(true);
       setHasNext(offset + items.length < total);
     } catch (error) {
       console.error(error);
+      setError(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Chat rows timed out. Retry this section."
+          : error instanceof Error
+            ? error.message
+            : "Failed to load chats"
+      );
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
   };
@@ -137,6 +210,13 @@ export function AdminChatTables({
             Review and remove chat threads across the application.
           </p>
         </header>
+
+        {activeError ? (
+          <AdminChatTableWarning
+            message={activeError}
+            onRetry={() => loadPage({ deleted: false, page: pageActive })}
+          />
+        ) : null}
 
         <div className="overflow-x-auto rounded-md border bg-card">
           <table className="w-full text-sm">
@@ -195,7 +275,9 @@ export function AdminChatTables({
               {activeChats.length === 0 && (
                 <tr>
                   <td className="px-3 py-6 text-muted-foreground" colSpan={5}>
-                    No chat sessions found.
+                    {activeError
+                      ? "Unable to load active chat sessions."
+                      : "No chat sessions found."}
                   </td>
                 </tr>
               )}
@@ -204,8 +286,12 @@ export function AdminChatTables({
         </div>
         <div className="flex items-center justify-end gap-3">
           <span className="text-muted-foreground text-xs">
-            Showing {activeChats.length === 0 ? 0 : pageActive * pageSize + 1}-
-            {Math.min((pageActive + 1) * pageSize, activeTotal)} of {activeTotal}
+            {formatRange({
+              page: pageActive,
+              rows: activeChats,
+              total: activeTotal,
+              totalConfirmed: activeTotalConfirmed,
+            })}
           </span>
           <span className="text-muted-foreground text-xs">
             Page {pageActive + 1}
@@ -243,6 +329,13 @@ export function AdminChatTables({
             here if they are no longer needed.
           </p>
         </header>
+
+        {deletedError ? (
+          <AdminChatTableWarning
+            message={deletedError}
+            onRetry={() => loadPage({ deleted: true, page: pageDeleted })}
+          />
+        ) : null}
 
         <div className="overflow-x-auto rounded-md border bg-card">
           <table className="w-full text-sm">
@@ -297,12 +390,12 @@ export function AdminChatTables({
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      disabled={isPending}
-                      onClick={() => handleRestore(chat.id)}
-                      size="sm"
-                      variant="secondary"
-                    >
+                      <Button
+                        disabled={isPending}
+                        onClick={() => handleRestore(chat.id)}
+                        size="sm"
+                        variant="secondary"
+                      >
                         {pendingAction?.chatId === chat.id &&
                         pendingAction.type === "restore"
                           ? "Restoring..."
@@ -326,7 +419,9 @@ export function AdminChatTables({
               {deletedChats.length === 0 && (
                 <tr>
                   <td className="px-3 py-6 text-muted-foreground" colSpan={5}>
-                    No deleted chats.
+                    {deletedError
+                      ? "Unable to load deleted chats."
+                      : "No deleted chats."}
                   </td>
                 </tr>
               )}
@@ -335,8 +430,12 @@ export function AdminChatTables({
         </div>
         <div className="flex items-center justify-end gap-3">
           <span className="text-muted-foreground text-xs">
-            Showing {deletedChats.length === 0 ? 0 : pageDeleted * pageSize + 1}-
-            {Math.min((pageDeleted + 1) * pageSize, deletedTotal)} of {deletedTotal}
+            {formatRange({
+              page: pageDeleted,
+              rows: deletedChats,
+              total: deletedTotal,
+              totalConfirmed: deletedTotalConfirmed,
+            })}
           </span>
           <span className="text-muted-foreground text-xs">
             Page {pageDeleted + 1}
@@ -365,6 +464,29 @@ export function AdminChatTables({
           </Button>
         </div>
       </section>
+    </div>
+  );
+}
+
+function AdminChatTableWarning({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      <span>{message}</span>
+      <Button
+        className="cursor-pointer"
+        onClick={onRetry}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        Retry
+      </Button>
     </div>
   );
 }

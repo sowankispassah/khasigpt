@@ -136,8 +136,10 @@ function isOptimizedPreviewUrl(url: string) {
 
 export function AdminCharactersManager({
   characters,
+  charactersConfirmed,
 }: {
   characters: SerializedCharacter[];
+  charactersConfirmed: boolean;
 }) {
   const [charactersState, setCharactersState] = useState(() =>
     characters.map(serializeCharacter)
@@ -508,6 +510,12 @@ export function AdminCharactersManager({
       </header>
 
       <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
+        {!charactersConfirmed ? (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+            Character rows could not be confirmed. The table is hidden instead
+            of showing an empty fallback; refresh this section to retry.
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-3">
           <Input
             className="max-w-xs"
@@ -533,7 +541,16 @@ export function AdminCharactersManager({
               </tr>
             </thead>
             <tbody>
-              {filteredCharacters.length === 0 ? (
+              {!charactersConfirmed ? (
+                <tr>
+                  <td
+                    className="px-3 py-6 text-center text-muted-foreground"
+                    colSpan={6}
+                  >
+                    Unable to load characters.
+                  </td>
+                </tr>
+              ) : filteredCharacters.length === 0 ? (
                 <tr>
                   <td
                     className="px-3 py-6 text-center text-muted-foreground"

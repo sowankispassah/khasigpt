@@ -7,7 +7,6 @@ import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
 import {
   buildImageGenerationAccessFromAvailability,
-  getImageGenerationAccess,
   getImageGenerationAvailability,
 } from "@/lib/ai/image-generation";
 import { loadChatModels } from "@/lib/ai/models";
@@ -23,19 +22,24 @@ import {
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
-  getAppSetting,
   getChatById,
   getMessagesByChatIdPage,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import {
+  getFallbackTranslationBundle,
+  getTranslationBundle,
+} from "@/lib/i18n/dictionary";
 import { getActiveLanguages } from "@/lib/i18n/languages";
-import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { getJobPostingById, listJobListItems } from "@/lib/jobs/service";
+import { getJobPostingById } from "@/lib/jobs/service";
+import type { JobListItem } from "@/lib/jobs/types";
 import { getSiteUrl } from "@/lib/seo/site";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
-import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import {
   parseDocumentUploadsAccessModeSetting,
@@ -58,6 +62,16 @@ const CHAT_PAGE_INITIAL_MESSAGE_LIMIT =
 const CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS = 15;
 const CHAT_PAGE_PENDING_WINDOW_MS = 15_000;
 const CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS = 4000;
+const CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS = 8000;
+const CHAT_PAGE_FEATURE_ACCESS_TIMEOUT_MS = 2000;
+const CHAT_PAGE_FEATURE_ACCESS_KEYS = [
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+] as const;
 
 function buildUnavailableImageGenerationAccess(userRole: string | null) {
   return {
@@ -119,13 +133,55 @@ export default async function Page(props: {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
   }
 
-  const chat = await getChatByIdCached(id).catch((error) => {
+  const chat = await withTimeout(
+    getChatByIdCached(id),
+    CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS,
+    () => {
+      console.error("[chat] chat lookup timed out.", {
+        chatId: id,
+        timeoutMs: CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
     throw error;
   });
 
   const isPendingRecentChat =
     recentChatCookie?.chatId === id &&
     Date.now() - recentChatCookie.timestamp <= CHAT_PAGE_PENDING_WINDOW_MS;
+  const userRole = session.user?.role ?? null;
+  const isAdmin = userRole === "admin";
+
+  if (!chat && !isPendingRecentChat) {
+    redirect("/chat");
+  }
+
+  if (chat?.deletedAt && !isAdmin) {
+    redirect("/");
+  }
+
+  if (chat?.visibility === "private" && !isAdmin) {
+    if (!session.user?.id || session.user.id !== chat.userId) {
+      return notFound();
+    }
+  }
+
+  const deletedBanner = Boolean(chat?.deletedAt) && isAdmin;
+  const messagesPromise = chat
+    ? withTimeout(
+        getMessagesByChatIdPage({
+          id,
+          limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
+        }),
+        CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS,
+        () => {
+          console.error("[chat] initial messages query timed out.", {
+            chatId: id,
+            timeoutMs: CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS,
+          });
+        }
+      )
+    : Promise.resolve({ messages: [], hasMore: false });
   const safeOptionalQuery = <T,>(
     label: string,
     promise: Promise<T>,
@@ -143,92 +199,65 @@ export default async function Page(props: {
     modelsResult,
     translationBundle,
     languageSettings,
-    customKnowledgeSetting,
-    documentUploadsSetting,
-    studyModeSetting,
-    jobsModeSetting,
-    voiceChatWebSetting,
-    voiceChatLegacySetting,
+    featureAccessSettings,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
-    getTranslationBundle(preferredLanguage),
+    deletedBanner
+      ? safeOptionalQuery(
+          "translation bundle",
+          getTranslationBundle(preferredLanguage),
+          getFallbackTranslationBundle(preferredLanguage)
+        )
+      : Promise.resolve({ dictionary: {} }),
     // Cached via `unstable_cache` and avoids a per-request DB query.
     safeOptionalQuery("languages", getActiveLanguages(), []),
-    safeOptionalQuery(
-      "custom knowledge flag",
-      getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY),
-      null
-    ),
-    safeOptionalQuery(
-      "document uploads flag",
-      getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY),
-      null
-    ),
-    safeOptionalQuery(
-      "study mode flag",
-      getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY),
-      null
-    ),
-    safeOptionalQuery(
-      "jobs mode flag",
-      getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY),
-      null
-    ),
-    safeOptionalQuery(
-      "web voice chat flag",
-      getAppSetting<string | boolean>(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
-      null
-    ),
-    safeOptionalQuery(
-      "legacy voice chat flag",
-      getAppSetting<string | boolean>(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
-      null
-    ),
+    loadFeatureAccessSettingsByKeys(CHAT_PAGE_FEATURE_ACCESS_KEYS, {
+      source: "chat.detail.feature-access",
+      timeoutMs: CHAT_PAGE_FEATURE_ACCESS_TIMEOUT_MS,
+    }),
     withTimeout(
-      getImageGenerationAccess({
-        userId: session?.user?.id ?? null,
-        userRole: session?.user?.role ?? null,
-      }),
+      getImageGenerationAvailability({ userRole }).then(
+        buildImageGenerationAccessFromAvailability
+      ),
       CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
       () => {
-        console.error("[chat] image generation access timed out.", {
+        console.error("[chat] image generation availability timed out.", {
           timeoutMs: CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
         });
       }
-    ).catch(async (error) => {
-      console.error("[chat] image generation access failed.", error);
-      return withTimeout(
-        getImageGenerationAvailability({
-          userRole: session?.user?.role ?? null,
-        }),
-        CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
-        () => {
-          console.error("[chat] image generation availability timed out.", {
-            timeoutMs: CHAT_PAGE_OPTIONAL_QUERY_TIMEOUT_MS,
-          });
-        }
-      )
-        .then(buildImageGenerationAccessFromAvailability)
-        .catch((fallbackError) => {
-          console.error(
-            "[chat] image generation availability fallback failed.",
-            fallbackError
-          );
-          return buildUnavailableImageGenerationAccess(
-            session?.user?.role ?? null
-          );
-        });
+    ).catch((error) => {
+      console.error("[chat] image generation availability failed.", error);
+      return buildUnavailableImageGenerationAccess(userRole);
     }),
   ]);
   const { dictionary } = translationBundle;
+  const featureAccessUnavailable = featureAccessSettings.status === "unavailable";
+  const getFeatureSetting = (key: string) => {
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
+    if (value !== undefined) {
+      return value;
+    }
+    return featureAccessUnavailable ? "enabled" : null;
+  };
+  const customKnowledgeSetting = getFeatureSetting(
+    CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY
+  );
+  const documentUploadsSetting = getFeatureSetting(
+    DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+  );
+  const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
+  const jobsModeSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const voiceChatWebSetting = getFeatureSetting(VOICE_CHAT_WEB_FEATURE_FLAG_KEY);
+  const voiceChatLegacySetting = getFeatureSetting(
+    VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
+  );
   const customKnowledgeEnabled =
     typeof customKnowledgeSetting === "boolean"
       ? customKnowledgeSetting
       : typeof customKnowledgeSetting === "string"
         ? customKnowledgeSetting.toLowerCase() === "true"
-        : false;
-  const userRole = session?.user?.role ?? null;
+        : featureAccessUnavailable;
   const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
     documentUploadsSetting
   );
@@ -248,18 +277,6 @@ export default async function Page(props: {
     parseVoiceChatAccessModeSetting(voiceChatSettings.web),
     userRole
   );
-  const [suggestedPrompts, iconPromptActions] = await Promise.all([
-    safeOptionalQuery(
-      "suggested prompts",
-      loadSuggestedPrompts(preferredLanguage, userRole),
-      []
-    ),
-    safeOptionalQuery(
-      "icon prompt actions",
-      loadIconPromptActions(preferredLanguage, userRole),
-      []
-    ),
-  ]);
   const activeLanguageSettings = languageSettings.map((language) => ({
     id: language.id,
     code: language.code,
@@ -268,27 +285,7 @@ export default async function Page(props: {
     isActive: language.isActive,
     syncUiLanguage: language.syncUiLanguage,
   }));
-  const isAdmin = session.user?.role === "admin";
-
-  if (!chat && !isPendingRecentChat) {
-    redirect("/chat");
-  }
-
-  if (chat?.deletedAt && !isAdmin) {
-    redirect("/");
-  }
-
   const { defaultModel, models } = modelsResult;
-
-  if (chat?.visibility === "private" && !isAdmin) {
-    if (!session.user) {
-      return notFound();
-    }
-
-    if (session.user.id !== chat.userId) {
-      return notFound();
-    }
-  }
 
   const fallbackChatMode =
     requestedMode === "study"
@@ -322,23 +319,18 @@ export default async function Page(props: {
       }
     }
   }
-  const jobsListItems =
-    chatMode === "jobs"
-      ? await listJobListItems()
-          .catch((error) => {
-            console.error("[chat] Failed to load jobs list for jobs mode", error);
-            return [];
-          })
-      : [];
+  const jobsListItems: JobListItem[] = [];
 
-  const { messages: messagesFromDb, hasMore: hasMoreMessages } = chat
-    ? await getMessagesByChatIdPage({
-        id,
-        limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
-      }).catch((error) => {
-        throw error;
-      })
-    : { messages: [], hasMore: false };
+  let initialMessagesDegraded = false;
+  const { messages: messagesFromDb, hasMore: hasMoreMessages } =
+    await messagesPromise.catch((error) => {
+      initialMessagesDegraded = true;
+      console.error("[chat] initial messages query failed.", {
+        chatId: id,
+        error: error instanceof Error ? error.message : error,
+      });
+      return { messages: [], hasMore: false };
+    });
 
   const uiMessages = rewriteDocumentUrlsForViewer({
     messages: convertToUIMessages(messagesFromDb),
@@ -360,8 +352,6 @@ export default async function Page(props: {
     typeof chatLanguageFromCookie?.value === "string"
       ? chatLanguageFromCookie.value
       : preferredLanguage ?? "";
-
-  const deletedBanner = Boolean(chat?.deletedAt) && isAdmin;
 
   const resolvedChatId = chat?.id ?? id;
   const payload: CachedChatPagePayload = {
@@ -392,13 +382,14 @@ export default async function Page(props: {
       jobsListItems,
       initialJobContext: null,
       initialMessages: uiMessages,
+      initialMessagesDegraded,
       initialHasMoreHistory: hasMoreMessages,
       initialOldestMessageAt: oldestMessageAt,
       initialVisibilityType: chat?.visibility ?? "private",
       isReadonly: chat ? session?.user?.id !== chat.userId : false,
       languageSettings: activeLanguageSettings,
-      suggestedPrompts: chatMode === "default" ? suggestedPrompts : [],
-      iconPromptActions: chatMode === "default" ? iconPromptActions : [],
+      suggestedPrompts: [],
+      iconPromptActions: [],
     },
   };
 

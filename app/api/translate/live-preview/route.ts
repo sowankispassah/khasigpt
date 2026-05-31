@@ -3,11 +3,11 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { TRANSLATE_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
-  getAppSetting,
   getLastKnownAppSetting,
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import {
   buildLiveTranscriptAndTranslationPrompt,
@@ -72,18 +72,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const rawTranslateSetting = await withTimeout(
-    getAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY),
-    TRANSLATE_SETTING_TIMEOUT_MS
-  ).catch(() =>
-    getLastKnownAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY)
+  const translateAccessSettings = await loadFeatureAccessSettingsByKeys(
+    [TRANSLATE_FEATURE_FLAG_KEY],
+    {
+      source: "api.translate.live-preview.feature-access",
+      timeoutMs: TRANSLATE_SETTING_TIMEOUT_MS,
+    }
   );
 
+  const rawTranslateSetting =
+    translateAccessSettings.values.get(TRANSLATE_FEATURE_FLAG_KEY) ??
+    getLastKnownAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY);
   const translateMode = parseTranslateAccessModeSetting(rawTranslateSetting);
-  const translateEnabled = isFeatureEnabledForRole(
-    translateMode,
-    session.user.role
-  );
+  const translateSettingsUnavailable =
+    translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
+  const translateEnabled =
+    translateSettingsUnavailable ||
+    isFeatureEnabledForRole(translateMode, session.user.role);
 
   if (!translateEnabled) {
     return Response.json({ message: "Not found" }, { status: 404 });
@@ -94,7 +99,10 @@ export async function POST(request: Request) {
       parsedBody.data.targetLanguageCode.toLowerCase()
     ),
     LIVE_PREVIEW_TIMEOUT_MS
-  );
+  ).catch((error) => {
+    console.error("[api/translate/live-preview] Failed to load language.", error);
+    return null;
+  });
 
   if (!targetLanguage || !targetLanguage.isActive) {
     return Response.json(

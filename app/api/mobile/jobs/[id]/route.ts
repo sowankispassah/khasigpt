@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { getJobsAccessForRole } from "@/lib/jobs/config";
 import { resolveJobNotificationDateLabel } from "@/lib/jobs/dates";
 import { resolveJobSalaryInfo } from "@/lib/jobs/salary";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
-import { createJobPreviewToken } from "@/lib/mobile-auth-token";
 import { getJobPostingById } from "@/lib/jobs/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { createJobPreviewToken } from "@/lib/mobile-auth-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,8 +95,8 @@ export async function GET(
     );
   }
 
-  const jobsEnabled = await isJobsEnabledForRole(session.user.role ?? null);
-  if (!jobsEnabled) {
+  const jobsAccess = await getJobsAccessForRole(session.user.role ?? null);
+  if (!jobsAccess.enabled) {
     return NextResponse.json(
       {
         code: "forbidden:auth",
@@ -143,6 +143,9 @@ export async function GET(
 
   return NextResponse.json(
     {
+      meta: {
+        degradedSections: jobsAccess.degraded ? ["featureGate"] : [],
+      },
       id: job.id,
       title: job.title,
       company: job.company,

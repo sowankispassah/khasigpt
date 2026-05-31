@@ -147,6 +147,10 @@ import {
   sanitizeComingSoonTimerInput,
 } from "@/lib/settings/coming-soon";
 import {
+  FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+  rememberFeatureAccessSettingValue,
+} from "@/lib/settings/feature-access-settings";
+import {
   buildQuestionPaperMetadata,
   extractStudyYear,
   getQuestionPaperById,
@@ -433,7 +437,14 @@ async function updateFeatureAccessModeSetting({
     throw new Error("Failed to verify saved feature access mode.");
   }
 
-  revalidateAppSettingCache(settingKey, auditAction);
+  rememberFeatureAccessSettingValue(settingKey, persistedMode);
+  invalidateAdminMutation({
+    source: auditAction,
+    tags: [
+      appSettingCacheTagForKey(settingKey),
+      FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+    ],
+  });
   void createAuditLogEntrySafely({
     actorId,
     action: auditAction,

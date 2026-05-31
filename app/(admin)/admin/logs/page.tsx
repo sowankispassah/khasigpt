@@ -1,7 +1,7 @@
 import { formatDistanceToNow } from "date-fns";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import { getAuditLogCount, listAuditLog } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +23,8 @@ export default async function AdminAuditLogPage({
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const offset = (requestedPage - 1) * AUDIT_LOG_PAGE_SIZE;
 
-  const [auditEntries, totalEntries] = await Promise.all([
-    adminQueryOr({
+  const [auditEntriesState, totalEntriesState] = await Promise.all([
+    adminQueryResult({
       fallback: [] as Awaited<ReturnType<typeof listAuditLog>>,
       label: "audit-log.entries",
       promise: listAuditLog({
@@ -32,19 +32,24 @@ export default async function AdminAuditLogPage({
         offset,
       }),
     }),
-    adminQueryOr({
+    adminQueryResult({
       fallback: 0,
       label: "audit-log.count",
       promise: getAuditLogCount(),
     }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(totalEntries / AUDIT_LOG_PAGE_SIZE));
-  const page = Math.min(requestedPage, totalPages);
-  const pagedEntries =
-    page === requestedPage
-      ? auditEntries
-      : await adminQueryOr({
+  const totalEntries = totalEntriesState.data;
+  const totalPages = totalEntriesState.ok
+    ? Math.max(1, Math.ceil(totalEntries / AUDIT_LOG_PAGE_SIZE))
+    : requestedPage;
+  const page = totalEntriesState.ok
+    ? Math.min(requestedPage, totalPages)
+    : requestedPage;
+  const pagedEntriesState =
+    page === requestedPage || !auditEntriesState.ok
+      ? auditEntriesState
+      : await adminQueryResult({
           fallback: [] as Awaited<ReturnType<typeof listAuditLog>>,
           label: "audit-log.corrected-page",
           promise: listAuditLog({
@@ -52,6 +57,8 @@ export default async function AdminAuditLogPage({
             offset: (page - 1) * AUDIT_LOG_PAGE_SIZE,
           }),
         });
+  const pagedEntries = pagedEntriesState.data;
+  const entriesConfirmed = pagedEntriesState.ok;
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,6 +70,18 @@ export default async function AdminAuditLogPage({
       </header>
 
       <div className="rounded-lg border bg-card p-4 shadow-sm">
+        {(!entriesConfirmed || !totalEntriesState.ok) && (
+          <AdminAuditWarning
+            message={[
+              !entriesConfirmed ? "Audit rows could not be confirmed." : null,
+              !totalEntriesState.ok
+                ? "Audit entry total could not be confirmed."
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          />
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
@@ -78,7 +97,13 @@ export default async function AdminAuditLogPage({
               </tr>
             </thead>
             <tbody>
-              {pagedEntries.length === 0 ? (
+              {!entriesConfirmed ? (
+                <tr>
+                  <td className="py-4 text-muted-foreground" colSpan={8}>
+                    Unable to load audit entries.
+                  </td>
+                </tr>
+              ) : pagedEntries.length === 0 ? (
                 <tr>
                   <td className="py-4 text-muted-foreground" colSpan={8}>
                     No audit entries available yet.
@@ -129,10 +154,18 @@ export default async function AdminAuditLogPage({
             pageSize={AUDIT_LOG_PAGE_SIZE}
             pathname="/admin/logs"
             searchParams={resolvedSearchParams}
-            totalItems={totalEntries}
+            totalItems={totalEntriesState.ok ? totalEntries : pagedEntries.length}
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function AdminAuditWarning({ message }: { message: string }) {
+  return (
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {message} Refresh this admin section to retry.
     </div>
   );
 }

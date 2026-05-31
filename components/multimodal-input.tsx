@@ -72,6 +72,59 @@ type VoiceConversationPair = {
   userText: string;
 };
 
+const VOICE_TURN_SAVE_TIMEOUT_MS = 20_000;
+
+async function postVoiceTurn(
+  payload: {
+    assistantMessageId: string;
+    assistantText: string;
+    chatId: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    selectedVisibilityType: VisibilityType;
+    userMessageId: string;
+    userText: string;
+  },
+  fallbackMessage: string
+) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    VOICE_TURN_SAVE_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch("/api/chat/voice-turn", {
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+      signal: controller.signal,
+    });
+    if (response.ok) {
+      return;
+    }
+
+    const responseBody = await response.json().catch(() => null);
+    const message =
+      responseBody &&
+      typeof responseBody === "object" &&
+      "message" in responseBody &&
+      typeof responseBody.message === "string"
+        ? responseBody.message
+        : fallbackMessage;
+    throw new Error(message);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(fallbackMessage);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 function buildVoiceConversationPairs(
   voiceMessages: WebGeminiVoiceConversationMessage[]
 ) {
@@ -406,64 +459,63 @@ function PureMultimodalInput({
 
   const saveVoiceConversation = useCallback(
     async (conversationMessages: WebGeminiVoiceConversationMessage[]) => {
+      setIsVoiceSaving(true);
       const pairs = buildVoiceConversationPairs(conversationMessages);
-      if (pairs.length === 0) {
-        throw new Error(
-          translate(
-            "voice.chat.empty_result",
-            "I could not hear enough speech. Please try again."
-          )
-        );
-      }
-
-      const messagePairs = pairs.map((pair) => ({
-        ...pair,
-        assistantMessageId: crypto.randomUUID(),
-        userMessageId: crypto.randomUUID(),
-      }));
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        ...messagePairs.flatMap((pair) => [
-          {
-            id: pair.userMessageId,
-            metadata: { createdAt: new Date().toISOString() },
-            parts: [{ type: "text" as const, text: pair.userText }],
-            role: "user" as const,
-          },
-          {
-            id: pair.assistantMessageId,
-            metadata: { createdAt: new Date().toISOString() },
-            parts: [{ type: "text" as const, text: pair.assistantText }],
-            role: "assistant" as const,
-          },
-        ]),
-      ]);
-
-      for (const pair of messagePairs) {
-        const response = await fetch("/api/chat/voice-turn", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            assistantMessageId: pair.assistantMessageId,
-            assistantText: pair.assistantText,
-            chatId: _chatId,
-            inputTokens: pair.inputTokens,
-            outputTokens: pair.outputTokens,
-            selectedVisibilityType: _selectedVisibilityType,
-            userMessageId: pair.userMessageId,
-            userText: pair.userText,
-          }),
-        });
-        if (!response.ok) {
+      try {
+        if (pairs.length === 0) {
           throw new Error(
-            translate("voice.chat.save_failed", "Unable to save this voice chat.")
+            translate(
+              "voice.chat.empty_result",
+              "I could not hear enough speech. Please try again."
+            )
           );
         }
-      }
 
-      onVoiceTurnSaved?.();
+        const messagePairs = pairs.map((pair) => ({
+          ...pair,
+          assistantMessageId: crypto.randomUUID(),
+          userMessageId: crypto.randomUUID(),
+        }));
+        const saveFailedMessage = translate(
+          "voice.chat.save_failed",
+          "Unable to save this voice chat."
+        );
+
+        for (const pair of messagePairs) {
+          await postVoiceTurn(
+            {
+              assistantMessageId: pair.assistantMessageId,
+              assistantText: pair.assistantText,
+              chatId: _chatId,
+              inputTokens: pair.inputTokens,
+              outputTokens: pair.outputTokens,
+              selectedVisibilityType: _selectedVisibilityType,
+              userMessageId: pair.userMessageId,
+              userText: pair.userText,
+            },
+            saveFailedMessage
+          );
+          setMessages((currentMessages) => [
+            ...currentMessages,
+            {
+              id: pair.userMessageId,
+              metadata: { createdAt: new Date().toISOString() },
+              parts: [{ type: "text" as const, text: pair.userText }],
+              role: "user" as const,
+            },
+            {
+              id: pair.assistantMessageId,
+              metadata: { createdAt: new Date().toISOString() },
+              parts: [{ type: "text" as const, text: pair.assistantText }],
+              role: "assistant" as const,
+            },
+          ]);
+        }
+
+        onVoiceTurnSaved?.();
+      } finally {
+        setIsVoiceSaving(false);
+      }
     },
     [_chatId, _selectedVisibilityType, onVoiceTurnSaved, setMessages, translate]
   );

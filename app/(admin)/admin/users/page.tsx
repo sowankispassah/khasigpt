@@ -2,7 +2,10 @@ import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import {
+  type AdminQueryResult,
+  adminQueryResult,
+} from "@/lib/admin/safe-query";
 import {
   getUserBalanceSummaries,
   getUserCount,
@@ -17,19 +20,6 @@ export const dynamic = "force-dynamic";
 
 const ADMIN_USERS_QUERY_TIMEOUT_MS = 5000;
 const USERS_PAGE_SIZE = 25;
-
-const EMPTY_USER_BALANCE: UserBalanceSummary = {
-  subscription: null,
-  plan: null,
-  tokensRemaining: 0,
-  tokensTotal: 0,
-  creditsRemaining: 0,
-  creditsTotal: 0,
-  allocatedCredits: 0,
-  rechargedCredits: 0,
-  expiresAt: null,
-  startedAt: null,
-};
 
 function parsePage(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -48,20 +38,20 @@ export default async function AdminUsersPage({
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const offset = (requestedPage - 1) * USERS_PAGE_SIZE;
 
-  const withQueryFallback = async <T,>(
+  const withQueryState = async <T,>(
     label: string,
     promise: Promise<T>,
     fallback: T
   ) =>
-    adminQueryOr({
+    adminQueryResult({
       fallback,
       label,
       promise,
       timeoutMs: ADMIN_USERS_QUERY_TIMEOUT_MS,
     });
 
-  const [users, totalUsers] = await Promise.all([
-    withQueryFallback(
+  const [usersState, totalUsersState] = await Promise.all([
+    withQueryState(
       "users.list",
       listUsers({
         limit: USERS_PAGE_SIZE,
@@ -69,16 +59,21 @@ export default async function AdminUsersPage({
       }),
       []
     ),
-    withQueryFallback("users.count", getUserCount(), 0),
+    withQueryState("users.count", getUserCount(), 0),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE));
-  const page = Math.min(requestedPage, totalPages);
+  const totalUsers = totalUsersState.data;
+  const totalPages = totalUsersState.ok
+    ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
+    : requestedPage;
+  const page = totalUsersState.ok
+    ? Math.min(requestedPage, totalPages)
+    : requestedPage;
   const pageOffset = (page - 1) * USERS_PAGE_SIZE;
-  const pagedUsers =
-    pageOffset === offset
-      ? users
-      : await withQueryFallback(
+  const pagedUsersState =
+    pageOffset === offset || !usersState.ok
+      ? usersState
+      : await withQueryState(
           "users.corrected-page",
           listUsers({
             limit: USERS_PAGE_SIZE,
@@ -86,13 +81,14 @@ export default async function AdminUsersPage({
           }),
           []
         );
+  const pagedUsers = pagedUsersState.data;
 
-  const balanceByUserIdPromise = withQueryFallback(
+  const balanceByUserIdPromise = withQueryState(
     "users.balance-summaries",
     getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
     new Map<string, UserBalanceSummary>()
   );
-  const activeSubscriptionsPromise = withQueryFallback(
+  const activeSubscriptionsPromise = withQueryState(
     "users.active-subscriptions",
     listActiveSubscriptionSummaries({ limit: 20 }),
     []
@@ -108,9 +104,25 @@ export default async function AdminUsersPage({
           </p>
         </div>
         <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
-          {totalUsers.toLocaleString()} users
+          {totalUsersState.ok
+            ? `${totalUsers.toLocaleString()} users`
+            : "User count unavailable"}
         </span>
       </header>
+
+      {(!usersState.ok || !totalUsersState.ok) && (
+        <AdminUsersQueryWarning
+          message={[
+            !usersState.ok ? "User list could not be confirmed." : null,
+            !pagedUsersState.ok && pagedUsersState !== usersState
+              ? "This page could not be confirmed."
+              : null,
+            !totalUsersState.ok ? "User count could not be confirmed." : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        />
+      )}
 
       <Suspense fallback={<UsersTableFallback />}>
         <UsersTableSection
@@ -120,6 +132,8 @@ export default async function AdminUsersPage({
           pagedUsers={pagedUsers}
           resolvedSearchParams={resolvedSearchParams}
           totalUsers={totalUsers}
+          totalUsersConfirmed={totalUsersState.ok}
+          usersConfirmed={pagedUsersState.ok}
         />
       </Suspense>
 
@@ -139,18 +153,28 @@ async function UsersTableSection({
   pagedUsers,
   resolvedSearchParams,
   totalUsers,
+  totalUsersConfirmed,
+  usersConfirmed,
 }: {
-  balanceByUserIdPromise: Promise<Map<string, UserBalanceSummary>>;
+  balanceByUserIdPromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
   currentUserId: string | undefined;
   page: number;
   pagedUsers: Awaited<ReturnType<typeof listUsers>>;
   resolvedSearchParams: Record<string, string | string[] | undefined> | undefined;
   totalUsers: number;
+  totalUsersConfirmed: boolean;
+  usersConfirmed: boolean;
 }) {
-  const balanceByUserId = await balanceByUserIdPromise;
+  const balanceByUserIdState = await balanceByUserIdPromise;
+  const balanceByUserId = balanceByUserIdState.data;
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
+      {!balanceByUserIdState.ok && (
+        <AdminUsersQueryWarning message="Credit balances could not be confirmed. Rows keep credit actions available, but balances are shown as unavailable instead of zero." />
+      )}
       <div className="overflow-x-auto">
         <table className="w-full whitespace-nowrap text-sm">
           <thead className="text-muted-foreground text-xs uppercase">
@@ -162,7 +186,13 @@ async function UsersTableSection({
             </tr>
           </thead>
           <tbody>
-            {pagedUsers.length === 0 ? (
+            {!usersConfirmed ? (
+              <tr>
+                <td className="py-6 text-muted-foreground" colSpan={4}>
+                  Unable to load users for this page.
+                </td>
+              </tr>
+            ) : pagedUsers.length === 0 ? (
               <tr>
                 <td className="py-6 text-muted-foreground" colSpan={4}>
                   No users found.
@@ -197,8 +227,9 @@ async function UsersTableSection({
                       />
                       <AddCreditsForm
                         creditsRemaining={
-                          (balanceByUserId.get(user.id) ?? EMPTY_USER_BALANCE)
-                            .creditsRemaining
+                          balanceByUserIdState.ok
+                            ? balanceByUserId.get(user.id)?.creditsRemaining ?? 0
+                            : null
                         }
                         userId={user.id}
                       />
@@ -218,7 +249,7 @@ async function UsersTableSection({
           pageSize={USERS_PAGE_SIZE}
           pathname="/admin/users"
           searchParams={resolvedSearchParams}
-          totalItems={totalUsers}
+          totalItems={totalUsersConfirmed ? totalUsers : pagedUsers.length}
         />
       </div>
     </div>
@@ -229,10 +260,11 @@ async function ActiveSubscriptionsSection({
   activeSubscriptionsPromise,
 }: {
   activeSubscriptionsPromise: Promise<
-    Awaited<ReturnType<typeof listActiveSubscriptionSummaries>>
+    AdminQueryResult<Awaited<ReturnType<typeof listActiveSubscriptionSummaries>>>
   >;
 }) {
-  const activeSubscriptions = await activeSubscriptionsPromise;
+  const activeSubscriptionsState = await activeSubscriptionsPromise;
+  const activeSubscriptions = activeSubscriptionsState.data;
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
@@ -244,6 +276,9 @@ async function ActiveSubscriptionsSection({
           </p>
         </div>
       </div>
+      {!activeSubscriptionsState.ok && (
+        <AdminUsersQueryWarning message="Active subscriptions could not be confirmed. Existing rows are hidden until this section loads real data." />
+      )}
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="text-muted-foreground text-xs uppercase">
@@ -255,7 +290,13 @@ async function ActiveSubscriptionsSection({
             </tr>
           </thead>
           <tbody>
-            {activeSubscriptions.length === 0 ? (
+            {!activeSubscriptionsState.ok ? (
+              <tr>
+                <td className="py-4 text-muted-foreground" colSpan={4}>
+                  Unable to load active subscriptions.
+                </td>
+              </tr>
+            ) : activeSubscriptions.length === 0 ? (
               <tr>
                 <td className="py-4 text-muted-foreground" colSpan={4}>
                   No active subscriptions yet.
@@ -290,6 +331,14 @@ async function ActiveSubscriptionsSection({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function AdminUsersQueryWarning({ message }: { message: string }) {
+  return (
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {message} Refresh this admin section to retry.
     </div>
   );
 }

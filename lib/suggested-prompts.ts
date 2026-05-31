@@ -4,7 +4,9 @@ import {
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import {
-  getAppSettingsByKeys,
+  getLiteAppSettingsByKeysUncached,
+} from "@/lib/db/app-settings-lite";
+import {
   getLastKnownAppSettingsByKeys,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -51,7 +53,9 @@ const SUGGESTED_PROMPT_SETTING_KEYS = [
 
 async function loadSuggestedPromptSettings() {
   try {
-    const settings = await getAppSettingsByKeys(SUGGESTED_PROMPT_SETTING_KEYS);
+    const settings = await getLiteAppSettingsByKeysUncached(
+      SUGGESTED_PROMPT_SETTING_KEYS
+    );
     return new Map(settings.map((setting) => [setting.key, setting.value]));
   } catch (error) {
     console.warn("Failed to load suggested prompt settings; falling back.", error);

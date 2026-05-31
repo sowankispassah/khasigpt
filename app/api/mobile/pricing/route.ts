@@ -51,7 +51,13 @@ export async function GET(request: Request) {
   if (!pricing || !balance) {
     return NextResponse.json(
       {
-        degraded: true,
+        meta: {
+          degraded: true,
+          degradedSections: [
+            !pricing ? "pricing" : null,
+            !balance ? "balance" : null,
+          ].filter((section): section is string => Boolean(section)),
+        },
         message: "Pricing could not be loaded right now. Please retry.",
       },
       { headers: noStoreHeaders(), status: 503 }
@@ -61,6 +67,10 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       ...pricing,
+      meta: {
+        degraded: false,
+        degradedSections: [],
+      },
       balance,
     },
     { headers: noStoreHeaders() }

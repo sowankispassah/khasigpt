@@ -21,6 +21,7 @@ import {
   UserDropdownMenu,
   UserMenuTrigger,
 } from "@/components/user-dropdown-menu";
+import { setClientCookie } from "@/lib/ui/client-cookies";
 import { cn } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
@@ -227,10 +228,11 @@ export function PageUserMenu({
         // Ignore storage errors.
       }
       try {
-        const encoded = encodeURIComponent(code);
-        document.cookie = `chat-language=${encoded}; path=/; max-age=${
-          60 * 60 * 24 * 365
-        }; samesite=lax`;
+        setClientCookie({
+          maxAge: 60 * 60 * 24 * 365,
+          name: "chat-language",
+          value: code,
+        });
       } catch {
         // Ignore cookie errors.
       }

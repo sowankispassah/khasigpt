@@ -11,7 +11,7 @@ import {
   streamText,
   wrapLanguageModel,
 } from "ai";
-import { unstable_cache as cache } from "next/cache";
+import { unstable_cache } from "next/cache";
 import { after } from "next/server";
 import {
   createResumableStreamContext,
@@ -43,7 +43,6 @@ import {
   createStreamId,
   deleteChatById,
   getActiveSubscriptionForUser,
-  getAppSetting,
   getChatById,
   getLanguageByCodeRaw,
   getMessageCountByUserId,
@@ -93,6 +92,10 @@ import {
 } from "@/lib/rag/service";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import {
   getStudyQuestionIndexCached,
@@ -133,6 +136,14 @@ import { type PostRequestBody, postRequestBodySchema } from "./schema";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 export const runtime = "nodejs";
+
+const CHAT_API_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
+const CHAT_API_FEATURE_ACCESS_KEYS = [
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+] as const;
 
 let globalStreamContext: ResumableStreamContext | null = null;
 let streamContextDisabled = false;
@@ -187,27 +198,58 @@ const CHAT_CONTEXT_MESSAGE_LIMIT =
     : 120;
 const PRE_MODEL_LATENCY_LOG_THRESHOLD_MS = 1_000;
 const FIRST_CHUNK_LATENCY_LOG_THRESHOLD_MS = 2_000;
+const TOKENLENS_CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
+
+let tokenlensCatalog: ModelCatalog | undefined;
+let tokenlensCatalogExpiresAt = 0;
+let tokenlensCatalogPromise: Promise<ModelCatalog | undefined> | null = null;
 
 const getUsageNumber = (value: unknown): number =>
   typeof value === "number" ? value : 0;
 
-const getTokenlensCatalog = cache(
-  async (): Promise<ModelCatalog | undefined> => {
-    try {
-      return await fetchModels();
-    } catch (err) {
-      console.warn(
-        "TokenLens: catalog fetch failed, using default catalog",
-        err
-      );
-      return; // tokenlens helpers will fall back to defaultCatalog
-    }
-  },
-  ["tokenlens-catalog"],
-  { revalidate: 24 * 60 * 60 } // 24 hours
-);
+function isNoOutputGeneratedError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
 
-const getLanguageConfigByCodeCached = cache(
+  return (
+    error.name === "AI_NoOutputGeneratedError" ||
+    error.message.toLowerCase().includes("no output generated")
+  );
+}
+
+async function getTokenlensCatalog(): Promise<ModelCatalog | undefined> {
+  if (process.env.PLAYWRIGHT === "true") {
+    return undefined;
+  }
+
+  const now = Date.now();
+  if (tokenlensCatalog && tokenlensCatalogExpiresAt > now) {
+    return tokenlensCatalog;
+  }
+  if (tokenlensCatalogPromise) {
+    return tokenlensCatalogPromise;
+  }
+
+  tokenlensCatalogPromise = fetchModels()
+    .then((catalog) => {
+      tokenlensCatalog = catalog;
+      tokenlensCatalogExpiresAt = Date.now() + TOKENLENS_CATALOG_TTL_MS;
+      return catalog;
+    })
+    .catch((err) => {
+      console.warn("TokenLens: catalog fetch failed, using default catalog", err);
+      tokenlensCatalogExpiresAt = Date.now() + 5 * 60 * 1000;
+      return undefined;
+    })
+    .finally(() => {
+      tokenlensCatalogPromise = null;
+    });
+
+  return tokenlensCatalogPromise;
+}
+
+const getLanguageConfigByCodeCached = unstable_cache(
   async (code: string) => getLanguageByCodeRaw(code),
   ["chat-language-config"],
   { tags: ["languages"] }
@@ -1157,17 +1199,11 @@ export async function POST(request: Request) {
         loadFreeMessageSettings()
       ),
       measurePreModelStep("get_model_registry", () => getModelRegistry()),
-      measurePreModelStep("get_setting_custom_knowledge", () =>
-        getAppSetting<string | boolean>(CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY)
-      ),
-      measurePreModelStep("get_setting_document_uploads", () =>
-        getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY)
-      ),
-      measurePreModelStep("get_setting_study_mode", () =>
-        getAppSetting<string | boolean>(STUDY_MODE_FEATURE_FLAG_KEY)
-      ),
-      measurePreModelStep("get_setting_jobs_mode", () =>
-        getAppSetting<string | boolean>(JOBS_FEATURE_FLAG_KEY)
+      measurePreModelStep("get_feature_access_settings", () =>
+        loadFeatureAccessSettingsByKeys(CHAT_API_FEATURE_ACCESS_KEYS, {
+          source: "api.chat.feature-access",
+          timeoutMs: CHAT_API_FEATURE_ACCESS_TIMEOUT_MS,
+        })
       ),
     ]);
     const activeSubscriptionPromise = measurePreModelStep(
@@ -1184,10 +1220,7 @@ export async function POST(request: Request) {
       [
         freeMessageSettings,
         registry,
-        customKnowledgeSetting,
-        documentUploadsSetting,
-        studyModeSetting,
-        jobsModeSetting,
+        featureAccessSettings,
       ],
       activeSubscription,
       chat,
@@ -1274,12 +1307,33 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
+    const featureAccessUnavailable =
+      featureAccessSettings.status === "unavailable";
+    const getFeatureAccessModeSetting = (key: string) =>
+      getFeatureAccessModeSettingValue(featureAccessSettings, key);
+    const getFeatureSetting = (key: string) => {
+      const value = featureAccessSettings.values.get(key);
+      if (value !== undefined) {
+        return value;
+      }
+      return featureAccessUnavailable ? "enabled" : null;
+    };
+    const customKnowledgeSetting = getFeatureSetting(
+      CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY
+    );
+    const documentUploadsSetting = getFeatureAccessModeSetting(
+      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+    );
+    const studyModeSetting = getFeatureAccessModeSetting(
+      STUDY_MODE_FEATURE_FLAG_KEY
+    );
+    const jobsModeSetting = getFeatureAccessModeSetting(JOBS_FEATURE_FLAG_KEY);
     const customKnowledgeEnabled =
       typeof customKnowledgeSetting === "boolean"
         ? customKnowledgeSetting
         : typeof customKnowledgeSetting === "string"
           ? customKnowledgeSetting.toLowerCase() === "true"
-          : false;
+          : featureAccessUnavailable;
     const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
       documentUploadsSetting
     );
@@ -3419,6 +3473,10 @@ export async function POST(request: Request) {
         }
       })
       .catch((error) => {
+        if (isNoOutputGeneratedError(error)) {
+          resolveUsageReady?.();
+          return;
+        }
         console.warn("Unable to resolve stream usage", { chatId: id }, error);
       });
 

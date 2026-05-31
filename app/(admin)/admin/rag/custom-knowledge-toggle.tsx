@@ -62,8 +62,10 @@ async function saveCustomKnowledgeSetting(enabled: boolean) {
 
 export function CustomKnowledgeToggle({
   initialEnabled,
+  isDegraded = false,
 }: {
   initialEnabled: boolean;
+  isDegraded?: boolean;
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [lastSavedEnabled, setLastSavedEnabled] = useState(initialEnabled);
@@ -78,6 +80,7 @@ export function CustomKnowledgeToggle({
   }, [initialEnabled, isSaving]);
 
   const isDirty = enabled !== lastSavedEnabled;
+  const isDisabled = isSaving || isDegraded;
 
   const handleSave = async () => {
     if (isSaving) {
@@ -113,7 +116,7 @@ export function CustomKnowledgeToggle({
         <input
           checked={enabled}
           className="h-4 w-4 cursor-pointer"
-          disabled={isSaving}
+          disabled={isDisabled}
           onChange={(event) => setEnabled(event.target.checked)}
           type="checkbox"
         />
@@ -121,7 +124,7 @@ export function CustomKnowledgeToggle({
       </label>
       <div className="flex justify-end">
         <Button
-          disabled={isSaving || !isDirty}
+          disabled={isDisabled || !isDirty}
           onClick={() => {
             void handleSave();
           }}

@@ -7,6 +7,9 @@ import {
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import {
   type FeatureAccessMode,
@@ -35,6 +38,16 @@ const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
   ]),
   [ICON_PROMPTS_ENABLED_SETTING_KEY]: new Set([
     "feature.icon_prompts.toggle",
+  ]),
+  [VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY]: new Set([
+    "feature.voice_chat.android.toggle",
+  ]),
+  [VOICE_CHAT_WEB_FEATURE_FLAG_KEY]: new Set([
+    "feature.voice_chat.web.toggle",
+  ]),
+  [VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY]: new Set([
+    "feature.voice_chat.android.toggle",
+    "feature.voice_chat.web.toggle",
   ]),
 };
 

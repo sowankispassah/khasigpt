@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
+import { noStoreHeaders } from "@/lib/api/cache";
 import {
-  getPricingPlanById,
-  getUserById,
+  getPricingPlanNamesByIds,
+  getUserEmailsByIds,
   listUserCreditHistory,
 } from "@/lib/db/queries";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
+
+const CREDIT_HISTORY_READ_TIMEOUT_MS = 5000;
 
 function getPlanId(entry: {
   action: string;
@@ -84,46 +88,70 @@ export async function GET(
     return NextResponse.json({ error: "invalid_user" }, { status: 400 });
   }
 
-  const history = await listUserCreditHistory({ userId: id, limit: 8 });
-  const actorIds = Array.from(new Set(history.map((entry) => entry.actorId)));
-  const planIds = Array.from(
-    new Set(
-      history
-        .map((entry) => getPlanId(entry))
-        .filter((planId): planId is string => typeof planId === "string")
-    )
-  );
+  try {
+    const history = await withTimeout(
+      listUserCreditHistory({ userId: id, limit: 8 }),
+      CREDIT_HISTORY_READ_TIMEOUT_MS,
+      () => {
+        console.error("[api/admin/users/credit-history] History read timed out.", {
+          timeoutMs: CREDIT_HISTORY_READ_TIMEOUT_MS,
+          userId: id,
+        });
+      }
+    );
+    const actorIds = Array.from(new Set(history.map((entry) => entry.actorId)));
+    const planIds = Array.from(
+      new Set(
+        history
+          .map((entry) => getPlanId(entry))
+          .filter((planId): planId is string => typeof planId === "string")
+      )
+    );
 
-  const [actors, plans] = await Promise.all([
-    Promise.all(actorIds.map((actorId) => getUserById(actorId))),
-    Promise.all(
-      planIds.map((planId) => getPricingPlanById({ id: planId, includeDeleted: true }))
-    ),
-  ]);
+    const [actorEmailById, planNameById] = await withTimeout(
+      Promise.all([
+        getUserEmailsByIds(actorIds),
+        getPricingPlanNamesByIds({ includeDeleted: true, planIds }),
+      ]),
+      CREDIT_HISTORY_READ_TIMEOUT_MS,
+      () => {
+        console.error(
+          "[api/admin/users/credit-history] Detail lookup timed out.",
+          {
+            timeoutMs: CREDIT_HISTORY_READ_TIMEOUT_MS,
+            userId: id,
+          }
+        );
+      }
+    );
 
-  const actorEmailById = new Map(
-    actors.flatMap((actor) => (actor ? ([[actor.id, actor.email]] as const) : []))
-  );
-  const planNameById = new Map(
-    plans.flatMap((plan) => (plan ? ([[plan.id, plan.name]] as const) : []))
-  );
-
-  return NextResponse.json(
-    {
-      entries: history.map((entry) => ({
-        createdAt: new Date(entry.createdAt).toISOString(),
-        description: describeCreditHistoryEntry(
-          entry,
-          actorEmailById,
-          planNameById
-        ),
-        id: entry.id,
-      })),
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store",
+    return NextResponse.json(
+      {
+        entries: history.map((entry) => ({
+          createdAt: new Date(entry.createdAt).toISOString(),
+          description: describeCreditHistoryEntry(
+            entry,
+            actorEmailById,
+            planNameById
+          ),
+          id: entry.id,
+        })),
       },
-    }
-  );
+      {
+        headers: noStoreHeaders(),
+      }
+    );
+  } catch (error) {
+    console.error(
+      `[api/admin/users/credit-history] Failed to load credit history for user "${id}".`,
+      error
+    );
+    return NextResponse.json(
+      {
+        error: "credit_history_unavailable",
+        message: "Credit history is unavailable. Please retry this section.",
+      },
+      { headers: noStoreHeaders(), status: 503 }
+    );
+  }
 }

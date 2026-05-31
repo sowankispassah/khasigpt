@@ -199,6 +199,9 @@ export function UserDropdownMenu({
   const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const ignoreNextResourcesOpenRef = React.useRef(false);
   const planRequestAbortRef = React.useRef<AbortController | null>(null);
+  const planLoadTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const planLoadTriggeredRef = React.useRef(false);
   const { translate } = useTranslation();
   const {
@@ -216,12 +219,32 @@ export function UserDropdownMenu({
   }, [onMenuClose, onOpenChange]);
 
   const resetPlanState = React.useCallback(() => {
+    if (planLoadTimerRef.current) {
+      clearTimeout(planLoadTimerRef.current);
+      planLoadTimerRef.current = null;
+    }
     planRequestAbortRef.current?.abort();
     planRequestAbortRef.current = null;
     planLoadTriggeredRef.current = false;
     setPlanLabel(null);
     setIsPlanLoading(false);
   }, []);
+
+  const cancelPendingPlanLoad = React.useCallback(() => {
+    if (!planLoadTimerRef.current) {
+      return;
+    }
+    clearTimeout(planLoadTimerRef.current);
+    planLoadTimerRef.current = null;
+    planLoadTriggeredRef.current = false;
+    setIsPlanLoading(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMenuOpen) {
+      cancelPendingPlanLoad();
+    }
+  }, [cancelPendingPlanLoad, isMenuOpen]);
 
   const fetchPlan = React.useCallback(async () => {
     if (!isAuthenticated) {
@@ -294,6 +317,10 @@ export function UserDropdownMenu({
 
   React.useEffect(() => {
     return () => {
+      if (planLoadTimerRef.current) {
+        clearTimeout(planLoadTimerRef.current);
+        planLoadTimerRef.current = null;
+      }
       planRequestAbortRef.current?.abort();
     };
   }, []);
@@ -334,19 +361,23 @@ export function UserDropdownMenu({
         onOpenChange?.(true);
         if (isAuthenticated && !planLoadTriggeredRef.current) {
           planLoadTriggeredRef.current = true;
-          fetchPlan().catch((error) =>
-            console.warn("Failed to load plan", error)
-          );
+          planLoadTimerRef.current = setTimeout(() => {
+            planLoadTimerRef.current = null;
+            fetchPlan().catch((error) =>
+              console.warn("Failed to load plan", error)
+            );
+          }, 750);
         }
         return;
       }
 
       onOpenChange?.(false);
       onMenuClose?.();
+      cancelPendingPlanLoad();
       ignoreNextResourcesOpenRef.current = false;
       setIsResourcesOpen(false);
     },
-    [fetchPlan, isAuthenticated, onMenuClose, onOpenChange]
+    [cancelPendingPlanLoad, fetchPlan, isAuthenticated, onMenuClose, onOpenChange]
   );
 
   React.useEffect(() => {

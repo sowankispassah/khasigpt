@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { asc, count, desc, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -54,6 +55,9 @@ const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_FORUM_THREAD_LIMIT = 25;
 const DEFAULT_FORUM_POST_LIMIT = 50;
+const adminSectionReadMeta = new AsyncLocalStorage<{
+  degradedReads: string[];
+}>();
 
 type RouteContext = {
   params: Promise<{ section: string }>;
@@ -98,8 +102,13 @@ async function sectionQuery<T>(label: string, promise: Promise<T>, fallback: T) 
     { slowMs: 1200 }
   ).catch((error) => {
     console.error(`[api/admin/${label}] failed`, error);
+    adminSectionReadMeta.getStore()?.degradedReads.push(label);
     return fallback;
   });
+}
+
+function isReadDegraded(label: string) {
+  return adminSectionReadMeta.getStore()?.degradedReads.includes(label) ?? false;
 }
 
 async function loadOverview() {
@@ -399,7 +408,9 @@ async function loadSettings(module: string | null) {
         return {
           ...pricing,
           adminPlans,
-          degraded: pricing.plans.length === 0 && adminPlans.length === 0,
+          degraded:
+            isReadDegraded("settings.pricing.read-model") ||
+            isReadDegraded("settings.pricing.admin-plans"),
         };
       }
     case "languages":
@@ -525,13 +536,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const { section } = await context.params;
-  const data = await withApiTiming(
-    `admin.section.${section}`,
-    () => loadSection(section, request),
-    {
-      metadata: { section },
-      slowMs: 1500,
-    }
+  const readMeta = { degradedReads: [] as string[] };
+  const data = await adminSectionReadMeta.run(readMeta, () =>
+    withApiTiming(
+      `admin.section.${section}`,
+      () => loadSection(section, request),
+      {
+        metadata: { section },
+        slowMs: 1500,
+      }
+    )
   );
 
   if (!data) {
@@ -541,6 +555,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
   return NextResponse.json(
     {
       data,
+      meta: {
+        degraded: readMeta.degradedReads.length > 0,
+        degradedReads: readMeta.degradedReads,
+      },
       section,
     },
     {

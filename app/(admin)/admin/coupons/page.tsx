@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   getCouponPayoutsForAdmin,
   getCouponRedemptionsForAdmin,
@@ -34,21 +34,22 @@ export default async function AdminCouponsPage() {
     redirect("/");
   }
 
-  const [coupons, creators] = await Promise.all([
-    adminQueryOr({
+  const [couponsState, creatorsState] = await Promise.all([
+    adminQueryResult({
       fallback: [] as Awaited<ReturnType<typeof listCouponsWithStats>>,
       label: "coupons.list",
       promise: listCouponsWithStats(),
     }),
-    adminQueryOr({
+    adminQueryResult({
       fallback: [] as Awaited<ReturnType<typeof listCreators>>,
       label: "coupons.creators",
       promise: listCreators(),
     }),
   ]);
+  const coupons = couponsState.data;
   const couponIdList = coupons.map((coupon) => coupon.id);
-  const [redemptionsMap, payoutsMap] = await Promise.all([
-    adminQueryOr({
+  const [redemptionsState, payoutsState] = await Promise.all([
+    adminQueryResult({
       fallback: {} as Awaited<ReturnType<typeof getCouponRedemptionsForAdmin>>,
       label: "coupons.redemptions",
       promise: getCouponRedemptionsForAdmin({
@@ -56,7 +57,7 @@ export default async function AdminCouponsPage() {
         limitPerCoupon: 8,
       }),
     }),
-    adminQueryOr({
+    adminQueryResult({
       fallback: {} as Awaited<ReturnType<typeof getCouponPayoutsForAdmin>>,
       label: "coupons.payouts",
       promise: getCouponPayoutsForAdmin({
@@ -65,6 +66,8 @@ export default async function AdminCouponsPage() {
       }),
     }),
   ]);
+  const redemptionsMap = redemptionsState.data;
+  const payoutsMap = payoutsState.data;
   const fallbackNowIso = new Date().toISOString();
   const toIsoString = (
     value: Date | string | null | undefined
@@ -119,7 +122,7 @@ export default async function AdminCouponsPage() {
     })),
   }));
 
-  const creatorOptions = creators.map((creator) => ({
+  const creatorOptions = creatorsState.data.map((creator) => ({
     id: creator.id,
     name:
       [creator.firstName, creator.lastName].filter(Boolean).join(" ").trim() ||
@@ -140,7 +143,11 @@ export default async function AdminCouponsPage() {
 
       <AdminCouponsManager
         coupons={serializedCoupons}
+        couponsConfirmed={couponsState.ok}
         creators={creatorOptions}
+        creatorsConfirmed={creatorsState.ok}
+        payoutsConfirmed={payoutsState.ok}
+        redemptionsConfirmed={redemptionsState.ok}
       />
     </div>
   );

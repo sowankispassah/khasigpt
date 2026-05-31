@@ -4,7 +4,9 @@ import {
   ICON_PROMPTS_SETTING_KEY,
 } from "@/lib/constants";
 import {
-  getAppSettingsByKeys,
+  getLiteAppSettingsByKeysUncached,
+} from "@/lib/db/app-settings-lite";
+import {
   getLastKnownAppSettingsByKeys,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -423,7 +425,7 @@ async function loadIconPromptSettings() {
   const keys = [ICON_PROMPTS_SETTING_KEY, ICON_PROMPTS_ENABLED_SETTING_KEY];
 
   try {
-    const settings = await getAppSettingsByKeys(keys);
+    const settings = await getLiteAppSettingsByKeysUncached(keys);
     const byKey = new Map(settings.map((setting) => [setting.key, setting.value]));
 
     return {

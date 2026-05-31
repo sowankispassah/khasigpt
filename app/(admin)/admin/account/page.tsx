@@ -3,7 +3,10 @@ import Link from "next/link";
 import { type ReactNode, Suspense } from "react";
 import { InlineExpandableRows } from "@/components/admin/inline-expandable-rows";
 import { Button } from "@/components/ui/button";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import {
+  type AdminQueryResult,
+  adminQueryResult,
+} from "@/lib/admin/safe-query";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   type ChatFinancialSummary,
@@ -41,6 +44,12 @@ type ChatSummariesResult = Awaited<ReturnType<typeof listChatFinancialSummaries>
 type RechargeSummariesResult = Awaited<ReturnType<typeof listPaidRechargeTotals>>;
 type RechargeRecordsResult = Awaited<ReturnType<typeof listRechargeRecords>>;
 type CostBreakdownResult = Awaited<ReturnType<typeof getAdminApiCostBreakdown>>;
+type RateQueryResult = AdminQueryResult<number>;
+type ChatSummariesQueryResult = AdminQueryResult<ChatSummariesResult>;
+type RechargeSummariesQueryResult = AdminQueryResult<RechargeSummariesResult>;
+type RechargeRecordsQueryResult = AdminQueryResult<RechargeRecordsResult>;
+type CostBreakdownQueryResult = AdminQueryResult<CostBreakdownResult>;
+type ModelConfigsQueryResult = AdminQueryResult<ModelConfig[]>;
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
@@ -312,6 +321,14 @@ function AccountSection({ title, children }: { title: string; children: ReactNod
       </summary>
       <div className="border-t p-4">{children}</div>
     </details>
+  );
+}
+
+function AccountQueryWarning({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {children}
+    </div>
   );
 }
 
@@ -776,13 +793,13 @@ export default async function AdminAccountPage({
     MAX_PAGE_SIZE
   );
 
-  const usdToInrPromise = adminQueryOr({
+  const usdToInrPromise = adminQueryResult({
     fallback: getFallbackUsdToInrRate(),
     label: "account.usd-to-inr",
     promise: getUsdToInrRate().then((result) => result.rate),
     timeoutMs: 1500,
   });
-  const costBreakdownPromise = adminQueryOr({
+  const costBreakdownPromise = adminQueryResult({
     fallback: EMPTY_COST_BREAKDOWN,
     label: "account.cost-breakdown",
     promise: getAdminApiCostBreakdown({
@@ -790,7 +807,7 @@ export default async function AdminAccountPage({
     }),
     timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const chatSummariesPromise = adminQueryOr({
+  const chatSummariesPromise = adminQueryResult({
     fallback: EMPTY_CHAT_SUMMARIES,
     label: "account.chat-financial-summaries",
     promise: listChatFinancialSummaries({
@@ -800,13 +817,13 @@ export default async function AdminAccountPage({
     }),
     timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const rechargeSummariesPromise = adminQueryOr({
+  const rechargeSummariesPromise = adminQueryResult({
     fallback: [] as RechargeSummariesResult,
     label: "account.recharge-totals",
     promise: listPaidRechargeTotals(),
     timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const rechargeRecordsPromise = adminQueryOr({
+  const rechargeRecordsPromise = adminQueryResult({
     fallback: EMPTY_RECHARGE_RECORDS,
     label: "account.recharge-records",
     promise: listRechargeRecords({
@@ -816,7 +833,7 @@ export default async function AdminAccountPage({
     }),
     timeoutMs: ADMIN_ACCOUNT_QUERY_TIMEOUT_MS,
   });
-  const modelConfigsPromise = adminQueryOr({
+  const modelConfigsPromise = adminQueryResult({
     fallback: [] as ModelConfig[],
     label: "account.model-configs",
     promise: listModelConfigs({
@@ -1356,27 +1373,62 @@ async function AccountOverviewSection({
   rechargeSummariesPromise,
   usdToInrPromise,
 }: {
-  chatSummariesPromise: Promise<ChatSummariesResult>;
-  rechargeSummariesPromise: Promise<RechargeSummariesResult>;
-  usdToInrPromise: Promise<number>;
+  chatSummariesPromise: Promise<ChatSummariesQueryResult>;
+  rechargeSummariesPromise: Promise<RechargeSummariesQueryResult>;
+  usdToInrPromise: Promise<RateQueryResult>;
 }) {
-  const [chatSummaries, rechargeSummaries, usdToInr] = await Promise.all([
+  const [chatSummariesResult, rechargeSummariesResult, usdToInrResult] = await Promise.all([
     chatSummariesPromise,
     rechargeSummariesPromise,
     usdToInrPromise,
   ]);
-  const { totalUsd: totalRechargeUsd, totalInr: totalRechargeInr } =
-    aggregateRechargeTotals(rechargeSummaries, usdToInr);
-  const summaryCards = buildSummaryCards({
-    totalRechargeUsd,
-    totalRechargeInr,
-    totalProviderCostUsd: chatSummaries.totals.providerCostUsd,
-    usdToInr,
-    chatCount: chatSummaries.total,
-  });
+  const chatSummaries = chatSummariesResult.data;
+  const rechargeSummaries = rechargeSummariesResult.data;
+  const usdToInr = usdToInrResult.data;
+  const rechargeTotals = rechargeSummariesResult.ok
+    ? aggregateRechargeTotals(rechargeSummaries, usdToInr)
+    : { totalInr: 0, totalUsd: 0 };
+  const totalProviderCostInr = chatSummaries.totals.providerCostUsd * usdToInr;
+  const netProfitInr = rechargeTotals.totalInr - totalProviderCostInr;
+  const avgProfitInr = chatSummaries.total > 0 ? netProfitInr / chatSummaries.total : 0;
+  const summaryCards: MetricCard[] = [
+    {
+      title: "Total recharged",
+      value: rechargeSummariesResult.ok
+        ? `${formatCurrency(rechargeTotals.totalUsd, "USD")} / ${formatCurrency(rechargeTotals.totalInr, "INR")}`
+        : "Unavailable",
+      description: "All-time amount users have successfully paid.",
+    },
+    {
+      title: "Provider cost",
+      value: chatSummariesResult.ok
+        ? `${formatCurrency(chatSummaries.totals.providerCostUsd, "USD")} / ${formatCurrency(totalProviderCostInr, "INR")}`
+        : "Unavailable",
+      description: "Estimated spend to the underlying model providers.",
+    },
+    {
+      title: "Net profit",
+      value:
+        chatSummariesResult.ok && rechargeSummariesResult.ok
+          ? formatCurrency(netProfitInr, "INR")
+          : "Unavailable",
+      description:
+        chatSummariesResult.ok && rechargeSummariesResult.ok
+          ? `Average per chat: ${formatCurrency(avgProfitInr, "INR")}`
+          : "Needs confirmed recharge and usage data.",
+    },
+  ];
 
   return (
     <AccountSection title="Overview">
+      {!chatSummariesResult.ok || !rechargeSummariesResult.ok || !usdToInrResult.ok ? (
+        <div className="mb-4">
+          <AccountQueryWarning>
+            Some account totals could not be confirmed. Confirmed sections still show real data; unavailable totals are not replaced with zero.
+            {!usdToInrResult.ok ? " INR conversions are using the fallback exchange rate." : ""}
+          </AccountQueryWarning>
+        </div>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-3">
         {summaryCards.map((card) => (
           <article
@@ -1407,17 +1459,19 @@ async function AccountCostSection({
   resolvedSearchParams,
   usdToInrPromise,
 }: {
-  costBreakdownPromise: Promise<CostBreakdownResult>;
+  costBreakdownPromise: Promise<CostBreakdownQueryResult>;
   costCurrency: CostCurrency;
   costFrom: Date | undefined;
   costTo: Date | undefined;
   resolvedSearchParams: SearchParams | undefined;
-  usdToInrPromise: Promise<number>;
+  usdToInrPromise: Promise<RateQueryResult>;
 }) {
-  const [costBreakdown, usdToInr] = await Promise.all([
+  const [costBreakdownResult, usdToInrResult] = await Promise.all([
     costBreakdownPromise,
     usdToInrPromise,
   ]);
+  const costBreakdown = costBreakdownResult.data;
+  const usdToInr = usdToInrResult.data;
   const { preview: costFeatureRowsPreview, overflow: costFeatureRowsOverflow } =
     splitPreviewRows(costBreakdown.featureSummaries);
   const { preview: costModelRowsPreview, overflow: costModelRowsOverflow } =
@@ -1445,6 +1499,15 @@ async function AccountCostSection({
         </Link>
       </div>
 
+      {!costBreakdownResult.ok || !usdToInrResult.ok ? (
+        <div className="mt-4">
+          <AccountQueryWarning>
+            Cost data could not be fully confirmed. Unavailable rows are shown as unavailable instead of zero.
+            {!usdToInrResult.ok ? " INR conversions are using the fallback exchange rate." : ""}
+          </AccountQueryWarning>
+        </div>
+      ) : null}
+
       <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
         <PreservedSearchParamsInputs
           exclude={["costFrom", "costTo", "costCurrency"]}
@@ -1469,10 +1532,10 @@ async function AccountCostSection({
       </form>
 
       <div className="mt-6 flex flex-col gap-4">
-        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Total cost</div><div className="mt-2 font-semibold text-lg">{formatCostInCurrency(costBreakdown.totalCostUsd, costCurrency, usdToInr)}</div><div className="mt-1 text-muted-foreground text-xs">Selected range</div></article>
-        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Exact tracked cost</div><div className="mt-2 font-semibold text-lg">{formatCostInCurrency(costBreakdown.exactCostUsd, costCurrency, usdToInr)}</div><div className="mt-1 text-muted-foreground text-xs">Chat completion token usage</div></article>
-        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Estimated embedding cost</div><div className="mt-2 font-semibold text-lg">{formatCostInCurrency(costBreakdown.estimatedCostUsd, costCurrency, usdToInr)}</div><div className="mt-1 text-muted-foreground text-xs">File Search and index updates</div></article>
-        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Other tracked usage</div><div className="mt-2 font-semibold text-lg">{formatNumber(costBreakdown.otherUsageSummaries.reduce((total, row) => total + row.usageCount, 0))}</div><div className="mt-1 text-muted-foreground text-xs">Tracked events without stored provider cost</div></article>
+        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Total cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.totalCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Selected range</div></article>
+        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Exact tracked cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.exactCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Chat completion token usage</div></article>
+        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Estimated embedding cost</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatCostInCurrency(costBreakdown.estimatedCostUsd, costCurrency, usdToInr) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">File Search and index updates</div></article>
+        <article className="rounded-lg border bg-background p-4"><div className="font-medium text-muted-foreground text-sm">Other tracked usage</div><div className="mt-2 font-semibold text-lg">{costBreakdownResult.ok ? formatNumber(costBreakdown.otherUsageSummaries.reduce((total, row) => total + row.usageCount, 0)) : "Unavailable"}</div><div className="mt-1 text-muted-foreground text-xs">Tracked events without stored provider cost</div></article>
       </div>
 
       <div className="mt-6 flex flex-col gap-4">
@@ -1480,7 +1543,7 @@ async function AccountCostSection({
           <div className="overflow-x-auto">
             <table className="w-max min-w-[920px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Feature</th><th className="py-3 text-left">Method</th><th className="py-3 text-left">Usage</th><th className="py-3 text-right">Models</th><th className="py-3 text-right">Cost</th><th className="py-3 text-left">Notes</th></tr></thead>
-              <tbody>{costBreakdown.featureSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>No API cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={6} overflowRows={costFeatureRowsOverflow.map((row) => renderCostFeatureRow(row, costCurrency, usdToInr))} previewRows={costFeatureRowsPreview.map((row) => renderCostFeatureRow(row, costCurrency, usdToInr))} />}</tbody>
+              <tbody>{!costBreakdownResult.ok ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>Unable to load API cost data. Retry after the database query recovers.</td></tr> : costBreakdown.featureSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>No API cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={6} overflowRows={costFeatureRowsOverflow.map((row) => renderCostFeatureRow(row, costCurrency, usdToInr))} previewRows={costFeatureRowsPreview.map((row) => renderCostFeatureRow(row, costCurrency, usdToInr))} />}</tbody>
             </table>
           </div>
         </SubsectionPanel>
@@ -1489,7 +1552,7 @@ async function AccountCostSection({
           <div className="overflow-x-auto">
             <table className="w-max min-w-[920px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Feature</th><th className="py-3 text-left">Model</th><th className="py-3 text-left">Provider</th><th className="py-3 text-left">Method</th><th className="py-3 text-left">Usage</th><th className="py-3 text-right">Cost</th></tr></thead>
-              <tbody>{costBreakdown.modelSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>No per-model cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={6} overflowRows={costModelRowsOverflow.map((row) => renderCostModelRow(row, costCurrency, usdToInr))} previewRows={costModelRowsPreview.map((row) => renderCostModelRow(row, costCurrency, usdToInr))} />}</tbody>
+              <tbody>{!costBreakdownResult.ok ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>Unable to load per-model cost data.</td></tr> : costBreakdown.modelSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={6}>No per-model cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={6} overflowRows={costModelRowsOverflow.map((row) => renderCostModelRow(row, costCurrency, usdToInr))} previewRows={costModelRowsPreview.map((row) => renderCostModelRow(row, costCurrency, usdToInr))} />}</tbody>
             </table>
           </div>
         </SubsectionPanel>
@@ -1498,7 +1561,7 @@ async function AccountCostSection({
           <div className="overflow-x-auto">
             <table className="w-max min-w-[760px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Date</th><th className="py-3 text-right">Chat</th><th className="py-3 text-right">Embeddings</th><th className="py-3 text-right">Total</th><th className="py-3 text-right">Other usage</th></tr></thead>
-              <tbody>{costBreakdown.dailySummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={5}>No daily cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={5} overflowRows={costDailyRowsOverflow.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} previewRows={costDailyRowsPreview.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} />}</tbody>
+              <tbody>{!costBreakdownResult.ok ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={5}>Unable to load daily cost data.</td></tr> : costBreakdown.dailySummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={5}>No daily cost data found for the selected range.</td></tr> : <InlineExpandableRows colSpan={5} overflowRows={costDailyRowsOverflow.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} previewRows={costDailyRowsPreview.map((row) => renderDailyCostRow(row, costCurrency, usdToInr))} />}</tbody>
             </table>
           </div>
         </SubsectionPanel>
@@ -1507,7 +1570,7 @@ async function AccountCostSection({
           <div className="overflow-x-auto">
             <table className="w-max min-w-[720px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <thead className="text-muted-foreground text-xs uppercase"><tr><th className="py-3 text-left">Tracked usage</th><th className="py-3 text-right">Events</th><th className="py-3 text-right">Tokens</th><th className="py-3 text-left">Notes</th></tr></thead>
-              <tbody>{costBreakdown.otherUsageSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={4}>No other tracked API usage found for the selected range.</td></tr> : <InlineExpandableRows colSpan={4} overflowRows={otherUsageRowsOverflow.map((row) => renderOtherUsageRow(row))} previewRows={otherUsageRowsPreview.map((row) => renderOtherUsageRow(row))} />}</tbody>
+              <tbody>{!costBreakdownResult.ok ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={4}>Unable to load other tracked API usage.</td></tr> : costBreakdown.otherUsageSummaries.length === 0 ? <tr><td className="py-6 text-center text-muted-foreground" colSpan={4}>No other tracked API usage found for the selected range.</td></tr> : <InlineExpandableRows colSpan={4} overflowRows={otherUsageRowsOverflow.map((row) => renderOtherUsageRow(row))} previewRows={otherUsageRowsPreview.map((row) => renderOtherUsageRow(row))} />}</tbody>
             </table>
           </div>
         </SubsectionPanel>
@@ -1525,18 +1588,20 @@ async function AccountChatProfitSection({
   to,
   usdToInrPromise,
 }: {
-  chatSummariesPromise: Promise<ChatSummariesResult>;
+  chatSummariesPromise: Promise<ChatSummariesQueryResult>;
   from: Date | undefined;
   page: number;
   pageSize: number;
   resolvedSearchParams: SearchParams | undefined;
   to: Date | undefined;
-  usdToInrPromise: Promise<number>;
+  usdToInrPromise: Promise<RateQueryResult>;
 }) {
-  const [chatSummaries, usdToInr] = await Promise.all([
+  const [chatSummariesResult, usdToInrResult] = await Promise.all([
     chatSummariesPromise,
     usdToInrPromise,
   ]);
+  const chatSummaries = chatSummariesResult.data;
+  const usdToInr = usdToInrResult.data;
   const chatRows = mapChatRows(chatSummaries.records, usdToInr);
   const { preview: chatRowsPreview, overflow: chatRowsOverflow } =
     splitPreviewRows(chatRows);
@@ -1563,6 +1628,15 @@ async function AccountChatProfitSection({
         </p>
         <ExportButton rows={chatExportRows} />
       </div>
+
+      {!chatSummariesResult.ok || !usdToInrResult.ok ? (
+        <div className="mt-4">
+          <AccountQueryWarning>
+            Chat profit data could not be confirmed. This section is not showing fake zero usage.
+            {!usdToInrResult.ok ? " INR conversions are using the fallback exchange rate." : ""}
+          </AccountQueryWarning>
+        </div>
+      ) : null}
 
       <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
         <PreservedSearchParamsInputs
@@ -1594,7 +1668,9 @@ async function AccountChatProfitSection({
       </form>
 
       <div className="mt-4 text-muted-foreground text-sm">
-        Showing {chatRows.length} of {chatSummaries.total} chats
+        {chatSummariesResult.ok
+          ? `Showing ${chatRows.length} of ${chatSummaries.total} chats`
+          : "Chat usage total unavailable"}
       </div>
 
       <div className="mt-4 overflow-x-auto">
@@ -1611,7 +1687,13 @@ async function AccountChatProfitSection({
             </tr>
           </thead>
           <tbody>
-            {chatRows.length === 0 ? (
+            {!chatSummariesResult.ok ? (
+              <tr>
+                <td className="py-6 text-center text-muted-foreground" colSpan={7}>
+                  Unable to load chat usage for the selected range.
+                </td>
+              </tr>
+            ) : chatRows.length === 0 ? (
               <tr>
                 <td className="py-6 text-center text-muted-foreground" colSpan={7}>
                   No chat usage found for the selected range.
@@ -1630,11 +1712,11 @@ async function AccountChatProfitSection({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
         <span className="text-muted-foreground">
-          Page {page} of {totalPages}
+          {chatSummariesResult.ok ? `Page ${page} of ${totalPages}` : "Pagination unavailable"}
         </span>
         <div className="flex items-center gap-2">
-          <PaginationLink direction="prev" disabled={page <= 1} label="Previous" page={page - 1} searchParams={resolvedSearchParams} />
-          <PaginationLink direction="next" disabled={page >= totalPages} label="Next" page={page + 1} searchParams={resolvedSearchParams} />
+          <PaginationLink direction="prev" disabled={!chatSummariesResult.ok || page <= 1} label="Previous" page={page - 1} searchParams={resolvedSearchParams} />
+          <PaginationLink direction="next" disabled={!chatSummariesResult.ok || page >= totalPages} label="Next" page={page + 1} searchParams={resolvedSearchParams} />
         </div>
       </div>
     </AccountSection>
@@ -1650,14 +1732,16 @@ async function AccountRechargeSection({
 }: {
   page: number;
   pageSize: number;
-  rechargeRecordsPromise: Promise<RechargeRecordsResult>;
+  rechargeRecordsPromise: Promise<RechargeRecordsQueryResult>;
   resolvedSearchParams: SearchParams | undefined;
-  usdToInrPromise: Promise<number>;
+  usdToInrPromise: Promise<RateQueryResult>;
 }) {
-  const [rechargeRecords, usdToInr] = await Promise.all([
+  const [rechargeRecordsResult, usdToInrResult] = await Promise.all([
     rechargeRecordsPromise,
     usdToInrPromise,
   ]);
+  const rechargeRecords = rechargeRecordsResult.data;
+  const usdToInr = usdToInrResult.data;
   const rechargeRows = mapRechargeRows(rechargeRecords.records, usdToInr);
   const { preview: rechargeRowsPreview, overflow: rechargeRowsOverflow } =
     splitPreviewRows(rechargeRows);
@@ -1683,6 +1767,15 @@ async function AccountRechargeSection({
         <RechargeExportButton rows={rechargeExportRows} />
       </div>
 
+      {!rechargeRecordsResult.ok || !usdToInrResult.ok ? (
+        <div className="mt-4">
+          <AccountQueryWarning>
+            Recharge records could not be confirmed. This section is not showing fake zero payments.
+            {!usdToInrResult.ok ? " INR conversions are using the fallback exchange rate." : ""}
+          </AccountQueryWarning>
+        </div>
+      ) : null}
+
       <div className="mt-4 overflow-x-auto">
         <table className="w-max min-w-[920px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="text-muted-foreground text-xs uppercase">
@@ -1697,7 +1790,13 @@ async function AccountRechargeSection({
             </tr>
           </thead>
           <tbody>
-            {rechargeRows.length === 0 ? (
+            {!rechargeRecordsResult.ok ? (
+              <tr>
+                <td className="py-6 text-center text-muted-foreground" colSpan={7}>
+                  Unable to load paid recharges for the selected range.
+                </td>
+              </tr>
+            ) : rechargeRows.length === 0 ? (
               <tr>
                 <td className="py-6 text-center text-muted-foreground" colSpan={7}>
                   No paid recharges found for the selected range.
@@ -1716,11 +1815,11 @@ async function AccountRechargeSection({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
         <span className="text-muted-foreground">
-          Page {page} of {rechargeTotalPages}
+          {rechargeRecordsResult.ok ? `Page ${page} of ${rechargeTotalPages}` : "Pagination unavailable"}
         </span>
         <div className="flex items-center gap-2">
-          <PaginationLink direction="prev" disabled={page <= 1} label="Previous" page={page - 1} searchParams={resolvedSearchParams} />
-          <PaginationLink direction="next" disabled={page >= rechargeTotalPages} label="Next" page={page + 1} searchParams={resolvedSearchParams} />
+          <PaginationLink direction="prev" disabled={!rechargeRecordsResult.ok || page <= 1} label="Previous" page={page - 1} searchParams={resolvedSearchParams} />
+          <PaginationLink direction="next" disabled={!rechargeRecordsResult.ok || page >= rechargeTotalPages} label="Next" page={page + 1} searchParams={resolvedSearchParams} />
         </div>
       </div>
     </AccountSection>
@@ -1731,13 +1830,15 @@ async function AccountModelPricingSection({
   modelConfigsPromise,
   usdToInrPromise,
 }: {
-  modelConfigsPromise: Promise<ModelConfig[]>;
-  usdToInrPromise: Promise<number>;
+  modelConfigsPromise: Promise<ModelConfigsQueryResult>;
+  usdToInrPromise: Promise<RateQueryResult>;
 }) {
-  const [modelConfigs, usdToInr] = await Promise.all([
+  const [modelConfigsResult, usdToInrResult] = await Promise.all([
     modelConfigsPromise,
     usdToInrPromise,
   ]);
+  const modelConfigs = modelConfigsResult.data;
+  const usdToInr = usdToInrResult.data;
   const modelRows = mapModelPricingRows(modelConfigs, usdToInr);
   const { preview: modelRowsPreview, overflow: modelRowsOverflow } =
     splitPreviewRows(modelRows);
@@ -1747,6 +1848,15 @@ async function AccountModelPricingSection({
       <p className="text-muted-foreground text-sm">
         User pricing versus provider cost per one million tokens.
       </p>
+
+      {!modelConfigsResult.ok || !usdToInrResult.ok ? (
+        <div className="mt-4">
+          <AccountQueryWarning>
+            Model pricing could not be confirmed. Missing rows are unavailable rather than treated as unconfigured.
+            {!usdToInrResult.ok ? " INR conversions are using the fallback exchange rate." : ""}
+          </AccountQueryWarning>
+        </div>
+      ) : null}
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-max min-w-[980px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
@@ -1761,7 +1871,13 @@ async function AccountModelPricingSection({
             </tr>
           </thead>
           <tbody>
-            {modelRows.length === 0 ? (
+            {!modelConfigsResult.ok ? (
+              <tr>
+                <td className="py-6 text-center text-muted-foreground" colSpan={6}>
+                  Unable to load model pricing information.
+                </td>
+              </tr>
+            ) : modelRows.length === 0 ? (
               <tr>
                 <td className="py-6 text-center text-muted-foreground" colSpan={6}>
                   No model pricing information available.

@@ -44,7 +44,7 @@ export const DOCUMENT_UPLOADS_ACCESS_MODE_FALLBACK: FeatureAccessMode =
   "disabled";
 
 export function parseDocumentUploadsAccessModeSetting(
-  value: string | boolean | null | undefined
+  value: unknown
 ): FeatureAccessMode {
   return parseFeatureAccessMode(value, DOCUMENT_UPLOADS_ACCESS_MODE_FALLBACK);
 }

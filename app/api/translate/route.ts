@@ -8,6 +8,7 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import {
   parseTranslateAccessModeSetting,
   parseTranslateProviderModeSetting,
@@ -76,15 +77,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const [rawTranslateSetting, rawProviderModeSetting] = await Promise.all([
-    withTimeout(
-      getAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY),
-      TRANSLATE_SETTING_TIMEOUT_MS
-    ).catch((error) => {
-      console.error("[api/translate] Failed to load translate feature setting.", error);
-      return getLastKnownAppSetting<string | boolean | number>(
-        TRANSLATE_FEATURE_FLAG_KEY
-      );
+  const [translateAccessSettings, rawProviderModeSetting] = await Promise.all([
+    loadFeatureAccessSettingsByKeys([TRANSLATE_FEATURE_FLAG_KEY], {
+      source: "api.translate.feature-access",
+      timeoutMs: TRANSLATE_SETTING_TIMEOUT_MS,
     }),
     withTimeout(
       getAppSetting<string | boolean | number>(TRANSLATE_PROVIDER_MODE_SETTING_KEY),
@@ -97,11 +93,15 @@ export async function POST(request: Request) {
     }),
   ]);
 
+  const rawTranslateSetting =
+    translateAccessSettings.values.get(TRANSLATE_FEATURE_FLAG_KEY) ??
+    getLastKnownAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY);
   const translateMode = parseTranslateAccessModeSetting(rawTranslateSetting);
-  const translateEnabled = isFeatureEnabledForRole(
-    translateMode,
-    session.user.role
-  );
+  const translateSettingsUnavailable =
+    translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
+  const translateEnabled =
+    translateSettingsUnavailable ||
+    isFeatureEnabledForRole(translateMode, session.user.role);
   const providerMode = parseTranslateProviderModeSetting(rawProviderModeSetting);
 
   if (!translateEnabled) {

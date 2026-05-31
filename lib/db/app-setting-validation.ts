@@ -1,6 +1,34 @@
-import { TRANSLATE_PROVIDER_MODE_SETTING_KEY } from "@/lib/constants";
+import {
+  CALCULATOR_FEATURE_FLAG_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+  IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
+  TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+} from "@/lib/constants";
+import { parseFeatureAccessModeStrict } from "@/lib/feature-access";
 
 export const APP_SETTING_MAX_VALUE_BYTES = 1_048_576;
+
+const FEATURE_ACCESS_SETTING_KEYS = new Set([
+  CALCULATOR_FEATURE_FLAG_KEY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+  IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  JOBS_FEATURE_FLAG_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  TRANSLATE_FEATURE_FLAG_KEY,
+  VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
+  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+]);
 
 function unwrapStringValue(value: unknown) {
   if (typeof value !== "string") {
@@ -46,6 +74,14 @@ export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
     }
 
     return normalized as T;
+  }
+
+  if (FEATURE_ACCESS_SETTING_KEYS.has(normalizedKey)) {
+    const normalizedMode = parseFeatureAccessModeStrict(value);
+    if (!normalizedMode) {
+      throw new Error("invalid_feature_access_setting");
+    }
+    return normalizedMode as T;
   }
 
   const byteLength = getJsonByteLength(value);

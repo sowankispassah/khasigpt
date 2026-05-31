@@ -13,6 +13,7 @@ import {
   listTranslationFeatureLanguagesWithModels,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import {
   parseTranslateAccessModeSetting,
   parseTranslateProviderModeSetting,
@@ -29,14 +30,11 @@ export default async function TranslatePage() {
     redirect("/login?callbackUrl=/translate");
   }
 
-  const [translateSetting, translateProviderModeSetting, languageSettings] =
+  const [translateAccessSettings, translateProviderModeSetting, languageResult] =
     await Promise.all([
-    withTimeout(
-      getAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY),
-      TRANSLATE_PAGE_QUERY_TIMEOUT_MS
-    ).catch((error) => {
-      console.error("[translate/page] Failed to load translate setting.", error);
-      return getLastKnownAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY);
+    loadFeatureAccessSettingsByKeys([TRANSLATE_FEATURE_FLAG_KEY], {
+      source: "translate.page.feature-access",
+      timeoutMs: TRANSLATE_PAGE_QUERY_TIMEOUT_MS,
     }),
     withTimeout(
       getAppSetting<string | boolean | number>(TRANSLATE_PROVIDER_MODE_SETTING_KEY),
@@ -53,19 +51,29 @@ export default async function TranslatePage() {
     withTimeout(
       listTranslationFeatureLanguagesWithModels(),
       TRANSLATE_PAGE_QUERY_TIMEOUT_MS
-    ).catch((error) => {
+    ).then((languages) => ({
+      languages,
+      unavailable: false,
+    })).catch((error) => {
       if (!(error instanceof Error && error.message === "timeout")) {
         console.error("[translate/page] Failed to load languages.", error);
       }
-      return [];
+      return {
+        languages: [],
+        unavailable: true,
+      };
     }),
   ]);
 
+  const translateSetting =
+    translateAccessSettings.values.get(TRANSLATE_FEATURE_FLAG_KEY) ??
+    getLastKnownAppSetting<string | boolean>(TRANSLATE_FEATURE_FLAG_KEY);
   const translateAccessMode = parseTranslateAccessModeSetting(translateSetting);
-  const translateEnabled = isFeatureEnabledForRole(
-    translateAccessMode,
-    session.user.role
-  );
+  const translateSettingsUnavailable =
+    translateAccessSettings.status === "unavailable" && translateSetting == null;
+  const translateEnabled =
+    translateSettingsUnavailable ||
+    isFeatureEnabledForRole(translateAccessMode, session.user.role);
   const translateProviderMode = parseTranslateProviderModeSetting(
     translateProviderModeSetting
   );
@@ -74,7 +82,7 @@ export default async function TranslatePage() {
     notFound();
   }
 
-  const activeLanguages = languageSettings
+  const activeLanguages = languageResult.languages
     .filter((language) => language.isActive)
     .map((language) => ({
       code: language.code,
@@ -101,8 +109,10 @@ export default async function TranslatePage() {
   return (
     <TranslatePageClient
       initialTargetLanguageCode={initialTargetLanguage?.code ?? ""}
+      languagesUnavailable={languageResult.unavailable}
       languages={activeLanguages}
       providerMode={translateProviderMode}
+      settingsUnavailable={translateSettingsUnavailable}
     />
   );
 }

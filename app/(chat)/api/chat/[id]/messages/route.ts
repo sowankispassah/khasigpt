@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/api/observability";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_PAGE_SIZE = 200;
+const CHAT_MESSAGES_READ_TIMEOUT_MS = 8000;
 
 function getErrorDetails(error: unknown) {
   if (error instanceof ChatSDKError && typeof error.cause === "string") {
@@ -51,14 +54,42 @@ export async function GET(
     return new ChatSDKError("bad_request:chat").toResponse();
   }
 
-  const session = await getMobileSession(request);
+  const session = await withApiTiming(
+    "chat.messages.session",
+    () => getMobileSession(request),
+    {
+      metadata: {
+        chatId,
+      },
+      slowMs: 750,
+    }
+  );
   if (!session?.user) {
     return new ChatSDKError("unauthorized:chat").toResponse();
   }
 
   let chat: Awaited<ReturnType<typeof getChatById>>;
   try {
-    chat = await getChatById({ id: chatId, includeDeleted: true });
+    chat = await withApiTiming(
+      "chat.messages.chat_lookup",
+      () =>
+        withTimeout(
+          getChatById({ id: chatId, includeDeleted: true }),
+          CHAT_MESSAGES_READ_TIMEOUT_MS,
+          () => {
+            console.error("[api/chat/messages] chat lookup timed out.", {
+              chatId,
+              timeoutMs: CHAT_MESSAGES_READ_TIMEOUT_MS,
+            });
+          }
+        ),
+      {
+        metadata: {
+          chatId,
+        },
+        slowMs: 1000,
+      }
+    );
   } catch (error) {
     const details = getErrorDetails(error);
     if (isTransientDatabaseConnectionError(details)) {
@@ -95,11 +126,32 @@ export async function GET(
 
   let messagesResult: Awaited<ReturnType<typeof getMessagesByChatIdPage>>;
   try {
-    messagesResult = await getMessagesByChatIdPage({
-      id: chatId,
-      limit,
-      before,
-    });
+    messagesResult = await withApiTiming(
+      "chat.messages.page_query",
+      () =>
+        withTimeout(
+          getMessagesByChatIdPage({
+            id: chatId,
+            limit,
+            before,
+          }),
+          CHAT_MESSAGES_READ_TIMEOUT_MS,
+          () => {
+            console.error("[api/chat/messages] message page query timed out.", {
+              chatId,
+              timeoutMs: CHAT_MESSAGES_READ_TIMEOUT_MS,
+            });
+          }
+        ),
+      {
+        metadata: {
+          chatId,
+          direction: before ? "older" : "initial",
+          limit,
+        },
+        slowMs: 1000,
+      }
+    );
   } catch (error) {
     const details = getErrorDetails(error);
     if (isTransientDatabaseConnectionError(details)) {
@@ -120,14 +172,30 @@ export async function GET(
         ? new Date(oldestMessage.createdAt as unknown as string).toISOString()
         : null;
 
+  const uiMessages = convertToUIMessages(messages);
+  const rewrittenMessages = await withApiTiming(
+    "chat.messages.document_url_rewrite",
+    () =>
+      Promise.resolve(
+        rewriteDocumentUrlsForViewer({
+          messages: uiMessages,
+          viewerUserId: session.user.id,
+          isAdmin,
+          baseUrl: request.url,
+        })
+      ),
+    {
+      metadata: {
+        chatId,
+        messageCount: uiMessages.length,
+      },
+      slowMs: 500,
+    }
+  );
+
   return NextResponse.json(
     {
-      messages: rewriteDocumentUrlsForViewer({
-        messages: convertToUIMessages(messages),
-        viewerUserId: session.user.id,
-        isAdmin,
-        baseUrl: request.url,
-      }),
+      messages: rewrittenMessages,
       hasMore,
       oldestMessageAt,
     },

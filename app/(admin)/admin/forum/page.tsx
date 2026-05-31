@@ -10,7 +10,7 @@ import { AdminForumConfirmForm } from "@/components/admin-forum-confirm-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import { db } from "@/lib/db/queries";
 import {
   type ForumThreadStatus,
@@ -452,7 +452,7 @@ const tableSelectClass =
 
 export default async function AdminForumPage() {
   await requireAdmin();
-  const { categories, threads, posts, metrics } = await adminQueryOr({
+  const forumState = await adminQueryResult({
     fallback: {
       categories: [],
       threads: [],
@@ -467,6 +467,8 @@ export default async function AdminForumPage() {
     label: "forum.snapshot",
     promise: getAdminForumData(),
   });
+  const { categories, threads, posts, metrics } = forumState.data;
+  const forumConfirmed = forumState.ok;
   const categoryOptions = categories.map((category) => ({
     id: category.id,
     name: category.name,
@@ -489,11 +491,31 @@ export default async function AdminForumPage() {
         </p>
       </div>
 
+      {!forumConfirmed ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+          Forum admin data could not be confirmed. Tables are shown as
+          unavailable instead of empty fallback data; refresh this section to
+          retry.
+        </div>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Total threads" value={metrics.totalThreads} />
-        <MetricCard label="Archived" value={metrics.archivedThreads} />
-        <MetricCard label="Locked / flagged" value={metrics.lockedThreads} />
-        <MetricCard label="Hidden posts" value={metrics.hiddenPosts} />
+        <MetricCard
+          label="Total threads"
+          value={forumConfirmed ? metrics.totalThreads : "Unavailable"}
+        />
+        <MetricCard
+          label="Archived"
+          value={forumConfirmed ? metrics.archivedThreads : "Unavailable"}
+        />
+        <MetricCard
+          label="Locked / flagged"
+          value={forumConfirmed ? metrics.lockedThreads : "Unavailable"}
+        />
+        <MetricCard
+          label="Hidden posts"
+          value={forumConfirmed ? metrics.hiddenPosts : "Unavailable"}
+        />
       </section>
 
       <AdminDataPanel title="Create category">
@@ -549,7 +571,19 @@ export default async function AdminForumPage() {
         <AdminTable minWidth="min-w-[980px]">
           <thead><tr><th className={tableHeadClass}>Status</th><th className={tableHeadClass}>Name</th><th className={tableHeadClass}>Description</th><th className={tableHeadClass}>Position</th><th className={tableHeadClass}>Slug</th><th className={tableHeadClass}>Threads</th><th className={tableHeadClass}>Disable</th><th className={cn(tableHeadClass, "right-0 bg-muted text-right")}>Actions</th></tr></thead>
           <tbody>
-            {categories.map((category) => (
+            {!forumConfirmed ? (
+              <tr>
+                <td className={tableCellClass} colSpan={8}>
+                  Unable to load forum categories.
+                </td>
+              </tr>
+            ) : categories.length === 0 ? (
+              <tr>
+                <td className={tableCellClass} colSpan={8}>
+                  No forum categories created yet.
+                </td>
+              </tr>
+            ) : categories.map((category) => (
               <tr key={category.id}>
                 <td className={tableCellClass}><form action={updateCategoryAction} id={`category-${category.id}`} /><input form={`category-${category.id}`} name="id" type="hidden" value={category.id} /><StatusBadge tone={category.isLocked ? "warning" : "success"}>{category.isLocked ? "Disabled" : "Active"}</StatusBadge></td>
                 <td className={tableCellClass}><input className={cn(tableInputClass, "w-56")} defaultValue={category.name} form={`category-${category.id}`} name="name" required /></td>
@@ -569,7 +603,19 @@ export default async function AdminForumPage() {
         <AdminTable minWidth="min-w-[1500px]">
           <thead><tr><th className={tableHeadClass}>Status</th><th className={tableHeadClass}>Title</th><th className={tableHeadClass}>Summary</th><th className={tableHeadClass}>Category</th><th className={tableHeadClass}>Author</th><th className={tableHeadClass}>Replies</th><th className={tableHeadClass}>Views</th><th className={tableHeadClass}>Updated</th><th className={tableHeadClass}>Status edit</th><th className={tableHeadClass}>Lock</th><th className={tableHeadClass}>Pin</th><th className={cn(tableHeadClass, "right-0 bg-muted text-right")}>Actions</th></tr></thead>
           <tbody>
-            {threads.map((thread) => (
+            {!forumConfirmed ? (
+              <tr>
+                <td className={tableCellClass} colSpan={12}>
+                  Unable to load forum discussions.
+                </td>
+              </tr>
+            ) : threads.length === 0 ? (
+              <tr>
+                <td className={tableCellClass} colSpan={12}>
+                  No forum discussions found.
+                </td>
+              </tr>
+            ) : threads.map((thread) => (
               <tr key={thread.id}>
                 <td className={tableCellClass}><form action={updateThreadAction} id={`thread-${thread.id}`} /><input form={`thread-${thread.id}`} name="id" type="hidden" value={thread.id} /><StatusBadge tone={thread.status === "archived" ? "danger" : thread.isLocked ? "warning" : "success"}>{thread.status}</StatusBadge>{thread.isLocked ? <Badge variant="secondary">Flagged</Badge> : null}{thread.isPinned ? <Badge variant="secondary">Pinned</Badge> : null}</td>
                 <td className={tableCellClass}><input className={cn(tableInputClass, "w-72")} defaultValue={thread.title} form={`thread-${thread.id}`} name="title" required /></td>
@@ -589,21 +635,21 @@ export default async function AdminForumPage() {
       <AdminDataPanel title="Posts">
         <AdminTable minWidth="min-w-[1350px]">
           <thead><tr><th className={tableHeadClass}>Status</th><th className={tableHeadClass}>Thread</th><th className={tableHeadClass}>Category</th><th className={tableHeadClass}>Author</th><th className={tableHeadClass}>Content</th><th className={tableHeadClass}>Created</th><th className={tableHeadClass}>Updated</th><th className={tableHeadClass}>Hide</th><th className={cn(tableHeadClass, "right-0 bg-muted text-right")}>Actions</th></tr></thead>
-          <tbody>{discussionPosts.map((post) => (<tr key={post.id}><td className={tableCellClass}><form action={updatePostAction} id={`post-${post.id}`} /><input form={`post-${post.id}`} name="id" type="hidden" value={post.id} /><input form={`post-${post.id}`} name="threadId" type="hidden" value={post.threadId} /><input form={`post-${post.id}`} name="slug" type="hidden" value={post.threadSlug} /><StatusBadge tone={post.isDeleted ? "danger" : "success"}>{post.isDeleted ? "Inactive / hidden" : "Active"}</StatusBadge>{post.isEdited ? <Badge variant="outline">Edited</Badge> : null}</td><td className={tableCellClass}>{post.threadTitle}</td><td className={tableCellClass}>{post.categoryName}</td><td className={tableCellClass}>{authorLabel(post)}</td><td className={tableCellClass}><input className={cn(tableInputClass, "w-[36rem]")} defaultValue={post.content} form={`post-${post.id}`} name="content" /></td><td className={tableCellClass}>{formatDistanceToNow(post.createdAt, { addSuffix: true })}</td><td className={tableCellClass}>{formatDistanceToNow(post.updatedAt, { addSuffix: true })}</td><td className={tableCellClass}><label className="inline-flex items-center gap-2"><input defaultChecked={post.isDeleted} form={`post-${post.id}`} name="isDeleted" type="checkbox" />Hidden</label></td><td className={tableActionCellClass}><div className="inline-flex items-center justify-end gap-2"><ActionSubmitButton form={`post-${post.id}`} size="sm" successMessage="Post updated" variant="outline">Save</ActionSubmitButton><Button asChild size="sm" variant="secondary"><Link href={`/forum/${post.threadSlug}`}>View</Link></Button><AdminForumConfirmForm action={deletePostAction} confirmMessage="Permanently delete this post?"><input name="id" type="hidden" value={post.id} /><input name="threadId" type="hidden" value={post.threadId} /><input name="slug" type="hidden" value={post.threadSlug} /><ActionSubmitButton size="sm" successMessage="Post deleted" variant="destructive">Delete</ActionSubmitButton></AdminForumConfirmForm></div></td></tr>))}</tbody>
+          <tbody>{!forumConfirmed ? (<tr><td className={tableCellClass} colSpan={9}>Unable to load forum posts.</td></tr>) : discussionPosts.length === 0 ? (<tr><td className={tableCellClass} colSpan={9}>No forum posts found.</td></tr>) : discussionPosts.map((post) => (<tr key={post.id}><td className={tableCellClass}><form action={updatePostAction} id={`post-${post.id}`} /><input form={`post-${post.id}`} name="id" type="hidden" value={post.id} /><input form={`post-${post.id}`} name="threadId" type="hidden" value={post.threadId} /><input form={`post-${post.id}`} name="slug" type="hidden" value={post.threadSlug} /><StatusBadge tone={post.isDeleted ? "danger" : "success"}>{post.isDeleted ? "Inactive / hidden" : "Active"}</StatusBadge>{post.isEdited ? <Badge variant="outline">Edited</Badge> : null}</td><td className={tableCellClass}>{post.threadTitle}</td><td className={tableCellClass}>{post.categoryName}</td><td className={tableCellClass}>{authorLabel(post)}</td><td className={tableCellClass}><input className={cn(tableInputClass, "w-[36rem]")} defaultValue={post.content} form={`post-${post.id}`} name="content" /></td><td className={tableCellClass}>{formatDistanceToNow(post.createdAt, { addSuffix: true })}</td><td className={tableCellClass}>{formatDistanceToNow(post.updatedAt, { addSuffix: true })}</td><td className={tableCellClass}><label className="inline-flex items-center gap-2"><input defaultChecked={post.isDeleted} form={`post-${post.id}`} name="isDeleted" type="checkbox" />Hidden</label></td><td className={tableActionCellClass}><div className="inline-flex items-center justify-end gap-2"><ActionSubmitButton form={`post-${post.id}`} size="sm" successMessage="Post updated" variant="outline">Save</ActionSubmitButton><Button asChild size="sm" variant="secondary"><Link href={`/forum/${post.threadSlug}`}>View</Link></Button><AdminForumConfirmForm action={deletePostAction} confirmMessage="Permanently delete this post?"><input name="id" type="hidden" value={post.id} /><input name="threadId" type="hidden" value={post.threadId} /><input name="slug" type="hidden" value={post.threadSlug} /><ActionSubmitButton size="sm" successMessage="Post deleted" variant="destructive">Delete</ActionSubmitButton></AdminForumConfirmForm></div></td></tr>))}</tbody>
         </AdminTable>
       </AdminDataPanel>
 
       <AdminDataPanel title="Comments">
         <AdminTable minWidth="min-w-[1350px]">
           <thead><tr><th className={tableHeadClass}>Status</th><th className={tableHeadClass}>Thread</th><th className={tableHeadClass}>Category</th><th className={tableHeadClass}>Author</th><th className={tableHeadClass}>Comment</th><th className={tableHeadClass}>Created</th><th className={tableHeadClass}>Updated</th><th className={tableHeadClass}>Hide</th><th className={cn(tableHeadClass, "right-0 bg-muted text-right")}>Actions</th></tr></thead>
-          <tbody>{comments.map((post) => (<tr key={post.id}><td className={tableCellClass}><form action={updatePostAction} id={`comment-${post.id}`} /><input form={`comment-${post.id}`} name="id" type="hidden" value={post.id} /><input form={`comment-${post.id}`} name="threadId" type="hidden" value={post.threadId} /><input form={`comment-${post.id}`} name="slug" type="hidden" value={post.threadSlug} /><StatusBadge tone={post.isDeleted ? "danger" : "success"}>{post.isDeleted ? "Inactive / hidden" : "Active"}</StatusBadge>{post.isEdited ? <Badge variant="outline">Edited</Badge> : null}</td><td className={tableCellClass}>{post.threadTitle}</td><td className={tableCellClass}>{post.categoryName}</td><td className={tableCellClass}>{authorLabel(post)}</td><td className={tableCellClass}><input className={cn(tableInputClass, "w-[36rem]")} defaultValue={post.content} form={`comment-${post.id}`} name="content" /></td><td className={tableCellClass}>{formatDistanceToNow(post.createdAt, { addSuffix: true })}</td><td className={tableCellClass}>{formatDistanceToNow(post.updatedAt, { addSuffix: true })}</td><td className={tableCellClass}><label className="inline-flex items-center gap-2"><input defaultChecked={post.isDeleted} form={`comment-${post.id}`} name="isDeleted" type="checkbox" />Hidden</label></td><td className={tableActionCellClass}><div className="inline-flex items-center justify-end gap-2"><ActionSubmitButton form={`comment-${post.id}`} size="sm" successMessage="Comment updated" variant="outline">Save</ActionSubmitButton><Button asChild size="sm" variant="secondary"><Link href={`/forum/${post.threadSlug}`}>View</Link></Button><AdminForumConfirmForm action={deletePostAction} confirmMessage="Permanently delete this comment?"><input name="id" type="hidden" value={post.id} /><input name="threadId" type="hidden" value={post.threadId} /><input name="slug" type="hidden" value={post.threadSlug} /><ActionSubmitButton size="sm" successMessage="Comment deleted" variant="destructive">Delete</ActionSubmitButton></AdminForumConfirmForm></div></td></tr>))}</tbody>
+          <tbody>{!forumConfirmed ? (<tr><td className={tableCellClass} colSpan={9}>Unable to load forum comments.</td></tr>) : comments.length === 0 ? (<tr><td className={tableCellClass} colSpan={9}>No forum comments found.</td></tr>) : comments.map((post) => (<tr key={post.id}><td className={tableCellClass}><form action={updatePostAction} id={`comment-${post.id}`} /><input form={`comment-${post.id}`} name="id" type="hidden" value={post.id} /><input form={`comment-${post.id}`} name="threadId" type="hidden" value={post.threadId} /><input form={`comment-${post.id}`} name="slug" type="hidden" value={post.threadSlug} /><StatusBadge tone={post.isDeleted ? "danger" : "success"}>{post.isDeleted ? "Inactive / hidden" : "Active"}</StatusBadge>{post.isEdited ? <Badge variant="outline">Edited</Badge> : null}</td><td className={tableCellClass}>{post.threadTitle}</td><td className={tableCellClass}>{post.categoryName}</td><td className={tableCellClass}>{authorLabel(post)}</td><td className={tableCellClass}><input className={cn(tableInputClass, "w-[36rem]")} defaultValue={post.content} form={`comment-${post.id}`} name="content" /></td><td className={tableCellClass}>{formatDistanceToNow(post.createdAt, { addSuffix: true })}</td><td className={tableCellClass}>{formatDistanceToNow(post.updatedAt, { addSuffix: true })}</td><td className={tableCellClass}><label className="inline-flex items-center gap-2"><input defaultChecked={post.isDeleted} form={`comment-${post.id}`} name="isDeleted" type="checkbox" />Hidden</label></td><td className={tableActionCellClass}><div className="inline-flex items-center justify-end gap-2"><ActionSubmitButton form={`comment-${post.id}`} size="sm" successMessage="Comment updated" variant="outline">Save</ActionSubmitButton><Button asChild size="sm" variant="secondary"><Link href={`/forum/${post.threadSlug}`}>View</Link></Button><AdminForumConfirmForm action={deletePostAction} confirmMessage="Permanently delete this comment?"><input name="id" type="hidden" value={post.id} /><input name="threadId" type="hidden" value={post.threadId} /><input name="slug" type="hidden" value={post.threadSlug} /><ActionSubmitButton size="sm" successMessage="Comment deleted" variant="destructive">Delete</ActionSubmitButton></AdminForumConfirmForm></div></td></tr>))}</tbody>
         </AdminTable>
       </AdminDataPanel>
     </div>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: number }) {
+function MetricCard({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-xl border bg-card/80 p-5 shadow-sm">
       <p className="font-medium text-muted-foreground text-sm">{label}</p>

@@ -10,12 +10,12 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { TRANSLATE_FEATURE_FLAG_KEY } from "@/lib/constants";
 import {
-  getAppSetting,
   getLastKnownAppSetting,
   getModelConfigById,
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import {
   buildLiveTranslationSystemPrompt,
@@ -71,18 +71,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const rawTranslateSetting = await withTimeout(
-    getAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY),
-    TRANSLATE_SETTING_TIMEOUT_MS
-  ).catch(() =>
-    getLastKnownAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY)
+  const translateAccessSettings = await loadFeatureAccessSettingsByKeys(
+    [TRANSLATE_FEATURE_FLAG_KEY],
+    {
+      source: "api.translate.live-token.feature-access",
+      timeoutMs: TRANSLATE_SETTING_TIMEOUT_MS,
+    }
   );
 
+  const rawTranslateSetting =
+    translateAccessSettings.values.get(TRANSLATE_FEATURE_FLAG_KEY) ??
+    getLastKnownAppSetting<string | boolean | number>(TRANSLATE_FEATURE_FLAG_KEY);
   const translateMode = parseTranslateAccessModeSetting(rawTranslateSetting);
-  const translateEnabled = isFeatureEnabledForRole(
-    translateMode,
-    session.user.role
-  );
+  const translateSettingsUnavailable =
+    translateAccessSettings.status === "unavailable" && rawTranslateSetting == null;
+  const translateEnabled =
+    translateSettingsUnavailable ||
+    isFeatureEnabledForRole(translateMode, session.user.role);
 
   if (!translateEnabled) {
     return Response.json({ message: "Not found" }, { status: 404 });
@@ -92,7 +97,10 @@ export async function POST(request: Request) {
   const targetLanguage = await withTimeout(
     getTranslationFeatureLanguageByCodeRaw(targetLanguageCode),
     LIVE_TOKEN_TIMEOUT_MS
-  );
+  ).catch((error) => {
+    console.error("[api/translate/live-token] Failed to load language.", error);
+    return null;
+  });
 
   if (
     !targetLanguage ||
@@ -114,7 +122,10 @@ export async function POST(request: Request) {
   const speechModelConfig = await withTimeout(
     getModelConfigById({ id: targetLanguage.speechModelConfigId }),
     LIVE_MODEL_TIMEOUT_MS
-  );
+  ).catch((error) => {
+    console.error("[api/translate/live-token] Failed to load speech model.", error);
+    return null;
+  });
 
   if (!speechModelConfig || !speechModelConfig.isEnabled) {
     return buildFallbackResponse(

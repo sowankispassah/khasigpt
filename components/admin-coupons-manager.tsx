@@ -60,10 +60,18 @@ export type CreatorOption = {
 
 export function AdminCouponsManager({
   coupons,
+  couponsConfirmed,
   creators,
+  creatorsConfirmed,
+  payoutsConfirmed,
+  redemptionsConfirmed,
 }: {
   coupons: AdminCoupon[];
+  couponsConfirmed: boolean;
   creators: CreatorOption[];
+  creatorsConfirmed: boolean;
+  payoutsConfirmed: boolean;
+  redemptionsConfirmed: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedCoupons, setExpandedCoupons] = useState<
@@ -145,7 +153,7 @@ export function AdminCouponsManager({
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
   }, [coupons]);
 
-  const hasCreators = creators.length > 0;
+  const hasCreators = creatorsConfirmed && creators.length > 0;
 
   const toggleCouponDetails = useCallback((couponId: string) => {
     setExpandedCoupons((previous) => ({
@@ -156,19 +164,55 @@ export function AdminCouponsManager({
 
   return (
     <div className="flex flex-col gap-8">
+      {[
+        !couponsConfirmed
+          ? "Coupon rows could not be confirmed. Coupon tables are hidden instead of showing empty fallback data."
+          : null,
+        !creatorsConfirmed
+          ? "Creator options could not be confirmed. Coupon creation is disabled until this section is refreshed."
+          : null,
+        !redemptionsConfirmed
+          ? "Recent redemption rows could not be confirmed."
+          : null,
+        !payoutsConfirmed ? "Recent payout rows could not be confirmed." : null,
+      ]
+        .filter((message): message is string => Boolean(message))
+        .map((message) => (
+          <div
+            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm"
+            key={message}
+          >
+            {message} Refresh this admin section to retry.
+          </div>
+        ))}
       <section className="grid gap-4 md:grid-cols-4">
-        <SummaryCard label="Active coupons" value={coupons.length.toString()} />
+        <SummaryCard
+          label="Active coupons"
+          value={couponsConfirmed ? coupons.length.toString() : "Unavailable"}
+        />
         <SummaryCard
           label="Total redemptions"
-          value={summary.totalUsage.toLocaleString("en-IN")}
+          value={
+            couponsConfirmed && redemptionsConfirmed
+              ? summary.totalUsage.toLocaleString("en-IN")
+              : "Unavailable"
+          }
         />
         <SummaryCard
           label="Recharge volume"
-          value={`₹${formatCurrency(summary.totalRevenue)}`}
+          value={
+            couponsConfirmed && redemptionsConfirmed
+              ? `Rs ${formatCurrency(summary.totalRevenue)}`
+              : "Unavailable"
+          }
         />
         <SummaryCard
           label="Creator rewards"
-          value={`₹${formatCurrency(summary.totalReward)}`}
+          value={
+            couponsConfirmed && payoutsConfirmed
+              ? `Rs ${formatCurrency(summary.totalReward)}`
+              : "Unavailable"
+          }
         />
       </section>
 
@@ -205,7 +249,16 @@ export function AdminCouponsManager({
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {coupons.length === 0 ? (
+              {!couponsConfirmed ? (
+                <tr>
+                  <td
+                    className="px-3 py-6 text-center text-muted-foreground"
+                    colSpan={12}
+                  >
+                    Unable to load coupons.
+                  </td>
+                </tr>
+              ) : coupons.length === 0 ? (
                 <tr>
                   <td
                     className="px-3 py-6 text-center text-muted-foreground"
@@ -343,16 +396,15 @@ export function AdminCouponsManager({
                                 type="hidden"
                                 value={(!coupon.isActive).toString()}
                               />
-                              <Button
-                                className="cursor-pointer"
+                              <FormSubmitButton
+                                className="min-w-[100px]"
                                 size="sm"
-                                type="submit"
                                 variant={
                                   coupon.isActive ? "outline" : "default"
                                 }
                               >
                                 {coupon.isActive ? "Deactivate" : "Activate"}
-                              </Button>
+                              </FormSubmitButton>
                             </form>
                           </div>
                         </td>
@@ -377,7 +429,11 @@ export function AdminCouponsManager({
                                   <p className="text-muted-foreground text-xs uppercase tracking-wide">
                                     Recent redemptions
                                   </p>
-                                  {coupon.recentRedemptions.length === 0 ? (
+                                  {!redemptionsConfirmed ? (
+                                    <p className="mt-2 text-muted-foreground text-sm">
+                                      Recent redemptions could not be loaded.
+                                    </p>
+                                  ) : coupon.recentRedemptions.length === 0 ? (
                                     <p className="mt-2 text-muted-foreground text-sm">
                                       No users have redeemed this code yet.
                                     </p>
@@ -424,7 +480,11 @@ export function AdminCouponsManager({
                                   <p className="text-muted-foreground text-xs uppercase tracking-wide">
                                     Payout history
                                   </p>
-                                  {coupon.recentPayouts.length === 0 ? (
+                                  {!payoutsConfirmed ? (
+                                    <p className="mt-2 text-muted-foreground text-sm">
+                                      Recent payouts could not be loaded.
+                                    </p>
+                                  ) : coupon.recentPayouts.length === 0 ? (
                                     <p className="mt-2 text-muted-foreground text-sm">
                                       No payouts have been recorded yet.
                                     </p>
@@ -495,6 +555,10 @@ export function AdminCouponsManager({
                                         />
                                       </div>
                                       <FormSubmitButton
+                                        disabled={
+                                          !payoutsConfirmed ||
+                                          !redemptionsConfirmed
+                                        }
                                         size="sm"
                                         variant="secondary"
                                       >
@@ -530,7 +594,9 @@ export function AdminCouponsManager({
         </header>
         {hasCreators ? null : (
           <div className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-amber-800 text-sm">
-            Add at least one creator user before issuing coupons.
+            {creatorsConfirmed
+              ? "Add at least one creator user before issuing coupons."
+              : "Creator options could not be loaded. Coupon saves are disabled until this section is refreshed."}
           </div>
         )}
         <form action={upsertCouponAction} className="mt-4 space-y-4">
@@ -646,7 +712,7 @@ export function AdminCouponsManager({
             </Button>
             <FormSubmitButton
               disabled={!hasCreators}
-              pendingLabel={selectedCoupon ? "Saving…" : "Creating…"}
+              pendingLabel={selectedCoupon ? "Saving..." : "Creating..."}
             >
               {selectedCoupon ? "Save changes" : "Create coupon"}
             </FormSubmitButton>

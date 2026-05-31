@@ -157,12 +157,17 @@ function parseCursor(cursor?: string | null) {
   if (!cursor) {
     return null;
   }
-  const [timestamp, id] = cursor.split("_");
+  const parts = cursor.split("_");
+  const hasPinnedPrefix = parts[0] === "p0" || parts[0] === "p1";
+  const timestamp = hasPinnedPrefix ? parts[1] : parts[0];
+  const id = hasPinnedPrefix ? parts[2] : parts[1];
   if (!timestamp || !id) {
     return null;
   }
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? null : { date, id };
+  return Number.isNaN(date.getTime())
+    ? null
+    : { date, id, isPinned: hasPinnedPrefix ? parts[0] === "p1" : null };
 }
 
 function getThreadActivityAt(row: {
@@ -175,9 +180,10 @@ function getThreadActivityAt(row: {
 function buildCursor(row: {
   createdAt: Date;
   id: string;
+  isPinned: boolean;
   lastRepliedAt: Date | null;
 }) {
-  return `${getThreadActivityAt(row).toISOString()}_${row.id}`;
+  return `p${row.isPinned ? 1 : 0}_${getThreadActivityAt(row).toISOString()}_${row.id}`;
 }
 
 export async function getForumOverview(
@@ -249,6 +255,7 @@ export async function getForumOverview(
 
     const lastReplyUser = alias(user, "lastReplyUser");
     const filteredThreadTag = alias(forumThreadTag, "filteredThreadTag");
+    const threadActivityAt = sql<Date>`COALESCE(${forumThread.lastRepliedAt}, ${forumThread.createdAt})`;
     let baseQuery = db
       .select({
         id: forumThread.id,
@@ -319,10 +326,17 @@ export async function getForumOverview(
 
     const cursor = parseCursor(params.cursor);
     if (cursor) {
-      const cursorClause = sql<boolean>`(
-        ${forumThread.lastRepliedAt} < ${cursor.date}
-        OR (${forumThread.lastRepliedAt} = ${cursor.date} AND ${forumThread.id} < ${cursor.id})
+      const activityCursorClause = sql<boolean>`(
+        ${threadActivityAt} < ${cursor.date}
+        OR (${threadActivityAt} = ${cursor.date} AND ${forumThread.id} < ${cursor.id})
       )`;
+      const cursorClause =
+        typeof cursor.isPinned === "boolean"
+          ? sql<boolean>`(
+              ${forumThread.isPinned} < ${cursor.isPinned}
+              OR (${forumThread.isPinned} = ${cursor.isPinned} AND ${activityCursorClause})
+            )`
+          : activityCursorClause;
       filtersClause = filtersClause
         ? (and(filtersClause, cursorClause) as SQL<boolean>)
         : cursorClause;
@@ -342,8 +356,8 @@ export async function getForumOverview(
     const threadRows = await queryWithFilters
       .orderBy(
         desc(forumThread.isPinned),
-        desc(forumThread.lastRepliedAt),
-        desc(forumThread.createdAt)
+        desc(threadActivityAt),
+        desc(forumThread.id)
       )
       .limit(limit + 1);
 

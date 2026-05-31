@@ -12,10 +12,8 @@ import {
   loadPromptReadModel,
   loadTranslateReadModel,
 } from "@/lib/api/read-models";
-import type { UserRole } from "@/lib/db/schema";
 import {
   getDefaultIconPromptActions,
-  loadIconPromptActions,
 } from "@/lib/icon-prompts";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 
@@ -117,6 +115,11 @@ function buildStartupLanguageSnapshot(
 }
 
 const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
+  meta: {
+    degraded: true,
+    featureAccessStatus: "unavailable",
+    missingFeatureKeys: [],
+  },
   // Render-only fallback for transient settings failures. Protected feature
   // routes still enforce access server-side; the shell should not lose the
   // whole sidebar because one optional settings read was slow.
@@ -149,29 +152,19 @@ function buildFallbackPromptSnapshot(
     iconPromptActions: getDefaultIconPromptActions(
       preferredLanguage?.trim().toLowerCase() ?? "en"
     ),
-    suggestedPrompts: [],
-  };
-}
-
-async function loadStartupPromptSnapshot({
-  preferredLanguage,
-  role,
-}: {
-  preferredLanguage: string | null;
-  role: UserRole | null;
-}): Promise<PromptSnapshot> {
-  const iconPromptActions = await loadIconPromptActions(
-    preferredLanguage,
-    role
-  );
-
-  return {
-    iconPromptActions,
+    meta: {
+      degraded: true,
+      degradedSections: ["suggestedPrompts", "iconPromptActions"],
+    },
     suggestedPrompts: [],
   };
 }
 
 const FALLBACK_TRANSLATE_SNAPSHOT: TranslateSnapshot = {
+  meta: {
+    degraded: true,
+    degradedSections: ["languages"],
+  },
   providerMode: "ai",
   languages: [],
 };
@@ -249,30 +242,18 @@ export async function GET(request: Request) {
   const role = session?.user?.role ?? null;
   const userId = session?.user?.id ?? null;
 
-  const [
-    languageSnapshotResult,
-    featureSnapshotResult,
-    modelConfigResult,
-  ] = await Promise.all([
-    safeBootstrapSection({
-      fallback: buildStartupLanguageSnapshot(preferredLanguage),
-      label: "mobile.bootstrap.languages",
-      loader: () => loadLanguageReadModel(preferredLanguage),
-      phase,
-    }),
-    safeBootstrapSection({
-      fallback: FALLBACK_FEATURE_SNAPSHOT,
-      label: "mobile.bootstrap.features",
-      loader: () => loadFeatureAccessReadModel({ role, userId }),
-      phase,
-    }),
-    safeBootstrapSection({
-      fallback: FALLBACK_MODEL_CONFIG,
-      label: "mobile.bootstrap.models",
-      loader: loadModelConfigReadModel,
-      phase,
-    }),
-  ]);
+  let languageSnapshotResult: BootstrapSectionResult<LanguageSnapshot> = {
+    data: buildStartupLanguageSnapshot(preferredLanguage),
+    degraded: false,
+  };
+  let featureSnapshotResult: BootstrapSectionResult<FeatureSnapshot> = {
+    data: FALLBACK_FEATURE_SNAPSHOT,
+    degraded: false,
+  };
+  let modelConfigResult: BootstrapSectionResult<ModelConfigSnapshot> = {
+    data: FALLBACK_MODEL_CONFIG,
+    degraded: false,
+  };
 
   let promptSnapshotResult: BootstrapSectionResult<PromptSnapshot> = {
     data: buildFallbackPromptSnapshot(preferredLanguage),
@@ -290,24 +271,38 @@ export async function GET(request: Request) {
     Awaited<ReturnType<typeof loadBillingReadModel>> | null
   > = { data: null, degraded: false };
 
-  if (session?.user && isStartupPhase) {
-    promptSnapshotResult = await safeBootstrapSection({
-      fallback: buildFallbackPromptSnapshot(preferredLanguage),
-      label: "mobile.bootstrap.icon-prompts",
-      loader: () =>
-        loadStartupPromptSnapshot({
-          preferredLanguage,
-          role: session.user.role,
-        }),
-      phase,
-    });
-  }
-
+  // Keep startup bootstrap auth-only. Native applies a local authenticated
+  // shell immediately, then full bootstrap hydrates optional data in the
+  // background. This avoids language/settings/model DB reads delaying login.
   // Keep full bootstrap compatible, but do not run all optional DB reads at
   // once. In production the Supabase pooler has repeatedly left concurrent
   // read batches idle on ClientRead while the request waited indefinitely.
-  // Startup remains small; optional sections also have dedicated endpoints.
   if (session?.user && !isStartupPhase) {
+    [
+      languageSnapshotResult,
+      featureSnapshotResult,
+      modelConfigResult,
+    ] = await Promise.all([
+      safeBootstrapSection({
+        fallback: buildStartupLanguageSnapshot(preferredLanguage),
+        label: "mobile.bootstrap.languages",
+        loader: () => loadLanguageReadModel(preferredLanguage),
+        phase,
+      }),
+      safeBootstrapSection({
+        fallback: FALLBACK_FEATURE_SNAPSHOT,
+        label: "mobile.bootstrap.features",
+        loader: () => loadFeatureAccessReadModel({ role, userId }),
+        phase,
+      }),
+      safeBootstrapSection({
+        fallback: FALLBACK_MODEL_CONFIG,
+        label: "mobile.bootstrap.models",
+        loader: loadModelConfigReadModel,
+        phase,
+      }),
+    ]);
+
     promptSnapshotResult = await safeBootstrapSection({
       fallback: buildFallbackPromptSnapshot(preferredLanguage),
       label: "mobile.bootstrap.prompts",
@@ -352,17 +347,23 @@ export async function GET(request: Request) {
   const balance = balanceResult.data;
   const degradedSections: BootstrapSection[] = [
     languageSnapshotResult.degraded ? "i18n" : null,
-    featureSnapshotResult.degraded ? "features" : null,
+    featureSnapshotResult.degraded || featureSnapshot.meta.degraded
+      ? "features"
+      : null,
     modelConfigResult.degraded ? "modelConfig" : null,
-    promptSnapshotResult.degraded ? "prompts" : null,
-    translateResult.degraded ? "translate" : null,
+    promptSnapshotResult.degraded || promptSnapshot.meta.degraded
+      ? "prompts"
+      : null,
+    translateResult.degraded || translate.meta.degraded ? "translate" : null,
     pricingResult.degraded ? "pricing" : null,
     balanceResult.degraded ? "billing" : null,
   ].filter((section): section is BootstrapSection => Boolean(section));
   const deferredSections: BootstrapSection[] = isStartupPhase
     ? [
         "billing",
-        languageSnapshotResult.degraded ? "i18n" : null,
+        "features",
+        "i18n",
+        "modelConfig",
         "pricing",
         "prompts",
         "translate",
@@ -375,6 +376,7 @@ export async function GET(request: Request) {
         degradedSections,
         deferredSections,
         phase,
+        featureAccess: featureSnapshot.meta,
       },
       session,
       i18n: languageSnapshot.i18n,

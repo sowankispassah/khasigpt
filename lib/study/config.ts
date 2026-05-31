@@ -1,11 +1,16 @@
 import { STUDY_MODE_FEATURE_FLAG_KEY } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
 import {
   type FeatureAccessMode,
   type FeatureAccessRole,
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
+
+const STUDY_MODE_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 
 function coerceBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") {
@@ -37,9 +42,20 @@ export function parseStudyModeEnabledSetting(value: unknown): boolean {
 }
 
 export async function isStudyModeEnabledForRole(role: FeatureAccessRole) {
-  const rawValue = await getAppSetting<string | boolean | number>(
+  const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
+    [STUDY_MODE_FEATURE_FLAG_KEY],
+    {
+      source: "study.config.feature-access",
+      timeoutMs: STUDY_MODE_FEATURE_ACCESS_TIMEOUT_MS,
+    }
+  );
+  const rawValue = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
     STUDY_MODE_FEATURE_FLAG_KEY
   );
+  if (rawValue === undefined && featureAccessSettings.status === "unavailable") {
+    return true;
+  }
   const mode = parseStudyModeAccessModeSetting(rawValue);
   return isFeatureEnabledForRole(mode, role);
 }

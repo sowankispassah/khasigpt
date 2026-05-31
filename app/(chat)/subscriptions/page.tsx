@@ -23,14 +23,29 @@ import {
   SESSION_SORT_DEFAULT,
   type SessionSortOption,
 } from "@/lib/subscriptions/session-sort";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
 const MANUAL_TOP_UP_PLAN_ID = "00000000-0000-0000-0000-0000000000ff";
 const RANGE_OPTIONS = [7, 14, 30, 60, 90] as const;
 const SESSIONS_PAGE_SIZE = 10;
+const DICTIONARY_TIMEOUT_MS = 4000;
+const BALANCE_TIMEOUT_MS = 7000;
+const OPTIONAL_SECTION_TIMEOUT_MS = 6000;
 
 type RangeOption = (typeof RANGE_OPTIONS)[number];
+type OptionalSectionResult<T> =
+  | {
+      data: T;
+      error: null;
+      ok: true;
+    }
+  | {
+      data: T;
+      error: string;
+      ok: false;
+    };
 
 type SubscriptionsPageProps = {
   searchParams?: Promise<{
@@ -68,6 +83,42 @@ const istDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
 });
 const IST_OFFSET_MS = 330 * 60 * 1000;
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "The section could not be loaded.";
+}
+
+async function loadOptionalSubscriptionSection<T>({
+  fallback,
+  label,
+  promise,
+}: {
+  fallback: T;
+  label: string;
+  promise: Promise<T>;
+}): Promise<OptionalSectionResult<T>> {
+  try {
+    return {
+      data: await withTimeout(promise, OPTIONAL_SECTION_TIMEOUT_MS, () => {
+        console.error(`[subscriptions] ${label} read timed out.`, {
+          timeoutMs: OPTIONAL_SECTION_TIMEOUT_MS,
+        });
+      }),
+      error: null,
+      ok: true,
+    };
+  } catch (error) {
+    console.error(`[subscriptions] ${label} read failed.`, error);
+    return {
+      data: fallback,
+      error: getErrorMessage(error),
+      ok: false,
+    };
+  }
+}
+
 export default async function SubscriptionsPage({
   searchParams,
 }: SubscriptionsPageProps) {
@@ -94,23 +145,71 @@ export default async function SubscriptionsPage({
     ? sessionSortParam
     : SESSION_SORT_DEFAULT;
 
-  const [
-    { dictionary },
-    balance,
-    rawDailyUsage,
-    sessionUsage,
-    rechargeHistory,
-  ] = await Promise.all([
+  const { dictionary } = await withTimeout(
     getTranslationBundle(preferredLanguage),
-    getUserBalanceSummary(session.user.id),
-    getDailyTokenUsageForUser(session.user.id, range),
-    getSessionTokenUsageForUser(session.user.id, {
-      sortBy: sessionSort,
-    }),
-    listUserRechargeHistory({ userId: session.user.id, limit: 10 }),
-  ]);
+    DICTIONARY_TIMEOUT_MS,
+    () => {
+      console.error("[subscriptions] Translation bundle read timed out.", {
+        timeoutMs: DICTIONARY_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    console.error("[subscriptions] Translation bundle read failed.", error);
+    return { dictionary: {} as Record<string, string> };
+  });
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
+
+  const [
+    balance,
+    dailyUsageResult,
+    sessionUsageResult,
+    rechargeHistoryResult,
+  ] = await Promise.all([
+    withTimeout(getUserBalanceSummary(session.user.id), BALANCE_TIMEOUT_MS, () => {
+      console.error("[subscriptions] Balance read timed out.", {
+        timeoutMs: BALANCE_TIMEOUT_MS,
+      });
+    }).catch((error) => {
+      console.error("[subscriptions] Balance read failed.", error);
+      return null;
+    }),
+    loadOptionalSubscriptionSection({
+      fallback: [] as Awaited<ReturnType<typeof getDailyTokenUsageForUser>>,
+      label: "daily usage",
+      promise: getDailyTokenUsageForUser(session.user.id, range),
+    }),
+    loadOptionalSubscriptionSection({
+      fallback: [] as Awaited<ReturnType<typeof getSessionTokenUsageForUser>>,
+      label: "session usage",
+      promise: getSessionTokenUsageForUser(session.user.id, {
+        sortBy: sessionSort,
+      }),
+    }),
+    loadOptionalSubscriptionSection({
+      fallback: [] as Awaited<ReturnType<typeof listUserRechargeHistory>>,
+      label: "recharge history",
+      promise: listUserRechargeHistory({ userId: session.user.id, limit: 10 }),
+    }),
+  ]);
+
+  if (!balance) {
+    return (
+      <SubscriptionsUnavailablePage
+        message={t(
+          "subscriptions.error.balance_unavailable",
+          "Your subscription balance could not be loaded right now. Please retry shortly."
+        )}
+        title={t("subscriptions.title", "Subscriptions & Credits")}
+      />
+    );
+  }
+
+  const rawDailyUsage = dailyUsageResult.data;
+  const sessionUsage = sessionUsageResult.data;
+  const rechargeHistory = rechargeHistoryResult.data;
+  const hasDegradedOptionalSections =
+    !dailyUsageResult.ok || !sessionUsageResult.ok || !rechargeHistoryResult.ok;
 
   const sessionsPageParam = toSingleValue(resolvedSearchParams?.sessionsPage);
   let sessionsPage = Number.parseInt(sessionsPageParam ?? "", 10);
@@ -236,7 +335,9 @@ export default async function SubscriptionsPage({
     ),
     empty: t(
       "subscriptions.recharge_history.empty",
-      "You haven't recharged your account yet."
+      rechargeHistoryResult.ok
+        ? "You haven't recharged your account yet."
+        : "Recharge history could not be loaded right now. Please retry shortly."
     ),
     plan: t("subscriptions.recharge_history.column.plan", "Plan"),
     amount: t("subscriptions.recharge_history.column.amount", "Amount"),
@@ -332,6 +433,23 @@ export default async function SubscriptionsPage({
           />
         </p>
       </header>
+
+      {hasDegradedOptionalSections ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm">
+          <p className="font-semibold">
+            <EditableTranslation
+              defaultText="Some subscription details could not be confirmed."
+              translationKey="subscriptions.warning.partial_title"
+            />
+          </p>
+          <p className="mt-1">
+            <EditableTranslation
+              defaultText="Your balance is shown, but one or more usage or recharge sections is temporarily unavailable."
+              translationKey="subscriptions.warning.partial_body"
+            />
+          </p>
+        </div>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
@@ -527,7 +645,14 @@ export default async function SubscriptionsPage({
           <DailyUsageRangeSelect currentRange={range} options={RANGE_OPTIONS} />
         </div>
 
-        {maxTokens === 0 ? (
+        {!dailyUsageResult.ok ? (
+          <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-amber-300 border-dashed bg-amber-50 text-amber-900 text-sm">
+            <EditableTranslation
+              defaultText="Daily usage could not be loaded right now."
+              translationKey="subscriptions.daily_usage.unavailable"
+            />
+          </div>
+        ) : maxTokens === 0 ? (
           <div className="mt-6 flex h-48 items-center justify-center rounded-md border border-muted-foreground/30 border-dashed bg-muted/30 text-muted-foreground text-sm">
             <EditableTranslation
               defaultText="No usage recorded in this range."
@@ -603,7 +728,16 @@ export default async function SubscriptionsPage({
               </tr>
             </thead>
             <tbody>
-              {displayedSessions.length === 0 ? (
+              {!sessionUsageResult.ok ? (
+                <tr>
+                  <td className="py-4 text-amber-900" colSpan={4}>
+                    <EditableTranslation
+                      defaultText="Session usage could not be loaded right now."
+                      translationKey="subscriptions.session_usage.unavailable"
+                    />
+                  </td>
+                </tr>
+              ) : displayedSessions.length === 0 ? (
                 <tr>
                   <td className="py-4 text-muted-foreground" colSpan={4}>
                     <EditableTranslation
@@ -661,6 +795,32 @@ export default async function SubscriptionsPage({
           sessionsPage={sessionsPage}
           totalPages={totalSessionPages}
         />
+      </section>
+    </div>
+  );
+}
+
+function SubscriptionsUnavailablePage({
+  message,
+  title,
+}: {
+  message: string;
+  title: string;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
+      <div className="flex items-center gap-3">
+        <BackToHomeButton label="Back" translationKey="navigation.back" />
+      </div>
+      <section className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-900 shadow-sm">
+        <h1 className="font-semibold text-2xl">{title}</h1>
+        <p className="mt-2 text-sm">{message}</p>
+        <Link
+          className="mt-4 inline-flex cursor-pointer rounded-md border border-amber-300 bg-background px-3 py-2 font-medium text-sm transition hover:bg-amber-100"
+          href="/subscriptions"
+        >
+          Retry
+        </Link>
       </section>
     </div>
   );

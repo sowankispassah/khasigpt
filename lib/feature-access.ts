@@ -33,9 +33,39 @@ const ADMIN_ONLY_VALUES = new Set([
   "admins",
 ]);
 
+export function unwrapJsonEncodedScalar(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  let current = value.trim();
+  for (let index = 0; index < 8; index += 1) {
+    if (!current.startsWith('"')) {
+      return current;
+    }
+    try {
+      const parsed = JSON.parse(current);
+      if (typeof parsed !== "string") {
+        return parsed;
+      }
+      current = parsed.trim();
+    } catch {
+      return current;
+    }
+  }
+
+  return current;
+}
+
 function parseFeatureAccessModePrimitive(
   value: unknown
 ): FeatureAccessMode | null {
+  const unwrappedValue = unwrapJsonEncodedScalar(value);
+
+  if (unwrappedValue !== value) {
+    return parseFeatureAccessModePrimitive(unwrappedValue);
+  }
+
   if (typeof value === "boolean") {
     return value ? "enabled" : "disabled";
   }
@@ -82,13 +112,18 @@ function parseFeatureAccessModePrimitive(
 export function parseFeatureAccessModeStrict(
   value: unknown
 ): FeatureAccessMode | null {
-  const directMode = parseFeatureAccessModePrimitive(value);
+  const unwrappedValue = unwrapJsonEncodedScalar(value);
+  const directMode = parseFeatureAccessModePrimitive(unwrappedValue);
   if (directMode) {
     return directMode;
   }
 
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
+  if (
+    unwrappedValue &&
+    typeof unwrappedValue === "object" &&
+    !Array.isArray(unwrappedValue)
+  ) {
+    const record = unwrappedValue as Record<string, unknown>;
 
     const candidateKeys = ["accessMode", "mode", "value", "state"];
     for (const key of candidateKeys) {

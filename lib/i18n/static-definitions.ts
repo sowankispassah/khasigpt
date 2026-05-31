@@ -294,6 +294,71 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Sidebar link to the translate tool.",
   },
   {
+    key: "translate.warning.partial_title",
+    defaultText: "Translate settings could not be fully confirmed.",
+    description: "Warning title when translate settings or languages are stale.",
+  },
+  {
+    key: "translate.warning.partial_body",
+    defaultText:
+      "The page is still available, but some language or feature settings may be temporarily stale.",
+    description: "Warning body when translate settings or languages are stale.",
+  },
+  {
+    key: "translate.languages.unavailable_title",
+    defaultText: "Languages unavailable",
+    description: "Title shown when translate target languages fail to load.",
+  },
+  {
+    key: "translate.languages.unavailable_body",
+    defaultText:
+      "Target languages could not be loaded right now. Please retry shortly.",
+    description: "Body shown when translate target languages fail to load.",
+  },
+  {
+    key: "translate.languages.placeholder_unavailable",
+    defaultText: "Target languages are unavailable.",
+    description: "Textarea placeholder when translate target languages failed.",
+  },
+  {
+    key: "translate.input.placeholder",
+    defaultText: "Type or speak...",
+    description: "Source text input placeholder on the translate page.",
+  },
+  {
+    key: "native.translate.languages.loading",
+    defaultText: "Loading languages...",
+    description:
+      "Loading state while native translate target languages are loading.",
+  },
+  {
+    key: "native.translate.languages.unavailable_title",
+    defaultText: "Target languages could not be loaded.",
+    description: "Title shown when native translate languages are unavailable.",
+  },
+  {
+    key: "native.translate.languages.unavailable_body",
+    defaultText:
+      "The Translate screen is still available, but translation needs a target language. Refresh and try again.",
+    description: "Body shown when native translate languages are unavailable.",
+  },
+  {
+    key: "native.translate.languages.retry",
+    defaultText: "Retry",
+    description: "Retry button label for native translate languages.",
+  },
+  {
+    key: "native.translate.languages.refreshing",
+    defaultText: "Refreshing...",
+    description:
+      "Loading label shown while refreshing native translate languages.",
+  },
+  {
+    key: "native.translate.languages.refresh_failed",
+    defaultText: "Unable to refresh languages.",
+    description: "Fallback error when native translate language refresh fails.",
+  },
+  {
     key: "sidebar.study_mode",
     defaultText: "Study Mode",
     description: "Sidebar link for the study chat mode.",
@@ -343,6 +408,20 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "legal.last_updated_prefix",
     defaultText: "Last updated",
     description: "Prefix used before the legal document last updated date.",
+  },
+  {
+    key: "resources.error.degraded",
+    defaultText:
+      "Some content could not be refreshed. Showing the last available version.",
+    description:
+      "Inline warning shown on native resource pages when resource settings are partially degraded.",
+  },
+  {
+    key: "resources.error.load_failed",
+    defaultText:
+      "Unable to refresh this content. Showing the last available version.",
+    description:
+      "Inline warning shown on native resource pages when refreshing resource settings fails.",
   },
   {
     key: "auth.subtitle",
@@ -794,6 +873,22 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "chat.history.load_failed",
     defaultText: "Unable to load earlier messages.",
     description: "Toast message when loading chat history fails.",
+  },
+  {
+    key: "chat.history.initial_load_failed.title",
+    defaultText: "Previous messages could not be loaded.",
+    description: "Title for the chat history degraded-state banner.",
+  },
+  {
+    key: "chat.history.initial_load_failed.description",
+    defaultText:
+      "You can keep using the composer. Retry to confirm the saved history.",
+    description: "Body text for the chat history degraded-state banner.",
+  },
+  {
+    key: "chat.history.initial_load_failed.retry",
+    defaultText: "Retry history",
+    description: "Button label that retries loading initial chat history.",
   },
   {
     key: "chat.input.placeholder",
@@ -1501,6 +1596,23 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Placeholder when the user has no chat history.",
   },
   {
+    key: "sidebar.history.error",
+    defaultText: "Chat history could not load.",
+    description: "Error shown when sidebar chat history cannot be loaded.",
+  },
+  {
+    key: "sidebar.history.retry",
+    defaultText: "Retry",
+    description: "Retry button label for sidebar chat history loading.",
+  },
+  {
+    key: "sidebar.history.degraded",
+    defaultText:
+      "Chat history could not be fully confirmed. Showing the last available items.",
+    description:
+      "Warning shown when sidebar chat history is partially degraded or unconfirmed.",
+  },
+  {
     key: "sidebar.history.section.today",
     defaultText: "Today",
     description: "Label for chats created today.",
@@ -1833,6 +1945,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Empty state text for the daily usage chart.",
   },
   {
+    key: "subscriptions.daily_usage.unavailable",
+    defaultText: "Daily usage could not be loaded right now.",
+    description: "Unavailable state when the daily usage read fails.",
+  },
+  {
     key: "subscriptions.daily_usage.peak_day",
     defaultText: "Peak day: {date} • {credits} credits",
     description: "Label summarising the peak usage day.",
@@ -1918,6 +2035,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Empty state text for the session usage table.",
   },
   {
+    key: "subscriptions.session_usage.unavailable",
+    defaultText: "Session usage could not be loaded right now.",
+    description: "Unavailable state when session usage cannot be confirmed.",
+  },
+  {
     key: "subscriptions.session_usage.untitled_chat",
     defaultText: "Untitled chat",
     description: "Fallback title when a chat is missing a name.",
@@ -1966,6 +2088,23 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "subscriptions.pagination.no_more",
     defaultText: "No more data",
     description: "Label when there are no more sessions to load.",
+  },
+  {
+    key: "subscriptions.warning.partial_title",
+    defaultText: "Some subscription details could not be confirmed.",
+    description: "Warning title when optional subscription reads fail.",
+  },
+  {
+    key: "subscriptions.warning.partial_body",
+    defaultText:
+      "Your balance is shown, but one or more usage or recharge sections is temporarily unavailable.",
+    description: "Warning body when optional subscription reads fail.",
+  },
+  {
+    key: "subscriptions.error.balance_unavailable",
+    defaultText:
+      "Your subscription balance could not be loaded right now. Please retry shortly.",
+    description: "Error message when the subscription balance read fails.",
   },
   {
     key: "recharge.tagline",
@@ -2191,6 +2330,33 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "recharge.current_balance.valid_until",
     defaultText: "Credits valid until",
     description: "Label for the expiry date in the current balance card.",
+  },
+  {
+    key: "recharge.warning.partial_title",
+    defaultText: "Some recharge details could not be confirmed.",
+    description: "Warning title when optional recharge page data fails.",
+  },
+  {
+    key: "recharge.warning.partial_body",
+    defaultText:
+      "Plans are available, but your current balance could not be loaded right now.",
+    description: "Warning body when current balance cannot be confirmed.",
+  },
+  {
+    key: "recharge.error.pricing_unavailable",
+    defaultText:
+      "Recharge plans could not be loaded right now. Please retry shortly.",
+    description: "Error message when pricing plans cannot be loaded.",
+  },
+  {
+    key: "recharge.error.retry",
+    defaultText: "Retry",
+    description: "Retry link label on recharge error states.",
+  },
+  {
+    key: "recharge.current_balance.unavailable",
+    defaultText: "Current balance could not be loaded right now.",
+    description: "Unavailable state for the current balance card.",
   },
   {
     key: "contact.form.heading",

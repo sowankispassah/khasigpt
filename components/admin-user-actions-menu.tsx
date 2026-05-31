@@ -31,6 +31,31 @@ type AdminUserActionsMenuProps = {
   currentRole: "admin" | "creator" | "regular";
 };
 
+const USER_ACTION_TIMEOUT_MS = 15_000;
+const IMPERSONATION_LINK_TIMEOUT_MS = 10_000;
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 async function readUserActionError(response: Response) {
   const data = await response.json().catch(() => null);
   if (data && typeof data === "object" && "message" in data) {
@@ -113,12 +138,16 @@ export function AdminUserActionsMenu({
 
       setPendingAction(pendingKey);
       try {
-        const response = await fetch(`/api/admin/users/${userId}`, {
-          body: JSON.stringify(payload),
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          method: "PATCH",
-        });
+        const response = await fetchWithTimeout(
+          `/api/admin/users/${userId}`,
+          {
+            body: JSON.stringify(payload),
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            method: "PATCH",
+          },
+          USER_ACTION_TIMEOUT_MS
+        );
 
         if (!response.ok) {
           throw new Error(await readUserActionError(response));
@@ -132,7 +161,11 @@ export function AdminUserActionsMenu({
       } catch (error) {
         toast({
           description:
-            error instanceof Error ? error.message : "Unable to update user.",
+            isAbortError(error)
+              ? "User update timed out. Please retry."
+              : error instanceof Error
+                ? error.message
+                : "Unable to update user.",
           type: "error",
         });
       } finally {
@@ -152,12 +185,16 @@ export function AdminUserActionsMenu({
     let cancelled = false;
     setImpersonateLoading(true);
     setImpersonateError(null);
-    fetch("/api/admin/impersonate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
-      credentials: "include",
-    })
+    fetchWithTimeout(
+      "/api/admin/impersonate",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+        credentials: "include",
+      },
+      IMPERSONATION_LINK_TIMEOUT_MS
+    )
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("Unable to prepare impersonation link");
@@ -173,7 +210,11 @@ export function AdminUserActionsMenu({
       .catch((error) => {
         if (!cancelled) {
           setImpersonateError(
-            error instanceof Error ? error.message : "Failed to prepare link"
+            isAbortError(error)
+              ? "Preparing link timed out"
+              : error instanceof Error
+                ? error.message
+                : "Failed to prepare link"
           );
         }
       })

@@ -17,7 +17,6 @@ import {
 import {
   getActiveSubscriptionForUser,
   getAppSetting,
-  getLastKnownAppSetting,
   getModelConfigById,
   getUserById,
 } from "@/lib/db/queries";
@@ -28,6 +27,10 @@ import {
   isFeatureEnabledForRole,
   parseFeatureAccessMode,
 } from "@/lib/feature-access";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 
 const DEFAULT_NANO_BANANA_MODEL_ID = "gemini-2.5-flash-image";
 const NANO_BANANA_MODEL_ID =
@@ -72,6 +75,7 @@ const googleClient =
 
 export const IMAGE_GENERATION_ACCESS_MODE_FALLBACK: FeatureAccessMode =
   "disabled";
+const IMAGE_GENERATION_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 
 export function parseImageGenerationAccessModeSetting(
   value: unknown
@@ -84,23 +88,18 @@ export function parseImageGenerationEnabledSetting(value: unknown): boolean {
 }
 
 async function loadImageGenerationSetting() {
-  try {
-    return await getAppSetting<string | boolean | number>(
-      IMAGE_GENERATION_FEATURE_FLAG_KEY
-    );
-  } catch (error) {
-    const remembered = getLastKnownAppSetting<string | boolean | number>(
-      IMAGE_GENERATION_FEATURE_FLAG_KEY
-    );
-    if (remembered !== null) {
-      console.error(
-        "[image-generation] Feature setting read failed; using last known value.",
-        error
-      );
-      return remembered;
+  const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
+    [IMAGE_GENERATION_FEATURE_FLAG_KEY],
+    {
+      source: "image-generation.feature-access",
+      timeoutMs: IMAGE_GENERATION_FEATURE_ACCESS_TIMEOUT_MS,
     }
-    throw error;
-  }
+  );
+  const rawValue = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
+    IMAGE_GENERATION_FEATURE_FLAG_KEY
+  );
+  return rawValue;
 }
 
 function buildModelSummary(activeModel: Awaited<ReturnType<typeof getActiveImageModel>>) {

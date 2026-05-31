@@ -18,12 +18,14 @@ import {
 } from "@/lib/constants";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getActiveLanguages } from "@/lib/i18n/languages";
-import { loadIconPromptActions } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { getJobPostingById, listJobListItems, toJobCard } from "@/lib/jobs/service";
-import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
+import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
+import type { JobListItem } from "@/lib/jobs/types";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
-import { loadSuggestedPrompts } from "@/lib/suggested-prompts";
 import {
   parseDocumentUploadsAccessModeSetting,
 } from "@/lib/uploads/document-uploads";
@@ -86,8 +88,6 @@ export default async function Page({
       : null;
   const isStudyMode = requestedMode === "study";
   const isJobsMode = requestedMode === "jobs";
-  const isEmbeddedNative = resolvedSearchParams?.embedded === "native";
-  const shouldLoadHomePrompts = !isStudyMode && !isJobsMode;
 
   const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
     withTimeout(promise, CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS, () => {
@@ -101,27 +101,11 @@ export default async function Page({
 
   const [
     modelsResult,
-    suggestedPrompts,
-    iconPromptActions,
     languageSettings,
     featureAccessSettings,
     imageGenerationAccess,
   ] = await Promise.all([
     loadChatModels(),
-    shouldLoadHomePrompts
-      ? safeQuery(
-          "suggested prompts",
-          loadSuggestedPrompts(preferredLanguage, session.user.role),
-          []
-        )
-      : Promise.resolve([]),
-    shouldLoadHomePrompts
-      ? safeQuery(
-          "icon prompt actions",
-          loadIconPromptActions(preferredLanguage, session.user.role),
-          []
-        )
-      : Promise.resolve([]),
     safeQuery("languages", getActiveLanguages(), []),
     loadFeatureAccessSettingsByKeys(CHAT_HOME_FEATURE_ACCESS_KEYS, {
       source: "chat.home.feature-access",
@@ -160,7 +144,7 @@ export default async function Page({
       : preferredLanguage ?? "";
   const featureAccessUnavailable = featureAccessSettings.status === "unavailable";
   const getFeatureSetting = (key: string): string | boolean | null => {
-    const value = featureAccessSettings.values.get(key);
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
     if (typeof value === "string" || typeof value === "boolean") {
       return value;
     }
@@ -228,23 +212,7 @@ export default async function Page({
         })
       : null;
   const initialJobContext = initialJobEntry ? toJobCard(initialJobEntry) : null;
-  const jobsListItems =
-    chatMode === "jobs"
-      ? isEmbeddedNative
-        ? []
-        : await withTimeout(
-            listJobListItems(),
-            CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
-            () => {
-              console.error("[chat/home] jobs listing query timed out.", {
-                timeoutMs: CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS,
-              });
-            }
-          ).catch((error) => {
-            console.error("[chat/home] jobs listing query failed.", error);
-            return [];
-          })
-      : [];
+  const jobsListItems: JobListItem[] = [];
   const activeLanguageSettings = languageSettings
     .filter((language) => language.isActive)
     .map((language) => ({
@@ -284,13 +252,14 @@ export default async function Page({
       initialJobContext: initialJobContext ?? null,
       jobsListItems,
       initialMessages: [],
+      initialMessagesDegraded: false,
       initialHasMoreHistory: false,
       initialOldestMessageAt: null,
       initialVisibilityType: "private",
       isReadonly: false,
       languageSettings: activeLanguageSettings,
-      suggestedPrompts: chatMode === "default" ? suggestedPrompts : [],
-      iconPromptActions: chatMode === "default" ? iconPromptActions : [],
+      suggestedPrompts: [],
+      iconPromptActions: [],
     },
   };
 

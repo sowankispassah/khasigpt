@@ -9,7 +9,6 @@ import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
-import { adminQueryOr } from "@/lib/admin/safe-query";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
   JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
@@ -95,6 +94,11 @@ const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
 const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
 const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
 const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 5_000;
+
+type AdminQueryState<T> = {
+  data: T;
+  unavailable: boolean;
+};
 const ADMIN_JOBS_PAGE_SIZE = 25;
 const TIMEZONE_OFFSETS_MINUTES = {
   UTC: 0,
@@ -862,18 +866,38 @@ async function updateJobStatusAction(formData: FormData) {
   revalidateJobsAdminMutation({ source: "jobs.manual.status" });
 }
 
+async function withTimeoutState<T>(
+  label: string,
+  promise: Promise<T>,
+  fallback: T,
+  timeoutMs = JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
+): Promise<AdminQueryState<T>> {
+  try {
+    return {
+      data: await withTimeout(promise, timeoutMs, () => {
+        console.error(`[admin/jobs] ${label} query timed out.`, {
+          timeoutMs,
+        });
+      }),
+      unavailable: false,
+    };
+  } catch (error) {
+    console.error(`[admin/jobs] ${label} query failed.`, error);
+    return {
+      data: fallback,
+      unavailable: true,
+    };
+  }
+}
+
 async function withTimeoutFallback<T>(
   label: string,
   promise: Promise<T>,
   fallback: T,
   timeoutMs = JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
 ) {
-  return adminQueryOr({
-    fallback,
-    label,
-    promise,
-    timeoutMs,
-  });
+  const result = await withTimeoutState(label, promise, fallback, timeoutMs);
+  return result.data;
 }
 
 function parsePage(value: string | string[] | undefined) {
@@ -901,7 +925,7 @@ export default async function AdminJobsPage({
     null,
     JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
-  const jobsPageRowsPromise = withTimeoutFallback(
+  const jobsPageRowsPromise = withTimeoutState(
     "jobs.rows",
     listJobPostingEntries({
       includeInactive: true,
@@ -912,19 +936,19 @@ export default async function AdminJobsPage({
     [],
     JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
-  const totalJobsPromise = withTimeoutFallback(
+  const totalJobsPromise = withTimeoutState(
     "jobs.count",
     getJobPostingCount({ includeInactive: true }),
     0,
     JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
-  const managedSourcesPromise = withTimeoutFallback(
+  const managedSourcesPromise = withTimeoutState(
     "jobs.managed-sources",
     listManagedJobSources(),
     [],
     JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
-  const jobSettingsPromise = withTimeoutFallback(
+  const jobSettingsPromise = withTimeoutState(
     "jobs.settings",
     getAppSettingsByKeysUncached([...JOBS_SCRAPE_SETTINGS_KEYS]),
     [],
@@ -939,28 +963,43 @@ export default async function AdminJobsPage({
     JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
   );
 
-  const [jobsPageRows, totalJobs, jobSettings] = await Promise.all([
-    jobsPageRowsPromise,
-    totalJobsPromise,
-    jobSettingsPromise,
-  ]);
+  const [jobsPageRowsResult, totalJobsResult, jobSettingsResult] =
+    await Promise.all([
+      jobsPageRowsPromise,
+      totalJobsPromise,
+      jobSettingsPromise,
+    ]);
 
-  const totalJobPages = Math.max(1, Math.ceil(totalJobs / ADMIN_JOBS_PAGE_SIZE));
-  const jobsPage = Math.min(requestedPage, totalJobPages);
-  const jobs =
+  const totalJobs = totalJobsResult.data;
+  const totalJobsUnavailable = totalJobsResult.unavailable;
+  const totalJobPages = totalJobsUnavailable
+    ? requestedPage
+    : Math.max(1, Math.ceil(totalJobs / ADMIN_JOBS_PAGE_SIZE));
+  const jobsPage = totalJobsUnavailable
+    ? requestedPage
+    : Math.min(requestedPage, totalJobPages);
+  let jobsRowsUnavailable = jobsPageRowsResult.unavailable;
+  let jobs =
     jobsPage === requestedPage
-      ? jobsPageRows
-      : await withTimeoutFallback(
-          "jobs.corrected-page-rows",
-          listJobPostingEntries({
-            includeInactive: true,
-            includeRagState: false,
-            limit: ADMIN_JOBS_PAGE_SIZE,
-            offset: (jobsPage - 1) * ADMIN_JOBS_PAGE_SIZE,
-          }),
-          [],
-          JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
-        );
+      ? jobsPageRowsResult.data
+      : [];
+  if (jobsPage !== requestedPage) {
+    const correctedRowsResult = await withTimeoutState(
+      "jobs.corrected-page-rows",
+      listJobPostingEntries({
+        includeInactive: true,
+        includeRagState: false,
+        limit: ADMIN_JOBS_PAGE_SIZE,
+        offset: (jobsPage - 1) * ADMIN_JOBS_PAGE_SIZE,
+      }),
+      [],
+      JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS
+    );
+    jobsRowsUnavailable = correctedRowsResult.unavailable;
+    jobs = correctedRowsResult.data;
+  }
+  const jobSettings = jobSettingsResult.data;
+  const jobSettingsUnavailable = jobSettingsResult.unavailable;
   const jobSettingsByKey = new Map(jobSettings.map((setting) => [setting.key, setting.value]));
   const enabledRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.enabled) ?? null;
   const intervalHoursRaw = jobSettingsByKey.get(JOBS_SCRAPE_SETTING_KEYS.intervalHours) ?? null;
@@ -1167,6 +1206,12 @@ export default async function AdminJobsPage({
       </CollapsibleSectionCard>
 
       <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Auto Scrape Schedule">
+          {jobSettingsUnavailable ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm">
+              Job scrape settings could not be confirmed. Save controls are
+              disabled so fallback defaults are not written back accidentally.
+            </p>
+          ) : null}
           <form action={saveJobsScrapeScheduleAction} className="grid gap-3 md:grid-cols-2">
             <label className="flex items-center gap-2 md:col-span-2">
               <input
@@ -1226,6 +1271,7 @@ export default async function AdminJobsPage({
             <div className="md:col-span-2">
               <ActionSubmitButton
                 className="cursor-pointer"
+                disabled={jobSettingsUnavailable}
                 pendingLabel="Saving..."
                 refreshOnSuccess
                 successMessage="Auto-scrape schedule saved."
@@ -1255,6 +1301,7 @@ export default async function AdminJobsPage({
             <div className="flex flex-wrap gap-2 md:col-span-2">
               <ActionSubmitButton
                 className="cursor-pointer"
+                disabled={jobSettingsUnavailable}
                 pendingLabel="Saving..."
                 refreshOnSuccess
                 successMessage="One-time scrape scheduled."
@@ -1268,6 +1315,7 @@ export default async function AdminJobsPage({
             <form action={clearOneTimeJobsScrapeAction}>
               <ActionSubmitButton
                 className="cursor-pointer"
+                disabled={jobSettingsUnavailable}
                 pendingLabel="Clearing..."
                 refreshOnSuccess
                 successMessage="One-time schedule cleared."
@@ -1348,6 +1396,12 @@ export default async function AdminJobsPage({
       </CollapsibleSectionCard>
 
       <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="PDF Extraction">
+          {jobSettingsUnavailable ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm">
+              PDF extraction settings could not be confirmed. Save controls are
+              disabled until this section can be refreshed with real data.
+            </p>
+          ) : null}
           <form
             action={saveJobsPdfExtractionSettingsAction}
             className="grid gap-3 md:grid-cols-2"
@@ -1383,6 +1437,7 @@ export default async function AdminJobsPage({
             <div className="md:col-span-2">
               <ActionSubmitButton
                 className="cursor-pointer"
+                disabled={jobSettingsUnavailable}
                 pendingLabel="Saving..."
                 refreshOnSuccess
                 successMessage="PDF extraction settings saved."
@@ -1502,8 +1557,19 @@ export default async function AdminJobsPage({
           </form>
       </CollapsibleSectionCard>
 
-      <CollapsibleSectionCard title={`Jobs (${totalJobs.toLocaleString()})`}>
-        {jobs.length === 0 ? (
+      <CollapsibleSectionCard
+        title={
+          totalJobsUnavailable
+            ? "Jobs (count unavailable)"
+            : `Jobs (${totalJobs.toLocaleString()})`
+        }
+      >
+        {jobsRowsUnavailable ? (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm">
+            Jobs could not be loaded right now. Existing data was not replaced
+            with an empty fallback; refresh this section to retry.
+          </p>
+        ) : jobs.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             No jobs are available in the Supabase jobs table yet.
           </p>
@@ -1530,14 +1596,21 @@ export default async function AdminJobsPage({
               </table>
             </div>
 
-            <AdminPagination
-              itemLabel="jobs"
-              page={jobsPage}
-              pageSize={ADMIN_JOBS_PAGE_SIZE}
-              pathname="/admin/jobs"
-              searchParams={resolvedSearchParams}
-              totalItems={totalJobs}
-            />
+            {totalJobsUnavailable ? (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm">
+                Total job count is temporarily unavailable, so pagination is
+                hidden until the count query succeeds.
+              </p>
+            ) : (
+              <AdminPagination
+                itemLabel="jobs"
+                page={jobsPage}
+                pageSize={ADMIN_JOBS_PAGE_SIZE}
+                pathname="/admin/jobs"
+                searchParams={resolvedSearchParams}
+                totalItems={totalJobs}
+              />
+            )}
           </div>
         )}
         {jobs.length > 0 ? (
@@ -1691,20 +1764,25 @@ async function JobsSourceManagementSection({
   scheduleTimezone,
 }: {
   managedSourcesPromise: Promise<
-    Awaited<ReturnType<typeof listManagedJobSources>>
+    AdminQueryState<Awaited<ReturnType<typeof listManagedJobSources>>>
   >;
   scheduleTimezone: string;
 }) {
-  const managedSources = await managedSourcesPromise;
+  const managedSourcesResult = await managedSourcesPromise;
+  const managedSources = managedSourcesResult.data;
   const enabledSourcesCount = managedSources.filter((source) => source.enabled).length;
 
   return (
     <CollapsibleSectionCard contentClassName="space-y-4 text-sm" title="Source Management">
       <p className="text-muted-foreground">
-        Managed sources: {managedSources.length} total / {enabledSourcesCount} enabled.
-        {enabledSourcesCount === 0
-          ? " No enabled source is configured, so fallback sources from config/jobSources.ts will be used."
-          : " Enabled sources are used for all manual and scheduled scrape runs."}
+        {managedSourcesResult.unavailable
+          ? "Managed sources are temporarily unavailable."
+          : `Managed sources: ${managedSources.length} total / ${enabledSourcesCount} enabled.`}
+        {!managedSourcesResult.unavailable
+          ? enabledSourcesCount === 0
+            ? " No enabled source is configured, so fallback sources from config/jobSources.ts will be used."
+            : " Enabled sources are used for all manual and scheduled scrape runs."
+          : null}
       </p>
       <p className="text-muted-foreground text-xs">
         Use <strong>Auto</strong> for most sites. The scraper will try generic extraction
@@ -1769,7 +1847,12 @@ async function JobsSourceManagementSection({
         </div>
       </form>
 
-      {managedSources.length === 0 ? (
+      {managedSourcesResult.unavailable ? (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
+          Source rows could not be confirmed. The table is hidden instead of
+          showing an empty fallback.
+        </p>
+      ) : managedSources.length === 0 ? (
         <p className="text-muted-foreground">
           No managed sources added yet. Add at least one source URL above.
         </p>

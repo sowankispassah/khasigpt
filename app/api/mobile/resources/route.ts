@@ -21,13 +21,17 @@ type LocalizedContentMap = Record<string, string>;
 
 async function safeAppSetting<T>(key: string, fallback: T) {
   try {
-    return (await withTimeout(
+    const value = (await withTimeout(
       getAppSetting<T>(key),
       RESOURCE_TIMEOUT_MS
     )) ?? fallback;
+    return { degraded: false, value };
   } catch (error) {
     console.error(`[api/mobile/resources] Failed to load ${key}.`, error);
-    return getLastKnownAppSetting<T>(key) ?? fallback;
+    return {
+      degraded: true,
+      value: getLastKnownAppSetting<T>(key) ?? fallback,
+    };
   }
 }
 
@@ -127,6 +131,14 @@ export async function GET(request: Request) {
     safeAppSetting<string>("termsOfService", DEFAULT_TERMS_OF_SERVICE),
     safeAppSetting<Record<string, string>>("termsOfServiceByLanguage", {}),
   ]);
+  const degradedSettings = [
+    aboutContent.degraded ? "aboutUsContent" : null,
+    aboutByLanguage.degraded ? "aboutUsContentByLanguage" : null,
+    privacyPolicy.degraded ? "privacyPolicy" : null,
+    privacyByLanguage.degraded ? "privacyPolicyByLanguage" : null,
+    termsOfService.degraded ? "termsOfService" : null,
+    termsByLanguage.degraded ? "termsOfServiceByLanguage" : null,
+  ].filter((key): key is string => Boolean(key));
 
   const { activeLanguage, languages, dictionary } = translationBundle;
   const defaultLanguage =
@@ -135,6 +147,10 @@ export async function GET(request: Request) {
   const year = new Date().getFullYear();
 
   return NextResponse.json({
+    meta: {
+      degraded: degradedSettings.length > 0,
+      degradedSettings,
+    },
     translations: pickTranslations(dictionary),
     about: {
       title: dictionary["about.title"] ?? "About KhasiGPT",
@@ -144,8 +160,8 @@ export async function GET(request: Request) {
       content: resolveLocalizedContent({
         activeLanguageCode: activeLanguage.code,
         defaultLanguageCode,
-        fallback: aboutContent?.trim() || DEFAULT_ABOUT_US,
-        localized: normalizeLocalizedContent(aboutByLanguage),
+        fallback: aboutContent.value?.trim() || DEFAULT_ABOUT_US,
+        localized: normalizeLocalizedContent(aboutByLanguage.value),
       }),
     },
     contact: {
@@ -163,8 +179,8 @@ export async function GET(request: Request) {
       content: resolveLocalizedContent({
         activeLanguageCode: activeLanguage.code,
         defaultLanguageCode,
-        fallback: privacyPolicy?.trim() || DEFAULT_PRIVACY_POLICY,
-        localized: normalizeLocalizedContent(privacyByLanguage),
+        fallback: privacyPolicy.value?.trim() || DEFAULT_PRIVACY_POLICY,
+        localized: normalizeLocalizedContent(privacyByLanguage.value),
       }),
     },
     termsOfService: {
@@ -176,8 +192,8 @@ export async function GET(request: Request) {
       content: resolveLocalizedContent({
         activeLanguageCode: activeLanguage.code,
         defaultLanguageCode,
-        fallback: termsOfService?.trim() || DEFAULT_TERMS_OF_SERVICE,
-        localized: normalizeLocalizedContent(termsByLanguage),
+        fallback: termsOfService.value?.trim() || DEFAULT_TERMS_OF_SERVICE,
+        localized: normalizeLocalizedContent(termsByLanguage.value),
       }),
     },
   });

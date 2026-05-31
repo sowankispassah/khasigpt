@@ -62,7 +62,6 @@ const DEFAULT_DETAIL_FETCH_MIN_CHARS = 260;
 const DEFAULT_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_SLOW_SOURCE_FETCH_TIMEOUT_MS = 60_000;
 const DEFAULT_SOURCE_LISTING_RETRY_ATTEMPTS = 1;
-const DEFAULT_DETAIL_RETRY_ATTEMPTS = 1;
 const DEFAULT_PDF_RETRY_ATTEMPTS = 2;
 const MBDA_HOST = "mbda.gov.in";
 
@@ -462,7 +461,7 @@ async function resolveDetailMarkdown({
     const detailTimeoutMs = resolveDetailTimeoutMs(url, requestTimeoutMs);
     const detailRetryAttempts = parsePositiveInt(
       process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
-      DEFAULT_DETAIL_RETRY_ATTEMPTS
+      requestRetryAttempts
     );
     const response = await httpClient.fetchText(url, {
       timeoutMs: detailTimeoutMs,
@@ -520,7 +519,7 @@ async function discoverPdfUrlFromDetailPage({
   const detailTimeoutMs = resolveDetailTimeoutMs(sourceUrl, requestTimeoutMs);
   const detailRetryAttempts = parsePositiveInt(
     process.env.JOBS_SCRAPE_DETAIL_FETCH_RETRY_ATTEMPTS,
-    DEFAULT_DETAIL_RETRY_ATTEMPTS
+    requestRetryAttempts
   );
 
   try {

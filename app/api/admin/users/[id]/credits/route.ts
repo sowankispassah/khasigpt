@@ -105,8 +105,10 @@ export async function POST(
       {
         ok: true,
         credits,
+        creditsRemaining: subscription.tokenBalance / TOKENS_PER_CREDIT,
         subscriptionId: subscription.id,
         tokens,
+        tokensRemaining: subscription.tokenBalance,
       },
       { headers: noStoreHeaders() }
     );

@@ -30,14 +30,14 @@ export default function ChatError({
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           <button
-            className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
+            className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
             onClick={() => reset()}
             type="button"
           >
             Retry
           </button>
           <button
-            className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
+            className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-sm hover:bg-muted"
             onClick={() => window.location.reload()}
             type="button"
           >

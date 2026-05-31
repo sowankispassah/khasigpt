@@ -44,6 +44,7 @@ import {
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import {
+  getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
   USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS,
 } from "@/lib/settings/feature-access-settings";
@@ -139,8 +140,9 @@ export async function loadFeatureAccessReadModel({
   ]);
   const featureAccessUnavailable =
     featureAccessSettings.status === "unavailable";
+  const imageGenerationAccessDegraded = Boolean(userId && !imageGenerationAccess);
   const getFeatureSetting = (key: string): string | boolean | null => {
-    const value = featureAccessSettings.values.get(key);
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
     return typeof value === "string" || typeof value === "boolean"
       ? value
       : featureAccessUnavailable
@@ -161,6 +163,13 @@ export async function loadFeatureAccessReadModel({
   });
 
   return {
+    meta: {
+      degraded:
+        featureAccessSettings.status !== "confirmed" ||
+        imageGenerationAccessDegraded,
+      featureAccessStatus: featureAccessSettings.status,
+      missingFeatureKeys: featureAccessSettings.missingKeys,
+    },
     calculator: isFeatureEnabledForRole(
       parseCalculatorAccessModeSetting(calculatorSetting),
       role
@@ -299,21 +308,33 @@ export async function loadPromptReadModel({
   preferredLanguage?: string | null;
   role: UserRole;
 }) {
+  let suggestedPromptsDegraded = false;
+  let iconPromptActionsDegraded = false;
   const [suggestedPrompts, iconPromptActions] = await Promise.all([
     loadSuggestedPrompts(preferredLanguage, role).catch((error) => {
       console.error("[read-models] Failed to load suggested prompts.", error);
+      suggestedPromptsDegraded = true;
       return [];
     }),
     loadIconPromptActions(preferredLanguage, role).catch((error) => {
       console.error("[read-models] Failed to load icon prompts.", error);
+      iconPromptActionsDegraded = true;
       return getDefaultIconPromptActions(
         preferredLanguage?.trim().toLowerCase() ?? "en"
       );
     }),
   ]);
+  const degradedSections = [
+    suggestedPromptsDegraded ? "suggestedPrompts" : null,
+    iconPromptActionsDegraded ? "iconPromptActions" : null,
+  ].filter((section): section is string => Boolean(section));
 
   return {
     iconPromptActions,
+    meta: {
+      degraded: degradedSections.length > 0,
+      degradedSections,
+    },
     suggestedPrompts,
   };
 }
@@ -323,6 +344,7 @@ export async function loadTranslateReadModel({
 }: {
   includeLanguages?: boolean;
 } = {}) {
+  let languagesDegraded = false;
   const [providerModeSetting, translateLanguages] = await Promise.all([
     safeAppSetting<string | boolean | number | null>(
       TRANSLATE_PROVIDER_MODE_SETTING_KEY,
@@ -331,12 +353,17 @@ export async function loadTranslateReadModel({
     includeLanguages
       ? listTranslationFeatureLanguagesWithModels().catch((error) => {
           console.error("[read-models] Failed to load translate languages.", error);
+          languagesDegraded = true;
           return [];
         })
       : Promise.resolve([]),
   ]);
 
   return {
+    meta: {
+      degraded: languagesDegraded,
+      degradedSections: languagesDegraded ? ["languages"] : [],
+    },
     providerMode: parseTranslateProviderModeSetting(providerModeSetting),
     languages: translateLanguages
       .filter((language) => language.isActive)

@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LoaderIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
 const ENDPOINT = "/api/admin/jobs/scrape";
 const RUN_START_GRACE_MS = 8_000;
+const STATUS_REQUEST_TIMEOUT_MS = 8_000;
+const ACTION_REQUEST_TIMEOUT_MS = 15_000;
 
 type JobsScrapeProgressSnapshot = {
   runId: string;
@@ -36,6 +39,28 @@ type StatusResponse = {
   ok?: boolean;
   progress?: JobsScrapeProgressSnapshot | null;
 };
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 function createOptimisticRunningSnapshot(
   runId: string = `pending-${Date.now()}`
@@ -95,7 +120,9 @@ export function AdminJobsScrapeControl({
   const [progress, setProgress] = useState<JobsScrapeProgressSnapshot | null>(
     initialProgress
   );
-  const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"cancel" | "start" | null>(
+    null
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const optimisticRunGuardRef = useRef<{
@@ -105,10 +132,14 @@ export function AdminJobsScrapeControl({
 
   const refreshStatus = useCallback(async () => {
     try {
-      const response = await fetch(ENDPOINT, {
-        method: "GET",
-        cache: "no-store",
-      });
+      const response = await fetchWithTimeout(
+        ENDPOINT,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+        STATUS_REQUEST_TIMEOUT_MS
+      );
       if (!response.ok) {
         return;
       }
@@ -133,8 +164,10 @@ export function AdminJobsScrapeControl({
 
         return next;
       });
-    } catch {
-      // ignore transient polling failures
+    } catch (error) {
+      if (!isAbortError(error)) {
+        console.warn("[admin/jobs] Failed to refresh scrape status.", error);
+      }
     }
   }, []);
 
@@ -169,14 +202,18 @@ export function AdminJobsScrapeControl({
       runId: optimistic.runId,
       untilMs: Date.now() + RUN_START_GRACE_MS,
     };
-    setLoading(true);
+    setPendingAction("start");
     setMessage(null);
     try {
-      const response = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
-      });
+      const response = await fetchWithTimeout(
+        ENDPOINT,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "start" }),
+        },
+        ACTION_REQUEST_TIMEOUT_MS
+      );
       const payload = (await response.json().catch(() => null)) as
         | {
             accepted?: boolean;
@@ -218,33 +255,43 @@ export function AdminJobsScrapeControl({
       window.setTimeout(() => {
         void refreshStatus();
       }, 1200);
-    } catch {
-      setMessage("Failed to start scrape.");
+    } catch (error) {
+      setMessage(
+        isAbortError(error)
+          ? "Starting scrape timed out. Please retry."
+          : "Failed to start scrape."
+      );
       setProgress((current) =>
         current?.runId === optimistic.runId
           ? {
               ...current,
               state: "failed",
-              message: "Failed to start scrape.",
+              message: isAbortError(error)
+                ? "Starting scrape timed out."
+                : "Failed to start scrape.",
               finishedAt: new Date().toISOString(),
             }
           : current
       );
       optimisticRunGuardRef.current = null;
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
   }, [refreshStatus]);
 
   const requestCancel = useCallback(async () => {
-    setLoading(true);
+    setPendingAction("cancel");
     setMessage(null);
     try {
-      const response = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
+      const response = await fetchWithTimeout(
+        ENDPOINT,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "cancel" }),
+        },
+        ACTION_REQUEST_TIMEOUT_MS
+      );
       const payload = (await response.json().catch(() => null)) as
         | { progress?: JobsScrapeProgressSnapshot | null }
         | null;
@@ -255,10 +302,14 @@ export function AdminJobsScrapeControl({
       setProgress(payload?.progress ?? null);
       setMessage("Cancel requested. It will stop after current source finishes.");
       await refreshStatus();
-    } catch {
-      setMessage("Failed to request cancel.");
+    } catch (error) {
+      setMessage(
+        isAbortError(error)
+          ? "Cancel request timed out. Please retry."
+          : "Failed to request cancel."
+      );
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
   }, [refreshStatus]);
 
@@ -316,19 +367,33 @@ export function AdminJobsScrapeControl({
       finishedAtLabel ? ` at ${finishedAtLabel}` : ""
     }${elapsedLabel ? ` (${elapsedLabel})` : ""}${progress.message ? ` (${progress.message})` : ""}`;
   }, [elapsedLabel, finishedAtLabel, progress, progressPercentLabel, running]);
+  const isStarting = pendingAction === "start";
+  const isCancelling = pendingAction === "cancel";
+  const hasPendingAction = pendingAction !== null;
 
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <Button
           className="cursor-pointer"
-          disabled={loading || running}
+          disabled={hasPendingAction || running}
           onClick={() => {
             void runStart();
           }}
           type="button"
         >
-          {running ? "Scraping in progress..." : "Run Scrape Now"}
+          {isStarting ? (
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 animate-spin">
+                <LoaderIcon size={16} />
+              </span>
+              <span>Starting...</span>
+            </span>
+          ) : running ? (
+            "Scraping in progress..."
+          ) : (
+            "Run Scrape Now"
+          )}
         </Button>
         {running ? (
           <>
@@ -337,14 +402,27 @@ export function AdminJobsScrapeControl({
             </div>
             <Button
               className="cursor-pointer"
-              disabled={loading || !running || Boolean(progress?.cancelRequested)}
+              disabled={
+                hasPendingAction || !running || Boolean(progress?.cancelRequested)
+              }
               onClick={() => {
                 void requestCancel();
               }}
               type="button"
               variant="destructive"
             >
-              {progress?.cancelRequested ? "Cancel requested" : "Cancel Scrape"}
+              {isCancelling ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin">
+                    <LoaderIcon size={16} />
+                  </span>
+                  <span>Requesting...</span>
+                </span>
+              ) : progress?.cancelRequested ? (
+                "Cancel requested"
+              ) : (
+                "Cancel Scrape"
+              )}
             </Button>
           </>
         ) : null}

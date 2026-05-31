@@ -9,12 +9,12 @@ import type { User } from "next-auth";
 import { useSession } from "next-auth/react";
 import { type MouseEvent, useCallback, useEffect, useState } from "react";
 import { preloadChat } from "@/components/chat-loader";
+import { PlusIcon } from "@/components/icons";
 import { useTranslation } from "@/components/language-provider";
 import {
   EditableTranslation,
   useTranslationEdit,
 } from "@/components/translation-edit-provider";
-import { PlusIcon } from "@/components/icons";
 import {
   Sidebar,
   SidebarContent,
@@ -87,6 +87,7 @@ function SidebarEditableMenuLabel({
   }
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: The inline translation edit trigger is embedded in sidebar link text and must not nest a button inside that link.
     <span
       className="inline-flex max-w-full cursor-pointer rounded-sm border border-amber-500/70 border-dashed px-0.5 leading-5"
       data-translation-key={translationKey}

@@ -21,6 +21,11 @@ export async function GET(request: Request) {
       error
     );
     return {
+      meta: {
+        degraded: true,
+        featureAccessStatus: "unavailable",
+        missingFeatureKeys: [],
+      },
       calculator: true,
       customKnowledge: false,
       documentUploads: true,
@@ -54,6 +59,7 @@ export async function GET(request: Request) {
         voiceChatWeb: snapshot.voiceChatWeb,
       },
       imageGeneration: snapshot.imageGeneration,
+      meta: snapshot.meta,
     },
     { headers: noStoreHeaders() }
   );

@@ -52,7 +52,7 @@ const ALLOWED_IMAGE_HOST_SUFFIXES = [
   "blob.vercel-storage.com",
   "public.blob.vercel-storage.com",
 ];
-type ImageGenerationStatus = "generating" | "completed" | "failed" | "cancelled";
+type ImageGenerationStatus = "pending" | "completed" | "failed" | "cancelled";
 
 function hostMatchesSuffix(hostname: string, suffix: string) {
   return hostname === suffix || hostname.endsWith(`.${suffix}`);
@@ -218,7 +218,7 @@ function buildImageGenerationStatusParts({
 }) {
   const fallbackMessage =
     message ??
-    (status === "generating"
+    (status === "pending"
       ? "Generating image..."
       : status === "cancelled"
         ? "Image generation was cancelled."
@@ -478,7 +478,7 @@ export async function POST(request: Request) {
         role: "assistant",
         parts: buildImageGenerationStatusParts({
           prompt: displayText,
-          status: "generating",
+          status: "pending",
         }),
         attachments: [],
         createdAt: new Date(),

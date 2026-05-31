@@ -3,12 +3,15 @@ import { ModelConfigProvider } from "@/components/model-config-provider";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { loadChatModels } from "@/lib/ai/models";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
 import {
   type FeatureAccessRole,
   isFeatureEnabledForRole,
 } from "@/lib/feature-access";
 import type { JobCard } from "@/lib/jobs/types";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import type { ChatMessage } from "@/lib/types";
 import { parseDocumentUploadsAccessModeSetting } from "@/lib/uploads/document-uploads";
 import { JobDetailsChatPanel } from "./job-details-chat-panel";
@@ -25,6 +28,8 @@ type JobDetailsChatShellProps = {
   userRole: FeatureAccessRole;
 };
 
+const JOB_CHAT_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
+
 export async function JobDetailsChatShell({
   chatId = null,
   defaultOpen = false,
@@ -38,19 +43,25 @@ export async function JobDetailsChatShell({
 }: JobDetailsChatShellProps) {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const [{ defaultModel, models }, documentUploadsSetting] = await Promise.all([
+  const [{ defaultModel, models }, featureAccessSettings] = await Promise.all([
     loadChatModels().catch(() => ({
       defaultModel: null,
       models: [],
     })),
-    getAppSetting<string | boolean>(DOCUMENT_UPLOADS_FEATURE_FLAG_KEY).catch(
-      () => null
-    ),
+    loadFeatureAccessSettingsByKeys([DOCUMENT_UPLOADS_FEATURE_FLAG_KEY], {
+      source: "jobs.details.chat-shell.feature-access",
+      timeoutMs: JOB_CHAT_FEATURE_ACCESS_TIMEOUT_MS,
+    }),
   ]);
 
   const fallbackModelId = defaultModel?.id || models[0]?.id || "default";
   const initialChatLanguage =
     cookieStore.get("chat-language")?.value ?? preferredLanguage ?? "";
+  const documentUploadsSetting =
+    getFeatureAccessModeSettingValue(
+      featureAccessSettings,
+      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+    );
   const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
     documentUploadsSetting
   );

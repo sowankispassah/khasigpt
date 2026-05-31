@@ -17,7 +17,9 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -47,8 +49,10 @@ type TranslateLanguageOption = {
 
 type TranslatePageClientProps = {
   initialTargetLanguageCode: string;
+  languagesUnavailable: boolean;
   languages: TranslateLanguageOption[];
   providerMode: TranslateProviderMode;
+  settingsUnavailable: boolean;
 };
 
 type PopupTheme = "dark" | "light";
@@ -696,8 +700,10 @@ function LiveSpeechStage({
 
 export function TranslatePageClient({
   initialTargetLanguageCode,
+  languagesUnavailable,
   languages,
   providerMode,
+  settingsUnavailable,
 }: TranslatePageClientProps) {
   const [fullscreenPopup, setFullscreenPopup] = useState<FullscreenPopup>(null);
   const [popupTheme, setPopupTheme] = useState<PopupTheme>(() =>
@@ -714,6 +720,7 @@ export function TranslatePageClient({
   const [typedTranslatedText, setTypedTranslatedText] = useState("");
   const [typedError, setTypedError] = useState<string | null>(null);
   const [typingUiState, setTypingUiState] = useState<TranslationUiState>("idle");
+  const { translate } = useTranslation();
 
   const liveSession = useLiveTranslationSession({
     targetLanguageCode,
@@ -725,6 +732,7 @@ export function TranslatePageClient({
     null;
   const quickTargetLanguages = languages.slice(0, 3);
   const hasLanguages = languages.length > 0;
+  const showUnavailableWarning = languagesUnavailable || settingsUnavailable;
   const uiState =
     sourceInputMode === "speech" ? liveSession.phase : typingUiState;
   const sourceText =
@@ -962,6 +970,22 @@ export function TranslatePageClient({
 
   return (
     <div className="mx-auto w-full max-w-7xl px-3 py-4 md:px-4">
+      {showUnavailableWarning ? (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm">
+          <p className="font-semibold">
+            <EditableTranslation
+              defaultText="Translate settings could not be fully confirmed."
+              translationKey="translate.warning.partial_title"
+            />
+          </p>
+          <p className="mt-1">
+            <EditableTranslation
+              defaultText="The page is still available, but some language or feature settings may be temporarily stale."
+              translationKey="translate.warning.partial_body"
+            />
+          </p>
+        </div>
+      ) : null}
       <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card className="overflow-hidden rounded-3xl border border-border/70 bg-background shadow-none">
           <CardHeader className="border-b px-4 py-2.5">
@@ -1022,13 +1046,21 @@ export function TranslatePageClient({
             <Textarea
               className="min-h-[260px] flex-1 resize-none border-0 bg-transparent px-0 py-0 font-normal text-[20px] leading-[1.45] shadow-none focus-visible:ring-0"
               data-testid="translate-source-textarea"
+              disabled={!hasLanguages}
               id="translate-source"
               onChange={(event) => {
                 setTypedSourceText(event.target.value);
                 setTypedError(null);
                 setTypingUiState(event.target.value.trim() ? "translating" : "idle");
               }}
-              placeholder="Type or speak..."
+              placeholder={
+                hasLanguages
+                  ? translate("translate.input.placeholder", "Type or speak...")
+                  : translate(
+                      "translate.languages.placeholder_unavailable",
+                      "Target languages are unavailable."
+                    )
+              }
               value={sourceText}
             />
             <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3 text-muted-foreground text-xs">
@@ -1124,6 +1156,21 @@ export function TranslatePageClient({
                   <p className="font-medium text-sm">Translation unavailable</p>
                   <p className="text-muted-foreground text-sm">
                     {translationError}
+                  </p>
+                </div>
+              ) : !hasLanguages ? (
+                <div className="max-w-sm space-y-2">
+                  <p className="font-medium text-sm">
+                    <EditableTranslation
+                      defaultText="Languages unavailable"
+                      translationKey="translate.languages.unavailable_title"
+                    />
+                  </p>
+                  <p className="text-muted-foreground text-sm">
+                    <EditableTranslation
+                      defaultText="Target languages could not be loaded right now. Please retry shortly."
+                      translationKey="translate.languages.unavailable_body"
+                    />
                   </p>
                 </div>
               ) : (

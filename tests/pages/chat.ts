@@ -7,6 +7,7 @@ const CHAT_ID_REGEX =
 
 export class ChatPage {
   private readonly page: Page;
+  private expectedNextUserMessageAttachmentCount = 0;
 
   constructor(page: Page) {
     this.page = page;
@@ -121,6 +122,7 @@ export class ChatPage {
     });
 
     await this.page.getByTestId("attachments-button").click();
+    this.expectedNextUserMessageAttachmentCount = 1;
   }
 
   async getSelectedModel() {
@@ -212,11 +214,44 @@ export class ChatPage {
       throw new Error("No assistant message found");
     }
 
-    const content = await lastMessageElement
-      .getByTestId("message-content")
-      .innerText()
-      .then((text) => text.trim())
-      .catch(() => null);
+    const contentElement = lastMessageElement.getByTestId("message-content");
+    await expect(contentElement).toBeVisible();
+    await expect(contentElement.locator(".animate-spin")).not.toBeVisible({
+      timeout: 5000,
+    });
+    await expect
+      .poll(
+        async () =>
+          contentElement
+            .innerText()
+            .then((text) => text.trim())
+            .catch(() => ""),
+        { timeout: 5000 }
+      )
+      .not.toBe("");
+
+    let content: string | null = null;
+    let previousContent = "";
+    let stableReads = 0;
+    const stableUntil = Date.now() + 5000;
+    while (Date.now() < stableUntil) {
+      const nextContent = await contentElement
+        .innerText()
+        .then((text) => text.trim())
+        .catch(() => "");
+      if (nextContent === previousContent) {
+        stableReads += 1;
+      } else {
+        stableReads = 0;
+        previousContent = nextContent;
+      }
+      if (stableReads >= 10) {
+        content = nextContent || null;
+        break;
+      }
+      await this.page.waitForTimeout(50);
+    }
+    content ??= previousContent || null;
 
     const reasoningElement = await lastMessageElement
       .getByTestId("message-reasoning")
@@ -264,6 +299,12 @@ export class ChatPage {
       .then((text) => text.trim())
       .catch(() => null);
 
+    if (this.expectedNextUserMessageAttachmentCount > 0) {
+      await expect(lastMessageElement.getByTestId("message-attachments")).toBeVisible({
+        timeout: 5000,
+      });
+    }
+
     const hasAttachments = await lastMessageElement
       .getByTestId("message-attachments")
       .isVisible()
@@ -272,6 +313,7 @@ export class ChatPage {
     const attachments = hasAttachments
       ? await lastMessageElement.getByTestId("message-attachments").all()
       : [];
+    this.expectedNextUserMessageAttachmentCount = 0;
 
     const page = this.page;
 

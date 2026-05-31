@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { getJobsAccessForRole } from "@/lib/jobs/config";
 import { renderPdfPreviewImage } from "@/lib/jobs/pdf-preview";
-import { verifyJobPreviewToken } from "@/lib/mobile-auth-token";
 import { getJobPostingById } from "@/lib/jobs/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { verifyJobPreviewToken } from "@/lib/mobile-auth-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,8 +76,8 @@ export async function GET(
       );
     }
 
-    const jobsEnabled = await isJobsEnabledForRole(session.user.role ?? null);
-    if (!jobsEnabled) {
+    const jobsAccess = await getJobsAccessForRole(session.user.role ?? null);
+    if (!jobsAccess.enabled) {
       return NextResponse.json(
         { code: "forbidden:auth", message: "Jobs access is disabled for your role." },
         { status: 403 }

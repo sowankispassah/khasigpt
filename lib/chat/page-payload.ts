@@ -8,6 +8,7 @@ import type { ChatMessage } from "@/lib/types";
 export type ChatPageLoaderPayload = {
   id: string;
   initialMessages: ChatMessage[];
+  initialMessagesDegraded?: boolean;
   initialHasMoreHistory: boolean;
   initialOldestMessageAt: string | null;
   initialChatModel: string;

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { memo, useCallback, useRef } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
-import type { Chat } from "@/lib/db/schema";
+import type { ChatHistoryListItem } from "@/lib/db/queries";
 import { preloadChat } from "./chat-loader";
 import {
   CheckCircleFillIcon,
@@ -39,7 +39,7 @@ const PureChatItem = ({
   onOpen,
   onPrefetch,
 }: {
-  chat: Chat;
+  chat: ChatHistoryListItem;
   historyKey?: string;
   historyMode?: ChatHistoryMode;
   isActive: boolean;

@@ -348,23 +348,26 @@ async function resolveAdminDbReadGroup<const T extends readonly unknown[]>(
   return results as unknown as T;
 }
 
-function safeSettingsQuery<T>(
+async function settingsQueryState<T>(
   label: string,
   query: () => Promise<T>,
   fallbackValue: T,
   timeoutMs = ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS
-): Promise<T> {
-  return withTimeout(query(), timeoutMs, () => {
-    console.error(`[admin/settings] ${label} query timed out.`, {
-      timeoutMs,
+): Promise<{ failed: boolean; value: T }> {
+  try {
+    const value = await withTimeout(query(), timeoutMs, () => {
+      console.error(`[admin/settings] ${label} query timed out.`, {
+        timeoutMs,
+      });
     });
-  }).catch((error) => {
+    return { failed: false, value };
+  } catch (error) {
     console.error(
-      `[admin/settings] ${label} query failed. Using fallback value.`,
+      `[admin/settings] ${label} query failed. Keeping the section degraded instead of treating fallback data as confirmed.`,
       error
     );
-    return fallbackValue;
-  });
+    return { failed: true, value: fallbackValue };
+  }
 }
 
 async function loadEssentialFallbackSettingMap() {
@@ -561,35 +564,36 @@ async function loadAdminSettingsData() {
         };
       });
   const [
-    modelsRaw,
-    imageModelConfigs,
-    liveVoiceModelConfigs,
+    modelsState,
+    imageModelConfigsState,
+    liveVoiceModelConfigsState,
     plansState,
-    languages,
-    translationFeatureLanguages,
+    languagesState,
+    translationFeatureLanguagesState,
   ] = await resolveAdminDbReadGroup([
     () =>
-      safeSettingsQuery(
+      settingsQueryState(
         "model configs",
         () => listAdminModelConfigsCached(),
         []
       ),
     () =>
-      safeSettingsQuery(
+      settingsQueryState(
         "image model configs",
         () => listAdminImageModelConfigsCached(),
         []
       ),
     () =>
-      safeSettingsQuery(
+      settingsQueryState(
         "live voice model configs",
         () => listAdminLiveVoiceModelConfigsCached(),
         []
       ),
     plansStatePromise,
-    () => safeSettingsQuery("languages", () => listAdminLanguagesCached(), []),
     () =>
-      safeSettingsQuery(
+      settingsQueryState("languages", () => listAdminLanguagesCached(), []),
+    () =>
+      settingsQueryState(
         "translation feature languages",
         () => listAdminTranslationFeatureLanguagesCached(),
         []
@@ -688,9 +692,12 @@ async function loadAdminSettingsData() {
     exchangeRate,
     appSettingReadSource: appSettingState.source,
     featureAccessState,
-    modelsRaw,
-    imageModelConfigs,
-    liveVoiceModelConfigs,
+    modelsRaw: modelsState.value,
+    modelConfigsLoadFailed: modelsState.failed,
+    imageModelConfigs: imageModelConfigsState.value,
+    imageModelConfigsLoadFailed: imageModelConfigsState.failed,
+    liveVoiceModelConfigs: liveVoiceModelConfigsState.value,
+    liveVoiceModelConfigsLoadFailed: liveVoiceModelConfigsState.failed,
     plansRaw: plansState.plans,
     pricingPlansLoadFailed: plansState.failed,
     privacyPolicySetting,
@@ -702,8 +709,10 @@ async function loadAdminSettingsData() {
     suggestedPromptsSetting,
     suggestedPromptsByLanguageSetting,
     recommendedPlanSetting,
-    languages,
-    translationFeatureLanguages,
+    languages: languagesState.value,
+    languagesLoadFailed: languagesState.failed,
+    translationFeatureLanguages: translationFeatureLanguagesState.value,
+    translationFeatureLanguagesLoadFailed: translationFeatureLanguagesState.failed,
     freeMessageSettings,
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
@@ -733,10 +742,13 @@ function buildFallbackAdminSettingsData() {
       values: new Map(),
     }),
     modelsRaw: [],
+    modelConfigsLoadFailed: true,
     imageModelConfigs: [],
+    imageModelConfigsLoadFailed: true,
     liveVoiceModelConfigs: [],
+    liveVoiceModelConfigsLoadFailed: true,
     plansRaw: [],
-    pricingPlansLoadFailed: false,
+    pricingPlansLoadFailed: true,
     privacyPolicySetting: null,
     termsOfServiceSetting: null,
     aboutUsSetting: null,
@@ -748,7 +760,9 @@ function buildFallbackAdminSettingsData() {
     suggestedPromptsEnabledSetting: null,
     recommendedPlanSetting: null,
     languages: [],
+    languagesLoadFailed: true,
     translationFeatureLanguages: [],
+    translationFeatureLanguagesLoadFailed: true,
     freeMessageSettings: normalizeFreeMessageSettings(null),
     calculatorEnabledSetting: null,
     sitePublicLaunchedSetting: null,
@@ -988,8 +1002,11 @@ export default async function AdminSettingsPage({
     exchangeRate,
     featureAccessState,
     modelsRaw,
+    modelConfigsLoadFailed,
     imageModelConfigs,
+    imageModelConfigsLoadFailed,
     liveVoiceModelConfigs,
+    liveVoiceModelConfigsLoadFailed,
     plansRaw,
     pricingPlansLoadFailed,
     privacyPolicySetting,
@@ -1002,7 +1019,9 @@ export default async function AdminSettingsPage({
     suggestedPromptsByLanguageSetting,
     recommendedPlanSetting,
     languages,
+    languagesLoadFailed,
     translationFeatureLanguages,
+    translationFeatureLanguagesLoadFailed,
     freeMessageSettings,
     sitePublicLaunchedSetting,
     siteUnderMaintenanceSetting,
@@ -1046,6 +1065,16 @@ export default async function AdminSettingsPage({
     status: featureAccessState.status,
   });
   const featureSettingsReadConfirmed = featureAccessState.status === "confirmed";
+  const degradedSettingsSections = [
+    modelConfigsLoadFailed ? "model configs" : null,
+    imageModelConfigsLoadFailed ? "image model configs" : null,
+    liveVoiceModelConfigsLoadFailed ? "live voice model configs" : null,
+    pricingPlansLoadFailed ? "pricing plans" : null,
+    languagesLoadFailed ? "languages" : null,
+    translationFeatureLanguagesLoadFailed
+      ? "translation feature languages"
+      : null,
+  ].filter((section): section is string => Boolean(section));
 
   const usdToInr = exchangeRate.rate;
   const activeModels = modelsRaw.filter((model) => !model.deletedAt);
@@ -1473,6 +1502,19 @@ export default async function AdminSettingsPage({
             few seconds and check server logs for
             <span className="mx-1 font-mono text-xs">[feature-settings]</span>
             entries if this persists.
+          </p>
+        </div>
+      ) : null}
+
+      {degradedSettingsSections.length > 0 ? (
+        <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+          <p className="font-medium text-destructive">
+            Some settings sections could not be confirmed.
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Failed sections: {degradedSettingsSections.join(", ")}. Existing
+            values were not replaced with confirmed empty data; refresh this
+            page before editing those sections.
           </p>
         </div>
       ) : null}
@@ -2342,7 +2384,13 @@ export default async function AdminSettingsPage({
               </SettingsSubmitButton>
             </form>
             <div className="space-y-4">
-              {languages.length === 0 ? (
+              {languagesLoadFailed ? (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-destructive text-sm">
+                  Language settings could not be loaded. This is not a
+                  confirmed empty language list; refresh before editing
+                  language-specific settings.
+                </div>
+              ) : languages.length === 0 ? (
                 <div className="rounded-lg border bg-background p-4 text-muted-foreground text-sm">
                   No languages configured yet.
                 </div>

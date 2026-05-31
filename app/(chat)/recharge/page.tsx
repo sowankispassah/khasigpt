@@ -12,6 +12,11 @@ import { getUserBalanceSummary } from "@/lib/db/queries";
 import {
   getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
+import { withTimeout } from "@/lib/utils/async";
+
+const PRICING_TIMEOUT_MS = 7000;
+const BALANCE_TIMEOUT_MS = 7000;
+const PLAN_TRANSLATIONS_TIMEOUT_MS = 4000;
 
 export default async function RechargePage() {
   const session = await auth();
@@ -24,9 +29,28 @@ export default async function RechargePage() {
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
   const [pricing, balance] = await Promise.all([
-    loadPricingReadModel(),
-    getUserBalanceSummary(session.user.id),
+    withTimeout(loadPricingReadModel(), PRICING_TIMEOUT_MS, () => {
+      console.error("[recharge] Pricing read timed out.", {
+        timeoutMs: PRICING_TIMEOUT_MS,
+      });
+    }).catch((error) => {
+      console.error("[recharge] Pricing read failed.", error);
+      return null;
+    }),
+    withTimeout(getUserBalanceSummary(session.user.id), BALANCE_TIMEOUT_MS, () => {
+      console.error("[recharge] Balance read timed out.", {
+        timeoutMs: BALANCE_TIMEOUT_MS,
+      });
+    }).catch((error) => {
+      console.error("[recharge] Balance read failed.", error);
+      return null;
+    }),
   ]);
+
+  if (!pricing) {
+    return <RechargeUnavailablePage />;
+  }
+
   const {
     imageGenerationEnabledForAll,
     plans,
@@ -40,8 +64,19 @@ export default async function RechargePage() {
 
   const planTranslations =
     planTranslationKeys.length > 0
-      ? await getTranslationValuesForKeys(preferredLanguage, planTranslationKeys)
-      : {};
+      ? await withTimeout(
+          getTranslationValuesForKeys(preferredLanguage, planTranslationKeys),
+          PLAN_TRANSLATIONS_TIMEOUT_MS,
+          () => {
+            console.error("[recharge] Plan translation read timed out.", {
+              timeoutMs: PLAN_TRANSLATIONS_TIMEOUT_MS,
+            });
+          }
+        ).catch((error) => {
+          console.error("[recharge] Plan translation read failed.", error);
+          return {} as Record<string, string>;
+        })
+      : ({} as Record<string, string>);
 
   const formatCreditValue = (credits: number) =>
     credits.toLocaleString("en-IN", {
@@ -49,7 +84,7 @@ export default async function RechargePage() {
       maximumFractionDigits: 2,
     });
 
-  const activePlanId = balance.plan?.id ?? null;
+  const activePlanId = balance?.plan?.id ?? null;
   const sortedPlans = [...plans].sort((a, b) => {
     if (a.priceInPaise === b.priceInPaise) {
       return a.tokenAllowance - b.tokenAllowance;
@@ -135,6 +170,23 @@ export default async function RechargePage() {
         </div>
       </header>
 
+      {!balance ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm">
+          <p className="font-semibold">
+            <EditableTranslation
+              defaultText="Some recharge details could not be confirmed."
+              translationKey="recharge.warning.partial_title"
+            />
+          </p>
+          <p className="mt-1">
+            <EditableTranslation
+              defaultText="Plans are available, but your current balance could not be loaded right now."
+              translationKey="recharge.warning.partial_body"
+            />
+          </p>
+        </div>
+      ) : null}
+
       <RechargePlans
         activePlanId={activePlanId}
         imageGenerationEnabledForAll={imageGenerationEnabledForAll}
@@ -162,35 +214,80 @@ export default async function RechargePage() {
             translationKey="recharge.current_balance.title"
           />
         </h2>
-        <dl className="mt-4 grid gap-6 sm:grid-cols-2">
-          <div>
-            <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-              <EditableTranslation
-                defaultText="Credits remaining"
-                translationKey="recharge.current_balance.remaining"
-              />
-            </dt>
-            <dd className="mt-2 font-semibold text-2xl">
-              {formatCreditValue(balance.creditsRemaining)}{" "}
-              <span className="font-normal text-muted-foreground text-sm">
-                / {formatCreditValue(balance.creditsTotal)}
-              </span>
-            </dd>
-          </div>
-          {balance.expiresAt ? (
+        {!balance ? (
+          <p className="mt-4 text-amber-900 text-sm">
+            <EditableTranslation
+              defaultText="Current balance could not be loaded right now."
+              translationKey="recharge.current_balance.unavailable"
+            />
+          </p>
+        ) : (
+          <dl className="mt-4 grid gap-6 sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground text-xs uppercase tracking-wide">
                 <EditableTranslation
-                  defaultText="Credits valid until"
-                  translationKey="recharge.current_balance.valid_until"
+                  defaultText="Credits remaining"
+                  translationKey="recharge.current_balance.remaining"
                 />
               </dt>
-              <dd className="mt-2 font-semibold text-lg">
-                {expiryFormatter.format(balance.expiresAt)}
+              <dd className="mt-2 font-semibold text-2xl">
+                {formatCreditValue(balance.creditsRemaining)}{" "}
+                <span className="font-normal text-muted-foreground text-sm">
+                  / {formatCreditValue(balance.creditsTotal)}
+                </span>
               </dd>
             </div>
-          ) : null}
-        </dl>
+            {balance.expiresAt ? (
+              <div>
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">
+                  <EditableTranslation
+                    defaultText="Credits valid until"
+                    translationKey="recharge.current_balance.valid_until"
+                  />
+                </dt>
+                <dd className="mt-2 font-semibold text-lg">
+                  {expiryFormatter.format(balance.expiresAt)}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function RechargeUnavailablePage() {
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-12">
+      <div>
+        <BackToHomeButton
+          label="Back to home"
+          translationKey="navigation.back_to_home"
+        />
+      </div>
+      <section className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-900 shadow-sm">
+        <h1 className="font-semibold text-2xl">
+          <EditableTranslation
+            defaultText="Choose your plan"
+            translationKey="recharge.title"
+          />
+        </h1>
+        <p className="mt-2 text-sm">
+          <EditableTranslation
+            defaultText="Recharge plans could not be loaded right now. Please retry shortly."
+            translationKey="recharge.error.pricing_unavailable"
+          />
+        </p>
+        <a
+          className="mt-4 inline-flex cursor-pointer rounded-md border border-amber-300 bg-background px-3 py-2 font-medium text-sm transition hover:bg-amber-100"
+          href="/recharge"
+        >
+          <EditableTranslation
+            defaultText="Retry"
+            translationKey="recharge.error.retry"
+          />
+        </a>
       </section>
     </div>
   );

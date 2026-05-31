@@ -2,7 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { Metadata } from "next";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
-import { adminQueryOr } from "@/lib/admin/safe-query";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
   getContactMessageCount,
   listContactMessages,
@@ -31,12 +31,10 @@ export default async function AdminContactsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
-  let messages: ContactMessage[] = [];
-  let totalMessages = 0;
 
   const offset = (requestedPage - 1) * CONTACTS_PAGE_SIZE;
-  [messages, totalMessages] = await Promise.all([
-    adminQueryOr({
+  const [messagesState, totalMessagesState] = await Promise.all([
+    adminQueryResult({
       fallback: [] as ContactMessage[],
       label: "contacts.messages",
       promise: listContactMessages({
@@ -44,27 +42,33 @@ export default async function AdminContactsPage({
         offset,
       }),
     }),
-    adminQueryOr({
+    adminQueryResult({
       fallback: 0,
       label: "contacts.count",
       promise: getContactMessageCount(),
     }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(totalMessages / CONTACTS_PAGE_SIZE));
-  const page = Math.min(requestedPage, totalPages);
-
-  if (page !== requestedPage) {
-    const offset = (page - 1) * CONTACTS_PAGE_SIZE;
-    messages = await adminQueryOr({
-      fallback: [] as ContactMessage[],
-      label: "contacts.corrected-page",
-      promise: listContactMessages({
-        limit: CONTACTS_PAGE_SIZE,
-        offset,
-      }),
-    });
-  }
+  const totalMessages = totalMessagesState.data;
+  const totalPages = totalMessagesState.ok
+    ? Math.max(1, Math.ceil(totalMessages / CONTACTS_PAGE_SIZE))
+    : requestedPage;
+  const page = totalMessagesState.ok
+    ? Math.min(requestedPage, totalPages)
+    : requestedPage;
+  const correctedMessagesState =
+    page !== requestedPage && messagesState.ok
+      ? await adminQueryResult({
+          fallback: [] as ContactMessage[],
+          label: "contacts.corrected-page",
+          promise: listContactMessages({
+            limit: CONTACTS_PAGE_SIZE,
+            offset: (page - 1) * CONTACTS_PAGE_SIZE,
+          }),
+        })
+      : messagesState;
+  const messages = correctedMessagesState.data;
+  const messagesConfirmed = correctedMessagesState.ok;
 
   return (
     <div className="flex flex-col gap-6">
@@ -76,6 +80,20 @@ export default async function AdminContactsPage({
       </header>
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
+        {(!messagesConfirmed || !totalMessagesState.ok) && (
+          <AdminContactsWarning
+            message={[
+              !messagesConfirmed
+                ? "Contact request rows could not be confirmed."
+                : null,
+              !totalMessagesState.ok
+                ? "Contact request total could not be confirmed."
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          />
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-muted-foreground text-xs uppercase">
@@ -88,7 +106,16 @@ export default async function AdminContactsPage({
               </tr>
             </thead>
             <tbody>
-              {messages.length === 0 ? (
+              {!messagesConfirmed ? (
+                <tr>
+                  <td
+                    className="py-8 text-center text-muted-foreground"
+                    colSpan={5}
+                  >
+                    Unable to load contact requests.
+                  </td>
+                </tr>
+              ) : messages.length === 0 ? (
                 <tr>
                   <td
                     className="py-8 text-center text-muted-foreground"
@@ -149,10 +176,18 @@ export default async function AdminContactsPage({
             pageSize={CONTACTS_PAGE_SIZE}
             pathname="/admin/contacts"
             searchParams={resolvedSearchParams}
-            totalItems={totalMessages}
+            totalItems={totalMessagesState.ok ? totalMessages : messages.length}
           />
         </div>
       </section>
+    </div>
+  );
+}
+
+function AdminContactsWarning({ message }: { message: string }) {
+  return (
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {message} Refresh this admin section to retry.
     </div>
   );
 }

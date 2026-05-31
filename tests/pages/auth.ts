@@ -57,7 +57,9 @@ export class AuthPage {
     const authMenuItem = this.page.getByTestId("user-nav-item-auth");
     await expect(authMenuItem).toContainText("Sign out");
 
-    await authMenuItem.click();
+    await authMenuItem.evaluate((element) => {
+      (element as HTMLElement).click();
+    });
     await this.page.waitForURL("/login");
   }
 

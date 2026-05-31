@@ -25,7 +25,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useStudyContextSummary } from "@/hooks/use-study-context";
-import type { Chat } from "@/lib/db/schema";
+import type { ChatHistoryListItem } from "@/lib/db/queries";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 import { preloadChat } from "./chat-loader";
 import { deleteCachedChatPagePayload } from "./chat-page-cache";
@@ -33,16 +33,19 @@ import { LoaderIcon } from "./icons";
 import { ChatItem } from "./sidebar-history-item";
 
 type GroupedChats = {
-  today: Chat[];
-  yesterday: Chat[];
-  lastWeek: Chat[];
-  lastMonth: Chat[];
-  older: Chat[];
+  today: ChatHistoryListItem[];
+  yesterday: ChatHistoryListItem[];
+  lastWeek: ChatHistoryListItem[];
+  lastMonth: ChatHistoryListItem[];
+  older: ChatHistoryListItem[];
 };
 
 export type ChatHistory = {
-  chats: Chat[];
+  chats: ChatHistoryListItem[];
+  degraded?: boolean;
+  degradedSections?: string[];
   hasMore: boolean;
+  message?: string;
 };
 
 export type ChatHistoryMode = "all" | "default" | "study" | "jobs";
@@ -72,7 +75,7 @@ async function chatHistoryFetcher(url: string) {
   }
 }
 
-const groupChatsByDate = (chats: Chat[]): GroupedChats => {
+const groupChatsByDate = (chats: ChatHistoryListItem[]): GroupedChats => {
   const now = new Date();
   const oneWeekAgo = subWeeks(now, 1);
   const oneMonthAgo = subMonths(now, 1);
@@ -213,13 +216,16 @@ export function SidebarHistory({
   const hasEmptyChatHistory = paginatedChatHistories
     ? paginatedChatHistories.every((page) => page.chats.length === 0)
     : false;
+  const isHistoryDegraded = Boolean(
+    paginatedChatHistories?.some((page) => page.degraded)
+  );
   const chatsFromHistory = useMemo(
     () => {
       if (!paginatedChatHistories) {
         return [];
       }
 
-      const dedupedChats: Chat[] = [];
+      const dedupedChats: ChatHistoryListItem[] = [];
       const seenChatIds = new Set<string>();
 
       for (const paginatedChatHistory of paginatedChatHistories) {
@@ -499,7 +505,7 @@ export function SidebarHistory({
     );
   }
 
-  if (historyError && chatsFromHistory.length === 0) {
+  if ((historyError || isHistoryDegraded) && chatsFromHistory.length === 0) {
     return (
       <SidebarGroup>
         {sectionLabel}
@@ -529,7 +535,7 @@ export function SidebarHistory({
     );
   }
 
-  if (hasEmptyChatHistory) {
+  if (hasEmptyChatHistory && !isHistoryDegraded) {
     return (
       <SidebarGroup>
         {sectionLabel}
@@ -551,6 +557,26 @@ export function SidebarHistory({
         {sectionLabel}
         <SidebarGroupContent>
           <SidebarMenu>
+            {isHistoryDegraded ? (
+              <div className="mb-3 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2 text-sidebar-foreground/70 text-xs">
+                <EditableTranslation
+                  defaultText="Chat history could not be fully confirmed. Showing the last available items."
+                  translationKey="sidebar.history.degraded"
+                />
+                <button
+                  className="mt-2 block cursor-pointer font-medium text-sidebar-foreground underline underline-offset-2"
+                  onClick={() => {
+                    void mutate();
+                  }}
+                  type="button"
+                >
+                  <EditableTranslation
+                    defaultText="Retry"
+                    translationKey="sidebar.history.retry"
+                  />
+                </button>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-6">
               {groupedChats.today.length > 0 && (
                 <div>

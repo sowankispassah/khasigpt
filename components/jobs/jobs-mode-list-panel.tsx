@@ -16,8 +16,11 @@ import type { JobListItem } from "@/lib/jobs/types";
 import { cn } from "@/lib/utils";
 
 type JobsModeListPanelProps = {
+  errorMessage?: string | null;
+  isDegraded?: boolean;
   isLoading?: boolean;
   jobs: JobListItem[];
+  onRetry?: () => void;
 };
 
 type JobsLocalFilters = {
@@ -86,8 +89,11 @@ function JobsFilterSelect({
 }
 
 export function JobsModeListPanel({
+  errorMessage = null,
+  isDegraded = false,
   isLoading = false,
   jobs,
+  onRetry,
 }: JobsModeListPanelProps) {
   const [filters, setFilters] = useState<JobsLocalFilters>(EMPTY_FILTERS);
   const deferredFilters = useDeferredValue(filters);
@@ -187,6 +193,26 @@ export function JobsModeListPanel({
     <div className="space-y-4">
       <div className="rounded-[28px] border border-border/60 bg-gradient-to-br from-background via-background to-muted/35 p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-1.5 sm:gap-3">
+          {errorMessage ? (
+            <div className="flex flex-col gap-2 rounded-2xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-destructive text-sm sm:flex-row sm:items-center sm:justify-between">
+              <span>{errorMessage}</span>
+              {onRetry ? (
+                <Button
+                  className="h-8 cursor-pointer rounded-full"
+                  onClick={onRetry}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry
+                </Button>
+              ) : null}
+            </div>
+          ) : isDegraded ? (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 text-sm dark:text-amber-300">
+              Jobs access could not be fully verified. Showing available listings.
+            </div>
+          ) : null}
           <label className="sr-only" htmlFor="jobs-mode-search">
             Search jobs
           </label>

@@ -12,6 +12,7 @@ import {
 } from "react";
 import { setPreferredLanguageAction } from "@/app/actions/language";
 import type { LanguageOption } from "@/lib/i18n/languages";
+import { setClientCookie } from "@/lib/ui/client-cookies";
 
 type TranslationContextValue = {
   languages: LanguageOption[];
@@ -109,12 +110,11 @@ export function LanguageProvider({
       void (async () => {
         let nextLocalizedPath: string | null = null;
         try {
-          if (typeof document !== "undefined") {
-            const encoded = encodeURIComponent(normalized);
-            document.cookie = `lang=${encoded}; path=/; max-age=${
-              60 * 60 * 24 * 365
-            }; samesite=lax`;
-          }
+          setClientCookie({
+            maxAge: 60 * 60 * 24 * 365,
+            name: "lang",
+            value: normalized,
+          });
 
           await setPreferredLanguageAction(normalized);
         } catch (error) {

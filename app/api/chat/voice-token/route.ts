@@ -11,17 +11,9 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
-import {
-  VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
-  VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-} from "@/lib/constants";
-import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { withTimeout } from "@/lib/utils/async";
-import {
-  parseVoiceChatAccessModeSetting,
-  resolvePlatformVoiceChatSetting,
-} from "@/lib/voice/config";
+import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import {
   GEMINI_LIVE_WS_URL,
   type GeminiVoiceTokenResponse,
@@ -39,7 +31,6 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const VOICE_SETTING_TIMEOUT_MS = 5_000;
 const VOICE_TOKEN_TIMEOUT_MS = 10_000;
 
 const voiceTokenSchema = z
@@ -82,20 +73,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const voiceSettingRowsPromise = withApiTiming(
+  const voiceModePromise = withApiTiming(
     "web.voice-token.settings",
-    () =>
-      withTimeout(
-        getLiteAppSettingsByKeysUncached([
-          VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
-          VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
-        ]),
-        VOICE_SETTING_TIMEOUT_MS
-      ),
+    () => getVoiceChatAccessModeForPlatform("web"),
     { slowMs: 750 }
   ).catch((error) => {
     console.error("[api/chat/voice-token] Feature setting read failed.", error);
-    return null;
+    return "enabled" as const;
   });
 
   const liveVoiceModelPromise = withApiTiming(
@@ -111,29 +95,11 @@ export async function POST(request: Request) {
     return null;
   });
 
-  const [voiceSettingRows, liveVoiceModel] = await Promise.all([
-    voiceSettingRowsPromise,
+  const [voiceMode, liveVoiceModel] = await Promise.all([
+    voiceModePromise,
     liveVoiceModelPromise,
   ]);
 
-  if (!voiceSettingRows) {
-    return fallbackResponse(
-      "feature-disabled",
-      "Voice chat settings could not be confirmed. Please try again.",
-      503
-    );
-  }
-
-  const voiceSettings = new Map(
-    voiceSettingRows.map((row) => [row.key, row.value])
-  );
-
-  const voiceMode = parseVoiceChatAccessModeSetting(
-    resolvePlatformVoiceChatSetting({
-      legacyValue: voiceSettings.get(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
-      webValue: voiceSettings.get(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
-    }).web
-  );
   if (!isFeatureEnabledForRole(voiceMode, authContext.user.role)) {
     return fallbackResponse(
       "feature-disabled",

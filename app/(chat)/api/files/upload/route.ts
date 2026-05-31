@@ -3,9 +3,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
-import { getAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import {
+  getFeatureAccessModeSettingValue,
+  loadFeatureAccessSettingsByKeys,
+} from "@/lib/settings/feature-access-settings";
 import { buildDocumentDownloadUrl } from "@/lib/uploads/document-access";
 import {
   DOCUMENT_EXTENSION_BY_MIME,
@@ -17,6 +20,7 @@ import {
 
 const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
 const ALLOWED_IMAGE_MIME_TYPES = IMAGE_MIME_TYPES;
+const UPLOAD_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 
 function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
   const bytes = new Uint8Array(buffer);
@@ -58,9 +62,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    const documentUploadsSetting = await getAppSetting<string | boolean>(
-      DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+    const featureAccessSettings = await loadFeatureAccessSettingsByKeys(
+      [DOCUMENT_UPLOADS_FEATURE_FLAG_KEY],
+      {
+        source: "api.files.upload.feature-access",
+        timeoutMs: UPLOAD_FEATURE_ACCESS_TIMEOUT_MS,
+      }
     );
+    const documentUploadsSetting =
+      getFeatureAccessModeSettingValue(
+        featureAccessSettings,
+        DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
+      );
     const documentUploadsMode = parseDocumentUploadsAccessModeSetting(
       documentUploadsSetting
     );

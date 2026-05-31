@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isJobsEnabledForRole } from "@/lib/jobs/config";
+import { getJobsAccessForRole } from "@/lib/jobs/config";
 import { listJobListItems, listJobListPageItems } from "@/lib/jobs/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 
@@ -46,8 +46,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const jobsEnabled = await isJobsEnabledForRole(session.user.role ?? null);
-  if (!jobsEnabled) {
+  const jobsAccess = await getJobsAccessForRole(session.user.role ?? null);
+  if (!jobsAccess.enabled) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -81,6 +81,9 @@ export async function GET(request: Request) {
         },
         items: page.items,
         limit,
+        meta: {
+          degradedSections: jobsAccess.degraded ? ["featureGate"] : [],
+        },
         offset,
         total: page.total,
       },
@@ -116,6 +119,9 @@ export async function GET(request: Request) {
         facets,
         items: [],
         limit: 0,
+        meta: {
+          degradedSections: jobsAccess.degraded ? ["featureGate"] : [],
+        },
         offset: 0,
         total: allItems.length,
       },
@@ -164,6 +170,9 @@ export async function GET(request: Request) {
       facets,
       items,
       limit,
+      meta: {
+        degradedSections: jobsAccess.degraded ? ["featureGate"] : [],
+      },
       offset,
       total: filteredItems.length,
     },
