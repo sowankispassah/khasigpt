@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { getJobsAccessForRole } from "@/lib/jobs/config";
 import { listJobListItems, listJobListPageItems } from "@/lib/jobs/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_LIMIT = 12;
 const MAX_LIMIT = 40;
+const JOBS_READ_TIMEOUT_MS = 7000;
 
 function normalizeFilter(value: string | null) {
   return (value ?? "").trim().toLowerCase();
@@ -70,7 +72,36 @@ export async function GET(request: Request) {
   );
 
   if (!hasFilters && !includeFacets && !facetsOnly) {
-    const page = await listJobListPageItems({ limit, offset });
+    const page = await withTimeout(
+      listJobListPageItems({ limit, offset }),
+      JOBS_READ_TIMEOUT_MS,
+      () => {
+        console.error("[api/mobile/jobs] Jobs page read timed out.", {
+          timeoutMs: JOBS_READ_TIMEOUT_MS,
+        });
+      }
+    ).catch((error) => {
+      console.error("[api/mobile/jobs] Jobs page read failed.", error);
+      return null;
+    });
+
+    if (!page) {
+      return NextResponse.json(
+        {
+          error: "jobs_unavailable",
+          message: "Jobs could not be loaded right now. Please retry.",
+          meta: {
+            degradedSections: ["jobsList"],
+          },
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+          status: 503,
+        }
+      );
+    }
 
     return NextResponse.json(
       {
@@ -95,7 +126,36 @@ export async function GET(request: Request) {
     );
   }
 
-  const allItems = await listJobListItems();
+  const allItems = await withTimeout(
+    listJobListItems(),
+    JOBS_READ_TIMEOUT_MS,
+    () => {
+      console.error("[api/mobile/jobs] Jobs list read timed out.", {
+        timeoutMs: JOBS_READ_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    console.error("[api/mobile/jobs] Jobs list read failed.", error);
+    return null;
+  });
+
+  if (!allItems) {
+    return NextResponse.json(
+      {
+        error: "jobs_unavailable",
+        message: "Jobs could not be loaded right now. Please retry.",
+        meta: {
+          degradedSections: ["jobsList"],
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+        status: 503,
+      }
+    );
+  }
 
   const facets = {
     companies: Array.from(

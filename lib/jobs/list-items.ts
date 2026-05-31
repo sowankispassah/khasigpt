@@ -32,6 +32,16 @@ function formatDateLabel(value: Date) {
   });
 }
 
+function getSafeDate(value: Date) {
+  return value instanceof Date && !Number.isNaN(value.getTime())
+    ? value
+    : new Date(0);
+}
+
+function hasUsableJobId(job: JobListItemSource) {
+  return typeof job.id === "string" && job.id.trim().length > 0;
+}
+
 function parseSortableDateLabel(label: string) {
   const normalized = label.trim();
   if (!normalized || normalized.toLowerCase() === "not specified") {
@@ -132,18 +142,38 @@ export async function toJobListItem(job: JobListItemSource): Promise<JobListItem
 export async function toJobListItems(
   jobs: JobListItemSource[]
 ): Promise<JobListItem[]> {
-  const items = await Promise.all(
-    jobs.map(async (job) => {
-      const item = await toJobListItem(job);
-      const notificationDate =
-        parseSortableDateLabel(item.notificationDateLabel) ?? job.createdAt;
-      return {
-        item,
-        sortTime: notificationDate.getTime(),
-        fetchedTime: job.createdAt.getTime(),
-      };
-    })
-  );
+  const items = (
+    await Promise.all(
+      jobs.map(async (job) => {
+        try {
+          if (!hasUsableJobId(job)) {
+            console.warn("[jobs-list] Skipping job row with missing id.");
+            return null;
+          }
+
+          const safeCreatedAt = getSafeDate(job.createdAt);
+          const item = await toJobListItem({
+            ...job,
+            createdAt: safeCreatedAt,
+          });
+          const notificationDate =
+            parseSortableDateLabel(item.notificationDateLabel) ?? safeCreatedAt;
+          const sortTime = notificationDate.getTime();
+          return {
+            item,
+            sortTime: Number.isFinite(sortTime) ? sortTime : 0,
+            fetchedTime: safeCreatedAt.getTime(),
+          };
+        } catch (error) {
+          console.warn("[jobs-list] Skipping unreadable job row.", {
+            error: error instanceof Error ? error.message : error,
+            jobId: job.id,
+          });
+          return null;
+        }
+      })
+    )
+  ).filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return items
     .sort((left, right) => {

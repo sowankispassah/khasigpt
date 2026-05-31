@@ -914,6 +914,24 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Back link label for the chat detail recovery state.",
   },
   {
+    key: "jobs.detail.load_failed.title",
+    defaultText: "Job details could not be loaded",
+    description:
+      "Title shown when the jobs detail page cannot load the selected listing.",
+  },
+  {
+    key: "jobs.detail.load_failed.description",
+    defaultText:
+      "The listing data is temporarily unavailable. You can retry or go back to the jobs list.",
+    description:
+      "Recovery message shown when the jobs detail page cannot load the selected listing.",
+  },
+  {
+    key: "jobs.detail.load_failed.retry",
+    defaultText: "Retry",
+    description: "Retry link label for the jobs detail recovery state.",
+  },
+  {
     key: "chat.input.placeholder",
     defaultText: "Send a message...",
     description: "Placeholder text for the main chat input.",

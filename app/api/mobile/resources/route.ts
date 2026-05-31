@@ -9,7 +9,10 @@ import {
   getAppSetting,
   getLastKnownAppSetting,
 } from "@/lib/db/queries";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import {
+  getCachedTranslationBundle,
+  getTranslationBundle,
+} from "@/lib/i18n/dictionary";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +21,17 @@ export const runtime = "nodejs";
 const RESOURCE_TIMEOUT_MS = 15_000;
 
 type LocalizedContentMap = Record<string, string>;
+
+const FALLBACK_LANGUAGE = {
+  id: "fallback-en",
+  code: "en",
+  name: "English",
+  displayName: "English",
+  nativeName: "English",
+  isDefault: true,
+  isActive: true,
+  syncUiLanguage: true,
+};
 
 async function safeAppSetting<T>(key: string, fallback: T) {
   try {
@@ -115,7 +129,7 @@ export async function GET(request: Request) {
   const preferredLanguage = requestedLanguage || cookieStore.get("lang")?.value || null;
 
   const [
-    translationBundle,
+    translationBundleResult,
     aboutContent,
     aboutByLanguage,
     privacyPolicy,
@@ -123,7 +137,33 @@ export async function GET(request: Request) {
     termsOfService,
     termsByLanguage,
   ] = await Promise.all([
-    getTranslationBundle(preferredLanguage),
+    getTranslationBundle(preferredLanguage)
+      .then((bundle) => ({ bundle, degraded: false }))
+      .catch(async (error) => {
+        console.error(
+          "[api/mobile/resources] Translation bundle read failed; using cached/fallback translations.",
+          error
+        );
+        const cached = await getCachedTranslationBundle(preferredLanguage).catch(
+          (cacheError) => {
+            console.error(
+              "[api/mobile/resources] Cached translation fallback failed.",
+              cacheError
+            );
+            return null;
+          }
+        );
+        return {
+          bundle:
+            cached ?? {
+              activeLanguage: FALLBACK_LANGUAGE,
+              languages: [FALLBACK_LANGUAGE],
+              dictionary: {},
+              dictionaryLanguageCode: "",
+            },
+          degraded: true,
+        };
+      }),
     safeAppSetting<string>("aboutUsContent", DEFAULT_ABOUT_US),
     safeAppSetting<Record<string, string>>("aboutUsContentByLanguage", {}),
     safeAppSetting<string>("privacyPolicy", DEFAULT_PRIVACY_POLICY),
@@ -132,6 +172,7 @@ export async function GET(request: Request) {
     safeAppSetting<Record<string, string>>("termsOfServiceByLanguage", {}),
   ]);
   const degradedSettings = [
+    translationBundleResult.degraded ? "translations" : null,
     aboutContent.degraded ? "aboutUsContent" : null,
     aboutByLanguage.degraded ? "aboutUsContentByLanguage" : null,
     privacyPolicy.degraded ? "privacyPolicy" : null,
@@ -140,7 +181,9 @@ export async function GET(request: Request) {
     termsByLanguage.degraded ? "termsOfServiceByLanguage" : null,
   ].filter((key): key is string => Boolean(key));
 
-  const { activeLanguage, languages, dictionary } = translationBundle;
+  const { activeLanguage, languages } = translationBundleResult.bundle;
+  const dictionary: Record<string, string> =
+    translationBundleResult.bundle.dictionary ?? {};
   const defaultLanguage =
     languages.find((language) => language.isDefault) ?? languages[0] ?? null;
   const defaultLanguageCode = defaultLanguage?.code ?? null;

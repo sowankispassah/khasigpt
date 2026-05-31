@@ -5,6 +5,7 @@ import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
 import { JobDetailsChatShell } from "@/components/jobs/job-details-chat-shell";
 import { SidebarToggle } from "@/components/sidebar-toggle";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { readChatOriginUiContext } from "@/lib/chat/ui-context";
@@ -19,8 +20,11 @@ import { getSiteUrl } from "@/lib/seo/site";
 import type { ChatMessage } from "@/lib/types";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
+const JOB_DETAIL_TIMEOUT_MS = 7000;
+const JOB_CHAT_HISTORY_TIMEOUT_MS = 6000;
 
 function formatDateLabel(value: Date) {
   return value.toLocaleDateString("en-IN", {
@@ -110,11 +114,30 @@ export default async function JobPostingDetailPage(props: {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/jobs/${id}`)}`);
   }
 
-  const job = await getJobPostingById({
-    id,
-    includeInactive: false,
-    includeRagState: false,
+  const job = await withTimeout(
+    getJobPostingById({
+      id,
+      includeInactive: false,
+      includeRagState: false,
+    }),
+    JOB_DETAIL_TIMEOUT_MS,
+    () => {
+      console.error("[jobs/detail] Job detail read timed out.", {
+        jobId: id,
+        timeoutMs: JOB_DETAIL_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    console.error("[jobs/detail] Job detail read failed.", {
+      error,
+      jobId: id,
+    });
+    return undefined;
   });
+
+  if (job === undefined) {
+    return <JobDetailUnavailable jobId={id} />;
+  }
 
   if (!job) {
     notFound();
@@ -168,47 +191,80 @@ export default async function JobPostingDetailPage(props: {
     | null = null;
 
   if (requestedChatId) {
-    const savedChat = await getChatById({
-      id: requestedChatId,
-      includeDeleted: true,
-    });
-    const originUiContext = readChatOriginUiContext(savedChat?.lastContext ?? null);
-    const originJobPostingId = originUiContext.jobPostingId;
-    if (
-      savedChat &&
-      savedChat.mode === "jobs" &&
-      originJobPostingId === job.id &&
-      (!savedChat.deletedAt || isAdmin) &&
-      (savedChat.visibility !== "private" ||
-        isAdmin ||
-        savedChat.userId === session.user.id)
-    ) {
-      const { messages: messagesFromDb, hasMore } = await getMessagesByChatIdPage({
-        id: savedChat.id,
-        limit: CHAT_HISTORY_PAGE_SIZE,
-      });
-      const initialMessages = rewriteDocumentUrlsForViewer({
-        messages: convertToUIMessages(messagesFromDb),
-        viewerUserId: session.user.id,
-        isAdmin,
-        baseUrl: getSiteUrl(),
-      });
-      const oldestMessageAt =
-        messagesFromDb[0]?.createdAt instanceof Date
-          ? messagesFromDb[0].createdAt.toISOString()
-          : messagesFromDb[0]?.createdAt
-            ? new Date(messagesFromDb[0].createdAt as unknown as string).toISOString()
-            : null;
+    try {
+      const savedChat = await withTimeout(
+        getChatById({
+          id: requestedChatId,
+          includeDeleted: true,
+        }),
+        JOB_CHAT_HISTORY_TIMEOUT_MS,
+        () => {
+          console.error("[jobs/detail] Saved chat read timed out.", {
+            chatId: requestedChatId,
+            jobId: job.id,
+            timeoutMs: JOB_CHAT_HISTORY_TIMEOUT_MS,
+          });
+        }
+      );
+      const originUiContext = readChatOriginUiContext(
+        savedChat?.lastContext ?? null
+      );
+      const originJobPostingId = originUiContext.jobPostingId;
+      if (
+        savedChat &&
+        savedChat.mode === "jobs" &&
+        originJobPostingId === job.id &&
+        (!savedChat.deletedAt || isAdmin) &&
+        (savedChat.visibility !== "private" ||
+          isAdmin ||
+          savedChat.userId === session.user.id)
+      ) {
+        const { messages: messagesFromDb, hasMore } = await withTimeout(
+          getMessagesByChatIdPage({
+            id: savedChat.id,
+            limit: CHAT_HISTORY_PAGE_SIZE,
+          }),
+          JOB_CHAT_HISTORY_TIMEOUT_MS,
+          () => {
+            console.error("[jobs/detail] Saved chat messages read timed out.", {
+              chatId: savedChat.id,
+              jobId: job.id,
+              timeoutMs: JOB_CHAT_HISTORY_TIMEOUT_MS,
+            });
+          }
+        );
+        const initialMessages = rewriteDocumentUrlsForViewer({
+          messages: convertToUIMessages(messagesFromDb),
+          viewerUserId: session.user.id,
+          isAdmin,
+          baseUrl: getSiteUrl(),
+        });
+        const oldestMessageAt =
+          messagesFromDb[0]?.createdAt instanceof Date
+            ? messagesFromDb[0].createdAt.toISOString()
+            : messagesFromDb[0]?.createdAt
+              ? new Date(
+                  messagesFromDb[0].createdAt as unknown as string
+                ).toISOString()
+              : null;
 
-      jobChatSession = {
-        chatId: savedChat.id,
-        defaultOpen: true,
-        initialHasMoreHistory: hasMore,
-        initialMessages,
-        initialOldestMessageAt: oldestMessageAt,
-        initialVisibilityType: savedChat.visibility,
-        isReadonly: session.user.id !== savedChat.userId,
-      };
+        jobChatSession = {
+          chatId: savedChat.id,
+          defaultOpen: true,
+          initialHasMoreHistory: hasMore,
+          initialMessages,
+          initialOldestMessageAt: oldestMessageAt,
+          initialVisibilityType: savedChat.visibility,
+          isReadonly: session.user.id !== savedChat.userId,
+        };
+      }
+    } catch (error) {
+      console.error("[jobs/detail] Saved chat context could not be loaded.", {
+        chatId: requestedChatId,
+        error,
+        jobId: job.id,
+      });
+      jobChatSession = null;
     }
   }
 
@@ -386,6 +442,48 @@ export default async function JobPostingDetailPage(props: {
           key={jobChatSession?.chatId ?? job.id}
           userRole={session.user.role ?? null}
         />
+      </div>
+    </>
+  );
+}
+
+function JobDetailUnavailable({ jobId }: { jobId: string }) {
+  return (
+    <>
+      <header className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
+        <SidebarToggle />
+        <BackToJobsButton />
+      </header>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-3 py-4 md:px-4 md:py-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <EditableTranslation
+                defaultText="Job details could not be loaded"
+                description="Title shown when the jobs detail page cannot load the selected listing."
+                translationKey="jobs.detail.load_failed.title"
+              />
+            </CardTitle>
+            <CardDescription>
+              <EditableTranslation
+                defaultText="The listing data is temporarily unavailable. You can retry or go back to the jobs list."
+                description="Recovery message shown when the jobs detail page cannot load the selected listing."
+                translationKey="jobs.detail.load_failed.description"
+              />
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="cursor-pointer" variant="outline">
+              <a href={`/jobs/${encodeURIComponent(jobId)}`}>
+                <EditableTranslation
+                  defaultText="Retry"
+                  description="Retry link label for the jobs detail recovery state."
+                  translationKey="jobs.detail.load_failed.retry"
+                />
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

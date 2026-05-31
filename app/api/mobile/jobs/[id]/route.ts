@@ -6,9 +6,11 @@ import { getJobTypeLabel } from "@/lib/jobs/sector";
 import { getJobPostingById } from "@/lib/jobs/service";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { createJobPreviewToken } from "@/lib/mobile-auth-token";
+import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const JOB_DETAIL_TIMEOUT_MS = 7000;
 
 function formatDateLabel(value: Date) {
   return value.toLocaleDateString("en-IN", {
@@ -107,11 +109,39 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const job = await getJobPostingById({
-    id,
-    includeInactive: false,
-    includeRagState: false,
+  const job = await withTimeout(
+    getJobPostingById({
+      id,
+      includeInactive: false,
+      includeRagState: false,
+    }),
+    JOB_DETAIL_TIMEOUT_MS,
+    () => {
+      console.error("[api/mobile/jobs/detail] Job detail read timed out.", {
+        jobId: id,
+        timeoutMs: JOB_DETAIL_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    console.error("[api/mobile/jobs/detail] Job detail read failed.", {
+      error,
+      jobId: id,
+    });
+    return undefined;
   });
+
+  if (job === undefined) {
+    return NextResponse.json(
+      {
+        code: "unavailable:job",
+        message: "Job details could not be loaded right now. Please retry.",
+        meta: {
+          degradedSections: ["jobDetail"],
+        },
+      },
+      { status: 503 }
+    );
+  }
 
   if (!job) {
     return NextResponse.json(
