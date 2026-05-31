@@ -979,8 +979,9 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "voice.chat.stop",
-    defaultText: "Stop and send",
-    description: "Button label to stop recording and save the voice chat turn.",
+    defaultText: "End voice chat",
+    description:
+      "Legacy native voice chat action label. Prefer voice.chat.end for new UI.",
   },
   {
     key: "voice.chat.end",
