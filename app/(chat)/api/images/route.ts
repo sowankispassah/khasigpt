@@ -17,8 +17,8 @@ import {
   deductImageCredits,
   getAppSetting,
   getChatById,
-  saveChat,
-  saveMessages,
+  saveChatAndMessages,
+  updateChatStatusById,
   updateMessagePartsById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
@@ -453,16 +453,17 @@ export async function POST(request: Request) {
     },
   ];
 
-  if (!existingChat) {
-    await saveChat({
-      id: chatId,
-      userId: session.user.id,
-      title: buildFallbackTitle(displayText),
-      visibility: visibility as VisibilityType,
-    });
-  }
-
-  await saveMessages({
+  await saveChatAndMessages({
+    chatInput: existingChat
+      ? null
+      : {
+          id: chatId,
+          userId: session.user.id,
+          title: buildFallbackTitle(displayText),
+          visibility: visibility as VisibilityType,
+          status: "pending",
+          statusReason: "Image generation is pending.",
+        },
     messages: [
       {
         chatId,
@@ -535,6 +536,16 @@ export async function POST(request: Request) {
       parts: assistantParts,
       attachments: [],
     });
+    await updateChatStatusById({
+      chatId,
+      status: "completed",
+      statusReason: null,
+    }).catch((statusError) => {
+      console.error("Failed to mark image generation chat completed", {
+        chatId,
+        statusError,
+      });
+    });
 
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
@@ -573,6 +584,20 @@ export async function POST(request: Request) {
         chatId,
         assistantMessageId,
         updateError,
+      });
+    });
+    await updateChatStatusById({
+      chatId,
+      status,
+      statusReason:
+        status === "cancelled"
+          ? "Image generation was cancelled before it completed."
+          : "Image generation failed. Please try again.",
+    }).catch((statusError) => {
+      console.error("Failed to persist image generation chat status", {
+        chatId,
+        status,
+        statusError,
       });
     });
 

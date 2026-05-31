@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   buildImageGenerationAccessFromAvailability,
   getImageGenerationAvailability,
@@ -133,7 +134,7 @@ export default async function Page(props: {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/chat/${id}`)}`);
   }
 
-  const chat = await withTimeout(
+  const chatLookupResult = await withTimeout(
     getChatByIdCached(id),
     CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS,
     () => {
@@ -143,8 +144,16 @@ export default async function Page(props: {
       });
     }
   ).catch((error) => {
-    throw error;
+    console.error("[chat] chat lookup failed.", {
+      chatId: id,
+      error: error instanceof Error ? error.message : error,
+    });
+    return "unavailable" as const;
   });
+  if (chatLookupResult === "unavailable") {
+    return <ChatLoadFailure />;
+  }
+  const chat = chatLookupResult;
 
   const isPendingRecentChat =
     recentChatCookie?.chatId === id &&
@@ -424,6 +433,51 @@ function StudyModeDisabledNotice() {
         >
           Back to chat
         </Link>
+      </div>
+    </div>
+  );
+}
+
+function ChatLoadFailure() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center px-6">
+      <div className="max-w-md rounded-lg border bg-card p-6 text-center shadow-sm">
+        <h2 className="font-semibold text-lg">
+          <EditableTranslation
+            defaultText="This chat could not be loaded"
+            description="Title for the chat detail recovery state when chat data cannot be loaded."
+            translationKey="chat.detail.load_failed.title"
+          />
+        </h2>
+        <p className="mt-2 text-muted-foreground text-sm">
+          <EditableTranslation
+            defaultText="The saved chat data could not be confirmed. You can retry or return to chat."
+            description="Description for the chat detail recovery state when chat data cannot be loaded."
+            translationKey="chat.detail.load_failed.description"
+          />
+        </p>
+        <div className="mt-4 flex justify-center gap-2">
+          <Link
+            className="inline-flex cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm transition hover:bg-muted"
+            href=""
+          >
+            <EditableTranslation
+              defaultText="Retry"
+              description="Retry link label for the chat detail recovery state."
+              translationKey="chat.detail.load_failed.retry"
+            />
+          </Link>
+          <Link
+            className="inline-flex cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm transition hover:bg-muted"
+            href="/chat"
+          >
+            <EditableTranslation
+              defaultText="Back to chat"
+              description="Back link label for the chat detail recovery state."
+              translationKey="chat.detail.load_failed.back"
+            />
+          </Link>
+        </div>
       </div>
     </div>
   );

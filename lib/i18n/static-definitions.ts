@@ -891,6 +891,29 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label that retries loading initial chat history.",
   },
   {
+    key: "chat.detail.load_failed.title",
+    defaultText: "This chat could not be loaded",
+    description:
+      "Title for the chat detail recovery state when chat data cannot be loaded.",
+  },
+  {
+    key: "chat.detail.load_failed.description",
+    defaultText:
+      "The saved chat data could not be confirmed. You can retry or return to chat.",
+    description:
+      "Description for the chat detail recovery state when chat data cannot be loaded.",
+  },
+  {
+    key: "chat.detail.load_failed.retry",
+    defaultText: "Retry",
+    description: "Retry link label for the chat detail recovery state.",
+  },
+  {
+    key: "chat.detail.load_failed.back",
+    defaultText: "Back to chat",
+    description: "Back link label for the chat detail recovery state.",
+  },
+  {
     key: "chat.input.placeholder",
     defaultText: "Send a message...",
     description: "Placeholder text for the main chat input.",

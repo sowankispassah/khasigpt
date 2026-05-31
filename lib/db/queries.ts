@@ -56,6 +56,7 @@ import {
   type CharacterRefImage,
   type Chat,
   type ChatMode,
+  type ChatStatus,
   type ContactMessage,
   type ContactMessageStatus,
   type Coupon,
@@ -131,7 +132,13 @@ export type DateRange = {
 
 export type ChatHistoryListItem = Pick<
   Chat,
-  "createdAt" | "id" | "mode" | "title" | "visibility"
+  | "createdAt"
+  | "id"
+  | "mode"
+  | "status"
+  | "statusReason"
+  | "title"
+  | "visibility"
 > & {
   updatedAt: Chat["createdAt"];
 };
@@ -218,8 +225,65 @@ function toDate(value: Date | string | null | undefined): Date | null {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function isValidUUID(value: string): boolean {
-  return UUID_REGEX.test(value);
+function isValidUUID(value: string | null | undefined): value is string {
+  return typeof value === "string" && UUID_REGEX.test(value);
+}
+
+function isChatMode(value: unknown): value is ChatMode {
+  return value === "default" || value === "study" || value === "jobs";
+}
+
+function isChatStatus(value: unknown): value is ChatStatus {
+  return (
+    value === "pending" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "cancelled"
+  );
+}
+
+function normalizeChatTitle(value: unknown, fallback = "New Chat") {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function normalizeVisibility(value: unknown): VisibilityType {
+  return value === "public" ? "public" : "private";
+}
+
+function normalizeChatHistoryRow(
+  row: Record<string, unknown>
+): ChatHistoryListItem | null {
+  const id = typeof row.id === "string" ? row.id : null;
+  if (!isValidUUID(id)) {
+    console.warn("[chat-history] Skipping chat row with invalid id.", { id });
+    return null;
+  }
+
+  const createdAt =
+    toDate(row.createdAt as Date | string | null | undefined) ?? new Date(0);
+  const updatedAt =
+    toDate(row.updatedAt as Date | string | null | undefined) ?? createdAt;
+  const mode = isChatMode(row.mode) ? row.mode : "default";
+  const status = isChatStatus(row.status) ? row.status : "completed";
+  const statusReason =
+    typeof row.statusReason === "string" && row.statusReason.trim().length > 0
+      ? row.statusReason.trim()
+      : null;
+
+  return {
+    id,
+    createdAt,
+    updatedAt,
+    mode,
+    status,
+    statusReason,
+    title: normalizeChatTitle(row.title),
+    visibility: normalizeVisibility(row.visibility),
+  };
 }
 
 function getErrorCause(error: unknown, fallback: string): string {
@@ -540,6 +604,10 @@ function toRequiredDate(value: Date | string) {
   return toDate(value) ?? new Date(0);
 }
 
+function toArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot> {
   const startedAt = Date.now();
 
@@ -631,20 +699,31 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
       userCount: toInteger(row?.userCount),
       chatCount: toInteger(row?.chatCount),
       contactMessageCount: toInteger(row?.contactMessageCount),
-      recentUsers: (row?.recentUsers ?? []).map((item) => ({
+      recentUsers: toArray<AdminOverviewRawSnapshot["recentUsers"][number]>(
+        row?.recentUsers
+      ).map((item) => ({
         ...item,
         createdAt: toRequiredDate(item.createdAt),
       })),
-      recentChats: (row?.recentChats ?? []).map((item) => ({
+      recentChats: toArray<AdminOverviewRawSnapshot["recentChats"][number]>(
+        row?.recentChats
+      ).map((item) => ({
         ...item,
         createdAt: toRequiredDate(item.createdAt),
         deletedAt: item.deletedAt ? toDate(item.deletedAt) : null,
+        mode: isChatMode(item.mode) ? item.mode : "default",
+        title: normalizeChatTitle(item.title),
+        visibility: normalizeVisibility(item.visibility),
       })),
-      recentAudits: (row?.recentAudits ?? []).map((item) => ({
+      recentAudits: toArray<AdminOverviewRawSnapshot["recentAudits"][number]>(
+        row?.recentAudits
+      ).map((item) => ({
         ...item,
         createdAt: toRequiredDate(item.createdAt),
       })),
-      recentContactMessages: (row?.recentContactMessages ?? []).map((item) => ({
+      recentContactMessages: toArray<
+        AdminOverviewRawSnapshot["recentContactMessages"][number]
+      >(row?.recentContactMessages).map((item) => ({
         ...item,
         createdAt: toRequiredDate(item.createdAt),
       })),
@@ -1077,21 +1156,27 @@ export async function saveChat({
   title,
   visibility,
   mode = "default",
+  status = "completed",
+  statusReason = null,
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
   mode?: ChatMode;
+  status?: ChatStatus;
+  statusReason?: string | null;
 }) {
   try {
     return await db.insert(chat).values({
       id,
       createdAt: new Date(),
       userId,
-      title,
+      title: normalizeChatTitle(title),
       visibility,
       mode,
+      status,
+      statusReason,
     });
   } catch (error) {
     throw new ChatSDKError(
@@ -1198,6 +1283,8 @@ export async function getChatsByUserId({
           updatedAt: chatActivityAt,
           title: chat.title,
           mode: chat.mode,
+          status: chat.status,
+          statusReason: chat.statusReason,
           visibility: chat.visibility,
         })
         .from(chat)
@@ -1220,10 +1307,13 @@ export async function getChatsByUserId({
         .limit(1);
 
       if (!selectedChat) {
-        throw new ChatSDKError(
-          "not_found:database",
-          `Chat with id ${startingAfter} not found`
-        );
+        return {
+          chats: [],
+          degraded: true,
+          degradedSections: ["historyCursor"],
+          hasMore: false,
+          message: "Chat history cursor is no longer available.",
+        };
       }
 
       filteredChats = await query(
@@ -1246,10 +1336,13 @@ export async function getChatsByUserId({
         .limit(1);
 
       if (!selectedChat) {
-        throw new ChatSDKError(
-          "not_found:database",
-          `Chat with id ${endingBefore} not found`
-        );
+        return {
+          chats: [],
+          degraded: true,
+          degradedSections: ["historyCursor"],
+          hasMore: false,
+          message: "Chat history cursor is no longer available.",
+        };
       }
 
       filteredChats = await query(
@@ -1265,10 +1358,13 @@ export async function getChatsByUserId({
       filteredChats = await query();
     }
 
-    const hasMore = filteredChats.length > limit;
+    const normalizedChats = filteredChats
+      .map((item) => normalizeChatHistoryRow(item as Record<string, unknown>))
+      .filter((item): item is ChatHistoryListItem => Boolean(item));
+    const hasMore = normalizedChats.length > limit;
 
     return {
-      chats: hasMore ? filteredChats.slice(0, limit) : filteredChats,
+      chats: hasMore ? normalizedChats.slice(0, limit) : normalizedChats,
       hasMore,
     };
   } catch (error) {
@@ -1295,6 +1391,34 @@ export async function touchChatActivityById({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to update chat activity timestamp"
+    );
+  }
+}
+
+export async function updateChatStatusById({
+  chatId,
+  status,
+  statusReason = null,
+}: {
+  chatId: string;
+  status: ChatStatus;
+  statusReason?: string | null;
+}) {
+  try {
+    const [updated] = await db
+      .update(chat)
+      .set({
+        status,
+        statusReason,
+      })
+      .where(and(eq(chat.id, chatId), isNull(chat.deletedAt)))
+      .returning();
+
+    return updated ?? null;
+  } catch (error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      getErrorCause(error, "Failed to update chat status")
     );
   }
 }
@@ -1355,6 +1479,48 @@ export async function getChatById({
     const cause =
       _error instanceof Error ? _error.message : "Failed to get chat by id";
     throw new ChatSDKError("bad_request:database", cause);
+  }
+}
+
+export async function saveChatAndMessages({
+  chatInput,
+  messages,
+}: {
+  chatInput?: {
+    id: string;
+    mode?: ChatMode;
+    status?: ChatStatus;
+    statusReason?: string | null;
+    title: string;
+    userId: string;
+    visibility: VisibilityType;
+  } | null;
+  messages: DBMessage[];
+}) {
+  try {
+    return await db.transaction(async (tx) => {
+      if (chatInput) {
+        await tx.insert(chat).values({
+          id: chatInput.id,
+          createdAt: new Date(),
+          userId: chatInput.userId,
+          title: normalizeChatTitle(chatInput.title),
+          visibility: chatInput.visibility,
+          mode: chatInput.mode ?? "default",
+          status: chatInput.status ?? "completed",
+          statusReason: chatInput.statusReason ?? null,
+        });
+      }
+
+      if (messages.length > 0) {
+        await tx.insert(message).values(messages).onConflictDoNothing();
+      }
+    });
+  } catch (error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      getErrorCause(error, "Failed to save chat messages")
+    );
   }
 }
 
@@ -3714,6 +3880,8 @@ export async function listChats({
         title: chat.title,
         userId: chat.userId,
         mode: chat.mode,
+        status: chat.status,
+        statusReason: chat.statusReason,
         visibility: chat.visibility,
         lastContext: chat.lastContext,
         deletedAt: chat.deletedAt,

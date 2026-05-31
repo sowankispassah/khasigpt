@@ -561,6 +561,13 @@
       "when": 1779068700010,
       "tag": "0077_repair_feature_access_setting_values",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1779068700011,
+      "tag": "0078_chat_resilience_status",
+      "breakpoints": true
     }
   ]
 }

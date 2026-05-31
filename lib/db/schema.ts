@@ -800,6 +800,13 @@ export type TranslationValue = InferSelectModel<typeof translationValue>;
 
 export const chatModeEnum = ["default", "study", "jobs"] as const;
 export type ChatMode = (typeof chatModeEnum)[number];
+export const chatStatusEnum = [
+  "pending",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+export type ChatStatus = (typeof chatStatusEnum)[number];
 
 export const chat = pgTable(
   "Chat",
@@ -814,6 +821,10 @@ export const chat = pgTable(
     visibility: varchar("visibility", { enum: ["public", "private"] })
       .notNull()
       .default("private"),
+    status: varchar("status", { enum: chatStatusEnum })
+      .notNull()
+      .default("completed"),
+    statusReason: text("statusReason"),
     lastContext: jsonb("lastContext").$type<AppUsage | null>(),
     deletedAt: timestamp("deletedAt"),
   },
@@ -836,6 +847,13 @@ export const chat = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
     userModeCreatedAtIdActiveIdx: index("Chat_user_mode_createdAt_id_active_idx")
       .on(table.userId, table.mode, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    statusCreatedAtIdx: index("Chat_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    userStatusCreatedAtActiveIdx: index("Chat_user_status_createdAt_active_idx")
+      .on(table.userId, table.status, table.createdAt)
       .where(sql`${table.deletedAt} IS NULL`),
   })
 );

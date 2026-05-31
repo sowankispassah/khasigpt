@@ -2,12 +2,12 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
-  deleteChatById,
   getActiveChatOwnerById,
   recordTokenUsage,
-  saveChat,
+  saveChatAndMessages,
   saveMessages,
   touchChatActivityById,
+  updateChatStatusById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
@@ -134,38 +134,6 @@ export async function POST(request: Request) {
     );
   }
 
-  let createdChatForTurn = false;
-
-  const chatSaved = await withTimeout(
-    (async () => {
-      if (chat) {
-        await touchChatActivityById({ chatId });
-      } else {
-        await saveChat({
-          id: chatId,
-          userId: authContext.user.id,
-          title: buildFallbackTitle(userText),
-          visibility: selectedVisibilityType,
-          mode: "default",
-        });
-        createdChatForTurn = true;
-      }
-      return null;
-    })(),
-    VOICE_TURN_SAVE_TIMEOUT_MS
-  )
-    .then(() => true)
-    .catch((error) => {
-      console.error(
-        "[api/mobile/chat/voice-turn] Chat activity write failed.",
-        error
-      );
-      return false;
-    });
-  if (!chatSaved) {
-    return voicePersistenceUnavailable();
-  }
-
   const { inputTokens, outputTokens } = resolveLiveVoiceTurnUsage({
     assistantText,
     fallbackTokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
@@ -174,6 +142,71 @@ export async function POST(request: Request) {
     outputTokens: parsedBody.data.outputTokens,
     userText,
   });
+
+  let createdChatForTurn = false;
+
+  try {
+    await withTimeout(
+      chat
+        ? (async () => {
+            await touchChatActivityById({ chatId });
+            await saveMessages({
+              messages: [
+                {
+                  attachments: [],
+                  chatId,
+                  createdAt,
+                  id: userMessageId,
+                  parts: [{ type: "text", text: userText }],
+                  role: "user",
+                },
+                {
+                  attachments: [],
+                  chatId,
+                  createdAt: assistantCreatedAt,
+                  id: assistantMessageId,
+                  parts: [{ type: "text", text: assistantText }],
+                  role: "assistant",
+                },
+              ],
+            });
+          })()
+        : saveChatAndMessages({
+            chatInput: {
+              id: chatId,
+              userId: authContext.user.id,
+              title: buildFallbackTitle(userText),
+              visibility: selectedVisibilityType,
+              mode: "default",
+              status: "completed",
+            },
+            messages: [
+              {
+                attachments: [],
+                chatId,
+                createdAt,
+                id: userMessageId,
+                parts: [{ type: "text", text: userText }],
+                role: "user",
+              },
+              {
+                attachments: [],
+                chatId,
+                createdAt: assistantCreatedAt,
+                id: assistantMessageId,
+                parts: [{ type: "text", text: assistantText }],
+                role: "assistant",
+              },
+            ],
+          }).then(() => {
+            createdChatForTurn = true;
+          }),
+      VOICE_TURN_SAVE_TIMEOUT_MS
+    );
+  } catch (error) {
+    console.error("[api/mobile/chat/voice-turn] Message write failed.", error);
+    return voicePersistenceUnavailable();
+  }
 
   try {
     await withTimeout(
@@ -192,58 +225,27 @@ export async function POST(request: Request) {
       error instanceof ChatSDKError &&
       error.type === "payment_required"
     ) {
-      if (createdChatForTurn) {
-        await deleteChatById({ id: chatId }).catch(() => undefined);
-      }
+      await updateChatStatusById({
+        chatId,
+        status: "failed",
+        statusReason: "Insufficient credits remaining",
+      }).catch(() => undefined);
       return Response.json(
         { message: "Insufficient credits remaining" },
         { headers: noStoreHeaders(), status: 402 }
       );
     }
     if (createdChatForTurn) {
-      await deleteChatById({ id: chatId }).catch(() => undefined);
+      await updateChatStatusById({
+        chatId,
+        status: "failed",
+        statusReason: "Voice chat usage could not be recorded.",
+      }).catch(() => undefined);
     }
     console.error(
       "[api/mobile/chat/voice-turn] Token usage write failed.",
       error
     );
-    return voicePersistenceUnavailable();
-  }
-
-  try {
-    await withTimeout(
-      saveMessages({
-        messages: [
-          {
-            attachments: [],
-            chatId,
-            createdAt,
-            id: userMessageId,
-            parts: [{ type: "text", text: userText }],
-            role: "user",
-          },
-          {
-            attachments: [],
-            chatId,
-            createdAt: assistantCreatedAt,
-            id: assistantMessageId,
-            parts: [
-              {
-                type: "text",
-                text: assistantText,
-              },
-            ],
-            role: "assistant",
-          },
-        ],
-      }),
-      VOICE_TURN_SAVE_TIMEOUT_MS
-    );
-  } catch (error) {
-    if (createdChatForTurn) {
-      await deleteChatById({ id: chatId }).catch(() => undefined);
-    }
-    console.error("[api/mobile/chat/voice-turn] Message write failed.", error);
     return voicePersistenceUnavailable();
   }
 

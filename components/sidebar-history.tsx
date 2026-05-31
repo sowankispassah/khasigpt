@@ -54,6 +54,38 @@ const PAGE_SIZE = 20;
 const STUDY_INITIAL_HISTORY_LIMIT = 5;
 const CHAT_HISTORY_FETCH_TIMEOUT_MS = 15_000;
 
+function getChatTime(value: unknown) {
+  const date = typeof value === "string" || value instanceof Date
+    ? new Date(value)
+    : null;
+  const time = date?.getTime() ?? Number.NaN;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function normalizeHistoryItem(
+  item: ChatHistoryListItem
+): ChatHistoryListItem | null {
+  if (!item || typeof item.id !== "string" || item.id.trim().length === 0) {
+    console.warn("[sidebar-history] Skipping history item with missing id.");
+    return null;
+  }
+
+  return {
+    ...item,
+    createdAt: new Date(getChatTime(item.createdAt)),
+    mode:
+      item.mode === "study" || item.mode === "jobs" || item.mode === "default"
+        ? item.mode
+        : "default",
+    title:
+      typeof item.title === "string" && item.title.trim().length > 0
+        ? item.title
+        : "New Chat",
+    updatedAt: new Date(getChatTime(item.updatedAt ?? item.createdAt)),
+    visibility: item.visibility === "public" ? "public" : "private",
+  };
+}
+
 async function chatHistoryFetcher(url: string) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => {
@@ -83,7 +115,7 @@ const groupChatsByDate = (chats: ChatHistoryListItem[]): GroupedChats => {
 
   return chats.reduce(
     (groups, chat) => {
-      const chatDate = new Date(chat.createdAt);
+      const chatDate = new Date(getChatTime(chat.createdAt));
       const ageMs = now.getTime() - chatDate.getTime();
 
       if (ageMs < oneDayMs) {
@@ -230,17 +262,18 @@ export function SidebarHistory({
 
       for (const paginatedChatHistory of paginatedChatHistories) {
         for (const chat of paginatedChatHistory.chats) {
-          if (seenChatIds.has(chat.id)) {
+          const normalizedChat = normalizeHistoryItem(chat);
+          if (!normalizedChat || seenChatIds.has(normalizedChat.id)) {
             continue;
           }
-          seenChatIds.add(chat.id);
-          dedupedChats.push(chat);
+          seenChatIds.add(normalizedChat.id);
+          dedupedChats.push(normalizedChat);
         }
       }
 
       dedupedChats.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
+        const aTime = getChatTime(a.createdAt);
+        const bTime = getChatTime(b.createdAt);
 
         if (aTime !== bTime) {
           return bTime - aTime;
