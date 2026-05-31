@@ -1,6 +1,10 @@
 "use client";
 
 import type { GeminiVoiceTokenResponse } from "@/lib/voice/live";
+import {
+  VOICE_ACTIVITY_PREFIX_PADDING_MS,
+  VOICE_ACTIVITY_SILENCE_DURATION_MS,
+} from "@/lib/voice/live";
 
 export type WebGeminiVoiceTurnStatus =
   | "connecting"
@@ -135,9 +139,9 @@ function buildSetupMessage(tokenResponse: Extract<GeminiVoiceTokenResponse, { li
       realtimeInputConfig: {
         activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
         automaticActivityDetection: {
-          endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
-          prefixPaddingMs: 120,
-          silenceDurationMs: 500,
+          endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+          prefixPaddingMs: VOICE_ACTIVITY_PREFIX_PADDING_MS,
+          silenceDurationMs: VOICE_ACTIVITY_SILENCE_DURATION_MS,
           startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
         },
         turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY",

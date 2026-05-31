@@ -17,6 +17,8 @@ import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import {
   GEMINI_LIVE_WS_URL,
   type GeminiVoiceTokenResponse,
+  VOICE_ACTIVITY_PREFIX_PADDING_MS,
+  VOICE_ACTIVITY_SILENCE_DURATION_MS,
   VOICE_INPUT_AUDIO_MIME_TYPE,
   VOICE_INPUT_AUDIO_SAMPLE_RATE,
   VOICE_OUTPUT_AUDIO_SAMPLE_RATE,
@@ -192,9 +194,9 @@ export async function POST(request: Request) {
                     ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
                   automaticActivityDetection: {
                     endOfSpeechSensitivity:
-                      EndSensitivity.END_SENSITIVITY_HIGH,
-                    prefixPaddingMs: 120,
-                    silenceDurationMs: 500,
+                      EndSensitivity.END_SENSITIVITY_LOW,
+                    prefixPaddingMs: VOICE_ACTIVITY_PREFIX_PADDING_MS,
+                    silenceDurationMs: VOICE_ACTIVITY_SILENCE_DURATION_MS,
                     startOfSpeechSensitivity:
                       StartSensitivity.START_SENSITIVITY_HIGH,
                   },
