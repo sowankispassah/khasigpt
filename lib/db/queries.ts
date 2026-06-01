@@ -3851,6 +3851,82 @@ export async function getUserCount({
   }
 }
 
+export type AdminUserListItem = Pick<
+  User,
+  "allowPersonalKnowledge" | "email" | "id" | "isActive" | "role"
+>;
+
+export type AdminUsersSnapshot = {
+  totalUsers: number;
+  users: AdminUserListItem[];
+};
+
+type AdminUsersRawSnapshot = {
+  totalUsers: number | string | bigint;
+  users: AdminUserListItem[];
+};
+
+export async function getAdminUsersSnapshot({
+  limit = 25,
+  offset = 0,
+}: {
+  limit?: number;
+  offset?: number;
+} = {}): Promise<AdminUsersSnapshot> {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const safeOffset = Math.max(Math.trunc(offset), 0);
+  const startedAt = Date.now();
+
+  try {
+    const [row] = await client<AdminUsersRawSnapshot[]>`
+      SELECT
+        (SELECT COUNT(*)::integer FROM "User") AS "totalUsers",
+        (
+          SELECT COALESCE(
+            jsonb_agg(
+              to_jsonb(paged_users) - 'createdAt'
+              ORDER BY paged_users."createdAt" DESC
+            ),
+            '[]'::jsonb
+          )
+          FROM (
+            SELECT
+              "id",
+              "email",
+              "role",
+              "isActive",
+              "allowPersonalKnowledge",
+              "createdAt"
+            FROM "User"
+            ORDER BY "createdAt" DESC
+            LIMIT ${safeLimit}
+            OFFSET ${safeOffset}
+          ) paged_users
+        ) AS "users"
+    `;
+
+    const users = toArray<AdminUsersRawSnapshot["users"][number]>(row?.users);
+
+    console.info(
+      `[admin.users.snapshot] loaded in ${Date.now() - startedAt}ms`
+    );
+
+    return {
+      totalUsers: toInteger(row?.totalUsers),
+      users,
+    };
+  } catch (error) {
+    console.error(
+      `[admin.users.snapshot] failed after ${Date.now() - startedAt}ms`,
+      error
+    );
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load admin users snapshot"
+    );
+  }
+}
+
 export async function listChats({
   limit = 50,
   offset = 0,

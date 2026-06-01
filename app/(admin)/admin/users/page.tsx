@@ -7,10 +7,10 @@ import {
   adminQueryResult,
 } from "@/lib/admin/safe-query";
 import {
+  type AdminUsersSnapshot,
+  getAdminUsersSnapshot,
   getUserBalanceSummaries,
-  getUserCount,
   listActiveSubscriptionSummaries,
-  listUsers,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -20,6 +20,11 @@ export const dynamic = "force-dynamic";
 
 const ADMIN_USERS_QUERY_TIMEOUT_MS = 5000;
 const USERS_PAGE_SIZE = 25;
+
+const EMPTY_ADMIN_USERS_SNAPSHOT: AdminUsersSnapshot = {
+  totalUsers: 0,
+  users: [],
+};
 
 function parsePage(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -50,38 +55,35 @@ export default async function AdminUsersPage({
       timeoutMs: ADMIN_USERS_QUERY_TIMEOUT_MS,
     });
 
-  const [usersState, totalUsersState] = await Promise.all([
-    withQueryState(
-      "users.list",
-      listUsers({
-        limit: USERS_PAGE_SIZE,
-        offset,
-      }),
-      []
-    ),
-    withQueryState("users.count", getUserCount(), 0),
-  ]);
+  const usersSnapshotState = await withQueryState(
+    "users.snapshot",
+    getAdminUsersSnapshot({
+      limit: USERS_PAGE_SIZE,
+      offset,
+    }),
+    EMPTY_ADMIN_USERS_SNAPSHOT
+  );
 
-  const totalUsers = totalUsersState.data;
-  const totalPages = totalUsersState.ok
+  const totalUsers = usersSnapshotState.data.totalUsers;
+  const totalPages = usersSnapshotState.ok
     ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
     : requestedPage;
-  const page = totalUsersState.ok
+  const page = usersSnapshotState.ok
     ? Math.min(requestedPage, totalPages)
     : requestedPage;
   const pageOffset = (page - 1) * USERS_PAGE_SIZE;
   const pagedUsersState =
-    pageOffset === offset || !usersState.ok
-      ? usersState
+    pageOffset === offset || !usersSnapshotState.ok
+      ? usersSnapshotState
       : await withQueryState(
-          "users.corrected-page",
-          listUsers({
+          "users.corrected-snapshot",
+          getAdminUsersSnapshot({
             limit: USERS_PAGE_SIZE,
             offset: pageOffset,
           }),
-          []
+          EMPTY_ADMIN_USERS_SNAPSHOT
         );
-  const pagedUsers = pagedUsersState.data;
+  const pagedUsers = pagedUsersState.data.users;
 
   const balanceByUserIdPromise = withQueryState(
     "users.balance-summaries",
@@ -104,23 +106,15 @@ export default async function AdminUsersPage({
           </p>
         </div>
         <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
-          {totalUsersState.ok
+          {pagedUsersState.ok
             ? `${totalUsers.toLocaleString()} users`
             : "User count unavailable"}
         </span>
       </header>
 
-      {(!usersState.ok || !totalUsersState.ok) && (
+      {!pagedUsersState.ok && (
         <AdminUsersQueryWarning
-          message={[
-            !usersState.ok ? "User list could not be confirmed." : null,
-            !pagedUsersState.ok && pagedUsersState !== usersState
-              ? "This page could not be confirmed."
-              : null,
-            !totalUsersState.ok ? "User count could not be confirmed." : null,
-          ]
-            .filter(Boolean)
-            .join(" ")}
+          message="User list and count could not be confirmed."
         />
       )}
 
@@ -132,7 +126,7 @@ export default async function AdminUsersPage({
           pagedUsers={pagedUsers}
           resolvedSearchParams={resolvedSearchParams}
           totalUsers={totalUsers}
-          totalUsersConfirmed={totalUsersState.ok}
+          totalUsersConfirmed={pagedUsersState.ok}
           usersConfirmed={pagedUsersState.ok}
         />
       </Suspense>
@@ -161,7 +155,7 @@ async function UsersTableSection({
   >;
   currentUserId: string | undefined;
   page: number;
-  pagedUsers: Awaited<ReturnType<typeof listUsers>>;
+  pagedUsers: AdminUsersSnapshot["users"];
   resolvedSearchParams: Record<string, string | string[] | undefined> | undefined;
   totalUsers: number;
   totalUsersConfirmed: boolean;
