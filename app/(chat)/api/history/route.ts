@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { withApiTiming } from "@/lib/api/observability";
 import { getChatsByUserId } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
@@ -100,7 +101,16 @@ export async function GET(request: NextRequest) {
       ).toResponse();
     }
 
-    const session = await getMobileSession(request);
+    const session = await withApiTiming(
+      "history.session",
+      () => getMobileSession(request),
+      {
+        metadata: {
+          mode: mode ?? "all",
+        },
+        slowMs: 750,
+      }
+    );
 
     if (!session?.user) {
       return new ChatSDKError("unauthorized:chat").toResponse();
@@ -118,24 +128,44 @@ export async function GET(request: NextRequest) {
       ).toResponse();
     }
 
-    const chats = await withTimeout(
-      getChatsByUserId({
-        id: session.user.id,
-        limit,
-        startingAfter,
-        endingBefore,
-        mode,
-      }),
-      HISTORY_READ_TIMEOUT_MS,
-      () => {
-        console.warn("[api/history] chat history read timed out.", {
+    const chats = await withApiTiming(
+      "history.read",
+      () =>
+        withTimeout(
+          getChatsByUserId({
+            id: session.user.id,
+            limit,
+            startingAfter,
+            endingBefore,
+            mode,
+          }),
+          HISTORY_READ_TIMEOUT_MS,
+          () => {
+            console.warn("[api/history] chat history read timed out.", {
+              limit,
+              mode: mode ?? "all",
+            });
+          }
+        ),
+      {
+        metadata: {
+          direction: endingBefore
+            ? "older"
+            : startingAfter
+              ? "newer"
+              : "initial",
           limit,
           mode: mode ?? "all",
-        });
+        },
+        slowMs: 1000,
       }
     );
 
-    return Response.json(chats);
+    return Response.json(chats, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
   } catch (error) {
     const requestedMode = request.nextUrl.searchParams.get("mode")?.trim().toLowerCase();
     const details =
@@ -184,14 +214,17 @@ export async function GET(request: NextRequest) {
       });
       return Response.json(
         {
+          chats: [],
           code: "service_unavailable:history",
           degraded: true,
+          degradedSections: ["history"],
+          hasMore: false,
           message: "Chat history could not be confirmed. Please try again.",
         },
         {
-          status: 503,
           headers: {
             "Cache-Control": "no-store",
+            "X-Chat-History-Degraded": "1",
           },
         }
       );

@@ -9,13 +9,8 @@ import {
   adminQueryResult,
 } from "@/lib/admin/safe-query";
 import {
-  getChatCount,
-  getContactMessageCount,
-  getUserCount,
-  listAuditLog,
-  listChats,
-  listContactMessages,
-  listUsers,
+  type AdminOverviewSnapshot,
+  getAdminOverviewSnapshot,
 } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 
@@ -23,19 +18,17 @@ export const dynamic = "force-dynamic";
 
 const ADMIN_OVERVIEW_QUERY_TIMEOUT_MS = 5000;
 
-type UserCountResult = AdminQueryResult<Awaited<ReturnType<typeof getUserCount>>>;
-type ChatCountResult = AdminQueryResult<Awaited<ReturnType<typeof getChatCount>>>;
-type ContactCountResult = AdminQueryResult<
-  Awaited<ReturnType<typeof getContactMessageCount>>
->;
-type RecentUsersResult = AdminQueryResult<Awaited<ReturnType<typeof listUsers>>>;
-type RecentChatsResult = AdminQueryResult<Awaited<ReturnType<typeof listChats>>>;
-type RecentAuditsResult = AdminQueryResult<
-  Awaited<ReturnType<typeof listAuditLog>>
->;
-type RecentContactsResult = AdminQueryResult<
-  Awaited<ReturnType<typeof listContactMessages>>
->;
+type OverviewSnapshotResult = AdminQueryResult<AdminOverviewSnapshot>;
+
+const EMPTY_ADMIN_OVERVIEW_SNAPSHOT: AdminOverviewSnapshot = {
+  chatCount: 0,
+  contactMessageCount: 0,
+  recentAudits: [],
+  recentChats: [],
+  recentContactMessages: [],
+  recentUsers: [],
+  userCount: 0,
+};
 
 function adminOverviewQuery<T>(
   label: string,
@@ -51,51 +44,17 @@ function adminOverviewQuery<T>(
 }
 
 export default function AdminOverviewPage() {
-  const userCountPromise = adminOverviewQuery(
-    "overview.user-count",
-    getUserCount(),
-    0
-  );
-  const chatCountPromise = adminOverviewQuery(
-    "overview.chat-count",
-    getChatCount(),
-    0
-  );
-  const contactCountPromise = adminOverviewQuery(
-    "overview.contact-count",
-    getContactMessageCount(),
-    0
-  );
-  const recentUsersPromise = adminOverviewQuery(
-    "overview.recent-users",
-    listUsers({ limit: 5 }),
-    [] as Awaited<ReturnType<typeof listUsers>>
-  );
-  const recentChatsPromise = adminOverviewQuery(
-    "overview.recent-chats",
-    listChats({ limit: 5 }),
-    [] as Awaited<ReturnType<typeof listChats>>
-  );
-  const recentAuditsPromise = adminOverviewQuery(
-    "overview.recent-audits",
-    listAuditLog({ limit: 5 }),
-    [] as Awaited<ReturnType<typeof listAuditLog>>
-  );
-  const recentContactMessagesPromise = adminOverviewQuery(
-    "overview.recent-contact-messages",
-    listContactMessages({ limit: 5 }),
-    [] as Awaited<ReturnType<typeof listContactMessages>>
+  const overviewSnapshotPromise = adminOverviewQuery(
+    "overview.snapshot",
+    getAdminOverviewSnapshot(),
+    EMPTY_ADMIN_OVERVIEW_SNAPSHOT
   );
 
   return (
     <div className="flex flex-col gap-10">
       <Suspense fallback={<OverviewMetricsFallback />}>
         <AdminOverviewMetricsSection
-          chatCountPromise={chatCountPromise}
-          contactCountPromise={contactCountPromise}
-          recentAuditsPromise={recentAuditsPromise}
-          recentUsersPromise={recentUsersPromise}
-          userCountPromise={userCountPromise}
+          overviewSnapshotPromise={overviewSnapshotPromise}
         />
       </Suspense>
 
@@ -105,7 +64,7 @@ export default function AdminOverviewPage() {
         <Suspense
           fallback={<AdminDataPanelFallback rows={5} title="Newest users" />}
         >
-          <NewestUsersPanel recentUsersPromise={recentUsersPromise} />
+          <NewestUsersPanel overviewSnapshotPromise={overviewSnapshotPromise} />
         </Suspense>
 
         <Suspense
@@ -114,7 +73,7 @@ export default function AdminOverviewPage() {
           }
         >
           <LatestContactRequestsPanel
-            recentContactMessagesPromise={recentContactMessagesPromise}
+            overviewSnapshotPromise={overviewSnapshotPromise}
           />
         </Suspense>
       </section>
@@ -122,7 +81,7 @@ export default function AdminOverviewPage() {
       <Suspense
         fallback={<AdminDataPanelFallback rows={5} title="Latest chats" />}
       >
-        <LatestChatsPanel recentChatsPromise={recentChatsPromise} />
+        <LatestChatsPanel overviewSnapshotPromise={overviewSnapshotPromise} />
       </Suspense>
 
       <Suspense
@@ -130,44 +89,22 @@ export default function AdminOverviewPage() {
           <AdminDataPanelFallback rows={5} title="Recent audit activity" />
         }
       >
-        <RecentAuditActivityPanel recentAuditsPromise={recentAuditsPromise} />
+        <RecentAuditActivityPanel
+          overviewSnapshotPromise={overviewSnapshotPromise}
+        />
       </Suspense>
     </div>
   );
 }
 
 async function AdminOverviewMetricsSection({
-  chatCountPromise,
-  contactCountPromise,
-  recentAuditsPromise,
-  recentUsersPromise,
-  userCountPromise,
+  overviewSnapshotPromise,
 }: {
-  chatCountPromise: Promise<ChatCountResult>;
-  contactCountPromise: Promise<ContactCountResult>;
-  recentAuditsPromise: Promise<RecentAuditsResult>;
-  recentUsersPromise: Promise<RecentUsersResult>;
-  userCountPromise: Promise<UserCountResult>;
+  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
 }) {
-  const [
-    userCountResult,
-    chatCountResult,
-    contactCountResult,
-    recentUsersResult,
-    recentAuditsResult,
-  ] = await Promise.all([
-    userCountPromise,
-    chatCountPromise,
-    contactCountPromise,
-    recentUsersPromise,
-    recentAuditsPromise,
-  ]);
-  const degraded =
-    !userCountResult.ok ||
-    !chatCountResult.ok ||
-    !contactCountResult.ok ||
-    !recentUsersResult.ok ||
-    !recentAuditsResult.ok;
+  const overviewSnapshotResult = await overviewSnapshotPromise;
+  const overview = overviewSnapshotResult.data;
+  const degraded = !overviewSnapshotResult.ok;
 
   return (
     <>
@@ -184,32 +121,32 @@ async function AdminOverviewMetricsSection({
       ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard
-          confirmed={userCountResult.ok}
+          confirmed={overviewSnapshotResult.ok}
           label="Total users"
-          value={userCountResult.data}
+          value={overview.userCount}
         />
         <MetricCard
-          confirmed={chatCountResult.ok}
+          confirmed={overviewSnapshotResult.ok}
           label="Total chats"
-          value={chatCountResult.data}
+          value={overview.chatCount}
         />
         <MetricCard
-          confirmed={recentUsersResult.ok}
+          confirmed={overviewSnapshotResult.ok}
           description="Last 5 accounts"
           label="Recent users"
-          value={recentUsersResult.data.length}
+          value={overview.recentUsers.length}
         />
         <MetricCard
-          confirmed={recentAuditsResult.ok}
+          confirmed={overviewSnapshotResult.ok}
           description="Last 5 records"
           label="Audit events"
-          value={recentAuditsResult.data.length}
+          value={overview.recentAudits.length}
         />
         <MetricCard
-          confirmed={contactCountResult.ok}
+          confirmed={overviewSnapshotResult.ok}
           description="Total messages received"
           label="Contact requests"
-          value={contactCountResult.data}
+          value={overview.contactMessageCount}
         />
       </section>
     </>
@@ -217,12 +154,12 @@ async function AdminOverviewMetricsSection({
 }
 
 async function NewestUsersPanel({
-  recentUsersPromise,
+  overviewSnapshotPromise,
 }: {
-  recentUsersPromise: Promise<RecentUsersResult>;
+  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
 }) {
-  const recentUsersResult = await recentUsersPromise;
-  const recentUsers = recentUsersResult.data;
+  const overviewSnapshotResult = await overviewSnapshotPromise;
+  const recentUsers = overviewSnapshotResult.data.recentUsers;
 
   return (
     <AdminDataPanel title="Newest users">
@@ -237,7 +174,7 @@ async function NewestUsersPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60 text-sm">
-            {!recentUsersResult.ok ? (
+            {!overviewSnapshotResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentUsers.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No users found." />
@@ -277,7 +214,7 @@ async function NewestUsersPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!recentUsersResult.ok ? (
+        {!overviewSnapshotResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentUsers.length === 0 ? (
           <EmptyPanelMessage message="No users found." />
@@ -333,12 +270,13 @@ async function NewestUsersPanel({
 }
 
 async function LatestContactRequestsPanel({
-  recentContactMessagesPromise,
+  overviewSnapshotPromise,
 }: {
-  recentContactMessagesPromise: Promise<RecentContactsResult>;
+  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
 }) {
-  const recentContactMessagesResult = await recentContactMessagesPromise;
-  const recentContactMessages = recentContactMessagesResult.data;
+  const overviewSnapshotResult = await overviewSnapshotPromise;
+  const recentContactMessages =
+    overviewSnapshotResult.data.recentContactMessages;
 
   return (
     <AdminDataPanel title="Latest contact requests">
@@ -353,7 +291,7 @@ async function LatestContactRequestsPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60 text-sm">
-            {!recentContactMessagesResult.ok ? (
+            {!overviewSnapshotResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentContactMessages.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No contact requests yet." />
@@ -390,7 +328,7 @@ async function LatestContactRequestsPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!recentContactMessagesResult.ok ? (
+        {!overviewSnapshotResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentContactMessages.length === 0 ? (
           <EmptyPanelMessage message="No contact requests yet." />
@@ -437,12 +375,12 @@ async function LatestContactRequestsPanel({
 }
 
 async function LatestChatsPanel({
-  recentChatsPromise,
+  overviewSnapshotPromise,
 }: {
-  recentChatsPromise: Promise<RecentChatsResult>;
+  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
 }) {
-  const recentChatsResult = await recentChatsPromise;
-  const recentChats = recentChatsResult.data;
+  const overviewSnapshotResult = await overviewSnapshotPromise;
+  const recentChats = overviewSnapshotResult.data.recentChats;
 
   return (
     <AdminDataPanel title="Latest chats">
@@ -457,7 +395,7 @@ async function LatestChatsPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60 text-sm">
-            {!recentChatsResult.ok ? (
+            {!overviewSnapshotResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentChats.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No chats found." />
@@ -501,7 +439,7 @@ async function LatestChatsPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!recentChatsResult.ok ? (
+        {!overviewSnapshotResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentChats.length === 0 ? (
           <EmptyPanelMessage message="No chats found." />
@@ -540,12 +478,12 @@ async function LatestChatsPanel({
 }
 
 async function RecentAuditActivityPanel({
-  recentAuditsPromise,
+  overviewSnapshotPromise,
 }: {
-  recentAuditsPromise: Promise<RecentAuditsResult>;
+  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
 }) {
-  const recentAuditsResult = await recentAuditsPromise;
-  const recentAudits = recentAuditsResult.data;
+  const overviewSnapshotResult = await overviewSnapshotPromise;
+  const recentAudits = overviewSnapshotResult.data.recentAudits;
 
   return (
     <AdminDataPanel title="Recent audit activity">
@@ -560,7 +498,7 @@ async function RecentAuditActivityPanel({
             </tr>
           </thead>
           <tbody>
-            {!recentAuditsResult.ok ? (
+            {!overviewSnapshotResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentAudits.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No audit events found." />
@@ -584,7 +522,7 @@ async function RecentAuditActivityPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!recentAuditsResult.ok ? (
+        {!overviewSnapshotResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentAudits.length === 0 ? (
           <EmptyPanelMessage message="No audit events found." />

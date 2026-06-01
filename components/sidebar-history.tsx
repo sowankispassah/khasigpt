@@ -54,6 +54,13 @@ const PAGE_SIZE = 20;
 const STUDY_INITIAL_HISTORY_LIMIT = 5;
 const CHAT_HISTORY_FETCH_TIMEOUT_MS = 15_000;
 
+class ChatHistoryUnavailableError extends Error {
+  constructor(message = "Chat history could not be confirmed.") {
+    super(message);
+    this.name = "ChatHistoryUnavailableError";
+  }
+}
+
 function getChatTime(value: unknown) {
   const date = typeof value === "string" || value instanceof Date
     ? new Date(value)
@@ -98,10 +105,23 @@ async function chatHistoryFetcher(url: string) {
       credentials: "same-origin",
       signal: controller.signal,
     });
+    const body = (await response.json().catch(() => null)) as
+      | (ChatHistory & { code?: string })
+      | null;
     if (!response.ok) {
-      throw new Error(`history_fetch_failed:${response.status}`);
+      throw new ChatHistoryUnavailableError(
+        body?.message ?? `history_fetch_failed:${response.status}`
+      );
     }
-    return (await response.json()) as ChatHistory;
+    if (body?.degraded) {
+      throw new ChatHistoryUnavailableError(
+        body.message ?? "Chat history could not be confirmed."
+      );
+    }
+    if (!body || !Array.isArray(body.chats)) {
+      throw new ChatHistoryUnavailableError("history_payload_invalid");
+    }
+    return body;
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -228,8 +248,12 @@ export function SidebarHistory({
     mutate,
     error: historyError,
   } = useSWRInfinite<ChatHistory>(historyPaginationKey, chatHistoryFetcher, {
-    errorRetryCount: 2,
+    errorRetryCount: 0,
     fallbackData: [],
+    keepPreviousData: true,
+    persistSize: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
   });
 
   const router = useRouter();
