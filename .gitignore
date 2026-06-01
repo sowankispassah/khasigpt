@@ -50,6 +50,8 @@ native/
 .codex/skills/*
 !.codex/skills/mobile-auth-startup-reliability/
 !.codex/skills/mobile-auth-startup-reliability/**
+!.codex/skills/run-db-migrations/
+!.codex/skills/run-db-migrations/**
 native/.expo/
 *.tsbuildinfo
 
