@@ -74,6 +74,54 @@ const ADMIN_SEARCH_ENTRIES: AdminSearchEntry[] = [
     keywords: ["support", "contact", "feedback"],
   },
   {
+    id: "account-deletion",
+    title: "Deletion Requests",
+    description: "Review pending account deletion requests.",
+    href: "/admin/account-deletion",
+    category: "User Management",
+    keywords: ["deletion", "account removal", "privacy", "requests"],
+  },
+  {
+    id: "coupons",
+    title: "Coupons",
+    description: "Manage referral coupons and discount campaigns.",
+    href: "/admin/coupons",
+    category: "Administration",
+    keywords: ["discounts", "referrals", "campaigns", "coupons"],
+  },
+  {
+    id: "jobs",
+    title: "Jobs",
+    description: "Manage job listings, scraping, and job content.",
+    href: "/admin/jobs",
+    category: "Content",
+    keywords: ["jobs", "scrape", "listings", "career"],
+  },
+  {
+    id: "forum",
+    title: "Forum",
+    description: "Moderate community forum activity.",
+    href: "/admin/forum",
+    category: "Content",
+    keywords: ["forum", "moderation", "threads", "community"],
+  },
+  {
+    id: "characters",
+    title: "Characters",
+    description: "Manage character profiles and content.",
+    href: "/admin/characters",
+    category: "Content",
+    keywords: ["characters", "personas", "profiles"],
+  },
+  {
+    id: "rag",
+    title: "RAG",
+    description: "Manage retrieval knowledge and rebuild jobs.",
+    href: "/admin/rag",
+    category: "Content",
+    keywords: ["rag", "knowledge", "retrieval", "files"],
+  },
+  {
     id: "logs",
     title: "Audit Log",
     description: "Track configuration changes and security-sensitive events.",
@@ -158,19 +206,19 @@ export function AdminSearch() {
     <>
       <Button
         aria-label="Search admin content"
-        className="hidden items-center gap-2 md:flex"
+        className="hidden cursor-pointer items-center gap-2 md:flex"
         onClick={() => setIsOpen(true)}
         variant="outline"
       >
         <Search className="h-4 w-4" />
         <span>Search</span>
         <span className="rounded border border-border border-dashed px-1.5 py-0.5 font-semibold text-[10px] text-muted-foreground uppercase tracking-wide">
-          {isMac ? "⌘ K" : "Ctrl K"}
+          {isMac ? "Cmd K" : "Ctrl K"}
         </span>
       </Button>
       <Button
         aria-label="Search admin content"
-        className="flex items-center gap-2 md:hidden"
+        className="flex cursor-pointer items-center gap-2 md:hidden"
         onClick={() => setIsOpen(true)}
         size="icon"
         variant="outline"
@@ -197,7 +245,7 @@ export function AdminSearch() {
           <div className="max-h-[60vh] overflow-y-auto px-2 pb-2">
             {filteredEntries.length === 0 ? (
               <p className="px-4 py-8 text-center text-muted-foreground text-sm">
-                No results for “{query.trim()}”. Try another search term.
+                No results for &quot;{query.trim()}&quot;. Try another search term.
               </p>
             ) : (
               <ul className="space-y-1">

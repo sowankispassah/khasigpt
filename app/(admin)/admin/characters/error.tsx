@@ -2,7 +2,7 @@
 
 import { AdminSectionError } from "@/components/admin/admin-section-error";
 
-export default function AdminError({
+export default function AdminCharactersError({
   error,
   reset,
 }: {
@@ -10,6 +10,6 @@ export default function AdminError({
   reset: () => void;
 }) {
   return (
-    <AdminSectionError error={error} reset={reset} sectionName="Overview" />
+    <AdminSectionError error={error} reset={reset} sectionName="Characters" />
   );
 }

@@ -1,9 +1,25 @@
 "use client";
 
-import { Menu } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Contact,
+  Database,
+  Languages,
+  LayoutDashboard,
+  MessageSquare,
+  MessagesSquare,
+  Percent,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  Trash2,
+  UserCog,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  type ComponentType,
   type MouseEvent,
   useCallback,
   useEffect,
@@ -11,56 +27,107 @@ import {
   useState,
 } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarSeparator,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
 
-const ADMIN_LINKS = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/account", label: "Account" },
-  {
-    badgeKey: "accountDeletionRequests" as const,
-    href: "/admin/account-deletion",
-    label: "Deletion Requests",
-  },
-  { href: "/admin/coupons", label: "Coupons" },
-  { href: "/admin/users", label: "Users" },
-  { href: "/admin/chats", label: "Chats" },
-  { href: "/admin/rag", label: "RAG" },
-  { href: "/admin/jobs", label: "Jobs" },
-  { href: "/admin/forum", label: "Forum" },
-  { href: "/admin/characters", label: "Characters" },
-  { href: "/admin/contacts", label: "Contacts" },
-  { href: "/admin/logs", label: "Audit Log" },
-  { href: "/admin/settings", label: "Settings" },
-  { href: "/admin/translations", label: "Translations" },
-];
+type AdminBadgeKey =
+  | "accountDeletionRequests"
+  | "contacts"
+  | "jobs"
+  | "moderation";
 
-type AdminBadgeCounts = {
-  accountDeletionRequests?: number;
+type AdminNavItem = {
+  badgeKey?: AdminBadgeKey;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
 };
 
+type AdminNavGroup = {
+  items: AdminNavItem[];
+  label: string;
+};
+
+const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
+  {
+    label: "Dashboard",
+    items: [{ href: "/admin", icon: LayoutDashboard, label: "Overview" }],
+  },
+  {
+    label: "User Management",
+    items: [
+      { href: "/admin/users", icon: Users, label: "Users" },
+      { href: "/admin/account", icon: UserCog, label: "Account" },
+      {
+        badgeKey: "contacts",
+        href: "/admin/contacts",
+        icon: Contact,
+        label: "Contacts",
+      },
+      {
+        badgeKey: "accountDeletionRequests",
+        href: "/admin/account-deletion",
+        icon: Trash2,
+        label: "Deletion Requests",
+      },
+    ],
+  },
+  {
+    label: "Content",
+    items: [
+      { href: "/admin/chats", icon: MessagesSquare, label: "Chats" },
+      { href: "/admin/forum", icon: MessageSquare, label: "Forum" },
+      { href: "/admin/characters", icon: ShieldCheck, label: "Characters" },
+      {
+        badgeKey: "jobs",
+        href: "/admin/jobs",
+        icon: BriefcaseBusiness,
+        label: "Jobs",
+      },
+      { href: "/admin/rag", icon: Database, label: "RAG" },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { href: "/admin/settings", icon: Settings, label: "Settings" },
+      { href: "/admin/translations", icon: Languages, label: "Translations" },
+      { href: "/admin/logs", icon: ScrollText, label: "Audit Log" },
+      { href: "/admin/coupons", icon: Percent, label: "Coupons" },
+    ],
+  },
+];
+
+const ADMIN_LINKS = ADMIN_NAV_GROUPS.flatMap((group) => group.items);
+
+type AdminBadgeCounts = Partial<Record<AdminBadgeKey, number>>;
+
 export function AdminNav({
-  className,
   initialBadgeCounts = {},
 }: {
-  className?: string;
   initialBadgeCounts?: AdminBadgeCounts;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { setOpenMobile } = useSidebar();
   const prefetchedRoutesRef = useRef(new Set<string>());
   const [badgeCounts, setBadgeCounts] =
     useState<AdminBadgeCounts>(initialBadgeCounts);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const prefetchRoute = useCallback(
     (href: string) => {
@@ -106,7 +173,7 @@ export function AdminNav({
             credentials: "same-origin",
           }
         );
-        if (!(response.ok)) {
+        if (!response.ok) {
           return;
         }
         const body = (await response.json()) as { count?: unknown };
@@ -169,20 +236,20 @@ export function AdminNav({
       ) {
         return;
       }
-      if (href === pathname) {
+      if (isActiveAdminRoute(pathname, href)) {
         event.preventDefault();
-        setMobileOpen(false);
+        setOpenMobile(false);
         return;
       }
-      setMobileOpen(false);
+      setOpenMobile(false);
       startGlobalProgress();
     },
-    [pathname]
+    [pathname, setOpenMobile]
   );
 
   const getBadgeCount = useCallback(
-    (link: (typeof ADMIN_LINKS)[number]) => {
-      if (!("badgeKey" in link) || !link.badgeKey) {
+    (link: AdminNavItem) => {
+      if (!link.badgeKey) {
         return 0;
       }
       return badgeCounts[link.badgeKey] ?? 0;
@@ -191,96 +258,108 @@ export function AdminNav({
   );
 
   return (
-    <div className={cn("flex items-center", className)}>
-      <Sheet onOpenChange={setMobileOpen} open={mobileOpen}>
-        <SheetTrigger asChild>
-          <Button
-            aria-label="Open admin menu"
-            className="md:hidden"
-            size="icon"
-            type="button"
-            variant="outline"
+    <Sidebar
+      className="border-r bg-sidebar"
+      collapsible="icon"
+      variant="sidebar"
+    >
+      <SidebarHeader className="border-b">
+        <div className="flex h-12 items-center px-1">
+          <Link
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 font-semibold text-sidebar-foreground text-sm outline-none transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            href="/admin"
+            onClick={(event) => handleLinkClick(event, "/admin")}
+            onFocus={() => prefetchRoute("/admin")}
+            onMouseEnter={() => prefetchRoute("/admin")}
+            prefetch
           >
-            <Menu />
-          </Button>
-        </SheetTrigger>
-        <SheetContent className="w-[18rem] sm:max-w-[18rem]" side="left">
-          <SheetHeader className="pr-8">
-            <SheetTitle>Admin Menu</SheetTitle>
-            <SheetDescription>
-              Open any admin section from this menu.
-            </SheetDescription>
-          </SheetHeader>
-          <nav className="mt-6 flex flex-col">
-            {ADMIN_LINKS.map((link) => {
-              const isActive = pathname === link.href;
-              const badgeCount = getBadgeCount(link);
-              return (
-                <Link
-                  className={cn(
-                    "cursor-pointer rounded-md px-3 py-2 font-medium text-sm transition hover:bg-muted hover:text-primary",
-                    isActive
-                      ? "bg-muted text-primary"
-                      : "text-muted-foreground"
-                  )}
-                  href={link.href}
-                  key={link.href}
-                  onClick={(event) => handleLinkClick(event, link.href)}
-                  onFocus={() => prefetchRoute(link.href)}
-                  onMouseEnter={() => prefetchRoute(link.href)}
-                  onTouchStart={() => prefetchRoute(link.href)}
-                  prefetch
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <span>{link.label}</span>
-                    {badgeCount > 0 ? <AdminNavBadge count={badgeCount} /> : null}
-                  </span>
-                </Link>
-              );
-            })}
-          </nav>
-        </SheetContent>
-      </Sheet>
+            <LayoutDashboard className="size-5 shrink-0" />
+            <span className="truncate group-data-[collapsible=icon]:hidden">
+              Admin Console
+            </span>
+          </Link>
+        </div>
+      </SidebarHeader>
+      <SidebarContent className="gap-0 py-2">
+        {ADMIN_NAV_GROUPS.map((group, index) => (
+          <SidebarGroup className="py-2" key={group.label}>
+            {index > 0 ? <SidebarSeparator className="-mt-2 mb-2" /> : null}
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((link) => {
+                  const isActive = isActiveAdminRoute(pathname, link.href);
+                  const badgeCount = getBadgeCount(link);
+                  const Icon = link.icon;
 
-      <nav className="hidden flex-wrap items-center gap-3 font-medium text-sm md:flex">
-        {ADMIN_LINKS.map((link) => {
-          const isActive = pathname === link.href;
-          const badgeCount = getBadgeCount(link);
-          return (
-            <Link
-              className={cn(
-                "cursor-pointer transition hover:text-primary hover:underline",
-                isActive ? "text-primary" : "text-muted-foreground"
-              )}
-              href={link.href}
-              key={link.href}
-              onClick={(event) => handleLinkClick(event, link.href)}
-              onFocus={() => prefetchRoute(link.href)}
-              onMouseEnter={() => prefetchRoute(link.href)}
-              onTouchStart={() => prefetchRoute(link.href)}
-              prefetch
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <span>{link.label}</span>
-                {badgeCount > 0 ? <AdminNavBadge count={badgeCount} /> : null}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+                  return (
+                    <SidebarMenuItem key={link.href}>
+                      <SidebarMenuButton
+                        asChild
+                        className={cn(
+                          "h-9 cursor-pointer",
+                          isActive &&
+                            "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                        )}
+                        isActive={isActive}
+                        tooltip={link.label}
+                      >
+                        <Link
+                          aria-current={isActive ? "page" : undefined}
+                          href={link.href}
+                          onClick={(event) =>
+                            handleLinkClick(event, link.href)
+                          }
+                          onFocus={() => prefetchRoute(link.href)}
+                          onMouseEnter={() => prefetchRoute(link.href)}
+                          onTouchStart={() => prefetchRoute(link.href)}
+                          prefetch
+                        >
+                          <Icon className="size-4" />
+                          <span>{link.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                      {badgeCount > 0 ? (
+                        <>
+                          <SidebarMenuBadge
+                            className="bg-destructive px-1.5 font-semibold text-destructive-foreground"
+                            title={getBadgeTitle(link.label, badgeCount)}
+                          >
+                            {formatBadgeCount(badgeCount)}
+                          </SidebarMenuBadge>
+                          <span
+                            aria-hidden="true"
+                            className="absolute top-1.5 right-1 hidden size-2.5 rounded-full bg-destructive ring-2 ring-sidebar group-data-[collapsible=icon]:block"
+                            title={getBadgeTitle(link.label, badgeCount)}
+                          />
+                        </>
+                      ) : null}
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
   );
 }
 
-function AdminNavBadge({ count }: { count: number }) {
-  return (
-    <span
-      className="inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 font-semibold text-[11px] text-destructive-foreground leading-none"
-      title={`${count} new account deletion ${
-        count === 1 ? "request" : "requests"
-      }`}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
+function isActiveAdminRoute(pathname: string, href: string) {
+  if (href === "/admin") {
+    return pathname === href;
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function formatBadgeCount(count: number) {
+  return count > 99 ? "99+" : count;
+}
+
+function getBadgeTitle(label: string, count: number) {
+  return `${count} pending ${label.toLowerCase()} ${
+    count === 1 ? "item" : "items"
+  }`;
 }
