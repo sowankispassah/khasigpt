@@ -194,6 +194,7 @@ export function UserDropdownMenu({
 }: UserDropdownMenuProps) {
   const [planLabel, setPlanLabel] = React.useState<string | null>(null);
   const [isPlanLoading, setIsPlanLoading] = React.useState(false);
+  const [isLanguageOpen, setIsLanguageOpen] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const dropdownTriggerRef = React.useRef<HTMLButtonElement | null>(null);
@@ -215,6 +216,7 @@ export function UserDropdownMenu({
     onOpenChange?.(false);
     onMenuClose?.();
     ignoreNextResourcesOpenRef.current = false;
+    setIsLanguageOpen(false);
     setIsResourcesOpen(false);
   }, [onMenuClose, onOpenChange]);
 
@@ -375,6 +377,7 @@ export function UserDropdownMenu({
       onMenuClose?.();
       cancelPendingPlanLoad();
       ignoreNextResourcesOpenRef.current = false;
+      setIsLanguageOpen(false);
       setIsResourcesOpen(false);
     },
     [cancelPendingPlanLoad, fetchPlan, isAuthenticated, onMenuClose, onOpenChange]
@@ -664,9 +667,15 @@ export function UserDropdownMenu({
           {languageOptions.length > 0 ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuSub>
+              <DropdownMenuSub
+                onOpenChange={setIsLanguageOpen}
+                open={isLanguageOpen}
+              >
                 <DropdownMenuSubTrigger
-                  className="flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start"
+                  className={cn(
+                    "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start"
+                  )}
+                  chevronOpen={isLanguageOpen}
                   data-testid="user-nav-item-language"
                 >
                   <EditableTranslation
@@ -719,9 +728,9 @@ export function UserDropdownMenu({
           >
             <DropdownMenuSubTrigger
               className={cn(
-                "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start [&>svg]:ml-1 [&>svg]:shrink-0 [&>svg]:transition-transform",
-                "data-[state=open]:[&>svg]:-rotate-90 [&>svg]:rotate-90 sm:[&>svg]:rotate-0 sm:data-[state=open]:[&>svg]:rotate-0"
+                "flex w-full cursor-pointer items-center justify-between gap-2 sm:w-auto sm:justify-start [&>svg]:ml-1 [&>svg]:shrink-0"
               )}
+              chevronOpen={isResourcesOpen}
               data-testid="user-nav-item-more"
               onKeyDown={handleResourcesKeyDown}
               onPointerDown={handleResourcesPointerDown}

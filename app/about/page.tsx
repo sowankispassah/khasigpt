@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { EditableMarkdownContent } from "@/components/editable-markdown-content";
 import { JsonLd } from "@/components/json-ld";
@@ -197,6 +198,30 @@ export default async function AboutPage() {
           </p>
           <div className="mt-6">
             <ContactForm translations={contactTranslations} />
+          </div>
+          <div className="mt-6 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
+            <h3 className="font-semibold text-base text-destructive">
+              <EditableTranslation
+                defaultText="Need to remove your account data?"
+                translationKey="contact.delete_account.title"
+              />
+            </h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              <EditableTranslation
+                defaultText="For account and personal data deletion, use the dedicated request form so we can verify ownership and give you a reference ID."
+                translationKey="contact.delete_account.description"
+              />
+            </p>
+            <Link
+              className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-md border border-destructive/40 px-3 py-2 font-medium text-destructive text-sm transition hover:bg-destructive/10"
+              data-nav
+              href="/help/delete-account"
+            >
+              <EditableTranslation
+                defaultText="Request account data deletion"
+                translationKey="contact.delete_account.button"
+              />
+            </Link>
           </div>
         </section>
       </div>

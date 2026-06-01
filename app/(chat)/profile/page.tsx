@@ -180,6 +180,33 @@ export default async function ProfilePage() {
         }
       />
 
+      <section className="space-y-4 rounded-lg border border-destructive/30 bg-card p-6 shadow-sm">
+        <div className="space-y-1">
+          <h2 className="font-semibold text-destructive text-lg">
+            <EditableTranslation
+              defaultText="Delete account and data"
+              translationKey="profile.delete_account.title"
+            />
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            <EditableTranslation
+              defaultText="Request permanent deletion of your account and associated data. You will see what is deleted, what may be retained, and receive a reference ID after submission."
+              translationKey="profile.delete_account.description"
+            />
+          </p>
+        </div>
+        <Link
+          className="inline-flex cursor-pointer items-center justify-center rounded-md border border-destructive/40 px-4 py-2 font-medium text-destructive text-sm transition hover:bg-destructive/10"
+          data-nav
+          href="/help/delete-account"
+        >
+          <EditableTranslation
+            defaultText="Request account data deletion"
+            translationKey="profile.delete_account.button"
+          />
+        </Link>
+      </section>
+
       <DeactivateAccountForm />
     </div>
   );

@@ -1219,6 +1219,162 @@ export const contactMessageStatusEnum = pgEnum("contact_message_status", [
 export type ContactMessageStatus =
   (typeof contactMessageStatusEnum.enumValues)[number];
 
+export const accountDeletionRequestStatusEnum = pgEnum(
+  "account_deletion_request_status",
+  ["pending", "under_review", "approved", "completed", "rejected"]
+);
+export type AccountDeletionRequestStatus =
+  (typeof accountDeletionRequestStatusEnum.enumValues)[number];
+
+export const accountDeletionReasonEnum = pgEnum("account_deletion_reason", [
+  "no_longer_using",
+  "privacy_concerns",
+  "duplicate_account",
+  "prefer_not_to_say",
+  "other",
+]);
+export type AccountDeletionReason =
+  (typeof accountDeletionReasonEnum.enumValues)[number];
+
+export const accountDeletionRequest = pgTable(
+  "AccountDeletionRequest",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referenceId: varchar("referenceId", { length: 32 }).notNull(),
+    userId: uuid("userId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    email: varchar("email", { length: 128 }).notNull(),
+    fullName: varchar("fullName", { length: 128 }).notNull(),
+    usernameOrUserId: varchar("usernameOrUserId", { length: 128 }),
+    reason: accountDeletionReasonEnum("reason").notNull(),
+    notes: text("notes"),
+    status: accountDeletionRequestStatusEnum("status")
+      .notNull()
+      .default("pending"),
+    requestSource: varchar("requestSource", { length: 32 })
+      .notNull()
+      .default("web"),
+    verifiedAt: timestamp("verifiedAt"),
+    reviewedAt: timestamp("reviewedAt"),
+    reviewedByAdminId: uuid("reviewedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    isViewed: boolean("isViewed").notNull().default(false),
+    viewedAt: timestamp("viewedAt"),
+    viewedByAdminId: uuid("viewedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approvedAt"),
+    approvedByAdminId: uuid("approvedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    completedAt: timestamp("completedAt"),
+    completedByAdminId: uuid("completedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    rejectedAt: timestamp("rejectedAt"),
+    rejectedByAdminId: uuid("rejectedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    internalNotes: text("internalNotes"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    referenceIdx: uniqueIndex("AccountDeletionRequest_reference_idx").on(
+      table.referenceId
+    ),
+    userCreatedAtIdx: index("AccountDeletionRequest_user_createdAt_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    emailCreatedAtIdx: index("AccountDeletionRequest_email_createdAt_idx").on(
+      table.email,
+      table.createdAt
+    ),
+    statusCreatedAtIdx: index(
+      "AccountDeletionRequest_status_createdAt_idx"
+    ).on(table.status, table.createdAt),
+    viewedCreatedAtIdx: index(
+      "AccountDeletionRequest_viewed_createdAt_idx"
+    ).on(table.isViewed, table.createdAt),
+    createdAtIdx: index("AccountDeletionRequest_createdAt_idx").on(
+      table.createdAt
+    ),
+  })
+);
+
+export type AccountDeletionRequest = InferSelectModel<
+  typeof accountDeletionRequest
+>;
+
+export const accountDeletionVerificationToken = pgTable(
+  "AccountDeletionVerificationToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("requestId")
+      .notNull()
+      .references(() => accountDeletionRequest.id, { onDelete: "cascade" }),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    consumedAt: timestamp("consumedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHashIdx: uniqueIndex(
+      "AccountDeletionVerificationToken_token_hash_idx"
+    ).on(table.tokenHash),
+    requestIdx: index("AccountDeletionVerificationToken_request_idx").on(
+      table.requestId
+    ),
+    expiresAtIdx: index("AccountDeletionVerificationToken_expiresAt_idx").on(
+      table.expiresAt
+    ),
+  })
+);
+
+export type AccountDeletionVerificationToken = InferSelectModel<
+  typeof accountDeletionVerificationToken
+>;
+
+export const accountDeletionRequestEvent = pgTable(
+  "AccountDeletionRequestEvent",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("requestId")
+      .notNull()
+      .references(() => accountDeletionRequest.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actorUserId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    action: varchar("action", { length: 96 }).notNull(),
+    fromStatus: accountDeletionRequestStatusEnum("fromStatus"),
+    toStatus: accountDeletionRequestStatusEnum("toStatus"),
+    note: text("note"),
+    metadata: jsonb("metadata"),
+    ipAddress: varchar("ipAddress", { length: 128 }),
+    userAgent: text("userAgent"),
+    device: varchar("device", { length: 64 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    requestCreatedAtIdx: index(
+      "AccountDeletionRequestEvent_request_createdAt_idx"
+    ).on(table.requestId, table.createdAt),
+    actorCreatedAtIdx: index(
+      "AccountDeletionRequestEvent_actor_createdAt_idx"
+    ).on(table.actorUserId, table.createdAt),
+    actionCreatedAtIdx: index(
+      "AccountDeletionRequestEvent_action_createdAt_idx"
+    ).on(table.action, table.createdAt),
+  })
+);
+
+export type AccountDeletionRequestEvent = InferSelectModel<
+  typeof accountDeletionRequestEvent
+>;
+
 export const contactMessage = pgTable(
   "ContactMessage",
   {

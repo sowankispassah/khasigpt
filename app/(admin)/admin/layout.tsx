@@ -4,6 +4,8 @@ import { auth } from "@/app/(auth)/auth";
 import { AdminNav } from "@/components/admin-nav";
 import { AdminSearch } from "@/components/admin-search";
 import { SiteShell } from "@/components/site-shell";
+import { adminQueryOr } from "@/lib/admin/safe-query";
+import { getUnviewedAccountDeletionRequestCount } from "@/lib/db/queries";
 import type { LanguageOption } from "@/lib/i18n/languages";
 
 const ADMIN_SHELL_TRANSLATIONS = [
@@ -94,6 +96,12 @@ export default async function AdminLayout({
   const languages = [FALLBACK_LANGUAGE];
   const activeLanguage = FALLBACK_LANGUAGE;
   const dictionary = buildFallbackDictionary();
+  const accountDeletionRequestCount = await adminQueryOr({
+    fallback: 0,
+    label: "admin-shell.account-deletion-unviewed-count",
+    promise: getUnviewedAccountDeletionRequestCount(),
+    timeoutMs: 1500,
+  });
 
   return (
     <SiteShell
@@ -109,7 +117,11 @@ export default async function AdminLayout({
               <h1 className="font-semibold text-lg">Admin Console</h1>
             </div>
             <div className="flex w-full items-center justify-between sm:w-auto sm:flex-wrap sm:justify-end sm:gap-3">
-              <AdminNav />
+              <AdminNav
+                initialBadgeCounts={{
+                  accountDeletionRequests: accountDeletionRequestCount,
+                }}
+              />
               <AdminSearch />
             </div>
           </div>

@@ -18,6 +18,13 @@ type PasswordResetEmailPayload = {
   resetUrl: string;
 };
 
+type AccountDeletionVerificationPayload = {
+  toEmail: string;
+  toName?: string | null;
+  verificationUrl: string;
+  referenceId: string;
+};
+
 let brevoEmailClient: TransactionalEmailsApi | null = null;
 
 function getBrevoClient() {
@@ -167,6 +174,74 @@ export async function sendPasswordResetEmail({
       error instanceof Error
         ? error.message
         : "Failed to send password reset email"
+    );
+  }
+}
+
+export async function sendAccountDeletionVerificationEmail({
+  toEmail,
+  toName,
+  verificationUrl,
+  referenceId,
+}: AccountDeletionVerificationPayload) {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME ?? "Support";
+
+  if (!senderEmail) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      "Brevo sender email is not configured"
+    );
+  }
+
+  const client = getBrevoClient();
+  const email = new SendSmtpEmail();
+
+  email.subject = "Verify your account deletion request";
+  email.sender = { email: senderEmail, name: senderName };
+  email.replyTo = { email: senderEmail, name: senderName };
+  email.to = [{ email: toEmail, name: toName ?? undefined }];
+  email.textContent =
+    `We received an account deletion request for ${toEmail}.\n\n` +
+    `Reference ID: ${referenceId}\n\n` +
+    `Verify this request by opening the link below:\n${verificationUrl}\n\n` +
+    "If you did not request account deletion, contact support immediately.";
+  email.htmlContent = `
+    <html>
+      <body style="font-family: Arial, sans-serif;">
+        <p>We received an account deletion request for ${toEmail}.</p>
+        <p><strong>Reference ID:</strong> ${referenceId}</p>
+        <p>Click the button below to verify this request. We will not process a signed-out deletion request until the email address is verified.</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
+          <tr>
+            <td style="background-color:#1f2937;border-radius:6px;">
+              <a
+                href="${verificationUrl}"
+                target="_blank"
+                rel="noopener"
+                style="display:block;padding:12px 24px;font-weight:600;color:#ffffff;text-decoration:none;font-family:Arial,sans-serif;border-radius:6px;cursor:pointer;"
+              >
+                Verify deletion request
+              </a>
+            </td>
+          </tr>
+        </table>
+        <p>Or copy and paste this link into your browser:<br />
+          <a href="${verificationUrl}">${verificationUrl}</a>
+        </p>
+        <p>If you did not request account deletion, contact support immediately.</p>
+      </body>
+    </html>
+  `;
+
+  try {
+    await client.sendTransacEmail(email);
+  } catch (error) {
+    throw new ChatSDKError(
+      "bad_request:api",
+      error instanceof Error
+        ? error.message
+        : "Failed to send account deletion verification email"
     );
   }
 }

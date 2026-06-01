@@ -26,6 +26,11 @@ import { cn } from "@/lib/utils";
 const ADMIN_LINKS = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/account", label: "Account" },
+  {
+    badgeKey: "accountDeletionRequests" as const,
+    href: "/admin/account-deletion",
+    label: "Deletion Requests",
+  },
   { href: "/admin/coupons", label: "Coupons" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/chats", label: "Chats" },
@@ -39,10 +44,22 @@ const ADMIN_LINKS = [
   { href: "/admin/translations", label: "Translations" },
 ];
 
-export function AdminNav({ className }: { className?: string }) {
+type AdminBadgeCounts = {
+  accountDeletionRequests?: number;
+};
+
+export function AdminNav({
+  className,
+  initialBadgeCounts = {},
+}: {
+  className?: string;
+  initialBadgeCounts?: AdminBadgeCounts;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const prefetchedRoutesRef = useRef(new Set<string>());
+  const [badgeCounts, setBadgeCounts] =
+    useState<AdminBadgeCounts>(initialBadgeCounts);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const prefetchRoute = useCallback(
@@ -77,6 +94,69 @@ export function AdminNav({ className }: { className?: string }) {
     };
   }, [prefetchRoute]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshDeletionRequestCount() {
+      try {
+        const response = await fetch(
+          "/api/admin/account-deletion/unviewed-count",
+          {
+            cache: "no-store",
+            credentials: "same-origin",
+          }
+        );
+        if (!(response.ok)) {
+          return;
+        }
+        const body = (await response.json()) as { count?: unknown };
+        const count =
+          typeof body.count === "number" && Number.isFinite(body.count)
+            ? Math.max(0, body.count)
+            : 0;
+        if (!cancelled) {
+          setBadgeCounts((current) => ({
+            ...current,
+            accountDeletionRequests: count,
+          }));
+        }
+      } catch (error) {
+        console.warn(
+          "[admin-nav] Failed to refresh account deletion badge count.",
+          error
+        );
+      }
+    }
+
+    const handleCountUpdate = (event: Event) => {
+      const count = (event as CustomEvent<{ count?: number }>).detail?.count;
+      if (typeof count === "number" && Number.isFinite(count)) {
+        setBadgeCounts((current) => ({
+          ...current,
+          accountDeletionRequests: Math.max(0, count),
+        }));
+        return;
+      }
+      void refreshDeletionRequestCount();
+    };
+
+    void refreshDeletionRequestCount();
+    window.addEventListener(
+      "admin:account-deletion-unviewed-count",
+      handleCountUpdate
+    );
+    const intervalId = window.setInterval(refreshDeletionRequestCount, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "admin:account-deletion-unviewed-count",
+        handleCountUpdate
+      );
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const handleLinkClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>, href: string) => {
       if (
@@ -98,6 +178,16 @@ export function AdminNav({ className }: { className?: string }) {
       startGlobalProgress();
     },
     [pathname]
+  );
+
+  const getBadgeCount = useCallback(
+    (link: (typeof ADMIN_LINKS)[number]) => {
+      if (!("badgeKey" in link) || !link.badgeKey) {
+        return 0;
+      }
+      return badgeCounts[link.badgeKey] ?? 0;
+    },
+    [badgeCounts]
   );
 
   return (
@@ -124,6 +214,7 @@ export function AdminNav({ className }: { className?: string }) {
           <nav className="mt-6 flex flex-col">
             {ADMIN_LINKS.map((link) => {
               const isActive = pathname === link.href;
+              const badgeCount = getBadgeCount(link);
               return (
                 <Link
                   className={cn(
@@ -140,7 +231,10 @@ export function AdminNav({ className }: { className?: string }) {
                   onTouchStart={() => prefetchRoute(link.href)}
                   prefetch
                 >
-                  {link.label}
+                  <span className="inline-flex items-center gap-2">
+                    <span>{link.label}</span>
+                    {badgeCount > 0 ? <AdminNavBadge count={badgeCount} /> : null}
+                  </span>
                 </Link>
               );
             })}
@@ -151,6 +245,7 @@ export function AdminNav({ className }: { className?: string }) {
       <nav className="hidden flex-wrap items-center gap-3 font-medium text-sm md:flex">
         {ADMIN_LINKS.map((link) => {
           const isActive = pathname === link.href;
+          const badgeCount = getBadgeCount(link);
           return (
             <Link
               className={cn(
@@ -165,11 +260,27 @@ export function AdminNav({ className }: { className?: string }) {
               onTouchStart={() => prefetchRoute(link.href)}
               prefetch
             >
-              {link.label}
+              <span className="inline-flex items-center gap-1.5">
+                <span>{link.label}</span>
+                {badgeCount > 0 ? <AdminNavBadge count={badgeCount} /> : null}
+              </span>
             </Link>
           );
         })}
       </nav>
     </div>
+  );
+}
+
+function AdminNavBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 font-semibold text-[11px] text-destructive-foreground leading-none"
+      title={`${count} new account deletion ${
+        count === 1 ? "request" : "requests"
+      }`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }

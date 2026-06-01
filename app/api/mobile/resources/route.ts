@@ -109,10 +109,14 @@ function pickTranslations(dictionary: Record<string, string>) {
     "contact.form.submit.default",
     "contact.form.submit.error_generic",
     "contact.form.submit.success",
+    "contact.delete_account.title",
+    "contact.delete_account.description",
+    "contact.delete_account.button",
     "legal.privacy.title",
     "legal.terms.title",
     "legal.last_updated_prefix",
     "navigation.back",
+    "navigation.opening",
   ];
 
   return Object.fromEntries(

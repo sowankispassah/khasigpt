@@ -405,6 +405,243 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Heading for the terms of service page.",
   },
   {
+    key: "delete_account.title",
+    defaultText: "Delete Account",
+    description: "Heading for the account deletion request page.",
+  },
+  {
+    key: "delete_account.intro",
+    defaultText:
+      "Use this page to request deletion of your account and associated personal data. Signed-in requests are linked to your account immediately. Signed-out requests require email verification before review.",
+    description: "Introductory paragraph for the account deletion request page.",
+  },
+  {
+    key: "delete_account.section.what_happens.title",
+    defaultText: "What happens when you request deletion",
+    description: "Section heading explaining account deletion flow.",
+  },
+  {
+    key: "delete_account.section.what_happens.body",
+    defaultText:
+      "We create a deletion request, verify account ownership, and review the request before removing account data. You will receive a reference ID that support can use to track the request.",
+    description: "Body explaining account deletion request handling.",
+  },
+  {
+    key: "delete_account.section.deleted.title",
+    defaultText: "Data that will be deleted",
+    description: "Section heading for deleted data.",
+  },
+  {
+    key: "delete_account.section.deleted.profile",
+    defaultText:
+      "Your account profile, name, avatar, location consent, and sign-in credentials are removed or anonymized.",
+    description: "Deleted account profile data explanation.",
+  },
+  {
+    key: "delete_account.section.deleted.content",
+    defaultText:
+      "Your chats, messages, uploaded documents, personal knowledge entries, usage records, and active subscriptions are removed where they are tied to your account.",
+    description: "Deleted content data explanation.",
+  },
+  {
+    key: "delete_account.section.deleted.community",
+    defaultText:
+      "Forum posts and community content authored by you may be removed, hidden, or anonymized depending on thread integrity and moderation requirements.",
+    description: "Community content deletion explanation.",
+  },
+  {
+    key: "delete_account.section.retained.title",
+    defaultText: "Data that may be retained",
+    description: "Section heading for retained data.",
+  },
+  {
+    key: "delete_account.section.retained.body",
+    defaultText:
+      "We may retain limited records required for legal, tax, fraud prevention, security, dispute resolution, payment reconciliation, and audit obligations. Retained records are limited to what is necessary and are handled under our privacy policy.",
+    description: "Retained data explanation.",
+  },
+  {
+    key: "delete_account.section.timeline.title",
+    defaultText: "Deletion processing timeline",
+    description: "Section heading for deletion processing timeline.",
+  },
+  {
+    key: "delete_account.section.timeline.body",
+    defaultText:
+      "We review verified requests as soon as possible and normally complete deletion within 30 days unless a longer retention period is legally required. Once completed, deletion is permanent and cannot be undone.",
+    description: "Deletion timeline explanation.",
+  },
+  {
+    key: "delete_account.section.support.title",
+    defaultText: "Contact support",
+    description: "Section heading for account deletion support.",
+  },
+  {
+    key: "delete_account.section.support.body",
+    defaultText:
+      "If you cannot access your account or need help with a deletion request, contact support and include your reference ID if you have one.",
+    description: "Support instructions for account deletion requests.",
+  },
+  {
+    key: "delete_account.support.contact_link",
+    defaultText: "Contact support",
+    description: "Link label to contact support from account deletion page.",
+  },
+  {
+    key: "delete_account.form.signed_in_notice",
+    defaultText:
+      "You are signed in, so this request will be linked to your account after you confirm the acknowledgements below.",
+    description: "Notice shown on account deletion form for signed-in users.",
+  },
+  {
+    key: "delete_account.form.signed_out_notice",
+    defaultText:
+      "You are not signed in. We will send a verification email and will not process the deletion request until you verify ownership of the email address.",
+    description: "Notice shown on account deletion form for signed-out users.",
+  },
+  {
+    key: "delete_account.form.full_name.label",
+    defaultText: "Full Name",
+    description: "Full name field label on account deletion form.",
+  },
+  {
+    key: "delete_account.form.email.label",
+    defaultText: "Email Address",
+    description: "Email field label on account deletion form.",
+  },
+  {
+    key: "delete_account.form.username.label",
+    defaultText: "Username/User ID (optional)",
+    description: "Optional account identifier field label.",
+  },
+  {
+    key: "delete_account.form.username.placeholder",
+    defaultText: "Username or account ID",
+    description: "Optional account identifier placeholder.",
+  },
+  {
+    key: "delete_account.form.reason.label",
+    defaultText: "Reason for deletion",
+    description: "Reason dropdown label on account deletion form.",
+  },
+  {
+    key: "delete_account.form.reason.no_longer_using",
+    defaultText: "No longer using the service",
+    description: "Account deletion reason option.",
+  },
+  {
+    key: "delete_account.form.reason.privacy_concerns",
+    defaultText: "Privacy concerns",
+    description: "Account deletion reason option.",
+  },
+  {
+    key: "delete_account.form.reason.duplicate_account",
+    defaultText: "Created duplicate account",
+    description: "Account deletion reason option.",
+  },
+  {
+    key: "delete_account.form.reason.prefer_not_to_say",
+    defaultText: "Prefer not to say",
+    description: "Account deletion reason option.",
+  },
+  {
+    key: "delete_account.form.reason.other",
+    defaultText: "Other",
+    description: "Account deletion reason option.",
+  },
+  {
+    key: "delete_account.form.notes.label",
+    defaultText: "Additional comments (optional)",
+    description: "Additional comments field label.",
+  },
+  {
+    key: "delete_account.form.notes.placeholder",
+    defaultText: "Anything else support should know...",
+    description: "Additional comments placeholder.",
+  },
+  {
+    key: "delete_account.form.ack.permanent",
+    defaultText:
+      "I understand that account deletion is permanent and cannot be undone.",
+    description: "Required permanent deletion acknowledgement.",
+  },
+  {
+    key: "delete_account.form.ack.data",
+    defaultText:
+      "I understand that all associated data may be permanently removed.",
+    description: "Required associated data deletion acknowledgement.",
+  },
+  {
+    key: "delete_account.form.submit.default",
+    defaultText: "Submit deletion request",
+    description: "Submit button label for account deletion request form.",
+  },
+  {
+    key: "delete_account.form.submit.pending",
+    defaultText: "Submitting...",
+    description: "Pending submit label for account deletion request form.",
+  },
+  {
+    key: "delete_account.form.support_note",
+    defaultText:
+      "Questions about deletion or retention can be sent through the contact form.",
+    description: "Support note beneath account deletion request form.",
+  },
+  {
+    key: "delete_account.form.support_link",
+    defaultText: "Contact support",
+    description: "Contact support link label beneath account deletion form.",
+  },
+  {
+    key: "delete_account.success.title",
+    defaultText: "Your account deletion request has been received.",
+    description: "Success title after account deletion request submission.",
+  },
+  {
+    key: "delete_account.success.reference_prefix",
+    defaultText: "Reference ID:",
+    description: "Label before account deletion reference ID.",
+  },
+  {
+    key: "delete_account.success.body",
+    defaultText:
+      "We will review your request and process it according to our data retention policy.",
+    description: "Success body after account deletion request submission.",
+  },
+  {
+    key: "delete_account.success.verify_email",
+    defaultText:
+      "Before we process the request, verify ownership by opening the confirmation link sent to your email address.",
+    description: "Success note for signed-out account deletion requests.",
+  },
+  {
+    key: "delete_account.verify.expired.title",
+    defaultText: "Verification link expired",
+    description: "Expired account deletion verification heading.",
+  },
+  {
+    key: "delete_account.verify.expired.body",
+    defaultText:
+      "This verification link has expired. Submit the deletion request again to receive a new verification email.",
+    description: "Expired account deletion verification body.",
+  },
+  {
+    key: "delete_account.verify.invalid.title",
+    defaultText: "Invalid verification link",
+    description: "Invalid account deletion verification heading.",
+  },
+  {
+    key: "delete_account.verify.invalid.body",
+    defaultText:
+      "This deletion verification link is invalid or has already been used.",
+    description: "Invalid account deletion verification body.",
+  },
+  {
+    key: "delete_account.verify.back",
+    defaultText: "Back to deletion page",
+    description: "Back link on account deletion verification page.",
+  },
+  {
     key: "legal.last_updated_prefix",
     defaultText: "Last updated",
     description: "Prefix used before the legal document last updated date.",
@@ -1590,6 +1827,22 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Heading for the deactivate account section.",
   },
   {
+    key: "profile.delete_account.title",
+    defaultText: "Delete account and data",
+    description: "Heading for the account deletion request card on profile.",
+  },
+  {
+    key: "profile.delete_account.description",
+    defaultText:
+      "Request permanent deletion of your account and associated data. You will see what is deleted, what may be retained, and receive a reference ID after submission.",
+    description: "Description for the account deletion request card on profile.",
+  },
+  {
+    key: "profile.delete_account.button",
+    defaultText: "Request account data deletion",
+    description: "Button label that opens the account deletion request page.",
+  },
+  {
     key: "profile.deactivate.description",
     defaultText:
       "This process cannot be undone. You can contact support for any further assistance.",
@@ -2480,6 +2733,23 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "contact.form.submit.error_generic",
     defaultText: "Please review the highlighted fields.",
     description: "Generic error shown when the contact form validation fails.",
+  },
+  {
+    key: "contact.delete_account.title",
+    defaultText: "Need to remove your account data?",
+    description: "Heading for the account deletion link on the contact page.",
+  },
+  {
+    key: "contact.delete_account.description",
+    defaultText:
+      "For account and personal data deletion, use the dedicated request form so we can verify ownership and give you a reference ID.",
+    description:
+      "Description explaining why account deletion uses a dedicated form.",
+  },
+  {
+    key: "contact.delete_account.button",
+    defaultText: "Request account data deletion",
+    description: "Button label linking to the account deletion request page.",
   },
   {
     key: "complete_profile.heading",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { JSX } from "react";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { JsonLd } from "@/components/json-ld";
@@ -220,6 +221,30 @@ export default async function AboutPage({
           <div className="mt-6">
             <ContactForm translations={contactTranslations} />
           </div>
+          <div className="mt-6 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
+            <h3 className="font-semibold text-base text-destructive">
+              {t(
+                "contact.delete_account.title",
+                "Need to remove your account data?"
+              )}
+            </h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              {t(
+                "contact.delete_account.description",
+                "For account and personal data deletion, use the dedicated request form so we can verify ownership and give you a reference ID."
+              )}
+            </p>
+            <Link
+              className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-md border border-destructive/40 px-3 py-2 font-medium text-destructive text-sm transition hover:bg-destructive/10"
+              data-nav
+              href="/help/delete-account"
+            >
+              {t(
+                "contact.delete_account.button",
+                "Request account data deletion"
+              )}
+            </Link>
+          </div>
         </section>
       </div>
     </>
@@ -241,6 +266,9 @@ const CONTACT_TRANSLATION_KEYS = [
   "contact.form.submit.default",
   "contact.form.submit.error_generic",
   "contact.form.submit.success",
+  "contact.delete_account.title",
+  "contact.delete_account.description",
+  "contact.delete_account.button",
 ];
 
 function pickContactTranslations(dictionary: Record<string, string>) {

@@ -6,7 +6,7 @@
   require("server-only");
 }
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
 import {
   and,
@@ -47,8 +47,14 @@ import {
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
 import {
+  type AccountDeletionReason,
+  type AccountDeletionRequest,
+  type AccountDeletionRequestStatus,
   type AppSetting,
   type AuditLog,
+  accountDeletionRequest,
+  accountDeletionRequestEvent,
+  accountDeletionVerificationToken,
   appSetting,
   auditLog,
   type Character,
@@ -72,6 +78,10 @@ import {
   document,
   type EmailVerificationToken,
   emailVerificationToken,
+  forumPost,
+  forumPostReaction,
+  forumThread,
+  forumThreadSubscription,
   freeChatUsageDaily,
   type ImageModelConfig,
   type ImpersonationToken,
@@ -88,6 +98,7 @@ import {
   liveVoiceModelConfig,
   type ModelConfig,
   message,
+  messageDeprecated,
   modelConfig,
   type PasswordResetToken,
   type PaymentTransaction,
@@ -97,6 +108,7 @@ import {
   pricingPlan,
   type RagEntry,
   ragEntry,
+  ragRetrievalLog,
   type Suggestion,
   stream,
   suggestion,
@@ -116,6 +128,7 @@ import {
   userProfileImage,
   userSubscription,
   vote,
+  voteDeprecated,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -4452,6 +4465,739 @@ export async function getAuditLogCount({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to count audit log entries"
+    );
+  }
+}
+
+const ACCOUNT_DELETION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+function hashAccountDeletionToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function createAccountDeletionReference() {
+  return `ADR-${Date.now().toString(36).toUpperCase()}-${randomBytes(3)
+    .toString("hex")
+    .toUpperCase()}`;
+}
+
+function normalizeAccountDeletionReason(
+  reason: string
+): AccountDeletionReason {
+  if (
+    reason === "no_longer_using" ||
+    reason === "privacy_concerns" ||
+    reason === "duplicate_account" ||
+    reason === "prefer_not_to_say" ||
+    reason === "other"
+  ) {
+    return reason;
+  }
+  return "other";
+}
+
+function normalizeAccountDeletionStatus(
+  status: string
+): AccountDeletionRequestStatus | null {
+  if (
+    status === "pending" ||
+    status === "under_review" ||
+    status === "approved" ||
+    status === "completed" ||
+    status === "rejected"
+  ) {
+    return status;
+  }
+  return null;
+}
+
+export type CreateAccountDeletionRequestInput = {
+  fullName: string;
+  email: string;
+  usernameOrUserId?: string | null;
+  reason: string;
+  notes?: string | null;
+  userId?: string | null;
+  requestSource?: string | null;
+  requireEmailVerification: boolean;
+  clientInfo?: {
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    device?: string | null;
+  };
+};
+
+export type CreateAccountDeletionRequestResult = {
+  request: AccountDeletionRequest;
+  verificationToken: string | null;
+};
+
+export async function createAccountDeletionRequestRecord(
+  input: CreateAccountDeletionRequestInput
+): Promise<CreateAccountDeletionRequestResult> {
+  const normalizedEmail = normalizeEmailValue(input.email);
+  const now = new Date();
+  const token = input.requireEmailVerification
+    ? randomBytes(32).toString("base64url")
+    : null;
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [matchingUser] =
+        input.userId && isValidUUID(input.userId)
+          ? await tx
+              .select({ id: user.id })
+              .from(user)
+              .where(eq(user.id, input.userId))
+              .limit(1)
+          : await tx
+              .select({ id: user.id })
+              .from(user)
+              .where(eq(user.email, normalizedEmail))
+              .limit(1);
+
+      const [request] = await tx
+        .insert(accountDeletionRequest)
+        .values({
+          referenceId: createAccountDeletionReference(),
+          userId: matchingUser?.id ?? null,
+          email: normalizedEmail,
+          fullName: input.fullName.trim().slice(0, 128),
+          usernameOrUserId:
+            input.usernameOrUserId?.trim().slice(0, 128) || null,
+          reason: normalizeAccountDeletionReason(input.reason),
+          notes: input.notes?.trim().slice(0, 2000) || null,
+          status: "pending",
+          requestSource: input.requestSource?.trim().slice(0, 32) || "web",
+          verifiedAt: input.requireEmailVerification ? null : now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+
+      if (!request) {
+        throw new ChatSDKError(
+          "bad_request:database",
+          "Failed to create account deletion request"
+        );
+      }
+
+      if (token) {
+        await tx.insert(accountDeletionVerificationToken).values({
+          requestId: request.id,
+          tokenHash: hashAccountDeletionToken(token),
+          expiresAt: new Date(now.getTime() + ACCOUNT_DELETION_TOKEN_TTL_MS),
+          createdAt: now,
+        });
+      }
+
+      await tx.insert(accountDeletionRequestEvent).values({
+        requestId: request.id,
+        actorUserId: request.userId,
+        action: input.requireEmailVerification
+          ? "request.created_verification_required"
+          : "request.created_verified",
+        toStatus: "pending",
+        metadata: {
+          requestSource: input.requestSource ?? "web",
+          emailVerificationRequired: input.requireEmailVerification,
+          matchedUser: Boolean(matchingUser?.id),
+        },
+        ipAddress: sanitizeAuditString(input.clientInfo?.ipAddress, 128),
+        userAgent: sanitizeAuditString(input.clientInfo?.userAgent),
+        device: sanitizeAuditString(input.clientInfo?.device, 64),
+        createdAt: now,
+      });
+
+      return { request, verificationToken: token };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Account deletion request tables are missing. Run the latest migrations and try again."
+      );
+    }
+    throw error instanceof ChatSDKError
+      ? error
+      : new ChatSDKError(
+          "bad_request:database",
+          "Failed to create account deletion request"
+        );
+  }
+}
+
+export type VerifyAccountDeletionTokenResult =
+  | { status: "verified"; request: AccountDeletionRequest }
+  | { status: "already_verified"; request: AccountDeletionRequest }
+  | { status: "expired" }
+  | { status: "invalid" };
+
+export async function verifyAccountDeletionRequestToken(
+  tokenValue: string
+): Promise<VerifyAccountDeletionTokenResult> {
+  const tokenHash = hashAccountDeletionToken(tokenValue);
+  const now = new Date();
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [tokenRecord] = await tx
+        .select()
+        .from(accountDeletionVerificationToken)
+        .where(eq(accountDeletionVerificationToken.tokenHash, tokenHash))
+        .limit(1);
+
+      if (!tokenRecord) {
+        return { status: "invalid" };
+      }
+
+      const [request] = await tx
+        .select()
+        .from(accountDeletionRequest)
+        .where(eq(accountDeletionRequest.id, tokenRecord.requestId))
+        .limit(1);
+
+      if (!request) {
+        return { status: "invalid" };
+      }
+
+      if (tokenRecord.consumedAt || request.verifiedAt) {
+        return { status: "already_verified", request };
+      }
+
+      if (tokenRecord.expiresAt < now) {
+        return { status: "expired" };
+      }
+
+      const [updatedRequest] = await tx
+        .update(accountDeletionRequest)
+        .set({
+          verifiedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(accountDeletionRequest.id, request.id))
+        .returning();
+
+      await tx
+        .update(accountDeletionVerificationToken)
+        .set({ consumedAt: now })
+        .where(eq(accountDeletionVerificationToken.id, tokenRecord.id));
+
+      await tx.insert(accountDeletionRequestEvent).values({
+        requestId: request.id,
+        actorUserId: request.userId,
+        action: "request.email_verified",
+        fromStatus: request.status,
+        toStatus: request.status,
+        metadata: { referenceId: request.referenceId },
+        createdAt: now,
+      });
+
+      return {
+        status: "verified",
+        request: updatedRequest ?? { ...request, verifiedAt: now },
+      };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      return { status: "invalid" };
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to verify account deletion request"
+    );
+  }
+}
+
+export type AccountDeletionRequestListItem = AccountDeletionRequest & {
+  userEmail: string | null;
+  userIsActive: boolean | null;
+};
+
+export async function listAccountDeletionRequests({
+  limit = 25,
+  offset = 0,
+  status,
+  search,
+}: {
+  limit?: number;
+  offset?: number;
+  status?: AccountDeletionRequestStatus | "all" | null;
+  search?: string | null;
+} = {}): Promise<AccountDeletionRequestListItem[]> {
+  try {
+    const conditions: SQL<boolean>[] = [];
+    if (status && status !== "all") {
+      conditions.push(
+        eq(accountDeletionRequest.status, status) as SQL<boolean>
+      );
+    }
+
+    const normalizedSearch = search?.trim().toLowerCase();
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql`lower(${accountDeletionRequest.referenceId}) LIKE ${pattern}`,
+          sql`lower(${accountDeletionRequest.email}) LIKE ${pattern}`,
+          sql`lower(${accountDeletionRequest.fullName}) LIKE ${pattern}`,
+          sql`lower(${user.email}) LIKE ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
+
+    const whereClause =
+      conditions.length > 0 ? (and(...conditions) as SQL<boolean>) : undefined;
+
+    const query = db
+      .select({
+        id: accountDeletionRequest.id,
+        referenceId: accountDeletionRequest.referenceId,
+        userId: accountDeletionRequest.userId,
+        email: accountDeletionRequest.email,
+        fullName: accountDeletionRequest.fullName,
+        usernameOrUserId: accountDeletionRequest.usernameOrUserId,
+        reason: accountDeletionRequest.reason,
+        notes: accountDeletionRequest.notes,
+        status: accountDeletionRequest.status,
+        requestSource: accountDeletionRequest.requestSource,
+        verifiedAt: accountDeletionRequest.verifiedAt,
+        reviewedAt: accountDeletionRequest.reviewedAt,
+        reviewedByAdminId: accountDeletionRequest.reviewedByAdminId,
+        isViewed: accountDeletionRequest.isViewed,
+        viewedAt: accountDeletionRequest.viewedAt,
+        viewedByAdminId: accountDeletionRequest.viewedByAdminId,
+        approvedAt: accountDeletionRequest.approvedAt,
+        approvedByAdminId: accountDeletionRequest.approvedByAdminId,
+        completedAt: accountDeletionRequest.completedAt,
+        completedByAdminId: accountDeletionRequest.completedByAdminId,
+        rejectedAt: accountDeletionRequest.rejectedAt,
+        rejectedByAdminId: accountDeletionRequest.rejectedByAdminId,
+        internalNotes: accountDeletionRequest.internalNotes,
+        createdAt: accountDeletionRequest.createdAt,
+        updatedAt: accountDeletionRequest.updatedAt,
+        userEmail: user.email,
+        userIsActive: user.isActive,
+      })
+      .from(accountDeletionRequest)
+      .leftJoin(user, eq(accountDeletionRequest.userId, user.id));
+
+    const rows = await (whereClause ? query.where(whereClause) : query)
+      .orderBy(desc(accountDeletionRequest.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return rows;
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Account deletion request table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list account deletion requests"
+    );
+  }
+}
+
+export async function getAccountDeletionRequestCount({
+  status,
+  search,
+}: {
+  status?: AccountDeletionRequestStatus | "all" | null;
+  search?: string | null;
+} = {}): Promise<number> {
+  try {
+    const conditions: SQL<boolean>[] = [];
+    if (status && status !== "all") {
+      conditions.push(
+        eq(accountDeletionRequest.status, status) as SQL<boolean>
+      );
+    }
+
+    const normalizedSearch = search?.trim().toLowerCase();
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql`lower(${accountDeletionRequest.referenceId}) LIKE ${pattern}`,
+          sql`lower(${accountDeletionRequest.email}) LIKE ${pattern}`,
+          sql`lower(${accountDeletionRequest.fullName}) LIKE ${pattern}`
+        ) as SQL<boolean>
+      );
+    }
+
+    const query = db.select({ total: count() }).from(accountDeletionRequest);
+    const [row] =
+      conditions.length > 0
+        ? await query.where(and(...conditions))
+        : await query;
+    return Number(row?.total ?? 0);
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Account deletion request table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to count account deletion requests"
+    );
+  }
+}
+
+export async function getUnviewedAccountDeletionRequestCount(): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ total: count() })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.isViewed, false));
+
+    return Number(row?.total ?? 0);
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Account deletion request table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to count unviewed account deletion requests"
+    );
+  }
+}
+
+export async function markAccountDeletionRequestsViewed({
+  adminUserId,
+  clientInfo,
+  requestIds,
+}: {
+  adminUserId: string;
+  clientInfo?: {
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    device?: string | null;
+  };
+  requestIds?: string[] | null;
+}): Promise<{ markedCount: number; remainingUnviewedCount: number }> {
+  if (!isValidUUID(adminUserId)) {
+    return { markedCount: 0, remainingUnviewedCount: 0 };
+  }
+
+  const validRequestIds = Array.from(
+    new Set((requestIds ?? []).filter((id) => isValidUUID(id)))
+  );
+
+  try {
+    return await db.transaction(async (tx) => {
+      const whereClause =
+        validRequestIds.length > 0
+          ? (and(
+              eq(accountDeletionRequest.isViewed, false),
+              inArray(accountDeletionRequest.id, validRequestIds)
+            ) as SQL<boolean>)
+          : (eq(accountDeletionRequest.isViewed, false) as SQL<boolean>);
+      const now = new Date();
+      const marked = await tx
+        .update(accountDeletionRequest)
+        .set({
+          isViewed: true,
+          reviewedAt: now,
+          reviewedByAdminId: adminUserId,
+          viewedAt: now,
+          viewedByAdminId: adminUserId,
+          updatedAt: now,
+        })
+        .where(whereClause)
+        .returning({
+          id: accountDeletionRequest.id,
+          referenceId: accountDeletionRequest.referenceId,
+          status: accountDeletionRequest.status,
+          userId: accountDeletionRequest.userId,
+        });
+
+      if (marked.length > 0) {
+        await tx.insert(accountDeletionRequestEvent).values(
+          marked.map((request) => ({
+            requestId: request.id,
+            actorUserId: adminUserId,
+            action: "request.viewed",
+            fromStatus: request.status,
+            toStatus: request.status,
+            metadata: {
+              referenceId: request.referenceId,
+              userId: request.userId,
+            },
+            ipAddress: sanitizeAuditString(clientInfo?.ipAddress, 128),
+            userAgent: sanitizeAuditString(clientInfo?.userAgent),
+            device: sanitizeAuditString(clientInfo?.device, 64),
+            createdAt: now,
+          }))
+        );
+      }
+
+      const [remaining] = await tx
+        .select({ total: count() })
+        .from(accountDeletionRequest)
+        .where(eq(accountDeletionRequest.isViewed, false));
+
+      return {
+        markedCount: marked.length,
+        remainingUnviewedCount: Number(remaining?.total ?? 0),
+      };
+    });
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Account deletion request table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to mark account deletion requests as viewed"
+    );
+  }
+}
+
+async function deleteAccountDataForRequest(tx: any, userId: string) {
+  const userChats = (await tx
+    .select({ id: chat.id })
+    .from(chat)
+    .where(eq(chat.userId, userId))) as Array<{ id: string }>;
+  const chatIds = userChats.map((row) => row.id);
+
+  await tx.delete(tokenUsage).where(eq(tokenUsage.userId, userId));
+  await tx.delete(userProfileImage).where(eq(userProfileImage.userId, userId));
+  await tx.delete(userPresence).where(eq(userPresence.userId, userId));
+  await tx
+    .delete(emailVerificationToken)
+    .where(eq(emailVerificationToken.userId, userId));
+  await tx
+    .delete(passwordResetToken)
+    .where(eq(passwordResetToken.userId, userId));
+  await tx
+    .delete(freeChatUsageDaily)
+    .where(eq(freeChatUsageDaily.userId, userId));
+  await tx
+    .delete(userSubscription)
+    .where(eq(userSubscription.userId, userId));
+  await tx.delete(userInviteAccess).where(eq(userInviteAccess.userId, userId));
+  await tx.delete(inviteRedemption).where(eq(inviteRedemption.userId, userId));
+  await tx
+    .delete(inviteRedeemerBlock)
+    .where(eq(inviteRedeemerBlock.userId, userId));
+  await tx
+    .delete(forumPostReaction)
+    .where(eq(forumPostReaction.userId, userId));
+  await tx
+    .delete(forumThreadSubscription)
+    .where(eq(forumThreadSubscription.userId, userId));
+  await tx
+    .update(forumThread)
+    .set({ lastReplyUserId: null, updatedAt: new Date() })
+    .where(eq(forumThread.lastReplyUserId, userId));
+  await tx
+    .update(forumPost)
+    .set({
+      content: "[deleted]",
+      isDeleted: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(forumPost.authorId, userId));
+  await tx.delete(forumThread).where(eq(forumThread.authorId, userId));
+  await tx
+    .update(ragRetrievalLog)
+    .set({ userId: null })
+    .where(eq(ragRetrievalLog.userId, userId));
+  await tx
+    .delete(ragEntry)
+    .where(
+      or(eq(ragEntry.addedBy, userId), eq(ragEntry.personalForUserId, userId))
+    );
+
+  const userDocuments = (await tx
+    .select({ id: document.id })
+    .from(document)
+    .where(eq(document.userId, userId))) as Array<{ id: string }>;
+  const documentIds = userDocuments.map((row) => row.id);
+  if (documentIds.length > 0) {
+    await tx
+      .delete(suggestion)
+      .where(
+        or(
+          eq(suggestion.userId, userId),
+          inArray(suggestion.documentId, documentIds)
+        )
+      );
+  } else {
+    await tx.delete(suggestion).where(eq(suggestion.userId, userId));
+  }
+  await tx.delete(document).where(eq(document.userId, userId));
+
+  if (chatIds.length > 0) {
+    await tx.delete(vote).where(inArray(vote.chatId, chatIds));
+    await tx.delete(voteDeprecated).where(inArray(voteDeprecated.chatId, chatIds));
+    await tx.delete(message).where(inArray(message.chatId, chatIds));
+    await tx
+      .delete(messageDeprecated)
+      .where(inArray(messageDeprecated.chatId, chatIds));
+    await tx.delete(stream).where(inArray(stream.chatId, chatIds));
+    await tx.delete(chat).where(inArray(chat.id, chatIds));
+  }
+}
+
+export async function updateAccountDeletionRequestStatus({
+  id,
+  status,
+  adminUserId,
+  internalNotes,
+  clientInfo,
+}: {
+  id: string;
+  status: AccountDeletionRequestStatus;
+  adminUserId: string;
+  internalNotes?: string | null;
+  clientInfo?: {
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    device?: string | null;
+  };
+}): Promise<AccountDeletionRequest | null> {
+  if (!isValidUUID(id) || !isValidUUID(adminUserId)) {
+    return null;
+  }
+
+  const normalizedStatus = normalizeAccountDeletionStatus(status);
+  if (!normalizedStatus) {
+    return null;
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select()
+        .from(accountDeletionRequest)
+        .where(eq(accountDeletionRequest.id, id))
+        .limit(1);
+
+      if (!current) {
+        return null;
+      }
+
+      if (
+        (normalizedStatus === "approved" || normalizedStatus === "completed") &&
+        !current.verifiedAt
+      ) {
+        throw new ChatSDKError(
+          "bad_request:api",
+          "This request must be verified before it can be approved or completed."
+        );
+      }
+
+      const now = new Date();
+      if (
+        normalizedStatus === "completed" &&
+        current.userId &&
+        current.status !== "completed"
+      ) {
+        await deleteAccountDataForRequest(tx, current.userId);
+      }
+
+      const updateValues = {
+        status: normalizedStatus,
+        isViewed: true,
+        internalNotes: internalNotes?.trim().slice(0, 4000) || null,
+        viewedAt: current.viewedAt ?? now,
+        viewedByAdminId: current.viewedByAdminId ?? adminUserId,
+        updatedAt: now,
+        ...(normalizedStatus === "under_review"
+          ? { reviewedAt: now, reviewedByAdminId: adminUserId }
+          : {}),
+        ...(normalizedStatus === "approved"
+          ? { approvedAt: now, approvedByAdminId: adminUserId }
+          : {}),
+        ...(normalizedStatus === "completed"
+          ? { completedAt: now, completedByAdminId: adminUserId }
+          : {}),
+        ...(normalizedStatus === "rejected"
+          ? { rejectedAt: now, rejectedByAdminId: adminUserId }
+          : {}),
+      } satisfies Partial<AccountDeletionRequest>;
+
+      const [updated] = await tx
+        .update(accountDeletionRequest)
+        .set(updateValues)
+        .where(eq(accountDeletionRequest.id, id))
+        .returning();
+
+      await tx.insert(accountDeletionRequestEvent).values({
+        requestId: current.id,
+        actorUserId: adminUserId,
+        action:
+          normalizedStatus === "completed"
+            ? "request.completed_data_removed"
+            : "request.status_updated",
+        fromStatus: current.status,
+        toStatus: normalizedStatus,
+        note: internalNotes?.trim().slice(0, 4000) || null,
+        metadata: {
+          referenceId: current.referenceId,
+          userId: current.userId,
+        },
+        ipAddress: sanitizeAuditString(clientInfo?.ipAddress, 128),
+        userAgent: sanitizeAuditString(clientInfo?.userAgent),
+        device: sanitizeAuditString(clientInfo?.device, 64),
+        createdAt: now,
+      });
+
+      if (normalizedStatus === "completed" && current.userId) {
+        const deletedEmail = `deleted-${current.referenceId
+          .replace(/[^a-z0-9]/gi, "")
+          .slice(0, 20)
+          .toLowerCase()}@deleted.local`;
+        await tx
+          .update(user)
+          .set({
+            email: deletedEmail,
+            password: null,
+            role: "regular",
+            authProvider: "credentials",
+            isActive: false,
+            allowPersonalKnowledge: false,
+            image: null,
+            firstName: null,
+            lastName: null,
+            dateOfBirth: null,
+            locationLatitude: null,
+            locationLongitude: null,
+            locationAccuracy: null,
+            locationUpdatedAt: null,
+            locationConsent: false,
+            updatedAt: now,
+          })
+          .where(eq(user.id, current.userId));
+      }
+
+      return updated ?? null;
+    });
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    if (isTableMissingError(error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "Account deletion request table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to update account deletion request"
     );
   }
 }
