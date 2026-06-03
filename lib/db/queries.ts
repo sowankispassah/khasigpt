@@ -2556,6 +2556,64 @@ export async function updateUserProfile({
   }
 }
 
+export async function updateUserProfileFields({
+  id,
+  dateOfBirth,
+  firstName,
+  lastName,
+}: {
+  id: string;
+  dateOfBirth?: string;
+  firstName?: string;
+  lastName?: string;
+}) {
+  if (typeof id !== "string" || !isValidUUID(id)) {
+    return null;
+  }
+
+  const updates: Partial<Pick<User, "dateOfBirth" | "firstName" | "lastName">> &
+    Pick<User, "updatedAt"> = {
+    updatedAt: new Date(),
+  };
+
+  if (typeof dateOfBirth !== "undefined") {
+    updates.dateOfBirth = dateOfBirth;
+  }
+  if (typeof firstName !== "undefined") {
+    updates.firstName = firstName.trim();
+  }
+  if (typeof lastName !== "undefined") {
+    updates.lastName = lastName.trim();
+  }
+
+  if (Object.keys(updates).length === 1) {
+    return getUserById(id);
+  }
+
+  try {
+    const conditions: SQL<boolean>[] = [eq(user.id, id) as SQL<boolean>];
+
+    if (typeof dateOfBirth !== "undefined") {
+      conditions.push(
+        or(
+          isNull(user.dateOfBirth),
+          eq(user.dateOfBirth, dateOfBirth)
+        ) as SQL<boolean>
+      );
+    }
+
+    const [updated] = await db
+      .update(user)
+      .set(updates)
+      .where(and(...conditions))
+      .returning();
+
+    return updated ?? null;
+  } catch (_error) {
+    throw new ChatSDKError("bad_request:database", "Failed to update profile");
+  }
+}
+
 const IMPERSONATION_TOKEN_BYTES = 32;
 const IMPERSONATION_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -3861,9 +3919,31 @@ export type AdminUsersSnapshot = {
   users: AdminUserListItem[];
 };
 
+export type AdminUsersPageSnapshot = AdminUsersSnapshot & {
+  activeSubscriptions: ActiveSubscriptionSummary[];
+  balanceByUserId: Map<string, UserBalanceSummary>;
+};
+
 type AdminUsersRawSnapshot = {
   totalUsers: number | string | bigint;
   users: AdminUserListItem[];
+};
+
+type AdminUsersPageRawSnapshot = AdminUsersRawSnapshot & {
+  activeSubscriptions: Array<
+    Omit<ActiveSubscriptionSummary, "expiresAt"> & {
+      expiresAt: Date | string;
+    }
+  >;
+  balances: Array<{
+    allocatedTokens: number | string | bigint | null;
+    expiresAt: Date | string | null;
+    paidTokens: number | string | bigint | null;
+    startedAt: Date | string | null;
+    tokenAllowance: number | string | bigint | null;
+    tokenBalance: number | string | bigint | null;
+    userId: string;
+  }>;
 };
 
 export async function getAdminUsersSnapshot({
@@ -3923,6 +4003,170 @@ export async function getAdminUsersSnapshot({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load admin users snapshot"
+    );
+  }
+}
+
+export async function getAdminUsersPageSnapshot({
+  limit = 25,
+  offset = 0,
+  activeSubscriptionLimit = 20,
+}: {
+  limit?: number;
+  offset?: number;
+  activeSubscriptionLimit?: number;
+} = {}): Promise<AdminUsersPageSnapshot> {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const safeOffset = Math.max(Math.trunc(offset), 0);
+  const safeActiveSubscriptionLimit = Math.min(
+    Math.max(Math.trunc(activeSubscriptionLimit), 1),
+    100
+  );
+  const startedAt = Date.now();
+  const now = new Date();
+
+  try {
+    const [row] = await client<AdminUsersPageRawSnapshot[]>`
+      WITH paged_users AS (
+        SELECT
+          "id",
+          "email",
+          "role",
+          "isActive",
+          "allowPersonalKnowledge",
+          "createdAt"
+        FROM "User"
+        ORDER BY "createdAt" DESC
+        LIMIT ${safeLimit}
+        OFFSET ${safeOffset}
+      ),
+      paged_active_subscriptions AS (
+        SELECT DISTINCT ON ("userId")
+          "userId",
+          "tokenAllowance",
+          "tokenBalance",
+          "manualTokenBalance",
+          "paidTokenBalance",
+          "expiresAt",
+          "startedAt"
+        FROM "UserSubscription"
+        WHERE
+          "userId" IN (SELECT "id" FROM paged_users)
+          AND "status" = 'active'
+          AND "expiresAt" > ${now}
+          AND "tokenBalance" > 0
+        ORDER BY "userId", "expiresAt" DESC
+      ),
+      recent_active_subscriptions AS (
+        SELECT
+          subscriptions."id" AS "subscriptionId",
+          users."email" AS "userEmail",
+          plans."name" AS "planName",
+          subscriptions."tokenAllowance",
+          subscriptions."tokenBalance",
+          subscriptions."expiresAt",
+          subscriptions."updatedAt"
+        FROM "UserSubscription" subscriptions
+        INNER JOIN "User" users ON subscriptions."userId" = users."id"
+        LEFT JOIN "PricingPlan" plans
+          ON subscriptions."planId" = plans."id"
+          AND plans."deletedAt" IS NULL
+        WHERE
+          subscriptions."status" = 'active'
+          AND subscriptions."expiresAt" > ${now}
+          AND subscriptions."tokenBalance" > 0
+        ORDER BY subscriptions."updatedAt" DESC
+        LIMIT ${safeActiveSubscriptionLimit}
+      )
+      SELECT
+        (SELECT COUNT(*)::integer FROM "User") AS "totalUsers",
+        (
+          SELECT COALESCE(
+            jsonb_agg(
+              to_jsonb(paged_users) - 'createdAt'
+              ORDER BY paged_users."createdAt" DESC
+            ),
+            '[]'::jsonb
+          )
+          FROM paged_users
+        ) AS "users",
+        (
+          SELECT COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'userId', paged_users."id",
+                'tokenAllowance', paged_active_subscriptions."tokenAllowance",
+                'tokenBalance', paged_active_subscriptions."tokenBalance",
+                'allocatedTokens', paged_active_subscriptions."manualTokenBalance",
+                'paidTokens', paged_active_subscriptions."paidTokenBalance",
+                'expiresAt', paged_active_subscriptions."expiresAt",
+                'startedAt', paged_active_subscriptions."startedAt"
+              )
+              ORDER BY paged_users."createdAt" DESC
+            ),
+            '[]'::jsonb
+          )
+          FROM paged_users
+          LEFT JOIN paged_active_subscriptions
+            ON paged_active_subscriptions."userId" = paged_users."id"
+        ) AS "balances",
+        (
+          SELECT COALESCE(
+            jsonb_agg(
+              to_jsonb(recent_active_subscriptions) - 'updatedAt'
+              ORDER BY recent_active_subscriptions."updatedAt" DESC
+            ),
+            '[]'::jsonb
+          )
+          FROM recent_active_subscriptions
+        ) AS "activeSubscriptions"
+    `;
+
+    const balanceByUserId = new Map<string, UserBalanceSummary>();
+    for (const balance of toArray<AdminUsersPageRawSnapshot["balances"][number]>(
+      row?.balances
+    )) {
+      const tokensRemaining = Math.max(0, toInteger(balance.tokenBalance));
+      const tokensTotal = Math.max(0, toInteger(balance.tokenAllowance));
+      balanceByUserId.set(balance.userId, {
+        subscription: null,
+        plan: null,
+        tokensRemaining,
+        tokensTotal,
+        creditsRemaining: tokensRemaining / TOKENS_PER_CREDIT,
+        creditsTotal: tokensTotal / TOKENS_PER_CREDIT,
+        allocatedCredits:
+          Math.max(0, toInteger(balance.allocatedTokens)) / TOKENS_PER_CREDIT,
+        rechargedCredits:
+          Math.max(0, toInteger(balance.paidTokens)) / TOKENS_PER_CREDIT,
+        expiresAt: toDate(balance.expiresAt),
+        startedAt: toDate(balance.startedAt),
+      });
+    }
+
+    console.info(
+      `[admin.users.page-snapshot] loaded in ${Date.now() - startedAt}ms`
+    );
+
+    return {
+      activeSubscriptions: toArray<
+        AdminUsersPageRawSnapshot["activeSubscriptions"][number]
+      >(row?.activeSubscriptions).map((subscription) => ({
+        ...subscription,
+        expiresAt: toRequiredDate(subscription.expiresAt),
+      })),
+      balanceByUserId,
+      totalUsers: toInteger(row?.totalUsers),
+      users: toArray<AdminUsersRawSnapshot["users"][number]>(row?.users),
+    };
+  } catch (error) {
+    console.error(
+      `[admin.users.page-snapshot] failed after ${Date.now() - startedAt}ms`,
+      error
+    );
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load admin users page snapshot"
     );
   }
 }

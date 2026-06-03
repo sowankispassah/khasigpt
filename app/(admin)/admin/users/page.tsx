@@ -7,10 +7,9 @@ import {
   adminQueryResult,
 } from "@/lib/admin/safe-query";
 import {
+  type AdminUsersPageSnapshot,
   type AdminUsersSnapshot,
-  getAdminUsersSnapshot,
-  getUserBalanceSummaries,
-  listActiveSubscriptionSummaries,
+  getAdminUsersPageSnapshot,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -24,6 +23,11 @@ const USERS_PAGE_SIZE = 25;
 const EMPTY_ADMIN_USERS_SNAPSHOT: AdminUsersSnapshot = {
   totalUsers: 0,
   users: [],
+};
+const EMPTY_ADMIN_USERS_PAGE_SNAPSHOT: AdminUsersPageSnapshot = {
+  ...EMPTY_ADMIN_USERS_SNAPSHOT,
+  activeSubscriptions: [],
+  balanceByUserId: new Map<string, UserBalanceSummary>(),
 };
 
 function parsePage(value: string | string[] | undefined) {
@@ -55,46 +59,60 @@ export default async function AdminUsersPage({
       timeoutMs: ADMIN_USERS_QUERY_TIMEOUT_MS,
     });
 
-  const usersSnapshotState = await withQueryState(
-    "users.snapshot",
-    getAdminUsersSnapshot({
+  const usersPageSnapshotState = await withQueryState(
+    "users.page-snapshot",
+    getAdminUsersPageSnapshot({
       limit: USERS_PAGE_SIZE,
       offset,
     }),
-    EMPTY_ADMIN_USERS_SNAPSHOT
+    EMPTY_ADMIN_USERS_PAGE_SNAPSHOT
   );
 
-  const totalUsers = usersSnapshotState.data.totalUsers;
-  const totalPages = usersSnapshotState.ok
+  const totalUsers = usersPageSnapshotState.data.totalUsers;
+  const totalPages = usersPageSnapshotState.ok
     ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
     : requestedPage;
-  const page = usersSnapshotState.ok
+  const page = usersPageSnapshotState.ok
     ? Math.min(requestedPage, totalPages)
     : requestedPage;
   const pageOffset = (page - 1) * USERS_PAGE_SIZE;
   const pagedUsersState =
-    pageOffset === offset || !usersSnapshotState.ok
-      ? usersSnapshotState
+    pageOffset === offset || !usersPageSnapshotState.ok
+      ? usersPageSnapshotState
       : await withQueryState(
-          "users.corrected-snapshot",
-          getAdminUsersSnapshot({
+          "users.corrected-page-snapshot",
+          getAdminUsersPageSnapshot({
             limit: USERS_PAGE_SIZE,
             offset: pageOffset,
           }),
-          EMPTY_ADMIN_USERS_SNAPSHOT
+          EMPTY_ADMIN_USERS_PAGE_SNAPSHOT
         );
   const pagedUsers = pagedUsersState.data.users;
-
-  const balanceByUserIdPromise = withQueryState(
-    "users.balance-summaries",
-    getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
-    new Map<string, UserBalanceSummary>()
-  );
-  const activeSubscriptionsPromise = withQueryState(
-    "users.active-subscriptions",
-    listActiveSubscriptionSummaries({ limit: 20 }),
-    []
-  );
+  const balanceByUserIdState: AdminQueryResult<Map<string, UserBalanceSummary>> =
+    pagedUsersState.ok
+      ? {
+          data: pagedUsersState.data.balanceByUserId,
+          error: null,
+          ok: true,
+        }
+      : {
+          data: new Map<string, UserBalanceSummary>(),
+          error: pagedUsersState.error,
+          ok: false,
+        };
+  const activeSubscriptionsState: AdminQueryResult<
+    AdminUsersPageSnapshot["activeSubscriptions"]
+  > = pagedUsersState.ok
+    ? {
+        data: pagedUsersState.data.activeSubscriptions,
+        error: null,
+        ok: true,
+      }
+    : {
+        data: [],
+        error: pagedUsersState.error,
+        ok: false,
+      };
 
   return (
     <div className="flex flex-col gap-6">
@@ -120,7 +138,7 @@ export default async function AdminUsersPage({
 
       <Suspense fallback={<UsersTableFallback />}>
         <UsersTableSection
-          balanceByUserIdPromise={balanceByUserIdPromise}
+          balanceByUserIdState={balanceByUserIdState}
           currentUserId={currentUserId}
           page={page}
           pagedUsers={pagedUsers}
@@ -133,7 +151,7 @@ export default async function AdminUsersPage({
 
       <Suspense fallback={<SubscriptionsFallback />}>
         <ActiveSubscriptionsSection
-          activeSubscriptionsPromise={activeSubscriptionsPromise}
+          activeSubscriptionsState={activeSubscriptionsState}
         />
       </Suspense>
     </div>
@@ -141,7 +159,7 @@ export default async function AdminUsersPage({
 }
 
 async function UsersTableSection({
-  balanceByUserIdPromise,
+  balanceByUserIdState,
   currentUserId,
   page,
   pagedUsers,
@@ -150,9 +168,7 @@ async function UsersTableSection({
   totalUsersConfirmed,
   usersConfirmed,
 }: {
-  balanceByUserIdPromise: Promise<
-    AdminQueryResult<Map<string, UserBalanceSummary>>
-  >;
+  balanceByUserIdState: AdminQueryResult<Map<string, UserBalanceSummary>>;
   currentUserId: string | undefined;
   page: number;
   pagedUsers: AdminUsersSnapshot["users"];
@@ -161,7 +177,6 @@ async function UsersTableSection({
   totalUsersConfirmed: boolean;
   usersConfirmed: boolean;
 }) {
-  const balanceByUserIdState = await balanceByUserIdPromise;
   const balanceByUserId = balanceByUserIdState.data;
 
   return (
@@ -251,13 +266,12 @@ async function UsersTableSection({
 }
 
 async function ActiveSubscriptionsSection({
-  activeSubscriptionsPromise,
+  activeSubscriptionsState,
 }: {
-  activeSubscriptionsPromise: Promise<
-    AdminQueryResult<Awaited<ReturnType<typeof listActiveSubscriptionSummaries>>>
+  activeSubscriptionsState: AdminQueryResult<
+    AdminUsersPageSnapshot["activeSubscriptions"]
   >;
 }) {
-  const activeSubscriptionsState = await activeSubscriptionsPromise;
   const activeSubscriptions = activeSubscriptionsState.data;
 
   return (
