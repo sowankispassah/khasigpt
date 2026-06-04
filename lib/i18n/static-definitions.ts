@@ -1206,6 +1206,24 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Native voice chat status while connecting to Gemini Live.",
   },
   {
+    key: "voice.chat.preparing_title",
+    defaultText: "Preparing voice conversation...",
+    description:
+      "Heading shown while a voice chat session is connecting before the user can speak.",
+  },
+  {
+    key: "voice.chat.preparing_description",
+    defaultText: "Connecting to voice model...",
+    description:
+      "Status detail shown while a voice chat session is connecting to the live voice model.",
+  },
+  {
+    key: "voice.chat.preparing_hint",
+    defaultText: "Please wait until Listening appears before speaking.",
+    description:
+      "Helper text warning users not to speak before the voice chat session is ready.",
+  },
+  {
     key: "voice.chat.listening",
     defaultText: "Listening...",
     description: "Native voice chat status while recording the user's speech.",
@@ -1224,6 +1242,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "voice.chat.error",
     defaultText: "Voice chat failed",
     description: "Native voice chat error status.",
+  },
+  {
+    key: "voice.chat.setup_failed_title",
+    defaultText: "Voice setup failed",
+    description:
+      "Heading shown when voice chat setup fails before the session is ready.",
   },
   {
     key: "voice.chat.ready",
@@ -1254,6 +1278,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "voice.chat.cancel",
     defaultText: "Cancel",
     description: "Button label to cancel native voice chat.",
+  },
+  {
+    key: "voice.chat.retry",
+    defaultText: "Retry",
+    description: "Button label to retry voice chat setup after it fails.",
   },
   {
     key: "voice.chat.stop",

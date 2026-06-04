@@ -4,7 +4,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { Trigger } from "@radix-ui/react-select";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { Mic } from "lucide-react";
+import { LoaderCircle, Mic } from "lucide-react";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -341,6 +341,7 @@ function PureMultimodalInput({
     WebGeminiVoiceConversationMessage[]
   >([]);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [hasVoiceSessionReady, setHasVoiceSessionReady] = useState(false);
   const [isVoiceSaving, setIsVoiceSaving] = useState(false);
   const acceptedFileTypes = useMemo(
     () => getAttachmentAcceptValue(documentUploadsEnabled),
@@ -441,14 +442,30 @@ function PureMultimodalInput({
     status === "submitted" || status === "streaming";
   const isBusy = (status !== "ready" && status !== "error") || isGeneratingImage;
   const canStopVoice =
-    isVoiceDialogOpen && !voiceError && !isVoiceSaving && voiceStatus !== "connecting";
+    isVoiceDialogOpen &&
+    !voiceError &&
+    !isVoiceSaving &&
+    hasVoiceSessionReady &&
+    voiceStatus !== "connecting";
+  const isVoicePreparing =
+    isVoiceDialogOpen && !hasVoiceSessionReady && !voiceError;
+  const isVoiceSetupError = Boolean(
+    isVoiceDialogOpen && !hasVoiceSessionReady && voiceError
+  );
 
   const resetVoiceState = useCallback(() => {
     setVoiceStatus("connecting");
     setVoiceMessages([]);
     setVoiceError(null);
+    setHasVoiceSessionReady(false);
     setIsVoiceSaving(false);
   }, []);
+
+  useEffect(() => {
+    if (isVoiceDialogOpen && voiceStatus === "listening") {
+      setHasVoiceSessionReady(true);
+    }
+  }, [isVoiceDialogOpen, voiceStatus]);
 
   const cancelVoiceChat = useCallback(() => {
     voiceTurnControllerRef.current?.cancel();
@@ -580,6 +597,8 @@ function PureMultimodalInput({
       return;
     }
 
+    voiceTurnControllerRef.current?.cancel();
+    voiceTurnControllerRef.current = null;
     resetVoiceState();
     setIsVoiceDialogOpen(true);
     try {
@@ -899,56 +918,102 @@ function PureMultimodalInput({
               </div>
             </div>
 
-            <div className="mt-6 max-h-[48vh] space-y-3 overflow-y-auto pr-1">
-              {voiceMessages.length > 0 ? (
-                voiceMessages.map((message) => {
-                  const isUserMessage = message.role === "user";
-                  return (
-                    <div
-                      className={cn(
-                        "flex",
-                        isUserMessage ? "justify-end" : "justify-start"
-                      )}
-                      key={message.id}
-                    >
+            {isVoicePreparing ? (
+              <div
+                aria-live="polite"
+                className="mt-6 flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-dashed bg-muted/30 px-5 py-8 text-center"
+              >
+                <div className="relative flex size-16 items-center justify-center rounded-full bg-background shadow-sm">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                  <Mic className="relative size-7 text-foreground" />
+                </div>
+                <EditableTranslation
+                  className="mt-5 font-semibold text-base"
+                  defaultText="Preparing voice conversation..."
+                  description="Heading shown while the web voice chat session is connecting."
+                  translationKey="voice.chat.preparing_title"
+                />
+                <EditableTranslation
+                  className="mt-2 text-muted-foreground text-sm"
+                  defaultText="Connecting to voice model..."
+                  description="Status detail shown while the web voice chat session is connecting."
+                  translationKey="voice.chat.preparing_description"
+                />
+                <EditableTranslation
+                  className="mt-3 max-w-xs text-muted-foreground text-xs"
+                  defaultText="Please wait until Listening appears before speaking."
+                  description="Helper text warning users not to speak before voice chat is ready."
+                  translationKey="voice.chat.preparing_hint"
+                />
+                <LoaderCircle className="mt-5 size-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : isVoiceSetupError ? (
+              <div
+                aria-live="assertive"
+                className="mt-6 flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-8 text-center"
+              >
+                <EditableTranslation
+                  className="font-semibold text-base text-destructive"
+                  defaultText="Voice setup failed"
+                  description="Heading shown when the voice chat session fails before it is ready."
+                  translationKey="voice.chat.setup_failed_title"
+                />
+                <p className="mt-2 max-w-xs text-muted-foreground text-sm">
+                  {voiceError}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-6 max-h-[48vh] space-y-3 overflow-y-auto pr-1">
+                {voiceMessages.length > 0 ? (
+                  voiceMessages.map((message) => {
+                    const isUserMessage = message.role === "user";
+                    return (
                       <div
                         className={cn(
-                          "max-w-[82%] rounded-2xl px-3 py-2 text-sm",
-                          isUserMessage
-                            ? "rounded-br-md bg-primary text-primary-foreground"
-                            : "rounded-bl-md bg-muted text-foreground"
+                          "flex",
+                          isUserMessage ? "justify-end" : "justify-start"
                         )}
+                        key={message.id}
                       >
                         <div
                           className={cn(
-                            "mb-1 font-semibold text-[10px] uppercase",
+                            "max-w-[82%] rounded-2xl px-3 py-2 text-sm",
                             isUserMessage
-                              ? "text-primary-foreground/75"
-                              : "text-muted-foreground"
+                              ? "rounded-br-md bg-primary text-primary-foreground"
+                              : "rounded-bl-md bg-muted text-foreground"
                           )}
                         >
-                          {isUserMessage
-                            ? translate("voice.chat.you", "You")
-                            : translate("voice.chat.assistant", "KhasiGPT")}
+                          <div
+                            className={cn(
+                              "mb-1 font-semibold text-[10px] uppercase",
+                              isUserMessage
+                                ? "text-primary-foreground/75"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            {isUserMessage
+                              ? translate("voice.chat.you", "You")
+                              : translate("voice.chat.assistant", "KhasiGPT")}
+                          </div>
+                          <p className="whitespace-pre-wrap break-words">
+                            {message.text}
+                          </p>
                         </div>
-                        <p className="whitespace-pre-wrap break-words">
-                          {message.text}
-                        </p>
                       </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">
-                  {translate(
-                    "voice.chat.waiting_for_speech",
-                    "Waiting for speech..."
-                  )}
-                </p>
-              )}
-            </div>
+                    );
+                  })
+                ) : (
+                  <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">
+                    {translate(
+                      "voice.chat.waiting_for_speech",
+                      "Waiting for speech..."
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
 
-            {voiceError ? (
+            {voiceError && hasVoiceSessionReady ? (
               <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
                 {voiceError}
               </p>
@@ -963,15 +1028,21 @@ function PureMultimodalInput({
               >
                 {translate("voice.chat.cancel", "Cancel")}
               </Button>
-              <Button
-                disabled={!canStopVoice}
-                onClick={() => void finishVoiceChat()}
-                type="button"
-              >
-                {isVoiceSaving
-                  ? translate("voice.chat.saving", "Saving...")
-                  : translate("voice.chat.end", "End voice chat")}
-              </Button>
+              {isVoiceSetupError ? (
+                <Button onClick={() => void startVoiceChat()} type="button">
+                  {translate("voice.chat.retry", "Retry")}
+                </Button>
+              ) : (
+                <Button
+                  disabled={!canStopVoice}
+                  onClick={() => void finishVoiceChat()}
+                  type="button"
+                >
+                  {isVoiceSaving
+                    ? translate("voice.chat.saving", "Saving...")
+                    : translate("voice.chat.end", "End voice chat")}
+                </Button>
+              )}
             </div>
           </div>
         </div>
