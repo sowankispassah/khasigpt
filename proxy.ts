@@ -69,6 +69,11 @@ const SITE_COMING_SOON_PATH = "/coming-soon";
 const SITE_MAINTENANCE_PATH = "/maintenance";
 const SITE_ADMIN_ENTRY_PATH = "/admin-entry";
 const SITE_INVITE_PATH_PREFIX = "/invite/";
+const SITE_STATUS_GATE_PUBLIC_PATHS = [
+  "/privacy-policy",
+  "/terms-of-service",
+  "/help/delete-account",
+] as const;
 const BYPASS_SITE_STATUS_GATE_IN_DEV =
   process.env.NODE_ENV === "development" &&
   process.env.ENABLE_SITE_STATUS_GATE_IN_DEV !== "1";
@@ -305,12 +310,18 @@ function isPageNavigationRequest(request: NextRequest) {
   );
 }
 
-function shouldBypassSiteStatusGate(pathname: string) {
+function isPathOrDescendant(pathname: string, basePath: string) {
+  return pathname === basePath || pathname.startsWith(`${basePath}/`);
+}
+
+export function shouldBypassSiteStatusGate(pathname: string) {
   if (pathname.startsWith("/_next/")) {
     return true;
   }
 
-  return false;
+  return SITE_STATUS_GATE_PUBLIC_PATHS.some((publicPath) =>
+    isPathOrDescendant(pathname, publicPath)
+  );
 }
 
 async function resolveSiteStatus(
