@@ -176,6 +176,62 @@ function hasPendingVoiceUserMessage(
   return hasPendingUser;
 }
 
+const VOICE_VISUALIZER_BARS = [
+  { delayMs: 0, heightClass: "h-8", id: "low" },
+  { delayMs: 110, heightClass: "h-12", id: "mid-low" },
+  { delayMs: 220, heightClass: "h-16", id: "peak" },
+  { delayMs: 330, heightClass: "h-11", id: "mid" },
+  { delayMs: 440, heightClass: "h-14", id: "high" },
+  { delayMs: 550, heightClass: "h-9", id: "tail" },
+] as const;
+
+function VoiceActivityVisualizer({
+  status,
+}: {
+  status: WebGeminiVoiceTurnStatus;
+}) {
+  const isSpeaking = status === "speaking";
+
+  return (
+    <div
+      aria-hidden="true"
+      className="mt-6 flex min-h-[240px] flex-col items-center justify-center rounded-xl border bg-muted/25 px-5 py-8"
+    >
+      <div className="relative flex size-28 items-center justify-center">
+        <span
+          className={cn(
+            "absolute inset-0 rounded-full border border-primary/20",
+            isSpeaking ? "animate-ping" : "animate-pulse"
+          )}
+        />
+        <span className="absolute inset-4 rounded-full border border-primary/15 animate-pulse" />
+        <div className="relative flex size-16 items-center justify-center rounded-full bg-background shadow-sm">
+          <Mic className="size-7 text-foreground" />
+        </div>
+      </div>
+
+      <div className="mt-8 flex h-20 items-center justify-center gap-2">
+        {VOICE_VISUALIZER_BARS.map((bar) => (
+          <span
+            className={cn(
+              "w-2 origin-center rounded-full",
+              bar.heightClass,
+              isSpeaking ? "bg-primary/80" : "bg-foreground/60",
+              status === "thinking"
+                ? "animate-pulse"
+                : "animate-[pulse_1.15s_ease-in-out_infinite]"
+            )}
+            key={bar.id}
+            style={{
+              animationDelay: `${bar.delayMs}ms`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PureMultimodalInput({
   chatId: _chatId,
   input,
@@ -963,54 +1019,7 @@ function PureMultimodalInput({
                 </p>
               </div>
             ) : (
-              <div className="mt-6 max-h-[48vh] space-y-3 overflow-y-auto pr-1">
-                {voiceMessages.length > 0 ? (
-                  voiceMessages.map((message) => {
-                    const isUserMessage = message.role === "user";
-                    return (
-                      <div
-                        className={cn(
-                          "flex",
-                          isUserMessage ? "justify-end" : "justify-start"
-                        )}
-                        key={message.id}
-                      >
-                        <div
-                          className={cn(
-                            "max-w-[82%] rounded-2xl px-3 py-2 text-sm",
-                            isUserMessage
-                              ? "rounded-br-md bg-primary text-primary-foreground"
-                              : "rounded-bl-md bg-muted text-foreground"
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "mb-1 font-semibold text-[10px] uppercase",
-                              isUserMessage
-                                ? "text-primary-foreground/75"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {isUserMessage
-                              ? translate("voice.chat.you", "You")
-                              : translate("voice.chat.assistant", "KhasiGPT")}
-                          </div>
-                          <p className="whitespace-pre-wrap break-words">
-                            {message.text}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">
-                    {translate(
-                      "voice.chat.waiting_for_speech",
-                      "Waiting for speech..."
-                    )}
-                  </p>
-                )}
-              </div>
+              <VoiceActivityVisualizer status={voiceStatus} />
             )}
 
             {voiceError && hasVoiceSessionReady ? (
