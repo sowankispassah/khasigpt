@@ -7,6 +7,7 @@ import equal from "fast-deep-equal";
 import { LoaderCircle, Mic } from "lucide-react";
 import {
   type ChangeEvent,
+  type CSSProperties,
   type Dispatch,
   memo,
   type SetStateAction,
@@ -194,6 +195,7 @@ function VoiceActivityVisualizer({
 }) {
   const clampedLevel = Math.max(0, Math.min(1, inputLevel));
   const isUserSpeaking = status === "listening" && clampedLevel > 0.08;
+  const isAssistantSpeaking = status === "speaking";
   const barLevels = [0.42, 0.68, 0.94, 0.56, 0.82, 0.48];
 
   return (
@@ -201,17 +203,25 @@ function VoiceActivityVisualizer({
       aria-hidden="true"
       className="mt-6 flex min-h-[240px] flex-col items-center justify-center rounded-xl border bg-muted/25 px-5 py-8"
     >
+      <style>
+        {`
+          @keyframes voice-assistant-wave {
+            0%, 100% { transform: scaleY(0.24); }
+            50% { transform: scaleY(var(--voice-wave-scale, 0.78)); }
+          }
+        `}
+      </style>
       <div className="relative flex size-28 items-center justify-center">
         <span
           className={cn(
             "absolute inset-0 rounded-full border border-primary/20",
-            isUserSpeaking ? "animate-ping" : "opacity-30"
+            isUserSpeaking || isAssistantSpeaking ? "animate-ping" : "opacity-30"
           )}
         />
         <span
           className={cn(
             "absolute inset-4 rounded-full border border-primary/15",
-            isUserSpeaking ? "animate-pulse" : "opacity-35"
+            isUserSpeaking || isAssistantSpeaking ? "animate-pulse" : "opacity-35"
           )}
         />
         <div className="relative flex size-16 items-center justify-center rounded-full bg-background shadow-sm">
@@ -225,15 +235,25 @@ function VoiceActivityVisualizer({
             className={cn(
               "w-2 origin-center rounded-full transition-transform duration-100",
               bar.heightClass,
-              isUserSpeaking ? "bg-primary/80" : "bg-foreground/35"
+              isUserSpeaking || isAssistantSpeaking
+                ? "bg-primary/80"
+                : "bg-foreground/35"
             )}
             key={bar.id}
-            style={{
-              transform: `scaleY(${Math.max(
-                0.18,
-                0.22 + clampedLevel * (barLevels[index] ?? 0.6)
-              )})`,
-            }}
+            style={
+              isAssistantSpeaking
+                ? ({
+                    "--voice-wave-scale": String(barLevels[index] ?? 0.6),
+                    animation: "voice-assistant-wave 0.95s ease-in-out infinite",
+                    animationDelay: `${bar.delayMs}ms`,
+                  } as CSSProperties)
+                : {
+                    transform: `scaleY(${Math.max(
+                      0.18,
+                      0.22 + clampedLevel * (barLevels[index] ?? 0.6)
+                    )})`,
+                  }
+            }
           />
         ))}
       </div>
