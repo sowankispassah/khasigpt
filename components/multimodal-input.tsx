@@ -186,11 +186,15 @@ const VOICE_VISUALIZER_BARS = [
 ] as const;
 
 function VoiceActivityVisualizer({
+  inputLevel,
   status,
 }: {
+  inputLevel: number;
   status: WebGeminiVoiceTurnStatus;
 }) {
-  const isSpeaking = status === "speaking";
+  const clampedLevel = Math.max(0, Math.min(1, inputLevel));
+  const isUserSpeaking = status === "listening" && clampedLevel > 0.08;
+  const barLevels = [0.42, 0.68, 0.94, 0.56, 0.82, 0.48];
 
   return (
     <div
@@ -201,29 +205,34 @@ function VoiceActivityVisualizer({
         <span
           className={cn(
             "absolute inset-0 rounded-full border border-primary/20",
-            isSpeaking ? "animate-ping" : "animate-pulse"
+            isUserSpeaking ? "animate-ping" : "opacity-30"
           )}
         />
-        <span className="absolute inset-4 rounded-full border border-primary/15 animate-pulse" />
+        <span
+          className={cn(
+            "absolute inset-4 rounded-full border border-primary/15",
+            isUserSpeaking ? "animate-pulse" : "opacity-35"
+          )}
+        />
         <div className="relative flex size-16 items-center justify-center rounded-full bg-background shadow-sm">
           <Mic className="size-7 text-foreground" />
         </div>
       </div>
 
       <div className="mt-8 flex h-20 items-center justify-center gap-2">
-        {VOICE_VISUALIZER_BARS.map((bar) => (
+        {VOICE_VISUALIZER_BARS.map((bar, index) => (
           <span
             className={cn(
-              "w-2 origin-center rounded-full",
+              "w-2 origin-center rounded-full transition-transform duration-100",
               bar.heightClass,
-              isSpeaking ? "bg-primary/80" : "bg-foreground/60",
-              status === "thinking"
-                ? "animate-pulse"
-                : "animate-[pulse_1.15s_ease-in-out_infinite]"
+              isUserSpeaking ? "bg-primary/80" : "bg-foreground/35"
             )}
             key={bar.id}
             style={{
-              animationDelay: `${bar.delayMs}ms`,
+              transform: `scaleY(${Math.max(
+                0.18,
+                0.22 + clampedLevel * (barLevels[index] ?? 0.6)
+              )})`,
             }}
           />
         ))}
@@ -399,6 +408,7 @@ function PureMultimodalInput({
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [hasVoiceSessionReady, setHasVoiceSessionReady] = useState(false);
   const [isVoiceSaving, setIsVoiceSaving] = useState(false);
+  const [voiceInputLevel, setVoiceInputLevel] = useState(0);
   const acceptedFileTypes = useMemo(
     () => getAttachmentAcceptValue(documentUploadsEnabled),
     [documentUploadsEnabled]
@@ -515,6 +525,7 @@ function PureMultimodalInput({
     setVoiceError(null);
     setHasVoiceSessionReady(false);
     setIsVoiceSaving(false);
+    setVoiceInputLevel(0);
   }, []);
 
   useEffect(() => {
@@ -662,6 +673,7 @@ function PureMultimodalInput({
         onError: (error) => {
           setVoiceError(error.message);
         },
+        onInputLevel: setVoiceInputLevel,
         onMessages: setVoiceMessages,
         onStatus: setVoiceStatus,
       });
@@ -1019,7 +1031,10 @@ function PureMultimodalInput({
                 </p>
               </div>
             ) : (
-              <VoiceActivityVisualizer status={voiceStatus} />
+              <VoiceActivityVisualizer
+                inputLevel={voiceInputLevel}
+                status={voiceStatus}
+              />
             )}
 
             {voiceError && hasVoiceSessionReady ? (

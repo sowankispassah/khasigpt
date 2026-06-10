@@ -37,6 +37,7 @@ export type WebGeminiVoiceTurnController = {
 type WebGeminiVoiceCallbacks = {
   onAssistantTranscript?: (text: string) => void;
   onError?: (error: Error) => void;
+  onInputLevel?: (level: number) => void;
   onMessages?: (messages: WebGeminiVoiceConversationMessage[]) => void;
   onStatus?: (status: WebGeminiVoiceTurnStatus) => void;
   onUserTranscript?: (text: string) => void;
@@ -45,6 +46,9 @@ type WebGeminiVoiceCallbacks = {
 const LIVE_SETUP_TIMEOUT_MS = 15_000;
 const TURN_RESULT_TIMEOUT_MS = 30_000;
 const PROCESSOR_BUFFER_SIZE = 4096;
+const ASSISTANT_PLAYBACK_MUTE_PADDING_MS = 250;
+const INPUT_LEVEL_NOISE_FLOOR = 0.015;
+const INPUT_LEVEL_SPEECH_RANGE = 0.18;
 
 function appendTranscript(current: string, next: unknown) {
   if (typeof next !== "string" || !next.trim()) {
@@ -177,6 +181,23 @@ function floatToPcm16Base64(input: Float32Array, sourceRate: number, targetRate:
   return btoa(binary);
 }
 
+function getInputLevel(input: Float32Array) {
+  if (input.length === 0) {
+    return 0;
+  }
+
+  let sumSquares = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    const sample = input[index] ?? 0;
+    sumSquares += sample * sample;
+  }
+
+  const rms = Math.sqrt(sumSquares / input.length);
+  const normalized =
+    (rms - INPUT_LEVEL_NOISE_FLOOR) / INPUT_LEVEL_SPEECH_RANGE;
+  return Math.max(0, Math.min(1, normalized));
+}
+
 function base64Pcm16ToAudioBuffer({
   audioContext,
   base64Audio,
@@ -198,6 +219,17 @@ function base64Pcm16ToAudioBuffer({
     channel[index] = (pcm[index] ?? 0) / 0x8000;
   }
   return buffer;
+}
+
+function getVoiceCloseErrorMessage(event: CloseEvent) {
+  const reason = event.reason.trim();
+  if (/prepayment credits|billing|quota|credits/i.test(reason)) {
+    return "Voice chat is unavailable because Google Live API billing or prepaid credits are depleted. Add credits or update billing in Google AI Studio, then try again.";
+  }
+  if (reason) {
+    return `Voice chat connection closed before recording finished. Code: ${event.code}. ${reason.slice(0, 180)}`;
+  }
+  return `Voice chat connection closed before recording finished. Code: ${event.code}`;
 }
 
 async function requestVoiceToken() {
@@ -228,6 +260,7 @@ async function requestVoiceToken() {
 export async function startWebGeminiVoiceTurn({
   onAssistantTranscript,
   onError,
+  onInputLevel,
   onMessages,
   onStatus,
   onUserTranscript,
@@ -246,6 +279,9 @@ export async function startWebGeminiVoiceTurn({
       noiseSuppression: true,
     },
   });
+  if (audioContext.state === "suspended") {
+    await audioContext.resume().catch(() => undefined);
+  }
   const source = audioContext.createMediaStreamSource(mediaStream);
   const processor = audioContext.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
   const silentGain = audioContext.createGain();
@@ -265,10 +301,13 @@ export async function startWebGeminiVoiceTurn({
     outputTokens: 0,
   };
   let hasStoppedInput = false;
+  let hasInputStarted = false;
   let isSetupComplete = false;
   let isSettled = false;
+  let assistantPlaybackMutedUntil = 0;
   let setupTimeout: ReturnType<typeof setTimeout> | null = null;
   let stopTimeout: ReturnType<typeof setTimeout> | null = null;
+  let listeningReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let playbackCursor = 0;
   let resolveResult: ((result: WebGeminiVoiceTurnResult) => void) | null = null;
   let rejectResult: ((error: Error) => void) | null = null;
@@ -350,6 +389,10 @@ export async function startWebGeminiVoiceTurn({
       clearTimeout(stopTimeout);
       stopTimeout = null;
     }
+    if (listeningReadyTimeout) {
+      clearTimeout(listeningReadyTimeout);
+      listeningReadyTimeout = null;
+    }
     processor.disconnect();
     source.disconnect();
     silentGain.disconnect();
@@ -385,6 +428,23 @@ export async function startWebGeminiVoiceTurn({
     rejectResult?.(error);
   };
 
+  const resetInputReadiness = () => {
+    hasInputStarted = false;
+    onInputLevel?.(0);
+    if (listeningReadyTimeout) {
+      clearTimeout(listeningReadyTimeout);
+      listeningReadyTimeout = null;
+    }
+  };
+
+  const markInputReady = () => {
+    if (hasInputStarted || hasStoppedInput || isSettled) {
+      return;
+    }
+    hasInputStarted = true;
+    onStatus?.("listening");
+  };
+
   processor.onaudioprocess = (event) => {
     if (
       hasStoppedInput ||
@@ -393,7 +453,12 @@ export async function startWebGeminiVoiceTurn({
     ) {
       return;
     }
+    if (Date.now() < assistantPlaybackMutedUntil) {
+      onInputLevel?.(0);
+      return;
+    }
     const input = event.inputBuffer.getChannelData(0);
+    onInputLevel?.(getInputLevel(input));
     ws.send(
       JSON.stringify({
         realtimeInput: {
@@ -408,6 +473,7 @@ export async function startWebGeminiVoiceTurn({
         },
       })
     );
+    markInputReady();
   };
 
   source.connect(processor);
@@ -432,11 +498,7 @@ export async function startWebGeminiVoiceTurn({
 
   ws.onclose = (event) => {
     if (!isSettled && !hasStoppedInput) {
-      fail(
-        new Error(
-          `Voice chat connection closed before recording finished. Code: ${event.code}`
-        )
-      );
+      fail(new Error(getVoiceCloseErrorMessage(event)));
     }
   };
 
@@ -452,7 +514,6 @@ export async function startWebGeminiVoiceTurn({
         clearTimeout(setupTimeout);
         setupTimeout = null;
       }
-      onStatus?.("listening");
       return;
     }
 
@@ -514,6 +575,13 @@ export async function startWebGeminiVoiceTurn({
           const startAt = Math.max(audioContext.currentTime, playbackCursor);
           node.start(startAt);
           playbackCursor = startAt + buffer.duration;
+          assistantPlaybackMutedUntil = Math.max(
+            assistantPlaybackMutedUntil,
+            Date.now() +
+              buffer.duration * 1000 +
+              ASSISTANT_PLAYBACK_MUTE_PADDING_MS
+          );
+          resetInputReadiness();
         }
       }
     }
@@ -531,7 +599,18 @@ export async function startWebGeminiVoiceTurn({
       if (hasStoppedInput) {
         settle({ messages });
       } else {
-        onStatus?.("listening");
+        const listeningDelayMs = Math.max(
+          0,
+          assistantPlaybackMutedUntil - Date.now()
+        );
+        if (listeningDelayMs === 0) {
+          markInputReady();
+        } else {
+          listeningReadyTimeout = setTimeout(() => {
+            listeningReadyTimeout = null;
+            markInputReady();
+          }, listeningDelayMs);
+        }
       }
     }
   };
@@ -550,6 +629,7 @@ export async function startWebGeminiVoiceTurn({
       if (!hasStoppedInput) {
         hasStoppedInput = true;
         onStatus?.("thinking");
+        onInputLevel?.(0);
         processor.disconnect();
         for (const track of mediaStream.getAudioTracks()) {
           track.stop();
