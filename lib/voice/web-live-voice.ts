@@ -46,7 +46,7 @@ type WebGeminiVoiceCallbacks = {
 const LIVE_SETUP_TIMEOUT_MS = 15_000;
 const TURN_RESULT_TIMEOUT_MS = 30_000;
 const PROCESSOR_BUFFER_SIZE = 4096;
-const ASSISTANT_PLAYBACK_MUTE_PADDING_MS = 250;
+const ASSISTANT_PLAYBACK_MUTE_PADDING_MS = 80;
 const INPUT_LEVEL_NOISE_FLOOR = 0.015;
 const INPUT_LEVEL_SPEECH_RANGE = 0.18;
 
@@ -304,11 +304,12 @@ export async function startWebGeminiVoiceTurn({
   let hasInputStarted = false;
   let isSetupComplete = false;
   let isSettled = false;
-  let assistantPlaybackMutedUntil = 0;
+  let assistantPlaybackMutedUntilTime = 0;
   let setupTimeout: ReturnType<typeof setTimeout> | null = null;
   let stopTimeout: ReturnType<typeof setTimeout> | null = null;
   let listeningReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let playbackCursor = 0;
+  const playbackNodes = new Set<AudioBufferSourceNode>();
   let resolveResult: ((result: WebGeminiVoiceTurnResult) => void) | null = null;
   let rejectResult: ((error: Error) => void) | null = null;
 
@@ -396,6 +397,14 @@ export async function startWebGeminiVoiceTurn({
     processor.disconnect();
     source.disconnect();
     silentGain.disconnect();
+    for (const node of playbackNodes) {
+      try {
+        node.stop();
+      } catch {
+        // The node may already have ended.
+      }
+    }
+    playbackNodes.clear();
     for (const track of mediaStream.getTracks()) {
       track.stop();
     }
@@ -445,6 +454,35 @@ export async function startWebGeminiVoiceTurn({
     onStatus?.("listening");
   };
 
+  const scheduleInputReadyAfterPlayback = () => {
+    if (listeningReadyTimeout) {
+      clearTimeout(listeningReadyTimeout);
+      listeningReadyTimeout = null;
+    }
+    const delayMs = Math.max(
+      0,
+      (assistantPlaybackMutedUntilTime - audioContext.currentTime) * 1000
+    );
+    listeningReadyTimeout = setTimeout(() => {
+      listeningReadyTimeout = null;
+      markInputReady();
+    }, delayMs);
+  };
+
+  const clearPlaybackQueueForInterruption = () => {
+    for (const node of playbackNodes) {
+      try {
+        node.stop();
+      } catch {
+        // The node may already have ended.
+      }
+    }
+    playbackNodes.clear();
+    playbackCursor = audioContext.currentTime;
+    assistantPlaybackMutedUntilTime = audioContext.currentTime;
+    markInputReady();
+  };
+
   processor.onaudioprocess = (event) => {
     if (
       hasStoppedInput ||
@@ -453,7 +491,7 @@ export async function startWebGeminiVoiceTurn({
     ) {
       return;
     }
-    if (Date.now() < assistantPlaybackMutedUntil) {
+    if (audioContext.currentTime < assistantPlaybackMutedUntilTime) {
       onInputLevel?.(0);
       return;
     }
@@ -540,6 +578,11 @@ export async function startWebGeminiVoiceTurn({
       return;
     }
 
+    if (serverContent.interrupted) {
+      clearPlaybackQueueForInterruption();
+      return;
+    }
+
     userText = appendTranscript(
       userText,
       serverContent.inputTranscription?.text
@@ -573,17 +616,24 @@ export async function startWebGeminiVoiceTurn({
           node.buffer = buffer;
           node.connect(audioContext.destination);
           const startAt = Math.max(audioContext.currentTime, playbackCursor);
+          playbackNodes.add(node);
+          node.onended = () => {
+            playbackNodes.delete(node);
+          };
           node.start(startAt);
           playbackCursor = startAt + buffer.duration;
-          assistantPlaybackMutedUntil = Math.max(
-            assistantPlaybackMutedUntil,
-            Date.now() +
-              buffer.duration * 1000 +
-              ASSISTANT_PLAYBACK_MUTE_PADDING_MS
+          assistantPlaybackMutedUntilTime = Math.max(
+            assistantPlaybackMutedUntilTime,
+            playbackCursor + ASSISTANT_PLAYBACK_MUTE_PADDING_MS / 1000
           );
           resetInputReadiness();
+          scheduleInputReadyAfterPlayback();
         }
       }
+    }
+
+    if (serverContent.generationComplete && !hasStoppedInput) {
+      scheduleInputReadyAfterPlayback();
     }
 
     if (serverContent.turnComplete) {
@@ -599,18 +649,7 @@ export async function startWebGeminiVoiceTurn({
       if (hasStoppedInput) {
         settle({ messages });
       } else {
-        const listeningDelayMs = Math.max(
-          0,
-          assistantPlaybackMutedUntil - Date.now()
-        );
-        if (listeningDelayMs === 0) {
-          markInputReady();
-        } else {
-          listeningReadyTimeout = setTimeout(() => {
-            listeningReadyTimeout = null;
-            markInputReady();
-          }, listeningDelayMs);
-        }
+        scheduleInputReadyAfterPlayback();
       }
     }
   };
