@@ -15,6 +15,7 @@ import { generateUUID } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
 import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import { resolveLiveVoiceModelConfig } from "@/lib/voice/live-models";
+import { normalizeKhasiVoiceTranscript } from "@/lib/voice/transcript-normalization";
 import { resolveLiveVoiceTurnUsage } from "@/lib/voice/usage";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ const voiceTurnSchema = z.object({
   chatId: z.string().uuid(),
   inputTokens: z.number().int().positive().optional(),
   outputTokens: z.number().int().positive().optional(),
+  selectedLanguageCode: z.string().trim().min(1).max(16).optional(),
   selectedVisibilityType: z.enum(["private", "public"]).default("private"),
   userMessageId: z.string().uuid().optional(),
   userText: z.string().trim().min(1).max(MAX_VOICE_TURN_TEXT_LENGTH),
@@ -108,9 +110,14 @@ export async function POST(request: Request) {
   const {
     assistantText,
     chatId,
+    selectedLanguageCode,
     selectedVisibilityType,
-    userText,
   } = parsedBody.data;
+  const userText = await normalizeKhasiVoiceTranscript({
+    assistantText,
+    languageCode: selectedLanguageCode,
+    userText: parsedBody.data.userText,
+  });
   const userMessageId = parsedBody.data.userMessageId ?? generateUUID();
   const assistantMessageId =
     parsedBody.data.assistantMessageId ?? generateUUID();
@@ -254,6 +261,7 @@ export async function POST(request: Request) {
       assistantMessageId,
       chatId,
       ok: true,
+      userText,
       userMessageId,
     },
     { headers: noStoreHeaders() }

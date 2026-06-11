@@ -82,6 +82,7 @@ async function postVoiceTurn(
     chatId: string;
     inputTokens?: number;
     outputTokens?: number;
+    selectedLanguageCode?: string;
     selectedVisibilityType: VisibilityType;
     userMessageId: string;
     userText: string;
@@ -104,7 +105,13 @@ async function postVoiceTurn(
       signal: controller.signal,
     });
     if (response.ok) {
-      return;
+      const responseBody = (await response.json().catch(() => null)) as {
+        userText?: unknown;
+      } | null;
+      return typeof responseBody?.userText === "string" &&
+        responseBody.userText.trim()
+        ? responseBody.userText.trim()
+        : payload.userText;
     }
 
     const responseBody = await response.json().catch(() => null);
@@ -586,13 +593,14 @@ function PureMultimodalInput({
         );
 
         for (const pair of messagePairs) {
-          await postVoiceTurn(
+          const savedUserText = await postVoiceTurn(
             {
               assistantMessageId: pair.assistantMessageId,
               assistantText: pair.assistantText,
               chatId: _chatId,
               inputTokens: pair.inputTokens,
               outputTokens: pair.outputTokens,
+              selectedLanguageCode,
               selectedVisibilityType: _selectedVisibilityType,
               userMessageId: pair.userMessageId,
               userText: pair.userText,
@@ -604,7 +612,7 @@ function PureMultimodalInput({
             {
               id: pair.userMessageId,
               metadata: { createdAt: new Date().toISOString() },
-              parts: [{ type: "text" as const, text: pair.userText }],
+              parts: [{ type: "text" as const, text: savedUserText }],
               role: "user" as const,
             },
             {
@@ -621,7 +629,14 @@ function PureMultimodalInput({
         setIsVoiceSaving(false);
       }
     },
-    [_chatId, _selectedVisibilityType, onVoiceTurnSaved, setMessages, translate]
+    [
+      _chatId,
+      _selectedVisibilityType,
+      onVoiceTurnSaved,
+      selectedLanguageCode,
+      setMessages,
+      translate,
+    ]
   );
 
   const finishVoiceChat = useCallback(async () => {
