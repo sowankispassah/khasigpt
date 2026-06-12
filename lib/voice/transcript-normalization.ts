@@ -3,11 +3,34 @@ import "server-only";
 import { generateText } from "ai";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { resolveLanguageModel } from "@/lib/ai/providers";
+import type { ModelConfig } from "@/lib/db/schema";
 import { withTimeout } from "@/lib/utils/async";
 
 const KHASI_TRANSCRIPT_NORMALIZATION_TIMEOUT_MS = 8_000;
 const MAX_NORMALIZED_TRANSCRIPT_LENGTH = 20_000;
 const CHAT_MODEL_LOOKUP_TIMEOUT_MS = 2_500;
+const HARD_CODED_DEFAULT_CHAT_MODEL: ModelConfig = {
+  codeTemplate: null,
+  config: null,
+  createdAt: new Date(0),
+  deletedAt: null,
+  description: "Hard-coded fallback matching the current default chat model.",
+  displayName: "KhasiGPT",
+  freeMessagesPerDay: 3,
+  id: "00000000-0000-0000-0000-000000000000",
+  inputProviderCostPerMillion: 0,
+  isDefault: true,
+  isEnabled: true,
+  isMarginBaseline: false,
+  key: "tt",
+  outputProviderCostPerMillion: 0,
+  provider: "google",
+  providerModelId: "gemini-flash-latest",
+  reasoningTag: null,
+  supportsReasoning: false,
+  systemPrompt: null,
+  updatedAt: new Date(0),
+};
 
 type NormalizationDecision = {
   transcript?: unknown;
@@ -55,14 +78,22 @@ function parseNormalizationDecision(text: string) {
 }
 
 async function getDefaultChatLanguageModelForVoiceCleanup() {
-  const registry = await withTimeout(
-    getModelRegistry(),
-    CHAT_MODEL_LOOKUP_TIMEOUT_MS
-  );
-  if (!registry.defaultConfig) {
+  try {
+    const registry = await withTimeout(
+      getModelRegistry(),
+      CHAT_MODEL_LOOKUP_TIMEOUT_MS
+    );
+    if (registry.defaultConfig) {
+      return resolveLanguageModel(registry.defaultConfig);
+    }
     throw new Error("No default chat model is configured.");
+  } catch (error) {
+    console.warn(
+      "[voice] Default chat model lookup failed. Using hard-coded current default chat model for transcript normalization.",
+      error
+    );
+    return resolveLanguageModel(HARD_CODED_DEFAULT_CHAT_MODEL);
   }
-  return resolveLanguageModel(registry.defaultConfig);
 }
 
 export async function normalizeKhasiVoiceTranscript({
