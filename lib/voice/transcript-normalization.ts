@@ -1,11 +1,13 @@
 import "server-only";
 
 import { generateText } from "ai";
-import { getTitleLanguageModel } from "@/lib/ai/providers";
+import { getModelRegistry } from "@/lib/ai/model-registry";
+import { resolveLanguageModel } from "@/lib/ai/providers";
 import { withTimeout } from "@/lib/utils/async";
 
 const KHASI_TRANSCRIPT_NORMALIZATION_TIMEOUT_MS = 8_000;
 const MAX_NORMALIZED_TRANSCRIPT_LENGTH = 20_000;
+const CHAT_MODEL_LOOKUP_TIMEOUT_MS = 2_500;
 
 type NormalizationDecision = {
   transcript?: unknown;
@@ -52,6 +54,17 @@ function parseNormalizationDecision(text: string) {
   return null;
 }
 
+async function getDefaultChatLanguageModelForVoiceCleanup() {
+  const registry = await withTimeout(
+    getModelRegistry(),
+    CHAT_MODEL_LOOKUP_TIMEOUT_MS
+  );
+  if (!registry.defaultConfig) {
+    throw new Error("No default chat model is configured.");
+  }
+  return resolveLanguageModel(registry.defaultConfig);
+}
+
 export async function normalizeKhasiVoiceTranscript({
   assistantText,
   languageCode,
@@ -69,9 +82,10 @@ export async function normalizeKhasiVoiceTranscript({
   }
 
   try {
+    const model = await getDefaultChatLanguageModelForVoiceCleanup();
     const result = await withTimeout(
       generateText({
-        model: getTitleLanguageModel(),
+        model,
         system: [
           "You decide whether a saved voice transcript should be corrected for Khasi.",
           "This is transcript correction, not translation.",
