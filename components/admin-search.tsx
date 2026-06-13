@@ -165,16 +165,6 @@ export function AdminSearch() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    for (const entry of ADMIN_SEARCH_ENTRIES) {
-      void router.prefetch(entry.href);
-    }
-  }, [isOpen, router]);
-
   const filteredEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) {

@@ -17,13 +17,12 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   type ComponentType,
   type MouseEvent,
   useCallback,
   useEffect,
-  useRef,
   useState,
 } from "react";
 
@@ -113,8 +112,6 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
 ];
 
-const ADMIN_LINKS = ADMIN_NAV_GROUPS.flatMap((group) => group.items);
-
 type AdminBadgeCounts = Partial<Record<AdminBadgeKey, number>>;
 
 export function AdminNav({
@@ -123,43 +120,9 @@ export function AdminNav({
   initialBadgeCounts?: AdminBadgeCounts;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { setOpenMobile } = useSidebar();
-  const prefetchedRoutesRef = useRef(new Set<string>());
   const [badgeCounts, setBadgeCounts] =
     useState<AdminBadgeCounts>(initialBadgeCounts);
-
-  const prefetchRoute = useCallback(
-    (href: string) => {
-      if (prefetchedRoutesRef.current.has(href)) {
-        return;
-      }
-
-      prefetchedRoutesRef.current.add(href);
-      try {
-        void router.prefetch(href);
-      } catch {
-        prefetchedRoutesRef.current.delete(href);
-      }
-    },
-    [router]
-  );
-
-  useEffect(() => {
-    const timeoutIds: number[] = [];
-    ADMIN_LINKS.forEach((link, index) => {
-      const timeoutId = window.setTimeout(() => {
-        prefetchRoute(link.href);
-      }, index * 60);
-      timeoutIds.push(timeoutId);
-    });
-
-    return () => {
-      for (const timeoutId of timeoutIds) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [prefetchRoute]);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,12 +170,11 @@ export function AdminNav({
       void refreshDeletionRequestCount();
     };
 
-    void refreshDeletionRequestCount();
     window.addEventListener(
       "admin:account-deletion-unviewed-count",
       handleCountUpdate
     );
-    const intervalId = window.setInterval(refreshDeletionRequestCount, 30_000);
+    const intervalId = window.setInterval(refreshDeletionRequestCount, 120_000);
 
     return () => {
       cancelled = true;
@@ -269,9 +231,7 @@ export function AdminNav({
             className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 font-semibold text-sidebar-foreground text-sm outline-none transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             href="/admin"
             onClick={(event) => handleLinkClick(event, "/admin")}
-            onFocus={() => prefetchRoute("/admin")}
-            onMouseEnter={() => prefetchRoute("/admin")}
-            prefetch
+            prefetch={false}
           >
             <LayoutDashboard className="size-5 shrink-0" />
             <span className="truncate group-data-[collapsible=icon]:hidden">
@@ -310,10 +270,7 @@ export function AdminNav({
                           onClick={(event) =>
                             handleLinkClick(event, link.href)
                           }
-                          onFocus={() => prefetchRoute(link.href)}
-                          onMouseEnter={() => prefetchRoute(link.href)}
-                          onTouchStart={() => prefetchRoute(link.href)}
-                          prefetch
+                          prefetch={false}
                         >
                           <Icon className="size-4" />
                           <span>{link.label}</span>

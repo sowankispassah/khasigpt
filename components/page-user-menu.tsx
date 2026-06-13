@@ -113,13 +113,6 @@ export function PageUserMenu({
       } catch (error) {
         console.warn("Prefetch failed", error);
       }
-      if (user.role === "admin") {
-        try {
-          router.prefetch("/admin");
-        } catch (error) {
-          console.warn("Prefetch failed", error);
-        }
-      }
       if (user.role === "creator") {
         try {
           router.prefetch("/creator-dashboard");
