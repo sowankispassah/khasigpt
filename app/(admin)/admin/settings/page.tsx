@@ -303,6 +303,21 @@ function getConfiguredAdminSettingsPoolSize() {
   );
 }
 
+function getConfiguredAdminSettingsDbReadConcurrency() {
+  return parsePositiveInteger(process.env.ADMIN_SETTINGS_DB_READ_CONCURRENCY);
+}
+
+function hasConfiguredSupabasePoolerUrl() {
+  const candidates = [
+    process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_DIRECT_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter(Boolean);
+
+  return candidates.some((value) => isSupabasePoolerUrl(value));
+}
+
 function shouldSerializeAdminSettingsDbReads() {
   if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "true") {
     return true;
@@ -315,36 +330,70 @@ function shouldSerializeAdminSettingsDbReads() {
     return onlyOneDbConnection;
   }
 
-  const candidates = [
-    process.env.POSTGRES_URL,
-    process.env.DATABASE_URL,
-    process.env.POSTGRES_DIRECT_URL,
-    process.env.POSTGRES_PRISMA_URL,
-  ].filter(Boolean);
-
-  const hasPoolerUrl = candidates.some((value) => isSupabasePoolerUrl(value));
+  const hasPoolerUrl = hasConfiguredSupabasePoolerUrl();
   if (process.env.VERCEL === "1" && hasPoolerUrl) {
     return onlyOneDbConnection;
   }
 
   return (
     onlyOneDbConnection &&
-    candidates.length > 0 &&
-    candidates.every(isSupabasePoolerUrl)
+    hasPoolerUrl
   );
+}
+
+function getAdminSettingsDbReadConcurrency(taskCount: number) {
+  if (taskCount <= 1) {
+    return taskCount;
+  }
+
+  const explicitConcurrency = getConfiguredAdminSettingsDbReadConcurrency();
+  if (explicitConcurrency !== null) {
+    return Math.min(taskCount, explicitConcurrency);
+  }
+
+  if (shouldSerializeAdminSettingsDbReads()) {
+    return 1;
+  }
+
+  if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "false") {
+    return taskCount;
+  }
+
+  const poolSize = getConfiguredAdminSettingsPoolSize();
+  const usesPooler =
+    process.env.POSTGRES_USE_POOLER === "true" ||
+    (process.env.VERCEL === "1" && hasConfiguredSupabasePoolerUrl());
+
+  if (!usesPooler) {
+    return taskCount;
+  }
+
+  return Math.max(1, Math.min(taskCount, poolSize - 1, 2));
 }
 
 async function resolveAdminDbReadGroup<const T extends readonly unknown[]>(
   tasks: { [K in keyof T]: () => Promise<T[K]> }
 ): Promise<T> {
-  if (!shouldSerializeAdminSettingsDbReads()) {
+  const concurrency = getAdminSettingsDbReadConcurrency(tasks.length);
+
+  if (concurrency >= tasks.length) {
     return Promise.all(tasks.map((task) => task())) as unknown as Promise<T>;
   }
 
-  const results: unknown[] = [];
-  for (const task of tasks) {
-    results.push(await task());
+  const results = new Array<unknown>(tasks.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await tasks[index]();
+    }
   }
+
+  await Promise.all(
+    Array.from({ length: concurrency }, () => worker())
+  );
   return results as unknown as T;
 }
 
@@ -354,17 +403,22 @@ async function settingsQueryState<T>(
   fallbackValue: T,
   timeoutMs = ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS
 ): Promise<{ failed: boolean; value: T }> {
+  const startedAt = Date.now();
   try {
     const value = await withTimeout(query(), timeoutMs, () => {
       console.error(`[admin/settings] ${label} query timed out.`, {
+        durationMs: Date.now() - startedAt,
         timeoutMs,
       });
+    });
+    console.info(`[admin/settings] ${label} query completed.`, {
+      durationMs: Date.now() - startedAt,
     });
     return { failed: false, value };
   } catch (error) {
     console.error(
       `[admin/settings] ${label} query failed. Keeping the section degraded instead of treating fallback data as confirmed.`,
-      error
+      { durationMs: Date.now() - startedAt, error }
     );
     return { failed: true, value: fallbackValue };
   }
