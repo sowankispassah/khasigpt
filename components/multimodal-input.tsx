@@ -591,37 +591,64 @@ function PureMultimodalInput({
           "voice.chat.save_failed",
           "Unable to save this voice chat."
         );
+        const finalizingTranscriptText = translate(
+          "voice.chat.finalizing_transcript",
+          "Finalizing voice transcript..."
+        );
 
         for (const pair of messagePairs) {
-          const savedUserText = await postVoiceTurn(
-            {
-              assistantMessageId: pair.assistantMessageId,
-              assistantText: pair.assistantText,
-              chatId: _chatId,
-              inputTokens: pair.inputTokens,
-              outputTokens: pair.outputTokens,
-              selectedLanguageCode,
-              selectedVisibilityType: _selectedVisibilityType,
-              userMessageId: pair.userMessageId,
-              userText: pair.userText,
-            },
-            saveFailedMessage
-          );
+          const messageCreatedAt = new Date().toISOString();
           setMessages((currentMessages) => [
             ...currentMessages,
             {
               id: pair.userMessageId,
-              metadata: { createdAt: new Date().toISOString() },
-              parts: [{ type: "text" as const, text: savedUserText }],
+              metadata: { createdAt: messageCreatedAt },
+              parts: [{ type: "text" as const, text: finalizingTranscriptText }],
               role: "user" as const,
             },
             {
               id: pair.assistantMessageId,
-              metadata: { createdAt: new Date().toISOString() },
+              metadata: { createdAt: messageCreatedAt },
               parts: [{ type: "text" as const, text: pair.assistantText }],
               role: "assistant" as const,
             },
           ]);
+
+          try {
+            const savedUserText = await postVoiceTurn(
+              {
+                assistantMessageId: pair.assistantMessageId,
+                assistantText: pair.assistantText,
+                chatId: _chatId,
+                inputTokens: pair.inputTokens,
+                outputTokens: pair.outputTokens,
+                selectedLanguageCode,
+                selectedVisibilityType: _selectedVisibilityType,
+                userMessageId: pair.userMessageId,
+                userText: pair.userText,
+              },
+              saveFailedMessage
+            );
+            setMessages((currentMessages) =>
+              currentMessages.map((message) =>
+                message.id === pair.userMessageId
+                  ? {
+                      ...message,
+                      parts: [{ type: "text" as const, text: savedUserText }],
+                    }
+                  : message
+              )
+            );
+          } catch (error) {
+            setMessages((currentMessages) =>
+              currentMessages.filter(
+                (message) =>
+                  message.id !== pair.userMessageId &&
+                  message.id !== pair.assistantMessageId
+              )
+            );
+            throw error;
+          }
         }
 
         onVoiceTurnSaved?.();

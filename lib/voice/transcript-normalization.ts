@@ -42,6 +42,39 @@ function isKhasiLanguageCode(languageCode: string | null | undefined) {
   return normalized === "kha" || normalized === "khasi";
 }
 
+const KHASI_CONTEXT_MARKERS = [
+  "nga",
+  "phi",
+  "kumno",
+  "kyrteng",
+  "ban",
+  "lah",
+  "dei",
+  "ka",
+  "ki",
+  "ha",
+  "jong",
+  "shaphang",
+  "khasi",
+] as const;
+
+function hasLikelyKhasiContext(text: string) {
+  const normalized = ` ${text.toLowerCase().replace(/[^a-z]+/g, " ")} `;
+  return KHASI_CONTEXT_MARKERS.some((marker) =>
+    normalized.includes(` ${marker} `)
+  );
+}
+
+function shouldAttemptKhasiVoiceTranscriptNormalization({
+  assistantText,
+  languageCode,
+}: {
+  assistantText: string;
+  languageCode?: string | null;
+}) {
+  return isKhasiLanguageCode(languageCode) || hasLikelyKhasiContext(assistantText);
+}
+
 function cleanTranscriptText(text: string) {
   return text
     .replace(/^```(?:text)?/i, "")
@@ -108,7 +141,13 @@ export async function normalizeKhasiVoiceTranscript({
   const rawUserText = userText.replace(/\s+/g, " ").trim();
   const assistantContext = assistantText.replace(/\s+/g, " ").trim();
 
-  if (!rawUserText || !isKhasiLanguageCode(languageCode)) {
+  if (
+    !rawUserText ||
+    !shouldAttemptKhasiVoiceTranscriptNormalization({
+      assistantText: assistantContext,
+      languageCode,
+    })
+  ) {
     return rawUserText;
   }
 
@@ -118,13 +157,19 @@ export async function normalizeKhasiVoiceTranscript({
       generateText({
         model,
         system: [
-          "You decide whether a saved voice transcript should be corrected for Khasi.",
+          "You clean saved Voice Mode transcripts for Khasi conversations.",
           "This is transcript correction, not translation.",
-          "Only rewrite the user's transcript into Khasi Latin script when the raw transcript is likely spoken Khasi that speech recognition incorrectly represented with another language's words or script.",
+          "Only rewrite the user's transcript into standard Khasi Latin script when the raw transcript is likely spoken Khasi that speech recognition incorrectly represented with another language's words, spelling, or script.",
+          "Use sound-alike correction for Khasi words. Correct phonetic chunks into normal Khasi spelling when the intended Khasi is clear.",
           "Keep the raw transcript unchanged when it appears to be genuine English, Hindi, Spanish, or another intentionally spoken language.",
           "Keep intentional code-switching as-is unless the non-Khasi text is clearly phonetic garbage for spoken Khasi.",
-          "Use the assistant reply only as weak context. A Khasi assistant reply is not enough by itself to force Khasi normalization.",
+          "Use the selected target language and assistant reply as context for whether this is a Khasi voice conversation, but never translate genuine non-Khasi speech.",
           "If uncertain, set shouldNormalize to false and preserve the raw transcript.",
+          "Examples:",
+          "{\"raw\":\"Pikerteng Guno\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Phi kyrteng kumno?\"}}",
+          "{\"raw\":\"Pikerteng kumno\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Phi kyrteng kumno?\"}}",
+          "{\"raw\":\"¿Cómo te hace?\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Kumno phi long?\"}}",
+          "{\"raw\":\"What is your name?\",\"decision\":{\"shouldNormalize\":false,\"transcript\":\"What is your name?\"}}",
           "Return strict JSON only with this shape: {\"shouldNormalize\": boolean, \"transcript\": string}.",
         ].join("\n"),
         prompt: JSON.stringify({

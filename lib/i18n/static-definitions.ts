@@ -1301,6 +1301,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Button label while a completed voice chat is being saved.",
   },
   {
+    key: "voice.chat.finalizing_transcript",
+    defaultText: "Finalizing voice transcript...",
+    description:
+      "Temporary chat message shown while a completed voice transcript is being corrected and saved.",
+  },
+  {
     key: "voice.chat.disabled",
     defaultText: "Voice chat is currently unavailable.",
     description: "Error shown when native voice chat is disabled.",
