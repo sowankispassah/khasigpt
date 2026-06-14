@@ -1,0 +1,1628 @@
+"use client";
+
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { toast } from "sonner";
+import {
+  bulkUpdateRagEntryStatusAction,
+  createRagCategoryAction,
+  createRagEntryAction,
+  deleteRagEntriesAction,
+  restoreRagEntryAction,
+  restoreRagVersionAction,
+  updateRagEntryAction,
+} from "@/app/(admin)/actions";
+import {
+  LoaderIcon,
+  PlusIcon,
+  SparklesIcon,
+  TrashIcon,
+} from "@/components/icons";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import type { RagEntryStatus } from "@/lib/db/schema";
+import {
+  getRagChatScope,
+  RAG_CHAT_SCOPE_OPTIONS,
+  type RagChatScope,
+} from "@/lib/rag/chat-scope";
+import type {
+  AdminRagEntry,
+  RagAnalyticsSummary,
+  SanitizedRagEntry,
+} from "@/lib/rag/types";
+import { cn } from "@/lib/utils";
+
+export type SerializedAdminRagEntry = {
+  entry: {
+    id: string;
+    title: string;
+    content: string;
+    type: string;
+    status: RagEntryStatus;
+    tags: string[];
+    models: string[];
+    chatScope: RagChatScope | null;
+    sourceUrl: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  creator: AdminRagEntry["creator"];
+};
+
+type AdminRagManagerProps = {
+  analytics: RagAnalyticsSummary;
+  currentUser: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
+  entries: SerializedAdminRagEntry[];
+  modelOptions: Array<{ id: string; label: string; provider: string }>;
+  tagOptions: string[];
+  categories: Array<{ id: string; name: string }>;
+  degradedSections?: string[];
+};
+
+type RagVersion = {
+  id: string;
+  version: number;
+  title: string;
+  status: RagEntryStatus;
+  createdAt: string;
+  editorName: string | null;
+  changeSummary: string | null;
+};
+
+const RAG_TYPES = [
+  "text",
+  "document",
+  "image",
+  "audio",
+  "video",
+  "link",
+  "data",
+] as const;
+const STATUS_OPTIONS: RagEntryStatus[] = ["active", "inactive", "archived"];
+const INITIAL_VISIBLE_RAG_ENTRIES = 10;
+const ADMIN_RAG_ACTION_TIMEOUT_MS = 25_000;
+
+type PendingAction =
+  | "archive"
+  | "bulk-active"
+  | "bulk-inactive"
+  | "restore"
+  | "restore-version"
+  | "submit";
+
+type RagScopeFilter = RagChatScope | "all" | "legacy";
+
+type RagFormState = {
+  title: string;
+  content: string;
+  type: (typeof RAG_TYPES)[number];
+  status: RagEntryStatus;
+  tags: string[];
+  models: string[];
+  chatScope: RagChatScope | "";
+  sourceUrl: string;
+  categoryId: string;
+};
+
+const DEFAULT_FORM: RagFormState = {
+  title: "",
+  content: "",
+  type: "text" as (typeof RAG_TYPES)[number],
+  status: "inactive" as RagEntryStatus,
+  tags: [] as string[],
+  models: [] as string[],
+  chatScope: "default" as RagChatScope,
+  sourceUrl: "",
+  categoryId: "",
+};
+
+const CHAT_SCOPE_LABELS: Record<RagChatScope, string> = {
+  default: "General chat knowledge",
+  study: "Study knowledge",
+  identity: "User/company identity",
+  jobs: "Jobs knowledge",
+  shared: "Shared across modes",
+};
+
+const CHAT_SCOPE_DESCRIPTIONS: Record<RagChatScope, string> = {
+  default: "Used by normal chat only. This is the default for custom RAG.",
+  study: "Used by Study mode only. Use this for exam, lesson, or study help.",
+  identity:
+    "Used by normal chat for user, company, product, or app identity context.",
+  jobs: "Used by Jobs mode only. Job imports remain managed from Jobs admin.",
+  shared: "Available to general chat, Study mode, and Jobs mode.",
+};
+
+const QUICK_CREATE_SCOPES: Array<{
+  scope: RagChatScope;
+  label: string;
+  description: string;
+}> = [
+  {
+    scope: "default",
+    label: "New general",
+    description: "General chat",
+  },
+  {
+    scope: "study",
+    label: "New study",
+    description: "Study mode",
+  },
+  {
+    scope: "identity",
+    label: "New identity",
+    description: "User/company context",
+  },
+];
+
+const sortCategories = (list: Array<{ id: string; name: string }>) =>
+  [...list].sort((a, b) => a.name.localeCompare(b.name));
+
+function withClientTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(
+        new Error(`${label} timed out. Please retry; the page is still usable.`)
+      );
+    }, ADMIN_RAG_ACTION_TIMEOUT_MS);
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
+export function AdminRagManager({
+  analytics,
+  currentUser,
+  entries,
+  modelOptions,
+  tagOptions,
+  categories,
+  degradedSections = [],
+}: AdminRagManagerProps) {
+  const [entriesState, setEntriesState] = useState(entries);
+  const [availableTags, setAvailableTags] = useState(tagOptions);
+  const [categoryOptions, setCategoryOptions] = useState(
+    sortCategories(categories)
+  );
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<RagEntryStatus | "all">(
+    "all"
+  );
+  const [typeFilter, setTypeFilter] = useState<
+    (typeof RAG_TYPES)[number] | "all"
+  >("all");
+  const [scopeFilter, setScopeFilter] = useState<RagScopeFilter>("all");
+  const [modelFilter, setModelFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingEntry, setEditingEntry] =
+    useState<SerializedAdminRagEntry | null>(null);
+  const [formState, setFormState] = useState(DEFAULT_FORM);
+  const [versions, setVersions] = useState<RagVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [isCreatingCategory, startCreateCategory] = useTransition();
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+  const [progressVisible, setProgressVisible] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const [showAllEntries, setShowAllEntries] = useState(false);
+
+  useEffect(() => {
+    setEntriesState(entries);
+  }, [entries]);
+
+  useEffect(() => {
+    setAvailableTags(tagOptions);
+  }, [tagOptions]);
+
+  useEffect(() => {
+    setCategoryOptions(sortCategories(categories));
+  }, [categories]);
+
+  const clearProgressTimers = useCallback(() => {
+    for (const timer of progressTimers.current) {
+      clearTimeout(timer);
+    }
+    progressTimers.current = [];
+  }, []);
+
+  const beginProgress = useCallback(() => {
+    clearProgressTimers();
+    setProgressVisible(true);
+    setProgress(12);
+    progressTimers.current = [
+      setTimeout(() => setProgress(40), 140),
+      setTimeout(() => setProgress(68), 320),
+      setTimeout(() => setProgress(88), 620),
+    ];
+  }, [clearProgressTimers]);
+
+  const finishProgress = useCallback(() => {
+    clearProgressTimers();
+    setProgress(100);
+    setTimeout(() => {
+      setProgressVisible(false);
+      setProgress(0);
+    }, 260);
+  }, [clearProgressTimers]);
+
+  useEffect(() => () => clearProgressTimers(), [clearProgressTimers]);
+  const isActionPending = pendingAction !== null;
+
+  const runAction = useCallback(
+    async <T,>(
+      action: PendingAction,
+      label: string,
+      task: () => Promise<T>
+    ): Promise<T> => {
+      if (pendingAction) {
+        throw new Error("Another RAG action is already running.");
+      }
+
+      setPendingAction(action);
+      beginProgress();
+      try {
+        return await withClientTimeout(task(), label);
+      } finally {
+        finishProgress();
+        setPendingAction(null);
+      }
+    },
+    [beginProgress, finishProgress, pendingAction]
+  );
+
+  const filteredEntries = useMemo(() => {
+    const query = deferredSearchTerm.trim().toLowerCase();
+    return entriesState.filter((row) => {
+      const matchesStatus =
+        statusFilter === "all" ? true : row.entry.status === statusFilter;
+      const matchesType =
+        typeFilter === "all" ? true : row.entry.type === typeFilter;
+      const matchesScope =
+        scopeFilter === "all"
+          ? true
+          : scopeFilter === "legacy"
+            ? row.entry.chatScope === null
+            : row.entry.chatScope === scopeFilter;
+      const matchesModel =
+        modelFilter === "all"
+          ? true
+          : row.entry.models.length === 0 ||
+            row.entry.models.includes(modelFilter);
+      const matchesTag =
+        tagFilter === "all" ? true : row.entry.tags.includes(tagFilter);
+      const matchesQuery = query
+        ? row.entry.title.toLowerCase().includes(query) ||
+          row.entry.content.toLowerCase().includes(query)
+        : true;
+      return (
+        matchesStatus &&
+        matchesType &&
+        matchesScope &&
+        matchesModel &&
+        matchesTag &&
+        matchesQuery
+      );
+    });
+  }, [
+    entriesState,
+    statusFilter,
+    typeFilter,
+    scopeFilter,
+    modelFilter,
+    tagFilter,
+    deferredSearchTerm,
+  ]);
+
+  const allSelected =
+    filteredEntries.length > 0 &&
+    filteredEntries.every((entry) => selectedIds.includes(entry.entry.id));
+  const visibleEntries = showAllEntries
+    ? filteredEntries
+    : filteredEntries.slice(0, INITIAL_VISIBLE_RAG_ENTRIES);
+  const hiddenEntryCount = Math.max(
+    filteredEntries.length - visibleEntries.length,
+    0
+  );
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds((prev) =>
+        prev.filter(
+          (id) => !filteredEntries.some((entry) => entry.entry.id === id)
+        )
+      );
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const entry of filteredEntries) {
+        next.add(entry.entry.id);
+      }
+      return Array.from(next);
+    });
+  };
+
+  const serializeEntry = useCallback(
+    (entry: SanitizedRagEntry, source?: SerializedAdminRagEntry | null) => {
+      const fallbackCreator = source?.creator ?? {
+        id: currentUser.id,
+        name: currentUser.name ?? currentUser.email ?? "Unknown",
+        email: currentUser.email,
+      };
+      return {
+        entry: {
+          id: entry.id,
+          title: entry.title,
+          content: entry.content,
+          type: entry.type,
+          status: entry.status,
+          tags: entry.tags,
+          models: entry.models,
+          chatScope: getRagChatScope(entry.metadata),
+          sourceUrl: entry.sourceUrl ?? null,
+          categoryId: entry.categoryId ?? null,
+          categoryName: entry.categoryName ?? null,
+          createdAt: new Date(entry.createdAt).toISOString(),
+          updatedAt: new Date(entry.updatedAt).toISOString(),
+        },
+        creator: fallbackCreator,
+      };
+    },
+    [currentUser]
+  );
+
+  const resetForm = useCallback(() => {
+    setFormState(DEFAULT_FORM);
+    setEditingEntry(null);
+    setVersions([]);
+  }, []);
+
+  const openCreateSheet = (scope: RagChatScope = "default") => {
+    resetForm();
+    setFormState((prev) => ({
+      ...prev,
+      chatScope: scope,
+    }));
+    setSheetOpen(true);
+  };
+
+  const handleCreateCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      setCategoryError("Name is required");
+      return;
+    }
+    setCategoryError("");
+    startCreateCategory(() => {
+      createRagCategoryAction(trimmed)
+        .then((category) => {
+          setCategoryOptions((prev) => sortCategories([...prev, category]));
+          setFormState((prev) => ({
+            ...prev,
+            categoryId: category.id,
+          }));
+          toast.success(`Category "${category.name}" created.`);
+          setNewCategoryName("");
+          setCategoryError("");
+          setCategoryDialogOpen(false);
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to create category";
+          toast.error(message);
+        });
+    });
+  };
+
+  const openEditor = (entry: SerializedAdminRagEntry) => {
+    setEditingEntry(entry);
+    setFormState({
+      title: entry.entry.title,
+      content: entry.entry.content,
+      type: entry.entry.type as (typeof RAG_TYPES)[number],
+      status: entry.entry.status,
+      tags: entry.entry.tags,
+      models: entry.entry.models,
+      chatScope: entry.entry.chatScope ?? "",
+      sourceUrl: entry.entry.sourceUrl ?? "",
+      categoryId: entry.entry.categoryId ?? "",
+    });
+    setSheetOpen(true);
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const payload = {
+      title: formState.title.trim(),
+      content: formState.content.trim(),
+      type: formState.type,
+      status: formState.status,
+      tags: formState.tags,
+      models: formState.models,
+      metadata: { chatScope: formState.chatScope || null },
+      sourceUrl: formState.sourceUrl.trim() || null,
+      categoryId: formState.categoryId ? formState.categoryId : null,
+    };
+
+    if (!payload.title || !payload.content) {
+      toast.error("Title and content are required");
+      return;
+    }
+
+    void runAction("submit", "Saving RAG entry", () =>
+      editingEntry
+        ? updateRagEntryAction({ id: editingEntry.entry.id, input: payload })
+        : createRagEntryAction(payload)
+    )
+      .then((entry) => {
+        setEntriesState((prev) => {
+          if (editingEntry) {
+            return prev.map((item) =>
+              item.entry.id === editingEntry.entry.id
+                ? serializeEntry(entry, item)
+                : item
+            );
+          }
+          return [serializeEntry(entry, null), ...prev];
+        });
+        setAvailableTags((prev) => {
+          const next = new Set(prev);
+          for (const tag of entry.tags) {
+            next.add(tag);
+          }
+          return Array.from(next);
+        });
+        toast.success(editingEntry ? "Entry updated" : "Entry created");
+        setSheetOpen(false);
+      })
+      .catch((error) => {
+        toast.error(
+          error instanceof Error ? error.message : "Unable to save entry"
+        );
+      });
+  };
+
+  useEffect(() => {
+    if (!sheetOpen || !editingEntry) {
+      setVersions([]);
+      return;
+    }
+    setVersionsLoading(true);
+    fetch(`/api/admin/rag/versions?entryId=${editingEntry.entry.id}`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Failed to load versions");
+        }
+        return res.json() as Promise<RagVersion[]>;
+      })
+      .then((data) => setVersions(data))
+      .catch(() => toast.error("Unable to load version history"))
+      .finally(() => setVersionsLoading(false));
+  }, [sheetOpen, editingEntry]);
+
+  const handleBulkStatus = (status: RagEntryStatus) => {
+    if (!selectedIds.length) {
+      toast.error("Select entries first");
+      return;
+    }
+    void runAction(
+      status === "active" ? "bulk-active" : "bulk-inactive",
+      `Changing selected entries to ${status}`,
+      () => bulkUpdateRagEntryStatusAction({ ids: selectedIds, status })
+    )
+      .then((updated) => {
+          setEntriesState((prev) =>
+            prev.map((item) => {
+              const match = updated.find((entry) => entry.id === item.entry.id);
+              return match ? serializeEntry(match, item) : item;
+            })
+          );
+          toast.success("Status updated");
+          setSelectedIds([]);
+        })
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to update status"
+        )
+      );
+  };
+
+  const handleArchiveSelected = () => {
+    if (!selectedIds.length) {
+      toast.error("Select entries first");
+      return;
+    }
+    void runAction("archive", "Archiving selected entries", () =>
+      deleteRagEntriesAction({ ids: selectedIds })
+    )
+        .then(() => {
+          setEntriesState((prev) =>
+            prev.map((item) =>
+              selectedIds.includes(item.entry.id)
+                ? {
+                    ...item,
+                    entry: {
+                      ...item.entry,
+                      status: "archived" as RagEntryStatus,
+                    },
+                  }
+                : item
+            )
+          );
+          toast.success("Entries archived");
+          setSelectedIds([]);
+        })
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to archive entries"
+        )
+      );
+  };
+
+  const handleRestoreEntry = (id: string) => {
+    void runAction("restore", "Restoring RAG entry", () =>
+      restoreRagEntryAction({ id })
+    )
+        .then(() => {
+          setEntriesState((prev) =>
+            prev.map((item) =>
+              item.entry.id === id
+                ? {
+                    ...item,
+                    entry: {
+                      ...item.entry,
+                      status: "inactive" as RagEntryStatus,
+                    },
+                  }
+                : item
+            )
+          );
+          toast.success("Entry restored");
+        })
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to restore entry"
+        )
+      );
+  };
+
+  const handleRestoreVersion = (versionId: string) => {
+    if (!editingEntry) {
+      return;
+    }
+    void runAction("restore-version", "Restoring RAG version", () =>
+      restoreRagVersionAction({ entryId: editingEntry.entry.id, versionId })
+    )
+        .then(() => {
+          toast.success("Version restored");
+          setSheetOpen(false);
+        })
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Unable to restore version"
+        )
+      );
+  };
+
+  const formatDate = (value: string | null) => {
+    if (!value) {
+      return "—";
+    }
+    return new Date(value).toLocaleString();
+  };
+
+  const toggleModel = (id: string) => {
+    setFormState((prev) => ({
+      ...prev,
+      models: prev.models.includes(id)
+        ? prev.models.filter((model) => model !== id)
+        : [...prev.models, id],
+    }));
+  };
+
+  const addTag = (tag: string) => {
+    const normalized = tag.trim().toLowerCase();
+    if (!normalized || formState.tags.includes(normalized)) {
+      return;
+    }
+    setFormState((prev) => ({ ...prev, tags: [...prev.tags, normalized] }));
+  };
+
+  const removeTag = (tag: string) => {
+    setFormState((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((value) => value !== tag),
+    }));
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      {progressVisible ? (
+        <div className="fixed inset-x-0 top-0 z-30 h-1 bg-border/50">
+          <div
+            className="h-full bg-primary transition-[width] duration-200"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      ) : null}
+
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-semibold text-2xl">RAG Knowledge Base</h1>
+          <p className="text-muted-foreground text-sm">
+            Curate general, study, and identity knowledge for retrieval-augmented conversations.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {QUICK_CREATE_SCOPES.map((item) => (
+            <Button
+              disabled={isActionPending}
+              key={item.scope}
+              onClick={() => openCreateSheet(item.scope)}
+              title={item.description}
+              type="button"
+              variant={item.scope === "default" ? "default" : "outline"}
+            >
+              <PlusIcon />
+              <span>{item.label}</span>
+            </Button>
+          ))}
+        </div>
+      </header>
+
+      {degradedSections.length > 0 ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+          RAG data is partially unavailable. Failed sections:{" "}
+          {degradedSections.join(", ")}. Existing database values were not
+          confirmed, so fallback counts and empty lists are not authoritative.
+        </div>
+      ) : null}
+
+      <AnalyticsSummary
+        analytics={analytics}
+        isDegraded={degradedSections.includes("RAG analytics")}
+      />
+
+      <section className="rounded-2xl border bg-card/60 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
+            className="max-w-xs"
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              setShowAllEntries(false);
+            }}
+            placeholder="Search title or content"
+            value={searchTerm}
+          />
+          <FilterGroup
+            label="Status"
+            onChange={(value) =>
+              {
+                setStatusFilter(value as RagEntryStatus | "all");
+                setShowAllEntries(false);
+              }
+            }
+            options={["all", ...STATUS_OPTIONS]}
+            value={statusFilter}
+          />
+          <FilterGroup
+            label="Type"
+            onChange={(value) =>
+              {
+                setTypeFilter(value as (typeof RAG_TYPES)[number] | "all");
+                setShowAllEntries(false);
+              }
+            }
+            options={["all", ...RAG_TYPES]}
+            value={typeFilter}
+          />
+          <select
+            className="rounded-full border px-3 py-1 text-sm"
+            onChange={(event) => {
+              setScopeFilter(event.target.value as RagScopeFilter);
+              setShowAllEntries(false);
+            }}
+            value={scopeFilter}
+          >
+            <option value="all">All scopes</option>
+            {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
+              <option key={scope} value={scope}>
+                {CHAT_SCOPE_LABELS[scope]}
+              </option>
+            ))}
+            <option value="legacy">Legacy / unscoped</option>
+          </select>
+          <select
+            className="rounded-full border px-3 py-1 text-sm"
+            onChange={(event) => {
+              setTagFilter(event.target.value);
+              setShowAllEntries(false);
+            }}
+            value={tagFilter}
+          >
+            <option value="all">All tags</option>
+            {availableTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+        </div>
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-muted-foreground">
+            Advanced model filter
+          </summary>
+          <div className="mt-2">
+            <select
+              className="rounded-full border px-3 py-1 text-sm"
+              onChange={(event) => {
+                setModelFilter(event.target.value);
+                setShowAllEntries(false);
+              }}
+              value={modelFilter}
+            >
+              <option value="all">All models</option>
+              {modelOptions.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </details>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
+            disabled={!selectedIds.length || isActionPending}
+            onClick={() => handleBulkStatus("active")}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {pendingAction === "bulk-active" ? (
+              <>
+                <LoaderIcon className="animate-spin" />
+                <span>Activating...</span>
+              </>
+            ) : (
+              "Activate"
+            )}
+          </Button>
+          <Button
+            disabled={!selectedIds.length || isActionPending}
+            onClick={() => handleBulkStatus("inactive")}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {pendingAction === "bulk-inactive" ? (
+              <>
+                <LoaderIcon className="animate-spin" />
+                <span>Deactivating...</span>
+              </>
+            ) : (
+              "Deactivate"
+            )}
+          </Button>
+          <Button
+            disabled={!selectedIds.length || isActionPending}
+            onClick={handleArchiveSelected}
+            size="sm"
+            type="button"
+            variant="destructive"
+          >
+            {pendingAction === "archive" ? (
+              <>
+                <LoaderIcon className="animate-spin" />
+                <span>Archiving...</span>
+              </>
+            ) : (
+              "Archive"
+            )}
+          </Button>
+          <p className="text-muted-foreground text-sm">
+            {selectedIds.length} selected
+          </p>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
+                <th className="w-10 px-2 py-2">
+                  <input
+                    aria-label="Select all"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    type="checkbox"
+                  />
+                </th>
+                <th className="px-2 py-2">Title</th>
+                <th className="px-2 py-2">Scope</th>
+                <th className="px-2 py-2">Category</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">Model restriction</th>
+                <th className="px-2 py-2">Tags</th>
+                <th className="px-2 py-2">Updated</th>
+                <th className="px-2 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filteredEntries.length === 0 ? (
+                <tr>
+                  <td
+                    className="px-2 py-6 text-center text-muted-foreground"
+                      colSpan={9}
+                    >
+                      {degradedSections.includes("RAG entries")
+                        ? "RAG entries could not be confirmed. Retry before treating this table as empty."
+                        : "No entries match your filters."}
+                    </td>
+                </tr>
+              ) : (
+                visibleEntries.map((item) => (
+                  <tr className="align-top" key={item.entry.id}>
+                    <td className="px-2 py-3">
+                      <input
+                        checked={selectedIds.includes(item.entry.id)}
+                        onChange={() => toggleSelection(item.entry.id)}
+                        type="checkbox"
+                      />
+                    </td>
+                    <td className="px-2 py-3">
+                      <div className="font-semibold">{item.entry.title}</div>
+                      <p className="line-clamp-2 text-muted-foreground text-xs">
+                        {item.entry.content}
+                      </p>
+                    </td>
+                    <td className="px-2 py-3">
+                      {item.entry.chatScope ? (
+                        <Badge variant="outline">
+                          {CHAT_SCOPE_LABELS[item.entry.chatScope]}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">
+                          Legacy / unscoped
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 py-3">
+                      {item.entry.categoryName ? (
+                        <Badge variant="secondary">
+                          {item.entry.categoryName}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">
+                          Uncategorized
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 py-3">
+                      <StatusBadge status={item.entry.status} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {item.entry.models.length === 0 ? (
+                          <Badge variant="outline">All models</Badge>
+                        ) : (
+                          item.entry.models.map((modelId) => {
+                            const model = modelOptions.find(
+                              (option) => option.id === modelId
+                            );
+                            return (
+                              <Badge key={modelId} variant="outline">
+                                {model?.label ?? "Model"}
+                              </Badge>
+                            );
+                          })
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {item.entry.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-muted-foreground text-xs">
+                      {formatDate(item.entry.updatedAt)}
+                    </td>
+                    <td className="px-2 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          onClick={() => openEditor(item)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Edit
+                        </Button>
+                        {item.entry.status === "archived" ? (
+                          <Button
+                            disabled={isActionPending}
+                            onClick={() => handleRestoreEntry(item.entry.id)}
+                            size="sm"
+                            type="button"
+                            variant="secondary"
+                          >
+                            {pendingAction === "restore" ? (
+                              <>
+                                <LoaderIcon className="animate-spin" />
+                                <span>Restoring...</span>
+                              </>
+                            ) : (
+                              "Restore"
+                            )}
+                          </Button>
+                        ) : null}
+                        <button
+                          aria-label="Mark for archive"
+                          className="rounded-full border p-1 text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                          onClick={() => toggleSelection(item.entry.id)}
+                          type="button"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {hiddenEntryCount > 0 ? (
+          <div className="mt-4 flex justify-end">
+            <Button
+              className="cursor-pointer"
+              onClick={() => setShowAllEntries((current) => !current)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {showAllEntries
+                ? "Show less"
+                : `Show more (${hiddenEntryCount})`}
+            </Button>
+          </div>
+        ) : null}
+      </section>
+
+      <Sheet
+        onOpenChange={(open) => {
+          setSheetOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        open={sheetOpen}
+      >
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>
+              {editingEntry ? "Update entry" : "Create entry"}
+            </SheetTitle>
+            <SheetDescription>
+              Provide descriptive titles, clean content, and rich tags to
+              improve match quality.
+            </SheetDescription>
+          </SheetHeader>
+          <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <Label htmlFor="rag-chat-scope">Knowledge scope</Label>
+              <select
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                id="rag-chat-scope"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    chatScope: event.target.value as RagChatScope | "",
+                  }))
+                }
+                value={formState.chatScope}
+              >
+                <option value="">Legacy / unscoped</option>
+                {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
+                  <option key={scope} value={scope}>
+                    {CHAT_SCOPE_LABELS[scope]}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-muted-foreground text-xs">
+                {formState.chatScope
+                  ? CHAT_SCOPE_DESCRIPTIONS[formState.chatScope]
+                  : "Legacy entries are not retrieved by new scoped chat flows until a scope is selected."}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="rag-category">Category</Label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select
+                  className="flex-1 rounded-md border px-3 py-2 text-sm"
+                  id="rag-category"
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      categoryId: event.target.value,
+                    }))
+                  }
+                  value={formState.categoryId}
+                >
+                  <option value="">Uncategorized</option>
+                  {categoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  disabled={isCreatingCategory}
+                  onClick={() => {
+                    setCategoryDialogOpen(true);
+                    setCategoryError("");
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  Add category
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="rag-title">Title</Label>
+              <Input
+                id="rag-title"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    title: event.target.value,
+                  }))
+                }
+                required
+                value={formState.title}
+              />
+            </div>
+            <div>
+              <Label htmlFor="rag-type">Content type</Label>
+              <select
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                id="rag-type"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    type: event.target.value as (typeof RAG_TYPES)[number],
+                  }))
+                }
+                value={formState.type}
+              >
+                {RAG_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="rag-status">Status</Label>
+              <select
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                id="rag-status"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    status: event.target.value as RagEntryStatus,
+                  }))
+                }
+                value={formState.status}
+              >
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="rag-source">Source URL (optional)</Label>
+              <Input
+                id="rag-source"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    sourceUrl: event.target.value,
+                  }))
+                }
+                placeholder="https://example.com/policy.pdf"
+                value={formState.sourceUrl}
+              />
+            </div>
+            <details className="rounded-lg border p-3">
+              <summary className="cursor-pointer font-medium text-sm">
+                Advanced: model restrictions (optional)
+              </summary>
+              <p className="mt-2 text-muted-foreground text-xs">
+                Leave empty to apply this knowledge to all enabled chat models.
+                Only choose models when the content is intentionally
+                model-specific.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {modelOptions.map((model) => {
+                  const checked = formState.models.includes(model.id);
+                  return (
+                    <button
+                      className={cn(
+                        "rounded-full border px-3 py-1 font-medium text-xs transition",
+                        checked
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-muted text-muted-foreground hover:border-primary/40"
+                      )}
+                      key={model.id}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        toggleModel(model.id);
+                      }}
+                      type="button"
+                    >
+                      {model.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+            <div>
+              <Label>Tags</Label>
+              <TagInput
+                onAdd={addTag}
+                onRemove={removeTag}
+                tags={formState.tags}
+              />
+            </div>
+            <div>
+              <Label htmlFor="rag-content">Content</Label>
+              <Textarea
+                className="h-48 resize-y"
+                id="rag-content"
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    content: event.target.value,
+                  }))
+                }
+                required
+                value={formState.content}
+              />
+            </div>
+            {editingEntry ? (
+              <VersionTimeline
+                isLoading={versionsLoading}
+                isRestoring={pendingAction === "restore-version"}
+                onRestore={handleRestoreVersion}
+                versions={versions}
+              />
+            ) : null}
+            <div className="flex items-center gap-2">
+              <Button disabled={isActionPending} type="submit">
+                {pendingAction === "submit" ? (
+                  <>
+                    <LoaderIcon className="animate-spin" />
+                    <span>{editingEntry ? "Saving..." : "Creating..."}</span>
+                  </>
+                ) : (
+                  <span>{editingEntry ? "Save changes" : "Create entry"}</span>
+                )}
+              </Button>
+              <Button
+                disabled={isActionPending}
+                onClick={() => {
+                  setSheetOpen(false);
+                  resetForm();
+                }}
+                type="button"
+                variant="ghost"
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </SheetContent>
+      </Sheet>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          setCategoryDialogOpen(open);
+          if (!open) {
+            setNewCategoryName("");
+            setCategoryError("");
+          }
+        }}
+        open={categoryDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create category</AlertDialogTitle>
+            <AlertDialogDescription>
+              Give this category a descriptive name. You can reuse it for future
+              entries.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="new-category-name">Category name</Label>
+            <Input
+              autoFocus
+              disabled={isCreatingCategory}
+              id="new-category-name"
+              onChange={(event) => {
+                setNewCategoryName(event.target.value);
+                setCategoryError("");
+              }}
+              placeholder="e.g. News, Study, FAQ"
+              value={newCategoryName}
+            />
+            {categoryError ? (
+              <p className="text-destructive text-xs">{categoryError}</p>
+            ) : null}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCreatingCategory}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isCreatingCategory}
+              onClick={(event) => {
+                event.preventDefault();
+                handleCreateCategory();
+              }}
+            >
+              {isCreatingCategory ? "Creating..." : "Create"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function AnalyticsSummary({
+  analytics,
+  isDegraded = false,
+}: {
+  analytics: RagAnalyticsSummary;
+  isDegraded?: boolean;
+}) {
+  if (isDegraded) {
+    const degradedCards = [
+      "Active entries",
+      "Inactive entries",
+      "Pending indexing",
+      "Top creator",
+    ];
+
+    return (
+      <section className="grid gap-3 md:grid-cols-4">
+        {degradedCards.map((label) => (
+          <div
+            className="rounded-2xl border bg-card/70 p-4 shadow-sm"
+            key={label}
+          >
+            <p className="text-muted-foreground text-xs uppercase tracking-wide">
+              {label}
+            </p>
+            <p className="font-semibold text-2xl">Unavailable</p>
+            <p className="text-muted-foreground text-xs">
+              Analytics read failed
+            </p>
+          </div>
+        ))}
+      </section>
+    );
+  }
+
+  const cards = [
+    {
+      label: "Active entries",
+      value: isDegraded ? "Unavailable" : analytics.activeEntries.toLocaleString(),
+      description: isDegraded
+        ? "Analytics read failed"
+        : `${analytics.totalEntries.toLocaleString()} total`,
+    },
+    {
+      label: "Inactive entries",
+      value: isDegraded
+        ? "Unavailable"
+        : analytics.inactiveEntries.toLocaleString(),
+      description: isDegraded
+        ? "Analytics read failed"
+        : `${analytics.archivedEntries.toLocaleString()} archived`,
+    },
+    {
+      label: "Pending indexing",
+      value: isDegraded
+        ? "Unavailable"
+        : analytics.pendingEmbeddings.toLocaleString(),
+      description: isDegraded ? "Analytics read failed" : "Needs syncing",
+    },
+    {
+      label: "Top creator",
+      value: analytics.creatorStats[0]?.name ?? "—",
+      description: analytics.creatorStats[0]
+        ? `${analytics.creatorStats[0].entryCount} entries`
+        : "Invite teammates",
+    },
+  ];
+
+  return (
+    <section className="grid gap-3 md:grid-cols-4">
+      {cards.map((card) => (
+        <div
+          className="rounded-2xl border bg-card/70 p-4 shadow-sm"
+          key={card.label}
+        >
+          <p className="text-muted-foreground text-xs uppercase tracking-wide">
+            {card.label}
+          </p>
+          <p className="font-semibold text-2xl">{card.value}</p>
+          <p className="text-muted-foreground text-xs">{card.description}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function FilterGroup({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-muted-foreground text-xs uppercase">{label}</span>
+      <div className="flex rounded-full border">
+        {options.map((option) => {
+          const isActive = option === value;
+          return (
+            <button
+              className={cn(
+                "px-3 py-1 font-medium text-xs transition",
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-primary"
+              )}
+              key={option}
+              onClick={() => onChange(option)}
+              type="button"
+            >
+              {option}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: RagEntryStatus }) {
+  const variants: Record<RagEntryStatus, string> = {
+    active: "bg-green-100 text-green-700",
+    inactive: "bg-amber-100 text-amber-700",
+    archived: "bg-muted text-muted-foreground",
+  };
+
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 text-xs", variants[status])}>
+      {status}
+    </span>
+  );
+}
+
+function TagInput({
+  tags,
+  onAdd,
+  onRemove,
+}: {
+  tags: string[];
+  onAdd: (tag: string) => void;
+  onRemove: (tag: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {tags.map((tag) => (
+          <Badge className="gap-1" key={tag} variant="secondary">
+            {tag}
+            <button onClick={() => onRemove(tag)} type="button">
+              ×
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <Input
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            onAdd(draft);
+            setDraft("");
+          }
+        }}
+        placeholder="Add tag and press Enter"
+        value={draft}
+      />
+    </div>
+  );
+}
+
+function VersionTimeline({
+  versions,
+  isLoading,
+  isRestoring,
+  onRestore,
+}: {
+  versions: RagVersion[];
+  isLoading: boolean;
+  isRestoring: boolean;
+  onRestore: (versionId: string) => void;
+}) {
+  const PAGE_SIZE = 3;
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+  }, []);
+
+  const totalPages = Math.max(1, Math.ceil(versions.length / PAGE_SIZE));
+  const startIndex = page * PAGE_SIZE;
+  const visibleVersions = versions.slice(startIndex, startIndex + PAGE_SIZE);
+
+  return (
+    <div className="rounded-xl border p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <SparklesIcon />
+        <span className="font-semibold">Version history</span>
+      </div>
+      {isLoading ? (
+        <p className="flex items-center gap-2 text-muted-foreground text-sm">
+          <LoaderIcon /> Loading versions…
+        </p>
+      ) : versions.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No versions recorded yet.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-2 pr-1">
+            {visibleVersions.map((version) => (
+              <li className="rounded-lg border p-2" key={version.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-sm">
+                      Version {version.version}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {new Date(version.createdAt).toLocaleString()} ·{" "}
+                      {version.editorName ?? "System"}
+                    </p>
+                    {version.changeSummary ? (
+                      <p className="text-muted-foreground text-xs">
+                        {version.changeSummary}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Button
+                    disabled={isRestoring}
+                    onClick={() => onRestore(version.id)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {isRestoring ? (
+                      <>
+                        <LoaderIcon className="animate-spin" />
+                        <span>Restoring...</span>
+                      </>
+                    ) : (
+                      "Restore"
+                    )}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {versions.length > PAGE_SIZE ? (
+            <div className="mt-2 flex items-center justify-between text-muted-foreground text-xs">
+              <Button
+                disabled={page === 0}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Previous
+              </Button>
+              <span>
+                Page {page + 1} of {totalPages}
+              </span>
+              <Button
+                disabled={page >= totalPages - 1}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages - 1, current + 1))
+                }
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}

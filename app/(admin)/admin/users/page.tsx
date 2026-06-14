@@ -1,66 +1,191 @@
-import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } from "@/app/(admin)/actions";
+import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
-import { InfoIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
+import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import {
-  getUserBalanceSummary,
-  listPricingPlans,
-  listUserCreditHistory,
-  listUsers,
-  type CreditHistoryEntry,
+  type AdminQueryResult,
+  adminQueryResult,
+} from "@/lib/admin/safe-query";
+import {
+  type AdminUsersPageSnapshot,
+  type AdminUsersSnapshot,
+  getAdminUsersPageSnapshot,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { formatDistanceToNow } from "date-fns";
+import { AddCreditsForm } from "./add-credits-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage() {
+const ADMIN_USERS_QUERY_TIMEOUT_MS = 5000;
+const USERS_PAGE_SIZE = 25;
+
+const EMPTY_ADMIN_USERS_SNAPSHOT: AdminUsersSnapshot = {
+  totalUsers: 0,
+  users: [],
+};
+const EMPTY_ADMIN_USERS_PAGE_SNAPSHOT: AdminUsersPageSnapshot = {
+  ...EMPTY_ADMIN_USERS_SNAPSHOT,
+  activeSubscriptions: [],
+  balanceByUserId: new Map<string, UserBalanceSummary>(),
+};
+
+function parsePage(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(rawValue ?? "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await auth();
   const currentUserId = session?.user?.id;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedPage = parsePage(resolvedSearchParams?.page);
+  const offset = (requestedPage - 1) * USERS_PAGE_SIZE;
 
-  const [users, plans] = await Promise.all([
-    listUsers({ limit: 100 }),
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
-  ]);
+  const withQueryState = async <T,>(
+    label: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
+    adminQueryResult({
+      fallback,
+      label,
+      promise,
+      timeoutMs: ADMIN_USERS_QUERY_TIMEOUT_MS,
+    });
 
-  const planNameById = new Map(plans.map((plan) => [plan.id, plan.name]));
-  const userEmailById = new Map(users.map((user) => [user.id, user.email]));
-
-  const usersWithData = await Promise.all(
-    users.map(async (user) => {
-      const [balance, history] = await Promise.all([
-        getUserBalanceSummary(user.id),
-        listUserCreditHistory({ userId: user.id, limit: 8 }),
-      ]);
-
-      return { user, balance, history };
-    })
+  const usersPageSnapshotState = await withQueryState(
+    "users.page-snapshot",
+    getAdminUsersPageSnapshot({
+      limit: USERS_PAGE_SIZE,
+      offset,
+    }),
+    EMPTY_ADMIN_USERS_PAGE_SNAPSHOT
   );
 
-  const getPlanName = (planId: string | null | undefined) =>
-    planId ? planNameById.get(planId) ?? null : null;
-  const getUserEmail = (userId: string | null | undefined) =>
-    userId ? userEmailById.get(userId) ?? null : null;
+  const totalUsers = usersPageSnapshotState.data.totalUsers;
+  const totalPages = usersPageSnapshotState.ok
+    ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
+    : requestedPage;
+  const page = usersPageSnapshotState.ok
+    ? Math.min(requestedPage, totalPages)
+    : requestedPage;
+  const pageOffset = (page - 1) * USERS_PAGE_SIZE;
+  const pagedUsersState =
+    pageOffset === offset || !usersPageSnapshotState.ok
+      ? usersPageSnapshotState
+      : await withQueryState(
+          "users.corrected-page-snapshot",
+          getAdminUsersPageSnapshot({
+            limit: USERS_PAGE_SIZE,
+            offset: pageOffset,
+          }),
+          EMPTY_ADMIN_USERS_PAGE_SNAPSHOT
+        );
+  const pagedUsers = pagedUsersState.data.users;
+  const balanceByUserIdState: AdminQueryResult<Map<string, UserBalanceSummary>> =
+    pagedUsersState.ok
+      ? {
+          data: pagedUsersState.data.balanceByUserId,
+          error: null,
+          ok: true,
+        }
+      : {
+          data: new Map<string, UserBalanceSummary>(),
+          error: pagedUsersState.error,
+          ok: false,
+        };
+  const activeSubscriptionsState: AdminQueryResult<
+    AdminUsersPageSnapshot["activeSubscriptions"]
+  > = pagedUsersState.ok
+    ? {
+        data: pagedUsersState.data.activeSubscriptions,
+        error: null,
+        ok: true,
+      }
+    : {
+        data: [],
+        error: pagedUsersState.error,
+        ok: false,
+      };
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">User management</h2>
+          <h2 className="font-semibold text-xl">User management</h2>
           <p className="text-muted-foreground text-sm">
             Promote admins, suspend accounts, and monitor roles.
           </p>
         </div>
+        <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
+          {pagedUsersState.ok
+            ? `${totalUsers.toLocaleString()} users`
+            : "User count unavailable"}
+        </span>
       </header>
 
+      {!pagedUsersState.ok && (
+        <AdminUsersQueryWarning
+          message="User list and count could not be confirmed."
+        />
+      )}
+
+      <Suspense fallback={<UsersTableFallback />}>
+        <UsersTableSection
+          balanceByUserIdState={balanceByUserIdState}
+          currentUserId={currentUserId}
+          page={page}
+          pagedUsers={pagedUsers}
+          resolvedSearchParams={resolvedSearchParams}
+          totalUsers={totalUsers}
+          totalUsersConfirmed={pagedUsersState.ok}
+          usersConfirmed={pagedUsersState.ok}
+        />
+      </Suspense>
+
+      <Suspense fallback={<SubscriptionsFallback />}>
+        <ActiveSubscriptionsSection
+          activeSubscriptionsState={activeSubscriptionsState}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+async function UsersTableSection({
+  balanceByUserIdState,
+  currentUserId,
+  page,
+  pagedUsers,
+  resolvedSearchParams,
+  totalUsers,
+  totalUsersConfirmed,
+  usersConfirmed,
+}: {
+  balanceByUserIdState: AdminQueryResult<Map<string, UserBalanceSummary>>;
+  currentUserId: string | undefined;
+  page: number;
+  pagedUsers: AdminUsersSnapshot["users"];
+  resolvedSearchParams: Record<string, string | string[] | undefined> | undefined;
+  totalUsers: number;
+  totalUsersConfirmed: boolean;
+  usersConfirmed: boolean;
+}) {
+  const balanceByUserId = balanceByUserIdState.data;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      {!balanceByUserIdState.ok && (
+        <AdminUsersQueryWarning message="Credit balances could not be confirmed. Rows keep credit actions available, but balances are shown as unavailable instead of zero." />
+      )}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full whitespace-nowrap text-sm">
           <thead className="text-muted-foreground text-xs uppercase">
             <tr>
               <th className="py-3 text-left">Email</th>
@@ -70,44 +195,147 @@ export default async function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {usersWithData.map(({ user, balance, history }) => (
-              <tr key={user.id} className="border-t text-sm">
-                <td className="py-3">{user.email}</td>
-                <td className="py-3 capitalize">{user.role}</td>
-                <td className="py-3">
-                  {user.isActive ? (
-                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
-                      Suspended
-                    </span>
-                  )}
-                </td>
-                <td className="py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <RoleToggleForm
-                      currentRole={user.role as UserRole}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
-                    />
-                    <StatusToggleForm
-                      isActive={user.isActive}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
-                    />
-                    <AddCreditsForm
-                      balance={balance}
-                      getPlanName={getPlanName}
-                      getUserEmail={getUserEmail}
-                      history={history}
-                      userId={user.id}
-                    />
-                  </div>
+            {!usersConfirmed ? (
+              <tr>
+                <td className="py-6 text-muted-foreground" colSpan={4}>
+                  Unable to load users for this page.
                 </td>
               </tr>
-            ))}
+            ) : pagedUsers.length === 0 ? (
+              <tr>
+                <td className="py-6 text-muted-foreground" colSpan={4}>
+                  No users found.
+                </td>
+              </tr>
+            ) : (
+              pagedUsers.map((user) => (
+                <tr className="border-t text-sm" key={user.id}>
+                  <td className="py-3">{user.email}</td>
+                  <td className="py-3 capitalize">{user.role}</td>
+                  <td className="py-3">
+                    {user.isActive ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
+                        Active
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
+                        Suspended
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3">
+                    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
+                      <AdminUserActionsMenu
+                        allowPersonalKnowledge={Boolean(
+                          user.allowPersonalKnowledge
+                        )}
+                        currentRole={user.role as UserRole}
+                        isActive={user.isActive}
+                        isSelf={user.id === currentUserId}
+                        userId={user.id}
+                      />
+                      <AddCreditsForm
+                        creditsRemaining={
+                          balanceByUserIdState.ok
+                            ? balanceByUserId.get(user.id)?.creditsRemaining ?? 0
+                            : null
+                        }
+                        userId={user.id}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4">
+        <AdminPagination
+          itemLabel="users"
+          page={page}
+          pageSize={USERS_PAGE_SIZE}
+          pathname="/admin/users"
+          searchParams={resolvedSearchParams}
+          totalItems={totalUsersConfirmed ? totalUsers : pagedUsers.length}
+        />
+      </div>
+    </div>
+  );
+}
+
+async function ActiveSubscriptionsSection({
+  activeSubscriptionsState,
+}: {
+  activeSubscriptionsState: AdminQueryResult<
+    AdminUsersPageSnapshot["activeSubscriptions"]
+  >;
+}) {
+  const activeSubscriptions = activeSubscriptionsState.data;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-base">Active subscriptions</h3>
+          <p className="text-muted-foreground text-sm">
+            Recent users with active plans and their remaining balances.
+          </p>
+        </div>
+      </div>
+      {!activeSubscriptionsState.ok && (
+        <AdminUsersQueryWarning message="Active subscriptions could not be confirmed. Existing rows are hidden until this section loads real data." />
+      )}
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="text-muted-foreground text-xs uppercase">
+            <tr>
+              <th className="py-2 text-left">User</th>
+              <th className="py-2 text-left">Plan</th>
+              <th className="py-2 text-right">Tokens left</th>
+              <th className="py-2 text-right">Expires</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!activeSubscriptionsState.ok ? (
+              <tr>
+                <td className="py-4 text-muted-foreground" colSpan={4}>
+                  Unable to load active subscriptions.
+                </td>
+              </tr>
+            ) : activeSubscriptions.length === 0 ? (
+              <tr>
+                <td className="py-4 text-muted-foreground" colSpan={4}>
+                  No active subscriptions yet.
+                </td>
+              </tr>
+            ) : (
+              activeSubscriptions.map((subscription) => (
+                <tr className="border-t" key={subscription.subscriptionId}>
+                  <td className="py-2 font-mono text-xs">
+                    {subscription.userEmail}
+                  </td>
+                  <td className="py-2">
+                    {subscription.planName ?? "Plan removed"}
+                  </td>
+                  <td className="py-2 text-right">
+                    {subscription.tokenBalance.toLocaleString()} /{" "}
+                    {subscription.tokenAllowance.toLocaleString()}
+                  </td>
+                  <td className="py-2 text-right">
+                    {new Date(subscription.expiresAt).toLocaleDateString(
+                      "en-IN",
+                      {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      }
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -115,206 +343,40 @@ export default async function AdminUsersPage() {
   );
 }
 
-function RoleToggleForm({
-  userId,
-  currentRole,
-  isSelf,
-}: {
-  userId: string;
-  currentRole: UserRole;
-  isSelf: boolean;
-}) {
-  const nextRole: UserRole = currentRole === "admin" ? "regular" : "admin";
-  const label = currentRole === "admin" ? "Revoke admin" : "Promote to admin";
-
+function AdminUsersQueryWarning({ message }: { message: string }) {
   return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserRoleAction({ userId, role: nextRole });
-      }}
-    >
-      <Button disabled={isSelf} size="sm" type="submit" variant="outline">
-        {label}
-      </Button>
-    </form>
-  );
-}
-
-function AddCreditsForm({
-  userId,
-  balance,
-  history,
-  getPlanName,
-  getUserEmail,
-}: {
-  userId: string;
-  balance: UserBalanceSummary;
-  history: CreditHistoryEntry[];
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const creditsRemaining = balance.creditsRemaining;
-  const creditsLabel = `${creditsRemaining.toLocaleString()} credits available`;
-
-  return (
-    <form
-      action={grantUserCreditsAction}
-      className="flex flex-wrap items-center gap-2"
-    >
-      <input name="userId" type="hidden" value={userId} />
-      <input name="billingCycleDays" type="hidden" value="90" />
-      <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-        <span>{creditsLabel}</span>
-        <CreditHistoryButton
-          getPlanName={getPlanName}
-          getUserEmail={getUserEmail}
-          history={history}
-        />
-      </div>
-      <input
-        aria-label="Credits to grant"
-        className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm"
-        min={0}
-        name="credits"
-        placeholder="Credits"
-        required
-        step="0.5"
-        type="number"
-      />
-      <Button size="sm" type="submit" variant="secondary">
-        Add credits
-      </Button>
-    </form>
-  );
-}
-
-function CreditHistoryButton({
-  history,
-  getPlanName,
-  getUserEmail,
-}: {
-  history: CreditHistoryEntry[];
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const hasHistory = history.length > 0;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-background/60 hover:text-foreground"
-          type="button"
-        >
-          <InfoIcon size={10} />
-          <span className="sr-only">View credit history</span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="w-80 max-h-64 space-y-2 overflow-y-auto p-3"
-        side="top"
-      >
-        {hasHistory ? (
-          history.map((entry) => (
-            <CreditHistoryItem
-              entry={entry}
-              getPlanName={getPlanName}
-              getUserEmail={getUserEmail}
-              key={entry.id}
-            />
-          ))
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No credit activity recorded yet.
-          </p>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function CreditHistoryItem({
-  entry,
-  getPlanName,
-  getUserEmail,
-}: {
-  entry: CreditHistoryEntry;
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const createdAt = entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
-  const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
-  const target = (entry.target ?? {}) as Record<string, unknown>;
-
-  let description = entry.action;
-
-  if (entry.action === "billing.manual_credit.grant") {
-    const credits = typeof metadata.credits === "number" ? metadata.credits : null;
-    const tokens = typeof metadata.tokens === "number" ? metadata.tokens : null;
-    const expiresInDays = typeof metadata.expiresInDays === "number" ? metadata.expiresInDays : null;
-    const actor = getUserEmail(entry.actorId) ?? "Admin";
-
-    const parts = [
-      `${actor} granted${credits !== null ? ` ${credits.toLocaleString()} credits` : ""}`,
-    ];
-    if (tokens !== null) {
-      parts.push(`(${tokens.toLocaleString()} tokens)`);
-    }
-    if (expiresInDays !== null) {
-      parts.push(`expires in ${expiresInDays} day${expiresInDays === 1 ? "" : "s"}`);
-    }
-    description = parts.join(" • ");
-  } else if (entry.action === "billing.recharge") {
-    const planId = (metadata.planId ?? target.planId) as string | undefined;
-    const planName = getPlanName(planId) ?? planId ?? "Plan";
-    description = `User activated ${planName}`;
-  }
-
-  return (
-    <div className="rounded-md border bg-background p-2 shadow-sm">
-      <p className="text-xs font-medium text-foreground">{description}</p>
-      <p className="text-[11px] text-muted-foreground">
-        {formatDistanceToNow(createdAt, { addSuffix: true })}
-      </p>
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {message} Refresh this admin section to retry.
     </div>
   );
 }
 
-function StatusToggleForm({
-  userId,
-  isActive,
-  isSelf,
-}: {
-  userId: string;
-  isActive: boolean;
-  isSelf: boolean;
-}) {
+function UsersTableFallback() {
   return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserActiveStateAction({ userId, isActive: !isActive });
-      }}
-    >
-      <Button
-        disabled={isSelf}
-        size="sm"
-        type="submit"
-        variant={isActive ? "destructive" : "secondary"}
-      >
-        {isActive ? "Suspend" : "Restore"}
-      </Button>
-    </form>
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <div className="space-y-3">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div
+            className="h-12 animate-pulse rounded-lg bg-muted/50"
+            key={`users-row-${index + 1}`}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
-
-
+function SubscriptionsFallback() {
+  return (
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <div className="space-y-3">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div
+            className="h-10 animate-pulse rounded-lg bg-muted/50"
+            key={`subscriptions-row-${index + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

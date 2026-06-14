@@ -1,4 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -13,13 +14,17 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AppUsage } from "../usage";
 
-export const userRoleEnum = pgEnum("user_role", ["regular", "admin"]);
+export const userRoleEnum = pgEnum("user_role", [
+  "regular",
+  "creator",
+  "admin",
+]);
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
 export const authProviderEnum = pgEnum("auth_provider", [
@@ -39,19 +44,81 @@ export const user = pgTable(
       .notNull()
       .default("credentials"),
     isActive: boolean("isActive").notNull().default(true),
+    allowPersonalKnowledge: boolean("allowPersonalKnowledge")
+      .notNull()
+      .default(false),
     image: text("image"),
     firstName: varchar("firstName", { length: 64 }),
     lastName: varchar("lastName", { length: 64 }),
     dateOfBirth: date("dateOfBirth"),
+    locationLatitude: doublePrecision("locationLatitude"),
+    locationLongitude: doublePrecision("locationLongitude"),
+    locationAccuracy: doublePrecision("locationAccuracy"),
+    locationUpdatedAt: timestamp("locationUpdatedAt"),
+    locationConsent: boolean("locationConsent").notNull().default(false),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
     createdAtIdx: index("User_createdAt_idx").on(table.createdAt),
+    emailLowerIdx: uniqueIndex("User_email_lower_idx").on(
+      sql`lower(${table.email})`
+    ),
   })
 );
 
 export type User = InferSelectModel<typeof user>;
+
+export const userPresence = pgTable(
+  "UserPresence",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" })
+      .primaryKey(),
+    lastSeenAt: timestamp("lastSeenAt").notNull().defaultNow(),
+    lastPath: varchar("lastPath", { length: 200 }),
+    device: varchar("device", { length: 32 }),
+    locale: varchar("locale", { length: 32 }),
+    timezone: varchar("timezone", { length: 64 }),
+    city: varchar("city", { length: 128 }),
+    region: varchar("region", { length: 128 }),
+    country: varchar("country", { length: 32 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    lastSeenIdx: index("UserPresence_lastSeenAt_idx").on(table.lastSeenAt),
+    countryIdx: index("UserPresence_country_idx").on(table.country),
+    regionIdx: index("UserPresence_region_idx").on(table.region),
+    cityIdx: index("UserPresence_city_idx").on(table.city),
+  })
+);
+
+export type UserPresence = InferSelectModel<typeof userPresence>;
+
+export const userProfileImage = pgTable(
+  "UserProfileImage",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    imageUrl: text("imageUrl").notNull(),
+    source: text("source").notNull().default("upload"),
+    isActive: boolean("isActive").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    activeIdx: uniqueIndex("UserProfileImage_active_idx")
+      .on(table.userId)
+      .where(sql`${table.isActive} = true`),
+    userIdx: index("UserProfileImage_user_idx").on(table.userId),
+    createdAtIdx: index("UserProfileImage_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type UserProfileImage = InferSelectModel<typeof userProfileImage>;
 
 export const emailVerificationToken = pgTable(
   "EmailVerificationToken",
@@ -114,12 +181,8 @@ export const modelConfig = pgTable("ModelConfig", {
   config: jsonb("config"),
   isEnabled: boolean("isEnabled").notNull().default(true),
   isDefault: boolean("isDefault").notNull().default(false),
-  inputCostPerMillion: doublePrecision("inputCostPerMillion")
-    .notNull()
-    .default(0),
-  outputCostPerMillion: doublePrecision("outputCostPerMillion")
-    .notNull()
-    .default(0),
+  isMarginBaseline: boolean("isMarginBaseline").notNull().default(false),
+  freeMessagesPerDay: integer("freeMessagesPerDay").notNull().default(3),
   inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
     .notNull()
     .default(0),
@@ -133,6 +196,289 @@ export const modelConfig = pgTable("ModelConfig", {
 
 export type ModelConfig = InferSelectModel<typeof modelConfig>;
 
+export const imageModelConfig = pgTable(
+  "ImageModelConfig",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    key: varchar("key", { length: 64 }).notNull().unique(),
+    provider: modelProviderEnum("provider").notNull(),
+    providerModelId: varchar("providerModelId", { length: 128 }).notNull(),
+    displayName: varchar("displayName", { length: 128 }).notNull(),
+    description: text("description").notNull().default(""),
+    config: jsonb("config"),
+    priceInPaise: integer("priceInPaise").notNull().default(0),
+    tokensPerImage: integer("tokensPerImage").notNull().default(100),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    isActive: boolean("isActive").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  (table) => ({
+    activeIdx: uniqueIndex("ImageModelConfig_active_idx")
+      .on(table.isActive)
+      .where(sql`${table.isActive} = true`),
+  })
+);
+
+export type ImageModelConfig = InferSelectModel<typeof imageModelConfig>;
+
+export const liveVoiceModelConfig = pgTable(
+  "LiveVoiceModelConfig",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    key: varchar("key", { length: 64 }).notNull().unique(),
+    provider: modelProviderEnum("provider").notNull(),
+    providerModelId: varchar("providerModelId", { length: 128 }).notNull(),
+    displayName: varchar("displayName", { length: 128 }).notNull(),
+    description: text("description").notNull().default(""),
+    systemInstruction: text("systemInstruction").notNull().default(""),
+    voiceName: varchar("voiceName", { length: 64 }).notNull().default("Zephyr"),
+    mediaResolution: varchar("mediaResolution", { length: 64 })
+      .notNull()
+      .default("MEDIA_RESOLUTION_MEDIUM"),
+    creditMultiplier: doublePrecision("creditMultiplier")
+      .notNull()
+      .default(3),
+    inputProviderCostPerMillion: doublePrecision("inputProviderCostPerMillion")
+      .notNull()
+      .default(0),
+    outputProviderCostPerMillion: doublePrecision("outputProviderCostPerMillion")
+      .notNull()
+      .default(0),
+    config: jsonb("config"),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    enabledOnWeb: boolean("enabledOnWeb").notNull().default(true),
+    enabledOnNative: boolean("enabledOnNative").notNull().default(true),
+    isDefault: boolean("isDefault").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  (table) => ({
+    defaultIdx: uniqueIndex("LiveVoiceModelConfig_default_idx")
+      .on(table.isDefault)
+      .where(sql`${table.isDefault} = true AND ${table.deletedAt} IS NULL`),
+    webIdx: index("LiveVoiceModelConfig_web_idx").on(
+      table.isEnabled,
+      table.enabledOnWeb,
+      table.deletedAt
+    ),
+    nativeIdx: index("LiveVoiceModelConfig_native_idx").on(
+      table.isEnabled,
+      table.enabledOnNative,
+      table.deletedAt
+    ),
+  })
+);
+
+export type LiveVoiceModelConfig = InferSelectModel<
+  typeof liveVoiceModelConfig
+>;
+
+export type CharacterRefImage = {
+  imageId?: string | null;
+  storageKey?: string | null;
+  url?: string | null;
+  mimeType: string;
+  role?: string | null;
+  isPrimary?: boolean | null;
+  updatedAt?: string | null;
+};
+
+export const character = pgTable(
+  "Character",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    canonicalName: text("canonicalName").notNull(),
+    aliases: text("aliases").array().notNull().default(sql`ARRAY[]::text[]`),
+    refImages: jsonb("refImages")
+      .$type<CharacterRefImage[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    lockedPrompt: text("lockedPrompt"),
+    negativePrompt: text("negativePrompt"),
+    gender: text("gender"),
+    height: text("height"),
+    weight: text("weight"),
+    complexion: text("complexion"),
+    priority: integer("priority").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    canonicalNameIdx: index("Character_canonicalName_idx").on(
+      sql`lower(${table.canonicalName})`
+    ),
+    enabledIdx: index("Character_enabled_idx").on(table.enabled),
+    updatedAtIdx: index("Character_updatedAt_idx").on(table.updatedAt),
+  })
+);
+
+export type Character = InferSelectModel<typeof character>;
+
+export const characterAliasIndex = pgTable(
+  "CharacterAliasIndex",
+  {
+    aliasNormalized: text("aliasNormalized").primaryKey().notNull(),
+    characterId: uuid("characterId")
+      .notNull()
+      .references(() => character.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    characterIdx: index("CharacterAliasIndex_character_idx").on(
+      table.characterId
+    ),
+  })
+);
+
+export type CharacterAliasIndex = InferSelectModel<typeof characterAliasIndex>;
+
+export const ragEntryTypeEnum = pgEnum("rag_entry_type", [
+  "text",
+  "document",
+  "image",
+  "audio",
+  "video",
+  "link",
+  "data",
+]);
+export type RagEntryType = (typeof ragEntryTypeEnum.enumValues)[number];
+
+export const ragEntryStatusEnum = pgEnum("rag_entry_status", [
+  "active",
+  "inactive",
+  "archived",
+]);
+export type RagEntryStatus = (typeof ragEntryStatusEnum.enumValues)[number];
+
+export const ragEntryApprovalStatusEnum = pgEnum("rag_entry_approval_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+export type RagEntryApprovalStatus =
+  (typeof ragEntryApprovalStatusEnum.enumValues)[number];
+
+export const ragEmbeddingStatusEnum = pgEnum("rag_embedding_status", [
+  "pending",
+  "ready",
+  "failed",
+  "queued",
+]);
+export type RagEmbeddingStatus =
+  (typeof ragEmbeddingStatusEnum.enumValues)[number];
+
+export const ragCategory = pgTable(
+  "RagCategory",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    name: text("name").notNull().unique(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    nameIdx: uniqueIndex("RagCategory_name_idx").on(table.name),
+  })
+);
+
+export type RagCategory = InferSelectModel<typeof ragCategory>;
+
+export const ragEntry = pgTable(
+  "RagEntry",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    type: ragEntryTypeEnum("type").notNull().default("text"),
+    tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    sourceUrl: text("sourceUrl"),
+    categoryId: uuid("categoryId").references(() => ragCategory.id, {
+      onDelete: "set null",
+    }),
+    status: ragEntryStatusEnum("status").notNull().default("inactive"),
+    models: text("models").array().notNull().default(sql`ARRAY[]::text[]`),
+    addedBy: uuid("addedBy")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    personalForUserId: uuid("personalForUserId").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    approvalStatus: ragEntryApprovalStatusEnum("approvalStatus")
+      .notNull()
+      .default("approved"),
+    approvedBy: uuid("approvedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+    version: integer("version").notNull().default(1),
+    deletedAt: timestamp("deletedAt"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    embeddingStatus: ragEmbeddingStatusEnum("embeddingStatus")
+      .notNull()
+      .default("pending"),
+    embeddingModel: text("embeddingModel"),
+    embeddingDimensions: integer("embeddingDimensions"),
+    embeddingUpdatedAt: timestamp("embeddingUpdatedAt"),
+    embeddingError: text("embeddingError"),
+    supabaseVectorId: uuid("supabaseVectorId"),
+  },
+  (table) => ({
+    statusIdx: index("RagEntry_status_idx").on(table.status),
+    addedByIdx: index("RagEntry_addedBy_idx").on(table.addedBy),
+    personalForUserIdx: index("RagEntry_personalForUser_idx").on(
+      table.personalForUserId
+    ),
+    approvalStatusIdx: index("RagEntry_approvalStatus_idx").on(
+      table.approvalStatus
+    ),
+    createdAtIdx: index("RagEntry_createdAt_idx").on(table.createdAt),
+    categoryIdx: index("RagEntry_category_idx").on(table.categoryId),
+  })
+);
+
+export type RagEntry = InferSelectModel<typeof ragEntry>;
+
+export const ragEntryVersion = pgTable(
+  "RagEntryVersion",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    ragEntryId: uuid("ragEntryId")
+      .notNull()
+      .references(() => ragEntry.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    type: ragEntryTypeEnum("type").notNull(),
+    status: ragEntryStatusEnum("status").notNull(),
+    approvalStatus: ragEntryApprovalStatusEnum("approvalStatus").notNull(),
+    personalForUserId: uuid("personalForUserId").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    approvedBy: uuid("approvedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    models: text("models").array().notNull().default(sql`ARRAY[]::text[]`),
+    sourceUrl: text("sourceUrl"),
+    categoryId: uuid("categoryId"),
+    diff: jsonb("diff").notNull().default(sql`'{}'::jsonb`),
+    changeSummary: text("changeSummary"),
+    editorId: uuid("editorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    ragEntryVersionIdx: index("RagEntryVersion_entry_idx").on(table.ragEntryId),
+  })
+);
+
+export type RagEntryVersion = InferSelectModel<typeof ragEntryVersion>;
+
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "active",
   "expired",
@@ -145,6 +491,7 @@ export const pricingPlan = pgTable("PricingPlan", {
   name: varchar("name", { length: 128 }).notNull(),
   description: text("description"),
   priceInPaise: integer("priceInPaise").notNull(),
+  androidProductId: varchar("androidProductId", { length: 191 }),
   tokenAllowance: integer("tokenAllowance").notNull(),
   billingCycleDays: integer("billingCycleDays").notNull(),
   isActive: boolean("isActive").notNull().default(true),
@@ -154,6 +501,37 @@ export const pricingPlan = pgTable("PricingPlan", {
 });
 
 export type PricingPlan = InferSelectModel<typeof pricingPlan>;
+
+export const coupon = pgTable(
+  "Coupon",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    code: varchar("code", { length: 64 }).notNull(),
+    discountPercentage: integer("discountPercentage").notNull(),
+    creatorRewardPercentage: integer("creatorRewardPercentage")
+      .notNull()
+      .default(0),
+    creatorRewardStatus: varchar("creatorRewardStatus", { length: 16 })
+      .notNull()
+      .default("pending"),
+    creatorId: uuid("creatorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    validFrom: timestamp("validFrom").notNull().defaultNow(),
+    validTo: timestamp("validTo"),
+    isActive: boolean("isActive").notNull().default(true),
+    description: text("description"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex("Coupon_code_idx").on(table.code),
+    creatorIdx: index("Coupon_creator_idx").on(table.creatorId),
+    createdAtIdx: index("Coupon_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type Coupon = InferSelectModel<typeof coupon>;
 
 export const paymentTransactionStatusEnum = pgEnum(
   "payment_transaction_status",
@@ -170,11 +548,21 @@ export const paymentTransaction = pgTable(
     planId: uuid("planId")
       .notNull()
       .references(() => pricingPlan.id, { onDelete: "restrict" }),
-    status: paymentTransactionStatusEnum("status")
-      .notNull()
-      .default("pending"),
+    couponId: uuid("couponId").references(() => coupon.id, {
+      onDelete: "set null",
+    }),
+    creatorId: uuid("creatorId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    status: paymentTransactionStatusEnum("status").notNull().default("pending"),
     amount: integer("amount").notNull(),
     currency: varchar("currency", { length: 16 }).notNull(),
+    discountAmount: integer("discountAmount").notNull().default(0),
+    provider: varchar("provider", { length: 32 }).notNull().default("razorpay"),
+    providerProductId: varchar("providerProductId", { length: 191 }),
+    providerPurchaseTokenHash: varchar("providerPurchaseTokenHash", {
+      length: 64,
+    }),
     notes: jsonb("notes"),
     paymentId: varchar("paymentId", { length: 128 }),
     signature: varchar("signature", { length: 256 }),
@@ -185,28 +573,123 @@ export const paymentTransaction = pgTable(
     userIdx: index("PaymentTransaction_user_idx").on(table.userId),
     planIdx: index("PaymentTransaction_plan_idx").on(table.planId),
     statusIdx: index("PaymentTransaction_status_idx").on(table.status),
+    statusCreatedAtIdx: index("PaymentTransaction_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    userStatusCreatedAtIdx: index(
+      "PaymentTransaction_user_status_createdAt_idx"
+    ).on(table.userId, table.status, table.createdAt),
+    couponIdx: index("PaymentTransaction_coupon_idx").on(table.couponId),
+    providerPurchaseTokenHashIdx: uniqueIndex(
+      "PaymentTransaction_provider_purchase_token_hash_idx"
+    ).on(table.providerPurchaseTokenHash),
   })
 );
 
 export type PaymentTransaction = InferSelectModel<typeof paymentTransaction>;
 
-export const userSubscription = pgTable("UserSubscription", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  userId: uuid("userId")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  planId: uuid("planId")
-    .notNull()
-    .references(() => pricingPlan.id, { onDelete: "restrict" }),
-  status: subscriptionStatusEnum("status").notNull().default("active"),
-  tokenAllowance: integer("tokenAllowance").notNull(),
-  tokenBalance: integer("tokenBalance").notNull(),
-  tokensUsed: integer("tokensUsed").notNull().default(0),
-  startedAt: timestamp("startedAt").notNull().defaultNow(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+export const couponRedemption = pgTable(
+  "CouponRedemption",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    couponId: uuid("couponId")
+      .notNull()
+      .references(() => coupon.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    creatorId: uuid("creatorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    planId: uuid("planId")
+      .notNull()
+      .references(() => pricingPlan.id, { onDelete: "restrict" }),
+    orderId: varchar("orderId", { length: 64 })
+      .notNull()
+      .references(() => paymentTransaction.orderId, {
+        onDelete: "cascade",
+      }),
+    paymentAmount: integer("paymentAmount").notNull(),
+    discountAmount: integer("discountAmount").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    couponIdx: index("CouponRedemption_coupon_idx").on(table.couponId),
+    couponCreatedAtIdx: index("CouponRedemption_coupon_createdAt_idx").on(
+      table.couponId,
+      table.createdAt
+    ),
+    creatorIdx: index("CouponRedemption_creator_idx").on(table.creatorId),
+    userIdx: index("CouponRedemption_user_idx").on(table.userId),
+    orderIdx: uniqueIndex("CouponRedemption_order_idx").on(table.orderId),
+  })
+);
+
+export type CouponRedemption = InferSelectModel<typeof couponRedemption>;
+
+export const couponRewardPayout = pgTable(
+  "CouponRewardPayout",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    couponId: uuid("couponId")
+      .notNull()
+      .references(() => coupon.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    note: text("note"),
+    recordedBy: uuid("recordedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    couponIdx: index("CouponRewardPayout_coupon_idx").on(table.couponId),
+    couponCreatedAtIdx: index("CouponRewardPayout_coupon_createdAt_idx").on(
+      table.couponId,
+      table.createdAt
+    ),
+  })
+);
+
+export type CouponRewardPayout = InferSelectModel<typeof couponRewardPayout>;
+
+export const userSubscription = pgTable(
+  "UserSubscription",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    planId: uuid("planId")
+      .notNull()
+      .references(() => pricingPlan.id, { onDelete: "restrict" }),
+    status: subscriptionStatusEnum("status").notNull().default("active"),
+    tokenAllowance: integer("tokenAllowance").notNull(),
+    tokenBalance: integer("tokenBalance").notNull(),
+    manualTokenBalance: integer("manualTokenBalance").notNull().default(0),
+    paidTokenBalance: integer("paidTokenBalance").notNull().default(0),
+    tokensUsed: integer("tokensUsed").notNull().default(0),
+    startedAt: timestamp("startedAt").notNull().defaultNow(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userStatusExpiresAtIdx: index("UserSubscription_user_status_expiresAt_idx").on(
+      table.userId,
+      table.status,
+      table.expiresAt
+    ),
+    userUpdatedAtIdx: index("UserSubscription_user_updatedAt_idx").on(
+      table.userId,
+      table.updatedAt
+    ),
+    statusUpdatedAtIdx: index("UserSubscription_status_updatedAt_idx").on(
+      table.status,
+      table.updatedAt
+    ),
+  })
+);
 
 export type UserSubscription = InferSelectModel<typeof userSubscription>;
 
@@ -226,15 +709,53 @@ export const language = pgTable(
     name: varchar("name", { length: 64 }).notNull(),
     isDefault: boolean("isDefault").notNull().default(false),
     isActive: boolean("isActive").notNull().default(true),
+    systemPrompt: text("systemPrompt"),
+    syncUiLanguage: boolean("syncUiLanguage").notNull().default(false),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
     codeIdx: uniqueIndex("language_code_idx").on(table.code),
+    activeIdx: index("language_active_idx").on(table.isActive),
   })
 );
 
 export type Language = InferSelectModel<typeof language>;
+
+export const translationFeatureLanguage = pgTable(
+  "TranslationFeatureLanguage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: varchar("code", { length: 16 }).notNull().unique(),
+    name: varchar("name", { length: 64 }).notNull(),
+    isDefault: boolean("isDefault").notNull().default(false),
+    isActive: boolean("isActive").notNull().default(true),
+    systemPrompt: text("systemPrompt"),
+    modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
+      onDelete: "set null",
+    }),
+    speechModelConfigId: uuid("speechModelConfigId").references(
+      () => modelConfig.id,
+      {
+        onDelete: "set null",
+      }
+    ),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex("TranslationFeatureLanguage_code_idx").on(table.code),
+    activeIdx: index("TranslationFeatureLanguage_active_idx").on(table.isActive),
+    modelIdx: index("TranslationFeatureLanguage_model_idx").on(table.modelConfigId),
+    speechModelIdx: index("TranslationFeatureLanguage_speech_model_idx").on(
+      table.speechModelConfigId
+    ),
+  })
+);
+
+export type TranslationFeatureLanguage = InferSelectModel<
+  typeof translationFeatureLanguage
+>;
 
 export const translationKey = pgTable(
   "translation_key",
@@ -277,6 +798,16 @@ export const translationValue = pgTable(
 
 export type TranslationValue = InferSelectModel<typeof translationValue>;
 
+export const chatModeEnum = ["default", "study", "jobs"] as const;
+export type ChatMode = (typeof chatModeEnum)[number];
+export const chatStatusEnum = [
+  "pending",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+export type ChatStatus = (typeof chatStatusEnum)[number];
+
 export const chat = pgTable(
   "Chat",
   {
@@ -286,14 +817,44 @@ export const chat = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => user.id),
+    mode: varchar("mode", { enum: chatModeEnum }).notNull().default("default"),
     visibility: varchar("visibility", { enum: ["public", "private"] })
       .notNull()
       .default("private"),
+    status: varchar("status", { enum: chatStatusEnum })
+      .notNull()
+      .default("completed"),
+    statusReason: text("statusReason"),
     lastContext: jsonb("lastContext").$type<AppUsage | null>(),
     deletedAt: timestamp("deletedAt"),
   },
   (table) => ({
     createdAtIdx: index("Chat_createdAt_idx").on(table.createdAt),
+    activeCreatedAtIdx: index("Chat_active_createdAt_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    deletedCreatedAtIdx: index("Chat_deleted_createdAt_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NOT NULL`),
+    userCreatedAtActiveIdx: index("Chat_user_createdAt_active_idx")
+      .on(table.userId, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    userCreatedAtIdActiveIdx: index("Chat_user_createdAt_id_active_idx")
+      .on(table.userId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    userModeCreatedAtActiveIdx: index("Chat_user_mode_createdAt_active_idx")
+      .on(table.userId, table.mode, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
+    userModeCreatedAtIdActiveIdx: index("Chat_user_mode_createdAt_id_active_idx")
+      .on(table.userId, table.mode, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    statusCreatedAtIdx: index("Chat_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    userStatusCreatedAtActiveIdx: index("Chat_user_status_createdAt_active_idx")
+      .on(table.userId, table.status, table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL`),
   })
 );
 
@@ -313,18 +874,61 @@ export const messageDeprecated = pgTable("Message", {
 
 export type MessageDeprecated = InferSelectModel<typeof messageDeprecated>;
 
-export const message = pgTable("Message_v2", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  chatId: uuid("chatId")
-    .notNull()
-    .references(() => chat.id),
-  role: varchar("role").notNull(),
-  parts: json("parts").notNull(),
-  attachments: json("attachments").notNull(),
-  createdAt: timestamp("createdAt").notNull(),
-});
+export const message = pgTable(
+  "Message_v2",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    chatId: uuid("chatId")
+      .notNull()
+      .references(() => chat.id),
+    role: varchar("role").notNull(),
+    parts: json("parts").notNull(),
+    attachments: json("attachments").notNull(),
+    createdAt: timestamp("createdAt").notNull(),
+  },
+  (table) => ({
+    chatCreatedAtIdx: index("Message_v2_chat_createdAt_idx").on(
+      table.chatId,
+      table.createdAt
+    ),
+    chatRoleCreatedAtIdx: index("Message_v2_chat_role_createdAt_idx").on(
+      table.chatId,
+      table.role,
+      table.createdAt
+    ),
+  })
+);
 
 export type DBMessage = InferSelectModel<typeof message>;
+
+export const ragRetrievalLog = pgTable(
+  "RagRetrievalLog",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    ragEntryId: uuid("ragEntryId")
+      .notNull()
+      .references(() => ragEntry.id, { onDelete: "cascade" }),
+    chatId: uuid("chatId").references(() => chat.id, { onDelete: "cascade" }),
+    modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
+      onDelete: "set null",
+    }),
+    modelKey: text("modelKey").notNull(),
+    userId: uuid("userId").references(() => user.id, { onDelete: "set null" }),
+    score: doublePrecision("score").notNull().default(0),
+    queryText: text("queryText").notNull(),
+    queryLanguage: varchar("queryLanguage", { length: 16 }),
+    applied: boolean("applied").notNull().default(true),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    ragEntryLogIdx: index("RagRetrievalLog_entry_idx").on(table.ragEntryId),
+    modelKeyIdx: index("RagRetrievalLog_model_idx").on(table.modelKey),
+    createdIdx: index("RagRetrievalLog_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type RagRetrievalLog = InferSelectModel<typeof ragRetrievalLog>;
 
 // DEPRECATED: The following schema is deprecated and will be removed in the future.
 // Read the migration guide at https://chat-sdk.dev/docs/migration-guides/message-parts
@@ -362,6 +966,7 @@ export const vote = pgTable(
   (table) => {
     return {
       pk: primaryKey({ columns: [table.chatId, table.messageId] }),
+      messageIdIdx: index("Vote_v2_messageId_idx").on(table.messageId),
     };
   }
 );
@@ -430,22 +1035,175 @@ export const stream = pgTable(
       columns: [table.chatId],
       foreignColumns: [chat.id],
     }),
+    chatCreatedAtIdx: index("Stream_chat_createdAt_idx").on(
+      table.chatId,
+      table.createdAt
+    ),
   })
 );
 
 export type Stream = InferSelectModel<typeof stream>;
 
+export const impersonationToken = pgTable(
+  "ImpersonationToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    targetUserId: uuid("targetUserId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdByAdminId: uuid("createdByAdminId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedAt: timestamp("usedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("ImpersonationToken_token_idx").on(table.token),
+    targetIdx: index("ImpersonationToken_target_idx").on(table.targetUserId),
+    creatorIdx: index("ImpersonationToken_creator_idx").on(
+      table.createdByAdminId
+    ),
+  })
+);
+
+export type ImpersonationToken = InferSelectModel<typeof impersonationToken>;
+
+export const inviteToken = pgTable(
+  "InviteToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    label: varchar("label", { length: 160 }),
+    assignedToEmail: varchar("assignedToEmail", { length: 320 }),
+    createdByAdminId: uuid("createdByAdminId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    maxRedemptions: integer("maxRedemptions").notNull().default(1),
+    expiresAt: timestamp("expiresAt"),
+    revokedAt: timestamp("revokedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("InviteToken_token_idx").on(table.token),
+    createdByIdx: index("InviteToken_createdBy_idx").on(table.createdByAdminId),
+    assignedToEmailIdx: index("InviteToken_assignedToEmail_idx").on(
+      table.assignedToEmail
+    ),
+    createdAtIdx: index("InviteToken_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type InviteToken = InferSelectModel<typeof inviteToken>;
+
+export const inviteRedemption = pgTable(
+  "InviteRedemption",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inviteId: uuid("inviteId")
+      .notNull()
+      .references(() => inviteToken.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    redeemedAt: timestamp("redeemedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    inviteIdx: index("InviteRedemption_invite_idx").on(table.inviteId),
+    userIdx: index("InviteRedemption_user_idx").on(table.userId),
+    uniqueInviteIdx: uniqueIndex("InviteRedemption_invite_idx_unique").on(
+      table.inviteId
+    ),
+    uniqueInviteUserIdx: uniqueIndex("InviteRedemption_invite_user_idx").on(
+      table.inviteId,
+      table.userId
+    ),
+  })
+);
+
+export type InviteRedemption = InferSelectModel<typeof inviteRedemption>;
+
+export const inviteRedeemerBlock = pgTable(
+  "InviteRedeemerBlock",
+  {
+    inviteId: uuid("inviteId")
+      .notNull()
+      .references(() => inviteToken.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    blockedAt: timestamp("blockedAt").notNull().defaultNow(),
+    blockedByAdminId: uuid("blockedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.inviteId, table.userId] }),
+    userIdx: index("InviteRedeemerBlock_user_idx").on(table.userId),
+    blockedAtIdx: index("InviteRedeemerBlock_blockedAt_idx").on(table.blockedAt),
+  })
+);
+
+export type InviteRedeemerBlock = InferSelectModel<typeof inviteRedeemerBlock>;
+
+export const userInviteAccess = pgTable(
+  "UserInviteAccess",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" })
+      .primaryKey(),
+    inviteId: uuid("inviteId")
+      .notNull()
+      .references(() => inviteToken.id, { onDelete: "cascade" }),
+    grantedAt: timestamp("grantedAt").notNull().defaultNow(),
+    revokedAt: timestamp("revokedAt"),
+    revokedByAdminId: uuid("revokedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    inviteIdx: index("UserInviteAccess_invite_idx").on(table.inviteId),
+    activeIdx: index("UserInviteAccess_active_idx")
+      .on(table.userId, table.inviteId)
+      .where(sql`${table.revokedAt} IS NULL`),
+  })
+);
+
+export type UserInviteAccess = InferSelectModel<typeof userInviteAccess>;
+
 export const auditLog = pgTable(
   "AuditLog",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    actorId: uuid("actorId").notNull().references(() => user.id),
+    actorId: uuid("actorId")
+      .notNull()
+      .references(() => user.id),
     action: varchar("action", { length: 128 }).notNull(),
     target: jsonb("target").notNull(),
     metadata: jsonb("metadata"),
+    subjectUserId: uuid("subjectUserId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ipAddress: varchar("ipAddress", { length: 128 }),
+    userAgent: text("userAgent"),
+    device: varchar("device", { length: 64 }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({
+    actorIdx: index("AuditLog_actor_idx").on(table.actorId),
+    actorCreatedAtIdx: index("AuditLog_actor_createdAt_idx").on(
+      table.actorId,
+      table.createdAt
+    ),
+    subjectUserIdx: index("AuditLog_subjectUser_idx").on(table.subjectUserId),
+    subjectUserCreatedAtIdx: index("AuditLog_subjectUser_createdAt_idx").on(
+      table.subjectUserId,
+      table.createdAt
+    ),
     createdAtIdx: index("AuditLog_createdAt_idx").on(table.createdAt),
   })
 );
@@ -460,6 +1218,162 @@ export const contactMessageStatusEnum = pgEnum("contact_message_status", [
 ]);
 export type ContactMessageStatus =
   (typeof contactMessageStatusEnum.enumValues)[number];
+
+export const accountDeletionRequestStatusEnum = pgEnum(
+  "account_deletion_request_status",
+  ["pending", "under_review", "approved", "completed", "rejected"]
+);
+export type AccountDeletionRequestStatus =
+  (typeof accountDeletionRequestStatusEnum.enumValues)[number];
+
+export const accountDeletionReasonEnum = pgEnum("account_deletion_reason", [
+  "no_longer_using",
+  "privacy_concerns",
+  "duplicate_account",
+  "prefer_not_to_say",
+  "other",
+]);
+export type AccountDeletionReason =
+  (typeof accountDeletionReasonEnum.enumValues)[number];
+
+export const accountDeletionRequest = pgTable(
+  "AccountDeletionRequest",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referenceId: varchar("referenceId", { length: 32 }).notNull(),
+    userId: uuid("userId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    email: varchar("email", { length: 128 }).notNull(),
+    fullName: varchar("fullName", { length: 128 }).notNull(),
+    usernameOrUserId: varchar("usernameOrUserId", { length: 128 }),
+    reason: accountDeletionReasonEnum("reason").notNull(),
+    notes: text("notes"),
+    status: accountDeletionRequestStatusEnum("status")
+      .notNull()
+      .default("pending"),
+    requestSource: varchar("requestSource", { length: 32 })
+      .notNull()
+      .default("web"),
+    verifiedAt: timestamp("verifiedAt"),
+    reviewedAt: timestamp("reviewedAt"),
+    reviewedByAdminId: uuid("reviewedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    isViewed: boolean("isViewed").notNull().default(false),
+    viewedAt: timestamp("viewedAt"),
+    viewedByAdminId: uuid("viewedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approvedAt"),
+    approvedByAdminId: uuid("approvedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    completedAt: timestamp("completedAt"),
+    completedByAdminId: uuid("completedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    rejectedAt: timestamp("rejectedAt"),
+    rejectedByAdminId: uuid("rejectedByAdminId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    internalNotes: text("internalNotes"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    referenceIdx: uniqueIndex("AccountDeletionRequest_reference_idx").on(
+      table.referenceId
+    ),
+    userCreatedAtIdx: index("AccountDeletionRequest_user_createdAt_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    emailCreatedAtIdx: index("AccountDeletionRequest_email_createdAt_idx").on(
+      table.email,
+      table.createdAt
+    ),
+    statusCreatedAtIdx: index(
+      "AccountDeletionRequest_status_createdAt_idx"
+    ).on(table.status, table.createdAt),
+    viewedCreatedAtIdx: index(
+      "AccountDeletionRequest_viewed_createdAt_idx"
+    ).on(table.isViewed, table.createdAt),
+    createdAtIdx: index("AccountDeletionRequest_createdAt_idx").on(
+      table.createdAt
+    ),
+  })
+);
+
+export type AccountDeletionRequest = InferSelectModel<
+  typeof accountDeletionRequest
+>;
+
+export const accountDeletionVerificationToken = pgTable(
+  "AccountDeletionVerificationToken",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("requestId")
+      .notNull()
+      .references(() => accountDeletionRequest.id, { onDelete: "cascade" }),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    consumedAt: timestamp("consumedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHashIdx: uniqueIndex(
+      "AccountDeletionVerificationToken_token_hash_idx"
+    ).on(table.tokenHash),
+    requestIdx: index("AccountDeletionVerificationToken_request_idx").on(
+      table.requestId
+    ),
+    expiresAtIdx: index("AccountDeletionVerificationToken_expiresAt_idx").on(
+      table.expiresAt
+    ),
+  })
+);
+
+export type AccountDeletionVerificationToken = InferSelectModel<
+  typeof accountDeletionVerificationToken
+>;
+
+export const accountDeletionRequestEvent = pgTable(
+  "AccountDeletionRequestEvent",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("requestId")
+      .notNull()
+      .references(() => accountDeletionRequest.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actorUserId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    action: varchar("action", { length: 96 }).notNull(),
+    fromStatus: accountDeletionRequestStatusEnum("fromStatus"),
+    toStatus: accountDeletionRequestStatusEnum("toStatus"),
+    note: text("note"),
+    metadata: jsonb("metadata"),
+    ipAddress: varchar("ipAddress", { length: 128 }),
+    userAgent: text("userAgent"),
+    device: varchar("device", { length: 64 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    requestCreatedAtIdx: index(
+      "AccountDeletionRequestEvent_request_createdAt_idx"
+    ).on(table.requestId, table.createdAt),
+    actorCreatedAtIdx: index(
+      "AccountDeletionRequestEvent_actor_createdAt_idx"
+    ).on(table.actorUserId, table.createdAt),
+    actionCreatedAtIdx: index(
+      "AccountDeletionRequestEvent_action_createdAt_idx"
+    ).on(table.action, table.createdAt),
+  })
+);
+
+export type AccountDeletionRequestEvent = InferSelectModel<
+  typeof accountDeletionRequestEvent
+>;
 
 export const contactMessage = pgTable(
   "ContactMessage",
@@ -476,6 +1390,10 @@ export const contactMessage = pgTable(
   },
   (table) => ({
     statusIdx: index("ContactMessage_status_idx").on(table.status),
+    statusCreatedAtIdx: index("ContactMessage_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
     createdIdx: index("ContactMessage_created_idx").on(table.createdAt),
   })
 );
@@ -495,6 +1413,10 @@ export const tokenUsage = pgTable(
     modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
       onDelete: "set null",
     }),
+    liveVoiceModelConfigId: uuid("liveVoiceModelConfigId").references(
+      () => liveVoiceModelConfig.id,
+      { onDelete: "set null" }
+    ),
     subscriptionId: uuid("subscriptionId").references(
       () => userSubscription.id,
       { onDelete: "set null" }
@@ -502,6 +1424,8 @@ export const tokenUsage = pgTable(
     inputTokens: integer("inputTokens").notNull().default(0),
     outputTokens: integer("outputTokens").notNull().default(0),
     totalTokens: integer("totalTokens").notNull().default(0),
+    manualTokens: integer("manualTokens").notNull().default(0),
+    paidTokens: integer("paidTokens").notNull().default(0),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({
@@ -511,6 +1435,17 @@ export const tokenUsage = pgTable(
       table.userId,
       table.chatId
     ),
+    userCreatedIdx: index("token_usage_user_created_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    createdIdx: index("token_usage_created_idx").on(table.createdAt),
+    modelCreatedIdx: index("token_usage_model_created_idx")
+      .on(table.modelConfigId, table.createdAt)
+      .where(sql`${table.modelConfigId} IS NOT NULL`),
+    liveVoiceModelCreatedIdx: index("token_usage_live_voice_model_created_idx")
+      .on(table.liveVoiceModelConfigId, table.createdAt)
+      .where(sql`${table.liveVoiceModelConfigId} IS NOT NULL`),
     subscriptionIdx: index("token_usage_subscription_idx").on(
       table.subscriptionId
     ),
@@ -518,3 +1453,265 @@ export const tokenUsage = pgTable(
 );
 
 export type TokenUsage = InferSelectModel<typeof tokenUsage>;
+
+export const freeChatUsageDaily = pgTable(
+  "FreeChatUsageDaily",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    messageCount: integer("messageCount").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userDayIdx: uniqueIndex("FreeChatUsageDaily_user_day_idx").on(
+      table.userId,
+      table.day
+    ),
+  })
+);
+
+export type FreeChatUsageDaily = InferSelectModel<typeof freeChatUsageDaily>;
+
+export const forumThreadStatusEnum = pgEnum("forum_thread_status", [
+  "open",
+  "resolved",
+  "locked",
+  "archived",
+]);
+export type ForumThreadStatus =
+  (typeof forumThreadStatusEnum.enumValues)[number];
+
+export const forumPostReactionTypeEnum = pgEnum("forum_post_reaction_type", [
+  "like",
+  "insightful",
+  "support",
+]);
+export type ForumPostReactionType =
+  (typeof forumPostReactionTypeEnum.enumValues)[number];
+
+export const forumCategory = pgTable(
+  "ForumCategory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    name: varchar("name", { length: 128 }).notNull(),
+    description: text("description"),
+    icon: varchar("icon", { length: 64 }),
+    position: integer("position").notNull().default(0),
+    isLocked: boolean("isLocked").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("ForumCategory_slug_idx").on(table.slug),
+    positionIdx: index("ForumCategory_position_idx").on(table.position),
+    positionNameIdx: index("ForumCategory_position_name_idx").on(
+      table.position,
+      table.name
+    ),
+  })
+);
+
+export type ForumCategory = InferSelectModel<typeof forumCategory>;
+
+export const forumTag = pgTable(
+  "ForumTag",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: varchar("slug", { length: 64 }).notNull(),
+    label: varchar("label", { length: 64 }).notNull(),
+    description: text("description"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("ForumTag_slug_idx").on(table.slug),
+  })
+);
+
+export type ForumTag = InferSelectModel<typeof forumTag>;
+
+export const forumThread = pgTable(
+  "ForumThread",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    categoryId: uuid("categoryId")
+      .notNull()
+      .references(() => forumCategory.id, { onDelete: "restrict" }),
+    authorId: uuid("authorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 200 }).notNull(),
+    slug: varchar("slug", { length: 220 }).notNull(),
+    summary: text("summary").notNull(),
+    status: forumThreadStatusEnum("status").notNull().default("open"),
+    isPinned: boolean("isPinned").notNull().default(false),
+    isLocked: boolean("isLocked").notNull().default(false),
+    totalReplies: integer("totalReplies").notNull().default(0),
+    viewCount: integer("viewCount").notNull().default(0),
+    lastReplyUserId: uuid("lastReplyUserId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    lastRepliedAt: timestamp("lastRepliedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("ForumThread_slug_idx").on(table.slug),
+    categoryIdx: index("ForumThread_category_idx").on(table.categoryId),
+    activityIdx: index("ForumThread_activity_idx").on(
+      table.isPinned,
+      table.lastRepliedAt,
+      table.createdAt
+    ),
+    activityCursorIdx: index("ForumThread_activity_cursor_idx").using(
+      "btree",
+      table.isPinned,
+      sql`COALESCE("lastRepliedAt", "createdAt")`,
+      table.id
+    ),
+    categoryActivityIdx: index("ForumThread_category_activity_idx").on(
+      table.categoryId,
+      table.isPinned,
+      table.lastRepliedAt,
+      table.createdAt
+    ),
+    categoryActivityCursorIdx: index(
+      "ForumThread_category_activity_cursor_idx"
+    ).using(
+      "btree",
+      table.categoryId,
+      table.isPinned,
+      sql`COALESCE("lastRepliedAt", "createdAt")`,
+      table.id
+    ),
+    updatedAtIdx: index("ForumThread_updatedAt_idx").on(table.updatedAt),
+    statusIdx: index("ForumThread_status_idx").on(table.status),
+    isLockedIdx: index("ForumThread_isLocked_idx").on(table.isLocked),
+    pinnedIdx: index("ForumThread_pinned_idx").on(table.isPinned),
+  })
+);
+
+export type ForumThread = InferSelectModel<typeof forumThread>;
+
+export const forumPost = pgTable(
+  "ForumPost",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("threadId")
+      .notNull()
+      .references(() => forumThread.id, { onDelete: "cascade" }),
+    authorId: uuid("authorId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    parentPostId: uuid("parentPostId"),
+    content: text("content").notNull(),
+    isEdited: boolean("isEdited").notNull().default(false),
+    isDeleted: boolean("isDeleted").notNull().default(false),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    threadIdx: index("ForumPost_thread_idx").on(table.threadId),
+    threadCreatedAtIdx: index("ForumPost_thread_createdAt_idx").on(
+      table.threadId,
+      table.createdAt
+    ),
+    updatedAtIdx: index("ForumPost_updatedAt_idx").on(table.updatedAt),
+    isDeletedIdx: index("ForumPost_isDeleted_idx").on(table.isDeleted),
+    isDeletedUpdatedAtIdx: index("ForumPost_isDeleted_updatedAt_idx").on(
+      table.isDeleted,
+      table.updatedAt
+    ),
+    authorIdx: index("ForumPost_author_idx").on(table.authorId),
+    parentPostFk: foreignKey({
+      columns: [table.parentPostId],
+      foreignColumns: [table.id],
+      name: "ForumPost_parent_fk",
+    }).onDelete("set null"),
+  })
+);
+
+export type ForumPost = InferSelectModel<typeof forumPost>;
+
+export const forumThreadTag = pgTable(
+  "ForumThreadTag",
+  {
+    threadId: uuid("threadId")
+      .notNull()
+      .references(() => forumThread.id, { onDelete: "cascade" }),
+    tagId: uuid("tagId")
+      .notNull()
+      .references(() => forumTag.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.threadId, table.tagId] }),
+    tagIdx: index("ForumThreadTag_tag_idx").on(table.tagId),
+    tagThreadIdx: index("ForumThreadTag_tag_thread_idx").on(
+      table.tagId,
+      table.threadId
+    ),
+  })
+);
+
+export type ForumThreadTag = InferSelectModel<typeof forumThreadTag>;
+
+export const forumThreadSubscription = pgTable(
+  "ForumThreadSubscription",
+  {
+    threadId: uuid("threadId")
+      .notNull()
+      .references(() => forumThread.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    notifyByEmail: boolean("notifyByEmail").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.threadId, table.userId] }),
+    userIdx: index("ForumThreadSubscription_user_idx").on(table.userId),
+    userThreadIdx: index("ForumThreadSubscription_user_thread_idx").on(
+      table.userId,
+      table.threadId
+    ),
+  })
+);
+
+export type ForumThreadSubscription = InferSelectModel<
+  typeof forumThreadSubscription
+>;
+
+export const forumPostReaction = pgTable(
+  "ForumPostReaction",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    postId: uuid("postId")
+      .notNull()
+      .references(() => forumPost.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: forumPostReactionTypeEnum("type").notNull().default("like"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    postIdx: index("ForumPostReaction_post_idx").on(table.postId),
+    userPostIdx: index("ForumPostReaction_user_post_idx").on(
+      table.userId,
+      table.postId
+    ),
+    uniqueReactionIdx: uniqueIndex("ForumPostReaction_unique_idx").on(
+      table.postId,
+      table.userId,
+      table.type
+    ),
+  })
+);
+
+export type ForumPostReaction = InferSelectModel<typeof forumPostReaction>;

@@ -1,9 +1,13 @@
 "use server";
 
 import { z } from "zod";
-
-import { auth } from "../auth";
-import { updateUserProfile } from "@/lib/db/queries";
+import { getUserById, updateUserProfileFields } from "@/lib/db/queries";
+import { withTimeout } from "@/lib/utils/async";
+import {
+  DATE_OF_BIRTH_LOCK_MESSAGE,
+  isDateOfBirthChangeBlocked,
+} from "@/lib/utils/date-of-birth";
+import { auth, unstable_update } from "../auth";
 
 export type CompleteProfileState =
   | { status: "idle" }
@@ -27,6 +31,9 @@ const dobSchema = z.object({
     .min(1, "Please enter your last name.")
     .max(64, "Last name must be 64 characters or fewer."),
 });
+
+const PROFILE_ACTION_LOOKUP_TIMEOUT_MS = 1500;
+const PROFILE_ACTION_UPDATE_TIMEOUT_MS = 4000;
 
 function isAtLeast13YearsOld(dateString: string) {
   const dob = new Date(dateString);
@@ -72,11 +79,83 @@ export async function submitDateOfBirthAction(
     };
   }
 
-  await updateUserProfile({
-    id: session.user.id,
-    dateOfBirth: parsed.data.dob,
-    firstName: parsed.data.firstName,
-    lastName: parsed.data.lastName,
+  let updatedProfile: Awaited<ReturnType<typeof updateUserProfileFields>> | null =
+    null;
+  try {
+    updatedProfile = await withTimeout(
+      updateUserProfileFields({
+        id: session.user.id,
+        dateOfBirth: parsed.data.dob,
+        firstName: parsed.data.firstName,
+        lastName: parsed.data.lastName,
+      }),
+      PROFILE_ACTION_UPDATE_TIMEOUT_MS,
+      () => {
+        console.error("[complete-profile] Profile update timed out.", {
+          timeoutMs: PROFILE_ACTION_UPDATE_TIMEOUT_MS,
+          userId: session.user.id,
+        });
+      }
+    );
+  } catch (error) {
+    console.error("[complete-profile] Failed to update user profile.", {
+      userId: session.user.id,
+      error,
+    });
+    return {
+      status: "error",
+      message:
+        "Profile service is taking too long. Please wait a moment and try again.",
+    };
+  }
+
+  if (!updatedProfile) {
+    const currentUser = await withTimeout(
+      getUserById(session.user.id),
+      PROFILE_ACTION_LOOKUP_TIMEOUT_MS,
+      () => {
+        console.error("[complete-profile] Profile fallback lookup timed out.", {
+          timeoutMs: PROFILE_ACTION_LOOKUP_TIMEOUT_MS,
+          userId: session.user.id,
+        });
+      }
+    ).catch((error) => {
+      console.error("[complete-profile] Failed to load user profile fallback.", {
+        userId: session.user.id,
+        error,
+      });
+      return null;
+    });
+
+    const currentDateOfBirth =
+      currentUser?.dateOfBirth ?? session.user.dateOfBirth;
+    if (isDateOfBirthChangeBlocked(currentDateOfBirth, parsed.data.dob)) {
+      return {
+        status: "error",
+        message: DATE_OF_BIRTH_LOCK_MESSAGE,
+      };
+    }
+
+    return {
+      status: "error",
+      message: "Unable to update your profile right now. Please try again.",
+    };
+  }
+
+  await unstable_update({
+    user: {
+      dateOfBirth: parsed.data.dob,
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      name: [parsed.data.firstName, parsed.data.lastName]
+        .filter(Boolean)
+        .join(" "),
+    },
+  }).catch((error) => {
+    console.error("[complete-profile] Failed to refresh session profile.", {
+      userId: session.user.id,
+      error,
+    });
   });
 
   return { status: "success" };

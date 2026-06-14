@@ -1,0 +1,84 @@
+name: Jobs Scrape Scheduler
+
+on:
+  schedule:
+    # Hourly trigger for Hobby plan (external scheduler instead of Vercel cron)
+    - cron: "5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: jobs-scrape-scheduler
+  cancel-in-progress: false
+
+jobs:
+  trigger-scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Validate required secrets
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          JOBS_SCRAPE_SECRET: ${{ secrets.JOBS_SCRAPE_SECRET }}
+        run: |
+          if [ -z "$APP_BASE_URL" ]; then
+            echo "Missing secret: APP_BASE_URL"
+            exit 1
+          fi
+          if ! [[ "$APP_BASE_URL" =~ ^https?:// ]]; then
+            echo "Invalid APP_BASE_URL format. Expected absolute URL, got: $APP_BASE_URL"
+            exit 1
+          fi
+          if [ -z "$JOBS_SCRAPE_SECRET" ]; then
+            echo "Missing secret: JOBS_SCRAPE_SECRET"
+            exit 1
+          fi
+
+      - name: Trigger jobs scrape endpoint (with retries)
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          JOBS_SCRAPE_SECRET: ${{ secrets.JOBS_SCRAPE_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${APP_BASE_URL%/}"
+          ENDPOINT="$BASE_URL/api/jobs/scrape?trigger=auto"
+          echo "Triggering endpoint: $ENDPOINT"
+
+          ATTEMPTS=4
+          DELAY_SECONDS=10
+
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            echo "Attempt $attempt/$ATTEMPTS"
+
+            RESPONSE="$(curl --silent --show-error \
+              --max-time 45 \
+              --connect-timeout 15 \
+              --write-out '\n%{http_code}' \
+              -X POST \
+              -H "x-scrape-token: $JOBS_SCRAPE_SECRET" \
+              "$ENDPOINT" || true)"
+
+            HTTP_STATUS="$(echo "$RESPONSE" | tail -n1)"
+            BODY="$(echo "$RESPONSE" | sed '$d')"
+
+            echo "HTTP status: $HTTP_STATUS"
+            echo "Response body: ${BODY:-<empty>}"
+
+            if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "202" ]; then
+              echo "Scrape trigger accepted."
+              exit 0
+            fi
+
+            # Permanent configuration/auth errors should fail immediately.
+            if [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "403" ] || [ "$HTTP_STATUS" = "404" ]; then
+              echo "Permanent failure ($HTTP_STATUS). Check APP_BASE_URL and JOBS_SCRAPE_SECRET."
+              exit 1
+            fi
+
+            if [ "$attempt" -lt "$ATTEMPTS" ]; then
+              echo "Transient failure, retrying in ${DELAY_SECONDS}s..."
+              sleep "$DELAY_SECONDS"
+            fi
+          done
+
+          echo "Failed to trigger scrape after $ATTEMPTS attempts."
+          exit 1

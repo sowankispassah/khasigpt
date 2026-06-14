@@ -1,0 +1,3 @@
+interface:
+  display_name: "Mobile Auth Startup Reliability"
+  short_description: "Keep login isolated from bootstrap, settings, translations, billing, and feature failures."

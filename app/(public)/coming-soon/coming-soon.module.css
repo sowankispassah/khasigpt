@@ -1,0 +1,213 @@
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  overflow: hidden;
+  background: #050505;
+  color: #f5f5f5;
+}
+
+.background {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.08), transparent 58%),
+    radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.05), transparent 60%),
+    #050505;
+}
+
+.rainLayer {
+  position: absolute;
+  inset: -30% -20%;
+  background-image: repeating-linear-gradient(
+    110deg,
+    transparent 0 18px,
+    rgba(255, 255, 255, 0.08) 18px 20px,
+    transparent 20px 44px
+  );
+  opacity: 0.35;
+  animation: rain-drift 14s linear infinite;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 28px 16px;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  font-size: 24px;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.social {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+}
+
+.social a {
+  display: inline-flex;
+  height: 18px;
+  width: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.9);
+  transition: opacity 0.2s ease;
+}
+
+.social a:hover {
+  opacity: 0.7;
+}
+
+.hero {
+  margin: 0;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 12px 0 18px;
+  font-size: clamp(52px, 12vw, 92px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+
+.timerLabel {
+  margin: 0 0 10px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.countdownWrap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.countdownCluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.countdownItem {
+  min-width: 86px;
+  text-align: center;
+}
+
+.countdownValue {
+  display: block;
+  font-size: clamp(36px, 8vw, 64px);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.countdownLabel {
+  display: block;
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.countdownColon {
+  margin-top: -14px;
+  font-size: clamp(28px, 5vw, 42px);
+  font-weight: 700;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+}
+
+.location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contact {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.contact:hover {
+  opacity: 0.75;
+}
+
+@keyframes rain-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 180px, 0);
+  }
+}
+
+@media (max-width: 768px) {
+  .content {
+    padding: 16px 16px 12px;
+  }
+
+  .brand {
+    font-size: 22px;
+  }
+
+  .social span {
+    display: none;
+  }
+
+  .countdownItem {
+    min-width: 72px;
+  }
+
+  .countdownLabel {
+    margin-top: 8px;
+    font-size: 10px;
+  }
+
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}

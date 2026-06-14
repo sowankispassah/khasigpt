@@ -1,6 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import {
@@ -13,6 +14,8 @@ import {
   updateUserPassword,
 } from "@/lib/db/queries";
 import { sendPasswordResetEmail } from "@/lib/email/brevo";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 const emailSchema = z.object({
   email: z.string().email(),
@@ -30,6 +33,10 @@ const resetSchema = z
   });
 
 const PASSWORD_RESET_EXPIRY_MS = 1000 * 60 * 60; // 1 hour
+const PASSWORD_RESET_RATE_LIMIT = {
+  limit: 5,
+  windowMs: 10 * 60 * 1000,
+};
 
 export type ForgotPasswordState =
   | { status: "idle" }
@@ -56,6 +63,22 @@ function resolveAppBaseUrl(): string {
   return baseUrl;
 }
 
+async function allowPasswordResetAttempt(email: string) {
+  const headerStore = await headers();
+  const clientKey = getClientKeyFromHeaders(headerStore);
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const [ipResult, emailResult] = await Promise.all([
+    incrementRateLimit(`password-reset:ip:${clientKey}`, PASSWORD_RESET_RATE_LIMIT),
+    incrementRateLimit(
+      `password-reset:email:${normalizedEmail}`,
+      PASSWORD_RESET_RATE_LIMIT
+    ),
+  ]);
+
+  return ipResult.allowed && emailResult.allowed;
+}
+
 export async function requestPasswordResetAction(
   _prevState: ForgotPasswordState,
   formData: FormData
@@ -64,6 +87,14 @@ export async function requestPasswordResetAction(
     const { email } = emailSchema.parse({
       email: formData.get("email"),
     });
+
+    const isAllowed = await allowPasswordResetAttempt(email);
+    if (!isAllowed) {
+      return {
+        status: "error",
+        message: "Too many password reset requests. Please try again later.",
+      };
+    }
 
     const [user] = await getUser(email);
 
