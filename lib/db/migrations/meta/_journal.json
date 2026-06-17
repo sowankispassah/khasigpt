@@ -575,6 +575,13 @@
       "when": 1779068700012,
       "tag": "0079_account_deletion_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1779068700013,
+      "tag": "0080_enable_public_table_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/app/(auth)/auth";
 import { getPresenceDetails, getPresenceSummary } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
@@ -15,8 +15,8 @@ const DETAILS_WINDOW_MINUTES = 15;
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  const admin = await requireAdminApiUser(request);
+  if (!admin) {
     return NextResponse.json(
       {
         code: "forbidden:activity",

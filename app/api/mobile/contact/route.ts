@@ -3,11 +3,17 @@ import { z } from "zod";
 import { createContactMessage } from "@/lib/db/queries";
 import { sendContactMessageEmail } from "@/lib/email/brevo";
 import { ChatSDKError } from "@/lib/errors";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const PHONE_REGEX = /^[+0-9()\-\s]{6,20}$/;
+const CONTACT_RATE_LIMIT = {
+  limit: 5,
+  windowMs: 60 * 60 * 1000,
+};
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -25,7 +31,41 @@ const contactSchema = z.object({
   message: z.string().min(10, "Message must be at least 10 characters."),
 });
 
+async function enforceContactRateLimit(request: Request) {
+  const clientKey = getClientKeyFromHeaders(request.headers);
+  const { allowed, resetAt } = await incrementRateLimit(
+    `mobile-contact:${clientKey}`,
+    CONTACT_RATE_LIMIT
+  );
+
+  if (allowed) {
+    return null;
+  }
+
+  return NextResponse.json(
+    {
+      message: "Too many contact requests. Please try again later.",
+      errors: {},
+    },
+    {
+      status: 429,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": Math.max(
+          Math.ceil((resetAt - Date.now()) / 1000),
+          1
+        ).toString(),
+      },
+    }
+  );
+}
+
 export async function POST(request: Request) {
+  const rateLimited = await enforceContactRateLimit(request);
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   let body: unknown;
   try {
     body = await request.json();

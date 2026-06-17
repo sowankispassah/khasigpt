@@ -7,6 +7,8 @@ import {
   getTranslationFeatureLanguageByCodeRaw,
 } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { loadFeatureAccessSettingsByKeys } from "@/lib/settings/feature-access-settings";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import {
@@ -23,6 +25,10 @@ const bodySchema = z.object({
 
 const TRANSLATE_SETTING_TIMEOUT_MS = 5_000;
 const LIVE_PREVIEW_TIMEOUT_MS = 20_000;
+const LIVE_PREVIEW_RATE_LIMIT = {
+  limit: 20,
+  windowMs: 5 * 60 * 1000,
+};
 
 export const runtime = "nodejs";
 
@@ -55,11 +61,45 @@ function parsePreviewResponse(text: string) {
   }
 }
 
+async function enforceLivePreviewRateLimit(request: Request, userId: string) {
+  const clientKey = getClientKeyFromHeaders(request.headers);
+  const { allowed, resetAt } = await incrementRateLimit(
+    `translate-live-preview:${userId}:${clientKey}`,
+    LIVE_PREVIEW_RATE_LIMIT
+  );
+
+  if (allowed) {
+    return null;
+  }
+
+  return Response.json(
+    { message: "Too many live translation previews. Please try again shortly." },
+    {
+      status: 429,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": Math.max(
+          Math.ceil((resetAt - Date.now()) / 1000),
+          1
+        ).toString(),
+      },
+    }
+  );
+}
+
 export async function POST(request: Request) {
   const session = await auth();
 
   if (!session?.user) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimited = await enforceLivePreviewRateLimit(
+    request,
+    session.user.id
+  );
+  if (rateLimited) {
+    return rateLimited;
   }
 
   const body = await request.json().catch(() => null);

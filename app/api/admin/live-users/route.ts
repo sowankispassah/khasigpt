@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/app/(auth)/auth";
 import { listLiveUsers } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 
@@ -23,8 +23,8 @@ function parseNumber(value: string | null, fallback: number) {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  const admin = await requireAdminApiUser(request);
+  if (!admin) {
     return NextResponse.json(
       {
         code: "forbidden:live_users",

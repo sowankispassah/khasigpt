@@ -1,14 +1,14 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   createAuditLogEntry,
   createImpersonationToken,
   getUserById,
 } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 
-export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+export async function POST(request: NextRequest) {
+  const admin = await requireAdminApiUser(request);
+  if (!admin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -26,11 +26,11 @@ export async function POST(request: Request) {
 
   const tokenRecord = await createImpersonationToken({
     targetUserId,
-    createdByAdminId: session.user.id,
+    createdByAdminId: admin.id,
   });
 
   await createAuditLogEntry({
-    actorId: session.user.id,
+    actorId: admin.id,
     action: "user.impersonation.start",
     target: { userId: targetUserId },
     metadata: {

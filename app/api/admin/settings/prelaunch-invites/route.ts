@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   activatePrelaunchInviteToken,
   createAuditLogEntry,
@@ -14,6 +13,7 @@ import {
   revokePrelaunchInviteToken,
   updatePrelaunchInviteAssignedEmail,
 } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -60,14 +60,6 @@ function parseAssignedToEmail(value: unknown): {
   return { isValid: true, normalized };
 }
 
-async function requireAdminUser() {
-  const session = await withTimeout(auth(), API_TIMEOUT_MS).catch(() => null);
-  if (!session?.user || session.user.role !== "admin") {
-    return null;
-  }
-  return session.user;
-}
-
 async function auditSafely(args: Parameters<typeof createAuditLogEntry>[0]) {
   await withTimeout(createAuditLogEntry(args), AUDIT_TIMEOUT_MS).catch(() => null);
 }
@@ -93,8 +85,8 @@ async function loadInviteState(): Promise<InviteState> {
   return { invites, access, joinedUsers };
 }
 
-export async function GET() {
-  const user = await requireAdminUser();
+export async function GET(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
   if (!user) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -113,8 +105,8 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  const user = await requireAdminUser();
+export async function POST(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
   if (!user) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

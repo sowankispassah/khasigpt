@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
   getPricingPlanNamesByIds,
   getUserEmailsByIds,
   listUserCreditHistory,
 } from "@/lib/db/queries";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
@@ -75,11 +75,11 @@ function describeCreditHistoryEntry(
 }
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") {
+  const admin = await requireAdminApiUser(request);
+  if (!admin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

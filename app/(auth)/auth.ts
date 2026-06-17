@@ -206,7 +206,7 @@ providers.push(
       }
 
       const targetUser = await getUserById(record.targetUserId);
-      if (!targetUser) {
+      if (!targetUser || !targetUser.isActive) {
         return null;
       }
 
@@ -517,6 +517,10 @@ export const {
       if (needsDbFields) {
         const record = await ensureDbUser();
         if (record) {
+          if (!record.isActive) {
+            token = {} as typeof token;
+            return token;
+          }
           if (isUndefinedField(token.dateOfBirth)) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
@@ -562,6 +566,10 @@ export const {
       if (token.id && (trigger === "update" || shouldRefreshDb)) {
         const record = await ensureDbUser();
         if (record) {
+          if (!record.isActive) {
+            token = {} as typeof token;
+            return token;
+          }
           if (record.role) {
             token.role = record.role as UserRole;
           }

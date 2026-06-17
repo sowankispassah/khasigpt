@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import { syncJobPostingsToRag } from "@/lib/jobs/rag-sync";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -30,17 +30,8 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json(
-      {
-        code: "unauthorized:auth",
-        message: "You must be signed in.",
-      },
-      { status: 401 }
-    );
-  }
-  if (session.user.role !== "admin") {
+  const admin = await requireAdminApiUser(request);
+  if (!admin) {
     return NextResponse.json(
       {
         code: "forbidden:auth",

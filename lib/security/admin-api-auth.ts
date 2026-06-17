@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import type { UserRole } from "@/app/(auth)/auth";
+import { getUserById } from "@/lib/db/queries";
 import { withTimeout } from "@/lib/utils/async";
 
 type AdminApiUser = {
@@ -9,6 +10,26 @@ type AdminApiUser = {
 };
 
 const ADMIN_AUTH_TIMEOUT_MS = 20_000;
+const ADMIN_DB_TIMEOUT_MS = 4_000;
+
+async function resolveActiveAdminUser(userId: string): Promise<AdminApiUser | null> {
+  const user = await withTimeout(
+    getUserById(userId),
+    ADMIN_DB_TIMEOUT_MS
+  ).catch((error) => {
+    console.error("[admin-api-auth] Admin user lookup failed.", error);
+    return null;
+  });
+
+  if (!user?.isActive || user.role !== "admin") {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    role: "admin",
+  };
+}
 
 export async function requireAdminApiUser(
   request: NextRequest
@@ -17,15 +38,8 @@ export async function requireAdminApiUser(
 
   if (secret) {
     const token = await getToken({ req: request, secret }).catch(() => null);
-    if (
-      token?.role === "admin" &&
-      typeof token.id === "string" &&
-      token.id.trim().length > 0
-    ) {
-      return {
-        id: token.id,
-        role: "admin",
-      };
+    if (typeof token?.id === "string" && token.id.trim().length > 0) {
+      return resolveActiveAdminUser(token.id);
     }
   }
 
@@ -40,8 +54,5 @@ export async function requireAdminApiUser(
     return null;
   }
 
-  return {
-    id: session.user.id,
-    role: session.user.role,
-  };
+  return resolveActiveAdminUser(session.user.id);
 }

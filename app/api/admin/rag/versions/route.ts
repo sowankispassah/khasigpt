@@ -1,13 +1,12 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/app/(auth)/auth";
 import { ChatSDKError } from "@/lib/errors";
 import { getRagVersions } from "@/lib/rag/service";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 
-export async function GET(request: Request) {
-  const session = await auth();
-
-  if (!session?.user || session.user.role !== "admin") {
+export async function GET(request: NextRequest) {
+  const admin = await requireAdminApiUser(request);
+  if (!admin) {
     return new ChatSDKError("unauthorized:chat").toResponse();
   }
 

@@ -5,6 +5,8 @@ import { z } from "zod";
 import { DOCUMENT_UPLOADS_FEATURE_FLAG_KEY } from "@/lib/constants";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
@@ -21,6 +23,10 @@ import {
 const MAX_FILE_SIZE_BYTES = DOCUMENT_UPLOADS_MAX_BYTES;
 const ALLOWED_IMAGE_MIME_TYPES = IMAGE_MIME_TYPES;
 const UPLOAD_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
+const FILE_UPLOAD_RATE_LIMIT = {
+  limit: 30,
+  windowMs: 10 * 60 * 1000,
+};
 
 function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
   const bytes = new Uint8Array(buffer);
@@ -50,11 +56,45 @@ function detectImageMime(buffer: ArrayBuffer, declaredType: string) {
   return type;
 }
 
+async function enforceFileUploadRateLimit(request: Request, userId: string) {
+  const clientKey = getClientKeyFromHeaders(request.headers);
+  const { allowed, resetAt } = await incrementRateLimit(
+    `file-upload:${userId}:${clientKey}`,
+    FILE_UPLOAD_RATE_LIMIT
+  );
+
+  if (allowed) {
+    return null;
+  }
+
+  return NextResponse.json(
+    { error: "Too many uploads. Please try again later." },
+    {
+      status: 429,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": Math.max(
+          Math.ceil((resetAt - Date.now()) / 1000),
+          1
+        ).toString(),
+      },
+    }
+  );
+}
+
 export async function POST(request: Request) {
   const session = await getMobileSession(request);
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimited = await enforceFileUploadRateLimit(
+    request,
+    session.user.id
+  );
+  if (rateLimited) {
+    return rateLimited;
   }
 
   if (request.body === null) {

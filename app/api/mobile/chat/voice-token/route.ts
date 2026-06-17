@@ -12,6 +12,8 @@ import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import { incrementRateLimit } from "@/lib/security/rate-limit";
+import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
 import { getVoiceChatAccessModeForPlatform } from "@/lib/voice/config";
 import {
@@ -34,6 +36,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const VOICE_TOKEN_TIMEOUT_MS = 10_000;
+const VOICE_TOKEN_RATE_LIMIT = {
+  limit: 20,
+  windowMs: 5 * 60 * 1000,
+};
 
 const voiceTokenSchema = z
   .object({
@@ -56,6 +62,32 @@ function fallbackResponse(
   );
 }
 
+async function enforceVoiceTokenRateLimit(request: Request, userId: string) {
+  const clientKey = getClientKeyFromHeaders(request.headers);
+  const { allowed, resetAt } = await incrementRateLimit(
+    `voice-token:mobile:${userId}:${clientKey}`,
+    VOICE_TOKEN_RATE_LIMIT
+  );
+
+  if (allowed) {
+    return null;
+  }
+
+  return Response.json(
+    { message: "Too many live voice sessions. Please try again shortly." },
+    {
+      headers: {
+        ...noStoreHeaders(),
+        "Retry-After": Math.max(
+          Math.ceil((resetAt - Date.now()) / 1000),
+          1
+        ).toString(),
+      },
+      status: 429,
+    }
+  );
+}
+
 export async function POST(request: Request) {
   const authContext = await getAuthenticatedUser(request, {
     allowCookie: false,
@@ -63,6 +95,14 @@ export async function POST(request: Request) {
 
   if (!authContext?.user) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const rateLimited = await enforceVoiceTokenRateLimit(
+    request,
+    authContext.user.id
+  );
+  if (rateLimited) {
+    return rateLimited;
   }
 
   const body = await request.json().catch(() => undefined);

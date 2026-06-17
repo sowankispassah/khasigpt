@@ -1,26 +1,15 @@
 import { waitUntil } from "@vercel/functions";
-import { NextResponse } from "next/server";
-import { auth } from "@/app/(auth)/auth";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   clearJobsScrapeCancelRequest,
   getJobsScrapeProgressSnapshot,
   requestJobsScrapeCancel,
   runJobsScrapeWithScheduling,
 } from "@/lib/jobs/scrape-orchestrator";
-import { withTimeout } from "@/lib/utils/async";
+import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const AUTH_TIMEOUT_MS = 8_000;
-
-async function requireAdminUser() {
-  const session = await withTimeout(auth(), AUTH_TIMEOUT_MS).catch(() => null);
-  if (!session?.user || session.user.role !== "admin") {
-    return null;
-  }
-  return session.user;
-}
 
 function noStoreJson(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -29,8 +18,8 @@ function noStoreJson(body: unknown, status = 200) {
   });
 }
 
-export async function GET() {
-  const user = await requireAdminUser();
+export async function GET(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
   if (!user) {
     return noStoreJson({ error: "forbidden" }, 403);
   }
@@ -42,8 +31,8 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
-  const user = await requireAdminUser();
+export async function POST(request: NextRequest) {
+  const user = await requireAdminApiUser(request);
   if (!user) {
     return noStoreJson({ error: "forbidden" }, 403);
   }

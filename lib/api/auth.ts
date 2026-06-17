@@ -178,7 +178,24 @@ export async function requireAuthenticatedUser(
 
 export async function requireAdminUser(request: Request, options?: AuthOptions) {
   const context = await getAuthenticatedUser(request, options);
-  return context?.user.role === "admin" ? context : null;
+  if (context?.user.role !== "admin") {
+    return null;
+  }
+
+  const user = await getUserById(context.user.id).catch((error) => {
+    console.warn("[api/auth] Admin role lookup failed.", error);
+    return null;
+  });
+  if (!user?.isActive || user.role !== "admin") {
+    return null;
+  }
+
+  const session = createSessionFromUser(user);
+  return {
+    ...context,
+    session,
+    user: session.user,
+  };
 }
 
 export { createSessionFromUser as createMobileSessionFromUser };
