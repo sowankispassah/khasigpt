@@ -4,6 +4,10 @@ import {
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -30,13 +34,20 @@ const FEATURE_ACCESS_SETTING_KEYS = new Set([
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 ]);
 
+const BOOLEAN_SETTING_KEYS = new Set([
+  SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
+]);
+
 function unwrapStringValue(value: unknown) {
   if (typeof value !== "string") {
     return value;
   }
 
   let current = value.trim();
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < 32; index += 1) {
     if (!current.startsWith('"')) {
       break;
     }
@@ -63,6 +74,26 @@ function getJsonByteLength(value: unknown) {
 
 export function normalizeAppSettingValueForWrite<T>(key: string, value: T): T {
   const normalizedKey = key.trim();
+
+  if (BOOLEAN_SETTING_KEYS.has(normalizedKey)) {
+    const unwrapped = unwrapStringValue(value);
+    if (typeof unwrapped === "boolean") {
+      return unwrapped as T;
+    }
+    if (typeof unwrapped === "number") {
+      return (unwrapped !== 0) as T;
+    }
+    if (typeof unwrapped === "string") {
+      const normalized = unwrapped.trim().toLowerCase();
+      if (["1", "true", "yes", "on", "enabled"].includes(normalized)) {
+        return true as T;
+      }
+      if (["0", "false", "no", "off", "disabled"].includes(normalized)) {
+        return false as T;
+      }
+    }
+    throw new Error(`invalid_boolean_app_setting:${normalizedKey}`);
+  }
 
   if (normalizedKey === TRANSLATE_PROVIDER_MODE_SETTING_KEY) {
     const unwrapped = unwrapStringValue(value);

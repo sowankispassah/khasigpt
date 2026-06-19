@@ -79,7 +79,7 @@ const BYPASS_SITE_STATUS_GATE_IN_DEV =
   process.env.ENABLE_SITE_STATUS_GATE_IN_DEV !== "1";
 const siteStatusCacheWindowRaw = Number.parseInt(
   process.env.MIDDLEWARE_SITE_STATUS_CACHE_WINDOW_MS ??
-    (process.env.NODE_ENV === "development" ? "1000" : "1000"),
+    (process.env.NODE_ENV === "development" ? "1000" : "60000"),
   10
 );
 const SITE_STATUS_CACHE_WINDOW_MS =
@@ -109,11 +109,6 @@ let siteStatusCache: {
   adminAccessEnabled: boolean;
   adminEntryPath: string;
 } | null = null;
-const SITE_STATUS_INTERNAL_SECRET = (
-  process.env.AUTH_SECRET ??
-  process.env.NEXTAUTH_SECRET ??
-  ""
-).trim();
 const kvRestUrl =
   process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? null;
 const kvRestToken =
@@ -368,9 +363,6 @@ async function resolveSiteStatus(
         method: "GET",
         headers: {
           accept: "application/json",
-          ...(SITE_STATUS_INTERNAL_SECRET
-            ? { "x-site-gate-secret": SITE_STATUS_INTERNAL_SECRET }
-            : {}),
         },
         cache: "no-store",
       },

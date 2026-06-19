@@ -31,7 +31,7 @@ const UUID_REGEX =
 type LiteSqlClient = ReturnType<typeof postgres>;
 
 const globalForLiteDb = globalThis as typeof globalThis & {
-  __appSettingsLiteClient?: LiteSqlClient;
+  postgresClient?: LiteSqlClient;
 };
 
 try {
@@ -106,7 +106,7 @@ function parseOr(value: string | undefined, fallback: number) {
 }
 
 function getLiteSqlClient() {
-  if (!globalForLiteDb.__appSettingsLiteClient) {
+  if (!globalForLiteDb.postgresClient) {
     const postgresUrl = getPostgresUrl();
     const usesPooler = isSupabasePoolerUrl(postgresUrl);
     const poolConfig = {
@@ -128,10 +128,10 @@ function getLiteSqlClient() {
       max_pipeline: usesPooler ? 1 : 100,
       prepare: false,
     };
-    globalForLiteDb.__appSettingsLiteClient = postgres(postgresUrl, poolConfig);
+    globalForLiteDb.postgresClient = postgres(postgresUrl, poolConfig);
   }
 
-  return globalForLiteDb.__appSettingsLiteClient;
+  return globalForLiteDb.postgresClient;
 }
 
 function normalizeSettingKeys(keys: string[]) {
@@ -185,7 +185,11 @@ export async function getLiteAppSettingsByKeysUncached(keys: string[]) {
       from "AppSetting"
       where "key" in ${sql(uniqueKeys)}
     `;
-    return rows;
+    return rows.map((row) => ({
+      key: row.key,
+      value: row.value,
+      updatedAt: new Date(row.updatedAt),
+    }));
   } catch (error) {
     if (isMissingRelationError(error)) {
       return [];

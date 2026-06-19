@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
 import {
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
@@ -7,6 +8,7 @@ import {
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
 import {
+  appSettingCacheTagForKey,
   getLiteAppSettingsByKeysUncached,
   getLiteAppSettingUncached,
 } from "@/lib/db/app-settings-lite";
@@ -18,9 +20,10 @@ export const runtime = "nodejs";
 const SITE_LAUNCH_SETTINGS_TIMEOUT_MS = 12_000;
 const SITE_LAUNCH_RETRY_TIMEOUT_MS = 4_000;
 const SITE_LAUNCH_CACHE_WINDOW_MS =
-  process.env.NODE_ENV === "development" ? 1_000 : 1_000;
+  process.env.NODE_ENV === "development" ? 1_000 : 60_000;
 const SITE_LAUNCH_CACHE_STALE_GRACE_MS =
   process.env.NODE_ENV === "development" ? 60_000 : 5 * 60_000;
+const SITE_LAUNCH_SHARED_CACHE_SECONDS = 5 * 60;
 const SITE_LAUNCH_SETTING_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
@@ -34,11 +37,16 @@ let siteLaunchSettingsCache:
       map: Map<string, unknown>;
     }
   | null = null;
-const SITE_STATUS_INTERNAL_SECRET = (
-  process.env.AUTH_SECRET ??
-  process.env.NEXTAUTH_SECRET ??
-  ""
-).trim();
+const loadSharedSiteLaunchSettings = unstable_cache(
+  () => getLiteAppSettingsByKeysUncached([...SITE_LAUNCH_SETTING_KEYS]),
+  ["public-site-launch-settings"],
+  {
+    revalidate: SITE_LAUNCH_SHARED_CACHE_SECONDS,
+    tags: SITE_LAUNCH_SETTING_KEYS.map((key) =>
+      appSettingCacheTagForKey(key)
+    ),
+  }
+);
 
 function getSafeSiteLaunchFallbackState() {
   if (process.env.NODE_ENV === "production") {
@@ -102,21 +110,15 @@ function cacheSettingsMap(map: Map<string, unknown>) {
   return cloneSettingsMap(map);
 }
 
-async function loadSiteLaunchSettingsMap({
-  bypassCache = false,
-}: {
-  bypassCache?: boolean;
-} = {}) {
-  if (!bypassCache) {
-    const cached = getCachedSettingsMap();
-    if (cached) {
-      return cached;
-    }
+async function loadSiteLaunchSettingsMap() {
+  const cached = getCachedSettingsMap();
+  if (cached) {
+    return cached;
   }
 
   try {
     const settings = await withTimeout(
-      getLiteAppSettingsByKeysUncached([...SITE_LAUNCH_SETTING_KEYS]),
+      loadSharedSiteLaunchSettings(),
       SITE_LAUNCH_SETTINGS_TIMEOUT_MS
     );
     return cacheSettingsMap(
@@ -161,16 +163,10 @@ async function loadSiteLaunchSettingsMap({
   return map;
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const fallbackState = getSafeSiteLaunchFallbackState();
-    const internalSecret = request.headers.get("x-site-gate-secret")?.trim();
-    const isInternalStatusRead =
-      Boolean(SITE_STATUS_INTERNAL_SECRET) &&
-      internalSecret === SITE_STATUS_INTERNAL_SECRET;
-    const settingsMap = await loadSiteLaunchSettingsMap({
-      bypassCache: isInternalStatusRead,
-    });
+    const settingsMap = await loadSiteLaunchSettingsMap();
     const publicLaunchedSetting = settingsMap.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY);
     const underMaintenanceSetting = settingsMap.get(
       SITE_UNDER_MAINTENANCE_SETTING_KEY

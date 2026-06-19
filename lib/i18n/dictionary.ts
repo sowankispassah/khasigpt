@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { revalidateTag } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 
 import {
   appSettingCacheTagForKey,
@@ -100,6 +100,14 @@ const TRANSLATION_CACHE_TTL_MS =
   Number.isFinite(parsedCacheTtl) && parsedCacheTtl > 0
     ? parsedCacheTtl
     : 1000 * 60 * 60 * 6;
+const parsedMemoryCacheTtl = Number.parseInt(
+  process.env.TRANSLATION_MEMORY_CACHE_TTL_MS ?? `${1000 * 60}`,
+  10
+);
+const TRANSLATION_MEMORY_CACHE_TTL_MS =
+  Number.isFinite(parsedMemoryCacheTtl) && parsedMemoryCacheTtl > 0
+    ? parsedMemoryCacheTtl
+    : 1000 * 60;
 
 const parsedFailureCooldown = Number.parseInt(
   process.env.TRANSLATION_FAILURE_COOLDOWN_MS ?? "30000",
@@ -111,6 +119,7 @@ const TRANSLATION_FAILURE_COOLDOWN_MS =
     : 30000;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
+export const TRANSLATION_BUNDLE_CACHE_TAG = "translation-bundles";
 const LANGUAGE_CACHE_KEY_REGEX = /^[a-z0-9-]{2,16}$/;
 
 const SHOULD_LOG_TRANSLATION_ERRORS =
@@ -274,6 +283,15 @@ async function loadTranslationBundle(preferredCode?: string | null) {
     }),
   };
 }
+
+const loadTranslationBundleCached = unstable_cache(
+  (preferredCode?: string | null) => loadTranslationBundle(preferredCode),
+  ["translation-bundle"],
+  {
+    revalidate: Math.max(1, Math.floor(TRANSLATION_CACHE_TTL_MS / 1000)),
+    tags: [TRANSLATION_BUNDLE_CACHE_TAG, "languages"],
+  }
+);
 
 export type TranslationBundle = {
   languages: LanguageOption[];
@@ -483,6 +501,7 @@ export async function patchTranslationBundleCacheEntry({
   });
 
   await persistBundle(cacheKey, nextBundle);
+  revalidateTag(TRANSLATION_BUNDLE_CACHE_TAG, "max");
   revalidatePersistedBundle(cacheKey);
 
   console.info("[i18n] Translation bundle cache patched.", {
@@ -539,7 +558,7 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
       ? buildFallbackBundle(preferredCode)
       : FALLBACK_BUNDLE;
 
-  const inflight = loadTranslationBundle(preferredCode)
+  const inflight = loadTranslationBundleCached(preferredCode)
     .then((bundle) => {
       clearTranslationDbFailure();
       BUNDLE_CACHE.set(key, {
@@ -587,7 +606,7 @@ export async function getTranslationBundle(
   const cached = BUNDLE_CACHE.get(key);
   if (cached) {
     if (!cached.inflight) {
-      if (Date.now() - cached.cachedAt > TRANSLATION_CACHE_TTL_MS) {
+      if (Date.now() - cached.cachedAt > TRANSLATION_MEMORY_CACHE_TTL_MS) {
         scheduleBundleRefresh(key, preferredCode);
       }
     }
@@ -634,7 +653,7 @@ export async function getTranslationBundle(
   }
 
   try {
-    const bundle = await loadTranslationBundle(preferredCode);
+    const bundle = await loadTranslationBundleCached(preferredCode);
     clearTranslationDbFailure();
     BUNDLE_CACHE.set(key, {
       data: bundle,
@@ -678,7 +697,7 @@ export async function getFreshTranslationBundle(
   }
 
   const key = cacheKeyForLanguage(preferredCode);
-  const bundle = await loadTranslationBundle(preferredCode);
+  const bundle = await loadTranslationBundleCached(preferredCode);
 
   clearTranslationDbFailure();
   BUNDLE_CACHE.set(key, {
@@ -695,6 +714,8 @@ export async function getFreshTranslationBundle(
 export async function invalidateTranslationBundleCache(
   languageCodes?: string[]
 ) {
+  revalidateTag(TRANSLATION_BUNDLE_CACHE_TAG, "max");
+
   const targetSet = new Set<string>();
 
   if (languageCodes && languageCodes.length > 0) {
