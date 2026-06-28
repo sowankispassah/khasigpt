@@ -1624,10 +1624,12 @@ export async function getMessagesByChatIdPage({
   id,
   limit = 60,
   before,
+  beforeMessageId,
 }: {
   id: string;
   limit?: number;
   before?: Date | null;
+  beforeMessageId?: string | null;
 }): Promise<{ messages: DBMessage[]; hasMore: boolean }> {
   const safeLimit = Math.max(1, Math.min(limit, 200));
 
@@ -1635,7 +1637,35 @@ export async function getMessagesByChatIdPage({
     const conditions: SQL<boolean>[] = [
       eq(message.chatId, id) as SQL<boolean>,
     ];
-    if (before instanceof Date && !Number.isNaN(before.getTime())) {
+    if (beforeMessageId) {
+      const [cursorMessage] = await db
+        .select({
+          createdAt: message.createdAt,
+          id: message.id,
+        })
+        .from(message)
+        .where(
+          and(
+            eq(message.chatId, id),
+            eq(message.id, beforeMessageId)
+          )
+        )
+        .limit(1);
+
+      if (!cursorMessage) {
+        return { messages: [], hasMore: false };
+      }
+
+      conditions.push(
+        or(
+          lt(message.createdAt, cursorMessage.createdAt),
+          and(
+            eq(message.createdAt, cursorMessage.createdAt),
+            lt(message.id, cursorMessage.id)
+          )
+        ) as SQL<boolean>
+      );
+    } else if (before instanceof Date && !Number.isNaN(before.getTime())) {
       conditions.push(lt(message.createdAt, before) as SQL<boolean>);
     }
 
@@ -1643,7 +1673,7 @@ export async function getMessagesByChatIdPage({
       .select()
       .from(message)
       .where(and(...conditions))
-      .orderBy(desc(message.createdAt))
+      .orderBy(desc(message.createdAt), desc(message.id))
       .limit(safeLimit + 1);
 
     const hasMore = rows.length > safeLimit;

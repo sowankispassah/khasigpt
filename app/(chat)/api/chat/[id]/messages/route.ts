@@ -116,13 +116,14 @@ export async function GET(
 
   const { searchParams } = new URL(request.url);
   const beforeParam = searchParams.get("before");
+  const beforeIdParam = searchParams.get("before_id");
   const limitParam = searchParams.get("limit");
   const parsedLimit = Number.parseInt(limitParam ?? "", 10);
   const limit =
     Number.isFinite(parsedLimit) && parsedLimit > 0
       ? Math.min(parsedLimit, MAX_PAGE_SIZE)
       : CHAT_HISTORY_PAGE_SIZE;
-  const before = beforeParam ? new Date(beforeParam) : null;
+  const before = beforeParam && !beforeIdParam ? new Date(beforeParam) : null;
 
   let messagesResult: Awaited<ReturnType<typeof getMessagesByChatIdPage>>;
   try {
@@ -131,6 +132,7 @@ export async function GET(
       () =>
         withTimeout(
           getMessagesByChatIdPage({
+            beforeMessageId: beforeIdParam,
             id: chatId,
             limit,
             before,
@@ -146,7 +148,7 @@ export async function GET(
       {
         metadata: {
           chatId,
-          direction: before ? "older" : "initial",
+          direction: before || beforeIdParam ? "older" : "initial",
           limit,
         },
         slowMs: 1000,
@@ -171,6 +173,7 @@ export async function GET(
       : oldestMessage?.createdAt
         ? new Date(oldestMessage.createdAt as unknown as string).toISOString()
         : null;
+  const oldestMessageId = oldestMessage?.id ?? null;
 
   const uiMessages = convertToUIMessages(messages);
   const rewrittenMessages = await withApiTiming(
@@ -198,6 +201,7 @@ export async function GET(
       messages: rewrittenMessages,
       hasMore,
       oldestMessageAt,
+      oldestMessageId,
     },
     {
       headers: {

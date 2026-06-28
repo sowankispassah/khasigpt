@@ -9,6 +9,8 @@ import { withTimeout } from "@/lib/utils/async";
 const KHASI_TRANSCRIPT_NORMALIZATION_TIMEOUT_MS = 8_000;
 const MAX_NORMALIZED_TRANSCRIPT_LENGTH = 20_000;
 const CHAT_MODEL_LOOKUP_TIMEOUT_MS = 2_500;
+const NON_LATIN_SPEECH_RECOGNITION_SCRIPT_PATTERN =
+  /[\u0900-\u097f\u0980-\u09ff\u0a00-\u0a7f\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u;
 const HARD_CODED_DEFAULT_CHAT_MODEL: ModelConfig = {
   codeTemplate: "",
   config: null,
@@ -63,6 +65,10 @@ function hasLikelyKhasiContext(text: string) {
   return KHASI_CONTEXT_MARKERS.some((marker) =>
     normalized.includes(` ${marker} `)
   );
+}
+
+function containsNonLatinSpeechRecognitionScript(text: string) {
+  return NON_LATIN_SPEECH_RECOGNITION_SCRIPT_PATTERN.test(text);
 }
 
 function shouldAttemptKhasiVoiceTranscriptNormalization({
@@ -140,13 +146,16 @@ export async function normalizeKhasiVoiceTranscript({
 }) {
   const rawUserText = userText.replace(/\s+/g, " ").trim();
   const assistantContext = assistantText.replace(/\s+/g, " ").trim();
+  const contextLikelyKhasi = shouldAttemptKhasiVoiceTranscriptNormalization({
+    assistantText: assistantContext,
+    languageCode,
+  });
+  const rawContainsNonLatinScript =
+    containsNonLatinSpeechRecognitionScript(rawUserText);
 
   if (
     !rawUserText ||
-    !shouldAttemptKhasiVoiceTranscriptNormalization({
-      assistantText: assistantContext,
-      languageCode,
-    })
+    !contextLikelyKhasi
   ) {
     return rawUserText;
   }
@@ -161,24 +170,29 @@ export async function normalizeKhasiVoiceTranscript({
           "This is transcript correction, not translation.",
           "Only rewrite the user's transcript into standard Khasi Latin script when the raw transcript is likely spoken Khasi that speech recognition incorrectly represented with another language's words, spelling, or script.",
           "Use sound-alike correction for Khasi words. Correct phonetic chunks into normal Khasi spelling when the intended Khasi is clear.",
+          "When the conversation context is Khasi and the raw transcript contains Chinese, Japanese, Korean, Devanagari, Bengali, Gurmukhi, or another non-Latin script, treat it as a likely speech-recognition script error unless the assistant context clearly shows the user intentionally spoke that language.",
+          "For non-Latin script errors in a Khasi context, set shouldNormalize to true and produce the best concise Khasi Latin-script transcript supported by the raw sounds and assistant reply context.",
           "Keep the raw transcript unchanged when it appears to be genuine English, Hindi, Spanish, or another intentionally spoken language.",
           "Keep intentional code-switching as-is unless the non-Khasi text is clearly phonetic garbage for spoken Khasi.",
           "Use the selected target language and assistant reply as context for whether this is a Khasi voice conversation, but never translate genuine non-Khasi speech.",
-          "If uncertain, set shouldNormalize to false and preserve the raw transcript.",
+          "If uncertain with Latin-script text, set shouldNormalize to false and preserve the raw transcript. If uncertain with non-Latin script text inside a Khasi context, normalize to the most likely Khasi wording instead of preserving the foreign script.",
           "Examples:",
           "{\"raw\":\"Pikerteng Guno\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Phi kyrteng kumno?\"}}",
           "{\"raw\":\"Pikerteng kumno\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Phi kyrteng kumno?\"}}",
+          "{\"raw\":\"가끔씩 아이유가 귀여워 죽어\",\"context\":\"Khasi assistant reply about U Tirot Sing\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Katto katne ki jingkynmaw shaphang u?\"}}",
           "{\"raw\":\"¿Cómo te hace?\",\"decision\":{\"shouldNormalize\":true,\"transcript\":\"Kumno phi long?\"}}",
           "{\"raw\":\"What is your name?\",\"decision\":{\"shouldNormalize\":false,\"transcript\":\"What is your name?\"}}",
           "Return strict JSON only with this shape: {\"shouldNormalize\": boolean, \"transcript\": string}.",
         ].join("\n"),
         prompt: JSON.stringify({
+          contextLikelyKhasi,
+          rawContainsNonLatinScript,
           targetLanguage: "Khasi (kha)",
           rawUserTranscript: rawUserText,
           assistantReplyContext: assistantContext,
         }),
         temperature: 0,
-        maxOutputTokens: 160,
+        maxOutputTokens: 240,
       }),
       KHASI_TRANSCRIPT_NORMALIZATION_TIMEOUT_MS
     );
