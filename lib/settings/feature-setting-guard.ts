@@ -4,6 +4,8 @@ import {
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -44,6 +46,12 @@ const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
   ]),
   [VOICE_CHAT_WEB_FEATURE_FLAG_KEY]: new Set([
     "feature.voice_chat.web.toggle",
+  ]),
+  [LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY]: new Set([
+    "feature.live_translation.android.toggle",
+  ]),
+  [LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY]: new Set([
+    "feature.live_translation.web.toggle",
   ]),
   [VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY]: new Set([
     "feature.voice_chat.android.toggle",

@@ -294,6 +294,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Sidebar link to the translate tool.",
   },
   {
+    key: "sidebar.live_translation",
+    defaultText: "Live Translation",
+    description: "Sidebar link to the Live Translation interpreter tool.",
+  },
+  {
     key: "translate.warning.partial_title",
     defaultText: "Translate settings could not be fully confirmed.",
     description: "Warning title when translate settings or languages are stale.",
@@ -1325,6 +1330,165 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "voice.chat.save_failed",
     defaultText: "Unable to save this voice chat.",
     description: "Error shown when saving a completed native voice turn fails.",
+  },
+  {
+    key: "live_translation.title",
+    defaultText: "Live Translation",
+    description: "Title for the Live Translation page.",
+  },
+  {
+    key: "live_translation.subtitle",
+    defaultText:
+      "Use Gemini Live as a hands-free interpreter between two speakers.",
+    description: "Short description for the Live Translation page.",
+  },
+  {
+    key: "live_translation.language_a",
+    defaultText: "Language A",
+    description: "Label for the first Live Translation language selector.",
+  },
+  {
+    key: "live_translation.language_b",
+    defaultText: "Language B",
+    description: "Label for the second Live Translation language selector.",
+  },
+  {
+    key: "live_translation.start",
+    defaultText: "Start Live Translation",
+    description: "Button label that starts a Live Translation session.",
+  },
+  {
+    key: "live_translation.end",
+    defaultText: "End session",
+    description: "Button label that ends an active Live Translation session.",
+  },
+  {
+    key: "live_translation.cancel",
+    defaultText: "Cancel",
+    description: "Button label that cancels Live Translation setup.",
+  },
+  {
+    key: "live_translation.saving",
+    defaultText: "Saving...",
+    description: "Button label while saving a Live Translation transcript.",
+  },
+  {
+    key: "live_translation.dialog.title",
+    defaultText: "Live Translation",
+    description: "Title for the active Live Translation dialog.",
+  },
+  {
+    key: "live_translation.preparing_title",
+    defaultText: "Preparing interpreter...",
+    description: "Heading shown while Live Translation connects.",
+  },
+  {
+    key: "live_translation.preparing_description",
+    defaultText: "Connecting to Gemini Live...",
+    description: "Status detail shown while Live Translation connects.",
+  },
+  {
+    key: "live_translation.setup_failed",
+    defaultText: "Live Translation setup failed",
+    description: "Heading shown when Live Translation setup fails.",
+  },
+  {
+    key: "live_translation.status.connecting",
+    defaultText: "Connecting...",
+    description: "Live Translation status while connecting.",
+  },
+  {
+    key: "live_translation.status.listening",
+    defaultText: "Listening...",
+    description: "Live Translation status while listening.",
+  },
+  {
+    key: "live_translation.status.thinking",
+    defaultText: "Finalizing...",
+    description: "Live Translation status while finalizing.",
+  },
+  {
+    key: "live_translation.status.speaking",
+    defaultText: "Speaking translation...",
+    description: "Live Translation status while translated audio is playing.",
+  },
+  {
+    key: "live_translation.status.error",
+    defaultText: "Live Translation failed",
+    description: "Live Translation status when the session fails.",
+  },
+  {
+    key: "live_translation.error.unavailable",
+    defaultText: "Live Translation is unavailable.",
+    description: "Error shown when Live Translation cannot be started.",
+  },
+  {
+    key: "live_translation.error.failed",
+    defaultText: "Live Translation failed. Please try again.",
+    description: "Generic Live Translation failure message.",
+  },
+  {
+    key: "live_translation.error.empty_result",
+    defaultText: "I could not hear enough speech. Please try again.",
+    description: "Error shown when Live Translation ends without a transcript.",
+  },
+  {
+    key: "live_translation.error.save_failed",
+    defaultText: "Unable to save this Live Translation session.",
+    description: "Error shown when saving a Live Translation transcript fails.",
+  },
+  {
+    key: "live_translation.toast.saved",
+    defaultText: "Live Translation transcript saved.",
+    description: "Toast shown when a Live Translation transcript is saved.",
+  },
+  {
+    key: "live_translation.transcript.title",
+    defaultText: "Transcript",
+    description: "Heading for the completed Live Translation transcript.",
+  },
+  {
+    key: "live_translation.new_session",
+    defaultText: "New session",
+    description: "Button label to clear the Live Translation transcript.",
+  },
+  {
+    key: "live_translation.open_chat",
+    defaultText: "Open chat",
+    description: "Button label to open the saved transcript chat.",
+  },
+  {
+    key: "live_translation.turn",
+    defaultText: "Turn",
+    description: "Label for a Live Translation transcript turn.",
+  },
+  {
+    key: "live_translation.original",
+    defaultText: "Original",
+    description: "Label for original spoken text in a Live Translation turn.",
+  },
+  {
+    key: "live_translation.translated",
+    defaultText: "Translated",
+    description: "Label for translated text in a Live Translation turn.",
+  },
+  {
+    key: "live_translation.validation.different_languages",
+    defaultText: "Choose two different languages before starting.",
+    description: "Validation message for matching Live Translation languages.",
+  },
+  {
+    key: "live_translation.warning.partial_title",
+    defaultText: "Live Translation settings could not be fully confirmed.",
+    description:
+      "Warning title when Live Translation settings are stale or unavailable.",
+  },
+  {
+    key: "live_translation.warning.partial_body",
+    defaultText:
+      "The page is still available with safe defaults, but some language settings may be temporarily stale.",
+    description:
+      "Warning body when Live Translation settings are stale or unavailable.",
   },
   {
     key: "chat.header.new_chat",

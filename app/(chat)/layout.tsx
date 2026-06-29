@@ -7,6 +7,7 @@ import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
@@ -17,6 +18,7 @@ import {
   getTranslationBundle,
 } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { parseLiveTranslationAccessModeSetting } from "@/lib/live-translation/config";
 import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
@@ -34,6 +36,7 @@ const CHAT_LAYOUT_FEATURE_ACCESS_KEYS = [
   CALCULATOR_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
 ] as const;
 
 export default async function Layout({
@@ -132,6 +135,9 @@ export default async function Layout({
   const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
+  const liveTranslationSetting = getFeatureSetting(
+    LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY
+  );
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(
     studyModeAccessMode,
@@ -153,6 +159,12 @@ export default async function Layout({
     translateAccessMode,
     session?.user?.role ?? null
   );
+  const liveTranslationAccessMode =
+    parseLiveTranslationAccessModeSetting(liveTranslationSetting);
+  const liveTranslationEnabled = isFeatureEnabledForRole(
+    liveTranslationAccessMode,
+    session?.user?.role ?? null
+  );
 
   return (
     <SiteShell
@@ -167,6 +179,7 @@ export default async function Layout({
           <AppSidebar
             calculatorEnabled={calculatorEnabled}
             jobsModeEnabled={jobsModeEnabled}
+            liveTranslationEnabled={liveTranslationEnabled}
             studyModeEnabled={studyModeEnabled}
             translateEnabled={translateEnabled}
             user={session.user}

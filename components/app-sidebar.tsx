@@ -1,6 +1,12 @@
 "use client";
 
-import { BookOpen, BriefcaseBusiness, Calculator, Languages } from "lucide-react";
+import {
+  BookOpen,
+  BriefcaseBusiness,
+  Calculator,
+  Languages,
+  MicVocal,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -62,6 +68,7 @@ const SidebarHistory = dynamic(
 const HOME_HREF = "/chat";
 const NEW_CHAT_HREF = "/chat?new=1";
 const TRANSLATE_HREF = "/translate";
+const LIVE_TRANSLATION_HREF = "/live-translation";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 const CALCULATOR_HREF = "/calculator";
@@ -116,12 +123,14 @@ export function AppSidebar({
   calculatorEnabled = true,
   jobsModeEnabled = false,
   translateEnabled = false,
+  liveTranslationEnabled = false,
   user,
   studyModeEnabled = false,
 }: {
   calculatorEnabled?: boolean;
   jobsModeEnabled?: boolean;
   translateEnabled?: boolean;
+  liveTranslationEnabled?: boolean;
   user: User | undefined;
   studyModeEnabled?: boolean;
 }) {
@@ -132,7 +141,14 @@ export function AppSidebar({
   const navigationFingerprint = `${pathname}?${searchParams.toString()}`;
   const router = useRouter();
   const [pendingNavigation, setPendingNavigation] = useState<
-    "home" | "chat" | "translate" | "study" | "jobs" | "calculator" | null
+    | "home"
+    | "chat"
+    | "translate"
+    | "live-translation"
+    | "study"
+    | "jobs"
+    | "calculator"
+    | null
   >(null);
 
   const activeUser = sessionData?.user ?? user;
@@ -195,7 +211,14 @@ export function AppSidebar({
 
   const navigateWithFeedback = useCallback(
     (
-      target: "home" | "chat" | "translate" | "study" | "jobs" | "calculator",
+      target:
+        | "home"
+        | "chat"
+        | "translate"
+        | "live-translation"
+        | "study"
+        | "jobs"
+        | "calculator",
       href: string
     ) => {
       if (pendingNavigation) {
@@ -204,7 +227,11 @@ export function AppSidebar({
 
       setPendingNavigation(target);
       startGlobalProgress();
-      if (target !== "calculator" && target !== "translate") {
+      if (
+        target !== "calculator" &&
+        target !== "translate" &&
+        target !== "live-translation"
+      ) {
         preloadChat();
       }
       setOpenMobile(false);
@@ -212,6 +239,7 @@ export function AppSidebar({
       if (
         target !== "calculator" &&
         target !== "translate" &&
+        target !== "live-translation" &&
         isChatShellPath(pathname)
       ) {
         if (typeof window !== "undefined") {
@@ -234,6 +262,9 @@ export function AppSidebar({
       prefetchChatRoute(NEW_CHAT_HREF);
       if (translateEnabled) {
         prefetchRoute(TRANSLATE_HREF);
+      }
+      if (liveTranslationEnabled) {
+        prefetchRoute(LIVE_TRANSLATION_HREF);
       }
       if (studyModeEnabled) {
         prefetchChatRoute(NEW_STUDY_HREF);
@@ -258,6 +289,7 @@ export function AppSidebar({
     prefetchRoute,
     studyModeEnabled,
     translateEnabled,
+    liveTranslationEnabled,
   ]);
 
   const handleHomeClick = useCallback(
@@ -320,6 +352,28 @@ export function AppSidebar({
 
   const handleTranslatePrefetch = useCallback(() => {
     prefetchRoute(TRANSLATE_HREF);
+  }, [prefetchRoute]);
+
+  const handleLiveTranslationClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (pathname === LIVE_TRANSLATION_HREF) {
+        setOpenMobile(false);
+        return;
+      }
+
+      navigateWithFeedback("live-translation", LIVE_TRANSLATION_HREF);
+    },
+    [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
+  );
+
+  const handleLiveTranslationPrefetch = useCallback(() => {
+    prefetchRoute(LIVE_TRANSLATION_HREF);
   }, [prefetchRoute]);
 
   const handleCalculatorClick = useCallback(
@@ -460,6 +514,33 @@ export function AppSidebar({
                       <SidebarEditableMenuLabel
                         defaultText="Translate"
                         translationKey="sidebar.translate"
+                      />
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+            {liveTranslationEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={LIVE_TRANSLATION_HREF}
+                    onClick={handleLiveTranslationClick}
+                    onFocus={handleLiveTranslationPrefetch}
+                    onMouseEnter={handleLiveTranslationPrefetch}
+                    onTouchStart={handleLiveTranslationPrefetch}
+                  >
+                    <MicVocal />
+                    {pendingNavigation === "live-translation" ? (
+                      <SidebarEditableMenuLabel
+                        defaultText="Opening..."
+                        translationKey="navigation.opening"
+                      />
+                    ) : (
+                      <SidebarEditableMenuLabel
+                        defaultText="Live Translation"
+                        translationKey="sidebar.live_translation"
                       />
                     )}
                   </Link>

@@ -49,6 +49,18 @@ export const ADMIN_ENTRY_PASS_COOKIE_MAX_AGE_SECONDS = 60 * 15;
 export const TRANSLATE_TARGET_LANGUAGE_COOKIE_NAME = "translate-target-language";
 export const STUDY_MODE_FEATURE_FLAG_KEY = "chat.studyMode.enabled";
 export const TRANSLATE_FEATURE_FLAG_KEY = "chat.translate.enabled";
+export const LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY =
+  "chat.liveTranslation.android.enabled";
+export const LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY =
+  "chat.liveTranslation.web.enabled";
+export const LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY =
+  "chat.liveTranslation.supportedLanguages";
+export const LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY =
+  "chat.liveTranslation.defaultLanguageA";
+export const LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY =
+  "chat.liveTranslation.defaultLanguageB";
+export const LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY =
+  "chat.liveTranslation.systemInstruction";
 export const VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY = "chat.voice.enabled";
 export const VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY =
   "chat.voice.android.enabled";

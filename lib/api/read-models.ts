@@ -14,6 +14,8 @@ import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -42,6 +44,7 @@ import {
   loadIconPromptActions,
 } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
+import { parseLiveTranslationAccessModeSetting } from "@/lib/live-translation/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import {
   getFeatureAccessModeSettingValue,
@@ -156,6 +159,12 @@ export async function loadFeatureAccessReadModel({
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const studySetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
+  const liveTranslationAndroidSetting = getFeatureSetting(
+    LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY
+  );
+  const liveTranslationWebSetting = getFeatureSetting(
+    LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY
+  );
   const voiceChatSettings = resolvePlatformVoiceChatSetting({
     androidValue: getFeatureSetting(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY),
     legacyValue: getFeatureSetting(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
@@ -187,6 +196,18 @@ export async function loadFeatureAccessReadModel({
     ),
     translate: isFeatureEnabledForRole(
       parseTranslateAccessModeSetting(translateSetting),
+      role
+    ),
+    liveTranslation: isFeatureEnabledForRole(
+      parseLiveTranslationAccessModeSetting(liveTranslationAndroidSetting),
+      role
+    ),
+    liveTranslationAndroid: isFeatureEnabledForRole(
+      parseLiveTranslationAccessModeSetting(liveTranslationAndroidSetting),
+      role
+    ),
+    liveTranslationWeb: isFeatureEnabledForRole(
+      parseLiveTranslationAccessModeSetting(liveTranslationWebSetting),
       role
     ),
     voiceChat: isFeatureEnabledForRole(

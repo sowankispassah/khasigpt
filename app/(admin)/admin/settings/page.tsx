@@ -33,6 +33,7 @@ import {
   updateImageModelConfigAction,
   updateLanguageSettingsAction,
   updateLanguageStatusAction,
+  updateLiveTranslationSettingsAction,
   updateLiveVoiceModelConfigAction,
   updateModelConfigAction,
   updatePlanTranslationAction,
@@ -62,6 +63,12 @@ import {
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+  LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+  LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
@@ -96,6 +103,14 @@ import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
   normalizeIconPromptSettings,
 } from "@/lib/icon-prompts";
+import {
+  DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
+  DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
+  DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
+  normalizeLiveTranslationLanguages,
+  resolveLiveTranslationLanguageCode,
+  serializeLiveTranslationLanguagesText,
+} from "@/lib/live-translation/config";
 import {
   getFallbackUsdToInrRate,
   getUsdToInrRate,
@@ -176,6 +191,12 @@ const SETTINGS_SNAPSHOT_KEYS = [
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
   TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+  LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
@@ -197,6 +218,8 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   CALCULATOR_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
@@ -739,6 +762,26 @@ async function loadAdminSettingsData() {
   const translateProviderModeSetting = getStoredSetting<string | boolean>(
     TRANSLATE_PROVIDER_MODE_SETTING_KEY
   );
+  const liveTranslationLanguages = normalizeLiveTranslationLanguages(
+    getStoredSetting<unknown>(LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY)
+  );
+  const liveTranslationDefaultLanguageA = resolveLiveTranslationLanguageCode({
+    fallback: DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
+    languages: liveTranslationLanguages,
+    value: getStoredSetting<string>(
+      LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY
+    ),
+  });
+  const liveTranslationDefaultLanguageB = resolveLiveTranslationLanguageCode({
+    fallback: DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
+    languages: liveTranslationLanguages,
+    value: getStoredSetting<string>(
+      LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY
+    ),
+  });
+  const liveTranslationSystemInstruction =
+    getStoredSetting<string>(LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY) ||
+    DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION;
   const freeMessageSettings = normalizeFreeMessageSettings(
     getStoredSetting(FREE_MESSAGE_SETTINGS_KEY)
   );
@@ -780,6 +823,10 @@ async function loadAdminSettingsData() {
     imageFilenamePrefixSetting,
     iconPromptsSetting,
     translateProviderModeSetting,
+    liveTranslationLanguages,
+    liveTranslationDefaultLanguageA,
+    liveTranslationDefaultLanguageB,
+    liveTranslationSystemInstruction,
   };
 }
 
@@ -831,6 +878,11 @@ function buildFallbackAdminSettingsData() {
     imageFilenamePrefixSetting: null,
     iconPromptsSetting: null,
     translateProviderModeSetting: null,
+    liveTranslationLanguages: normalizeLiveTranslationLanguages(null),
+    liveTranslationDefaultLanguageA: DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
+    liveTranslationDefaultLanguageB: DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
+    liveTranslationSystemInstruction:
+      DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
   } as Awaited<ReturnType<typeof loadAdminSettingsData>>;
 }
 
@@ -1089,6 +1141,10 @@ export default async function AdminSettingsPage({
     imageFilenamePrefixSetting,
     iconPromptsSetting,
     translateProviderModeSetting,
+    liveTranslationLanguages,
+    liveTranslationDefaultLanguageA,
+    liveTranslationDefaultLanguageB,
+    liveTranslationSystemInstruction,
   } = settingsData;
   const featureAccessControlStateByField = new Map(
     ADMIN_FEATURE_ACCESS_SETTINGS.map((setting) => [
@@ -1399,6 +1455,18 @@ export default async function AdminSettingsPage({
       settingKey: VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
+  const liveTranslationAndroidAccessState =
+    featureAccessControlStateByField.get("liveTranslationAndroidAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
+  const liveTranslationWebAccessState =
+    featureAccessControlStateByField.get("liveTranslationWebAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
   const jobsAccessMode = jobsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
@@ -1414,6 +1482,9 @@ export default async function AdminSettingsPage({
     (voiceChatWebAccessState.mode ?? !legacyVoiceChatAccessState.mode)
       ? voiceChatWebAccessState.readState
       : legacyVoiceChatAccessState.readState;
+  const liveTranslationAndroidAccessMode =
+    liveTranslationAndroidAccessState.mode;
+  const liveTranslationWebAccessMode = liveTranslationWebAccessState.mode;
 
   const languagePromptConfigs = activeLanguagesList.map((language) => {
     const stored = normalizedSuggestedPromptsByLanguage[language.code];
@@ -1785,6 +1856,24 @@ export default async function AdminSettingsPage({
               readState={voiceChatWebReadState}
               successMessage="Web voice chat availability updated."
               title="Voice chat - Web"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={liveTranslationAndroidAccessMode}
+              description="Allow Android native users to use Gemini Live as a voice-to-voice interpreter."
+              fieldName="liveTranslationAndroidAccessMode"
+              readState={liveTranslationAndroidAccessState.readState}
+              successMessage="Android Live Translation availability updated."
+              title="Live Translation - Android"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={liveTranslationWebAccessMode}
+              description="Allow web users to use Gemini Live as a voice-to-voice interpreter from supported browsers."
+              fieldName="liveTranslationWebAccessMode"
+              readState={liveTranslationWebAccessState.readState}
+              successMessage="Web Live Translation availability updated."
+              title="Live Translation - Web"
             />
           </div>
         </CollapsibleSection>
@@ -3871,6 +3960,110 @@ export default async function AdminSettingsPage({
                   </div>
                 </div>
               )}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              description="Configure the language pair and interpreter behavior used by the Live Translation page."
+              title="Live Translation defaults"
+            >
+              <form
+                action={updateLiveTranslationSettingsAction}
+                className="grid gap-4 md:grid-cols-2"
+              >
+                <div className="flex flex-col gap-2 md:col-span-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="liveTranslationSupportedLanguages"
+                  >
+                    Supported languages
+                  </label>
+                  <textarea
+                    className="min-h-[130px] rounded-md border bg-background px-3 py-2 font-mono text-xs"
+                    defaultValue={serializeLiveTranslationLanguagesText(
+                      liveTranslationLanguages
+                    )}
+                    id="liveTranslationSupportedLanguages"
+                    name="liveTranslationSupportedLanguages"
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    One language per line as code|Name. Keep auto|Auto Detect
+                    for the common Auto Detect to Khasi flow.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="liveTranslationDefaultLanguageA"
+                  >
+                    Default Language A
+                  </label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    defaultValue={liveTranslationDefaultLanguageA}
+                    id="liveTranslationDefaultLanguageA"
+                    name="liveTranslationDefaultLanguageA"
+                  >
+                    {liveTranslationLanguages.map((language) => (
+                      <option key={language.code} value={language.code}>
+                        {language.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="liveTranslationDefaultLanguageB"
+                  >
+                    Default Language B
+                  </label>
+                  <select
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    defaultValue={liveTranslationDefaultLanguageB}
+                    id="liveTranslationDefaultLanguageB"
+                    name="liveTranslationDefaultLanguageB"
+                  >
+                    {liveTranslationLanguages
+                      .filter((language) => language.code !== "auto")
+                      .map((language) => (
+                        <option key={language.code} value={language.code}>
+                          {language.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-2 md:col-span-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor="liveTranslationSystemInstruction"
+                  >
+                    Interpreter system instructions
+                  </label>
+                  <textarea
+                    className="min-h-[150px] rounded-md border bg-background px-3 py-2 text-sm"
+                    defaultValue={liveTranslationSystemInstruction}
+                    id="liveTranslationSystemInstruction"
+                    name="liveTranslationSystemInstruction"
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    These instructions are combined with the selected language
+                    pair at session start. Live voice model settings still
+                    control model, voice, platform, and credit multiplier.
+                  </p>
+                </div>
+
+                <div className="flex justify-end md:col-span-2">
+                  <SettingsSubmitButton
+                    pendingLabel="Saving..."
+                    successMessage="Live Translation settings updated."
+                  >
+                    Save Live Translation settings
+                  </SettingsSubmitButton>
+                </div>
+              </form>
             </CollapsibleSection>
 
             <CollapsibleSection

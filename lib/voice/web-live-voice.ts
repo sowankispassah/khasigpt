@@ -43,6 +43,12 @@ type WebGeminiVoiceCallbacks = {
   onUserTranscript?: (text: string) => void;
 };
 
+type WebGeminiVoiceStartOptions = WebGeminiVoiceCallbacks & {
+  tokenBody?: Record<string, unknown>;
+  tokenEndpoint?: string;
+  unavailableMessage?: string;
+};
+
 const LIVE_SETUP_TIMEOUT_MS = 15_000;
 const TURN_RESULT_TIMEOUT_MS = 30_000;
 const PROCESSOR_BUFFER_SIZE = 4096;
@@ -232,11 +238,20 @@ function getVoiceCloseErrorMessage(event: CloseEvent) {
   return `Voice chat connection closed before recording finished. Code: ${event.code}`;
 }
 
-async function requestVoiceToken() {
-  const response = await fetch("/api/chat/voice-token", {
+async function requestVoiceToken({
+  tokenBody,
+  tokenEndpoint = "/api/chat/voice-token",
+  unavailableMessage = "Voice chat is unavailable.",
+}: Pick<
+  WebGeminiVoiceStartOptions,
+  "tokenBody" | "tokenEndpoint" | "unavailableMessage"
+>) {
+  const response = await fetch(tokenEndpoint, {
+    body: tokenBody ? JSON.stringify(tokenBody) : undefined,
     method: "POST",
     headers: {
       Accept: "application/json",
+      ...(tokenBody ? { "Content-Type": "application/json" } : {}),
     },
   });
   const data = (await response.json().catch(() => null)) as
@@ -245,11 +260,11 @@ async function requestVoiceToken() {
     | null;
   if (!response.ok) {
     const message =
-      data && "message" in data ? data.message : "Voice chat is unavailable.";
-    throw new Error(message ?? "Voice chat is unavailable.");
+      data && "message" in data ? data.message : unavailableMessage;
+    throw new Error(message ?? unavailableMessage);
   }
   if (!data || !("liveSupported" in data)) {
-    throw new Error("Voice chat token response was invalid.");
+    throw new Error("Live voice token response was invalid.");
   }
   if (!data.liveSupported) {
     throw new Error(data.message);
@@ -264,13 +279,20 @@ export async function startWebGeminiVoiceTurn({
   onMessages,
   onStatus,
   onUserTranscript,
-}: WebGeminiVoiceCallbacks = {}): Promise<WebGeminiVoiceTurnController> {
+  tokenBody,
+  tokenEndpoint,
+  unavailableMessage,
+}: WebGeminiVoiceStartOptions = {}): Promise<WebGeminiVoiceTurnController> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Microphone access is not available in this browser.");
   }
 
   onStatus?.("connecting");
-  const tokenResponse = await requestVoiceToken();
+  const tokenResponse = await requestVoiceToken({
+    tokenBody,
+    tokenEndpoint,
+    unavailableMessage,
+  });
   const audioContext = new AudioContext();
   const mediaStream = await navigator.mediaDevices.getUserMedia({
     audio: {

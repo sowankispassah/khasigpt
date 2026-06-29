@@ -21,6 +21,10 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+  LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+  LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
@@ -125,6 +129,11 @@ import {
   listJobPostingEntries,
 } from "@/lib/jobs/service";
 import type { JobPostingRecord } from "@/lib/jobs/types";
+import {
+  DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
+  parseLiveTranslationLanguagesText,
+  resolveLiveTranslationLanguageCode,
+} from "@/lib/live-translation/config";
 import {
   bulkUpdateRagStatus,
   createRagCategory,
@@ -672,6 +681,82 @@ export async function updateTranslateProviderModeAction(formData: FormData) {
   revalidatePublicPath("/translate", "feature.translate.provider_mode.update");
 
   redirect("/admin/settings?notice=translation-provider-mode-updated");
+}
+
+export async function updateLiveTranslationSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const languages = parseLiveTranslationLanguagesText(
+    formData.get("liveTranslationSupportedLanguages")?.toString() ?? ""
+  );
+  const defaultLanguageA = resolveLiveTranslationLanguageCode({
+    fallback: "auto",
+    languages,
+    value: formData.get("liveTranslationDefaultLanguageA")?.toString(),
+  });
+  const defaultLanguageB = resolveLiveTranslationLanguageCode({
+    fallback: "kha",
+    languages,
+    value: formData.get("liveTranslationDefaultLanguageB")?.toString(),
+  });
+  const systemInstruction =
+    formData.get("liveTranslationSystemInstruction")?.toString().trim() ||
+    DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION;
+
+  if (defaultLanguageA === defaultLanguageB) {
+    redirect("/admin/settings?notice=live-translation-settings-invalid");
+  }
+
+  try {
+    await Promise.all([
+      setAppSetting({
+        key: LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+        value: languages,
+      }),
+      setAppSetting({
+        key: LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+        value: defaultLanguageA,
+      }),
+      setAppSetting({
+        key: LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+        value: defaultLanguageB,
+      }),
+      setAppSetting({
+        key: LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
+        value: systemInstruction,
+      }),
+    ]);
+  } catch (error) {
+    console.error("Failed to update Live Translation settings", error);
+    redirect("/admin/settings?notice=live-translation-settings-error");
+  }
+
+  for (const key of [
+    LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+    LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+    LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+    LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
+  ]) {
+    revalidateAppSettingCache(key, "feature.live_translation.settings.update");
+  }
+  revalidateAdminSettingsSection("feature.live_translation.settings.update");
+  revalidatePublicPath(
+    "/live-translation",
+    "feature.live_translation.settings.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.live_translation.settings.update",
+    target: { setting: "live_translation" },
+    metadata: {
+      defaultLanguageA,
+      defaultLanguageB,
+      supportedLanguageCount: languages.length,
+    },
+  });
+
+  redirect("/admin/settings?notice=live-translation-settings-updated");
 }
 
 export async function updateDocumentUploadsAvailabilityAction(

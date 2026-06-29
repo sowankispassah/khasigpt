@@ -131,6 +131,18 @@ const NOTICE_MESSAGES: Record<
     message:
       "Failed to update the live voice model configuration. Check the model values and try again.",
   },
+  "live-translation-settings-updated": {
+    type: "success",
+    message: "Live Translation settings updated.",
+  },
+  "live-translation-settings-invalid": {
+    type: "error",
+    message: "Choose two different default languages for Live Translation.",
+  },
+  "live-translation-settings-error": {
+    type: "error",
+    message: "Failed to update Live Translation settings. Please try again.",
+  },
   "privacy-updated": { type: "success", message: "Privacy policy updated." },
   "terms-updated": { type: "success", message: "Terms of service updated." },
   "about-updated": { type: "success", message: "About page content updated." },

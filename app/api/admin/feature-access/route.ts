@@ -6,6 +6,8 @@ import {
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+  LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -69,6 +71,14 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
   voiceChatWebAccessMode: {
     settingKey: VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
     auditAction: "feature.voice_chat.web.toggle",
+  },
+  liveTranslationAndroidAccessMode: {
+    settingKey: LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+    auditAction: "feature.live_translation.android.toggle",
+  },
+  liveTranslationWebAccessMode: {
+    settingKey: LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+    auditAction: "feature.live_translation.web.toggle",
   },
   suggestedPromptsAccessMode: {
     settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
