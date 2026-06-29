@@ -18,7 +18,10 @@ import {
   getTranslationBundle,
 } from "@/lib/i18n/dictionary";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { parseLiveTranslationAccessModeSetting } from "@/lib/live-translation/config";
+import {
+  LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
+  parseLiveTranslationAccessModeSetting,
+} from "@/lib/live-translation/config";
 import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
@@ -118,11 +121,18 @@ export default async function Layout({
   const { languages, activeLanguage, dictionary } = translationBundle;
   const featureAccessUnavailable =
     featureAccessSettings?.status === "unavailable";
-  const getFeatureSetting = (key: string) => {
+  const getFeatureSetting = (
+    key: string,
+    { failOpen = true }: { failOpen?: boolean } = {}
+  ) => {
     if (!featureAccessSettings) {
       return null;
     }
-    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key, {
+      unconfirmedFallback: failOpen
+        ? "enabled"
+        : LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
+    });
     if (value !== undefined) {
       return value;
     }
@@ -136,7 +146,8 @@ export default async function Layout({
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
   const liveTranslationSetting = getFeatureSetting(
-    LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY
+    LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+    { failOpen: false }
   );
   const studyModeAccessMode = parseStudyModeAccessModeSetting(studyModeSetting);
   const studyModeEnabled = isFeatureEnabledForRole(

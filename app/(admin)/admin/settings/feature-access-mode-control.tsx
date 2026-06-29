@@ -8,7 +8,6 @@ import type { FeatureAccessMode } from "@/lib/feature-access";
 import type { FeatureAccessControlReadState } from "@/lib/settings/feature-access-settings";
 
 const FEATURE_ACCESS_API_ENDPOINT = "/api/admin/feature-access";
-const FEATURE_TOGGLE_SLOW_NOTICE_MS = 8000;
 const FEATURE_TOGGLE_ATTEMPT_TIMEOUT_MS = 45_000;
 const FEATURE_TOGGLE_MAX_RETRIES = 1;
 
@@ -252,19 +251,7 @@ export function FeatureAccessModeControl({
     setPendingTarget(nextMode);
     setIsSaving(true);
 
-    let slowNoticeTimer: number | null = null;
-    let showedSlowNotice = false;
-
     try {
-      slowNoticeTimer = window.setTimeout(() => {
-        showedSlowNotice = true;
-        toast({
-          type: "error",
-          description:
-            "Save is taking longer than expected. Retrying automatically.",
-        });
-      }, FEATURE_TOGGLE_SLOW_NOTICE_MS);
-
       const savedMode = await saveFeatureAccessModeWithRetry({
         fieldName,
         mode: nextMode,
@@ -273,9 +260,7 @@ export function FeatureAccessModeControl({
 
       toast({
         type: "success",
-        description: showedSlowNotice
-          ? `${successMessage} (completed after a delay)`
-          : successMessage,
+        description: successMessage,
       });
     } catch (error) {
       const requestTimedOut =
@@ -299,9 +284,6 @@ export function FeatureAccessModeControl({
         error
       );
     } finally {
-      if (slowNoticeTimer !== null) {
-        window.clearTimeout(slowNoticeTimer);
-      }
       setPendingTarget(null);
       setIsSaving(false);
     }

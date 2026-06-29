@@ -16,7 +16,7 @@ import {
 } from "@/lib/settings/feature-access-settings";
 
 export const LIVE_TRANSLATION_ACCESS_MODE_FALLBACK: FeatureAccessMode =
-  "disabled";
+  "admin_only";
 const LIVE_TRANSLATION_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 
 export type LiveTranslationPlatform = "android" | "web";
@@ -183,12 +183,9 @@ export async function getLiveTranslationAccessModeForPlatform(
   );
   const rawValue = getFeatureAccessModeSettingValue(
     featureAccessSettings,
-    settingKey
+    settingKey,
+    { unconfirmedFallback: LIVE_TRANSLATION_ACCESS_MODE_FALLBACK }
   );
-
-  if (rawValue === undefined && featureAccessSettings.status === "unavailable") {
-    return "enabled";
-  }
 
   return parseLiveTranslationAccessModeSetting(rawValue);
 }

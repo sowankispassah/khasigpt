@@ -44,7 +44,10 @@ import {
   loadIconPromptActions,
 } from "@/lib/icon-prompts";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
-import { parseLiveTranslationAccessModeSetting } from "@/lib/live-translation/config";
+import {
+  LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
+  parseLiveTranslationAccessModeSetting,
+} from "@/lib/live-translation/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import {
   getFeatureAccessModeSettingValue,
@@ -144,8 +147,15 @@ export async function loadFeatureAccessReadModel({
   const featureAccessUnavailable =
     featureAccessSettings.status === "unavailable";
   const imageGenerationAccessDegraded = Boolean(userId && !imageGenerationAccess);
-  const getFeatureSetting = (key: string): string | boolean | null => {
-    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key);
+  const getFeatureSetting = (
+    key: string,
+    { failOpen = true }: { failOpen?: boolean } = {}
+  ): string | boolean | null => {
+    const value = getFeatureAccessModeSettingValue(featureAccessSettings, key, {
+      unconfirmedFallback: failOpen
+        ? "enabled"
+        : LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
+    });
     return typeof value === "string" || typeof value === "boolean"
       ? value
       : featureAccessUnavailable
@@ -160,10 +170,12 @@ export async function loadFeatureAccessReadModel({
   const studySetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
   const liveTranslationAndroidSetting = getFeatureSetting(
-    LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY
+    LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
+    { failOpen: false }
   );
   const liveTranslationWebSetting = getFeatureSetting(
-    LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY
+    LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+    { failOpen: false }
   );
   const voiceChatSettings = resolvePlatformVoiceChatSetting({
     androidValue: getFeatureSetting(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY),

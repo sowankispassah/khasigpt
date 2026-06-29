@@ -204,7 +204,12 @@ export function buildFeatureAccessSnapshotFromValues({
 
 export function getFeatureAccessModeSettingValue(
   snapshot: FeatureAccessSettingsSnapshot,
-  key: string
+  key: string,
+  {
+    unconfirmedFallback = "enabled",
+  }: {
+    unconfirmedFallback?: FeatureAccessMode;
+  } = {}
 ) {
   const value = snapshot.values.get(key);
   if (value !== undefined) {
@@ -216,7 +221,7 @@ export function getFeatureAccessModeSettingValue(
     }
   }
 
-  return snapshot.status !== "confirmed" ? "enabled" : null;
+  return snapshot.status !== "confirmed" ? unconfirmedFallback : null;
 }
 
 export async function loadFeatureAccessSettingsByKeys(

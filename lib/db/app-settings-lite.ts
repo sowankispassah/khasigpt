@@ -265,13 +265,16 @@ options?: {
   });
 
   const jsonValue = normalizedValue as Parameters<typeof sql.json>[0];
-  await sql`
+  const rows = await sql<Array<{ value: T }>>`
     insert into "AppSetting" ("key", "value", "updatedAt")
     values (${normalizedKey}, ${sql.json(jsonValue)}, now())
     on conflict ("key") do update set
       "value" = excluded."value",
       "updatedAt" = excluded."updatedAt"
+    returning "value"
   `;
+
+  return rows[0]?.value ?? normalizedValue;
 }
 
 export async function createLiteAuditLogEntry({

@@ -17,13 +17,9 @@ import {
 import {
   appSettingCacheTagForKey,
   createLiteAuditLogEntry,
-  getLiteAppSettingUncached,
   setLiteAppSetting,
 } from "@/lib/db/app-settings-lite";
-import {
-  type FeatureAccessMode,
-  parseFeatureAccessModeStrict,
-} from "@/lib/feature-access";
+import type { FeatureAccessMode } from "@/lib/feature-access";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import {
   FEATURE_ACCESS_SETTINGS_CACHE_TAG,
@@ -36,7 +32,7 @@ type FeatureAccessFieldConfig = {
   settingKey: string;
 };
 
-const FEATURE_ACCESS_TIMEOUT_MS = 10_000;
+const FEATURE_ACCESS_TIMEOUT_MS = 20_000;
 const FEATURE_ACCESS_AUDIT_TIMEOUT_MS = 3_000;
 
 const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
@@ -187,22 +183,16 @@ export async function POST(request: NextRequest) {
   const resolvedMode = mode;
 
   try {
-    const previousMode = parseFeatureAccessModeStrict(
-      await withTimeout(
-        getLiteAppSettingUncached(config.settingKey),
-        FEATURE_ACCESS_TIMEOUT_MS
-      )
-    );
+    const startedAt = Date.now();
     console.info("[api/admin/feature-access] save:start", {
       actorId: user.id,
       fieldName,
-      previousMode,
       requestedMode: resolvedMode,
       settingKey: config.settingKey,
       source: config.auditAction,
     });
 
-    await withTimeout(
+    const persistedMode = await withTimeout(
       setLiteAppSetting({
         key: config.settingKey,
         value: resolvedMode,
@@ -216,12 +206,6 @@ export async function POST(request: NextRequest) {
       }),
       FEATURE_ACCESS_TIMEOUT_MS
     );
-    const persistedMode = parseFeatureAccessModeStrict(
-      await withTimeout(
-        getLiteAppSettingUncached(config.settingKey),
-        FEATURE_ACCESS_TIMEOUT_MS
-      )
-    );
     if (persistedMode !== resolvedMode) {
       console.error("[api/admin/feature-access] Readback mismatch.", {
         expected: resolvedMode,
@@ -233,6 +217,7 @@ export async function POST(request: NextRequest) {
     }
     rememberFeatureAccessSettingValue(config.settingKey, persistedMode);
     console.info("[api/admin/feature-access] save:end", {
+      durationMs: Date.now() - startedAt,
       fieldName,
       persistedMode,
       settingKey: config.settingKey,
