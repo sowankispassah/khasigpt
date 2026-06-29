@@ -20,6 +20,7 @@ import {
   DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
   getLiveTranslationAccessModeForPlatform,
   getLiveTranslationLanguageName,
+  LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
   LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
@@ -215,7 +216,7 @@ export async function POST(request: Request) {
         "[api/live-translation/token] Feature setting read failed.",
         error
       );
-      return "enabled" as const;
+      return LIVE_TRANSLATION_ACCESS_MODE_FALLBACK;
     }),
     withApiTiming(
       "web.live-translation-token.model",

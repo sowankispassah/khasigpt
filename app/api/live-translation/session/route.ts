@@ -2,10 +2,13 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
+  getActiveChatOwnerById,
   getAppSetting,
   getLastKnownAppSetting,
   recordTokenUsage,
   saveChatAndMessages,
+  saveMessages,
+  touchChatActivityById,
   updateChatStatusById,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
@@ -14,6 +17,7 @@ import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import {
   getLiveTranslationAccessModeForPlatform,
   getLiveTranslationLanguageName,
+  LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
   LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
   normalizeLiveTranslationLanguages,
 } from "@/lib/live-translation/config";
@@ -53,11 +57,12 @@ const liveTranslationSessionSchema = z.object({
 });
 
 type SavedLiveTranslationTurn = {
+  assistantMessageId: string;
   id: string;
-  messageId: string;
   originalText: string;
   timestamp: string;
   translatedText: string;
+  userMessageId: string;
 };
 
 function liveTranslationPersistenceUnavailable() {
@@ -74,29 +79,6 @@ function buildFallbackTitle(text: string) {
   }
   const title = `Live Translation: ${normalized}`;
   return title.length > 80 ? `${title.slice(0, 77)}...` : title;
-}
-
-function buildTranscriptText({
-  index,
-  originalText,
-  timestamp,
-  translatedText,
-}: {
-  index: number;
-  originalText: string;
-  timestamp: string;
-  translatedText: string;
-}) {
-  return [
-    `Live Translation Turn ${index}`,
-    `Time: ${timestamp}`,
-    "",
-    "Original",
-    originalText,
-    "",
-    "Translated",
-    translatedText,
-  ].join("\n");
 }
 
 function shouldNormalizeKhasi({
@@ -133,7 +115,7 @@ export async function POST(request: Request) {
         "[api/live-translation/session] Feature setting read failed.",
         error
       );
-      return "enabled" as const;
+      return LIVE_TRANSLATION_ACCESS_MODE_FALLBACK;
     }
   );
 
@@ -196,51 +178,58 @@ export async function POST(request: Request) {
 
   const createdAt = new Date();
   const chatId = parsedBody.data.chatId ?? generateUUID();
-  const messageIds: string[] = [];
   const messages: DBMessage[] = [];
   const savedTurns: SavedLiveTranslationTurn[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
   for (const [index, turn] of parsedBody.data.turns.entries()) {
-    const translatedText = turn.translatedText.trim();
+    const rawTranslatedText = turn.translatedText.trim();
+    const rawOriginalText = turn.originalText.trim();
     const normalizedOriginalText = normalizeKhasi
       ? await normalizeKhasiVoiceTranscript({
-          assistantText: translatedText,
-          languageCode: languageACode === "kha" ? "kha" : languageBCode,
-          userText: turn.originalText,
+          assistantText: rawTranslatedText,
+          languageCode: "kha",
+          userText: rawOriginalText,
         })
-      : turn.originalText.trim();
+      : rawOriginalText;
+    const translatedText = normalizeKhasi
+      ? await normalizeKhasiVoiceTranscript({
+          assistantText: normalizedOriginalText,
+          languageCode: "kha",
+          userText: rawTranslatedText,
+        })
+      : rawTranslatedText;
     const timestamp = turn.timestamp ?? createdAt.toISOString();
-    const messageId = generateUUID();
-    messageIds.push(messageId);
-    const messageCreatedAt = new Date(createdAt.getTime() + index);
+    const userMessageId = generateUUID();
+    const assistantMessageId = generateUUID();
+    const userCreatedAt = new Date(createdAt.getTime() + index * 2);
+    const assistantCreatedAt = new Date(createdAt.getTime() + index * 2 + 1);
 
     messages.push({
       attachments: [],
       chatId,
-      createdAt: messageCreatedAt,
-      id: messageId,
-      parts: [
-        {
-          type: "text" as const,
-          text: buildTranscriptText({
-            index: index + 1,
-            originalText: normalizedOriginalText,
-            timestamp,
-            translatedText,
-          }),
-        },
-      ],
+      createdAt: userCreatedAt,
+      id: userMessageId,
+      parts: [{ type: "text" as const, text: normalizedOriginalText }],
       role: "user",
+    });
+    messages.push({
+      attachments: [],
+      chatId,
+      createdAt: assistantCreatedAt,
+      id: assistantMessageId,
+      parts: [{ type: "text" as const, text: translatedText }],
+      role: "assistant",
     });
 
     savedTurns.push({
-      id: turn.id ?? messageId,
-      messageId,
+      assistantMessageId,
+      id: turn.id ?? userMessageId,
       originalText: normalizedOriginalText,
       timestamp,
       translatedText,
+      userMessageId,
     });
 
     const usage = resolveLiveVoiceTurnUsage({
@@ -256,19 +245,41 @@ export async function POST(request: Request) {
     totalOutputTokens += usage.outputTokens;
   }
 
+  const existingChat = await withTimeout(
+    getActiveChatOwnerById({ id: chatId }),
+    LIVE_TRANSLATION_SESSION_SAVE_TIMEOUT_MS
+  ).catch((error) => {
+    console.error("[api/live-translation/session] Chat read failed.", error);
+    return undefined;
+  });
+  if (existingChat === undefined) {
+    return liveTranslationPersistenceUnavailable();
+  }
+  if (existingChat && existingChat.userId !== authContext.user.id) {
+    return Response.json(
+      { message: "Forbidden" },
+      { headers: noStoreHeaders(), status: 403 }
+    );
+  }
+
   try {
     await withTimeout(
-      saveChatAndMessages({
-        chatInput: {
-          id: chatId,
-          userId: authContext.user.id,
-          title: buildFallbackTitle(savedTurns[0]?.originalText ?? ""),
-          visibility: parsedBody.data.selectedVisibilityType,
-          mode: "default",
-          status: "completed",
-        },
-        messages,
-      }),
+      existingChat
+        ? (async () => {
+            await touchChatActivityById({ chatId });
+            await saveMessages({ messages });
+          })()
+        : saveChatAndMessages({
+            chatInput: {
+              id: chatId,
+              userId: authContext.user.id,
+              title: buildFallbackTitle(savedTurns[0]?.originalText ?? ""),
+              visibility: parsedBody.data.selectedVisibilityType,
+              mode: "default",
+              status: "completed",
+            },
+            messages,
+          }),
       LIVE_TRANSLATION_SESSION_SAVE_TIMEOUT_MS
     );
   } catch (error) {
@@ -317,7 +328,6 @@ export async function POST(request: Request) {
       chatId,
       languageA: { code: languageACode, name: languageAName },
       languageB: { code: languageBCode, name: languageBName },
-      messageIds,
       ok: true,
       turns: savedTurns,
     },

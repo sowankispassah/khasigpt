@@ -7,6 +7,7 @@ import {
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
   DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
   getLiveTranslationAccessModeForPlatform,
+  LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
   LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
@@ -43,7 +44,7 @@ export default async function LiveTranslationPage() {
           "[live-translation/page] Feature setting read failed.",
           error
         );
-        return "enabled" as const;
+        return LIVE_TRANSLATION_ACCESS_MODE_FALLBACK;
       }),
       safeLiveTranslationSetting<unknown>(
         LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY

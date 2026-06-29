@@ -1,17 +1,18 @@
 "use client";
 
 import {
-  ExternalLink,
   Languages,
   LoaderCircle,
   Mic,
-  RotateCcw,
   Square,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useSWRConfig } from "swr";
+import { unstable_serialize } from "swr/infinite";
 import { useTranslation } from "@/components/language-provider";
+import { getChatHistoryPaginationKeyForMode } from "@/components/sidebar-history";
 import { toast } from "@/components/toast";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import { cn } from "@/lib/utils";
 import {
   startWebGeminiVoiceTurn,
@@ -54,7 +56,6 @@ type LiveTranslationPageClientProps = {
 type SaveSessionResponse = {
   chatId?: string;
   message?: string;
-  turns?: LiveTranslationTurn[];
 };
 
 const VISUALIZER_BARS = [
@@ -239,6 +240,7 @@ export function LiveTranslationPageClient({
   settingsUnavailable,
 }: LiveTranslationPageClientProps) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const { translate } = useTranslation();
   const controllerRef = useRef<WebGeminiVoiceTurnController | null>(null);
   const [languageACode, setLanguageACode] = useState(defaultLanguageACode);
@@ -250,11 +252,11 @@ export function LiveTranslationPageClient({
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transcriptTurns, setTranscriptTurns] = useState<LiveTranslationTurn[]>(
+  const [messages, setMessages] = useState<WebGeminiVoiceConversationMessage[]>(
     []
   );
-  const [savedChatId, setSavedChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<WebGeminiVoiceConversationMessage[]>(
+  const historyPaginationKey = useMemo(
+    () => getChatHistoryPaginationKeyForMode("default"),
     []
   );
 
@@ -313,28 +315,35 @@ export function LiveTranslationPageClient({
               )
           );
         }
-        setTranscriptTurns(payload?.turns?.length ? payload.turns : turns);
-        setSavedChatId(payload?.chatId ?? null);
+        if (!payload?.chatId) {
+          throw new Error(
+            translate(
+              "live_translation.error.save_failed",
+              "Unable to save this Live Translation session."
+            )
+          );
+        }
+        await mutate(unstable_serialize(historyPaginationKey));
         toast({
           type: "success",
           description: translate(
             "live_translation.toast.saved",
-            "Live Translation transcript saved."
+            "Live Translation saved."
           ),
         });
+        startGlobalProgress();
+        router.push(`/chat/${payload.chatId}`);
       } finally {
         setIsSaving(false);
       }
     },
-    [languageACode, languageBCode, translate]
+    [historyPaginationKey, languageACode, languageBCode, mutate, router, translate]
   );
 
   const startSession = useCallback(async () => {
     if (!canStart) {
       return;
     }
-    setSavedChatId(null);
-    setTranscriptTurns([]);
     resetRuntimeState();
     setIsSessionOpen(true);
     try {
@@ -400,7 +409,6 @@ export function LiveTranslationPageClient({
           )
         );
       }
-      setTranscriptTurns(turns);
       await saveSession(turns);
       resetRuntimeState();
     } catch (nextError) {
@@ -417,12 +425,6 @@ export function LiveTranslationPageClient({
       setIsSaving(false);
     }
   }, [isSaving, resetRuntimeState, saveSession, translate]);
-
-  const openSavedChat = useCallback(() => {
-    if (savedChatId) {
-      router.push(`/chat/${savedChatId}`);
-    }
-  }, [router, savedChatId]);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-3 py-4 md:px-4">
@@ -530,89 +532,6 @@ export function LiveTranslationPageClient({
           </div>
         </div>
       </section>
-
-      {transcriptTurns.length > 0 ? (
-        <section className="rounded-lg border bg-background p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <EditableTranslation
-                className="font-semibold text-lg"
-                defaultText="Transcript"
-                translationKey="live_translation.transcript.title"
-              />
-              <p className="text-muted-foreground text-sm">
-                {languageAName} <span aria-hidden="true">↔</span> {languageBName}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                className="cursor-pointer gap-2"
-                onClick={() => {
-                  setTranscriptTurns([]);
-                  setSavedChatId(null);
-                }}
-                type="button"
-                variant="outline"
-              >
-                <RotateCcw className="size-4" />
-                <EditableTranslation
-                  defaultText="New session"
-                  translationKey="live_translation.new_session"
-                />
-              </Button>
-              {savedChatId ? (
-                <Button
-                  className="cursor-pointer gap-2"
-                  onClick={openSavedChat}
-                  type="button"
-                >
-                  <ExternalLink className="size-4" />
-                  <EditableTranslation
-                    defaultText="Open chat"
-                    translationKey="live_translation.open_chat"
-                  />
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {transcriptTurns.map((turn, index) => (
-              <article
-                className="rounded-lg border bg-muted/20 p-4"
-                key={`${turn.id}-${index}`}
-              >
-                <div className="mb-3 flex items-center justify-between gap-3 text-muted-foreground text-xs">
-                  <span>
-                    {translate("live_translation.turn", "Turn")} {index + 1}
-                  </span>
-                  <time dateTime={turn.timestamp}>
-                    {new Date(turn.timestamp).toLocaleTimeString()}
-                  </time>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="font-medium text-sm">
-                      {translate("live_translation.original", "Original")}
-                    </p>
-                    <p className="whitespace-pre-wrap text-sm leading-6">
-                      {turn.originalText}
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="font-medium text-sm">
-                      {translate("live_translation.translated", "Translated")}
-                    </p>
-                    <p className="whitespace-pre-wrap text-sm leading-6">
-                      {turn.translatedText}
-                    </p>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {isSessionOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">

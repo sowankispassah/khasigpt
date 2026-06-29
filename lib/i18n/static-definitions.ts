@@ -1439,8 +1439,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "live_translation.toast.saved",
-    defaultText: "Live Translation transcript saved.",
-    description: "Toast shown when a Live Translation transcript is saved.",
+    defaultText: "Live Translation saved.",
+    description: "Toast shown when a Live Translation session is saved as a chat.",
   },
   {
     key: "live_translation.transcript.title",
