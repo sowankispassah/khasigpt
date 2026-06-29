@@ -280,13 +280,19 @@ export function FeatureAccessModeControl({
     } catch (error) {
       const requestTimedOut =
         error instanceof Error && error.message === "request_timeout";
+      const errorMessage =
+        error instanceof Error &&
+        error.message !== "save_failed" &&
+        error.message.trim().length > 0
+          ? error.message
+          : null;
 
       setMode(previousMode ?? currentMode);
       toast({
         type: "error",
         description: requestTimedOut
           ? "Save timed out. Please try again."
-          : "Failed to save this setting. Please try again.",
+          : errorMessage ?? "Failed to save this setting. Please try again.",
       });
       console.error(
         `[admin/settings] Failed to save feature access mode for "${fieldName}".`,

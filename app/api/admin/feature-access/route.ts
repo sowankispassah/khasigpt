@@ -100,6 +100,61 @@ function isFeatureAccessMode(value: unknown): value is FeatureAccessMode {
   return value === "enabled" || value === "admin_only" || value === "disabled";
 }
 
+function getSafeSaveErrorMessage(error: unknown) {
+  if (isTimeoutError(error)) {
+    return "Save timed out before the database confirmed the value. Please try again.";
+  }
+
+  if (error instanceof Error) {
+    if (error.message === "invalid_feature_access_setting") {
+      return "This setting value was not accepted by server validation.";
+    }
+    if (error.message === "unauthorized_feature_setting_write") {
+      return "This feature setting is not registered for admin writes in this deployment.";
+    }
+  }
+
+  return "Failed to save this setting. Please try again.";
+}
+
+function invalidateFeatureAccessSetting({
+  fieldName,
+  mode,
+  source,
+  settingKey,
+}: {
+  fieldName: string;
+  mode: FeatureAccessMode;
+  source: string;
+  settingKey: string;
+}) {
+  const invalidatedTags = [
+    appSettingCacheTagForKey(settingKey),
+    FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+  ];
+
+  try {
+    invalidateAdminMutation({
+      source,
+      tags: invalidatedTags,
+    });
+    console.info("[api/admin/feature-access] Scoped feature mutation invalidation.", {
+      accessMode: mode,
+      fieldName,
+      invalidatedTags,
+      settingKey,
+      source,
+    });
+    return true;
+  } catch (error) {
+    console.error(
+      `[api/admin/feature-access] Cache invalidation failed after saving "${settingKey}".`,
+      error
+    );
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const user = await requireAdminApiUser(request);
   if (!user) {
@@ -186,29 +241,19 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const status = isTimeoutError(error) ? 504 : 500;
     const responseCode = isTimeoutError(error) ? "timeout" : "save_failed";
+    const message = getSafeSaveErrorMessage(error);
 
     console.error(
       `[api/admin/feature-access] Failed to save setting "${config.settingKey}".`,
       error
     );
 
-    return NextResponse.json({ error: responseCode }, { status });
+    return NextResponse.json({ error: responseCode, message }, { status });
   }
 
-  invalidateAdminMutation({
-    source: config.auditAction,
-    tags: [
-      appSettingCacheTagForKey(config.settingKey),
-      FEATURE_ACCESS_SETTINGS_CACHE_TAG,
-    ],
-  });
-  console.info("[api/admin/feature-access] Scoped feature mutation invalidation.", {
-    accessMode: resolvedMode,
+  const invalidated = invalidateFeatureAccessSetting({
     fieldName,
-    invalidatedTags: [
-      appSettingCacheTagForKey(config.settingKey),
-      FEATURE_ACCESS_SETTINGS_CACHE_TAG,
-    ],
+    mode: resolvedMode,
     settingKey: config.settingKey,
     source: config.auditAction,
   });
@@ -230,7 +275,12 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json(
-    { ok: true, mode: resolvedMode, settingKey: config.settingKey },
+    {
+      ok: true,
+      mode: resolvedMode,
+      settingKey: config.settingKey,
+      warning: invalidated ? null : "cache_invalidation_failed",
+    },
     {
       headers: {
         "Cache-Control": "no-store",
