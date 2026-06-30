@@ -31,6 +31,11 @@ const SITE_LAUNCH_SETTING_KEYS = [
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
 ] as const;
+const SITE_LAUNCH_CRITICAL_SETTING_KEYS = [
+  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
+  SITE_UNDER_MAINTENANCE_SETTING_KEY,
+  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
+] as const;
 let siteLaunchSettingsCache:
   | {
       fetchedAt: number;
@@ -110,10 +115,15 @@ function cacheSettingsMap(map: Map<string, unknown>) {
   return cloneSettingsMap(map);
 }
 
+type SiteLaunchSettingsResult = {
+  degraded: boolean;
+  map: Map<string, unknown>;
+};
+
 async function loadSiteLaunchSettingsMap() {
   const cached = getCachedSettingsMap();
   if (cached) {
-    return cached;
+    return { degraded: false, map: cached } satisfies SiteLaunchSettingsResult;
   }
 
   try {
@@ -121,9 +131,12 @@ async function loadSiteLaunchSettingsMap() {
       loadSharedSiteLaunchSettings(),
       SITE_LAUNCH_SETTINGS_TIMEOUT_MS
     );
-    return cacheSettingsMap(
-      new Map(settings.map((entry) => [entry.key, entry.value]))
-    );
+    return {
+      degraded: false,
+      map: cacheSettingsMap(
+        new Map(settings.map((entry) => [entry.key, entry.value]))
+      ),
+    } satisfies SiteLaunchSettingsResult;
   } catch (error) {
     console.error(
       "[api/public/site-launch] Batched settings query timed out or failed. Retrying with per-key reads.",
@@ -151,22 +164,35 @@ async function loadSiteLaunchSettingsMap() {
     }
   }
 
+  const hasCriticalSettings = SITE_LAUNCH_CRITICAL_SETTING_KEYS.every((key) =>
+    map.has(key)
+  );
+  if (hasCriticalSettings) {
+    return {
+      degraded: false,
+      map: cacheSettingsMap(map),
+    } satisfies SiteLaunchSettingsResult;
+  }
+
   if (map.size > 0) {
-    return cacheSettingsMap(map);
+    return {
+      degraded: true,
+      map: cloneSettingsMap(map),
+    } satisfies SiteLaunchSettingsResult;
   }
 
   const stale = getStaleSettingsMap();
   if (stale) {
-    return stale;
+    return { degraded: true, map: stale } satisfies SiteLaunchSettingsResult;
   }
 
-  return map;
+  throw new Error("site_launch_settings_unavailable");
 }
 
 export async function GET() {
   try {
     const fallbackState = getSafeSiteLaunchFallbackState();
-    const settingsMap = await loadSiteLaunchSettingsMap();
+    const { degraded, map: settingsMap } = await loadSiteLaunchSettingsMap();
     const publicLaunchedSetting = settingsMap.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY);
     const underMaintenanceSetting = settingsMap.get(
       SITE_UNDER_MAINTENANCE_SETTING_KEY
@@ -200,12 +226,16 @@ export async function GET() {
         : normalizeAdminEntryPathSetting(adminEntryPathSetting);
 
     const payload: {
+      confirmed: boolean;
+      degraded: boolean;
       publicLaunched: boolean;
       underMaintenance: boolean;
       inviteOnlyPrelaunch: boolean;
       adminAccessEnabled: boolean;
       adminEntryPath: string;
     } = {
+      confirmed: !degraded,
+      degraded,
       publicLaunched,
       underMaintenance,
       inviteOnlyPrelaunch,
@@ -229,8 +259,13 @@ export async function GET() {
     );
 
     return NextResponse.json(
-      fallbackState,
       {
+        ...fallbackState,
+        confirmed: false,
+        degraded: true,
+      },
+      {
+        status: 503,
         headers: {
           "Cache-Control": "no-store",
         },

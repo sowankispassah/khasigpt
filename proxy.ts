@@ -126,6 +126,7 @@ const KV_REST_TIMEOUT_MS =
 function getSafeSiteStatusFallback() {
   if (process.env.NODE_ENV === "production") {
     return {
+      degraded: true,
       publicLaunched: false,
       underMaintenance: false,
       inviteOnlyPrelaunch: false,
@@ -135,6 +136,7 @@ function getSafeSiteStatusFallback() {
   }
 
   return {
+    degraded: true,
     publicLaunched: true,
     underMaintenance: false,
     inviteOnlyPrelaunch: false,
@@ -322,6 +324,7 @@ export function shouldBypassSiteStatusGate(pathname: string) {
 async function resolveSiteStatus(
   request: NextRequest
 ): Promise<{
+  degraded: boolean;
   publicLaunched: boolean;
   underMaintenance: boolean;
   inviteOnlyPrelaunch: boolean;
@@ -330,6 +333,7 @@ async function resolveSiteStatus(
 }> {
   if (BYPASS_SITE_STATUS_GATE_IN_DEV) {
     return {
+      degraded: false,
       publicLaunched: true,
       underMaintenance: false,
       inviteOnlyPrelaunch: false,
@@ -341,6 +345,7 @@ async function resolveSiteStatus(
   const now = Date.now();
   if (siteStatusCache && now - siteStatusCache.fetchedAt < SITE_STATUS_CACHE_WINDOW_MS) {
     return {
+      degraded: false,
       publicLaunched: siteStatusCache.publicLaunched,
       underMaintenance: siteStatusCache.underMaintenance,
       inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
@@ -373,6 +378,7 @@ async function resolveSiteStatus(
       const fallbackState = getSafeSiteStatusFallback();
       if (staleStatusAllowed && siteStatusCache) {
         return {
+          degraded: false,
           publicLaunched: siteStatusCache.publicLaunched,
           underMaintenance: siteStatusCache.underMaintenance,
           inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
@@ -391,10 +397,6 @@ async function resolveSiteStatus(
         );
       }
 
-      siteStatusCache = {
-        fetchedAt: now,
-        ...fallbackState,
-      };
       return fallbackState;
     }
 
@@ -405,6 +407,8 @@ async function resolveSiteStatus(
           inviteOnlyPrelaunch?: unknown;
           adminAccessEnabled?: unknown;
           adminEntryPath?: unknown;
+          degraded?: unknown;
+          confirmed?: unknown;
         }
       | null;
     const publicLaunched = body?.publicLaunched !==false;
@@ -412,16 +416,21 @@ async function resolveSiteStatus(
     const inviteOnlyPrelaunch = body?.inviteOnlyPrelaunch === true;
     const adminAccessEnabled = body?.adminAccessEnabled === true;
     const adminEntryPath = normalizeAdminEntryPathSetting(body?.adminEntryPath);
+    const degraded = body?.degraded === true || body?.confirmed === false;
 
-    siteStatusCache = {
-      fetchedAt: now,
-      publicLaunched,
-      underMaintenance,
-      inviteOnlyPrelaunch,
-      adminAccessEnabled,
-      adminEntryPath,
-    };
+    if (!degraded) {
+      siteStatusCache = {
+        fetchedAt: now,
+        publicLaunched,
+        underMaintenance,
+        inviteOnlyPrelaunch,
+        adminAccessEnabled,
+        adminEntryPath,
+      };
+    }
+
     return {
+      degraded,
       publicLaunched,
       underMaintenance,
       inviteOnlyPrelaunch,
@@ -432,6 +441,7 @@ async function resolveSiteStatus(
     const fallbackState = getSafeSiteStatusFallback();
     if (staleStatusAllowed && siteStatusCache) {
       return {
+        degraded: false,
         publicLaunched: siteStatusCache.publicLaunched,
         underMaintenance: siteStatusCache.underMaintenance,
         inviteOnlyPrelaunch: siteStatusCache.inviteOnlyPrelaunch,
@@ -445,10 +455,6 @@ async function resolveSiteStatus(
       error
     );
 
-    siteStatusCache = {
-      fetchedAt: now,
-      ...fallbackState,
-    };
     return fallbackState;
   }
 }
@@ -489,13 +495,24 @@ async function resolveIsAdmin(request: NextRequest) {
     }, INTERNAL_STATUS_FETCH_TIMEOUT_MS);
 
     if (!response || !response.ok) {
-      return false;
+      return null;
     }
 
-    const body = (await response.json()) as { role?: unknown } | null;
-    return body?.role === "admin";
-  } catch {
+    const body = (await response.json()) as
+      | { authenticated?: unknown; degraded?: unknown; role?: unknown }
+      | null;
+    if (body?.role === "admin") {
+      return true;
+    }
+    if (typeof body?.role === "string") {
+      return false;
+    }
+    if (body?.authenticated === true && body?.degraded === true) {
+      return null;
+    }
     return false;
+  } catch {
+    return null;
   }
 }
 
@@ -596,6 +613,8 @@ export async function proxy(request: NextRequest) {
     const siteStatus = await resolveSiteStatus(request);
     const configuredAdminEntryPath = siteStatus.adminEntryPath;
     const isConfiguredAdminEntryRoute = pathname === configuredAdminEntryPath;
+    const shouldSkipLaunchGateForAuthenticatedUnknownStatus =
+      siteStatus.degraded && hasSessionCookie(request);
 
     if (
       siteStatus.adminAccessEnabled &&
@@ -607,62 +626,73 @@ export async function proxy(request: NextRequest) {
       return NextResponse.rewrite(rewriteUrl);
     }
 
-    const shouldResolveAdminForSiteGate =
-      siteStatus.underMaintenance || !siteStatus.publicLaunched;
-    const isAdmin = shouldResolveAdminForSiteGate
-      ? await resolveIsAdmin(request)
-      : false;
+    if (shouldSkipLaunchGateForAuthenticatedUnknownStatus) {
+      console.warn(
+        "[middleware] Site status is unavailable; allowing authenticated navigation without launch gate.",
+        { pathname }
+      );
+    } else {
+      const shouldResolveAdminForSiteGate =
+        siteStatus.underMaintenance || !siteStatus.publicLaunched;
+      const isAdmin = shouldResolveAdminForSiteGate
+        ? await resolveIsAdmin(request)
+        : false;
 
-    if (!isAdmin) {
-      const isAuthRoute = isAuthRoutePath(pathname);
-      const allowAdminReentry =
-        siteStatus.adminAccessEnabled &&
-        (isConfiguredAdminEntryRoute ||
-          (isAdminSignInRoutePath(pathname) &&
-            (await resolveHasValidAdminEntryPass(request))));
-
-      if (siteStatus.underMaintenance) {
-        if (!allowAdminReentry && pathname !== SITE_MAINTENANCE_PATH) {
-          const landingUrl = request.nextUrl.clone();
-          landingUrl.pathname = SITE_MAINTENANCE_PATH;
-          landingUrl.search = "";
-          return NextResponse.redirect(landingUrl);
+      if (isAdmin !== true) {
+        if (isAdmin === null && pathname.startsWith("/admin")) {
+          return NextResponse.next();
         }
-      } else if (!siteStatus.publicLaunched) {
-        if (!allowAdminReentry && pathname !== SITE_COMING_SOON_PATH) {
-          if (!siteStatus.inviteOnlyPrelaunch) {
+
+        const isAuthRoute = isAuthRoutePath(pathname);
+        const allowAdminReentry =
+          siteStatus.adminAccessEnabled &&
+          (isConfiguredAdminEntryRoute ||
+            (isAdminSignInRoutePath(pathname) &&
+              (await resolveHasValidAdminEntryPass(request))));
+
+        if (siteStatus.underMaintenance) {
+          if (!allowAdminReentry && pathname !== SITE_MAINTENANCE_PATH) {
             const landingUrl = request.nextUrl.clone();
-            landingUrl.pathname = SITE_COMING_SOON_PATH;
+            landingUrl.pathname = SITE_MAINTENANCE_PATH;
             landingUrl.search = "";
             return NextResponse.redirect(landingUrl);
           }
+        } else if (!siteStatus.publicLaunched) {
+          if (!allowAdminReentry && pathname !== SITE_COMING_SOON_PATH) {
+            if (!siteStatus.inviteOnlyPrelaunch) {
+              const landingUrl = request.nextUrl.clone();
+              landingUrl.pathname = SITE_COMING_SOON_PATH;
+              landingUrl.search = "";
+              return NextResponse.redirect(landingUrl);
+            }
 
-          if (pathname.startsWith(SITE_INVITE_PATH_PREFIX)) {
-            return NextResponse.next();
-          }
-
-          let hasInviteAccess: boolean | null = null;
-
-          if (isAuthRoute) {
-            if (hasPendingPrelaunchInviteToken(request)) {
+            if (pathname.startsWith(SITE_INVITE_PATH_PREFIX)) {
               return NextResponse.next();
             }
 
-            hasInviteAccess = await resolveHasInviteAccess(request);
-            if (hasInviteAccess) {
-              return NextResponse.next();
+            let hasInviteAccess: boolean | null = null;
+
+            if (isAuthRoute) {
+              if (hasPendingPrelaunchInviteToken(request)) {
+                return NextResponse.next();
+              }
+
+              hasInviteAccess = await resolveHasInviteAccess(request);
+              if (hasInviteAccess) {
+                return NextResponse.next();
+              }
             }
-          }
 
-          if (hasInviteAccess === null) {
-            hasInviteAccess = await resolveHasInviteAccess(request);
-          }
+            if (hasInviteAccess === null) {
+              hasInviteAccess = await resolveHasInviteAccess(request);
+            }
 
-          if (!hasInviteAccess) {
-            const landingUrl = request.nextUrl.clone();
-            landingUrl.pathname = SITE_COMING_SOON_PATH;
-            landingUrl.search = "";
-            return NextResponse.redirect(landingUrl);
+            if (!hasInviteAccess) {
+              const landingUrl = request.nextUrl.clone();
+              landingUrl.pathname = SITE_COMING_SOON_PATH;
+              landingUrl.search = "";
+              return NextResponse.redirect(landingUrl);
+            }
           }
         }
       }

@@ -1,27 +1,27 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { auth } from "@/app/(auth)/auth";
-import { getUserById } from "@/lib/db/queries";
+import { getUserRoleById } from "@/lib/db/queries";
+import type { UserRole } from "@/lib/db/schema";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 const SESSION_ROLE_DB_TIMEOUT_MS = 4_000;
+const USER_ROLES = new Set<UserRole>(["admin", "creator", "regular"]);
+
+function normalizeTokenRole(value: unknown) {
+  return typeof value === "string" && USER_ROLES.has(value as UserRole)
+    ? (value as UserRole)
+    : null;
+}
 
 export async function GET(request: Request) {
   try {
-    let userId: string | null = null;
     const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
-    if (secret) {
-      const token = await getToken({ req: request, secret }).catch(() => null);
-      if (typeof token?.id === "string") {
-        userId = token.id;
-      }
-    }
-
-    if (!userId) {
-      const session = await auth();
-      userId = session?.user?.id ?? null;
-    }
+    const token = secret
+      ? await getToken({ req: request, secret }).catch(() => null)
+      : null;
+    const userId = typeof token?.id === "string" ? token.id : null;
+    const tokenRole = normalizeTokenRole(token?.role);
 
     if (!userId) {
       return NextResponse.json(
@@ -37,13 +37,25 @@ export async function GET(request: Request) {
       );
     }
 
+    if (tokenRole) {
+      return NextResponse.json(
+        {
+          authenticated: true,
+          role: tokenRole,
+          source: "token",
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
     const user = await withTimeout(
-      getUserById(userId),
+      getUserRoleById(userId),
       SESSION_ROLE_DB_TIMEOUT_MS
-    ).catch((error) => {
-      console.error("[api/public/session-role] Failed to load user role.", error);
-      return null;
-    });
+    );
     const isActiveUser = Boolean(user?.isActive);
     const role = isActiveUser && user?.role ? user.role : null;
 
@@ -66,9 +78,11 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         authenticated: false,
+        degraded: true,
         role: null,
       },
       {
+        status: 503,
         headers: {
           "Cache-Control": "no-store",
         },

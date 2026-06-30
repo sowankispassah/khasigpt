@@ -793,6 +793,33 @@ export async function getUserById(id: string): Promise<User | null> {
   }
 }
 
+export async function getUserRoleById(
+  id: string
+): Promise<Pick<User, "id" | "isActive" | "role"> | null> {
+  if (typeof id !== "string" || !isValidUUID(id)) {
+    return null;
+  }
+
+  try {
+    const [record] = await db
+      .select({
+        id: user.id,
+        isActive: user.isActive,
+        role: user.role,
+      })
+      .from(user)
+      .where(eq(user.id, id))
+      .limit(1);
+
+    return record ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get user role by id"
+    );
+  }
+}
+
 export async function createUser(
   email: string,
   password: string
