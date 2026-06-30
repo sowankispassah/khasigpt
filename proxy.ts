@@ -580,6 +580,34 @@ function isAdminSignInRoutePath(pathname: string) {
   return pathname === "/login";
 }
 
+export function shouldAllowAdminEntryPassThrough({
+  adminAccessEnabled,
+  hasValidAdminEntryPass,
+  isConfiguredAdminEntryRoute,
+  pathname,
+}: {
+  adminAccessEnabled: boolean;
+  hasValidAdminEntryPass: boolean;
+  isConfiguredAdminEntryRoute: boolean;
+  pathname: string;
+}) {
+  if (!adminAccessEnabled) {
+    return false;
+  }
+
+  if (isConfiguredAdminEntryRoute) {
+    return true;
+  }
+
+  if (!hasValidAdminEntryPass) {
+    return false;
+  }
+
+  return (
+    isAdminSignInRoutePath(pathname) || isPathOrDescendant(pathname, "/admin")
+  );
+}
+
 async function hasAuthenticatedSession(request: NextRequest) {
   if (!hasSessionCookie(request)) {
     return false;
@@ -650,11 +678,18 @@ export async function proxy(request: NextRequest) {
         }
 
         const isAuthRoute = isAuthRoutePath(pathname);
-        const allowAdminReentry =
+        const shouldCheckAdminEntryPass =
           siteStatus.adminAccessEnabled &&
-          (isConfiguredAdminEntryRoute ||
-            (isAdminSignInRoutePath(pathname) &&
-              (await resolveHasValidAdminEntryPass(request))));
+          (isAdminSignInRoutePath(pathname) ||
+            isPathOrDescendant(pathname, "/admin"));
+        const allowAdminReentry = shouldAllowAdminEntryPassThrough({
+          adminAccessEnabled: siteStatus.adminAccessEnabled,
+          hasValidAdminEntryPass: shouldCheckAdminEntryPass
+            ? await resolveHasValidAdminEntryPass(request)
+            : false,
+          isConfiguredAdminEntryRoute,
+          pathname,
+        });
 
         if (siteStatus.underMaintenance) {
           if (!allowAdminReentry && pathname !== SITE_MAINTENANCE_PATH) {
