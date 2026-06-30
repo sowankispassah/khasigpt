@@ -158,6 +158,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Generic clear/reset action label.",
   },
   {
+    key: "common.save",
+    defaultText: "Save",
+    description: "Generic save action label.",
+  },
+  {
     key: "common.loading",
     defaultText: "Loading...",
     description: "Generic loading label.",
@@ -217,6 +222,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText:
       "Inline edit saves translated values only. Edit English source text from Admin Translations.",
     description: "Notice shown when inline editing is opened while English is active.",
+  },
+  {
+    key: "translation_edit.no_target_language",
+    defaultText: "No translation language is available for inline editing.",
+    description:
+      "Notice shown when the native inline translation editor cannot find a non-English target language.",
   },
   {
     key: "translation_edit.save",
