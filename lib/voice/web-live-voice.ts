@@ -574,6 +574,7 @@ export async function startWebGeminiVoiceTurn({
         clearTimeout(setupTimeout);
         setupTimeout = null;
       }
+      markInputReady();
       return;
     }
 

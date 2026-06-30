@@ -461,6 +461,10 @@ async function resolveIsAdmin(request: NextRequest) {
       () => null
     );
 
+    if (token?.role === "admin") {
+      return true;
+    }
+
     if (token?.role && token.role !== "admin") {
       return false;
     }
