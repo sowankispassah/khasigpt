@@ -77,6 +77,7 @@ import {
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
@@ -131,6 +132,11 @@ import {
   loadFeatureAccessSettingsByKeys,
   resolveFeatureAccessControlState,
 } from "@/lib/settings/feature-access-settings";
+import {
+  parseLegacySiteLaunchMode,
+  resolveAdminAccessEnabledSetting,
+  resolvePublicLaunchedSetting,
+} from "@/lib/settings/site-launch";
 import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
@@ -188,6 +194,7 @@ const SETTINGS_SNAPSHOT_KEYS = [
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -214,6 +221,7 @@ const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
   SITE_COMING_SOON_CONTENT_SETTING_KEY,
   SITE_COMING_SOON_TIMER_SETTING_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
@@ -747,6 +755,9 @@ async function loadAdminSettingsData() {
   const siteAdminEntryPathSetting = getStoredSetting<string>(
     SITE_ADMIN_ENTRY_PATH_SETTING_KEY
   );
+  const siteLegacyLaunchModeSetting = getStoredSetting<string>(
+    SITE_LEGACY_LAUNCH_MODE_SETTING_KEY
+  );
   const comingSoonContentSetting = getStoredSetting<unknown>(
     SITE_COMING_SOON_CONTENT_SETTING_KEY
   );
@@ -818,6 +829,7 @@ async function loadAdminSettingsData() {
     siteAdminEntryEnabledSetting,
     siteAdminEntryCodeHashSetting,
     siteAdminEntryPathSetting,
+    siteLegacyLaunchModeSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
     imagePromptTranslationModelSetting,
@@ -873,6 +885,7 @@ function buildFallbackAdminSettingsData() {
     siteAdminEntryEnabledSetting: null,
     siteAdminEntryCodeHashSetting: null,
     siteAdminEntryPathSetting: null,
+    siteLegacyLaunchModeSetting: null,
     comingSoonContentSetting: null,
     comingSoonTimerSetting: null,
     imagePromptTranslationModelSetting: null,
@@ -1065,6 +1078,9 @@ export default async function AdminSettingsPage({
         siteAdminEntryPathSetting:
           getEssential<string>(SITE_ADMIN_ENTRY_PATH_SETTING_KEY) ??
           settingsData.siteAdminEntryPathSetting,
+        siteLegacyLaunchModeSetting:
+          getEssential<string>(SITE_LEGACY_LAUNCH_MODE_SETTING_KEY) ??
+          settingsData.siteLegacyLaunchModeSetting,
         comingSoonContentSetting:
           getEssential<unknown>(SITE_COMING_SOON_CONTENT_SETTING_KEY) ??
           settingsData.comingSoonContentSetting,
@@ -1136,6 +1152,7 @@ export default async function AdminSettingsPage({
     siteAdminEntryEnabledSetting,
     siteAdminEntryCodeHashSetting,
     siteAdminEntryPathSetting,
+    siteLegacyLaunchModeSetting,
     comingSoonContentSetting,
     comingSoonTimerSetting,
     imagePromptTranslationModelSetting,
@@ -1373,10 +1390,14 @@ export default async function AdminSettingsPage({
       }
     }
   }
-  const sitePublicLaunched = parseBooleanSetting(
-    sitePublicLaunchedSetting,
-    true
+  const siteLegacyLaunchMode = parseLegacySiteLaunchMode(
+    siteLegacyLaunchModeSetting
   );
+  const sitePublicLaunched = resolvePublicLaunchedSetting({
+    fallback: true,
+    legacyMode: siteLegacyLaunchMode,
+    value: sitePublicLaunchedSetting,
+  });
   const siteUnderMaintenance = parseBooleanSetting(
     siteUnderMaintenanceSetting,
     false
@@ -1385,10 +1406,11 @@ export default async function AdminSettingsPage({
     sitePrelaunchInviteOnlySetting,
     false
   );
-  const siteAdminEntryEnabled = parseBooleanSetting(
-    siteAdminEntryEnabledSetting,
-    false
-  );
+  const siteAdminEntryEnabled = resolveAdminAccessEnabledSetting({
+    fallback: false,
+    legacyMode: siteLegacyLaunchMode,
+    value: siteAdminEntryEnabledSetting,
+  });
   const siteAdminEntryCodeConfigured =
     typeof siteAdminEntryCodeHashSetting === "string" &&
     siteAdminEntryCodeHashSetting.trim().length > 0;

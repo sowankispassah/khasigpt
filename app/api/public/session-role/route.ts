@@ -22,6 +22,11 @@ export async function GET(request: Request) {
       : null;
     const userId = typeof token?.id === "string" ? token.id : null;
     const tokenRole = normalizeTokenRole(token?.role);
+    const roleRefreshedAt = (token as { roleRefreshedAt?: unknown } | null)
+      ?.roleRefreshedAt;
+    const tokenRoleConfirmed =
+      tokenRole === "admin" ||
+      (tokenRole !== null && typeof roleRefreshedAt === "number");
 
     if (!userId) {
       return NextResponse.json(
@@ -37,7 +42,7 @@ export async function GET(request: Request) {
       );
     }
 
-    if (tokenRole) {
+    if (tokenRoleConfirmed) {
       return NextResponse.json(
         {
           authenticated: true,

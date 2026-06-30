@@ -239,6 +239,11 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 const ACCOUNT_INACTIVE_REDIRECT = "/login?error=AccountInactive";
 const ACCOUNT_LINK_REQUIRED_REDIRECT = "/login?error=AccountLinkRequired";
+const USER_ROLES = new Set<UserRole>(["regular", "creator", "admin"]);
+
+function isUserRole(value: unknown): value is UserRole {
+  return typeof value === "string" && USER_ROLES.has(value as UserRole);
+}
 
 async function applyPendingInviteAccess(userId: string) {
   try {
@@ -401,12 +406,14 @@ export const {
       if (user) {
         token.id = user.id as string;
         token.role = (user.role as UserRole) ?? "regular";
+        token.roleRefreshedAt = Date.now();
+        token.dbRefreshedAt = Date.now();
         token.dateOfBirth = user.dateOfBirth ?? null;
         token.imageVersion = user.imageVersion ?? null;
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
         token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
-      } else if (!token.role) {
+      } else if (!token.id && !isUserRole(token.role)) {
         token.role = "regular";
       }
 
@@ -420,6 +427,8 @@ export const {
       const needsDbFields =
         Boolean(token.id) &&
         (isUndefinedField(token.dateOfBirth) ||
+          !isUserRole(token.role) ||
+          typeof token.roleRefreshedAt !== "number" ||
           isUndefinedField(token.imageVersion) ||
           isUndefinedField(token.firstName) ||
           isUndefinedField(token.lastName));
@@ -524,6 +533,10 @@ export const {
           if (isUndefinedField(token.dateOfBirth)) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
+          if (record.role) {
+            token.role = record.role as UserRole;
+            token.roleRefreshedAt = Date.now();
+          }
           if (isUndefinedField(token.imageVersion)) {
             token.imageVersion =
               record.image && record.updatedAt instanceof Date
@@ -543,8 +556,6 @@ export const {
               record.allowPersonalKnowledge ?? false;
           }
         }
-      } else if (!lastDbRefresh && token.id) {
-        token.dbRefreshedAt = Date.now();
       }
 
       if (typeof token.dateOfBirth === "undefined") {
@@ -572,6 +583,7 @@ export const {
           }
           if (record.role) {
             token.role = record.role as UserRole;
+            token.roleRefreshedAt = Date.now();
           }
           token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
           token.dbRefreshedAt = Date.now();
@@ -582,7 +594,7 @@ export const {
         }
       }
 
-      if (!token.role) {
+      if (!token.id && !isUserRole(token.role)) {
         token.role = "regular";
       }
 

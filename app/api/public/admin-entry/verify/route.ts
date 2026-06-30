@@ -5,6 +5,7 @@ import {
   ADMIN_ENTRY_PASS_COOKIE_NAME,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
 } from "@/lib/constants";
@@ -20,6 +21,11 @@ import {
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
+import {
+  parseLegacySiteLaunchMode,
+  resolveAdminAccessEnabledSetting,
+  resolvePublicLaunchedSetting,
+} from "@/lib/settings/site-launch";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -31,6 +37,7 @@ const ADMIN_ENTRY_GATE_SETTING_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
 ] as const;
 
 function getEnvAdminEntryCode() {
@@ -122,10 +129,21 @@ export async function POST(request: Request) {
   const adminAccessEnabledSetting = gateSettings.get(
     SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY
   );
+  const legacyLaunchMode = parseLegacySiteLaunchMode(
+    gateSettings.get(SITE_LEGACY_LAUNCH_MODE_SETTING_KEY)
+  );
 
-  const publicLaunched = parseBooleanSetting(publicLaunchedSetting, true);
+  const publicLaunched = resolvePublicLaunchedSetting({
+    fallback: true,
+    legacyMode: legacyLaunchMode,
+    value: publicLaunchedSetting,
+  });
   const underMaintenance = parseBooleanSetting(underMaintenanceSetting, false);
-  const adminAccessEnabled = parseBooleanSetting(adminAccessEnabledSetting, false);
+  const adminAccessEnabled = resolveAdminAccessEnabledSetting({
+    fallback: false,
+    legacyMode: legacyLaunchMode,
+    value: adminAccessEnabledSetting,
+  });
 
   if (!adminAccessEnabled) {
     return NextResponse.json(

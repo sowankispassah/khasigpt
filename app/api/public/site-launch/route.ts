@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
@@ -14,6 +15,11 @@ import {
 } from "@/lib/db/app-settings-lite";
 import { normalizeAdminEntryPathSetting } from "@/lib/settings/admin-entry";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
+import {
+  parseLegacySiteLaunchMode,
+  resolveAdminAccessEnabledSetting,
+  resolvePublicLaunchedSetting,
+} from "@/lib/settings/site-launch";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -30,6 +36,7 @@ const SITE_LAUNCH_SETTING_KEYS = [
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
 ] as const;
 const SITE_LAUNCH_CRITICAL_SETTING_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
@@ -203,11 +210,15 @@ export async function GET() {
     const adminAccessEnabledSetting = settingsMap.get(
       SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY
     );
-    const adminEntryPathSetting = settingsMap.get(SITE_ADMIN_ENTRY_PATH_SETTING_KEY);
-    const publicLaunched = parseBooleanSetting(
-      publicLaunchedSetting,
-      fallbackState.publicLaunched
+    const legacyLaunchMode = parseLegacySiteLaunchMode(
+      settingsMap.get(SITE_LEGACY_LAUNCH_MODE_SETTING_KEY)
     );
+    const adminEntryPathSetting = settingsMap.get(SITE_ADMIN_ENTRY_PATH_SETTING_KEY);
+    const publicLaunched = resolvePublicLaunchedSetting({
+      fallback: fallbackState.publicLaunched,
+      legacyMode: legacyLaunchMode,
+      value: publicLaunchedSetting,
+    });
     const underMaintenance = parseBooleanSetting(
       underMaintenanceSetting,
       fallbackState.underMaintenance
@@ -216,10 +227,11 @@ export async function GET() {
       inviteOnlyPrelaunchSetting,
       fallbackState.inviteOnlyPrelaunch
     );
-    const adminAccessEnabled = parseBooleanSetting(
-      adminAccessEnabledSetting,
-      fallbackState.adminAccessEnabled
-    );
+    const adminAccessEnabled = resolveAdminAccessEnabledSetting({
+      fallback: fallbackState.adminAccessEnabled,
+      legacyMode: legacyLaunchMode,
+      value: adminAccessEnabledSetting,
+    });
     const adminEntryPath =
       adminEntryPathSetting === null || typeof adminEntryPathSetting === "undefined"
         ? fallbackState.adminEntryPath

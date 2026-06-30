@@ -37,6 +37,7 @@ export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";
 export const SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY =
   "site.prelaunch.inviteOnly";
+export const SITE_LEGACY_LAUNCH_MODE_SETTING_KEY = "site.launch.enabled";
 export const SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY = "site.adminEntry.enabled";
 export const SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY = "site.adminEntry.codeHash";
 export const SITE_ADMIN_ENTRY_PATH_SETTING_KEY = "site.adminEntry.path";

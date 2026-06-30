@@ -471,7 +471,13 @@ async function resolveIsAdmin(request: NextRequest) {
       return true;
     }
 
-    if (token?.role && token.role !== "admin") {
+    const roleRefreshedAt = (token as { roleRefreshedAt?: unknown } | null)
+      ?.roleRefreshedAt;
+    if (
+      token?.role &&
+      token.role !== "admin" &&
+      typeof roleRefreshedAt === "number"
+    ) {
       return false;
     }
   }

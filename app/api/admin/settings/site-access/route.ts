@@ -4,6 +4,7 @@ import {
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
   SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
   SITE_UNDER_MAINTENANCE_SETTING_KEY,
@@ -22,6 +23,11 @@ import {
   sanitizeAdminEntryPathInput,
 } from "@/lib/settings/admin-entry";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
+import {
+  parseLegacySiteLaunchMode,
+  resolveAdminAccessEnabledSetting,
+  resolvePublicLaunchedSetting,
+} from "@/lib/settings/site-launch";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
@@ -37,6 +43,7 @@ const SITE_SETTING_KEYS = [
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+  SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
 ] as const;
 
 const TOGGLE_FIELD_MAP: Record<string, string> = {
@@ -79,11 +86,15 @@ async function loadSiteAccessState(): Promise<SiteAccessState> {
     READ_TIMEOUT_MS
   );
   const map = new Map(settings.map((entry) => [entry.key, entry.value]));
-
-  const publicLaunched = parseBooleanSetting(
-    map.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY),
-    true
+  const legacyLaunchMode = parseLegacySiteLaunchMode(
+    map.get(SITE_LEGACY_LAUNCH_MODE_SETTING_KEY)
   );
+
+  const publicLaunched = resolvePublicLaunchedSetting({
+    fallback: true,
+    legacyMode: legacyLaunchMode,
+    value: map.get(SITE_PUBLIC_LAUNCHED_SETTING_KEY),
+  });
   const underMaintenance = parseBooleanSetting(
     map.get(SITE_UNDER_MAINTENANCE_SETTING_KEY),
     false
@@ -92,10 +103,11 @@ async function loadSiteAccessState(): Promise<SiteAccessState> {
     map.get(SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY),
     false
   );
-  const adminAccessEnabled = parseBooleanSetting(
-    map.get(SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY),
-    false
-  );
+  const adminAccessEnabled = resolveAdminAccessEnabledSetting({
+    fallback: false,
+    legacyMode: legacyLaunchMode,
+    value: map.get(SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY),
+  });
   const adminEntryPath = normalizeAdminEntryPathSetting(
     map.get(SITE_ADMIN_ENTRY_PATH_SETTING_KEY)
   );
