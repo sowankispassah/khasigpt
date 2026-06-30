@@ -7,9 +7,12 @@ import {
   adminQueryResult,
 } from "@/lib/admin/safe-query";
 import {
-  type AdminUsersPageSnapshot,
+  type ActiveSubscriptionSummary,
   type AdminUsersSnapshot,
-  getAdminUsersPageSnapshot,
+  getUserBalanceSummaries,
+  getUserCount,
+  listActiveSubscriptionSummaries,
+  listUsers,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -22,11 +25,6 @@ const USERS_PAGE_SIZE = 25;
 const EMPTY_ADMIN_USERS_SNAPSHOT: AdminUsersSnapshot = {
   totalUsers: 0,
   users: [],
-};
-const EMPTY_ADMIN_USERS_PAGE_SNAPSHOT: AdminUsersPageSnapshot = {
-  ...EMPTY_ADMIN_USERS_SNAPSHOT,
-  activeSubscriptions: [],
-  balanceByUserId: new Map<string, UserBalanceSummary>(),
 };
 
 function parsePage(value: string | string[] | undefined) {
@@ -44,7 +42,6 @@ export default async function AdminUsersPage({
   const currentUserId = session?.user?.id;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
-  const offset = (requestedPage - 1) * USERS_PAGE_SIZE;
 
   const withQueryState = async <T,>(
     label: string,
@@ -57,60 +54,52 @@ export default async function AdminUsersPage({
       promise,
     });
 
-  const usersPageSnapshotState = await withQueryState(
-    "users.page-snapshot",
-    getAdminUsersPageSnapshot({
-      limit: USERS_PAGE_SIZE,
-      offset,
-    }),
-    EMPTY_ADMIN_USERS_PAGE_SNAPSHOT
+  const totalUsersState = await withQueryState<number | null>(
+    "users.count",
+    getUserCount({ isActive: "all", role: "all", search: null }),
+    null
   );
 
-  const totalUsers = usersPageSnapshotState.data.totalUsers;
-  const totalPages = usersPageSnapshotState.ok
+  const totalUsers = totalUsersState.data ?? EMPTY_ADMIN_USERS_SNAPSHOT.totalUsers;
+  const totalUsersConfirmed =
+    totalUsersState.ok && typeof totalUsersState.data === "number";
+  const totalPages = totalUsersConfirmed
     ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
     : requestedPage;
-  const page = usersPageSnapshotState.ok
-    ? Math.min(requestedPage, totalPages)
-    : requestedPage;
+  const page = totalUsersConfirmed ? Math.min(requestedPage, totalPages) : requestedPage;
   const pageOffset = (page - 1) * USERS_PAGE_SIZE;
-  const pagedUsersState =
-    pageOffset === offset || !usersPageSnapshotState.ok
-      ? usersPageSnapshotState
-      : await withQueryState(
-          "users.corrected-page-snapshot",
-          getAdminUsersPageSnapshot({
-            limit: USERS_PAGE_SIZE,
-            offset: pageOffset,
-          }),
-          EMPTY_ADMIN_USERS_PAGE_SNAPSHOT
-        );
-  const pagedUsers = pagedUsersState.data.users;
-  const balanceByUserIdState: AdminQueryResult<Map<string, UserBalanceSummary>> =
+
+  const pagedUsersState = await withQueryState<AdminUsersSnapshot["users"]>(
+    "users.list",
+    listUsers({
+      isActive: "all",
+      limit: USERS_PAGE_SIZE,
+      offset: pageOffset,
+      role: "all",
+      search: null,
+    }),
+    []
+  );
+  const pagedUsers = pagedUsersState.data;
+
+  const [balanceByUserIdState, activeSubscriptionsState] = await Promise.all([
     pagedUsersState.ok
-      ? {
-          data: pagedUsersState.data.balanceByUserId,
-          error: null,
-          ok: true,
-        }
-      : {
+      ? withQueryState<Map<string, UserBalanceSummary>>(
+          "users.balances",
+          getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
+          new Map<string, UserBalanceSummary>()
+        )
+      : Promise.resolve<AdminQueryResult<Map<string, UserBalanceSummary>>>({
           data: new Map<string, UserBalanceSummary>(),
           error: pagedUsersState.error,
           ok: false,
-        };
-  const activeSubscriptionsState: AdminQueryResult<
-    AdminUsersPageSnapshot["activeSubscriptions"]
-  > = pagedUsersState.ok
-    ? {
-        data: pagedUsersState.data.activeSubscriptions,
-        error: null,
-        ok: true,
-      }
-    : {
-        data: [],
-        error: pagedUsersState.error,
-        ok: false,
-      };
+        }),
+    withQueryState<ActiveSubscriptionSummary[]>(
+      "users.active-subscriptions",
+      listActiveSubscriptionSummaries({ limit: 20 }),
+      []
+    ),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -122,15 +111,19 @@ export default async function AdminUsersPage({
           </p>
         </div>
         <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
-          {pagedUsersState.ok
+          {totalUsersConfirmed
             ? `${totalUsers.toLocaleString()} users`
             : "User count unavailable"}
         </span>
       </header>
 
+      {!totalUsersConfirmed && (
+        <AdminUsersQueryWarning message="User count could not be confirmed." />
+      )}
+
       {!pagedUsersState.ok && (
         <AdminUsersQueryWarning
-          message="User list and count could not be confirmed."
+          message="User list could not be confirmed."
         />
       )}
 
@@ -142,7 +135,7 @@ export default async function AdminUsersPage({
           pagedUsers={pagedUsers}
           resolvedSearchParams={resolvedSearchParams}
           totalUsers={totalUsers}
-          totalUsersConfirmed={pagedUsersState.ok}
+          totalUsersConfirmed={totalUsersConfirmed}
           usersConfirmed={pagedUsersState.ok}
         />
       </Suspense>
@@ -266,9 +259,7 @@ async function UsersTableSection({
 async function ActiveSubscriptionsSection({
   activeSubscriptionsState,
 }: {
-  activeSubscriptionsState: AdminQueryResult<
-    AdminUsersPageSnapshot["activeSubscriptions"]
-  >;
+  activeSubscriptionsState: AdminQueryResult<ActiveSubscriptionSummary[]>;
 }) {
   const activeSubscriptions = activeSubscriptionsState.data;
 

@@ -4,55 +4,152 @@ import { Suspense } from "react";
 
 import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminLiveActivityPanelDeferred } from "@/components/admin-live-activity-panel-deferred";
+import { adminQueryResult } from "@/lib/admin/safe-query";
 import {
-  type AdminQueryResult,
-  adminQueryResult,
-} from "@/lib/admin/safe-query";
-import {
-  type AdminOverviewSnapshot,
-  getAdminOverviewSnapshot,
+  type AdminOverviewAudit,
+  type AdminOverviewChat,
+  type AdminOverviewContactMessage,
+  type AdminOverviewUser,
+  getChatCount,
+  getContactMessageCount,
+  getUserCount,
+  listAuditLog,
+  listChats,
+  listContactMessages,
+  listUsers,
 } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type OverviewSnapshotResult = AdminQueryResult<AdminOverviewSnapshot>;
-
-const EMPTY_ADMIN_OVERVIEW_SNAPSHOT: AdminOverviewSnapshot = {
-  chatCount: 0,
-  contactMessageCount: 0,
-  recentAudits: [],
-  recentChats: [],
-  recentContactMessages: [],
-  recentUsers: [],
-  userCount: 0,
-};
-
 function adminOverviewQuery<T>(
   label: string,
-  promise: Promise<T>,
+  load: () => Promise<T>,
   fallback: T
 ) {
   return adminQueryResult({
     fallback,
     label,
-    promise,
+    promise: load(),
   });
 }
 
-export default function AdminOverviewPage() {
-  const overviewSnapshotPromise = adminOverviewQuery(
-    "overview.snapshot",
-    getAdminOverviewSnapshot(),
-    EMPTY_ADMIN_OVERVIEW_SNAPSHOT
-  );
+function isSupabasePoolerUrl(value: string | undefined | null) {
+  if (!value) {
+    return false;
+  }
+  try {
+    return new URL(value).hostname.endsWith(".pooler.supabase.com");
+  } catch {
+    return value.includes(".pooler.supabase.com");
+  }
+}
 
+function parsePositiveInteger(value: string | undefined | null) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getConfiguredAdminOverviewPoolSize() {
+  return (
+    parsePositiveInteger(process.env.POSTGRES_POOL_SIZE) ??
+    (process.env.NODE_ENV === "development" ? 5 : 3)
+  );
+}
+
+function hasConfiguredSupabasePoolerUrl() {
+  const candidates = [
+    process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_DIRECT_URL,
+    process.env.POSTGRES_PRISMA_URL,
+  ].filter(Boolean);
+
+  return candidates.some((value) => isSupabasePoolerUrl(value));
+}
+
+function shouldSerializeAdminOverviewDbReads() {
+  if (process.env.ADMIN_OVERVIEW_SERIALIZE_DB_READS === "true") {
+    return true;
+  }
+  if (process.env.ADMIN_OVERVIEW_SERIALIZE_DB_READS === "false") {
+    return false;
+  }
+
+  const onlyOneDbConnection = getConfiguredAdminOverviewPoolSize() <= 1;
+  if (process.env.POSTGRES_USE_POOLER === "true") {
+    return onlyOneDbConnection;
+  }
+
+  const hasPoolerUrl = hasConfiguredSupabasePoolerUrl();
+  if (process.env.VERCEL === "1" && hasPoolerUrl) {
+    return onlyOneDbConnection;
+  }
+
+  return onlyOneDbConnection && hasPoolerUrl;
+}
+
+function getAdminOverviewDbReadConcurrency(taskCount: number) {
+  if (taskCount <= 1) {
+    return taskCount;
+  }
+
+  const explicitConcurrency = parsePositiveInteger(
+    process.env.ADMIN_OVERVIEW_DB_READ_CONCURRENCY
+  );
+  if (explicitConcurrency !== null) {
+    return Math.min(taskCount, explicitConcurrency);
+  }
+
+  if (shouldSerializeAdminOverviewDbReads()) {
+    return 1;
+  }
+
+  if (process.env.ADMIN_OVERVIEW_SERIALIZE_DB_READS === "false") {
+    return taskCount;
+  }
+
+  const usesPooler =
+    process.env.POSTGRES_USE_POOLER === "true" ||
+    (process.env.VERCEL === "1" && hasConfiguredSupabasePoolerUrl());
+
+  if (!usesPooler) {
+    return taskCount;
+  }
+
+  const poolSize = getConfiguredAdminOverviewPoolSize();
+  return Math.max(1, Math.min(taskCount, poolSize - 1, 2));
+}
+
+async function resolveAdminOverviewDbReadGroup<
+  const T extends readonly unknown[],
+>(tasks: { [K in keyof T]: () => Promise<T[K]> }): Promise<T> {
+  const concurrency = getAdminOverviewDbReadConcurrency(tasks.length);
+
+  if (concurrency >= tasks.length) {
+    return Promise.all(tasks.map((task) => task())) as unknown as Promise<T>;
+  }
+
+  const results = new Array<unknown>(tasks.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await tasks[index]();
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return results as unknown as T;
+}
+
+export default function AdminOverviewPage() {
   return (
     <div className="flex flex-col gap-10">
       <Suspense fallback={<OverviewMetricsFallback />}>
-        <AdminOverviewMetricsSection
-          overviewSnapshotPromise={overviewSnapshotPromise}
-        />
+        <AdminOverviewMetricsSection />
       </Suspense>
 
       <AdminLiveActivityPanelDeferred />
@@ -61,7 +158,7 @@ export default function AdminOverviewPage() {
         <Suspense
           fallback={<AdminDataPanelFallback rows={5} title="Newest users" />}
         >
-          <NewestUsersPanel overviewSnapshotPromise={overviewSnapshotPromise} />
+          <NewestUsersPanel />
         </Suspense>
 
         <Suspense
@@ -69,16 +166,14 @@ export default function AdminOverviewPage() {
             <AdminDataPanelFallback rows={5} title="Latest contact requests" />
           }
         >
-          <LatestContactRequestsPanel
-            overviewSnapshotPromise={overviewSnapshotPromise}
-          />
+          <LatestContactRequestsPanel />
         </Suspense>
       </section>
 
       <Suspense
         fallback={<AdminDataPanelFallback rows={5} title="Latest chats" />}
       >
-        <LatestChatsPanel overviewSnapshotPromise={overviewSnapshotPromise} />
+        <LatestChatsPanel />
       </Suspense>
 
       <Suspense
@@ -86,22 +181,65 @@ export default function AdminOverviewPage() {
           <AdminDataPanelFallback rows={5} title="Recent audit activity" />
         }
       >
-        <RecentAuditActivityPanel
-          overviewSnapshotPromise={overviewSnapshotPromise}
-        />
+        <RecentAuditActivityPanel />
       </Suspense>
     </div>
   );
 }
 
-async function AdminOverviewMetricsSection({
-  overviewSnapshotPromise,
-}: {
-  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
-}) {
-  const overviewSnapshotResult = await overviewSnapshotPromise;
-  const overview = overviewSnapshotResult.data;
-  const degraded = !overviewSnapshotResult.ok;
+async function AdminOverviewMetricsSection() {
+  const [
+    userCountResult,
+    chatCountResult,
+    contactMessageCountResult,
+    recentUsersResult,
+    recentAuditsResult,
+  ] = await resolveAdminOverviewDbReadGroup([
+    () =>
+      adminOverviewQuery<number | null>(
+        "overview.user-count",
+        () => getUserCount({ isActive: "all", role: "all", search: null }),
+        null
+      ),
+    () =>
+      adminOverviewQuery<number | null>(
+        "overview.chat-count",
+        () => getChatCount({ onlyDeleted: false, search: null }),
+        null
+      ),
+    () =>
+      adminOverviewQuery<number | null>(
+        "overview.contact-message-count",
+        () => getContactMessageCount({ status: "all", search: null }),
+        null
+      ),
+    () =>
+      adminOverviewQuery<AdminOverviewUser[]>(
+        "overview.metric-recent-users",
+        () =>
+          listUsers({
+            isActive: "all",
+            limit: 5,
+            offset: 0,
+            role: "all",
+            search: null,
+          }),
+        []
+      ),
+    () =>
+      adminOverviewQuery<AdminOverviewAudit[]>(
+        "overview.metric-recent-audits",
+        () => listAuditLog({ limit: 5, offset: 0 }),
+        []
+      ),
+  ]);
+  const degraded = [
+    userCountResult,
+    chatCountResult,
+    contactMessageCountResult,
+    recentUsersResult,
+    recentAuditsResult,
+  ].some((result) => !result.ok);
 
   return (
     <>
@@ -118,45 +256,52 @@ async function AdminOverviewMetricsSection({
       ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard
-          confirmed={overviewSnapshotResult.ok}
+          confirmed={userCountResult.ok}
           label="Total users"
-          value={overview.userCount}
+          value={userCountResult.data}
         />
         <MetricCard
-          confirmed={overviewSnapshotResult.ok}
+          confirmed={chatCountResult.ok}
           label="Total chats"
-          value={overview.chatCount}
+          value={chatCountResult.data}
         />
         <MetricCard
-          confirmed={overviewSnapshotResult.ok}
+          confirmed={recentUsersResult.ok}
           description="Last 5 accounts"
           label="Recent users"
-          value={overview.recentUsers.length}
+          value={recentUsersResult.ok ? recentUsersResult.data.length : null}
         />
         <MetricCard
-          confirmed={overviewSnapshotResult.ok}
+          confirmed={recentAuditsResult.ok}
           description="Last 5 records"
           label="Audit events"
-          value={overview.recentAudits.length}
+          value={recentAuditsResult.ok ? recentAuditsResult.data.length : null}
         />
         <MetricCard
-          confirmed={overviewSnapshotResult.ok}
+          confirmed={contactMessageCountResult.ok}
           description="Total messages received"
           label="Contact requests"
-          value={overview.contactMessageCount}
+          value={contactMessageCountResult.data}
         />
       </section>
     </>
   );
 }
 
-async function NewestUsersPanel({
-  overviewSnapshotPromise,
-}: {
-  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
-}) {
-  const overviewSnapshotResult = await overviewSnapshotPromise;
-  const recentUsers = overviewSnapshotResult.data.recentUsers;
+async function NewestUsersPanel() {
+  const recentUsersResult = await adminOverviewQuery<AdminOverviewUser[]>(
+    "overview.panel-recent-users",
+    () =>
+      listUsers({
+        isActive: "all",
+        limit: 5,
+        offset: 0,
+        role: "all",
+        search: null,
+      }),
+    []
+  );
+  const recentUsers = recentUsersResult.data;
 
   return (
     <AdminDataPanel title="Newest users">
@@ -171,7 +316,7 @@ async function NewestUsersPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60 text-sm">
-            {!overviewSnapshotResult.ok ? (
+            {!recentUsersResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentUsers.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No users found." />
@@ -211,7 +356,7 @@ async function NewestUsersPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!overviewSnapshotResult.ok ? (
+        {!recentUsersResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentUsers.length === 0 ? (
           <EmptyPanelMessage message="No users found." />
@@ -266,14 +411,15 @@ async function NewestUsersPanel({
   );
 }
 
-async function LatestContactRequestsPanel({
-  overviewSnapshotPromise,
-}: {
-  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
-}) {
-  const overviewSnapshotResult = await overviewSnapshotPromise;
-  const recentContactMessages =
-    overviewSnapshotResult.data.recentContactMessages;
+async function LatestContactRequestsPanel() {
+  const recentContactMessagesResult = await adminOverviewQuery<
+    AdminOverviewContactMessage[]
+  >(
+    "overview.panel-recent-contact-messages",
+    () => listContactMessages({ limit: 5, offset: 0, search: null, status: "all" }),
+    []
+  );
+  const recentContactMessages = recentContactMessagesResult.data;
 
   return (
     <AdminDataPanel title="Latest contact requests">
@@ -288,7 +434,7 @@ async function LatestContactRequestsPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60 text-sm">
-            {!overviewSnapshotResult.ok ? (
+            {!recentContactMessagesResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentContactMessages.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No contact requests yet." />
@@ -325,7 +471,7 @@ async function LatestContactRequestsPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!overviewSnapshotResult.ok ? (
+        {!recentContactMessagesResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentContactMessages.length === 0 ? (
           <EmptyPanelMessage message="No contact requests yet." />
@@ -371,13 +517,13 @@ async function LatestContactRequestsPanel({
   );
 }
 
-async function LatestChatsPanel({
-  overviewSnapshotPromise,
-}: {
-  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
-}) {
-  const overviewSnapshotResult = await overviewSnapshotPromise;
-  const recentChats = overviewSnapshotResult.data.recentChats;
+async function LatestChatsPanel() {
+  const recentChatsResult = await adminOverviewQuery<AdminOverviewChat[]>(
+    "overview.panel-recent-chats",
+    () => listChats({ limit: 5, offset: 0, onlyDeleted: false, search: null }),
+    []
+  );
+  const recentChats = recentChatsResult.data;
 
   return (
     <AdminDataPanel title="Latest chats">
@@ -392,7 +538,7 @@ async function LatestChatsPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60 text-sm">
-            {!overviewSnapshotResult.ok ? (
+            {!recentChatsResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentChats.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No chats found." />
@@ -436,7 +582,7 @@ async function LatestChatsPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!overviewSnapshotResult.ok ? (
+        {!recentChatsResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentChats.length === 0 ? (
           <EmptyPanelMessage message="No chats found." />
@@ -474,13 +620,13 @@ async function LatestChatsPanel({
   );
 }
 
-async function RecentAuditActivityPanel({
-  overviewSnapshotPromise,
-}: {
-  overviewSnapshotPromise: Promise<OverviewSnapshotResult>;
-}) {
-  const overviewSnapshotResult = await overviewSnapshotPromise;
-  const recentAudits = overviewSnapshotResult.data.recentAudits;
+async function RecentAuditActivityPanel() {
+  const recentAuditsResult = await adminOverviewQuery<AdminOverviewAudit[]>(
+    "overview.panel-recent-audits",
+    () => listAuditLog({ limit: 5, offset: 0 }),
+    []
+  );
+  const recentAudits = recentAuditsResult.data;
 
   return (
     <AdminDataPanel title="Recent audit activity">
@@ -495,7 +641,7 @@ async function RecentAuditActivityPanel({
             </tr>
           </thead>
           <tbody>
-            {!overviewSnapshotResult.ok ? (
+            {!recentAuditsResult.ok ? (
               <UnconfirmedTableRow colSpan={4} />
             ) : recentAudits.length === 0 ? (
               <EmptyTableRow colSpan={4} message="No audit events found." />
@@ -519,7 +665,7 @@ async function RecentAuditActivityPanel({
         </table>
       </div>
       <div className="flex flex-col gap-3 text-sm md:hidden">
-        {!overviewSnapshotResult.ok ? (
+        {!recentAuditsResult.ok ? (
           <UnconfirmedPanelMessage />
         ) : recentAudits.length === 0 ? (
           <EmptyPanelMessage message="No audit events found." />
@@ -630,19 +776,21 @@ function MetricCard({
   confirmed = true,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   description?: string;
   confirmed?: boolean;
 }) {
+  const hasConfirmedValue = confirmed && typeof value === "number";
+
   return (
     <div className="rounded-lg border bg-card p-4">
       <p className="text-muted-foreground text-xs uppercase">{label}</p>
       <p className="mt-2 font-semibold text-2xl">
-        {confirmed ? value : "Unavailable"}
+        {hasConfirmedValue ? value : "Unavailable"}
       </p>
       {description ? (
         <p className="text-muted-foreground text-xs">
-          {confirmed ? description : "Unable to confirm from database"}
+          {hasConfirmedValue ? description : "Unable to confirm from database"}
         </p>
       ) : null}
     </div>
