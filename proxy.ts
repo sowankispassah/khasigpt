@@ -470,16 +470,6 @@ async function resolveIsAdmin(request: NextRequest) {
     if (token?.role === "admin") {
       return true;
     }
-
-    const roleRefreshedAt = (token as { roleRefreshedAt?: unknown } | null)
-      ?.roleRefreshedAt;
-    if (
-      token?.role &&
-      token.role !== "admin" &&
-      typeof roleRefreshedAt === "number"
-    ) {
-      return false;
-    }
   }
 
   if (!hasSessionCookie(request)) {
@@ -489,6 +479,7 @@ async function resolveIsAdmin(request: NextRequest) {
   const roleUrl = request.nextUrl.clone();
   roleUrl.pathname = SITE_SESSION_ROLE_API_PATH;
   roleUrl.search = "";
+  roleUrl.searchParams.set("fresh", "1");
 
   try {
     const response = await fetchWithTimeout(roleUrl.toString(), {

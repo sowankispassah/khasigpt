@@ -16,6 +16,10 @@ function normalizeTokenRole(value: unknown) {
 
 export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const requireFreshRole =
+      url.searchParams.get("fresh") === "1" ||
+      url.searchParams.get("verify") === "admin";
     const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
     const token = secret
       ? await getToken({ req: request, secret }).catch(() => null)
@@ -26,7 +30,9 @@ export async function GET(request: Request) {
       ?.roleRefreshedAt;
     const tokenRoleConfirmed =
       tokenRole === "admin" ||
-      (tokenRole !== null && typeof roleRefreshedAt === "number");
+      (!requireFreshRole &&
+        tokenRole !== null &&
+        typeof roleRefreshedAt === "number");
 
     if (!userId) {
       return NextResponse.json(
@@ -68,6 +74,7 @@ export async function GET(request: Request) {
       {
         authenticated: isActiveUser,
         role,
+        source: "database",
       },
       {
         headers: {
