@@ -4053,7 +4053,7 @@ export async function getAdminUsersPageSnapshot({
     100
   );
   const startedAt = Date.now();
-  const now = new Date();
+  const nowTimestamp = new Date().toISOString().replace("T", " ").replace("Z", "");
 
   try {
     const [row] = await client<AdminUsersPageRawSnapshot[]>`
@@ -4083,7 +4083,7 @@ export async function getAdminUsersPageSnapshot({
         WHERE
           "userId" IN (SELECT "id" FROM paged_users)
           AND "status" = 'active'
-          AND "expiresAt" > ${now}
+          AND "expiresAt" > ${nowTimestamp}::timestamp
           AND "tokenBalance" > 0
         ORDER BY "userId", "expiresAt" DESC
       ),
@@ -4103,7 +4103,7 @@ export async function getAdminUsersPageSnapshot({
           AND plans."deletedAt" IS NULL
         WHERE
           subscriptions."status" = 'active'
-          AND subscriptions."expiresAt" > ${now}
+          AND subscriptions."expiresAt" > ${nowTimestamp}::timestamp
           AND subscriptions."tokenBalance" > 0
         ORDER BY subscriptions."updatedAt" DESC
         LIMIT ${safeActiveSubscriptionLimit}
