@@ -16,8 +16,6 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_OVERVIEW_QUERY_TIMEOUT_MS = 5000;
-
 type OverviewSnapshotResult = AdminQueryResult<AdminOverviewSnapshot>;
 
 const EMPTY_ADMIN_OVERVIEW_SNAPSHOT: AdminOverviewSnapshot = {
@@ -39,7 +37,6 @@ function adminOverviewQuery<T>(
     fallback,
     label,
     promise,
-    timeoutMs: ADMIN_OVERVIEW_QUERY_TIMEOUT_MS,
   });
 }
 

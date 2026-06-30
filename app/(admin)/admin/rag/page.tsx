@@ -5,6 +5,7 @@ import { auth } from "@/app/(auth)/auth";
 import { AdminPageLoading } from "@/components/admin/admin-page-loading";
 import type { SerializedAdminRagEntry } from "@/components/admin-rag/admin-rag-manager";
 import type { SerializedUserKnowledgeEntry } from "@/components/admin-user-knowledge-table";
+import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY } from "@/lib/constants";
 import { getLiteAppSettingUncached } from "@/lib/db/app-settings-lite";
@@ -42,14 +43,7 @@ const AdminUserKnowledgeTable = nextDynamic(
   }
 );
 
-const queryTimeoutRaw = Number.parseInt(
-  process.env.ADMIN_QUERY_TIMEOUT_MS ?? "",
-  10
-);
-const QUERY_TIMEOUT_MS =
-  Number.isFinite(queryTimeoutRaw) && queryTimeoutRaw > 0
-    ? queryTimeoutRaw
-    : 4000;
+const QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(4000);
 
 async function safeQuery<T>(
   label: string,

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { asc, count, desc, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { requireAdminUser } from "@/lib/api/auth";
 import { CACHE_CONTROL, cacheHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
@@ -50,7 +51,7 @@ import { withTimeout } from "@/lib/utils/async";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ADMIN_SECTION_QUERY_TIMEOUT_MS = 8000;
+const ADMIN_SECTION_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(8000);
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_FORUM_THREAD_LIMIT = 25;

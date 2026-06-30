@@ -46,6 +46,7 @@ import {
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
 import { ADMIN_SETTINGS_CACHE_TAG } from "@/lib/admin/cache-invalidation";
+import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -163,8 +164,8 @@ const PROVIDER_OPTIONS = [
 ];
 
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
-const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = 3500;
-const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = 6000;
+const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(3500);
+const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(6000);
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS = 300;

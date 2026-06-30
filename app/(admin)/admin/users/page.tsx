@@ -17,7 +17,6 @@ import { AddCreditsForm } from "./add-credits-form";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_USERS_QUERY_TIMEOUT_MS = 5000;
 const USERS_PAGE_SIZE = 25;
 
 const EMPTY_ADMIN_USERS_SNAPSHOT: AdminUsersSnapshot = {
@@ -56,7 +55,6 @@ export default async function AdminUsersPage({
       fallback,
       label,
       promise,
-      timeoutMs: ADMIN_USERS_QUERY_TIMEOUT_MS,
     });
 
   const usersPageSnapshotState = await withQueryState(

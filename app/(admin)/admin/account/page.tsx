@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   type AdminQueryResult,
   adminQueryResult,
+  getAdminQueryTimeoutMs,
 } from "@/lib/admin/safe-query";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
@@ -54,7 +55,7 @@ type ModelConfigsQueryResult = AdminQueryResult<ModelConfig[]>;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_SECTION_PREVIEW_ROWS = 5;
-const ADMIN_ACCOUNT_QUERY_TIMEOUT_MS = 5000;
+const ADMIN_ACCOUNT_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(5000);
 
 const EMPTY_CHAT_SUMMARIES: ChatSummariesResult = {
   total: 0,

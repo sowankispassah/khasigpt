@@ -9,6 +9,7 @@ import { AdminJobsScrapeControl } from "@/components/admin-jobs-scrape-control";
 import { JobsAutoScrapeStatus } from "@/components/jobs-auto-scrape-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
+import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import {
   JOBS_SCRAPE_ENABLED_SETTING_KEY,
   JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY,
@@ -93,7 +94,7 @@ const MAX_JOBS_SCRAPE_LOOKBACK_DAYS = 365;
 const JOBS_ADMIN_ACTION_TIMEOUT_MS = 20_000;
 const JOBS_ADMIN_ACTION_VERIFY_TIMEOUT_MS = 6_000;
 const JOBS_ADMIN_ACTION_RETRY_ATTEMPTS = 2;
-const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = 5_000;
+const JOBS_ADMIN_PAGE_LOAD_TIMEOUT_MS = getAdminQueryTimeoutMs(5_000);
 
 type AdminQueryState<T> = {
   data: T;
