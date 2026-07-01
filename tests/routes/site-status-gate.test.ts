@@ -45,10 +45,40 @@ test.describe("admin entry pass launch gate", () => {
     }
   });
 
-  test("does not let the pass unlock ordinary app routes", () => {
+  test("does not let the pass unlock app routes without a session", () => {
     expect(
       shouldAllowAdminEntryPassThrough({
         adminAccessEnabled: true,
+        allowAuthenticatedAppRoutes: true,
+        hasAuthenticatedSession: false,
+        hasValidAdminEntryPass: true,
+        isConfiguredAdminEntryRoute: false,
+        pathname: "/chat",
+      })
+    ).toBe(false);
+  });
+
+  test("lets authenticated pass holders through core app routes when role lookup is unavailable", () => {
+    for (const pathname of ["/", "/chat", "/chat/123"]) {
+      expect(
+        shouldAllowAdminEntryPassThrough({
+          adminAccessEnabled: true,
+          allowAuthenticatedAppRoutes: true,
+          hasAuthenticatedSession: true,
+          hasValidAdminEntryPass: true,
+          isConfiguredAdminEntryRoute: false,
+          pathname,
+        })
+      ).toBe(true);
+    }
+  });
+
+  test("keeps app routes closed when role lookup is confirmed non-admin", () => {
+    expect(
+      shouldAllowAdminEntryPassThrough({
+        adminAccessEnabled: true,
+        allowAuthenticatedAppRoutes: false,
+        hasAuthenticatedSession: true,
         hasValidAdminEntryPass: true,
         isConfiguredAdminEntryRoute: false,
         pathname: "/chat",

@@ -571,13 +571,21 @@ function isAdminSignInRoutePath(pathname: string) {
   return pathname === "/login";
 }
 
+function isAdminEntryAuthenticatedAppRoutePath(pathname: string) {
+  return pathname === "/" || isPathOrDescendant(pathname, "/chat");
+}
+
 export function shouldAllowAdminEntryPassThrough({
   adminAccessEnabled,
+  allowAuthenticatedAppRoutes = false,
+  hasAuthenticatedSession = false,
   hasValidAdminEntryPass,
   isConfiguredAdminEntryRoute,
   pathname,
 }: {
   adminAccessEnabled: boolean;
+  allowAuthenticatedAppRoutes?: boolean;
+  hasAuthenticatedSession?: boolean;
   hasValidAdminEntryPass: boolean;
   isConfiguredAdminEntryRoute: boolean;
   pathname: string;
@@ -595,7 +603,11 @@ export function shouldAllowAdminEntryPassThrough({
   }
 
   return (
-    isAdminSignInRoutePath(pathname) || isPathOrDescendant(pathname, "/admin")
+    isAdminSignInRoutePath(pathname) ||
+    isPathOrDescendant(pathname, "/admin") ||
+    (allowAuthenticatedAppRoutes &&
+      hasAuthenticatedSession &&
+      isAdminEntryAuthenticatedAppRoutePath(pathname))
   );
 }
 
@@ -672,9 +684,12 @@ export async function proxy(request: NextRequest) {
         const shouldCheckAdminEntryPass =
           siteStatus.adminAccessEnabled &&
           (isAdminSignInRoutePath(pathname) ||
-            isPathOrDescendant(pathname, "/admin"));
+            isPathOrDescendant(pathname, "/admin") ||
+            (isAdmin === null && isAdminEntryAuthenticatedAppRoutePath(pathname)));
         const allowAdminReentry = shouldAllowAdminEntryPassThrough({
           adminAccessEnabled: siteStatus.adminAccessEnabled,
+          allowAuthenticatedAppRoutes: isAdmin === null,
+          hasAuthenticatedSession: hasSessionCookie(request),
           hasValidAdminEntryPass: shouldCheckAdminEntryPass
             ? await resolveHasValidAdminEntryPass(request)
             : false,
