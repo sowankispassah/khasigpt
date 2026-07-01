@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { auth } from "@/app/(auth)/auth";
 import { getUserRoleById } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { withTimeout } from "@/lib/utils/async";
@@ -24,8 +25,17 @@ export async function GET(request: Request) {
     const token = secret
       ? await getToken({ req: request, secret }).catch(() => null)
       : null;
-    const userId = typeof token?.id === "string" ? token.id : null;
-    const tokenRole = normalizeTokenRole(token?.role);
+    const session =
+      typeof token?.id === "string"
+        ? null
+        : await withTimeout(auth(), SESSION_ROLE_DB_TIMEOUT_MS).catch(() => null);
+    const userId =
+      typeof token?.id === "string"
+        ? token.id
+        : typeof session?.user?.id === "string"
+          ? session.user.id
+          : null;
+    const tokenRole = normalizeTokenRole(token?.role ?? session?.user?.role);
     const roleRefreshedAt = (token as { roleRefreshedAt?: unknown } | null)
       ?.roleRefreshedAt;
     const tokenRoleConfirmed =
