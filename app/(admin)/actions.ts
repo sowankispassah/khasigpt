@@ -6,6 +6,12 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/(auth)/auth";
 import {
   ADMIN_SETTINGS_CACHE_TAG,
+  ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
+  ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_PRICING_CACHE_TAG,
+  ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
   invalidateAdminMutation,
 } from "@/lib/admin/cache-invalidation";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
@@ -58,7 +64,6 @@ import {
   deleteTranslationFeatureLanguageById,
   deleteTranslationValueEntry,
   getAppSetting,
-  getAppSettingUncached,
   getImageModelConfigByKey,
   getLanguageByIdRaw,
   getLiveVoiceModelConfigByKey,
@@ -220,38 +225,36 @@ function revalidateAdminSettingsSection(source = "admin.settings") {
 function revalidateAdminModelSettings(source = "admin.models") {
   invalidateAdminMutation({
     source,
-    tags: [MODEL_REGISTRY_CACHE_TAG],
+    tags: [MODEL_REGISTRY_CACHE_TAG, ADMIN_SETTINGS_MODELS_CACHE_TAG],
   });
-  revalidateAdminSettingsSection(source);
 }
 
 function revalidateAdminImageModelSettings(source = "admin.imageModels") {
   invalidateAdminMutation({
     source,
-    tags: [IMAGE_MODEL_REGISTRY_CACHE_TAG],
+    tags: [
+      IMAGE_MODEL_REGISTRY_CACHE_TAG,
+      ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+    ],
   });
-  revalidateAdminSettingsSection(source);
 }
 
 function revalidateAdminLiveVoiceModelSettings(source = "admin.liveVoiceModels") {
   invalidateAdminMutation({
     cacheMode: "update",
     source,
-    tags: [LIVE_VOICE_MODEL_CONFIG_CACHE_TAG],
-  });
-  invalidateAdminMutation({
-    cacheMode: "update",
-    source,
-    tags: [ADMIN_SETTINGS_CACHE_TAG],
+    tags: [
+      LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+      ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+    ],
   });
 }
 
 function revalidateAdminPricingSettings(source = "admin.pricing") {
   invalidateAdminMutation({
     source,
-    tags: [PRICING_PLAN_CACHE_TAG],
+    tags: [PRICING_PLAN_CACHE_TAG, ADMIN_SETTINGS_PRICING_CACHE_TAG],
   });
-  revalidateAdminSettingsSection(source);
 }
 
 function revalidateAdminPath(path: string, source: string) {
@@ -277,19 +280,28 @@ function revalidateLanguageSettings({
 }) {
   invalidateAdminMutation({
     source,
-    tags: ["languages"],
+    tags: [
+      "languages",
+      ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
+      ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
+    ],
   });
-  revalidateAdminSettingsSection(source);
 
   if (includeTranslations) {
     revalidateAdminPath("/admin/translations", source);
   }
 }
 
+function revalidateAdminTranslationFeatureLanguages(source: string) {
+  invalidateAdminMutation({
+    source,
+    tags: [ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG],
+  });
+}
+
 const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
 const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
 const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
-const ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS = 6000;
 const ADMIN_ACTION_INVITE_TIMEOUT_MS = 12000;
 const ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS = 10000;
 const ADMIN_PRICING_TRANSLATION_SYNC_TIMEOUT_MS = 1500;
@@ -431,22 +443,7 @@ async function updateFeatureAccessModeSetting({
     }
   );
 
-  const persistedMode = parseFeatureAccessModeStrict(
-    await withTimeout(
-      getAppSettingUncached(settingKey),
-      FEATURE_ACCESS_SETTING_TIMEOUT_MS
-    )
-  );
-  if (persistedMode !== accessMode) {
-    console.error("[admin/actions] Feature access readback mismatch.", {
-      accessMode,
-      persistedMode,
-      settingKey,
-    });
-    throw new Error("Failed to verify saved feature access mode.");
-  }
-
-  rememberFeatureAccessSettingValue(settingKey, persistedMode);
+  rememberFeatureAccessSettingValue(settingKey, accessMode);
   invalidateAdminMutation({
     source: auditAction,
     tags: [
@@ -677,7 +674,9 @@ export async function updateTranslateProviderModeAction(formData: FormData) {
     metadata: { providerMode },
   });
 
-  revalidateAdminSettingsSection("feature.translate.provider_mode.update");
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.provider_mode.update"
+  );
   revalidatePublicPath("/translate", "feature.translate.provider_mode.update");
 
   redirect("/admin/settings?notice=translation-provider-mode-updated");
@@ -891,13 +890,6 @@ export async function updateAdminEntryCodeAction(formData: FormData) {
       );
     }
   );
-  const persistedHash = await withTimeout(
-    getAppSettingUncached<string>(SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY),
-    ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS
-  );
-  if (persistedHash !== hashedCode) {
-    throw new Error("Failed to verify saved admin entry code.");
-  }
   revalidateAppSettingCache(
     SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
     "site.admin_entry_code.update"
@@ -935,13 +927,6 @@ export async function updateAdminEntryPathAction(formData: FormData) {
       );
     }
   );
-  const persistedPath = await withTimeout(
-    getAppSettingUncached<string>(SITE_ADMIN_ENTRY_PATH_SETTING_KEY),
-    ADMIN_ACTION_SETTING_READBACK_TIMEOUT_MS
-  );
-  if (persistedPath !== path) {
-    throw new Error("Failed to verify saved admin entry path.");
-  }
   revalidateAppSettingCache(
     SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
     "site.admin_entry_path.update"
@@ -2353,7 +2338,9 @@ export async function createTranslationFeatureLanguageAction(
     },
   });
 
-  revalidateAdminSettingsSection("feature.translate.language.create");
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.create"
+  );
   revalidatePublicPath("/translate", "feature.translate.language.create");
 
   redirect("/admin/settings?notice=translation-language-created");
@@ -2402,7 +2389,9 @@ export async function updateTranslationFeatureLanguageStatusAction(
     metadata: { isActive: shouldActivate },
   });
 
-  revalidateAdminSettingsSection("feature.translate.language.toggle");
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.toggle"
+  );
   revalidatePublicPath("/translate", "feature.translate.language.toggle");
 
   redirect("/admin/settings?notice=translation-language-updated");
@@ -2522,7 +2511,9 @@ export async function updateTranslationFeatureLanguageSettingsAction(
     },
   });
 
-  revalidateAdminSettingsSection("feature.translate.language.update");
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.update"
+  );
   revalidatePublicPath("/translate", "feature.translate.language.update");
 
   redirect("/admin/settings?notice=translation-language-settings-updated");
@@ -2557,7 +2548,9 @@ export async function deleteTranslationFeatureLanguageAction(
     metadata: { name: targetLanguage.name },
   });
 
-  revalidateAdminSettingsSection("feature.translate.language.delete");
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.delete"
+  );
   revalidatePublicPath("/translate", "feature.translate.language.delete");
 
   redirect("/admin/settings?notice=translation-language-deleted");

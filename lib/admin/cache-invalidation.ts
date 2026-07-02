@@ -3,6 +3,15 @@ import "server-only";
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 
 export const ADMIN_SETTINGS_CACHE_TAG = "admin-settings";
+export const ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG =
+  "admin-settings:image-models";
+export const ADMIN_SETTINGS_LANGUAGES_CACHE_TAG = "admin-settings:languages";
+export const ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG =
+  "admin-settings:live-voice-models";
+export const ADMIN_SETTINGS_MODELS_CACHE_TAG = "admin-settings:models";
+export const ADMIN_SETTINGS_PRICING_CACHE_TAG = "admin-settings:pricing";
+export const ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG =
+  "admin-settings:translation-feature-languages";
 
 type AdminInvalidationPath = {
   path: string;

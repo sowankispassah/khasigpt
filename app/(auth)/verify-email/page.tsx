@@ -5,7 +5,7 @@ import {
   type VerifyEmailResult,
   verifyUserEmailByToken,
 } from "@/lib/db/queries";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { getAuthFallbackTranslationBundle } from "@/lib/i18n/auth-fallback-bundle";
 
 type VerifyEmailSearchParams = {
   token?: string | string[];
@@ -75,7 +75,7 @@ export default async function VerifyEmailPage({
 }) {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const { dictionary } = await getTranslationBundle(preferredLanguage);
+  const { dictionary } = getAuthFallbackTranslationBundle(preferredLanguage);
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const resolvedParams = searchParams ? await searchParams : undefined;
   const token = resolveToken(resolvedParams?.token);

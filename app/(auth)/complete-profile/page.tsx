@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getUserById } from "@/lib/db/queries";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { getAuthFallbackTranslationBundle } from "@/lib/i18n/auth-fallback-bundle";
 import { withTimeout } from "@/lib/utils/async";
 import { auth } from "../auth";
 import { CompleteProfileForm } from "./complete-profile-form";
@@ -29,7 +29,7 @@ export default async function CompleteProfilePage() {
   const profileUser = dbUser ?? session.user;
 
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const { dictionary } = await getTranslationBundle(preferredLanguage);
+  const { dictionary } = getAuthFallbackTranslationBundle(preferredLanguage);
 
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
 

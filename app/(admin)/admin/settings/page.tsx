@@ -45,7 +45,14 @@ import {
   updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
-import { ADMIN_SETTINGS_CACHE_TAG } from "@/lib/admin/cache-invalidation";
+import {
+  ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
+  ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_PRICING_CACHE_TAG,
+  ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
+} from "@/lib/admin/cache-invalidation";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
@@ -257,7 +264,7 @@ const listAdminModelConfigsCached = unstable_cache(
   ["admin-settings:model-configs:v1"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
+    tags: [ADMIN_SETTINGS_MODELS_CACHE_TAG, MODEL_REGISTRY_CACHE_TAG],
   }
 );
 const listAdminImageModelConfigsCached = unstable_cache(
@@ -270,7 +277,10 @@ const listAdminImageModelConfigsCached = unstable_cache(
   ["admin-settings:image-model-configs:v1"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_CACHE_TAG, IMAGE_MODEL_REGISTRY_CACHE_TAG],
+    tags: [
+      ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+      IMAGE_MODEL_REGISTRY_CACHE_TAG,
+    ],
   }
 );
 const listAdminLiveVoiceModelConfigsCached = unstable_cache(
@@ -283,7 +293,10 @@ const listAdminLiveVoiceModelConfigsCached = unstable_cache(
   ["admin-settings:live-voice-model-configs:v1"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_CACHE_TAG, LIVE_VOICE_MODEL_CONFIG_CACHE_TAG],
+    tags: [
+      ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+      LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+    ],
   }
 );
 const listAdminPricingPlansCached = unstable_cache(
@@ -291,7 +304,7 @@ const listAdminPricingPlansCached = unstable_cache(
   ["admin-settings:pricing-plans:v1"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_CACHE_TAG, PRICING_PLAN_CACHE_TAG],
+    tags: [ADMIN_SETTINGS_PRICING_CACHE_TAG, PRICING_PLAN_CACHE_TAG],
   }
 );
 const listAdminLanguagesCached = unstable_cache(
@@ -299,7 +312,7 @@ const listAdminLanguagesCached = unstable_cache(
   ["admin-settings:languages:v1"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_CACHE_TAG, "languages"],
+    tags: [ADMIN_SETTINGS_LANGUAGES_CACHE_TAG, "languages"],
   }
 );
 const listAdminTranslationFeatureLanguagesCached = unstable_cache(
@@ -307,7 +320,7 @@ const listAdminTranslationFeatureLanguagesCached = unstable_cache(
   ["admin-settings:translation-feature-languages:v1"],
   {
     revalidate: ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS,
-    tags: [ADMIN_SETTINGS_CACHE_TAG],
+    tags: [ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG],
   }
 );
 

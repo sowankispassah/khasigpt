@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  ADMIN_SETTINGS_CACHE_TAG,
+  ADMIN_SETTINGS_PRICING_CACHE_TAG,
   invalidateAdminMutation,
 } from "@/lib/admin/cache-invalidation";
 import { PRICING_PLAN_CACHE_TAG } from "@/lib/constants";
@@ -155,7 +155,7 @@ export async function PATCH(
 
     invalidateAdminMutation({
       source: "billing.plan.update",
-      tags: [PRICING_PLAN_CACHE_TAG, ADMIN_SETTINGS_CACHE_TAG],
+      tags: [PRICING_PLAN_CACHE_TAG, ADMIN_SETTINGS_PRICING_CACHE_TAG],
     });
 
     void withTimeout(

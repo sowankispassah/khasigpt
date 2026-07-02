@@ -10,6 +10,7 @@ import {
   incrementRateLimit,
   resetRateLimit,
 } from "@/lib/security/rate-limit";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +19,7 @@ const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
 });
+const MOBILE_AUTH_DB_TIMEOUT_MS = 4000;
 
 function authError(message: string, status: number, code?: string) {
   return NextResponse.json(
@@ -83,7 +85,12 @@ export async function POST(request: Request) {
   try {
     userRecords = await withApiTiming(
       "mobile.auth.login.user_lookup",
-      () => getUser(email),
+      () =>
+        withTimeout(getUser(email), MOBILE_AUTH_DB_TIMEOUT_MS, () => {
+          console.warn(
+            `[mobile-auth] User lookup timed out after ${MOBILE_AUTH_DB_TIMEOUT_MS}ms.`
+          );
+        }),
       {
         metadata: {
           emailDomain: getEmailDomain(email),

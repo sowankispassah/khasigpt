@@ -54,9 +54,20 @@ declare module "next-auth" {
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
 const AUTH_DB_TIMEOUT_MS = 4000;
+const AUTH_AUDIT_TIMEOUT_MS = 1500;
 const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
 const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
 const INVITE_REDEMPTION_TIMEOUT_MS = 2500;
+
+async function runAuthDb<T>(
+  label: string,
+  promise: Promise<T>,
+  timeoutMs = AUTH_DB_TIMEOUT_MS
+) {
+  return withTimeout(promise, timeoutMs, () => {
+    console.warn(`[auth] ${label} timed out after ${timeoutMs}ms.`);
+  });
+}
 
 const providers: any[] = [
   Credentials({
@@ -80,7 +91,17 @@ const providers: any[] = [
         );
       }
 
-      const users = await getUser(email);
+      let users: Awaited<ReturnType<typeof getUser>>;
+      try {
+        users = await runAuthDb(
+          "credentials.user_lookup",
+          getUser(normalizedEmail)
+        );
+      } catch (error) {
+        console.error("[auth] Credentials user lookup failed.", error);
+        await compare(passwordInput, DUMMY_PASSWORD);
+        throw new Error("AuthUnavailable");
+      }
 
       if (users.length === 0) {
         await compare(passwordInput, DUMMY_PASSWORD);
@@ -137,7 +158,13 @@ providers.push(
         return null;
       }
 
-      const targetUser = await getUserById(verified.userId);
+      const targetUser = await runAuthDb(
+        "mobile_token.user_lookup",
+        getUserById(verified.userId)
+      ).catch((error) => {
+        console.error("[auth] Mobile token user lookup failed.", error);
+        return null;
+      });
       if (!targetUser || !targetUser.isActive) {
         return null;
       }
@@ -166,7 +193,7 @@ providers.push(
     name: "Guest",
     credentials: {},
     async authorize() {
-      const [record] = await createGuestUser();
+      const [record] = await runAuthDb("guest.create_user", createGuestUser());
 
       return {
         ...record,
@@ -200,12 +227,24 @@ providers.push(
         return null;
       }
 
-      const record = await consumeImpersonationToken(tokenValue);
+      const record = await runAuthDb(
+        "impersonation.consume_token",
+        consumeImpersonationToken(tokenValue)
+      ).catch((error) => {
+        console.error("[auth] Impersonation token lookup failed.", error);
+        return null;
+      });
       if (!record) {
         return null;
       }
 
-      const targetUser = await getUserById(record.targetUserId);
+      const targetUser = await runAuthDb(
+        "impersonation.user_lookup",
+        getUserById(record.targetUserId)
+      ).catch((error) => {
+        console.error("[auth] Impersonation user lookup failed.", error);
+        return null;
+      });
       if (!targetUser || !targetUser.isActive) {
         return null;
       }
@@ -306,8 +345,8 @@ export const {
             ? userWithFlag.isNewUser
             : false;
 
-      try {
-        await createAuditLogEntry({
+      void withTimeout(
+        createAuditLogEntry({
           actorId,
           action: inferredIsNewUser ? "user.signup" : "user.login",
           target: {
@@ -321,10 +360,11 @@ export const {
           },
           subjectUserId: actorId,
           ...clientInfo,
-        });
-      } catch (error) {
+        }),
+        AUTH_AUDIT_TIMEOUT_MS
+      ).catch((error) => {
         console.error("Failed to record auth audit log", error);
-      }
+      });
     },
   },
   callbacks: {
@@ -347,12 +387,14 @@ export const {
               ? ((user as Record<string, string>).family_name ?? "").trim()
               : fullName.split(" ").slice(1).join(" ");
 
-          const { user: dbUser, isNewUser: isNewOAuthUser } =
-            await ensureOAuthUser(user.email, {
+          const { user: dbUser, isNewUser: isNewOAuthUser } = await runAuthDb(
+            "google.ensure_user",
+            ensureOAuthUser(user.email, {
               image: profileImage,
               firstName: googleFirstName || null,
               lastName: googleLastName || null,
-            });
+            })
+          );
           (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
           user.role = dbUser.role as UserRole;

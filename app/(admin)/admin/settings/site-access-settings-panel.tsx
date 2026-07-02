@@ -17,6 +17,12 @@ type SiteAccessState = {
   adminEntryCodeConfigured: boolean;
 };
 
+type SiteAccessMutationResponse = {
+  ok: boolean;
+  state?: SiteAccessState;
+  statePatch?: Partial<SiteAccessState>;
+};
+
 type ToggleField =
   | "publicLaunched"
   | "underMaintenance"
@@ -163,6 +169,21 @@ export function SiteAccessSettingsPanel({
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [currentOrigin, setCurrentOrigin] = useState("");
 
+  const applyMutationResult = useCallback(
+    (
+      result: SiteAccessMutationResponse,
+      fallbackPatch: Partial<SiteAccessState>
+    ) => {
+      const patch = result.state ?? result.statePatch ?? fallbackPatch;
+      setState((current) => ({ ...current, ...patch }));
+      if (typeof patch.adminEntryPath === "string") {
+        setPathInput(patch.adminEntryPath);
+      }
+      setSyncedAt(new Date());
+    },
+    []
+  );
+
   useEffect(() => {
     setSyncedAt(new Date());
   }, []);
@@ -205,21 +226,19 @@ export function SiteAccessSettingsPanel({
     setState((current) => ({ ...current, [field]: enabled }));
     setSavingField(field);
     try {
-      const result = await fetchJsonWithTimeout<{
-        ok: boolean;
-        state: SiteAccessState;
-      }>(SITE_ACCESS_API_ENDPOINT, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "toggle",
-          fieldName: field,
-          enabled,
-        }),
-      });
+      const result = await fetchJsonWithTimeout<SiteAccessMutationResponse>(
+        SITE_ACCESS_API_ENDPOINT,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "toggle",
+            fieldName: field,
+            enabled,
+          }),
+        }
+      );
 
-      setState(result.state);
-      setPathInput(result.state.adminEntryPath);
-      setSyncedAt(new Date());
+      applyMutationResult(result, { [field]: enabled });
       toast({ type: "success", description: "Setting updated." });
     } catch (error) {
       setState(previous);
@@ -238,19 +257,17 @@ export function SiteAccessSettingsPanel({
     }
     setSavingField("path");
     try {
-      const result = await fetchJsonWithTimeout<{
-        ok: boolean;
-        state: SiteAccessState;
-      }>(SITE_ACCESS_API_ENDPOINT, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "setPath",
-          path: pathInput,
-        }),
-      });
-      setState(result.state);
-      setPathInput(result.state.adminEntryPath);
-      setSyncedAt(new Date());
+      const result = await fetchJsonWithTimeout<SiteAccessMutationResponse>(
+        SITE_ACCESS_API_ENDPOINT,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "setPath",
+            path: pathInput,
+          }),
+        }
+      );
+      applyMutationResult(result, { adminEntryPath: pathInput });
       toast({ type: "success", description: "Admin entry path updated." });
     } catch (error) {
       toast({
@@ -271,19 +288,18 @@ export function SiteAccessSettingsPanel({
     }
     setSavingField("code");
     try {
-      const result = await fetchJsonWithTimeout<{
-        ok: boolean;
-        state: SiteAccessState;
-      }>(SITE_ACCESS_API_ENDPOINT, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "setCode",
-          code: codeInput,
-        }),
-      });
-      setState(result.state);
+      const result = await fetchJsonWithTimeout<SiteAccessMutationResponse>(
+        SITE_ACCESS_API_ENDPOINT,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "setCode",
+            code: codeInput,
+          }),
+        }
+      );
+      applyMutationResult(result, { adminEntryCodeConfigured: true });
       setCodeInput("");
-      setSyncedAt(new Date());
       toast({ type: "success", description: "Admin access code updated." });
     } catch (error) {
       toast({

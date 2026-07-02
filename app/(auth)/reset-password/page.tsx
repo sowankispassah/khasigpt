@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { getAuthFallbackTranslationBundle } from "@/lib/i18n/auth-fallback-bundle";
 import { ResetPasswordForm } from "../password-reset/reset-password-form";
 
 type ResetPasswordSearchParams = {
@@ -20,7 +20,7 @@ export default async function ResetPasswordPage({
 }) {
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
-  const { dictionary } = await getTranslationBundle(preferredLanguage);
+  const { dictionary } = getAuthFallbackTranslationBundle(preferredLanguage);
   const t = (key: string, fallback: string) => dictionary[key] ?? fallback;
   const resolvedParams = searchParams ? await searchParams : undefined;
   const token = resolveToken(resolvedParams?.token);

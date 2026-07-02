@@ -765,8 +765,8 @@ export async function getUser(email: string): Promise<User[]> {
     return await db
       .select()
       .from(user)
-      .where(eq(user.email, normalizedEmail))
-      .orderBy(asc(user.createdAt));
+      .where(sql`lower(${user.email}) = ${normalizedEmail}`)
+      .limit(1);
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",

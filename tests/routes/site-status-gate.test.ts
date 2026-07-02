@@ -12,10 +12,22 @@ test.describe("site status gate public routes", () => {
     expect(shouldBypassSiteStatusGate("/help/delete-account/verify")).toBe(true);
   });
 
-  test("keeps ordinary pages under the site status gate", () => {
+  test("keeps auth pages outside DB-backed site-status redirects", () => {
+    for (const pathname of [
+      "/login",
+      "/register",
+      "/forgot-password",
+      "/reset-password",
+      "/verify-email",
+      "/complete-profile",
+    ]) {
+      expect(shouldBypassSiteStatusGate(pathname)).toBe(true);
+    }
+  });
+
+  test("keeps ordinary app pages under the site status gate", () => {
     expect(shouldBypassSiteStatusGate("/")).toBe(false);
     expect(shouldBypassSiteStatusGate("/chat")).toBe(false);
-    expect(shouldBypassSiteStatusGate("/login")).toBe(false);
     expect(shouldBypassSiteStatusGate("/privacy")).toBe(false);
   });
 });

@@ -11,7 +11,6 @@ import {
 import {
   appSettingCacheTagForKey,
   getLiteAppSettingsByKeysUncached,
-  getLiteAppSettingUncached,
 } from "@/lib/db/app-settings-lite";
 import { normalizeAdminEntryPathSetting } from "@/lib/settings/admin-entry";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
@@ -23,8 +22,15 @@ import {
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
-const SITE_LAUNCH_SETTINGS_TIMEOUT_MS = 12_000;
-const SITE_LAUNCH_RETRY_TIMEOUT_MS = 4_000;
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const SITE_LAUNCH_SETTINGS_TIMEOUT_MS = parsePositiveInt(
+  process.env.SITE_LAUNCH_SETTINGS_TIMEOUT_MS,
+  process.env.NODE_ENV === "production" ? 1200 : 2000
+);
 const SITE_LAUNCH_CACHE_WINDOW_MS =
   process.env.NODE_ENV === "development" ? 1_000 : 60_000;
 const SITE_LAUNCH_CACHE_STALE_GRACE_MS =
@@ -37,11 +43,6 @@ const SITE_LAUNCH_SETTING_KEYS = [
   SITE_ADMIN_ENTRY_ENABLED_SETTING_KEY,
   SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
   SITE_LEGACY_LAUNCH_MODE_SETTING_KEY,
-] as const;
-const SITE_LAUNCH_CRITICAL_SETTING_KEYS = [
-  SITE_PUBLIC_LAUNCHED_SETTING_KEY,
-  SITE_UNDER_MAINTENANCE_SETTING_KEY,
-  SITE_PRELAUNCH_INVITE_ONLY_SETTING_KEY,
 ] as const;
 let siteLaunchSettingsCache:
   | {
@@ -145,47 +146,10 @@ async function loadSiteLaunchSettingsMap() {
       ),
     } satisfies SiteLaunchSettingsResult;
   } catch (error) {
-    console.error(
-      "[api/public/site-launch] Batched settings query timed out or failed. Retrying with per-key reads.",
+    console.warn(
+      "[api/public/site-launch] Settings query timed out or failed. Using stale state when available.",
       error
     );
-  }
-
-  const entries = await Promise.allSettled(
-    SITE_LAUNCH_SETTING_KEYS.map(async (key) => {
-      const value = await withTimeout(
-        getLiteAppSettingUncached<unknown>(key),
-        SITE_LAUNCH_RETRY_TIMEOUT_MS
-      );
-      return [key, value] as const;
-    })
-  );
-  const map = new Map<string, unknown>();
-  for (const entry of entries) {
-    if (entry.status !== "fulfilled") {
-      continue;
-    }
-    const [key, value] = entry.value;
-    if (value !== null && value !== undefined) {
-      map.set(key, value);
-    }
-  }
-
-  const hasCriticalSettings = SITE_LAUNCH_CRITICAL_SETTING_KEYS.every((key) =>
-    map.has(key)
-  );
-  if (hasCriticalSettings) {
-    return {
-      degraded: false,
-      map: cacheSettingsMap(map),
-    } satisfies SiteLaunchSettingsResult;
-  }
-
-  if (map.size > 0) {
-    return {
-      degraded: true,
-      map: cloneSettingsMap(map),
-    } satisfies SiteLaunchSettingsResult;
   }
 
   const stale = getStaleSettingsMap();

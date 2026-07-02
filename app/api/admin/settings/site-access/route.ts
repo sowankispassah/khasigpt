@@ -198,6 +198,7 @@ export async function POST(request: NextRequest) {
 
   const action =
     "action" in body && typeof body.action === "string" ? body.action : "";
+  let statePatch: Partial<SiteAccessState> = {};
 
   try {
     if (action === "toggle") {
@@ -219,6 +220,7 @@ export async function POST(request: NextRequest) {
         source: `site.${fieldName}.toggle`,
         value: enabled,
       });
+      statePatch = { [fieldName]: enabled };
       void auditSafely({
         actorId: user.id,
         action: `site.${fieldName}.toggle`,
@@ -238,6 +240,7 @@ export async function POST(request: NextRequest) {
         source: "site.admin_entry_path.update",
         value: path,
       });
+      statePatch = { adminEntryPath: path };
       void auditSafely({
         actorId: user.id,
         action: "site.admin_entry_path.update",
@@ -258,6 +261,7 @@ export async function POST(request: NextRequest) {
         source: "site.admin_entry_code.update",
         value: hash,
       });
+      statePatch = { adminEntryCodeConfigured: true };
       void auditSafely({
         actorId: user.id,
         action: "site.admin_entry_code.update",
@@ -268,9 +272,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "invalid_action" }, { status: 400 });
     }
 
-    const state = await loadSiteAccessState();
     return NextResponse.json(
-      { ok: true, state },
+      { ok: true, statePatch },
       {
         headers: { "Cache-Control": "no-store" },
       }

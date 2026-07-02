@@ -74,6 +74,16 @@ const SITE_STATUS_GATE_PUBLIC_PATHS = [
   "/terms-of-service",
   "/help/delete-account",
 ] as const;
+const AUTH_SITE_STATUS_GATE_PUBLIC_PATHS = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/password-reset",
+  "/verify-email",
+  "/complete-profile",
+  "/impersonate",
+] as const;
 const BYPASS_SITE_STATUS_GATE_IN_DEV =
   process.env.NODE_ENV === "development" &&
   process.env.ENABLE_SITE_STATUS_GATE_IN_DEV !== "1";
@@ -90,15 +100,18 @@ const SITE_STATUS_CACHE_WINDOW_MS =
       : 60 * 1000;
 const SITE_STATUS_STALE_GRACE_MS =
   process.env.NODE_ENV === "development" ? 60 * 1000 : 60 * 1000;
+const DEFAULT_INTERNAL_STATUS_FETCH_TIMEOUT_MS =
+  process.env.NODE_ENV === "production" ? 800 : 1500;
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW = Number.parseInt(
-  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ?? "15000",
+  process.env.MIDDLEWARE_INTERNAL_FETCH_TIMEOUT_MS ??
+    String(DEFAULT_INTERNAL_STATUS_FETCH_TIMEOUT_MS),
   10
 );
 const INTERNAL_STATUS_FETCH_TIMEOUT_MS =
   Number.isFinite(INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW) &&
   INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW > 0
     ? INTERNAL_STATUS_FETCH_TIMEOUT_MS_RAW
-    : 15_000;
+    : DEFAULT_INTERNAL_STATUS_FETCH_TIMEOUT_MS;
 type RateLimitBucket = { count: number; resetAt: number };
 const buckets = new Map<string, RateLimitBucket>();
 let siteStatusCache: {
@@ -316,8 +329,8 @@ export function shouldBypassSiteStatusGate(pathname: string) {
     return true;
   }
 
-  return SITE_STATUS_GATE_PUBLIC_PATHS.some((publicPath) =>
-    isPathOrDescendant(pathname, publicPath)
+  return [...SITE_STATUS_GATE_PUBLIC_PATHS, ...AUTH_SITE_STATUS_GATE_PUBLIC_PATHS].some(
+    (publicPath) => isPathOrDescendant(pathname, publicPath)
   );
 }
 
@@ -555,15 +568,8 @@ async function resolveHasValidAdminEntryPass(request: NextRequest) {
 }
 
 function isAuthRoutePath(pathname: string) {
-  return (
-    pathname === "/login" ||
-    pathname === "/register" ||
-    pathname === "/forgot-password" ||
-    pathname === "/reset-password" ||
-    pathname === "/password-reset" ||
-    pathname === "/verify-email" ||
-    pathname === "/complete-profile" ||
-    pathname === "/impersonate"
+  return AUTH_SITE_STATUS_GATE_PUBLIC_PATHS.some((authPath) =>
+    isPathOrDescendant(pathname, authPath)
   );
 }
 

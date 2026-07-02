@@ -16,6 +16,7 @@ import {
 import { sendPasswordResetEmail } from "@/lib/email/brevo";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { withTimeout } from "@/lib/utils/async";
 
 const emailSchema = z.object({
   email: z.string().email(),
@@ -37,6 +38,19 @@ const PASSWORD_RESET_RATE_LIMIT = {
   limit: 5,
   windowMs: 10 * 60 * 1000,
 };
+const PASSWORD_RESET_DB_TIMEOUT_MS = 4000;
+
+async function runPasswordResetDb<T>(
+  label: string,
+  promise: Promise<T>,
+  timeoutMs = PASSWORD_RESET_DB_TIMEOUT_MS
+) {
+  return withTimeout(promise, timeoutMs, () => {
+    console.warn(
+      `[password-reset] ${label} timed out after ${timeoutMs}ms.`
+    );
+  });
+}
 
 export type ForgotPasswordState =
   | { status: "idle" }
@@ -96,7 +110,7 @@ export async function requestPasswordResetAction(
       };
     }
 
-    const [user] = await getUser(email);
+    const [user] = await runPasswordResetDb("request.user_lookup", getUser(email));
 
     if (!user) {
       return {
@@ -106,16 +120,22 @@ export async function requestPasswordResetAction(
       };
     }
 
-    await deletePasswordResetTokensForUser({ userId: user.id });
+    await runPasswordResetDb(
+      "request.delete_old_tokens",
+      deletePasswordResetTokensForUser({ userId: user.id })
+    );
 
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MS);
 
-    await createPasswordResetTokenRecord({
-      userId: user.id,
-      token,
-      expiresAt,
-    });
+    await runPasswordResetDb(
+      "request.create_token",
+      createPasswordResetTokenRecord({
+        userId: user.id,
+        token,
+        expiresAt,
+      })
+    );
 
     const resetUrl = new URL(
       `/reset-password?token=${token}`,
@@ -153,7 +173,10 @@ export async function resetPasswordAction(
       confirmPassword: formData.get("confirmPassword"),
     });
 
-    const record = await getPasswordResetTokenRecord(token);
+    const record = await runPasswordResetDb(
+      "reset.token_lookup",
+      getPasswordResetTokenRecord(token)
+    );
 
     if (!record) {
       return {
@@ -163,25 +186,40 @@ export async function resetPasswordAction(
     }
 
     if (record.expiresAt < new Date()) {
-      await deletePasswordResetTokenById({ id: record.id });
+      await runPasswordResetDb(
+        "reset.delete_expired_token",
+        deletePasswordResetTokenById({ id: record.id })
+      );
       return {
         status: "error",
         message: "This reset link has expired. Please request a new one.",
       };
     }
 
-    const userRecord = await getUserById(record.userId);
+    const userRecord = await runPasswordResetDb(
+      "reset.user_lookup",
+      getUserById(record.userId)
+    );
 
     if (!userRecord) {
-      await deletePasswordResetTokenById({ id: record.id });
+      await runPasswordResetDb(
+        "reset.delete_orphan_token",
+        deletePasswordResetTokenById({ id: record.id })
+      );
       return {
         status: "error",
         message: "The account associated with this link could not be found.",
       };
     }
 
-    await updateUserPassword({ id: userRecord.id, password });
-    await deletePasswordResetTokensForUser({ userId: userRecord.id });
+    await runPasswordResetDb(
+      "reset.update_password",
+      updateUserPassword({ id: userRecord.id, password })
+    );
+    await runPasswordResetDb(
+      "reset.delete_used_tokens",
+      deletePasswordResetTokensForUser({ userId: userRecord.id })
+    );
 
     return {
       status: "success",
