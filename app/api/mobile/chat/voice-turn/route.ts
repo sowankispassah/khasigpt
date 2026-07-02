@@ -3,6 +3,7 @@ import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import {
   getActiveChatOwnerById,
+  getChatById,
   recordTokenUsage,
   saveChatAndMessages,
   saveMessages,
@@ -50,6 +51,19 @@ function voicePersistenceUnavailable() {
     { message: "Voice chat could not be saved. Please retry." },
     { headers: noStoreHeaders(), status: 503 }
   );
+}
+
+function toIsoString(value: Date | string | null | undefined) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime())
+      ? new Date().toISOString()
+      : parsed.toISOString();
+  }
+  return new Date().toISOString();
 }
 
 export async function POST(request: Request) {
@@ -151,6 +165,7 @@ export async function POST(request: Request) {
   });
 
   let createdChatForTurn = false;
+  let chatTitle = buildFallbackTitle(userText);
 
   try {
     await withTimeout(
@@ -182,7 +197,7 @@ export async function POST(request: Request) {
             chatInput: {
               id: chatId,
               userId: authContext.user.id,
-              title: buildFallbackTitle(userText),
+              title: chatTitle,
               visibility: selectedVisibilityType,
               mode: "default",
               status: "completed",
@@ -215,6 +230,20 @@ export async function POST(request: Request) {
     return voicePersistenceUnavailable();
   }
 
+  const savedChat = await withTimeout(
+    getChatById({ id: chatId }),
+    VOICE_TURN_SAVE_TIMEOUT_MS
+  ).catch((error) => {
+    console.error("[api/mobile/chat/voice-turn] Saved chat read failed.", error);
+    return null;
+  });
+  if (savedChat?.title) {
+    chatTitle = savedChat.title;
+  }
+
+  let usageRecorded = true;
+  let usageError: string | null = null;
+
   try {
     await withTimeout(
       recordTokenUsage({
@@ -232,35 +261,51 @@ export async function POST(request: Request) {
       error instanceof ChatSDKError &&
       error.type === "payment_required"
     ) {
+      usageRecorded = false;
+      usageError = "insufficient_credits";
       await updateChatStatusById({
         chatId,
-        status: "failed",
-        statusReason: "Insufficient credits remaining",
+        status: "completed",
+        statusReason: "Voice chat transcript saved; credits could not be deducted.",
       }).catch(() => undefined);
-      return Response.json(
-        { message: "Insufficient credits remaining" },
-        { headers: noStoreHeaders(), status: 402 }
+    } else {
+      usageRecorded = false;
+      usageError = "usage_record_failed";
+      console.error(
+        "[api/mobile/chat/voice-turn] Token usage write failed.",
+        error
       );
     }
-    if (createdChatForTurn) {
+    if (createdChatForTurn && usageError === "usage_record_failed") {
       await updateChatStatusById({
         chatId,
-        status: "failed",
-        statusReason: "Voice chat usage could not be recorded.",
+        status: "completed",
+        statusReason: "Voice chat transcript saved; usage could not be recorded.",
       }).catch(() => undefined);
     }
-    console.error(
-      "[api/mobile/chat/voice-turn] Token usage write failed.",
-      error
-    );
-    return voicePersistenceUnavailable();
   }
+
+  const activityAt = savedChat?.createdAt ?? createdAt;
 
   return Response.json(
     {
       assistantMessageId,
+      chat: {
+        createdAt: toIsoString(activityAt),
+        id: chatId,
+        mode: "default",
+        status: "completed",
+        statusReason: usageRecorded
+          ? null
+          : "Voice chat transcript saved; usage could not be confirmed.",
+        title: chatTitle,
+        updatedAt: toIsoString(activityAt),
+        visibility: savedChat?.visibility ?? selectedVisibilityType,
+      },
       chatId,
       ok: true,
+      usageError,
+      usageRecorded,
       userText,
       userMessageId,
     },
