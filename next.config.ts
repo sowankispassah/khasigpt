@@ -1,16 +1,94 @@
+import { createHash } from "node:crypto";
+import path from "node:path";
 import type { NextConfig } from "next";
+import { PRELOAD_PROGRESS_SCRIPT, THEME_COLOR_SCRIPT } from "./lib/security/inline-scripts";
+import { buildStructuredData, getSiteUrl } from "./lib/seo/site";
+
+const isDevelopment = process.env.NODE_ENV !== "production";
+const distDir = process.env.NEXT_DIST_DIR?.trim();
+
+const inlineScriptHashes = [
+  PRELOAD_PROGRESS_SCRIPT,
+  THEME_COLOR_SCRIPT,
+  JSON.stringify(buildStructuredData(getSiteUrl())),
+].map(
+  (content) =>
+    `'sha256-${createHash("sha256").update(content).digest("base64")}'`
+);
+
+const scriptSrc = isDevelopment
+  ? [
+      "script-src",
+      "'self'",
+      "'unsafe-eval'",
+      "'unsafe-inline'",
+      "blob:",
+      "data:",
+      "https://cdn.jsdelivr.net",
+      "https://checkout.razorpay.com",
+      "https://va.vercel-scripts.com",
+    ].join(" ")
+  : [
+      "script-src",
+      "'self'",
+      "'strict-dynamic'",
+      "'nonce-__NEXT_SCRIPT_NONCE__'",
+      ...inlineScriptHashes,
+      "https://cdn.jsdelivr.net",
+      "https://checkout.razorpay.com",
+      "https://va.vercel-scripts.com",
+    ].join(" ");
+
+const connectSrc = [
+  "connect-src",
+  "'self'",
+  "https://*.supabase.co",
+  "https://*.supabase.net",
+  "https://*.vercel.com",
+  "https://*.vercel.app",
+  "https://api.openai.com",
+  "https://api.anthropic.com",
+  "https://generativelanguage.googleapis.com",
+  "wss://generativelanguage.googleapis.com",
+  "https://cdn.jsdelivr.net",
+  "https://checkout.razorpay.com",
+  "https://api.razorpay.com",
+  "https://vitals.vercel-insights.com",
+  "https://va.vercel-scripts.com",
+  ...(isDevelopment
+    ? [
+        "ws://localhost:*",
+        "ws://127.0.0.1:*",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+      ]
+    : []),
+].join(" ");
+
+const frameSrc = [
+  "frame-src",
+  "'self'",
+  "https://checkout.razorpay.com",
+  "https://api.razorpay.com",
+].join(" ");
+
+const frameAncestors = isDevelopment
+  ? "frame-ancestors 'self' http://localhost:8081 http://127.0.0.1:8081"
+  : "frame-ancestors 'none'";
 
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'strict-dynamic' 'nonce-__NEXT_SCRIPT_NONCE__' https://cdn.jsdelivr.net",
-      "style-src 'self' 'nonce-__NEXT_SCRIPT_NONCE__'",
-      "img-src 'self' data: blob: https://*.vercel-storage.com https://avatar.vercel.sh",
+      scriptSrc,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh",
       "font-src 'self'",
-      "connect-src 'self' https://*.supabase.co https://*.supabase.net https://*.vercel.com https://*.vercel.app https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://cdn.jsdelivr.net",
-      "frame-ancestors 'none'",
+      "worker-src 'self' blob:",
+      connectSrc,
+      frameSrc,
+      frameAncestors,
       "base-uri 'self'",
       "form-action 'self'",
       "upgrade-insecure-requests",
@@ -31,18 +109,20 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), accelerometer=(), autoplay=(self)",
+      "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), accelerometer=(), autoplay=(self)",
   },
-  {
-    key: "X-Frame-Options",
-    value: "DENY",
-  },
+  ...(isDevelopment
+    ? []
+    : [
+        {
+          key: "X-Frame-Options",
+          value: "DENY",
+        },
+      ]),
 ];
 
 const nextConfig: NextConfig = {
-  experimental: {
-    ppr: true,
-  },
+  ...(distDir ? { distDir } : {}),
   images: {
     remotePatterns: [
       {
@@ -58,6 +138,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  serverExternalPackages: ["@napi-rs/canvas", "pdf-parse"],
   async headers() {
     return [
       {
@@ -66,6 +147,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  outputFileTracingRoot: path.join(__dirname),
 };
 
 export default nextConfig;

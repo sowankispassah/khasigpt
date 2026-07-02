@@ -1,18 +1,33 @@
 import { compare } from "bcrypt-ts";
+import { cookies } from "next/headers";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
-import { DUMMY_PASSWORD } from "@/lib/constants";
-import { ensureOAuthUser, getUser, getUserById } from "@/lib/db/queries";
-import { ChatSDKError } from "@/lib/errors";
 import {
-  incrementRateLimit,
-  resetRateLimit,
-} from "@/lib/security/rate-limit";
+  DUMMY_PASSWORD,
+  PRELAUNCH_INVITE_COOKIE_NAME,
+} from "@/lib/constants";
+import {
+  type AuthDbUser,
+  getAuthUserById,
+  getAuthUsersByEmail,
+} from "@/lib/db/auth-queries";
+import {
+  consumeImpersonationToken,
+  createAuditLogEntry,
+  createGuestUser,
+  ensureOAuthUser,
+  redeemPrelaunchInviteTokenForUser,
+} from "@/lib/db/queries";
+import { ChatSDKError } from "@/lib/errors";
+import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { incrementRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
+import { withTimeout } from "@/lib/utils/async";
 import { authConfig } from "./auth.config";
 
-export type UserRole = "regular" | "admin";
+export type UserRole = "regular" | "creator" | "admin";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -23,10 +38,10 @@ declare module "next-auth" {
       imageVersion: string | null;
       firstName: string | null;
       lastName: string | null;
+      allowPersonalKnowledge: boolean;
     } & DefaultSession["user"];
   }
 
-  // biome-ignore lint/nursery/useConsistentTypeDefinitions: Required augmentation type
   interface User {
     id?: string;
     email?: string | null;
@@ -36,10 +51,46 @@ declare module "next-auth" {
     imageVersion?: string | null;
     firstName?: string | null;
     lastName?: string | null;
+    allowPersonalKnowledge?: boolean;
   }
 }
 
 const ACCOUNT_INACTIVE_ERROR = "AccountInactive";
+const AUTH_DB_TIMEOUT_MS = 4000;
+const AUTH_AUDIT_TIMEOUT_MS = 1500;
+const AUTH_DB_REFRESH_MS = 5 * 60 * 1000;
+const AUTH_DB_FAILURE_COOLDOWN_MS = 30 * 1000;
+const INVITE_REDEMPTION_TIMEOUT_MS = 2500;
+
+async function runAuthDb<T>(
+  label: string,
+  promise: Promise<T>,
+  timeoutMs = AUTH_DB_TIMEOUT_MS
+) {
+  return withTimeout(promise, timeoutMs, () => {
+    console.warn(`[auth] ${label} timed out after ${timeoutMs}ms.`);
+  });
+}
+
+function toNextAuthUser(user: AuthDbUser) {
+  const imageVersion =
+    user.image && user.updatedAt instanceof Date
+      ? user.updatedAt.toISOString()
+      : user.image
+        ? new Date().toISOString()
+        : null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role as UserRole,
+    dateOfBirth: user.dateOfBirth ?? null,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
+    imageVersion,
+    allowPersonalKnowledge: user.allowPersonalKnowledge ?? false,
+  };
+}
 
 const providers: any[] = [
   Credentials({
@@ -50,7 +101,7 @@ const providers: any[] = [
       const rateLimitKey = `login:${normalizedEmail || "unknown"}`;
       const passwordInput = typeof password === "string" ? password : "";
 
-      const { allowed } = incrementRateLimit(rateLimitKey, {
+      const { allowed } = await incrementRateLimit(rateLimitKey, {
         limit: 5,
         windowMs: 10 * 60 * 1000,
       });
@@ -63,7 +114,17 @@ const providers: any[] = [
         );
       }
 
-      const users = await getUser(email);
+      let users: Awaited<ReturnType<typeof getAuthUsersByEmail>>;
+      try {
+        users = await runAuthDb(
+          "credentials.user_lookup",
+          getAuthUsersByEmail(normalizedEmail)
+        );
+      } catch (error) {
+        console.error("[auth] Credentials user lookup failed.", error);
+        await compare(passwordInput, DUMMY_PASSWORD);
+        throw new Error("AuthUnavailable");
+      }
 
       if (users.length === 0) {
         await compare(passwordInput, DUMMY_PASSWORD);
@@ -90,22 +151,105 @@ const providers: any[] = [
 
       resetRateLimit(rateLimitKey);
 
-      const { image, ...rest } = user;
-      const imageVersion =
-        image && user.updatedAt instanceof Date
-          ? user.updatedAt.toISOString()
-          : image
-            ? new Date().toISOString()
-            : null;
-
-      return {
-        ...rest,
-        role: user.role,
-        imageVersion,
-      } as typeof rest & { role: UserRole; imageVersion: string | null };
+      return toNextAuthUser(user);
     },
   }),
 ];
+
+providers.push(
+  Credentials({
+    id: "mobile-token",
+    name: "Mobile Token",
+    credentials: {},
+    async authorize({ token }: any) {
+      const tokenValue = typeof token === "string" ? token : "";
+      const verified = verifyMobileAuthToken(tokenValue);
+      if (!verified) {
+        return null;
+      }
+
+      const targetUser = await runAuthDb(
+        "mobile_token.user_lookup",
+        getAuthUserById(verified.userId)
+      ).catch((error) => {
+        console.error("[auth] Mobile token user lookup failed.", error);
+        return null;
+      });
+      if (!targetUser || !targetUser.isActive) {
+        return null;
+      }
+
+      return toNextAuthUser(targetUser);
+    },
+  })
+);
+
+providers.push(
+  Credentials({
+    id: "guest",
+    name: "Guest",
+    credentials: {},
+    async authorize() {
+      const [record] = await runAuthDb("guest.create_user", createGuestUser());
+
+      return {
+        ...record,
+        role: (record as any).role ?? "regular",
+        name: "Guest",
+        imageVersion: null,
+        allowPersonalKnowledge: false,
+        firstName: "Guest",
+        lastName: "User",
+        dateOfBirth: "1990-01-01",
+      } as typeof record & {
+        role: UserRole;
+        imageVersion: string | null;
+        allowPersonalKnowledge: boolean;
+        firstName: string | null;
+        lastName: string | null;
+        dateOfBirth: string | null;
+      };
+    },
+  })
+);
+
+providers.push(
+  Credentials({
+    id: "impersonate",
+    name: "Impersonate",
+    credentials: {},
+    async authorize({ token }: any) {
+      const tokenValue = typeof token === "string" ? token : "";
+      if (!tokenValue) {
+        return null;
+      }
+
+      const record = await runAuthDb(
+        "impersonation.consume_token",
+        consumeImpersonationToken(tokenValue)
+      ).catch((error) => {
+        console.error("[auth] Impersonation token lookup failed.", error);
+        return null;
+      });
+      if (!record) {
+        return null;
+      }
+
+      const targetUser = await runAuthDb(
+        "impersonation.user_lookup",
+        getAuthUserById(record.targetUserId)
+      ).catch((error) => {
+        console.error("[auth] Impersonation user lookup failed.", error);
+        return null;
+      });
+      if (!targetUser || !targetUser.isActive) {
+        return null;
+      }
+
+      return toNextAuthUser(targetUser);
+    },
+  })
+);
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
@@ -118,15 +262,95 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 const ACCOUNT_INACTIVE_REDIRECT = "/login?error=AccountInactive";
 const ACCOUNT_LINK_REQUIRED_REDIRECT = "/login?error=AccountLinkRequired";
+const USER_ROLES = new Set<UserRole>(["regular", "creator", "admin"]);
+
+function isUserRole(value: unknown): value is UserRole {
+  return typeof value === "string" && USER_ROLES.has(value as UserRole);
+}
+
+async function applyPendingInviteAccess(userId: string) {
+  try {
+    const cookieStore = await cookies();
+    const pendingToken = cookieStore.get(PRELAUNCH_INVITE_COOKIE_NAME)?.value;
+    const token = typeof pendingToken === "string" ? pendingToken.trim() : "";
+
+    if (!token) {
+      return;
+    }
+
+    await withTimeout(
+      redeemPrelaunchInviteTokenForUser({
+        token,
+        userId,
+      }),
+      INVITE_REDEMPTION_TIMEOUT_MS
+    ).catch((error) => {
+      console.error(
+        "[auth] Failed to redeem pending prelaunch invite token during sign-in.",
+        error
+      );
+      return null;
+    });
+
+    cookieStore.set(PRELAUNCH_INVITE_COOKIE_NAME, "", {
+      httpOnly: true,
+      maxAge: 0,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+  } catch (error) {
+    console.error("[auth] Failed to resolve pending invite cookie.", error);
+  }
+}
 
 export const {
   handlers: { GET, POST },
   auth,
   signIn,
   signOut,
+  unstable_update,
 } = NextAuth({
   ...authConfig,
   providers,
+  events: {
+    async signIn({ user, account, isNewUser }) {
+      const actorId = typeof user?.id === "string" ? user.id : null;
+      if (!actorId) {
+        return;
+      }
+
+      const clientInfo = await getClientInfoFromHeaders();
+      const userWithFlag = user as { isNewUser?: boolean } | null | undefined;
+      const inferredIsNewUser =
+        typeof isNewUser === "boolean"
+          ? isNewUser
+          : typeof userWithFlag?.isNewUser === "boolean"
+            ? userWithFlag.isNewUser
+            : false;
+
+      void withTimeout(
+        createAuditLogEntry({
+          actorId,
+          action: inferredIsNewUser ? "user.signup" : "user.login",
+          target: {
+            userId: actorId,
+            email: typeof user?.email === "string" ? user.email : undefined,
+          },
+          metadata: {
+            provider: account?.provider,
+            type: account?.type,
+            isNewUser: inferredIsNewUser,
+          },
+          subjectUserId: actorId,
+          ...clientInfo,
+        }),
+        AUTH_AUDIT_TIMEOUT_MS
+      ).catch((error) => {
+        console.error("Failed to record auth audit log", error);
+      });
+    },
+  },
   callbacks: {
     async signIn({ user, account }: { user: any; account?: any }) {
       if (account?.provider === "google") {
@@ -134,25 +358,28 @@ export const {
           return false;
         }
 
-        const profileImage =
-          typeof user.image === "string" ? user.image : null;
+        const profileImage = typeof user.image === "string" ? user.image : null;
         try {
           const fullName =
             typeof user.name === "string" ? user.name.trim() : "";
           const googleFirstName =
             typeof (user as Record<string, unknown>).given_name === "string"
               ? ((user as Record<string, string>).given_name ?? "").trim()
-              : fullName.split(" ")[0] ?? "";
+              : (fullName.split(" ")[0] ?? "");
           const googleLastName =
             typeof (user as Record<string, unknown>).family_name === "string"
               ? ((user as Record<string, string>).family_name ?? "").trim()
               : fullName.split(" ").slice(1).join(" ");
 
-          const dbUser = await ensureOAuthUser(user.email, {
-            image: profileImage,
-            firstName: googleFirstName || null,
-            lastName: googleLastName || null,
-          });
+          const { user: dbUser, isNewUser: isNewOAuthUser } = await runAuthDb(
+            "google.ensure_user",
+            ensureOAuthUser(user.email, {
+              image: profileImage,
+              firstName: googleFirstName || null,
+              lastName: googleLastName || null,
+            })
+          );
+          (user as Record<string, unknown>).isNewUser = isNewOAuthUser;
           user.id = dbUser.id;
           user.role = dbUser.role as UserRole;
           user.image = null;
@@ -171,6 +398,7 @@ export const {
               .join(" ")
               .trim();
           }
+          user.allowPersonalKnowledge = dbUser.allowPersonalKnowledge ?? false;
         } catch (error) {
           if (error instanceof ChatSDKError) {
             if (error.cause === "account_inactive") {
@@ -182,6 +410,10 @@ export const {
           }
           throw error;
         }
+      }
+
+      if (typeof user?.id === "string" && user.role !== "admin") {
+        await applyPendingInviteAccess(user.id);
       }
 
       return true;
@@ -200,80 +432,216 @@ export const {
       if (user) {
         token.id = user.id as string;
         token.role = (user.role as UserRole) ?? "regular";
+        token.roleRefreshedAt = Date.now();
+        token.dbRefreshedAt = Date.now();
         token.dateOfBirth = user.dateOfBirth ?? null;
         token.imageVersion = user.imageVersion ?? null;
         token.firstName = user.firstName ?? null;
         token.lastName = user.lastName ?? null;
-      } else {
-        if (!token.role) {
-          token.role = "regular";
-        }
+        token.allowPersonalKnowledge = user.allowPersonalKnowledge ?? false;
+      } else if (!token.id && !isUserRole(token.role)) {
+        token.role = "regular";
       }
+
+      let cachedDbUser:
+        | Awaited<ReturnType<typeof getAuthUserById>>
+        | null
+        | undefined;
+      let dbLookupTimedOut = false;
+      let dbLookupFailed = false;
+      const isUndefinedField = (value: unknown) => typeof value === "undefined";
+      const needsDbFields =
+        Boolean(token.id) &&
+        (isUndefinedField(token.dateOfBirth) ||
+          !isUserRole(token.role) ||
+          typeof token.roleRefreshedAt !== "number" ||
+          isUndefinedField(token.imageVersion) ||
+          isUndefinedField(token.firstName) ||
+          isUndefinedField(token.lastName));
+      const lastDbRefresh =
+        typeof token.dbRefreshedAt === "number" ? token.dbRefreshedAt : 0;
+      const lastDbFailure =
+        typeof token.dbRefreshFailedAt === "number"
+          ? token.dbRefreshFailedAt
+          : 0;
+      const isFailureCooldownActive =
+        lastDbFailure > 0 &&
+        Date.now() - lastDbFailure < AUTH_DB_FAILURE_COOLDOWN_MS;
+      const shouldRefreshDb =
+        needsDbFields ||
+        trigger === "update" ||
+        (lastDbRefresh > 0 &&
+          Date.now() - lastDbRefresh > AUTH_DB_REFRESH_MS);
+      const ensureDbUser = async () => {
+        if (!token.id) {
+          cachedDbUser = null;
+          return null;
+        }
+        if (!shouldRefreshDb || isFailureCooldownActive) {
+          return cachedDbUser;
+        }
+        if (dbLookupTimedOut) {
+          return undefined;
+        }
+        if (typeof cachedDbUser !== "undefined") {
+          return cachedDbUser;
+        }
+        try {
+          cachedDbUser = await withTimeout(
+            getAuthUserById(token.id as string),
+            AUTH_DB_TIMEOUT_MS,
+            () => {
+              console.warn(
+                `[auth] getAuthUserById timed out after ${AUTH_DB_TIMEOUT_MS}ms.`
+              );
+            }
+          );
+          dbLookupFailed = false;
+        } catch (error) {
+          if (error instanceof Error && error.message === "timeout") {
+            dbLookupTimedOut = true;
+            cachedDbUser = undefined;
+            token.dbRefreshFailedAt = Date.now();
+            return cachedDbUser;
+          }
+          console.error("[auth] Failed to load user for session refresh", error);
+          dbLookupFailed = true;
+          cachedDbUser = undefined;
+          token.dbRefreshFailedAt = Date.now();
+        }
+        return cachedDbUser;
+      };
 
       if (trigger === "update" && session) {
-        if ("imageVersion" in session) {
-          token.imageVersion = (session.imageVersion as string | null) ?? null;
+        const sessionRecord = session as Record<string, unknown>;
+        const sessionUser =
+          sessionRecord.user && typeof sessionRecord.user === "object"
+            ? (sessionRecord.user as Record<string, unknown>)
+            : null;
+        const readSessionValue = (key: string) => {
+          if (key in sessionRecord) {
+            return sessionRecord[key];
+          }
+          if (sessionUser && key in sessionUser) {
+            return sessionUser[key];
+          }
+          return undefined;
+        };
+        const imageVersion = readSessionValue("imageVersion");
+        if (typeof imageVersion !== "undefined") {
+          token.imageVersion = (imageVersion as string | null) ?? null;
         }
-        if ("dateOfBirth" in session) {
-          token.dateOfBirth = (session.dateOfBirth as string | null) ?? null;
+        const dateOfBirth = readSessionValue("dateOfBirth");
+        if (typeof dateOfBirth !== "undefined") {
+          token.dateOfBirth = (dateOfBirth as string | null) ?? null;
         }
-        if ("firstName" in session) {
-          token.firstName = (session.firstName as string | null) ?? null;
+        const firstName = readSessionValue("firstName");
+        if (typeof firstName !== "undefined") {
+          token.firstName = (firstName as string | null) ?? null;
         }
-        if ("lastName" in session) {
-          token.lastName = (session.lastName as string | null) ?? null;
+        const lastName = readSessionValue("lastName");
+        if (typeof lastName !== "undefined") {
+          token.lastName = (lastName as string | null) ?? null;
+        }
+        const allowPersonalKnowledge = readSessionValue("allowPersonalKnowledge");
+        if (typeof allowPersonalKnowledge !== "undefined") {
+          token.allowPersonalKnowledge = Boolean(allowPersonalKnowledge);
         }
       }
 
-      if (
-        token.id &&
-        (typeof token.dateOfBirth === "undefined" ||
-          token.dateOfBirth === null ||
-          typeof token.imageVersion === "undefined" ||
-          typeof token.firstName === "undefined" ||
-          token.firstName === null ||
-          typeof token.lastName === "undefined" ||
-          token.lastName === null)
-      ) {
-        const record = await getUserById(token.id as string);
+      if (needsDbFields) {
+        const record = await ensureDbUser();
         if (record) {
-          if (typeof token.dateOfBirth === "undefined" || token.dateOfBirth === null) {
+          if (!record.isActive) {
+            token = {} as typeof token;
+            return token;
+          }
+          if (isUndefinedField(token.dateOfBirth)) {
             token.dateOfBirth = record.dateOfBirth ?? null;
           }
-          token.imageVersion =
-            record.image && record.updatedAt instanceof Date
-              ? record.updatedAt.toISOString()
-              : record.image
-                ? new Date().toISOString()
-                : null;
-          if (typeof token.firstName === "undefined" || token.firstName === null) {
+          if (record.role) {
+            token.role = record.role as UserRole;
+            token.roleRefreshedAt = Date.now();
+          }
+          if (isUndefinedField(token.imageVersion)) {
+            token.imageVersion =
+              record.image && record.updatedAt instanceof Date
+                ? record.updatedAt.toISOString()
+                : record.image
+                  ? new Date().toISOString()
+                  : null;
+          }
+          if (isUndefinedField(token.firstName)) {
             token.firstName = record.firstName ?? null;
           }
-          if (typeof token.lastName === "undefined" || token.lastName === null) {
+          if (isUndefinedField(token.lastName)) {
             token.lastName = record.lastName ?? null;
           }
+          if (typeof token.allowPersonalKnowledge === "undefined") {
+            token.allowPersonalKnowledge =
+              record.allowPersonalKnowledge ?? false;
+          }
         }
-      } else if (typeof token.imageVersion === "undefined") {
-        token.imageVersion = null;
       }
 
+      if (typeof token.dateOfBirth === "undefined") {
+        token.dateOfBirth = null;
+      }
+      if (typeof token.imageVersion === "undefined") {
+        token.imageVersion = null;
+      }
       if (typeof token.firstName === "undefined") {
         token.firstName = null;
       }
       if (typeof token.lastName === "undefined") {
         token.lastName = null;
       }
+      if (typeof token.allowPersonalKnowledge === "undefined") {
+        token.allowPersonalKnowledge = false;
+      }
+
+      if (token.id && (trigger === "update" || shouldRefreshDb)) {
+        const record = await ensureDbUser();
+        if (record) {
+          if (!record.isActive) {
+            token = {} as typeof token;
+            return token;
+          }
+          if (record.role) {
+            token.role = record.role as UserRole;
+            token.roleRefreshedAt = Date.now();
+          }
+          token.allowPersonalKnowledge = record.allowPersonalKnowledge ?? false;
+          token.dbRefreshedAt = Date.now();
+          token.dbRefreshFailedAt = undefined;
+        } else if (record === null && !dbLookupTimedOut && !dbLookupFailed) {
+          // Clear token data if the user no longer exists so downstream calls treat the session as signed out.
+          token = {} as typeof token;
+        }
+      }
+
+      if (!token.id && !isUserRole(token.role)) {
+        token.role = "regular";
+      }
 
       return token;
     },
     session({ session, token }: { session: any; token: any }) {
+      if (!token.id) {
+        return null;
+      }
       if (session.user) {
         session.user.id = (token.id ?? session.user.id) as string;
         session.user.role = (token.role as UserRole | undefined) ?? "regular";
         session.user.dateOfBirth = (token.dateOfBirth ?? null) as string | null;
-        session.user.imageVersion = (token.imageVersion ?? null) as string | null;
+        session.user.imageVersion = (token.imageVersion ?? null) as
+          | string
+          | null;
         session.user.firstName = (token.firstName ?? null) as string | null;
         session.user.lastName = (token.lastName ?? null) as string | null;
+        session.user.allowPersonalKnowledge = Boolean(
+          token.allowPersonalKnowledge ?? false
+        );
         const computedName = [session.user.firstName, session.user.lastName]
           .filter(Boolean)
           .join(" ")

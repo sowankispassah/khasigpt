@@ -8,6 +8,7 @@ import {
   markPaymentTransactionFailed,
   markPaymentTransactionPaid,
   markPaymentTransactionProcessing,
+  recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import {
@@ -66,7 +67,10 @@ export async function POST(request: Request) {
   const razorpay = getRazorpayClient();
   const order = await razorpay.orders.fetch(orderId);
 
-  if (order.amount !== transaction.amount || order.currency !== transaction.currency) {
+  if (
+    order.amount !== transaction.amount ||
+    order.currency !== transaction.currency
+  ) {
     await markPaymentTransactionFailed({ orderId });
     return new ChatSDKError(
       "bad_request:api",
@@ -104,6 +108,7 @@ export async function POST(request: Request) {
       paymentId,
       signature,
     });
+    await recordCouponRedemptionFromTransaction(transaction);
 
     const balance = await getUserBalanceSummary(session.user.id);
 

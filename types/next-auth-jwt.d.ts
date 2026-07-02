@@ -1,13 +1,13 @@
 declare module "next-auth/jwt" {
   type RequestLike = Request | { headers: Headers | Record<string, string> };
 
-  interface GetTokenParams<R extends boolean = false> {
+  type GetTokenParams<R extends boolean = false> = {
     req: RequestLike;
     secret?: string | string[];
     secureCookie?: boolean;
     cookieName?: string;
     raw?: R;
-  }
+  };
 
   export interface JWT extends Record<string, unknown> {
     id?: string;

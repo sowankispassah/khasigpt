@@ -1,53 +1,462 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { put } from "@vercel/blob";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import {
+  ADMIN_SETTINGS_CACHE_TAG,
+  ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
+  ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_MODELS_CACHE_TAG,
+  ADMIN_SETTINGS_PRICING_CACHE_TAG,
+  ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
+  invalidateAdminMutation,
+} from "@/lib/admin/cache-invalidation";
+import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
+import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import {
+  CALCULATOR_FEATURE_FLAG_KEY,
+  CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+  DEFAULT_FREE_MESSAGES_PER_DAY,
+  DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  FREE_MESSAGE_SETTINGS_KEY,
+  ICON_PROMPTS_ENABLED_SETTING_KEY,
+  ICON_PROMPTS_SETTING_KEY,
+  IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+  IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+  LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+  LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+  LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
+  PRICING_PLAN_CACHE_TAG,
+  RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+  SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+  SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+  SITE_COMING_SOON_CONTENT_SETTING_KEY,
+  SITE_COMING_SOON_TIMER_SETTING_KEY,
+  STUDY_MODE_FEATURE_FLAG_KEY,
+  SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  TOKENS_PER_CREDIT,
+  TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+} from "@/lib/constants";
+import {
+  appSettingCacheTagForKey,
   createAuditLogEntry,
-  deleteChatById,
-  hardDeleteChatById,
-  restoreChatById,
-  createModelConfig,
-  getModelConfigByKey,
-  updateModelConfig,
-  deleteModelConfig,
-  hardDeleteModelConfig,
-  setDefaultModelConfig,
-  getAppSetting,
-  setAppSetting,
-  updateUserActiveState,
-  updateUserRole,
-  createPricingPlan,
-  grantUserCredits,
-  updatePricingPlan,
-  deletePricingPlan,
-  hardDeletePricingPlan,
-  getPricingPlanById,
-  upsertTranslationValueEntry,
-  deleteTranslationValueEntry,
-  getTranslationKeyByKey,
+  createCharacterWithAliases,
+  createImageModelConfig,
   createLanguageEntry,
+  createLiveVoiceModelConfig,
+  createModelConfig,
+  createPrelaunchInviteToken,
+  createPricingPlan,
+  createTranslationFeatureLanguage,
+  deleteCharacterById,
+  deleteChatById,
+  deleteImageModelConfig,
+  deleteLanguageById,
+  deleteLiveVoiceModelConfig,
+  deleteModelConfig,
+  deletePrelaunchInviteToken,
+  deletePricingPlan,
+  deleteTranslationFeatureLanguageById,
+  deleteTranslationValueEntry,
+  getAppSetting,
+  getImageModelConfigByKey,
   getLanguageByIdRaw,
+  getLiveVoiceModelConfigByKey,
+  getModelConfigById,
+  getModelConfigByKey,
+  getPricingPlanById,
+  getTranslationFeatureLanguageByIdRaw,
+  getTranslationKeyByKey,
+  grantUserCredits,
+  hardDeleteChatById,
+  hardDeleteImageModelConfig,
+  hardDeleteLiveVoiceModelConfig,
+  hardDeleteModelConfig,
+  hardDeletePricingPlan,
+  recordCouponRewardPayout,
+  restoreChatById,
+  revokePrelaunchInviteAccessForUser,
+  revokePrelaunchInviteToken,
+  setActiveImageModelConfig,
+  setAppSetting,
+  setCouponRewardStatus,
+  setCouponStatus,
+  setDefaultLiveVoiceModelConfig,
+  setDefaultModelConfig,
+  setMarginBaselineModel,
+  updateCharacterWithAliases,
+  updateImageModelConfig,
   updateLanguageActiveState,
+  updateLanguageDetails,
+  updateLiveVoiceModelConfig,
+  updateModelConfig,
+  updatePricingPlan,
+  updateTranslationFeatureLanguageActiveState,
+  updateTranslationFeatureLanguageDetails,
+  updateUserActiveState,
+  updateUserPersonalKnowledgePermission,
+  updateUserRole,
+  upsertCoupon,
+  upsertTranslationValueEntry,
 } from "@/lib/db/queries";
-import type { UserRole } from "@/lib/db/schema";
-import { TOKENS_PER_CREDIT, RECOMMENDED_PRICING_PLAN_SETTING_KEY } from "@/lib/constants";
-import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
+import type {
+  CharacterRefImage,
+  RagEntryApprovalStatus,
+  RagEntryStatus,
+  UserRole,
+} from "@/lib/db/schema";
+import { generateHashedPassword } from "@/lib/db/utils";
+import {
+  type FeatureAccessMode,
+  parseFeatureAccessModeStrict,
+} from "@/lib/feature-access";
+import { normalizeFreeMessageSettings } from "@/lib/free-messages";
 import {
   invalidateTranslationBundleCache,
   registerTranslationKeys,
 } from "@/lib/i18n/dictionary";
+import { getDefaultLanguage, getLanguageByCode } from "@/lib/i18n/languages";
+import { normalizeIconPromptSettings } from "@/lib/icon-prompts";
+import {
+  isJobSector,
+  resolveJobSector,
+  resolveJobType,
+} from "@/lib/jobs/sector";
+import {
+  buildJobPostingMetadata,
+  getJobPostingById,
+  JOB_POSTING_MAX_TEXT_CHARS,
+  listJobPostingEntries,
+} from "@/lib/jobs/service";
+import type { JobPostingRecord } from "@/lib/jobs/types";
+import {
+  DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
+  parseLiveTranslationLanguagesText,
+  resolveLiveTranslationLanguageCode,
+} from "@/lib/live-translation/config";
+import {
+  bulkUpdateRagStatus,
+  createRagCategory,
+  createRagEntry,
+  deletePersonalKnowledgeEntry,
+  deleteRagEntries,
+  rebuildAllRagFileSearchIndexes,
+  restoreRagEntry,
+  restoreRagVersion,
+  updateRagEntry,
+  updateUserAddedKnowledgeApproval,
+} from "@/lib/rag/service";
+import type { UpsertRagEntryInput } from "@/lib/rag/types";
+import {
+  normalizeAdminEntryCodeInput,
+} from "@/lib/security/admin-entry-pass";
+import { sanitizeAdminEntryPathInput } from "@/lib/settings/admin-entry";
+import {
+  sanitizeComingSoonContentInput,
+  sanitizeComingSoonTimerInput,
+} from "@/lib/settings/coming-soon";
+import {
+  FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+  rememberFeatureAccessSettingValue,
+} from "@/lib/settings/feature-access-settings";
+import {
+  buildQuestionPaperMetadata,
+  extractStudyYear,
+  getQuestionPaperById,
+  listQuestionPaperEntries,
+  QUESTION_PAPER_MAX_TEXT_CHARS,
+} from "@/lib/study/service";
+import type { QuestionPaperRecord } from "@/lib/study/types";
+import { parseTranslateProviderModeSetting } from "@/lib/translate/config";
+import { isGoogleLiveTranslationModel } from "@/lib/translate/live";
+import { extractDocumentTextFromBuffer } from "@/lib/uploads/document-parser";
+import {
+  DOCUMENT_EXTENSION_BY_MIME,
+  IMAGE_MIME_TYPES,
+  isDocumentMimeType,
+} from "@/lib/uploads/document-uploads";
+import { generateUUID } from "@/lib/utils";
+import { withTimeout } from "@/lib/utils/async";
+import {
+  LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+  normalizeLiveVoiceCreditMultiplier,
+} from "@/lib/voice/live";
 
 async function requireAdmin() {
-  const session = await auth();
+  const session = await withTimeout(auth(), ADMIN_ACTION_AUTH_TIMEOUT_MS).catch(
+    (error) => {
+      console.error("[admin/actions] Admin session lookup timed out.", error);
+      return null;
+    }
+  );
 
   if (!session?.user || session.user.role !== "admin") {
     throw new Error("forbidden");
   }
 
   return session.user;
+}
+
+function revalidateAppSettingCache(key: string, source = "admin.appSetting") {
+  invalidateAdminMutation({
+    source,
+    tags: [appSettingCacheTagForKey(key)],
+  });
+}
+
+function revalidateAdminSettingsSection(source = "admin.settings") {
+  invalidateAdminMutation({
+    source,
+    tags: [ADMIN_SETTINGS_CACHE_TAG],
+  });
+  if (process.env.ADMIN_SETTINGS_FULL_ROUTE_REVALIDATE_ON_SAVE === "1") {
+    invalidateAdminMutation({
+      paths: [{ path: "/admin/settings" }],
+      source,
+    });
+  }
+}
+
+function revalidateAdminModelSettings(source = "admin.models") {
+  invalidateAdminMutation({
+    source,
+    tags: [MODEL_REGISTRY_CACHE_TAG, ADMIN_SETTINGS_MODELS_CACHE_TAG],
+  });
+}
+
+function revalidateAdminImageModelSettings(source = "admin.imageModels") {
+  invalidateAdminMutation({
+    source,
+    tags: [
+      IMAGE_MODEL_REGISTRY_CACHE_TAG,
+      ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
+    ],
+  });
+}
+
+function revalidateAdminLiveVoiceModelSettings(source = "admin.liveVoiceModels") {
+  invalidateAdminMutation({
+    cacheMode: "update",
+    source,
+    tags: [
+      LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
+      ADMIN_SETTINGS_LIVE_VOICE_MODELS_CACHE_TAG,
+    ],
+  });
+}
+
+function revalidateAdminPricingSettings(source = "admin.pricing") {
+  invalidateAdminMutation({
+    source,
+    tags: [PRICING_PLAN_CACHE_TAG, ADMIN_SETTINGS_PRICING_CACHE_TAG],
+  });
+}
+
+function revalidateAdminPath(path: string, source: string) {
+  invalidateAdminMutation({
+    paths: [{ path }],
+    source,
+  });
+}
+
+function revalidatePublicPath(path: string, source: string) {
+  invalidateAdminMutation({
+    paths: [{ path }],
+    source,
+  });
+}
+
+function revalidateLanguageSettings({
+  includeTranslations = false,
+  source,
+}: {
+  includeTranslations?: boolean;
+  source: string;
+}) {
+  invalidateAdminMutation({
+    source,
+    tags: [
+      "languages",
+      ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
+      ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
+    ],
+  });
+
+  if (includeTranslations) {
+    revalidateAdminPath("/admin/translations", source);
+  }
+}
+
+function revalidateAdminTranslationFeatureLanguages(source: string) {
+  invalidateAdminMutation({
+    source,
+    tags: [ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG],
+  });
+}
+
+const ADMIN_ACTION_AUDIT_TIMEOUT_MS = 3000;
+const ADMIN_ACTION_AUTH_TIMEOUT_MS = 10000;
+const ADMIN_ACTION_SETTING_TIMEOUT_MS = 12000;
+const ADMIN_ACTION_INVITE_TIMEOUT_MS = 12000;
+const ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS = 10000;
+const ADMIN_PRICING_TRANSLATION_SYNC_TIMEOUT_MS = 1500;
+const ADMIN_USER_MUTATION_TIMEOUT_MS = 8000;
+const FEATURE_ACCESS_SETTING_TIMEOUT_MS = 12000;
+
+async function createAuditLogEntrySafely(
+  entry: Parameters<typeof createAuditLogEntry>[0]
+) {
+  await withTimeout(
+    createAuditLogEntry(entry),
+    ADMIN_ACTION_AUDIT_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      `[admin/actions] Audit log write timed out or failed for action "${entry.action}".`,
+      error
+    );
+    return null;
+  });
+}
+
+async function syncPricingPlanTranslationKeysSafely({
+  description,
+  id,
+  name,
+}: {
+  description: string | null;
+  id: string;
+  name: string;
+}) {
+  await withTimeout(
+    registerTranslationKeys([
+      {
+        key: `recharge.plan.${id}.name`,
+        defaultText: name,
+      },
+      {
+        key: `recharge.plan.${id}.description`,
+        defaultText: description ?? "",
+      },
+    ]),
+    ADMIN_PRICING_TRANSLATION_SYNC_TIMEOUT_MS
+  ).catch((error) => {
+    console.error(
+      `[admin/actions] Pricing plan translation key sync timed out or failed for plan "${id}".`,
+      error
+    );
+  });
+}
+
+async function resolveFeatureAccessModeFromForm({
+  formData,
+  fieldName,
+  settingKey,
+}: {
+  formData: FormData;
+  fieldName: string;
+  settingKey: string;
+}): Promise<FeatureAccessMode> {
+  const submittedValue = formData.get(fieldName);
+  const submittedMode = parseFeatureAccessModeStrict(submittedValue);
+  if (submittedMode) {
+    return submittedMode;
+  }
+
+  if (
+    typeof submittedValue === "string" &&
+    submittedValue.trim().length > 0
+  ) {
+    console.error(
+      `[admin/actions] Rejected invalid feature access value for "${settingKey}".`,
+      { fieldName, value: submittedValue }
+    );
+    throw new Error("Invalid feature access mode.");
+  }
+
+  const existingValue = await getAppSetting<string | boolean | number>(
+    settingKey
+  );
+  const existingMode = parseFeatureAccessModeStrict(existingValue);
+  if (existingMode) {
+    console.warn(
+      `[admin/actions] Feature access form field "${fieldName}" was missing; preserving current value for "${settingKey}".`
+    );
+    return existingMode;
+  }
+
+  console.error(
+    `[admin/actions] Refusing to save feature access setting "${settingKey}" because "${fieldName}" was missing and the current value is unreadable.`,
+    { fieldName, settingKey }
+  );
+  throw new Error("Unable to resolve current feature access mode.");
+}
+
+async function updateFeatureAccessModeSetting({
+  actorId,
+  auditAction,
+  fieldName,
+  formData,
+  settingKey,
+}: {
+  actorId: string;
+  auditAction: string;
+  fieldName: string;
+  formData: FormData;
+  settingKey: string;
+}) {
+  const accessMode = await withTimeout(
+    resolveFeatureAccessModeFromForm({
+      formData,
+      fieldName,
+      settingKey,
+    }),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Feature access mode resolution timed out for "${settingKey}".`
+      );
+    }
+  );
+
+  await withTimeout(
+    setAppSetting({
+      key: settingKey,
+      value: accessMode,
+    },
+    {
+      featureSettingWrite: {
+        actorId,
+        route: "app/(admin)/actions:updateFeatureAccessModeSetting",
+        source: auditAction,
+      },
+    }),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Feature access setting update timed out for "${settingKey}".`
+      );
+    }
+  );
+
+  rememberFeatureAccessSettingValue(settingKey, accessMode);
+  invalidateAdminMutation({
+    source: auditAction,
+    tags: [
+      appSettingCacheTagForKey(settingKey),
+      FEATURE_ACCESS_SETTINGS_CACHE_TAG,
+    ],
+  });
+  void createAuditLogEntrySafely({
+    actorId,
+    action: auditAction,
+    target: { setting: settingKey },
+    metadata: { accessMode },
+  });
 }
 
 export async function setUserRoleAction({
@@ -59,15 +468,24 @@ export async function setUserRoleAction({
 }) {
   const actor = await requireAdmin();
 
-  await updateUserRole({ id: userId, role });
-  await createAuditLogEntry({
+  await withTimeout(
+    updateUserRole({ id: userId, role }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(`[admin/actions] User role update timed out.`, {
+        timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+        userId,
+      });
+    }
+  );
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.role.update",
     target: { userId },
     metadata: { role },
   });
 
-  revalidatePath("/admin/users");
+  revalidateAdminPath("/admin/users", "user.role.update");
 }
 
 export async function setUserActiveStateAction({
@@ -79,54 +497,671 @@ export async function setUserActiveStateAction({
 }) {
   const actor = await requireAdmin();
 
-  await updateUserActiveState({ id: userId, isActive });
-  await createAuditLogEntry({
+  await withTimeout(
+    updateUserActiveState({ id: userId, isActive }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(`[admin/actions] User active-state update timed out.`, {
+        timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+        userId,
+      });
+    }
+  );
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "user.active.update",
     target: { userId },
     metadata: { isActive },
   });
 
-  revalidatePath("/admin/users");
+  revalidateAdminPath("/admin/users", "user.active.update");
+}
+
+export async function setUserPersonalKnowledgePermissionAction({
+  userId,
+  allowed,
+}: {
+  userId: string;
+  allowed: boolean;
+}) {
+  const actor = await requireAdmin();
+
+  await withTimeout(
+    updateUserPersonalKnowledgePermission({
+      allowPersonalKnowledge: allowed,
+      id: userId,
+    }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] User personal-knowledge update timed out.`,
+        {
+          timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+          userId,
+        }
+      );
+    }
+  );
+
+  void createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "user.personal_knowledge.toggle",
+    target: { userId },
+    metadata: { allowed },
+  });
+
+  invalidateAdminMutation({
+    paths: [{ path: "/admin/users" }, { path: "/admin/rag" }],
+    source: "user.personal_knowledge.toggle",
+  });
 }
 
 export async function deleteChatAction({ chatId }: { chatId: string }) {
   const actor = await requireAdmin();
 
   await deleteChatById({ id: chatId });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "chat.delete",
     target: { chatId },
   });
 
-  revalidatePath("/admin/chats");
+  revalidateAdminPath("/admin/chats", "chat.delete");
 }
 
 export async function hardDeleteChatAction({ chatId }: { chatId: string }) {
   const actor = await requireAdmin();
 
   await hardDeleteChatById({ id: chatId });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "chat.hard_delete",
     target: { chatId },
   });
 
-  revalidatePath("/admin/chats");
+  revalidateAdminPath("/admin/chats", "chat.hard_delete");
 }
 
 export async function restoreChatAction({ chatId }: { chatId: string }) {
   const actor = await requireAdmin();
 
   await restoreChatById({ id: chatId });
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "chat.restore",
     target: { chatId },
   });
 
-  revalidatePath("/admin/chats");
+  revalidateAdminPath("/admin/chats", "chat.restore");
+}
+
+export async function updateCalculatorAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await withTimeout(
+    requireAdmin(),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  await updateFeatureAccessModeSetting({
+    actorId: actor.id,
+    auditAction: "feature.calculator.toggle",
+    fieldName: "calculatorAccessMode",
+    formData,
+    settingKey: CALCULATOR_FEATURE_FLAG_KEY,
+  });
+}
+
+export async function updateStudyModeAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await withTimeout(
+    requireAdmin(),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  await updateFeatureAccessModeSetting({
+    actorId: actor.id,
+    auditAction: "feature.study_mode.toggle",
+    fieldName: "studyModeAccessMode",
+    formData,
+    settingKey: STUDY_MODE_FEATURE_FLAG_KEY,
+  });
+}
+
+export async function updateImageGenerationAvailabilityAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await withTimeout(
+    requireAdmin(),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  await updateFeatureAccessModeSetting({
+    actorId: actor.id,
+    auditAction: "feature.image_generation.toggle",
+    fieldName: "imageGenerationAccessMode",
+    formData,
+    settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  });
+}
+
+export async function updateTranslateProviderModeAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const providerMode = formData.get("translateProviderMode")?.toString().trim();
+
+  if (providerMode !== "ai" && providerMode !== "google") {
+    redirect("/admin/settings?notice=translation-provider-mode-error");
+  }
+
+  await withTimeout(
+    setAppSetting({
+      key: TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+      value: providerMode,
+    }),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  revalidateAppSettingCache(
+    TRANSLATE_PROVIDER_MODE_SETTING_KEY,
+    "feature.translate.provider_mode.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.translate.provider_mode.update",
+    target: { setting: TRANSLATE_PROVIDER_MODE_SETTING_KEY },
+    metadata: { providerMode },
+  });
+
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.provider_mode.update"
+  );
+  revalidatePublicPath("/translate", "feature.translate.provider_mode.update");
+
+  redirect("/admin/settings?notice=translation-provider-mode-updated");
+}
+
+export async function updateLiveTranslationSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const languages = parseLiveTranslationLanguagesText(
+    formData.get("liveTranslationSupportedLanguages")?.toString() ?? ""
+  );
+  const defaultLanguageA = resolveLiveTranslationLanguageCode({
+    fallback: "auto",
+    languages,
+    value: formData.get("liveTranslationDefaultLanguageA")?.toString(),
+  });
+  const defaultLanguageB = resolveLiveTranslationLanguageCode({
+    fallback: "kha",
+    languages,
+    value: formData.get("liveTranslationDefaultLanguageB")?.toString(),
+  });
+  const systemInstruction =
+    formData.get("liveTranslationSystemInstruction")?.toString().trim() ||
+    DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION;
+
+  if (defaultLanguageA === defaultLanguageB) {
+    redirect("/admin/settings?notice=live-translation-settings-invalid");
+  }
+
+  try {
+    await Promise.all([
+      setAppSetting({
+        key: LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+        value: languages,
+      }),
+      setAppSetting({
+        key: LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+        value: defaultLanguageA,
+      }),
+      setAppSetting({
+        key: LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+        value: defaultLanguageB,
+      }),
+      setAppSetting({
+        key: LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
+        value: systemInstruction,
+      }),
+    ]);
+  } catch (error) {
+    console.error("Failed to update Live Translation settings", error);
+    redirect("/admin/settings?notice=live-translation-settings-error");
+  }
+
+  for (const key of [
+    LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
+    LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
+    LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
+    LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
+  ]) {
+    revalidateAppSettingCache(key, "feature.live_translation.settings.update");
+  }
+  revalidateAdminSettingsSection("feature.live_translation.settings.update");
+  revalidatePublicPath(
+    "/live-translation",
+    "feature.live_translation.settings.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.live_translation.settings.update",
+    target: { setting: "live_translation" },
+    metadata: {
+      defaultLanguageA,
+      defaultLanguageB,
+      supportedLanguageCount: languages.length,
+    },
+  });
+
+  redirect("/admin/settings?notice=live-translation-settings-updated");
+}
+
+export async function updateDocumentUploadsAvailabilityAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await withTimeout(
+    requireAdmin(),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  await updateFeatureAccessModeSetting({
+    actorId: actor.id,
+    auditAction: "feature.document_uploads.toggle",
+    fieldName: "documentUploadsAccessMode",
+    formData,
+    settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  });
+}
+
+export async function updateIconPromptAvailabilityAction(formData: FormData) {
+  "use server";
+  const actor = await withTimeout(
+    requireAdmin(),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  await updateFeatureAccessModeSetting({
+    actorId: actor.id,
+    auditAction: "feature.icon_prompts.toggle",
+    fieldName: "iconPromptsAccessMode",
+    formData,
+    settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
+  });
+}
+
+export async function updateSuggestedPromptsAvailabilityAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await withTimeout(
+    requireAdmin(),
+    FEATURE_ACCESS_SETTING_TIMEOUT_MS
+  );
+
+  await updateFeatureAccessModeSetting({
+    actorId: actor.id,
+    auditAction: "feature.suggested_prompts.toggle",
+    fieldName: "suggestedPromptsAccessMode",
+    formData,
+    settingKey: SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
+  });
+}
+
+export async function updateComingSoonContentAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const content = sanitizeComingSoonContentInput({
+    eyebrow: formData.get("comingSoonEyebrow"),
+    title: formData.get("comingSoonTitle"),
+  });
+
+  await setAppSetting({
+    key: SITE_COMING_SOON_CONTENT_SETTING_KEY,
+    value: content,
+  });
+  revalidateAppSettingCache(
+    SITE_COMING_SOON_CONTENT_SETTING_KEY,
+    "site.coming_soon_content.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "site.coming_soon_content.update",
+    target: { setting: SITE_COMING_SOON_CONTENT_SETTING_KEY },
+    metadata: content,
+  });
+
+  revalidateAdminSettingsSection("site.coming_soon_content.update");
+  revalidatePublicPath("/coming-soon", "site.coming_soon_content.update");
+}
+
+export async function updateComingSoonTimerAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const timerSetting = sanitizeComingSoonTimerInput({
+    label: formData.get("comingSoonTimerLabel"),
+    mode: formData.get("comingSoonTimerMode"),
+    referenceAt: formData.get("comingSoonTimerReferenceAt"),
+  });
+
+  await setAppSetting({
+    key: SITE_COMING_SOON_TIMER_SETTING_KEY,
+    value: timerSetting,
+  });
+  revalidateAppSettingCache(
+    SITE_COMING_SOON_TIMER_SETTING_KEY,
+    "site.coming_soon_timer.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "site.coming_soon_timer.update",
+    target: { setting: SITE_COMING_SOON_TIMER_SETTING_KEY },
+    metadata: timerSetting,
+  });
+
+  revalidateAdminSettingsSection("site.coming_soon_timer.update");
+  revalidatePublicPath("/coming-soon", "site.coming_soon_timer.update");
+}
+
+export async function updateAdminEntryCodeAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const code = normalizeAdminEntryCodeInput(formData.get("adminEntryCode"));
+
+  if (!code) {
+    throw new Error("Admin access code must be 6 to 128 characters.");
+  }
+
+  const hashedCode = generateHashedPassword(code);
+
+  await withTimeout(
+    setAppSetting({
+      key: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+      value: hashedCode,
+    }),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Admin entry code save timed out for "${SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY}".`
+      );
+    }
+  );
+  revalidateAppSettingCache(
+    SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
+    "site.admin_entry_code.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "site.admin_entry_code.update",
+    target: { setting: SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY },
+    metadata: { updated: true, length: code.length },
+  });
+
+  revalidateAdminSettingsSection("site.admin_entry_code.update");
+}
+
+export async function updateAdminEntryPathAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const path = sanitizeAdminEntryPathInput(formData.get("adminEntryPath"));
+  if (!path) {
+    throw new Error(
+      "Invalid admin entry path. Use only letters, numbers, /, - and _. Reserved paths are not allowed."
+    );
+  }
+
+  await withTimeout(
+    setAppSetting({
+      key: SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+      value: path,
+    }),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Admin entry path save timed out for "${SITE_ADMIN_ENTRY_PATH_SETTING_KEY}".`
+      );
+    }
+  );
+  revalidateAppSettingCache(
+    SITE_ADMIN_ENTRY_PATH_SETTING_KEY,
+    "site.admin_entry_path.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "site.admin_entry_path.update",
+    target: { setting: SITE_ADMIN_ENTRY_PATH_SETTING_KEY },
+    metadata: { path },
+  });
+
+  revalidateAdminSettingsSection("site.admin_entry_path.update");
+}
+
+export async function createPrelaunchInviteAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const inviteLabel = formData.get("inviteLabel");
+  const inviteMaxRedemptions = formData.get("inviteMaxRedemptions");
+  const label =
+    typeof inviteLabel === "string" && inviteLabel.trim().length > 0
+      ? inviteLabel
+      : null;
+  const parsedMaxRedemptions =
+    typeof inviteMaxRedemptions === "string"
+      ? Number.parseInt(inviteMaxRedemptions, 10)
+      : Number.NaN;
+  const maxRedemptions = Number.isFinite(parsedMaxRedemptions)
+    ? Math.floor(parsedMaxRedemptions)
+    : 1;
+
+  if (maxRedemptions < 1 || maxRedemptions > 10000) {
+    throw new Error("Invite redemption limit must be between 1 and 10000.");
+  }
+
+  const invite = await withTimeout(
+    createPrelaunchInviteToken({
+      createdByAdminId: actor.id,
+      label,
+      maxRedemptions,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite creation timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
+
+  void createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "site.prelaunch_invite.create",
+    target: { inviteId: invite.id },
+    metadata: {
+      inviteLabel: invite.label,
+      maxRedemptions: invite.maxRedemptions,
+    },
+  });
+
+  revalidateAdminSettingsSection("site.prelaunch_invite.create");
+}
+
+export async function revokePrelaunchInviteAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const inviteId = formData.get("inviteId");
+  const normalizedInviteId =
+    typeof inviteId === "string" ? inviteId.trim() : "";
+
+  if (!normalizedInviteId) {
+    throw new Error("Invite id is required");
+  }
+
+  const revoked = await withTimeout(
+    revokePrelaunchInviteToken({
+      inviteId: normalizedInviteId,
+      revokedByAdminId: actor.id,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite revoke timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
+
+  if (revoked) {
+    void createAuditLogEntrySafely({
+      actorId: actor.id,
+      action: "site.prelaunch_invite.revoke",
+      target: { inviteId: normalizedInviteId },
+    });
+  }
+
+  revalidateAdminSettingsSection("site.prelaunch_invite.revoke");
+}
+
+export async function deletePrelaunchInviteAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const inviteId = formData.get("inviteId");
+  const normalizedInviteId =
+    typeof inviteId === "string" ? inviteId.trim() : "";
+
+  if (!normalizedInviteId) {
+    throw new Error("Invite id is required");
+  }
+
+  const deleted = await withTimeout(
+    deletePrelaunchInviteToken({
+      inviteId: normalizedInviteId,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite delete timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
+
+  if (deleted) {
+    void createAuditLogEntrySafely({
+      actorId: actor.id,
+      action: "site.prelaunch_invite.delete",
+      target: { inviteId: normalizedInviteId },
+    });
+  }
+
+  revalidateAdminSettingsSection("site.prelaunch_invite.delete");
+}
+
+export async function revokePrelaunchInviteAccessAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const userId = formData.get("userId");
+  const inviteId = formData.get("inviteId");
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  const normalizedInviteId = typeof inviteId === "string" ? inviteId.trim() : "";
+
+  if (!normalizedUserId) {
+    throw new Error("User id is required");
+  }
+
+  const revoked = await withTimeout(
+    revokePrelaunchInviteAccessForUser({
+      userId: normalizedUserId,
+      inviteId: normalizedInviteId || null,
+      revokedByAdminId: actor.id,
+    }),
+    ADMIN_ACTION_INVITE_TIMEOUT_MS,
+    () => {
+      console.error(
+        `[admin/actions] Prelaunch invite access revoke timed out after ${ADMIN_ACTION_INVITE_TIMEOUT_MS}ms.`
+      );
+    }
+  );
+
+  if (revoked) {
+    void createAuditLogEntrySafely({
+      actorId: actor.id,
+      action: "site.prelaunch_invite_access.revoke",
+      target: {
+        userId: normalizedUserId,
+        inviteId: normalizedInviteId || null,
+      },
+    });
+  }
+
+  revalidateAdminSettingsSection("site.prelaunch_invite_access.revoke");
+}
+
+export async function updateImageFilenamePrefixAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const rawPrefix = formData.get("imageFilenamePrefix");
+  const prefix =
+    typeof rawPrefix === "string" ? rawPrefix.trim() : "";
+
+  await setAppSetting({
+    key: IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+    value: prefix,
+  });
+  revalidateAppSettingCache(
+    IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
+    "feature.image_generation.filename_prefix"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.image_generation.filename_prefix",
+    target: { setting: IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY },
+    metadata: { prefix },
+  });
+
+  revalidateAdminSettingsSection("feature.image_generation.filename_prefix");
+}
+
+export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const enabled = parseBoolean(formData.get("customKnowledgeEnabled"));
+  await withTimeout(
+    setAppSetting({
+      key: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+      value: enabled,
+    }),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS
+  );
+  revalidateAppSettingCache(
+    CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
+    "settings.custom_knowledge.update"
+  );
+
+  void createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "settings.custom_knowledge.update",
+    target: { setting: CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY },
+    metadata: { enabled },
+  });
+
+  revalidateAdminSettingsSection("settings.custom_knowledge.update");
+}
+
+export async function rebuildRagFileSearchIndexAction() {
+  "use server";
+  const actor = await requireAdmin();
+  const summary = await rebuildAllRagFileSearchIndexes();
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.file_search.rebuild",
+    target: { feature: "rag.file_search" },
+    metadata: summary,
+  });
+  revalidateAdminPath("/admin/rag", "rag.file_search.rebuild");
 }
 
 function parseBoolean(value: FormDataEntryValue | null | undefined) {
@@ -135,6 +1170,27 @@ function parseBoolean(value: FormDataEntryValue | null | undefined) {
   }
   const normalized = value.toString().toLowerCase();
   return normalized === "true" || normalized === "on" || normalized === "1";
+}
+
+function parseBooleanFromEntries(formData: FormData, key: string) {
+  const entries = formData.getAll(key);
+  if (entries.length === 0) {
+    return null;
+  }
+  return entries.some((entry) => parseBoolean(entry));
+}
+
+function parseAndroidProductId(value: FormDataEntryValue | null | undefined) {
+  const productId = value?.toString().trim() ?? "";
+  if (!productId) {
+    return null;
+  }
+  if (!/^[a-z0-9][a-z0-9_.]*$/.test(productId)) {
+    throw new Error(
+      "Android product id can only contain lowercase letters, numbers, underscores, and periods, and must start with a letter or number."
+    );
+  }
+  return productId;
 }
 
 function parseJson(value: FormDataEntryValue | null | undefined) {
@@ -168,6 +1224,254 @@ function parseNumber(value: FormDataEntryValue | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseCreditsToTokens(value: FormDataEntryValue | null | undefined) {
+  const credits = parseNumber(value);
+  const tokens = Math.round(credits * TOKENS_PER_CREDIT);
+  return Math.max(1, tokens);
+}
+
+function parseCurrencyToPaise(value: FormDataEntryValue | null | undefined) {
+  const amount = parseNumber(value);
+  return Math.max(0, Math.round(amount * 100));
+}
+
+async function resolveImageModelPricing(formData: FormData) {
+  const priceInPaise = parseCurrencyToPaise(formData.get("priceInRupees"));
+  const creditsFallback = parseCreditsToTokens(
+    formData.get("creditsPerImage")
+  );
+
+  if (!priceInPaise) {
+    return { tokensPerImage: creditsFallback, priceInPaise: 0 };
+  }
+
+  const recommendedPlanId = await getAppSetting<string | null>(
+    RECOMMENDED_PRICING_PLAN_SETTING_KEY
+  );
+
+  if (!recommendedPlanId) {
+    return { tokensPerImage: creditsFallback, priceInPaise };
+  }
+
+  const plan = await getPricingPlanById({ id: recommendedPlanId });
+  const planPriceInPaise = plan?.priceInPaise ?? 0;
+  const planTokenAllowance = plan?.tokenAllowance ?? 0;
+
+  if (planPriceInPaise <= 0 || planTokenAllowance <= 0) {
+    return { tokensPerImage: creditsFallback, priceInPaise };
+  }
+
+  const pricePerTokenPaise = planPriceInPaise / planTokenAllowance;
+  const tokensPerImage = Math.max(
+    1,
+    Math.ceil(priceInPaise / pricePerTokenPaise)
+  );
+
+  return { tokensPerImage, priceInPaise };
+}
+
+function parseDateInput(value: FormDataEntryValue | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const normalized = value.toString().trim();
+  if (!normalized) {
+    return null;
+  }
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const IST_OFFSET_MINUTES = 330;
+const LANGUAGE_CODE_REGEX = /^[a-z0-9-]{2,16}$/i;
+const PROMPTS_SPLIT_REGEX = /\r?\n/;
+
+type TimeParts = {
+  hours: number;
+  minutes: number;
+  seconds: number;
+  ms: number;
+};
+
+function convertIstDateToUtc(date: Date, time: TimeParts) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  const istTimestamp = Date.UTC(
+    year,
+    month,
+    day,
+    time.hours,
+    time.minutes,
+    time.seconds,
+    time.ms
+  );
+  return new Date(istTimestamp - IST_OFFSET_MINUTES * 60 * 1000);
+}
+
+function normalizeStartOfDayIst(date: Date) {
+  return convertIstDateToUtc(date, {
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    ms: 0,
+  });
+}
+
+function normalizeEndOfDayIst(date: Date) {
+  return convertIstDateToUtc(date, {
+    hours: 23,
+    minutes: 59,
+    seconds: 59,
+    ms: 999,
+  });
+}
+
+export async function upsertCouponAction(formData: FormData) {
+  const actor = await requireAdmin();
+
+  const couponIdRaw = formData.get("couponId");
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const discountPercentage = parseNumber(formData.get("discountPercentage"));
+  const creatorRewardPercentage = parseNumber(
+    formData.get("creatorRewardPercentage")
+  );
+  const creatorId = formData.get("creatorId")?.toString().trim() ?? "";
+  const validFromRaw = parseDateInput(formData.get("validFrom"));
+  const validToRaw = parseDateInput(formData.get("validTo"));
+  const description = formData.get("description")?.toString().trim() ?? null;
+  const isActive = parseBoolean(formData.get("isActive"));
+
+  if (!code || !creatorId || !validFromRaw) {
+    throw new Error("Coupon code, creator, and start date are required");
+  }
+
+  if (validToRaw && validToRaw < validFromRaw) {
+    throw new Error("Valid until date must be after the start date");
+  }
+
+  const validFrom = normalizeStartOfDayIst(validFromRaw);
+  const validTo = validToRaw ? normalizeEndOfDayIst(validToRaw) : null;
+
+  const couponRecord = await upsertCoupon({
+    id: couponIdRaw?.toString().trim() || undefined,
+    code,
+    discountPercentage,
+    creatorRewardPercentage,
+    creatorId,
+    validFrom,
+    validTo,
+    description,
+    isActive,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: couponIdRaw ? "coupon.update" : "coupon.create",
+    target: { couponId: couponRecord.id },
+    metadata: {
+      code: couponRecord.code,
+      creatorId,
+      discountPercentage,
+      creatorRewardPercentage: couponRecord.creatorRewardPercentage,
+    },
+  });
+
+  revalidateAdminPath(
+    "/admin/coupons",
+    couponIdRaw ? "coupon.update" : "coupon.create"
+  );
+}
+
+export async function setCouponStatusAction(formData: FormData) {
+  const actor = await requireAdmin();
+  const couponId = formData.get("couponId")?.toString().trim();
+  const isActive = parseBoolean(formData.get("isActive"));
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  await setCouponStatus({
+    id: couponId,
+    isActive,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "coupon.status.update",
+    target: { couponId },
+    metadata: { isActive },
+  });
+
+  revalidateAdminPath("/admin/coupons", "coupon.status.update");
+}
+
+export async function setCouponRewardStatusAction(formData: FormData) {
+  const actor = await requireAdmin();
+  const couponId = formData.get("couponId")?.toString().trim();
+  const rewardStatusRaw = formData.get("rewardStatus")?.toString().trim() ?? "";
+  const usageCount = parseNumber(formData.get("usageCount"));
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  if (usageCount <= 0) {
+    throw new Error("Cannot update reward status before any redemptions");
+  }
+
+  const normalizedStatus = rewardStatusRaw === "paid" ? "paid" : "pending";
+
+  await setCouponRewardStatus({
+    id: couponId,
+    rewardStatus: normalizedStatus,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "coupon.reward_status.update",
+    target: { couponId },
+    metadata: { rewardStatus: normalizedStatus },
+  });
+
+  revalidateAdminPath("/admin/coupons", "coupon.reward_status.update");
+}
+
+export async function recordCouponPayoutAction(formData: FormData) {
+  const actor = await requireAdmin();
+
+  const couponId = formData.get("couponId")?.toString().trim() ?? "";
+  const amount = parseNumber(formData.get("amount"));
+  const note = formData.get("note")?.toString().trim() ?? null;
+
+  if (!couponId) {
+    throw new Error("Coupon id is required");
+  }
+
+  if (!(Number.isFinite(amount) && amount > 0)) {
+    throw new Error("Payout amount must be greater than zero");
+  }
+
+  const amountInPaise = Math.round(amount * 100);
+
+  await recordCouponRewardPayout({
+    couponId,
+    amountInPaise,
+    note,
+    recordedBy: actor.id,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "coupon.reward.payout",
+    target: { couponId },
+    metadata: { amountInPaise, note },
+  });
+
+  revalidateAdminPath("/admin/coupons", "coupon.reward.payout");
+}
+
 function isRedirectErrorLike(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -197,19 +1501,20 @@ export async function createModelConfigAction(formData: FormData) {
   const supportsReasoning = parseBoolean(formData.get("supportsReasoning"));
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isDefault = parseBoolean(formData.get("isDefault"));
+  const isMarginBaseline = parseBoolean(formData.get("isMarginBaseline"));
   const config = parseJson(formData.get("configJson"));
-  const inputCostPerMillion = parseNumber(
-    formData.get("inputCostPerMillion")
-  );
-  const outputCostPerMillion = parseNumber(
-    formData.get("outputCostPerMillion")
-  );
   const inputProviderCostPerMillion = parseNumber(
     formData.get("inputProviderCostPerMillion")
   );
   const outputProviderCostPerMillion = parseNumber(
     formData.get("outputProviderCostPerMillion")
   );
+  const freeMessagesRaw = formData.get("freeMessagesPerDay");
+  const resolvedFreeMessages =
+    freeMessagesRaw === null
+      ? DEFAULT_FREE_MESSAGES_PER_DAY
+      : parseNumber(freeMessagesRaw);
+  const freeMessagesPerDay = Math.max(0, Math.round(resolvedFreeMessages));
 
   const existingConfig = await getModelConfigByKey({
     key,
@@ -239,27 +1544,24 @@ export async function createModelConfigAction(formData: FormData) {
       config,
       isEnabled,
       isDefault,
-      inputCostPerMillion,
-      outputCostPerMillion,
+      isMarginBaseline,
       inputProviderCostPerMillion,
       outputProviderCostPerMillion,
+      freeMessagesPerDay,
     });
   } catch (error) {
     console.error("Failed to create model configuration", error);
     redirect("/admin/settings?notice=model-create-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.create",
     target: { modelId: created.id },
     metadata: { key, provider, providerModelId },
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
+  revalidateAdminModelSettings("model.create");
 
   redirect("/admin/settings?notice=model-created");
 }
@@ -284,11 +1586,9 @@ export async function updateModelConfigAction(formData: FormData) {
     supportsReasoning?: boolean;
     config?: Record<string, unknown> | null;
     isEnabled?: boolean;
-    isDefault?: boolean;
-    inputCostPerMillion?: number;
-    outputCostPerMillion?: number;
     inputProviderCostPerMillion?: number;
     outputProviderCostPerMillion?: number;
+    freeMessagesPerDay?: number;
   } = {};
 
   const provider = formData.get("provider");
@@ -318,12 +1618,6 @@ export async function updateModelConfigAction(formData: FormData) {
     patch.codeTemplate = formData.get("codeTemplate")?.toString() ?? null;
   }
 
-  if (formData.has("supportsReasoning")) {
-    patch.supportsReasoning = parseBoolean(
-      formData.get("supportsReasoning")
-    );
-  }
-
   if (formData.has("reasoningTag")) {
     patch.reasoningTag = formData.get("reasoningTag")?.toString() ?? null;
   }
@@ -332,25 +1626,21 @@ export async function updateModelConfigAction(formData: FormData) {
     patch.config = parseJson(formData.get("configJson"));
   }
 
-  if (formData.has("isEnabled")) {
-    patch.isEnabled = parseBoolean(formData.get("isEnabled"));
+  const supportsReasoningValue = parseBooleanFromEntries(
+    formData,
+    "supportsReasoning"
+  );
+  if (supportsReasoningValue !== null) {
+    patch.supportsReasoning = supportsReasoningValue;
   }
 
-  if (formData.has("isDefault")) {
-    patch.isDefault = parseBoolean(formData.get("isDefault"));
+  const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
+  if (isEnabledValue !== null) {
+    patch.isEnabled = isEnabledValue;
   }
 
-  if (formData.has("inputCostPerMillion")) {
-    patch.inputCostPerMillion = parseNumber(
-      formData.get("inputCostPerMillion")
-    );
-  }
-
-  if (formData.has("outputCostPerMillion")) {
-    patch.outputCostPerMillion = parseNumber(
-      formData.get("outputCostPerMillion")
-    );
-  }
+  const isDefaultValue = parseBooleanFromEntries(formData, "isDefault");
+  const shouldSetDefault = isDefaultValue === true;
 
   if (formData.has("inputProviderCostPerMillion")) {
     patch.inputProviderCostPerMillion = parseNumber(
@@ -364,24 +1654,34 @@ export async function updateModelConfigAction(formData: FormData) {
     );
   }
 
-  await updateModelConfig({
+  if (formData.has("freeMessagesPerDay")) {
+    patch.freeMessagesPerDay = Math.max(
+      0,
+      Math.round(parseNumber(formData.get("freeMessagesPerDay")))
+    );
+  }
+
+  const updated = await updateModelConfig({
     id,
     ...patch,
   });
 
-  await createAuditLogEntry({
+  if (!updated) {
+    redirect("/admin/settings?notice=model-update-missing");
+  }
+
+  if (shouldSetDefault) {
+    await setDefaultModelConfig(id);
+  }
+
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.update",
     target: { modelId: id },
-    metadata: patch,
+    metadata: { ...patch, setDefault: shouldSetDefault },
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/chat", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/", "layout");
-
-  redirect("/admin/settings?notice=model-updated");
+  revalidateAdminModelSettings("model.update");
 }
 
 export async function deleteModelConfigAction(formData: FormData) {
@@ -395,13 +1695,13 @@ export async function deleteModelConfigAction(formData: FormData) {
 
   await deleteModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.delete",
     target: { modelId: id },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminModelSettings("model.delete");
 
   redirect("/admin/settings?notice=model-deleted");
 }
@@ -417,13 +1717,13 @@ export async function hardDeleteModelConfigAction(formData: FormData) {
 
   await hardDeleteModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.hard_delete",
     target: { modelId: id },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminModelSettings("model.hard_delete");
 
   redirect("/admin/settings?notice=model-hard-deleted");
 }
@@ -439,35 +1739,821 @@ export async function setDefaultModelConfigAction(formData: FormData) {
 
   await setDefaultModelConfig(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "model.setDefault",
     target: { modelId: id },
   });
 
-  revalidatePath("/admin/settings");
+  revalidateAdminModelSettings("model.setDefault");
 
   redirect("/admin/settings?notice=model-defaulted");
 }
 
-export async function setArtifactsEnabledAction(formData: FormData) {
+export async function setMarginBaselineModelAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing model configuration id");
+  }
+
+  await setMarginBaselineModel(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "model.setMarginBaseline",
+    target: { modelId: id },
+  });
+
+  revalidateAdminModelSettings("model.setMarginBaseline");
+
+  redirect("/admin/settings?notice=model-margin-baseline");
+}
+
+export async function createLiveVoiceModelConfigAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
 
-  const enabled = parseBoolean(formData.get("artifactsEnabled"));
+  const key = formData.get("key")?.toString().trim();
+  const provider = formData.get("provider")?.toString().trim();
+  const providerModelId = formData.get("providerModelId")?.toString().trim();
+  const displayName = formData.get("displayName")?.toString().trim();
 
-  await setAppSetting({ key: "artifactsEnabled", value: enabled });
+  if (!key || !provider || !providerModelId || !displayName) {
+    throw new Error("Missing required live voice model configuration fields");
+  }
 
-  await createAuditLogEntry({
-    actorId: actor.id,
-    action: "feature.artifacts.toggle",
-    target: { feature: "artifacts" },
-    metadata: { enabled },
+  const existingConfig = await getLiveVoiceModelConfigByKey({
+    key,
+    includeDeleted: true,
   });
 
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/admin/settings");
+  if (existingConfig) {
+    if (existingConfig.deletedAt) {
+      redirect("/admin/settings?notice=live-voice-model-key-soft-deleted");
+    } else {
+      redirect("/admin/settings?notice=live-voice-model-key-conflict");
+    }
+  }
+
+  let created: Awaited<ReturnType<typeof createLiveVoiceModelConfig>>;
+  try {
+    created = await createLiveVoiceModelConfig({
+      key,
+      provider: provider as any,
+      providerModelId,
+      displayName,
+      description: formData.get("description")?.toString() ?? "",
+      systemInstruction:
+        formData.get("systemInstruction")?.toString().trim() ?? "",
+      voiceName: formData.get("voiceName")?.toString().trim() || "Zephyr",
+      mediaResolution:
+        formData.get("mediaResolution")?.toString().trim() ||
+        "MEDIA_RESOLUTION_MEDIUM",
+      creditMultiplier: normalizeLiveVoiceCreditMultiplier(
+        formData.get("creditMultiplier")
+      ),
+      inputProviderCostPerMillion: parseNumber(
+        formData.get("inputProviderCostPerMillion")
+      ),
+      outputProviderCostPerMillion: parseNumber(
+        formData.get("outputProviderCostPerMillion")
+      ),
+      config: parseJson(formData.get("configJson")),
+      isEnabled: parseBoolean(formData.get("isEnabled")),
+      enabledOnWeb: parseBoolean(formData.get("enabledOnWeb")),
+      enabledOnNative: parseBoolean(formData.get("enabledOnNative")),
+      isDefault: parseBoolean(formData.get("isDefault")),
+    });
+  } catch (error) {
+    console.error("Failed to create live voice model configuration", error);
+    redirect("/admin/settings?notice=live-voice-model-create-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.create",
+    target: { liveVoiceModelId: created.id },
+    metadata: { key, provider, providerModelId },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.create");
+
+  redirect("/admin/settings?notice=live-voice-model-created");
+}
+
+export async function updateLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  const patch: Parameters<typeof updateLiveVoiceModelConfig>[0] = { id };
+
+  const provider = formData.get("provider");
+  if (provider) {
+    patch.provider = provider.toString() as any;
+  }
+  const providerModelId = formData.get("providerModelId");
+  if (providerModelId) {
+    patch.providerModelId = providerModelId.toString();
+  }
+  const displayName = formData.get("displayName");
+  if (displayName) {
+    patch.displayName = displayName.toString();
+  }
+  if (formData.has("description")) {
+    patch.description = formData.get("description")?.toString() ?? "";
+  }
+  if (formData.has("systemInstruction")) {
+    patch.systemInstruction =
+      formData.get("systemInstruction")?.toString().trim() ?? "";
+  }
+  if (formData.has("voiceName")) {
+    patch.voiceName = formData.get("voiceName")?.toString().trim() || "Zephyr";
+  }
+  if (formData.has("mediaResolution")) {
+    patch.mediaResolution =
+      formData.get("mediaResolution")?.toString().trim() ||
+      "MEDIA_RESOLUTION_MEDIUM";
+  }
+  if (formData.has("creditMultiplier")) {
+    patch.creditMultiplier = normalizeLiveVoiceCreditMultiplier(
+      formData.get("creditMultiplier")
+    );
+  }
+  if (formData.has("inputProviderCostPerMillion")) {
+    patch.inputProviderCostPerMillion = parseNumber(
+      formData.get("inputProviderCostPerMillion")
+    );
+  }
+  if (formData.has("outputProviderCostPerMillion")) {
+    patch.outputProviderCostPerMillion = parseNumber(
+      formData.get("outputProviderCostPerMillion")
+    );
+  }
+  if (formData.has("configJson")) {
+    patch.config = parseJson(formData.get("configJson"));
+  }
+
+  const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
+  if (isEnabledValue !== null) {
+    patch.isEnabled = isEnabledValue;
+  }
+  const enabledOnWebValue = parseBooleanFromEntries(formData, "enabledOnWeb");
+  if (enabledOnWebValue !== null) {
+    patch.enabledOnWeb = enabledOnWebValue;
+  }
+  const enabledOnNativeValue = parseBooleanFromEntries(
+    formData,
+    "enabledOnNative"
+  );
+  if (enabledOnNativeValue !== null) {
+    patch.enabledOnNative = enabledOnNativeValue;
+  }
+
+  const isDefaultValue = parseBooleanFromEntries(formData, "isDefault");
+  const shouldSetDefault = isDefaultValue === true;
+
+  let updated: Awaited<ReturnType<typeof updateLiveVoiceModelConfig>>;
+  try {
+    updated = await updateLiveVoiceModelConfig(patch);
+    if (!updated) {
+      redirect("/admin/settings?notice=live-voice-model-update-missing");
+    }
+
+    if (shouldSetDefault) {
+      await setDefaultLiveVoiceModelConfig(id);
+    }
+  } catch (error) {
+    if (isRedirectErrorLike(error)) {
+      throw error;
+    }
+    console.error("Failed to update live voice model configuration", error);
+    redirect("/admin/settings?notice=live-voice-model-update-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.update",
+    target: { liveVoiceModelId: id },
+    metadata: { ...patch, setDefault: shouldSetDefault },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.update");
+}
+
+export async function deleteLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  await deleteLiveVoiceModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.delete",
+    target: { liveVoiceModelId: id },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.delete");
+
+  redirect("/admin/settings?notice=live-voice-model-deleted");
+}
+
+export async function hardDeleteLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  await hardDeleteLiveVoiceModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.hard_delete",
+    target: { liveVoiceModelId: id },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.hard_delete");
+
+  redirect("/admin/settings?notice=live-voice-model-hard-deleted");
+}
+
+export async function setDefaultLiveVoiceModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing live voice model configuration id");
+  }
+
+  await setDefaultLiveVoiceModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "live_voice_model.setDefault",
+    target: { liveVoiceModelId: id },
+  });
+
+  revalidateAdminLiveVoiceModelSettings("live_voice_model.setDefault");
+
+  redirect("/admin/settings?notice=live-voice-model-defaulted");
+}
+
+export async function createImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const key = formData.get("key")?.toString().trim();
+  const provider = formData.get("provider")?.toString().trim();
+  const providerModelId = formData.get("providerModelId")?.toString().trim();
+  const displayName = formData.get("displayName")?.toString().trim();
+
+  if (!key || !provider || !providerModelId || !displayName) {
+    throw new Error("Missing required image model configuration fields");
+  }
+
+  const description = formData.get("description")?.toString() ?? "";
+  const config = parseJson(formData.get("configJson"));
+  const isEnabled = parseBoolean(formData.get("isEnabled"));
+  const isActive = parseBoolean(formData.get("isActive"));
+  const pricing = await resolveImageModelPricing(formData);
+
+  const existingConfig = await getImageModelConfigByKey({
+    key,
+    includeDeleted: true,
+  });
+
+  if (existingConfig) {
+    if (existingConfig.deletedAt) {
+      redirect("/admin/settings?notice=image-model-key-soft-deleted");
+    } else {
+      redirect("/admin/settings?notice=image-model-key-conflict");
+    }
+  }
+
+  let created: Awaited<ReturnType<typeof createImageModelConfig>>;
+  try {
+    created = await createImageModelConfig({
+      key,
+      provider: provider as any,
+      providerModelId,
+      displayName,
+      description,
+      config,
+      priceInPaise: pricing.priceInPaise,
+      tokensPerImage: pricing.tokensPerImage,
+      isEnabled,
+      isActive,
+    });
+  } catch (error) {
+    console.error("Failed to create image model configuration", error);
+    redirect("/admin/settings?notice=image-model-create-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_model.create",
+    target: { imageModelId: created.id },
+    metadata: { key, provider, providerModelId },
+  });
+
+  revalidateAdminImageModelSettings("image_model.create");
+}
+
+export async function updateImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  const patch: {
+    provider?: any;
+    providerModelId?: string;
+    displayName?: string;
+    description?: string | null;
+    config?: Record<string, unknown> | null;
+    priceInPaise?: number;
+    tokensPerImage?: number;
+    isEnabled?: boolean;
+  } = {};
+
+  const provider = formData.get("provider");
+  if (provider) {
+    patch.provider = provider.toString();
+  }
+
+  const providerModelId = formData.get("providerModelId");
+  if (providerModelId) {
+    patch.providerModelId = providerModelId.toString();
+  }
+
+  const displayName = formData.get("displayName");
+  if (displayName) {
+    patch.displayName = displayName.toString();
+  }
+
+  if (formData.has("description")) {
+    patch.description = formData.get("description")?.toString() ?? "";
+  }
+
+  if (formData.has("configJson")) {
+    patch.config = parseJson(formData.get("configJson"));
+  }
+
+  if (formData.has("creditsPerImage") || formData.has("priceInRupees")) {
+    const pricing = await resolveImageModelPricing(formData);
+    patch.tokensPerImage = pricing.tokensPerImage;
+    patch.priceInPaise = pricing.priceInPaise;
+  }
+
+  const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
+  if (isEnabledValue !== null) {
+    patch.isEnabled = isEnabledValue;
+  }
+
+  const updated = await updateImageModelConfig({
+    id,
+    ...patch,
+  });
+
+  if (!updated) {
+    redirect("/admin/settings?notice=image-model-update-missing");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_model.update",
+    target: { imageModelId: id },
+    metadata: patch,
+  });
+
+  revalidateAdminImageModelSettings("image_model.update");
+}
+
+export async function deleteImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  await deleteImageModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_model.delete",
+    target: { imageModelId: id },
+  });
+
+  revalidateAdminImageModelSettings("image_model.delete");
+
+  redirect("/admin/settings?notice=image-model-deleted");
+}
+
+export async function hardDeleteImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  await hardDeleteImageModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_model.hard_delete",
+    target: { imageModelId: id },
+  });
+
+  revalidateAdminImageModelSettings("image_model.hard_delete");
+
+  redirect("/admin/settings?notice=image-model-hard-deleted");
+}
+
+export async function setActiveImageModelConfigAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const id = formData.get("id")?.toString();
+
+  if (!id) {
+    throw new Error("Missing image model configuration id");
+  }
+
+  await setActiveImageModelConfig(id);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_model.setActive",
+    target: { imageModelId: id },
+  });
+
+  revalidateAdminImageModelSettings("image_model.setActive");
+
+  redirect("/admin/settings?notice=image-model-activated");
+}
+
+export async function setImagePromptTranslationModelAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const modelId = formData.get("modelId");
+  const normalizedModelId =
+    typeof modelId === "string" && modelId.trim().length > 0
+      ? modelId.trim()
+      : null;
+
+  if (normalizedModelId) {
+    const model = await getModelConfigById({ id: normalizedModelId });
+    if (!model || !model.isEnabled) {
+      redirect("/admin/settings?notice=image-translation-model-invalid");
+    }
+  }
+
+  await setAppSetting({
+    key: IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+    value: normalizedModelId,
+  });
+  revalidateAppSettingCache(
+    IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+    "image_prompt_translation_model.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "image_prompt_translation_model.update",
+    target: { setting: IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY },
+    metadata: { modelId: normalizedModelId },
+  });
+
+  revalidateAdminSettingsSection("image_prompt_translation_model.update");
+
+  redirect("/admin/settings?notice=image-translation-model-updated");
+}
+
+export async function createTranslationFeatureLanguageAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const translateProviderMode = parseTranslateProviderModeSetting(
+    await getAppSetting<string | boolean | number>(
+      TRANSLATE_PROVIDER_MODE_SETTING_KEY
+    )
+  );
+
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const isActive = parseBoolean(formData.get("isActive") ?? "on");
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
+  const modelId = formData.get("modelConfigId")?.toString().trim() ?? "";
+  const speechModelId =
+    formData.get("speechModelConfigId")?.toString().trim() ?? "";
+  const normalizedCode = code.toLowerCase();
+
+  if (
+    !normalizedCode ||
+    !name ||
+    (translateProviderMode === "ai" && !modelId)
+  ) {
+    redirect("/admin/settings?notice=translation-language-create-error");
+  }
+
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    redirect("/admin/settings?notice=translation-language-code-invalid");
+  }
+
+  const model =
+    translateProviderMode === "ai" && modelId
+      ? await getModelConfigById({ id: modelId })
+      : null;
+  if (translateProviderMode === "ai" && (!model || !model.isEnabled)) {
+    redirect("/admin/settings?notice=translation-language-model-invalid");
+  }
+  const speechModel =
+    translateProviderMode === "ai" && speechModelId
+      ? await getModelConfigById({ id: speechModelId })
+      : null;
+  if (
+    translateProviderMode === "ai" &&
+    speechModelId &&
+    (!speechModel ||
+      !speechModel.isEnabled ||
+      !isGoogleLiveTranslationModel(speechModel))
+  ) {
+    redirect("/admin/settings?notice=translation-language-speech-model-invalid");
+  }
+
+  try {
+    await createTranslationFeatureLanguage({
+      code: normalizedCode,
+      name,
+      isActive,
+      isDefault: false,
+      modelConfigId: model?.id ?? null,
+      speechModelConfigId: speechModel?.id ?? null,
+      systemPrompt: translateProviderMode === "ai" ? systemPrompt : null,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("already exists")) {
+      redirect("/admin/settings?notice=translation-language-create-duplicate");
+    }
+    console.error("Failed to create translation feature language", error);
+    redirect("/admin/settings?notice=translation-language-create-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.translate.language.create",
+    target: { languageCode: normalizedCode },
+    metadata: {
+      name,
+      isActive,
+      modelConfigId: model?.id ?? null,
+      speechModelConfigId: speechModel?.id ?? null,
+      systemPrompt:
+        translateProviderMode === "ai" ? systemPrompt.trim() || null : null,
+    },
+  });
+
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.create"
+  );
+  revalidatePublicPath("/translate", "feature.translate.language.create");
+
+  redirect("/admin/settings?notice=translation-language-created");
+}
+
+export async function updateTranslationFeatureLanguageStatusAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const intent = formData.get("intent")?.toString().trim();
+
+  if (!languageId || !intent) {
+    redirect("/admin/settings?notice=translation-language-update-error");
+  }
+
+  const targetLanguage = await getTranslationFeatureLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=translation-language-update-error");
+  }
+
+  const shouldActivate = intent === "activate";
+  if (intent !== "activate" && intent !== "deactivate") {
+    redirect("/admin/settings?notice=translation-language-update-error");
+  }
+
+  if (targetLanguage.isDefault && !shouldActivate) {
+    redirect("/admin/settings?notice=translation-language-default-inactive");
+  }
+
+  if (targetLanguage.isActive === shouldActivate) {
+    redirect("/admin/settings?notice=translation-language-updated");
+  }
+
+  await updateTranslationFeatureLanguageActiveState({
+    id: targetLanguage.id,
+    isActive: shouldActivate,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.translate.language.toggle",
+    target: { languageCode: targetLanguage.code },
+    metadata: { isActive: shouldActivate },
+  });
+
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.toggle"
+  );
+  revalidatePublicPath("/translate", "feature.translate.language.toggle");
+
+  redirect("/admin/settings?notice=translation-language-updated");
+}
+
+export async function updateTranslationFeatureLanguageSettingsAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+  const translateProviderMode = parseTranslateProviderModeSetting(
+    await getAppSetting<string | boolean | number>(
+      TRANSLATE_PROVIDER_MODE_SETTING_KEY
+    )
+  );
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const code = formData.get("code")?.toString().trim() ?? "";
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
+  const modelId = formData.get("modelConfigId")?.toString().trim() ?? "";
+  const speechModelId =
+    formData.get("speechModelConfigId")?.toString().trim() ?? "";
+  const normalizedCode = code.toLowerCase();
+
+  if (
+    !languageId ||
+    !normalizedCode ||
+    !name ||
+    (translateProviderMode === "ai" && !modelId)
+  ) {
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
+    redirect("/admin/settings?notice=translation-language-code-invalid");
+  }
+
+  if (name.length > 64) {
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  const targetLanguage = await getTranslationFeatureLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  const model =
+    translateProviderMode === "ai" && modelId
+      ? await getModelConfigById({ id: modelId })
+      : null;
+  if (translateProviderMode === "ai" && (!model || !model.isEnabled)) {
+    redirect("/admin/settings?notice=translation-language-model-invalid");
+  }
+  const speechModel =
+    translateProviderMode === "ai" && speechModelId
+      ? await getModelConfigById({ id: speechModelId })
+      : null;
+  if (
+    translateProviderMode === "ai" &&
+    speechModelId &&
+    (!speechModel ||
+      !speechModel.isEnabled ||
+      !isGoogleLiveTranslationModel(speechModel))
+  ) {
+    redirect("/admin/settings?notice=translation-language-speech-model-invalid");
+  }
+
+  const normalizedPrompt =
+    systemPrompt.trim().length > 0 ? systemPrompt.trim() : null;
+
+  try {
+    await updateTranslationFeatureLanguageDetails({
+      id: targetLanguage.id,
+      code: normalizedCode,
+      name,
+      modelConfigId:
+        translateProviderMode === "ai"
+          ? model?.id ?? null
+          : targetLanguage.modelConfigId,
+      speechModelConfigId:
+        translateProviderMode === "ai"
+          ? speechModel?.id ?? null
+          : targetLanguage.speechModelConfigId,
+      systemPrompt:
+        translateProviderMode === "ai"
+          ? normalizedPrompt
+          : targetLanguage.systemPrompt,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("already exists")) {
+      redirect("/admin/settings?notice=translation-language-create-duplicate");
+    }
+    console.error("Failed to update translation feature language", error);
+    redirect("/admin/settings?notice=translation-language-settings-error");
+  }
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.translate.language.update",
+    target: { languageCode: targetLanguage.code },
+    metadata: {
+      nextCode: normalizedCode,
+      name,
+      modelConfigId:
+        translateProviderMode === "ai"
+          ? model?.id ?? null
+          : targetLanguage.modelConfigId,
+      speechModelConfigId:
+        translateProviderMode === "ai"
+          ? speechModel?.id ?? null
+          : targetLanguage.speechModelConfigId,
+      systemPrompt:
+        translateProviderMode === "ai"
+          ? normalizedPrompt
+          : targetLanguage.systemPrompt,
+    },
+  });
+
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.update"
+  );
+  revalidatePublicPath("/translate", "feature.translate.language.update");
+
+  redirect("/admin/settings?notice=translation-language-settings-updated");
+}
+
+export async function deleteTranslationFeatureLanguageAction(
+  formData: FormData
+) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  if (!languageId) {
+    redirect("/admin/settings?notice=translation-language-delete-error");
+  }
+
+  const targetLanguage = await getTranslationFeatureLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=translation-language-delete-error");
+  }
+
+  if (targetLanguage.isDefault) {
+    redirect("/admin/settings?notice=translation-language-default-delete");
+  }
+
+  await deleteTranslationFeatureLanguageById({ id: targetLanguage.id });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "feature.translate.language.delete",
+    target: { languageCode: targetLanguage.code },
+    metadata: { name: targetLanguage.name },
+  });
+
+  revalidateAdminTranslationFeatureLanguages(
+    "feature.translate.language.delete"
+  );
+  revalidatePublicPath("/translate", "feature.translate.language.delete");
+
+  redirect("/admin/settings?notice=translation-language-deleted");
 }
 
 export async function updatePrivacyPolicyAction(formData: FormData) {
@@ -477,15 +2563,16 @@ export async function updatePrivacyPolicyAction(formData: FormData) {
   const content = formData.get("content")?.toString().trim() ?? "";
 
   await setAppSetting({ key: "privacyPolicy", value: content });
+  revalidateAppSettingCache("privacyPolicy", "legal.privacy.update");
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.privacy.update",
     target: { document: "privacyPolicy" },
   });
 
-  revalidatePath("/privacy-policy");
-  revalidatePath("/admin/settings");
+  revalidatePublicPath("/privacy-policy", "legal.privacy.update");
+  revalidateAdminSettingsSection("legal.privacy.update");
 
   redirect("/admin/settings?notice=privacy-updated");
 }
@@ -497,15 +2584,16 @@ export async function updateTermsOfServiceAction(formData: FormData) {
   const content = formData.get("content")?.toString().trim() ?? "";
 
   await setAppSetting({ key: "termsOfService", value: content });
+  revalidateAppSettingCache("termsOfService", "legal.terms.update");
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.terms.update",
     target: { document: "termsOfService" },
   });
 
-  revalidatePath("/terms-of-service");
-  revalidatePath("/admin/settings");
+  revalidatePublicPath("/terms-of-service", "legal.terms.update");
+  revalidateAdminSettingsSection("legal.terms.update");
 
   redirect("/admin/settings?notice=terms-updated");
 }
@@ -560,20 +2648,25 @@ export async function updateAboutContentAction(formData: FormData) {
     key: "aboutUsContentByLanguage",
     value: aboutContentByLanguage,
   });
+  revalidateAppSettingCache(
+    "aboutUsContentByLanguage",
+    "company.about.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "aboutUsContent", value: content });
+    revalidateAppSettingCache("aboutUsContent", "company.about.update");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "company.about.update",
     target: { document: "aboutUsContent" },
     metadata: { language: language.code },
   });
 
-  revalidatePath("/about");
-  revalidatePath("/admin/settings");
+  revalidatePublicPath("/about", "company.about.update");
+  revalidateAdminSettingsSection("company.about.update");
 
   return {
     success: true as const,
@@ -631,20 +2724,25 @@ export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
     key: "privacyPolicyByLanguage",
     value: privacyContentByLanguage,
   });
+  revalidateAppSettingCache(
+    "privacyPolicyByLanguage",
+    "legal.privacy.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "privacyPolicy", value: content });
+    revalidateAppSettingCache("privacyPolicy", "legal.privacy.update");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.privacy.update",
     target: { document: "privacyPolicy" },
     metadata: { language: language.code },
   });
 
-  revalidatePath("/privacy-policy");
-  revalidatePath("/admin/settings");
+  revalidatePublicPath("/privacy-policy", "legal.privacy.update");
+  revalidateAdminSettingsSection("legal.privacy.update");
 
   return {
     success: true as const,
@@ -652,9 +2750,7 @@ export async function updatePrivacyPolicyByLanguageAction(formData: FormData) {
   };
 }
 
-export async function updateTermsOfServiceByLanguageAction(
-  formData: FormData
-) {
+export async function updateTermsOfServiceByLanguageAction(formData: FormData) {
   "use server";
   const actor = await requireAdmin();
 
@@ -704,20 +2800,25 @@ export async function updateTermsOfServiceByLanguageAction(
     key: "termsOfServiceByLanguage",
     value: termsContentByLanguage,
   });
+  revalidateAppSettingCache(
+    "termsOfServiceByLanguage",
+    "legal.terms.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "termsOfService", value: content });
+    revalidateAppSettingCache("termsOfService", "legal.terms.update");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "legal.terms.update",
     target: { document: "termsOfService" },
     metadata: { language: language.code },
   });
 
-  revalidatePath("/terms-of-service");
-  revalidatePath("/admin/settings");
+  revalidatePublicPath("/terms-of-service", "legal.terms.update");
+  revalidateAdminSettingsSection("legal.terms.update");
 
   return {
     success: true as const,
@@ -732,6 +2833,8 @@ export async function createLanguageAction(formData: FormData) {
   const code = formData.get("code")?.toString().trim() ?? "";
   const name = formData.get("name")?.toString().trim() ?? "";
   const isActive = parseBoolean(formData.get("isActive") ?? "on");
+  const syncUiLanguage = parseBoolean(formData.get("syncUiLanguage"));
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
 
   const normalizedCode = code.toLowerCase();
 
@@ -739,7 +2842,7 @@ export async function createLanguageAction(formData: FormData) {
     redirect("/admin/settings?notice=language-create-error");
   }
 
-  if (!/^[a-z0-9-]{2,16}$/.test(normalizedCode)) {
+  if (!LANGUAGE_CODE_REGEX.test(normalizedCode)) {
     redirect("/admin/settings?notice=language-code-invalid");
   }
 
@@ -749,6 +2852,8 @@ export async function createLanguageAction(formData: FormData) {
       name,
       isDefault: false,
       isActive,
+      syncUiLanguage,
+      systemPrompt,
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes("already exists")) {
@@ -758,19 +2863,24 @@ export async function createLanguageAction(formData: FormData) {
     redirect("/admin/settings?notice=language-create-error");
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "translation.language.create",
     target: { languageCode: normalizedCode },
-    metadata: { name, isActive },
+    metadata: {
+      name,
+      isActive,
+      syncUiLanguage,
+      systemPrompt: systemPrompt.trim() || null,
+    },
   });
 
-  await invalidateTranslationBundleCache([normalizedCode]);
+  await invalidateTranslationBundleCache();
 
-  revalidateTag("languages");
-  revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
-  revalidatePath("/admin/translations");
+  revalidateLanguageSettings({
+    includeTranslations: true,
+    source: "translation.language.create",
+  });
 
   redirect("/admin/settings?notice=language-created");
 }
@@ -805,23 +2915,115 @@ export async function updateLanguageStatusAction(formData: FormData) {
     redirect("/admin/settings?notice=language-updated");
   }
 
-  await updateLanguageActiveState({ id: targetLanguage.id, isActive: shouldActivate });
+  await updateLanguageActiveState({
+    id: targetLanguage.id,
+    isActive: shouldActivate,
+  });
 
-  await invalidateTranslationBundleCache([targetLanguage.code]);
+  await invalidateTranslationBundleCache();
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "translation.language.toggle",
     target: { languageCode: targetLanguage.code },
     metadata: { isActive: shouldActivate },
   });
 
-  revalidateTag("languages");
-  revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
-  revalidatePath("/admin/translations");
+  revalidateLanguageSettings({
+    includeTranslations: true,
+    source: "translation.language.toggle",
+  });
 
   redirect("/admin/settings?notice=language-updated");
+}
+
+export async function updateLanguageSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  const name = formData.get("name")?.toString().trim() ?? "";
+  const systemPrompt = formData.get("systemPrompt")?.toString() ?? "";
+  const syncUiLanguage = parseBoolean(formData.get("syncUiLanguage"));
+
+  if (!languageId || !name) {
+    redirect("/admin/settings?notice=language-settings-error");
+  }
+
+  if (name.length > 64) {
+    redirect("/admin/settings?notice=language-settings-error");
+  }
+
+  const targetLanguage = await getLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=language-settings-error");
+  }
+
+  const normalizedPrompt =
+    systemPrompt.trim().length > 0 ? systemPrompt.trim() : null;
+
+  await updateLanguageDetails({
+    id: targetLanguage.id,
+    name,
+    systemPrompt: normalizedPrompt,
+    syncUiLanguage,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "translation.language.update",
+    target: { languageCode: targetLanguage.code },
+    metadata: {
+      name,
+      syncUiLanguage,
+      systemPrompt: normalizedPrompt,
+    },
+  });
+
+  await invalidateTranslationBundleCache();
+
+  revalidateLanguageSettings({
+    source: "translation.language.update",
+  });
+
+  redirect("/admin/settings?notice=language-settings-updated");
+}
+
+export async function deleteLanguageAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const languageId = formData.get("languageId")?.toString().trim();
+  if (!languageId) {
+    redirect("/admin/settings?notice=language-delete-error");
+  }
+
+  const targetLanguage = await getLanguageByIdRaw(languageId);
+  if (!targetLanguage) {
+    redirect("/admin/settings?notice=language-delete-error");
+  }
+
+  if (targetLanguage.isDefault) {
+    redirect("/admin/settings?notice=language-default-delete");
+  }
+
+  await deleteLanguageById({ id: targetLanguage.id });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "translation.language.delete",
+    target: { languageCode: targetLanguage.code },
+    metadata: { name: targetLanguage.name },
+  });
+
+  await invalidateTranslationBundleCache();
+
+  revalidateLanguageSettings({
+    includeTranslations: true,
+    source: "translation.language.delete",
+  });
+
+  redirect("/admin/settings?notice=language-deleted");
 }
 
 export async function updatePlanTranslationAction(formData: FormData) {
@@ -836,13 +3038,18 @@ export async function updatePlanTranslationAction(formData: FormData) {
   }
 
   try {
-    const plan = await getPricingPlanById({ id: planId!, includeDeleted: true });
+    const planIdValue = planId.trim();
+    const plan = await getPricingPlanById({
+      id: planIdValue,
+      includeDeleted: true,
+    });
     if (!plan) {
       throw new Error("Plan not found");
     }
 
-    const languageCode = languageCodeRaw!.trim().toLowerCase();
-    const language = languageCode.length > 0 ? await getLanguageByCode(languageCode) : null;
+    const languageCode = languageCodeRaw.trim().toLowerCase();
+    const language =
+      languageCode.length > 0 ? await getLanguageByCode(languageCode) : null;
 
     if (!language) {
       throw new Error("Language not found");
@@ -946,7 +3153,7 @@ export async function updatePlanTranslationAction(formData: FormData) {
 
     await invalidateTranslationBundleCache([language.code]);
 
-    await createAuditLogEntry({
+    await createAuditLogEntrySafely({
       actorId: actor.id,
       action: "billing.plan.translate",
       target: { planId: plan.id, language: language.code },
@@ -956,9 +3163,8 @@ export async function updatePlanTranslationAction(formData: FormData) {
       },
     });
 
-    revalidatePath("/admin/settings");
-    revalidatePath("/admin/translations");
-    revalidatePath("/recharge");
+    revalidateAdminPricingSettings("billing.plan.translate");
+    revalidateAdminPath("/admin/translations", "billing.plan.translate");
 
     redirect("/admin/settings?notice=plan-translation-updated");
   } catch (error) {
@@ -968,6 +3174,41 @@ export async function updatePlanTranslationAction(formData: FormData) {
     console.error("Failed to update plan translation", error);
     redirect("/admin/settings?notice=plan-translation-error");
   }
+}
+
+export async function updateFreeMessageSettingsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const modeInput = formData.get("mode");
+  const requestedMode = modeInput === "global" ? "global" : "per-model";
+  const globalLimitRaw = formData.get("globalLimit");
+  const resolvedGlobalLimit =
+    globalLimitRaw === null
+      ? DEFAULT_FREE_MESSAGES_PER_DAY
+      : parseNumber(globalLimitRaw);
+  const normalized = normalizeFreeMessageSettings({
+    mode: requestedMode,
+    globalLimit: resolvedGlobalLimit,
+  });
+
+  await setAppSetting({
+    key: FREE_MESSAGE_SETTINGS_KEY,
+    value: normalized,
+  });
+  revalidateAppSettingCache(
+    FREE_MESSAGE_SETTINGS_KEY,
+    "settings.update.free_messages"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "settings.update.free_messages",
+    target: { key: FREE_MESSAGE_SETTINGS_KEY },
+    metadata: normalized,
+  });
+
+  revalidateAdminSettingsSection("settings.update.free_messages");
 }
 
 function parseInteger(value: FormDataEntryValue | null | undefined) {
@@ -991,7 +3232,7 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
 
   const promptsValue = formData.get("prompts")?.toString() ?? "";
   const prompts = promptsValue
-    .split(/\r?\n/)
+    .split(PROMPTS_SPLIT_REGEX)
     .map((prompt) => prompt.trim())
     .filter((prompt) => prompt.length > 0);
 
@@ -1032,26 +3273,78 @@ export async function updateSuggestedPromptsAction(formData: FormData) {
     key: "suggestedPromptsByLanguage",
     value: promptsByLanguage,
   });
+  revalidateAppSettingCache(
+    "suggestedPromptsByLanguage",
+    "ui.suggested_prompts.update"
+  );
 
   if (language.isDefault) {
     await setAppSetting({ key: "suggestedPrompts", value: prompts });
+    revalidateAppSettingCache(
+      "suggestedPrompts",
+      "ui.suggested_prompts.update"
+    );
   }
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "ui.suggested_prompts.update",
     target: { feature: "suggestedPrompts", language: language.code },
     metadata: { count: prompts.length },
   });
 
-  revalidatePath("/", "layout");
-  revalidatePath("/chat");
-  revalidatePath("/admin/settings");
+  revalidateAdminSettingsSection("ui.suggested_prompts.update");
 
   return {
     success: true as const,
     languageCode: language.code,
     count: prompts.length,
+  };
+}
+
+export async function updateIconPromptsAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+  const payload = formData.get("payload");
+
+  if (typeof payload !== "string") {
+    throw new Error("Missing icon prompt payload");
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (error) {
+    console.error("Failed to parse icon prompt payload", error);
+    throw new Error("Invalid icon prompt payload");
+  }
+
+  const normalized = normalizeIconPromptSettings(parsed, true);
+  const uniqueItems = normalized.items.filter((item, index, items) => {
+    return items.findIndex((entry) => entry.id === item.id) === index;
+  });
+
+  await setAppSetting({
+    key: ICON_PROMPTS_SETTING_KEY,
+    value: { items: uniqueItems },
+  });
+  revalidateAppSettingCache(
+    ICON_PROMPTS_SETTING_KEY,
+    "ui.icon_prompts.update"
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "ui.icon_prompts.update",
+    target: { feature: "iconPrompts" },
+    metadata: { count: uniqueItems.length },
+  });
+
+  revalidateAdminSettingsSection("ui.icon_prompts.update");
+
+  return {
+    success: true as const,
+    count: uniqueItems.length,
   };
 }
 
@@ -1061,46 +3354,50 @@ export async function createPricingPlanAction(formData: FormData) {
 
   const name = formData.get("name")?.toString().trim();
   const description = formData.get("description")?.toString().trim() ?? "";
+  const androidProductId = parseAndroidProductId(
+    formData.get("androidProductId")
+  );
   const priceInRupees = parseNumber(formData.get("priceInRupees"));
-  const tokenAllowance = Math.max(0, parseInteger(formData.get("tokenAllowance")));
-  const billingCycleDays = Math.max(0, parseInteger(formData.get("billingCycleDays")));
+  const tokenAllowance = Math.max(
+    0,
+    parseInteger(formData.get("tokenAllowance"))
+  );
+  const billingCycleDays = Math.max(
+    0,
+    parseInteger(formData.get("billingCycleDays"))
+  );
   const isActive = parseBoolean(formData.get("isActive"));
 
   if (!name) {
     throw new Error("Plan name is required");
   }
-  const plan = await createPricingPlan({
-    name,
+  const plan = await withTimeout(
+    createPricingPlan({
+      name,
+      description,
+      androidProductId,
+      priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
+      tokenAllowance,
+      billingCycleDays,
+      isActive,
+    }),
+    ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS
+  );
+
+  await syncPricingPlanTranslationKeysSafely({
     description,
-    priceInPaise: Math.max(0, Math.round(priceInRupees * 100)),
-    tokenAllowance,
-    billingCycleDays,
-    isActive,
+    id: plan.id,
+    name: plan.name,
   });
 
-  await registerTranslationKeys([
-    {
-      key: `recharge.plan.${plan.id}.name`,
-      defaultText: plan.name,
-    },
-    {
-      key: `recharge.plan.${plan.id}.description`,
-      defaultText: description,
-    },
-  ]);
-
-  await invalidateTranslationBundleCache();
-
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.create",
     target: { planId: plan.id },
     metadata: plan,
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings("billing.plan.create");
 
   redirect("/admin/settings?notice=plan-created");
 }
@@ -1122,6 +3419,11 @@ export async function updatePricingPlanAction(formData: FormData) {
   if (formData.has("description")) {
     updates.description = formData.get("description")?.toString().trim() ?? "";
   }
+  if (formData.has("androidProductId")) {
+    updates.androidProductId = parseAndroidProductId(
+      formData.get("androidProductId")
+    );
+  }
   if (formData.has("priceInRupees")) {
     const rupees = parseNumber(formData.get("priceInRupees"));
     updates.priceInPaise = Math.max(0, Math.round(rupees * 100));
@@ -1142,46 +3444,34 @@ export async function updatePricingPlanAction(formData: FormData) {
     updates.isActive = parseBoolean(formData.get("isActive"));
   }
 
-  await updatePricingPlan({
-    id,
-    updates: updates as {
-      name?: string;
-      description?: string | null;
-      priceInPaise?: number;
-      tokenAllowance?: number;
-      billingCycleDays?: number;
-      isActive?: boolean;
-    },
-  });
-
-  const updatedPlan = await getPricingPlanById({ id, includeDeleted: true });
-  if (updatedPlan) {
-    await registerTranslationKeys([
-      {
-        key: `recharge.plan.${updatedPlan.id}.name`,
-        defaultText: updatedPlan.name,
+  const updatedPlan = await withTimeout(
+    updatePricingPlan({
+      id,
+      updates: updates as {
+        name?: string;
+        description?: string | null;
+        androidProductId?: string | null;
+        priceInPaise?: number;
+        tokenAllowance?: number;
+        billingCycleDays?: number;
+        isActive?: boolean;
       },
-      {
-        key: `recharge.plan.${updatedPlan.id}.description`,
-        defaultText: updatedPlan.description ?? "",
-      },
-    ]);
+    }),
+    ADMIN_PRICING_PLAN_MUTATION_TIMEOUT_MS
+  );
 
-    await invalidateTranslationBundleCache();
+  if (!updatedPlan) {
+    redirect("/admin/settings?notice=plan-update-error");
   }
 
-  await createAuditLogEntry({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.update",
     target: { planId: id },
     metadata: updates,
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
-
-  redirect("/admin/settings?notice=plan-updated");
+  revalidateAdminPricingSettings("billing.plan.update");
 }
 
 export async function setRecommendedPricingPlanAction(formData: FormData) {
@@ -1196,17 +3486,19 @@ export async function setRecommendedPricingPlanAction(formData: FormData) {
     key: RECOMMENDED_PRICING_PLAN_SETTING_KEY,
     value,
   });
+  revalidateAppSettingCache(
+    RECOMMENDED_PRICING_PLAN_SETTING_KEY,
+    "billing.plan.recommendation.update"
+  );
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.recommendation.update",
     target: { planId: value },
     metadata: { planId: value },
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings("billing.plan.recommendation.update");
 
   redirect("/admin/settings?notice=plan-recommendation-updated");
 }
@@ -1222,15 +3514,13 @@ export async function deletePricingPlanAction(formData: FormData) {
 
   await deletePricingPlan(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.delete",
     target: { planId: id },
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings("billing.plan.delete");
 
   redirect("/admin/settings?notice=plan-deleted");
 }
@@ -1246,15 +3536,13 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
 
   await hardDeletePricingPlan(id);
 
-  await createAuditLogEntry({
+  await createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.plan.hard_delete",
     target: { planId: id },
   });
 
-  revalidatePath("/admin/settings");
-  revalidatePath("/recharge");
-  revalidatePath("/subscriptions");
+  revalidateAdminPricingSettings("billing.plan.hard_delete");
 
   redirect("/admin/settings?notice=plan-hard-deleted");
 }
@@ -1277,18 +3565,24 @@ export async function grantUserCreditsAction(formData: FormData) {
     return;
   }
 
-  const tokens = Math.max(
-    1,
-    Math.round(credits * TOKENS_PER_CREDIT)
+  const tokens = Math.max(1, Math.round(credits * TOKENS_PER_CREDIT));
+
+  const subscription = await withTimeout(
+    grantUserCredits({
+      expiresInDays,
+      tokens,
+      userId,
+    }),
+    ADMIN_USER_MUTATION_TIMEOUT_MS,
+    () => {
+      console.error(`[admin/actions] Manual credit grant timed out.`, {
+        timeoutMs: ADMIN_USER_MUTATION_TIMEOUT_MS,
+        userId,
+      });
+    }
   );
 
-  const subscription = await grantUserCredits({
-    userId,
-    tokens,
-    expiresInDays,
-  });
-
-  await createAuditLogEntry({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "billing.manual_credit.grant",
     target: { userId, subscriptionId: subscription.id },
@@ -1299,9 +3593,1329 @@ export async function grantUserCreditsAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin/users");
-  revalidatePath("/subscriptions");
-  revalidatePath("/recharge");
+  revalidateAdminPath("/admin/users", "billing.manual_credit.grant");
 }
 
+export async function updateUserKnowledgeApprovalAction({
+  entryId,
+  approvalStatus,
+}: {
+  entryId: string;
+  approvalStatus: RagEntryApprovalStatus;
+}) {
+  const actor = await requireAdmin();
+  const entry = await updateUserAddedKnowledgeApproval({
+    entryId,
+    approvalStatus,
+    actorId: actor.id,
+  });
 
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "user.personal_knowledge.review",
+    target: { entryId, userId: entry.personalForUserId },
+    metadata: { approvalStatus },
+  });
+
+  revalidateAdminPath("/admin/rag", "user.personal_knowledge.review");
+  return entry;
+}
+
+export async function deleteUserKnowledgeEntryAction({
+  entryId,
+}: {
+  entryId: string;
+}) {
+  const actor = await requireAdmin();
+
+  await deletePersonalKnowledgeEntry({
+    entryId,
+    actorId: actor.id,
+    allowOverride: true,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "user.personal_knowledge.delete",
+    target: { entryId },
+  });
+
+  revalidateAdminPath("/admin/rag", "user.personal_knowledge.delete");
+}
+
+export async function createRagEntryAction(input: UpsertRagEntryInput) {
+  const actor = await requireAdmin();
+  const entry = await createRagEntry({
+    input,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.entry.create",
+    target: { ragEntryId: entry.id },
+    metadata: { status: entry.status },
+  });
+
+  revalidateAdminPath("/admin/rag", "rag.entry.create");
+  return entry;
+}
+
+export async function updateRagEntryAction({
+  id,
+  input,
+}: {
+  id: string;
+  input: UpsertRagEntryInput;
+}) {
+  const actor = await requireAdmin();
+  const entry = await updateRagEntry({
+    id,
+    input,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.entry.update",
+    target: { ragEntryId: entry.id },
+    metadata: { status: entry.status },
+  });
+
+  revalidateAdminPath("/admin/rag", "rag.entry.update");
+  return entry;
+}
+
+type SerializedQuestionPaper = {
+  id: string;
+  title: string;
+  exam: string;
+  role: string;
+  year: number;
+  language: string;
+  tags: string[];
+  sourceUrl: string | null;
+  status: RagEntryStatus;
+  parseError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const QUESTION_PAPER_FALLBACK_CONTENT =
+  "Question paper uploaded, but text extraction failed. Use the attached PDF.";
+const QUESTION_PAPER_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_QUESTION_PAPER_TITLE = "Question paper";
+const UNKNOWN_LABEL = "Unknown";
+
+const normalizeFilenameTitle = (filename: string) => {
+  const base = filename.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim();
+  return base || DEFAULT_QUESTION_PAPER_TITLE;
+};
+
+const resolveYearFromText = (value: string) => extractStudyYear(value) ?? null;
+
+const normalizePaperTitle = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+const normalizeQuestionPaperTags = (value: FormDataEntryValue | null | undefined) => {
+  const raw = value?.toString() ?? "";
+  const entries = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries));
+  return unique.map((tag) => tag.slice(0, 48)).slice(0, 24);
+};
+
+const resolveQuestionPaperStatus = (
+  value: FormDataEntryValue | null | undefined
+): RagEntryStatus => {
+  const normalized = value?.toString().trim().toLowerCase();
+  if (normalized === "inactive" || normalized === "archived") {
+    return normalized;
+  }
+  return "active";
+};
+
+const serializeQuestionPaper = (paper: QuestionPaperRecord): SerializedQuestionPaper => {
+  const serializeDate = (value: Date) =>
+    value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+  return {
+    id: paper.id,
+    title: paper.title,
+    exam: paper.exam,
+    role: paper.role,
+    year: paper.year,
+    language: paper.language,
+    tags: paper.tags,
+    sourceUrl: paper.sourceUrl ?? null,
+    status: paper.status,
+    parseError: paper.parseError ?? null,
+    createdAt: serializeDate(paper.createdAt),
+    updatedAt: serializeDate(paper.updatedAt),
+  };
+};
+
+async function processQuestionPaperFile({
+  file,
+  paperId,
+}: {
+  file: Blob;
+  paperId: string;
+}) {
+  const mimeType = file.type;
+  if (!isDocumentMimeType(mimeType)) {
+    throw new Error("Only PDF or DOCX files are supported.");
+  }
+  if (file.size > QUESTION_PAPER_MAX_BYTES) {
+    throw new Error("File size must be under 25MB.");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const filename =
+    "name" in file && typeof file.name === "string" ? file.name : "document";
+
+  let content = QUESTION_PAPER_FALLBACK_CONTENT;
+  let parseError: string | null = null;
+
+  try {
+    const parsed = await extractDocumentTextFromBuffer(
+      {
+        name: filename,
+        buffer,
+        mediaType: mimeType,
+      },
+      { maxTextChars: QUESTION_PAPER_MAX_TEXT_CHARS }
+    );
+    content = parsed.text;
+  } catch (error) {
+    parseError =
+      error instanceof Error ? error.message : "Unable to extract document text.";
+  }
+
+  const extension = DOCUMENT_EXTENSION_BY_MIME[mimeType];
+  if (!extension) {
+    throw new Error("Unsupported file type.");
+  }
+
+  const objectKey = `study/question-papers/${paperId}/${crypto.randomUUID()}.${extension}`;
+  const blob = await put(objectKey, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return {
+    sourceUrl: blob.url,
+    content,
+    parseError,
+    filename,
+  };
+}
+
+export async function createQuestionPaperAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const examInput = formData.get("exam")?.toString().trim() ?? "";
+  const roleInput = formData.get("role")?.toString().trim() ?? "";
+  const paperTitleInput = formData.get("paperTitle")?.toString().trim() ?? "";
+  const yearInput = parseInteger(formData.get("year"));
+  const languageInput = formData.get("language")?.toString().trim() || "English";
+  const tags = normalizeQuestionPaperTags(formData.get("tags"));
+  const status = resolveQuestionPaperStatus(formData.get("status"));
+
+  const fileField = formData.get("file");
+  if (!(fileField instanceof Blob)) {
+    throw new Error("Question paper file is required.");
+  }
+
+  const paperId = generateUUID();
+  const fileResult = await processQuestionPaperFile({
+    file: fileField,
+    paperId,
+  });
+  const derivedTitle = normalizeFilenameTitle(fileResult.filename);
+  const derivedYear =
+    resolveYearFromText(fileResult.content) ??
+    resolveYearFromText(fileResult.filename) ??
+    0;
+  const exam = examInput || UNKNOWN_LABEL;
+  const role = roleInput || UNKNOWN_LABEL;
+  const year = Number.isFinite(yearInput) && yearInput > 0 ? yearInput : derivedYear;
+  const paperTitle = paperTitleInput || derivedTitle || DEFAULT_QUESTION_PAPER_TITLE;
+  const language = languageInput || "English";
+  const normalizedTitle = normalizePaperTitle(paperTitle);
+  const existingEntries = await listQuestionPaperEntries({ includeInactive: true });
+  const duplicate = existingEntries.find((entry) => {
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+    const metaTitle =
+      typeof metadata.paper_title === "string" ? metadata.paper_title : "";
+    const titleToCheck = metaTitle || entry.title || "";
+    return normalizePaperTitle(titleToCheck) === normalizedTitle;
+  });
+  if (duplicate) {
+    throw new Error("A question paper with the same title already exists.");
+  }
+
+  const metadata = buildQuestionPaperMetadata({
+    exam,
+    role,
+    year,
+    paperId,
+    paperTitle,
+    language,
+    tags,
+    parseError: fileResult.parseError,
+  });
+
+  const createdEntry = await createRagEntry({
+    actorId: actor.id,
+    input: {
+      id: paperId,
+      title: paperTitle,
+      content: fileResult.content,
+      type: "document",
+      status,
+      tags,
+      models: [],
+      sourceUrl: fileResult.sourceUrl,
+      metadata,
+    },
+  });
+
+  const created = await getQuestionPaperById({
+    id: paperId,
+    includeInactive: true,
+  });
+  const resolvedCreated =
+    created ??
+    ({
+      id: createdEntry.id,
+      title: paperTitle,
+      exam,
+      role,
+      year,
+      language,
+      tags,
+      sourceUrl: createdEntry.sourceUrl ?? null,
+      status: createdEntry.status,
+      parseError: fileResult.parseError ?? null,
+      createdAt:
+        createdEntry.createdAt instanceof Date
+          ? createdEntry.createdAt
+          : new Date(createdEntry.createdAt),
+      updatedAt:
+        createdEntry.updatedAt instanceof Date
+          ? createdEntry.updatedAt
+          : new Date(createdEntry.updatedAt),
+    } as QuestionPaperRecord);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "study.question_paper.create",
+    target: { questionPaperId: paperId },
+    metadata: { exam, role, year, status },
+  });
+
+  revalidateAdminPath(
+    "/admin/study/question-papers",
+    "study.question_paper.create"
+  );
+  return serializeQuestionPaper(resolvedCreated);
+}
+
+export async function updateQuestionPaperAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString().trim() ?? "";
+  if (!id) {
+    throw new Error("Question paper id is required.");
+  }
+
+  const entries = await listQuestionPaperEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Question paper not found.");
+  }
+
+  const examInput = formData.get("exam")?.toString().trim() ?? "";
+  const roleInput = formData.get("role")?.toString().trim() ?? "";
+  const paperTitleInput = formData.get("paperTitle")?.toString().trim() ?? "";
+  const yearInput = parseInteger(formData.get("year"));
+  const languageInput = formData.get("language")?.toString().trim() || "";
+  const tagsInput = normalizeQuestionPaperTags(formData.get("tags"));
+  const status = resolveQuestionPaperStatus(formData.get("status"));
+
+  let sourceUrl = existing.sourceUrl ?? null;
+  let content = existing.content;
+  const existingMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
+  let parseError =
+    typeof existingMetadata.parse_error === "string"
+      ? existingMetadata.parse_error
+      : null;
+  const existingExam =
+    typeof existingMetadata.exam === "string" && existingMetadata.exam.trim()
+      ? existingMetadata.exam.trim()
+      : "";
+  const existingRole =
+    typeof existingMetadata.role === "string" && existingMetadata.role.trim()
+      ? existingMetadata.role.trim()
+      : "";
+  const existingYearRaw =
+    typeof existingMetadata.year === "number"
+      ? existingMetadata.year
+      : typeof existingMetadata.year === "string"
+        ? Number.parseInt(existingMetadata.year, 10)
+        : 0;
+  const existingYear =
+    Number.isFinite(existingYearRaw) && existingYearRaw > 0 ? existingYearRaw : 0;
+  const existingTitle =
+    typeof existingMetadata.paper_title === "string" && existingMetadata.paper_title.trim()
+      ? existingMetadata.paper_title.trim()
+      : existing.title?.trim() ?? "";
+  const existingLanguage =
+    typeof existingMetadata.language === "string" && existingMetadata.language.trim()
+      ? existingMetadata.language.trim()
+      : "English";
+  const existingTags = Array.isArray(existingMetadata.tags)
+    ? existingMetadata.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean)
+    : Array.isArray(existing.tags)
+      ? existing.tags
+      : [];
+
+  const fileField = formData.get("file");
+  let filename: string | null = null;
+  if (fileField instanceof Blob && fileField.size > 0) {
+    const fileResult = await processQuestionPaperFile({
+      file: fileField,
+      paperId: id,
+    });
+    sourceUrl = fileResult.sourceUrl;
+    content = fileResult.content;
+    parseError = fileResult.parseError;
+    filename = fileResult.filename;
+  }
+
+  const derivedTitle = filename ? normalizeFilenameTitle(filename) : "";
+  const derivedYear =
+    resolveYearFromText(content) ?? (filename ? resolveYearFromText(filename) : null) ?? 0;
+  const exam = examInput || existingExam || UNKNOWN_LABEL;
+  const role = roleInput || existingRole || UNKNOWN_LABEL;
+  const year =
+    Number.isFinite(yearInput) && yearInput > 0
+      ? yearInput
+      : derivedYear || existingYear || 0;
+  const paperTitle =
+    paperTitleInput || existingTitle || derivedTitle || DEFAULT_QUESTION_PAPER_TITLE;
+  const language = languageInput || existingLanguage || "English";
+  const tags = tagsInput.length > 0 ? tagsInput : existingTags;
+
+  const metadata = buildQuestionPaperMetadata({
+    exam,
+    role,
+    year,
+    paperId: id,
+    paperTitle,
+    language,
+    tags,
+    parseError,
+  });
+
+  const updatedEntry = await updateRagEntry({
+    id,
+    actorId: actor.id,
+    input: {
+      title: paperTitle,
+      content,
+      type: "document",
+      status,
+      tags,
+      models: Array.isArray(existing.models) ? existing.models : [],
+      sourceUrl,
+      metadata,
+      categoryId: existing.categoryId,
+    },
+  });
+
+  const updated = await getQuestionPaperById({ id, includeInactive: true });
+  const resolvedUpdated =
+    updated ??
+    ({
+      id: updatedEntry.id,
+      title: paperTitle,
+      exam,
+      role,
+      year,
+      language,
+      tags,
+      sourceUrl: updatedEntry.sourceUrl ?? null,
+      status: updatedEntry.status,
+      parseError,
+      createdAt:
+        updatedEntry.createdAt instanceof Date
+          ? updatedEntry.createdAt
+          : new Date(updatedEntry.createdAt),
+      updatedAt:
+        updatedEntry.updatedAt instanceof Date
+          ? updatedEntry.updatedAt
+          : new Date(updatedEntry.updatedAt),
+    } as QuestionPaperRecord);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "study.question_paper.update",
+    target: { questionPaperId: id },
+    metadata: { exam, role, year, status },
+  });
+
+  revalidateAdminPath(
+    "/admin/study/question-papers",
+    "study.question_paper.update"
+  );
+  return serializeQuestionPaper(resolvedUpdated);
+}
+
+export async function deleteQuestionPaperAction({ id }: { id: string }) {
+  "use server";
+  const actor = await requireAdmin();
+
+  if (!id) {
+    throw new Error("Question paper id is required.");
+  }
+
+  const entries = await listQuestionPaperEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Question paper not found.");
+  }
+
+  await deleteRagEntries({ ids: [id], actorId: actor.id });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "study.question_paper.delete",
+    target: { questionPaperId: id },
+  });
+
+  revalidateAdminPath(
+    "/admin/study/question-papers",
+    "study.question_paper.delete"
+  );
+}
+
+type SerializedJobPosting = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  sector: "government" | "private" | "unknown";
+  employmentType: string;
+  studyExam: string;
+  studyRole: string;
+  studyYears: number[];
+  studyTags: string[];
+  tags: string[];
+  sourceUrl: string | null;
+  status: RagEntryStatus;
+  parseError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const JOB_POSTING_FALLBACK_CONTENT =
+  "Job posting uploaded, but text extraction failed. Use the attached file.";
+const JOB_POSTING_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_JOB_POSTING_TITLE = "Job posting";
+const IMAGE_EXTENSION_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+};
+
+const normalizeJobPostingTags = (value: FormDataEntryValue | null | undefined) => {
+  const raw = value?.toString() ?? "";
+  const entries = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries));
+  return unique.map((tag) => tag.slice(0, 48)).slice(0, 24);
+};
+
+const normalizeJobPostingStudyTags = (
+  value: FormDataEntryValue | null | undefined
+) => {
+  const raw = value?.toString() ?? "";
+  const entries = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries));
+  return unique.map((tag) => tag.slice(0, 48)).slice(0, 24);
+};
+
+const normalizeJobPostingStudyYears = (
+  value: FormDataEntryValue | null | undefined
+) => {
+  const raw = value?.toString() ?? "";
+  if (!raw.trim()) {
+    return [];
+  }
+
+  const parts = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const parsed = parts
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .map((item) => Math.trunc(item));
+
+  return Array.from(new Set(parsed)).slice(0, 12);
+};
+
+const resolveJobPostingStatus = (
+  value: FormDataEntryValue | null | undefined
+): RagEntryStatus => {
+  const normalized = value?.toString().trim().toLowerCase();
+  if (normalized === "inactive" || normalized === "archived") {
+    return normalized;
+  }
+  return "active";
+};
+
+const serializeJobPosting = (job: JobPostingRecord): SerializedJobPosting => {
+  const serializeDate = (value: Date) =>
+    value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    sector: job.sector,
+    employmentType: job.employmentType,
+    studyExam: job.studyExam,
+    studyRole: job.studyRole,
+    studyYears: job.studyYears,
+    studyTags: job.studyTags,
+    tags: job.tags,
+    sourceUrl: job.sourceUrl ?? null,
+    status: job.status,
+    parseError: job.parseError ?? null,
+    createdAt: serializeDate(job.createdAt),
+    updatedAt: serializeDate(job.updatedAt),
+  };
+};
+
+async function processJobPostingFile({
+  file,
+  jobId,
+}: {
+  file: Blob;
+  jobId: string;
+}) {
+  const mimeType = file.type;
+  const isDocument = isDocumentMimeType(mimeType);
+  const isImage = (IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
+  if (!isDocument && !isImage) {
+    throw new Error("Only PDF, DOCX, JPEG, or PNG files are supported.");
+  }
+  if (file.size > JOB_POSTING_MAX_BYTES) {
+    throw new Error("File size must be under 25MB.");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const filename =
+    "name" in file && typeof file.name === "string" ? file.name : "document";
+
+  let content = JOB_POSTING_FALLBACK_CONTENT;
+  let parseError: string | null = null;
+
+  if (isDocument) {
+    try {
+      const parsed = await extractDocumentTextFromBuffer(
+        {
+          name: filename,
+          buffer,
+          mediaType: mimeType,
+        },
+        { maxTextChars: JOB_POSTING_MAX_TEXT_CHARS }
+      );
+      content = parsed.text;
+    } catch (error) {
+      parseError =
+        error instanceof Error ? error.message : "Unable to extract document text.";
+    }
+  } else {
+    parseError = "Image uploaded without OCR extraction.";
+  }
+
+  const extension = isDocument
+    ? DOCUMENT_EXTENSION_BY_MIME[mimeType]
+    : IMAGE_EXTENSION_BY_MIME[mimeType];
+  if (!extension) {
+    throw new Error("Unsupported file type.");
+  }
+
+  const objectKey = `jobs/postings/${jobId}/${crypto.randomUUID()}.${extension}`;
+  const blob = await put(objectKey, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return {
+    sourceUrl: blob.url,
+    content,
+    parseError,
+    filename,
+  };
+}
+
+export async function createJobPostingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const companyInput = formData.get("company")?.toString().trim() ?? "";
+  const locationInput = formData.get("location")?.toString().trim() ?? "";
+  const employmentTypeInput =
+    formData.get("employmentType")?.toString().trim() ?? "";
+  const studyExamInput = formData.get("studyExam")?.toString().trim() ?? "";
+  const studyRoleInput = formData.get("studyRole")?.toString().trim() ?? "";
+  const studyYears = normalizeJobPostingStudyYears(formData.get("studyYears"));
+  const studyTags = normalizeJobPostingStudyTags(formData.get("studyTags"));
+  const jobTitleInput = formData.get("jobTitle")?.toString().trim() ?? "";
+  const tags = normalizeJobPostingTags(formData.get("tags"));
+  const status = resolveJobPostingStatus(formData.get("status"));
+
+  const fileField = formData.get("file");
+  if (!(fileField instanceof Blob)) {
+    throw new Error("Job posting file is required.");
+  }
+  if (!studyExamInput || !studyRoleInput) {
+    throw new Error("Study exam and Study role are required for job-study integration.");
+  }
+
+  const jobId = generateUUID();
+  const fileResult = await processJobPostingFile({
+    file: fileField,
+    jobId,
+  });
+  const derivedTitle = normalizeFilenameTitle(fileResult.filename);
+  const company = companyInput || UNKNOWN_LABEL;
+  const location = locationInput || UNKNOWN_LABEL;
+  const employmentType = employmentTypeInput || UNKNOWN_LABEL;
+  const studyExam = studyExamInput || UNKNOWN_LABEL;
+  const studyRole = studyRoleInput || UNKNOWN_LABEL;
+  const jobTitle = jobTitleInput || derivedTitle || DEFAULT_JOB_POSTING_TITLE;
+  const normalizedTitle = normalizePaperTitle(jobTitle);
+  const normalizedCompany = normalizePaperTitle(company);
+  const existingEntries = await listJobPostingEntries({ includeInactive: true });
+  const duplicate = existingEntries.find((entry) => {
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+    const metaTitle = typeof metadata.job_title === "string" ? metadata.job_title : "";
+    const metaCompany = typeof metadata.company === "string" ? metadata.company : "";
+    const titleToCheck = metaTitle || entry.title || "";
+    const companyToCheck = metaCompany || entry.company || "";
+    return (
+      normalizePaperTitle(titleToCheck) === normalizedTitle &&
+      normalizePaperTitle(companyToCheck) === normalizedCompany
+    );
+  });
+  if (duplicate) {
+    throw new Error("A job posting with the same title already exists for this company.");
+  }
+
+  const metadata = buildJobPostingMetadata({
+    jobId,
+    jobTitle,
+    company,
+    location,
+    employmentType,
+    sourceUrl: fileResult.sourceUrl,
+    description: fileResult.content,
+    studyExam,
+    studyRole,
+    studyYears,
+    studyTags,
+    tags,
+    parseError: fileResult.parseError,
+  });
+
+  const createdEntry = await createRagEntry({
+    actorId: actor.id,
+    input: {
+      id: jobId,
+      title: jobTitle,
+      content: fileResult.content,
+      type: "document",
+      status,
+      tags,
+      models: [],
+      sourceUrl: fileResult.sourceUrl,
+      metadata,
+    },
+  });
+
+  const created = await getJobPostingById({
+    id: jobId,
+    includeInactive: true,
+  });
+  const resolvedCreated =
+    created ??
+    ({
+      id: createdEntry.id,
+      title: jobTitle,
+      company,
+      location,
+      sector: isJobSector(metadata.sector)
+        ? metadata.sector
+        : resolveJobSector({
+            title: jobTitle,
+            company,
+            sourceUrl: fileResult.sourceUrl,
+            description: fileResult.content,
+            tags,
+          }),
+      employmentType: resolveJobType(
+        isJobSector(metadata.sector)
+          ? metadata.sector
+          : resolveJobSector({
+              title: jobTitle,
+              company,
+              sourceUrl: fileResult.sourceUrl,
+              description: fileResult.content,
+              tags,
+            })
+      ),
+      studyExam,
+      studyRole,
+      studyYears,
+      studyTags,
+      tags,
+      sourceUrl: createdEntry.sourceUrl ?? null,
+      status: createdEntry.status,
+      parseError: fileResult.parseError ?? null,
+      createdAt:
+        createdEntry.createdAt instanceof Date
+          ? createdEntry.createdAt
+          : new Date(createdEntry.createdAt),
+      updatedAt:
+        createdEntry.updatedAt instanceof Date
+          ? createdEntry.updatedAt
+          : new Date(createdEntry.updatedAt),
+    } as JobPostingRecord);
+  const resolvedCreatedEmploymentType = resolveJobType(
+    isJobSector(metadata.sector)
+      ? metadata.sector
+      : resolveJobSector({
+          title: jobTitle,
+          company,
+          sourceUrl: fileResult.sourceUrl,
+          description: fileResult.content,
+          tags,
+        })
+  );
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "jobs.posting.create",
+    target: { jobPostingId: jobId },
+    metadata: {
+      company,
+      location,
+      employmentType: resolvedCreatedEmploymentType,
+      studyExam,
+      studyRole,
+      studyYears,
+      status,
+    },
+  });
+
+  revalidateAdminPath("/admin/jobs", "jobs.posting.create");
+  return serializeJobPosting(resolvedCreated);
+}
+
+export async function updateJobPostingAction(formData: FormData) {
+  "use server";
+  const actor = await requireAdmin();
+
+  const id = formData.get("id")?.toString().trim() ?? "";
+  if (!id) {
+    throw new Error("Job posting id is required.");
+  }
+
+  const entries = await listJobPostingEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Job posting not found.");
+  }
+
+  const companyInput = formData.get("company")?.toString().trim() ?? "";
+  const locationInput = formData.get("location")?.toString().trim() ?? "";
+  const employmentTypeInput =
+    formData.get("employmentType")?.toString().trim() ?? "";
+  const studyExamInput = formData.get("studyExam")?.toString().trim() ?? "";
+  const studyRoleInput = formData.get("studyRole")?.toString().trim() ?? "";
+  const studyYearsInput = normalizeJobPostingStudyYears(formData.get("studyYears"));
+  const studyTagsInput = normalizeJobPostingStudyTags(formData.get("studyTags"));
+  const jobTitleInput = formData.get("jobTitle")?.toString().trim() ?? "";
+  const tagsInput = normalizeJobPostingTags(formData.get("tags"));
+  const status = resolveJobPostingStatus(formData.get("status"));
+
+  let sourceUrl = existing.sourceUrl ?? null;
+  let content = existing.content;
+  const existingMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
+  let parseError =
+    typeof existingMetadata.parse_error === "string"
+      ? existingMetadata.parse_error
+      : null;
+  const existingCompany =
+    typeof existingMetadata.company === "string" && existingMetadata.company.trim()
+      ? existingMetadata.company.trim()
+      : "";
+  const existingLocation =
+    typeof existingMetadata.location === "string" && existingMetadata.location.trim()
+      ? existingMetadata.location.trim()
+      : "";
+  const existingEmploymentType =
+    typeof existingMetadata.employment_type === "string" &&
+    existingMetadata.employment_type.trim()
+      ? existingMetadata.employment_type.trim()
+      : "";
+  const existingStudyExam =
+    typeof existingMetadata.study_exam === "string" &&
+    existingMetadata.study_exam.trim()
+      ? existingMetadata.study_exam.trim()
+      : typeof existingMetadata.exam === "string" && existingMetadata.exam.trim()
+        ? existingMetadata.exam.trim()
+        : "";
+  const existingStudyRole =
+    typeof existingMetadata.study_role === "string" &&
+    existingMetadata.study_role.trim()
+      ? existingMetadata.study_role.trim()
+      : typeof existingMetadata.role === "string" && existingMetadata.role.trim()
+        ? existingMetadata.role.trim()
+        : "";
+  const existingStudyYearsRaw = Array.isArray(existingMetadata.study_years)
+    ? existingMetadata.study_years
+    : Array.isArray(existingMetadata.years)
+      ? existingMetadata.years
+      : [];
+  const existingStudyYears = Array.from(
+    new Set(
+      existingStudyYearsRaw
+        .map((value) => {
+          if (typeof value === "number" && Number.isFinite(value)) {
+            return Math.trunc(value);
+          }
+          if (typeof value === "string") {
+            const parsed = Number.parseInt(value.trim(), 10);
+            return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+          }
+          return null;
+        })
+        .filter((value): value is number => Boolean(value && value > 0))
+    )
+  );
+  const existingStudyTags = Array.isArray(existingMetadata.study_tags)
+    ? existingMetadata.study_tags
+        .filter((tag) => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    : [];
+  const existingTitle =
+    typeof existingMetadata.job_title === "string" && existingMetadata.job_title.trim()
+      ? existingMetadata.job_title.trim()
+      : existing.title?.trim() ?? "";
+  const existingTags = Array.isArray(existingMetadata.tags)
+    ? existingMetadata.tags
+        .filter((tag) => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    : Array.isArray(existing.tags)
+      ? existing.tags
+      : [];
+
+  const fileField = formData.get("file");
+  let filename: string | null = null;
+  if (fileField instanceof Blob && fileField.size > 0) {
+    const fileResult = await processJobPostingFile({
+      file: fileField,
+      jobId: id,
+    });
+    sourceUrl = fileResult.sourceUrl;
+    content = fileResult.content;
+    parseError = fileResult.parseError;
+    filename = fileResult.filename;
+  }
+
+  const derivedTitle = filename ? normalizeFilenameTitle(filename) : "";
+  const company = companyInput || existingCompany || UNKNOWN_LABEL;
+  const location = locationInput || existingLocation || UNKNOWN_LABEL;
+  const employmentType =
+    employmentTypeInput || existingEmploymentType || UNKNOWN_LABEL;
+  const studyExam = studyExamInput || existingStudyExam || UNKNOWN_LABEL;
+  const studyRole = studyRoleInput || existingStudyRole || UNKNOWN_LABEL;
+  if (
+    !studyExam.trim() ||
+    !studyRole.trim() ||
+    studyExam.trim().toLowerCase() === "unknown" ||
+    studyRole.trim().toLowerCase() === "unknown"
+  ) {
+    throw new Error("Study exam and Study role are required for job-study integration.");
+  }
+  const studyYears =
+    studyYearsInput.length > 0 ? studyYearsInput : existingStudyYears;
+  const studyTags = studyTagsInput.length > 0 ? studyTagsInput : existingStudyTags;
+  const jobTitle = jobTitleInput || existingTitle || derivedTitle || DEFAULT_JOB_POSTING_TITLE;
+  const tags = tagsInput.length > 0 ? tagsInput : existingTags;
+
+  const metadata = buildJobPostingMetadata({
+    jobId: id,
+    jobTitle,
+    company,
+    location,
+    employmentType,
+    sourceUrl,
+    description: content,
+    studyExam,
+    studyRole,
+    studyYears,
+    studyTags,
+    tags,
+    parseError,
+  });
+
+  const updatedEntry = await updateRagEntry({
+    id,
+    actorId: actor.id,
+    input: {
+      title: jobTitle,
+      content,
+      type: "document",
+      status,
+      tags,
+      models: Array.isArray(existing.models) ? existing.models : [],
+      sourceUrl,
+      metadata,
+      categoryId: existing.categoryId,
+    },
+  });
+
+  const updated = await getJobPostingById({ id, includeInactive: true });
+  const resolvedUpdated =
+    updated ??
+    ({
+      id: updatedEntry.id,
+      title: jobTitle,
+      company,
+      location,
+      sector: isJobSector(metadata.sector)
+        ? metadata.sector
+        : resolveJobSector({
+            title: jobTitle,
+            company,
+            sourceUrl,
+            description: content,
+            tags,
+          }),
+      employmentType: resolveJobType(
+        isJobSector(metadata.sector)
+          ? metadata.sector
+          : resolveJobSector({
+              title: jobTitle,
+              company,
+              sourceUrl,
+              description: content,
+              tags,
+            })
+      ),
+      studyExam,
+      studyRole,
+      studyYears,
+      studyTags,
+      tags,
+      sourceUrl: updatedEntry.sourceUrl ?? null,
+      status: updatedEntry.status,
+      parseError,
+      createdAt:
+        updatedEntry.createdAt instanceof Date
+          ? updatedEntry.createdAt
+          : new Date(updatedEntry.createdAt),
+      updatedAt:
+        updatedEntry.updatedAt instanceof Date
+          ? updatedEntry.updatedAt
+          : new Date(updatedEntry.updatedAt),
+    } as JobPostingRecord);
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "jobs.posting.update",
+    target: { jobPostingId: id },
+    metadata: {
+      company,
+      location,
+      employmentType: resolvedUpdated.employmentType,
+      studyExam,
+      studyRole,
+      studyYears,
+      status,
+    },
+  });
+
+  revalidateAdminPath("/admin/jobs", "jobs.posting.update");
+  return serializeJobPosting(resolvedUpdated);
+}
+
+export async function deleteJobPostingAction({ id }: { id: string }) {
+  "use server";
+  const actor = await requireAdmin();
+
+  if (!id) {
+    throw new Error("Job posting id is required.");
+  }
+
+  const entries = await listJobPostingEntries({ includeInactive: true });
+  const existing = entries.find((entry) => entry.id === id);
+  if (!existing) {
+    throw new Error("Job posting not found.");
+  }
+
+  await deleteRagEntries({ ids: [id], actorId: actor.id });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "jobs.posting.delete",
+    target: { jobPostingId: id },
+  });
+
+  revalidateAdminPath("/admin/jobs", "jobs.posting.delete");
+}
+
+function sanitizeAliasList(values: string[]) {
+  const unique = new Set<string>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed) {
+      unique.add(trimmed);
+    }
+  }
+  return Array.from(unique);
+}
+
+function sanitizeOptionalText(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeRefImages(refImages: CharacterRefImage[]) {
+  return refImages
+    .map((ref) => ({
+      imageId: ref.imageId?.trim() || null,
+      storageKey: ref.storageKey?.trim() || null,
+      url: ref.url?.trim() || null,
+      mimeType: ref.mimeType?.trim() || "image/png",
+      role: ref.role?.trim() || null,
+      isPrimary: Boolean(ref.isPrimary),
+      updatedAt: ref.updatedAt?.trim() || new Date().toISOString(),
+    }))
+    .filter((ref) => ref.url || ref.storageKey || ref.imageId);
+}
+
+export async function createCharacterAction({
+  canonicalName,
+  aliases,
+  refImages,
+  lockedPrompt,
+  negativePrompt,
+  gender,
+  height,
+  weight,
+  complexion,
+  priority,
+  enabled,
+}: {
+  canonicalName: string;
+  aliases: string[];
+  refImages: CharacterRefImage[];
+  lockedPrompt?: string | null;
+  negativePrompt?: string | null;
+  gender?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  complexion?: string | null;
+  priority?: number;
+  enabled?: boolean;
+}) {
+  await requireAdmin();
+
+  const trimmedName = canonicalName.trim();
+  if (!trimmedName) {
+    throw new Error("Canonical name is required.");
+  }
+
+  const sanitizedAliases = sanitizeAliasList(aliases);
+  const sanitizedRefImages = sanitizeRefImages(refImages);
+
+  const character = await createCharacterWithAliases({
+    canonicalName: trimmedName,
+    aliases: sanitizedAliases,
+    refImages: sanitizedRefImages,
+    lockedPrompt: sanitizeOptionalText(lockedPrompt),
+    negativePrompt: sanitizeOptionalText(negativePrompt),
+    gender: sanitizeOptionalText(gender),
+    height: sanitizeOptionalText(height),
+    weight: sanitizeOptionalText(weight),
+    complexion: sanitizeOptionalText(complexion),
+    priority: Number.isFinite(priority) ? Number(priority) : 0,
+    enabled: enabled ?? true,
+  });
+
+  revalidateAdminPath("/admin/characters", "character.create");
+  return character;
+}
+
+export async function updateCharacterAction({
+  id,
+  canonicalName,
+  aliases,
+  refImages,
+  lockedPrompt,
+  negativePrompt,
+  gender,
+  height,
+  weight,
+  complexion,
+  priority,
+  enabled,
+}: {
+  id: string;
+  canonicalName: string;
+  aliases: string[];
+  refImages: CharacterRefImage[];
+  lockedPrompt?: string | null;
+  negativePrompt?: string | null;
+  gender?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  complexion?: string | null;
+  priority?: number;
+  enabled?: boolean;
+}) {
+  await requireAdmin();
+
+  const trimmedName = canonicalName.trim();
+  if (!trimmedName) {
+    throw new Error("Canonical name is required.");
+  }
+
+  const sanitizedAliases = sanitizeAliasList(aliases);
+  const sanitizedRefImages = sanitizeRefImages(refImages);
+
+  const character = await updateCharacterWithAliases({
+    id,
+    canonicalName: trimmedName,
+    aliases: sanitizedAliases,
+    refImages: sanitizedRefImages,
+    lockedPrompt: sanitizeOptionalText(lockedPrompt),
+    negativePrompt: sanitizeOptionalText(negativePrompt),
+    gender: sanitizeOptionalText(gender),
+    height: sanitizeOptionalText(height),
+    weight: sanitizeOptionalText(weight),
+    complexion: sanitizeOptionalText(complexion),
+    priority: Number.isFinite(priority) ? Number(priority) : 0,
+    enabled: enabled ?? true,
+  });
+
+  revalidateAdminPath("/admin/characters", "character.update");
+  return character;
+}
+
+export async function deleteCharacterAction({ id }: { id: string }) {
+  await requireAdmin();
+  await deleteCharacterById(id);
+  revalidateAdminPath("/admin/characters", "character.delete");
+}
+
+export async function bulkUpdateRagEntryStatusAction({
+  ids,
+  status,
+}: {
+  ids: string[];
+  status: RagEntryStatus;
+}) {
+  const actor = await requireAdmin();
+  const updated = await bulkUpdateRagStatus({
+    ids,
+    status,
+    actorId: actor.id,
+  });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.entry.bulk_status",
+    target: { ragEntryIds: ids },
+    metadata: { status, count: updated.length },
+  });
+
+  revalidateAdminPath("/admin/rag", "rag.entry.bulk_status");
+  return updated;
+}
+
+export async function deleteRagEntriesAction({ ids }: { ids: string[] }) {
+  const actor = await requireAdmin();
+  await deleteRagEntries({ ids, actorId: actor.id, customOnly: true });
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.entry.archive",
+    target: { ragEntryIds: ids },
+    metadata: { count: ids.length },
+  });
+  revalidateAdminPath("/admin/rag", "rag.entry.archive");
+}
+
+export async function restoreRagEntryAction({ id }: { id: string }) {
+  const actor = await requireAdmin();
+  await restoreRagEntry({ id, actorId: actor.id });
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.entry.restore",
+    target: { ragEntryId: id },
+  });
+  revalidateAdminPath("/admin/rag", "rag.entry.restore");
+}
+
+export async function restoreRagVersionAction({
+  entryId,
+  versionId,
+}: {
+  entryId: string;
+  versionId: string;
+}) {
+  const actor = await requireAdmin();
+  await restoreRagVersion({ entryId, versionId, actorId: actor.id });
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.entry.version.restore",
+    target: { ragEntryId: entryId, versionId },
+  });
+  revalidateAdminPath("/admin/rag", "rag.entry.version.restore");
+}
+
+export async function createRagCategoryAction(name: string) {
+  const actor = await requireAdmin();
+  const category = await createRagCategory({ name });
+
+  await createAuditLogEntrySafely({
+    actorId: actor.id,
+    action: "rag.category.create",
+    target: { ragCategoryId: category.id },
+    metadata: { name: category.name },
+  });
+
+  revalidateAdminPath("/admin/rag", "rag.category.create");
+  return category;
+}

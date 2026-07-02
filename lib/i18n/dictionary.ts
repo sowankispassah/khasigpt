@@ -1,24 +1,51 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { revalidateTag, unstable_cache } from "next/cache";
 
 import {
+  appSettingCacheTagForKey,
   db,
   deleteAppSetting,
   getAppSetting,
   setAppSetting,
 } from "@/lib/db/queries";
-import {
-  translationKey,
-  translationValue,
-} from "@/lib/db/schema";
+import { translationKey, translationValue } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
-import { withTimeout } from "@/lib/utils/async";
 
-import { getAllLanguages, resolveLanguage, type LanguageOption } from "./languages";
+import {
+  getAllLanguages,
+  type LanguageOption,
+  resolveLanguage,
+} from "./languages";
 
 export type TranslationDefinition = {
   key: string;
   defaultText: string;
   description?: string;
+};
+
+const LANGUAGE_FALLBACK_DICTIONARIES: Record<string, Record<string, string>> = {
+  kha: {
+    "recharge.dialog.title": "Peit bniah ïa ka jingrecharge",
+    "recharge.dialog.description":
+      "Pynshisha ïa ki bynta jong ka plan bad pyndap ïa ka coupon shwa ban bteng sha ka jingsiew.",
+    "recharge.dialog.plan_placeholder": "Ka plan kaba phi la jied",
+    "recharge.plan.validity": "Ka jingtreikam: {days} sngi",
+    "recharge.dialog.summary.discount": "Ka jingduna na ka coupon",
+    "recharge.dialog.summary.total": "Ka bai baroh",
+    "recharge.dialog.coupon_label": "Code jong ka coupon",
+    "recharge.dialog.coupon_helper":
+      "Ka coupon kam dei kaba hap ban pyndonkam. Iehtylli lada phim don.",
+    "recharge.dialog.coupon_required": "Tiep ïa u code coupon ban pynshisha.",
+    "recharge.dialog.coupon_invalid": "Ka coupon ka bakla ne la kut por.",
+    "recharge.dialog.coupon_applied": "La pyndonkam ïa ka coupon katba dei.",
+    "recharge.dialog.validate": "Pynshisha ïa ka coupon",
+    "recharge.dialog.validating": "Dang pynshisha...",
+    "recharge.dialog.proceed": "Bteng sha ka jingsiew",
+    "greeting.subtitle": "Kaei nga lah ban iarap ia phi mynta?",
+    "chat.input.placeholder": "Send iaka message...",
+    "chat.disclaimer.text": "Ka KhasiGPT ne kiwei pat ki AI models ki lah ban bakla. Peit ia ki jingtip kiba kongsan.",
+    "chat.disclaimer.privacy_link": "Pule Privacy Policy.",
+  },
 };
 
 const FALLBACK_LANGUAGE: LanguageOption = {
@@ -27,7 +54,20 @@ const FALLBACK_LANGUAGE: LanguageOption = {
   name: "English",
   isDefault: true,
   isActive: true,
+  syncUiLanguage: true,
 };
+
+const FALLBACK_LANGUAGES: LanguageOption[] = [
+  FALLBACK_LANGUAGE,
+  {
+    id: "fallback-kha",
+    code: "kha",
+    name: "Khasi",
+    isDefault: false,
+    isActive: true,
+    syncUiLanguage: true,
+  },
+];
 
 const STATIC_DICTIONARY_BASE = Object.freeze(
   STATIC_TRANSLATION_DEFINITIONS.reduce<Record<string, string>>(
@@ -43,21 +83,14 @@ const mergeWithStaticDictionary = (dictionary: Record<string, string>) => {
   return { ...STATIC_DICTIONARY_BASE, ...dictionary };
 };
 
-const parsedTimeout = Number.parseInt(
-  process.env.TRANSLATION_QUERY_TIMEOUT_MS ?? "2000",
-  10
-);
-const TRANSLATION_QUERY_TIMEOUT_MS =
-  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 2000;
-
 const parsedInitialTimeout = Number.parseInt(
-  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "5000",
+  process.env.TRANSLATION_INITIAL_TIMEOUT_MS ?? "2500",
   10
 );
 const TRANSLATION_INITIAL_TIMEOUT_MS =
   Number.isFinite(parsedInitialTimeout) && parsedInitialTimeout > 0
     ? parsedInitialTimeout
-    : 5000;
+    : 2500;
 
 const parsedCacheTtl = Number.parseInt(
   process.env.TRANSLATION_CACHE_TTL_MS ?? `${1000 * 60 * 60 * 6}`,
@@ -67,14 +100,87 @@ const TRANSLATION_CACHE_TTL_MS =
   Number.isFinite(parsedCacheTtl) && parsedCacheTtl > 0
     ? parsedCacheTtl
     : 1000 * 60 * 60 * 6;
+const parsedMemoryCacheTtl = Number.parseInt(
+  process.env.TRANSLATION_MEMORY_CACHE_TTL_MS ?? `${1000 * 60}`,
+  10
+);
+const TRANSLATION_MEMORY_CACHE_TTL_MS =
+  Number.isFinite(parsedMemoryCacheTtl) && parsedMemoryCacheTtl > 0
+    ? parsedMemoryCacheTtl
+    : 1000 * 60;
+
+const parsedFailureCooldown = Number.parseInt(
+  process.env.TRANSLATION_FAILURE_COOLDOWN_MS ?? "30000",
+  10
+);
+const TRANSLATION_FAILURE_COOLDOWN_MS =
+  Number.isFinite(parsedFailureCooldown) && parsedFailureCooldown > 0
+    ? parsedFailureCooldown
+    : 30000;
 
 const TRANSLATION_CACHE_PREFIX = "translation_bundle:";
+export const TRANSLATION_BUNDLE_CACHE_TAG = "translation-bundles";
+const LANGUAGE_CACHE_KEY_REGEX = /^[a-z0-9-]{2,16}$/;
 
+const SHOULD_LOG_TRANSLATION_ERRORS =
+  typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 
+let translationDbBlockedUntil = 0;
+
+const isProductionBuildPhase = () =>
+  typeof process !== "undefined" &&
+  (process.env.APP_BUILD_PHASE === "production-build" ||
+    process.env.NEXT_PHASE === "phase-production-build");
+
+function shouldSkipTranslationDb() {
+  return isProductionBuildPhase() || Date.now() < translationDbBlockedUntil;
+}
+
+function markTranslationDbFailure() {
+  translationDbBlockedUntil =
+    Date.now() + Math.max(TRANSLATION_FAILURE_COOLDOWN_MS, 0);
+}
+
+function clearTranslationDbFailure() {
+  translationDbBlockedUntil = 0;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  if (error instanceof Error) {
+    return error.message === "timeout";
+  }
+  if (typeof error === "object" && "message" in error) {
+    return (
+      String((error as { message?: unknown }).message ?? "") === "timeout"
+    );
+  }
+  return false;
+}
+
+function shouldMarkTranslationDbFailure(error: unknown): boolean {
+  return !isTimeoutError(error);
+}
+
+function logTranslationError(message: string, error: unknown) {
+  if (isTimeoutError(error)) {
+    return;
+  }
+  if (SHOULD_LOG_TRANSLATION_ERRORS) {
+    console.error(message, error);
+  }
+}
 
 export async function registerTranslationKeys(
-  definitions: TranslationDefinition[]
+  definitions: TranslationDefinition[],
+  options: { invalidateCache?: boolean } = {}
 ) {
+  if (isProductionBuildPhase()) {
+    return;
+  }
+
   if (!definitions.length) {
     return;
   }
@@ -109,10 +215,7 @@ export async function registerTranslationKeys(
         return true;
       }
 
-      return (
-        current.defaultText !== definition.defaultText ||
-        current.description !== description
-      );
+      return current.description !== description;
     });
 
     if (!definitionsToSync.length) {
@@ -131,13 +234,14 @@ export async function registerTranslationKeys(
       .onConflictDoUpdate({
         target: translationKey.key,
         set: {
-          defaultText: sql`excluded."defaultText"`,
           description: sql`excluded."description"`,
           updatedAt: sql`now()`,
         },
       });
 
-    await invalidateTranslationBundleCache();
+    if (options.invalidateCache !== false) {
+      await invalidateTranslationBundleCache();
+    }
   } catch (error) {
     console.error("[i18n] Failed to register translation keys.", error);
   }
@@ -167,14 +271,29 @@ async function loadTranslationBundle(preferredCode?: string | null) {
     dictionary[row.key] = row.value ?? row.defaultText;
   }
 
+  const languageFallback =
+    LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
+
   return {
     languages,
     activeLanguage,
-    dictionary: mergeWithStaticDictionary(dictionary),
+    dictionary: mergeWithStaticDictionary({
+      ...languageFallback,
+      ...dictionary,
+    }),
   };
 }
 
-type TranslationBundle = {
+const loadTranslationBundleCached = unstable_cache(
+  (preferredCode?: string | null) => loadTranslationBundle(preferredCode),
+  ["translation-bundle"],
+  {
+    revalidate: Math.max(1, Math.floor(TRANSLATION_CACHE_TTL_MS / 1000)),
+    tags: [TRANSLATION_BUNDLE_CACHE_TAG, "languages"],
+  }
+);
+
+export type TranslationBundle = {
   languages: LanguageOption[];
   activeLanguage: LanguageOption;
   dictionary: Record<string, string>;
@@ -182,7 +301,9 @@ type TranslationBundle = {
 
 type CachedBundle = {
   data: TranslationBundle;
+  cachedAt: number;
   inflight?: Promise<void>;
+  source: "db" | "fallback" | "patched" | "persisted";
 };
 
 type PersistedBundle = TranslationBundle & {
@@ -191,29 +312,89 @@ type PersistedBundle = TranslationBundle & {
 
 const BUNDLE_CACHE = new Map<string, CachedBundle>();
 
-const FALLBACK_BUNDLE: TranslationBundle = {
-  languages: [FALLBACK_LANGUAGE],
-  activeLanguage: FALLBACK_LANGUAGE,
-  dictionary: mergeWithStaticDictionary({}),
+const buildFallbackBundle = (
+  preferredCode?: string | null
+): TranslationBundle => {
+  const normalizedCode = preferredCode?.trim().toLowerCase() ?? null;
+  const fallbackMatch = normalizedCode
+    ? FALLBACK_LANGUAGES.find((entry) => entry.code === normalizedCode)
+    : null;
+  const activeLanguage =
+    fallbackMatch ??
+    (normalizedCode
+      ? {
+          id: `fallback-${normalizedCode}`,
+          code: normalizedCode,
+          name: normalizedCode.toUpperCase(),
+          isDefault: false,
+          isActive: true,
+          syncUiLanguage: false,
+        }
+      : FALLBACK_LANGUAGE);
+  const languageFallback =
+    LANGUAGE_FALLBACK_DICTIONARIES[activeLanguage.code] ?? {};
+
+  return {
+    languages: fallbackMatch
+      ? [...FALLBACK_LANGUAGES]
+      : normalizedCode
+        ? [...FALLBACK_LANGUAGES, activeLanguage]
+        : [...FALLBACK_LANGUAGES],
+    activeLanguage,
+    dictionary: mergeWithStaticDictionary(languageFallback),
+  };
 };
 
+const FALLBACK_BUNDLE: TranslationBundle = buildFallbackBundle();
+
+export function getFallbackTranslationBundle(preferredCode?: string | null) {
+  return typeof preferredCode === "string" && preferredCode.trim().length > 0
+    ? buildFallbackBundle(preferredCode)
+    : FALLBACK_BUNDLE;
+}
+
 const skipTranslationCache =
+  typeof process !== "undefined" && process.env.SKIP_TRANSLATION_CACHE === "1";
+const usePersistedTranslationCache =
   typeof process !== "undefined" &&
-  process.env.SKIP_TRANSLATION_CACHE === "1";
+  process.env.TRANSLATION_PERSISTED_CACHE === "1";
 
 async function persistBundle(key: string, bundle: TranslationBundle) {
+  if (!usePersistedTranslationCache) {
+    return;
+  }
+
+  if (key !== "__default" && bundle.activeLanguage.code !== key) {
+    console.warn("[i18n] Skipping persisted translation bundle for unresolved language.", {
+      activeLanguage: bundle.activeLanguage.code,
+      cacheKey: key,
+    });
+    return;
+  }
+
   await setAppSetting({
     key: `${TRANSLATION_CACHE_PREFIX}${key}`,
     value: {
       ...bundle,
       cachedAt: new Date().toISOString(),
     } satisfies PersistedBundle,
+  }, {
+    revalidateCache: false,
   });
+}
+
+function revalidatePersistedBundle(key: string) {
+  const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
+  revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
 }
 
 async function readPersistedBundle(
   key: string
 ): Promise<PersistedBundle | null> {
+  if (!usePersistedTranslationCache) {
+    return null;
+  }
+
   const stored = await getAppSetting<PersistedBundle>(
     `${TRANSLATION_CACHE_PREFIX}${key}`
   );
@@ -226,12 +407,140 @@ async function readPersistedBundle(
     return null;
   }
 
+  const hasSyncUiLanguageFlag = (value: unknown) => {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    return typeof (value as { syncUiLanguage?: unknown }).syncUiLanguage === "boolean";
+  };
+
+  if (
+    !hasSyncUiLanguageFlag(stored.activeLanguage) ||
+    !Array.isArray(stored.languages) ||
+    stored.languages.some((language) => !hasSyncUiLanguageFlag(language))
+  ) {
+    return null;
+  }
+
   return stored;
 }
 
 function cacheKeyForLanguage(code?: string | null) {
   const normalized = code?.trim().toLowerCase();
-  return normalized && normalized.length > 0 ? normalized : "__default";
+  if (!normalized || normalized.length === 0) {
+    return "__default";
+  }
+  return LANGUAGE_CACHE_KEY_REGEX.test(normalized) ? normalized : "__default";
+}
+
+export async function patchTranslationBundleCacheEntry({
+  defaultText,
+  key,
+  languageCode,
+  text,
+}: {
+  defaultText: string;
+  key: string;
+  languageCode: string;
+  text: string;
+}) {
+  const cacheKey = cacheKeyForLanguage(languageCode);
+  const cachedEntry = BUNDLE_CACHE.get(cacheKey);
+  const cached = cachedEntry?.data;
+  const persisted = cached
+    ? null
+    : await readPersistedBundle(cacheKey).catch((error) => {
+        logTranslationError(
+          `[i18n] Failed to read persisted translation bundle before patching "${key}".`,
+          error
+        );
+        return null;
+      });
+  let bundle: TranslationBundle | null = cached ?? null;
+  if (!bundle && persisted) {
+    const { cachedAt: _cachedAt, ...rest } = persisted;
+    bundle = rest;
+  }
+
+  if (!bundle) {
+    try {
+      bundle = await loadTranslationBundle(languageCode);
+    } catch (error) {
+      logTranslationError(
+        `[i18n] Failed to load full translation bundle before patching "${key}".`,
+        error
+      );
+      return false;
+    }
+  }
+
+  const normalizedBundleLanguage = bundle.activeLanguage.code.trim().toLowerCase();
+  const normalizedTargetLanguage = languageCode.trim().toLowerCase();
+  if (normalizedBundleLanguage !== normalizedTargetLanguage) {
+    console.warn("[i18n] Translation bundle cache patch skipped; language mismatch.", {
+      activeLanguage: bundle.activeLanguage.code,
+      cacheKey,
+      key,
+      languageCode,
+    });
+    return false;
+  }
+
+  const nextBundle: TranslationBundle = {
+    ...bundle,
+    dictionary: {
+      ...bundle.dictionary,
+      [key]: text || defaultText,
+    },
+  };
+
+  BUNDLE_CACHE.set(cacheKey, {
+    data: nextBundle,
+    cachedAt: Date.now(),
+    source: "patched",
+  });
+
+  await persistBundle(cacheKey, nextBundle);
+  revalidateTag(TRANSLATION_BUNDLE_CACHE_TAG, "max");
+  revalidatePersistedBundle(cacheKey);
+
+  console.info("[i18n] Translation bundle cache patched.", {
+    cacheKey,
+    key,
+    languageCode,
+  });
+
+  return true;
+}
+
+export async function getCachedTranslationBundle(
+  preferredCode?: string | null
+): Promise<TranslationBundle | null> {
+  const key = cacheKeyForLanguage(preferredCode);
+  const cached = BUNDLE_CACHE.get(key);
+  if (cached && cached.source !== "fallback") {
+    return cached.data;
+  }
+
+  const persisted = await readPersistedBundle(key).catch((error) => {
+    logTranslationError(
+      `[i18n] Failed to read persisted translation bundle for key "${key}".`,
+      error
+    );
+    return null;
+  });
+  if (!persisted) {
+    return null;
+  }
+
+  const { cachedAt, ...bundle } = persisted;
+  const parsedCachedAt = new Date(cachedAt).getTime();
+  BUNDLE_CACHE.set(key, {
+    data: bundle,
+    cachedAt: Number.isNaN(parsedCachedAt) ? Date.now() : parsedCachedAt,
+    source: "persisted",
+  });
+  return bundle;
 }
 
 function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
@@ -240,23 +549,38 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     return;
   }
 
-  const inflight = withTimeout(
-    loadTranslationBundle(preferredCode),
-    TRANSLATION_QUERY_TIMEOUT_MS,
-    () => {
-      console.warn(
-        `[i18n] Bundle refresh timed out after ${TRANSLATION_QUERY_TIMEOUT_MS}ms for key "${key}".`
-      );
-    }
-  )
-    .then(async (bundle) => {
-      BUNDLE_CACHE.set(key, { data: bundle });
-      await persistBundle(key, bundle).catch((error) => {
-        console.error("[i18n] Failed to persist translation bundle.", error);
+  if (shouldSkipTranslationDb()) {
+    return;
+  }
+
+  const fallbackBundle =
+    typeof preferredCode === "string" && preferredCode.trim().length > 0
+      ? buildFallbackBundle(preferredCode)
+      : FALLBACK_BUNDLE;
+
+  const inflight = loadTranslationBundleCached(preferredCode)
+    .then((bundle) => {
+      clearTranslationDbFailure();
+      BUNDLE_CACHE.set(key, {
+        data: bundle,
+        cachedAt: Date.now(),
+        source: "db",
+      });
+      void persistBundle(key, bundle).catch((error) => {
+        logTranslationError(
+          "[i18n] Failed to persist translation bundle.",
+          error
+        );
       });
     })
     .catch((error) => {
-      console.error("[i18n] Falling back to static translations.", error);
+      if (shouldMarkTranslationDbFailure(error)) {
+        markTranslationDbFailure();
+      }
+      logTranslationError(
+        "[i18n] Falling back to static translations.",
+        error
+      );
     })
     .finally(() => {
       const current = BUNDLE_CACHE.get(key);
@@ -266,12 +590,14 @@ function scheduleBundleRefresh(key: string, preferredCode?: string | null) {
     });
 
   BUNDLE_CACHE.set(key, {
-    data: existing?.data ?? FALLBACK_BUNDLE,
-    inflight: inflight.then(() => {}),
+    data: existing?.data ?? fallbackBundle,
+    cachedAt: existing?.cachedAt ?? Date.now(),
+    inflight: inflight.then(() => {
+      return;
+    }),
+    source: existing?.source ?? "fallback",
   });
 }
-
-scheduleBundleRefresh("__default", null);
 
 export async function getTranslationBundle(
   preferredCode?: string | null
@@ -280,55 +606,116 @@ export async function getTranslationBundle(
   const cached = BUNDLE_CACHE.get(key);
   if (cached) {
     if (!cached.inflight) {
-      const persisted = await readPersistedBundle(key);
-      if (!persisted) {
-        scheduleBundleRefresh(key, preferredCode);
-      } else if (
-        Date.now() - new Date(persisted.cachedAt).getTime() >
-        TRANSLATION_CACHE_TTL_MS
-      ) {
+      if (Date.now() - cached.cachedAt > TRANSLATION_MEMORY_CACHE_TTL_MS) {
         scheduleBundleRefresh(key, preferredCode);
       }
     }
     return cached.data;
   }
 
-  const persisted = await readPersistedBundle(key);
+  if (shouldSkipTranslationDb()) {
+    const fallbackBundle =
+      typeof preferredCode === "string" && preferredCode.trim().length > 0
+        ? buildFallbackBundle(preferredCode)
+        : FALLBACK_BUNDLE;
+    BUNDLE_CACHE.set(key, {
+      data: fallbackBundle,
+      cachedAt: Date.now(),
+      source: "fallback",
+    });
+    return fallbackBundle;
+  }
+
+  const persisted = await readPersistedBundle(key).catch((error) => {
+    logTranslationError(
+      "[i18n] Failed to load persisted translation bundle.",
+      error
+    );
+    markTranslationDbFailure();
+    return null;
+  });
   if (persisted) {
+    clearTranslationDbFailure();
     const { cachedAt, ...bundle } = persisted;
-    BUNDLE_CACHE.set(key, { data: bundle });
-    if (Date.now() - new Date(cachedAt).getTime() > TRANSLATION_CACHE_TTL_MS) {
+    const parsedCachedAt = new Date(cachedAt).getTime();
+    const resolvedCachedAt = Number.isNaN(parsedCachedAt)
+      ? Date.now()
+      : parsedCachedAt;
+    BUNDLE_CACHE.set(key, {
+      data: bundle,
+      cachedAt: resolvedCachedAt,
+      source: "persisted",
+    });
+    if (Date.now() - resolvedCachedAt > TRANSLATION_CACHE_TTL_MS) {
       scheduleBundleRefresh(key, preferredCode);
     }
     return bundle;
   }
 
   try {
-    const bundle = await withTimeout(
-      loadTranslationBundle(preferredCode),
-      TRANSLATION_INITIAL_TIMEOUT_MS,
-      () => {
-        console.warn(
-          `[i18n] Initial bundle load timed out after ${TRANSLATION_INITIAL_TIMEOUT_MS}ms for key "${key}".`
-        );
-      }
-    );
-    BUNDLE_CACHE.set(key, { data: bundle });
-    await persistBundle(key, bundle).catch((error) => {
-      console.error("[i18n] Failed to persist translation bundle.", error);
+    const bundle = await loadTranslationBundleCached(preferredCode);
+    clearTranslationDbFailure();
+    BUNDLE_CACHE.set(key, {
+      data: bundle,
+      cachedAt: Date.now(),
+      source: "db",
+    });
+    void persistBundle(key, bundle).catch((error) => {
+      logTranslationError(
+        "[i18n] Failed to persist translation bundle.",
+        error
+      );
     });
     return bundle;
   } catch (error) {
-    console.error("[i18n] Falling back to static translations.", error);
-    BUNDLE_CACHE.set(key, { data: FALLBACK_BUNDLE });
+    if (shouldMarkTranslationDbFailure(error)) {
+      markTranslationDbFailure();
+    }
+    logTranslationError("[i18n] Falling back to static translations.", error);
+    const fallbackBundle =
+      typeof preferredCode === "string" && preferredCode.trim().length > 0
+        ? buildFallbackBundle(preferredCode)
+        : FALLBACK_BUNDLE;
+    BUNDLE_CACHE.set(key, {
+      data: fallbackBundle,
+      cachedAt: Date.now(),
+      source: "fallback",
+    });
     scheduleBundleRefresh(key, preferredCode);
-    return FALLBACK_BUNDLE;
+    return fallbackBundle;
   }
+}
+
+export async function getFreshTranslationBundle(
+  preferredCode?: string | null,
+  _timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
+): Promise<TranslationBundle> {
+  if (isProductionBuildPhase()) {
+    return typeof preferredCode === "string" && preferredCode.trim().length > 0
+      ? buildFallbackBundle(preferredCode)
+      : FALLBACK_BUNDLE;
+  }
+
+  const key = cacheKeyForLanguage(preferredCode);
+  const bundle = await loadTranslationBundleCached(preferredCode);
+
+  clearTranslationDbFailure();
+  BUNDLE_CACHE.set(key, {
+    data: bundle,
+    cachedAt: Date.now(),
+    source: "db",
+  });
+  void persistBundle(key, bundle).catch((error) => {
+    logTranslationError("[i18n] Failed to persist translation bundle.", error);
+  });
+  return bundle;
 }
 
 export async function invalidateTranslationBundleCache(
   languageCodes?: string[]
 ) {
+  revalidateTag(TRANSLATION_BUNDLE_CACHE_TAG, "max");
+
   const targetSet = new Set<string>();
 
   if (languageCodes && languageCodes.length > 0) {
@@ -349,19 +736,40 @@ export async function invalidateTranslationBundleCache(
     BUNDLE_CACHE.delete(key);
   }
 
-  await Promise.all(
-    targets.map((key) =>
-      deleteAppSetting(`${TRANSLATION_CACHE_PREFIX}${key}`).catch((error) => {
-        console.error(
-          `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
-          error
-        );
+  if (usePersistedTranslationCache) {
+    await Promise.all(
+      targets.map((key) => {
+        const persistedKey = `${TRANSLATION_CACHE_PREFIX}${key}`;
+        return deleteAppSetting(persistedKey, {
+          revalidateCache: false,
+        })
+          .catch((error) => {
+            console.error(
+              `[i18n] Failed to delete persisted translation bundle for key "${key}".`,
+              error
+            );
+          })
+          .finally(() => {
+            revalidateTag(appSettingCacheTagForKey(persistedKey), "max");
+          });
       })
-    )
-  );
+    );
+    return;
+  }
+
+  for (const key of targets) {
+    revalidateTag(
+      appSettingCacheTagForKey(`${TRANSLATION_CACHE_PREFIX}${key}`),
+      "max"
+    );
+  }
 }
 
 export async function publishAllTranslations() {
+  if (isProductionBuildPhase()) {
+    return;
+  }
+
   await registerTranslationKeys(STATIC_TRANSLATION_DEFINITIONS);
   await invalidateTranslationBundleCache();
 
@@ -385,7 +793,7 @@ export async function publishAllTranslations() {
       if (typeof previous === "string") {
         process.env.SKIP_TRANSLATION_CACHE = previous;
       } else {
-        delete process.env.SKIP_TRANSLATION_CACHE;
+        process.env.SKIP_TRANSLATION_CACHE = undefined;
       }
     }
   }
@@ -395,34 +803,34 @@ export async function getTranslationForKey(
   preferredCode: string | null | undefined,
   definition: TranslationDefinition
 ) {
+  if (shouldSkipTranslationDb()) {
+    return definition.defaultText;
+  }
+
   try {
-    const { activeLanguage } = await withTimeout(
-      resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+    const { activeLanguage } = await resolveLanguage(preferredCode);
 
-    const [result] = await withTimeout(
-      db
-        .select({
-          value: translationValue.value,
-          defaultText: translationKey.defaultText,
-        })
-        .from(translationKey)
-        .leftJoin(
-          translationValue,
-          and(
-            eq(translationValue.translationKeyId, translationKey.id),
-            eq(translationValue.languageId, activeLanguage.id)
-          )
+    const [result] = await db
+      .select({
+        value: translationValue.value,
+        defaultText: translationKey.defaultText,
+      })
+      .from(translationKey)
+      .leftJoin(
+        translationValue,
+        and(
+          eq(translationValue.translationKeyId, translationKey.id),
+          eq(translationValue.languageId, activeLanguage.id)
         )
-        .where(eq(translationKey.key, definition.key))
-        .limit(1),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+      )
+      .where(eq(translationKey.key, definition.key))
+      .limit(1);
 
+    clearTranslationDbFailure();
     return result?.value ?? result?.defaultText ?? definition.defaultText;
   } catch (error) {
-    console.error(
+    markTranslationDbFailure();
+    logTranslationError(
       `[i18n] Falling back to default text for translation key "${definition.key}".`,
       error
     );
@@ -438,32 +846,37 @@ export async function getTranslationsForKeys(
     return {};
   }
 
-  try {
-    const { activeLanguage } = await withTimeout(
-      resolveLanguage(preferredCode),
-      TRANSLATION_QUERY_TIMEOUT_MS
+  if (shouldSkipTranslationDb()) {
+    return definitions.reduce<Record<string, string>>(
+      (accumulator, definition) => {
+        accumulator[definition.key] = definition.defaultText;
+        return accumulator;
+      },
+      {}
     );
+  }
+
+  try {
+    const { activeLanguage } = await resolveLanguage(preferredCode);
     const keys = definitions.map((definition) => definition.key);
 
-    const rows = await withTimeout(
-      db
-        .select({
-          key: translationKey.key,
-          defaultText: translationKey.defaultText,
-          value: translationValue.value,
-        })
-        .from(translationKey)
-        .leftJoin(
-          translationValue,
-          and(
-            eq(translationValue.translationKeyId, translationKey.id),
-            eq(translationValue.languageId, activeLanguage.id)
-          )
+    const rows = await db
+      .select({
+        key: translationKey.key,
+        defaultText: translationKey.defaultText,
+        value: translationValue.value,
+      })
+      .from(translationKey)
+      .leftJoin(
+        translationValue,
+        and(
+          eq(translationValue.translationKeyId, translationKey.id),
+          eq(translationValue.languageId, activeLanguage.id)
         )
-        .where(inArray(translationKey.key, keys)),
-      TRANSLATION_QUERY_TIMEOUT_MS
-    );
+      )
+      .where(inArray(translationKey.key, keys));
 
+    clearTranslationDbFailure();
     const result: Record<string, string> = {};
     for (const definition of definitions) {
       const row = rows.find((entry) => entry.key === definition.key);
@@ -473,10 +886,70 @@ export async function getTranslationsForKeys(
 
     return result;
   } catch (error) {
-    console.error("[i18n] Falling back to default texts for bulk translations.", error);
-    return definitions.reduce<Record<string, string>>((accumulator, definition) => {
-      accumulator[definition.key] = definition.defaultText;
-      return accumulator;
+    markTranslationDbFailure();
+    logTranslationError(
+      "[i18n] Falling back to default texts for bulk translations.",
+      error
+    );
+    return definitions.reduce<Record<string, string>>(
+      (accumulator, definition) => {
+        accumulator[definition.key] = definition.defaultText;
+        return accumulator;
+      },
+      {}
+    );
+  }
+}
+
+export async function getTranslationValuesForKeys(
+  preferredCode: string | null | undefined,
+  keys: string[]
+) {
+  const uniqueKeys = Array.from(
+    new Set(keys.map((key) => key.trim()).filter(Boolean))
+  );
+
+  if (!uniqueKeys.length || shouldSkipTranslationDb()) {
+    return {};
+  }
+
+  try {
+    const { activeLanguage } = await resolveLanguage(preferredCode);
+
+    if (activeLanguage.isDefault) {
+      return {};
+    }
+
+    const rows = await db
+      .select({
+        key: translationKey.key,
+        value: translationValue.value,
+      })
+      .from(translationKey)
+      .innerJoin(
+        translationValue,
+        and(
+          eq(translationValue.translationKeyId, translationKey.id),
+          eq(translationValue.languageId, activeLanguage.id)
+        )
+      )
+      .where(inArray(translationKey.key, uniqueKeys));
+
+    clearTranslationDbFailure();
+    return rows.reduce<Record<string, string>>((result, row) => {
+      if (row.value.trim().length > 0) {
+        result[row.key] = row.value;
+      }
+      return result;
     }, {});
+  } catch (error) {
+    if (shouldMarkTranslationDbFailure(error)) {
+      markTranslationDbFailure();
+    }
+    logTranslationError(
+      "[i18n] Failed to load dynamic translation values.",
+      error
+    );
+    return {};
   }
 }
