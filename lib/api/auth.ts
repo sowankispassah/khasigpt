@@ -3,9 +3,12 @@ import "server-only";
 import type { Session } from "next-auth";
 import type { UserRole } from "@/app/(auth)/auth";
 import { auth } from "@/app/(auth)/auth";
-import { getUserById } from "@/lib/db/queries";
-import type { User } from "@/lib/db/schema";
+import {
+  type AuthDbUser,
+  getAuthUserById,
+} from "@/lib/db/auth-queries";
 import { verifyMobileAuthToken } from "@/lib/mobile-auth-token";
+import { withTimeout } from "@/lib/utils/async";
 
 export type AuthenticatedRouteUser = {
   id: string;
@@ -35,7 +38,12 @@ type AuthOptions = {
   allowCookie?: boolean;
   bearerTimeoutMs?: number;
   cookieTimeoutMs?: number;
+  adminLookupTimeoutMs?: number;
 };
+
+const DEFAULT_BEARER_AUTH_TIMEOUT_MS = 2500;
+const DEFAULT_COOKIE_AUTH_TIMEOUT_MS = 4000;
+const DEFAULT_ADMIN_AUTH_LOOKUP_TIMEOUT_MS = 2500;
 
 export class AuthLookupUnavailableError extends Error {
   code = "auth_lookup_unavailable";
@@ -58,7 +66,17 @@ export function getBearerToken(request: Request) {
   return headerToken && headerToken.length > 0 ? headerToken : null;
 }
 
-function createSessionFromUser(user: User): AuthenticatedRouteSession {
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && error.message === "timeout";
+}
+
+function resolveTimeout(value: number | undefined, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
+}
+
+function createSessionFromUser(user: AuthDbUser): AuthenticatedRouteSession {
   const computedName = [user.firstName, user.lastName]
     .filter(Boolean)
     .join(" ")
@@ -113,8 +131,8 @@ export async function getAuthenticatedUser(
   {
     allowBearer = true,
     allowCookie = true,
-    bearerTimeoutMs: _bearerTimeoutMs,
-    cookieTimeoutMs: _cookieTimeoutMs,
+    bearerTimeoutMs,
+    cookieTimeoutMs,
   }: AuthOptions = {}
 ): Promise<AuthenticatedRequestContext | null> {
   if (allowBearer) {
@@ -123,7 +141,7 @@ export async function getAuthenticatedUser(
       const loadBearerContext = async () => {
         const verified = verifyMobileAuthToken(token);
         if (verified) {
-          const user = await getUserById(verified.userId);
+          const user = await getAuthUserById(verified.userId);
           if (user?.isActive) {
             const session = createSessionFromUser(user);
             return {
@@ -135,9 +153,25 @@ export async function getAuthenticatedUser(
         }
         return null;
       };
-      const bearerContext = await loadBearerContext().catch((error) => {
+      const resolvedBearerTimeoutMs = resolveTimeout(
+        bearerTimeoutMs,
+        DEFAULT_BEARER_AUTH_TIMEOUT_MS
+      );
+      const bearerContext = await withTimeout(
+        loadBearerContext(),
+        resolvedBearerTimeoutMs,
+        () => {
+          console.warn(
+            `[api/auth] Bearer auth lookup timed out after ${resolvedBearerTimeoutMs}ms.`
+          );
+        }
+      ).catch((error) => {
         console.warn("[api/auth] Bearer auth lookup failed.", error);
-        throw new AuthLookupUnavailableError();
+        throw new AuthLookupUnavailableError(
+          isTimeoutError(error)
+            ? "Bearer authentication lookup timed out."
+            : undefined
+        );
       });
       if (bearerContext) {
         return bearerContext;
@@ -150,7 +184,19 @@ export async function getAuthenticatedUser(
   }
 
   try {
-    const cookieSession = await auth();
+    const resolvedCookieTimeoutMs = resolveTimeout(
+      cookieTimeoutMs,
+      DEFAULT_COOKIE_AUTH_TIMEOUT_MS
+    );
+    const cookieSession = await withTimeout(
+      auth(),
+      resolvedCookieTimeoutMs,
+      () => {
+        console.warn(
+          `[api/auth] Cookie auth lookup timed out after ${resolvedCookieTimeoutMs}ms.`
+        );
+      }
+    );
     const session = cookieSession
       ? createSessionFromAuthSession(cookieSession)
       : null;
@@ -182,7 +228,19 @@ export async function requireAdminUser(request: Request, options?: AuthOptions) 
     return null;
   }
 
-  const user = await getUserById(context.user.id).catch((error) => {
+  const resolvedAdminTimeoutMs = resolveTimeout(
+    options?.adminLookupTimeoutMs,
+    DEFAULT_ADMIN_AUTH_LOOKUP_TIMEOUT_MS
+  );
+  const user = await withTimeout(
+    getAuthUserById(context.user.id),
+    resolvedAdminTimeoutMs,
+    () => {
+      console.warn(
+        `[api/auth] Admin role lookup timed out after ${resolvedAdminTimeoutMs}ms.`
+      );
+    }
+  ).catch((error) => {
     console.warn("[api/auth] Admin role lookup failed.", error);
     return null;
   });

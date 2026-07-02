@@ -11,7 +11,6 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
-import { getAppSetting, getLastKnownAppSetting } from "@/lib/db/queries";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import {
   buildLiveTranslationSystemInstruction,
@@ -21,13 +20,10 @@ import {
   getLiveTranslationAccessModeForPlatform,
   getLiveTranslationLanguageName,
   LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
-  LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
-  LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
-  LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
-  LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
   normalizeLiveTranslationLanguages,
   resolveLiveTranslationLanguageCode,
 } from "@/lib/live-translation/config";
+import { loadLiveTranslationSettingsValues } from "@/lib/live-translation/settings-read";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
@@ -108,73 +104,27 @@ async function enforceLiveTranslationTokenRateLimit(
 }
 
 async function loadLiveTranslationSettings() {
-  const [languagesValue, defaultLanguageA, defaultLanguageB, instruction] =
-    await Promise.all([
-      withTimeout(
-        getAppSetting<unknown>(LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY),
-        LIVE_TRANSLATION_SETTING_TIMEOUT_MS
-      ).catch((error) => {
-        console.error(
-          "[api/live-translation/token] Supported languages read failed.",
-          error
-        );
-        return getLastKnownAppSetting<unknown>(
-          LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY
-        );
-      }),
-      withTimeout(
-        getAppSetting<string>(LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY),
-        LIVE_TRANSLATION_SETTING_TIMEOUT_MS
-      ).catch((error) => {
-        console.error(
-          "[api/live-translation/token] Default language A read failed.",
-          error
-        );
-        return getLastKnownAppSetting<string>(
-          LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY
-        );
-      }),
-      withTimeout(
-        getAppSetting<string>(LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY),
-        LIVE_TRANSLATION_SETTING_TIMEOUT_MS
-      ).catch((error) => {
-        console.error(
-          "[api/live-translation/token] Default language B read failed.",
-          error
-        );
-        return getLastKnownAppSetting<string>(
-          LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY
-        );
-      }),
-      withTimeout(
-        getAppSetting<string>(LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY),
-        LIVE_TRANSLATION_SETTING_TIMEOUT_MS
-      ).catch((error) => {
-        console.error(
-          "[api/live-translation/token] System instruction read failed.",
-          error
-        );
-        return getLastKnownAppSetting<string>(
-          LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY
-        );
-      }),
-    ]);
-  const languages = normalizeLiveTranslationLanguages(languagesValue);
+  const settings = await loadLiveTranslationSettingsValues({
+    includeInstruction: true,
+    source: "api/live-translation/token",
+    timeoutMs: LIVE_TRANSLATION_SETTING_TIMEOUT_MS,
+  });
+  const languages = normalizeLiveTranslationLanguages(settings.languagesValue);
   return {
     defaultLanguageA: resolveLiveTranslationLanguageCode({
       fallback: DEFAULT_LIVE_TRANSLATION_LANGUAGE_A,
       languages,
-      value: defaultLanguageA,
+      value: settings.defaultLanguageA,
     }),
     defaultLanguageB: resolveLiveTranslationLanguageCode({
       fallback: DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
       languages,
-      value: defaultLanguageB,
+      value: settings.defaultLanguageB,
     }),
     languages,
     systemInstruction:
-      typeof instruction === "string" && instruction.trim()
-        ? instruction.trim()
+      typeof settings.instruction === "string" && settings.instruction.trim()
+        ? settings.instruction.trim()
         : DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
   };
 }

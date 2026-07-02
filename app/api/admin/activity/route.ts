@@ -4,6 +4,7 @@ import { getPresenceDetails, getPresenceSummary } from "@/lib/db/queries";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
+import { withTimeout } from "@/lib/utils/async";
 
 const ADMIN_ACTIVITY_RATE_LIMIT = {
   limit: 60,
@@ -11,6 +12,13 @@ const ADMIN_ACTIVITY_RATE_LIMIT = {
 };
 
 const DETAILS_WINDOW_MINUTES = 15;
+const ACTIVITY_SUMMARY_TIMEOUT_MS = 2500;
+const ACTIVITY_DETAILS_TIMEOUT_MS = 3500;
+const EMPTY_SUMMARY = {
+  activeNow: 0,
+  active15m: 0,
+  active60m: 0,
+};
 
 export const runtime = "nodejs";
 
@@ -55,16 +63,44 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const includeDetails = url.searchParams.get("details") === "1";
 
-  const summary = await getPresenceSummary();
+  let degraded = false;
+  const summary = await withTimeout(
+    getPresenceSummary(),
+    ACTIVITY_SUMMARY_TIMEOUT_MS,
+    () => {
+      console.error("[admin/activity] Presence summary timed out.", {
+        timeoutMs: ACTIVITY_SUMMARY_TIMEOUT_MS,
+      });
+    }
+  ).catch((error) => {
+    degraded = true;
+    console.error("[admin/activity] Presence summary failed.", error);
+    return EMPTY_SUMMARY;
+  });
   const details = includeDetails
-    ? await getPresenceDetails({
-        windowMinutes: DETAILS_WINDOW_MINUTES,
-        limit: 6,
+    ? await withTimeout(
+        getPresenceDetails({
+          windowMinutes: DETAILS_WINDOW_MINUTES,
+          limit: 6,
+        }),
+        ACTIVITY_DETAILS_TIMEOUT_MS,
+        () => {
+          console.error("[admin/activity] Presence details timed out.", {
+            timeoutMs: ACTIVITY_DETAILS_TIMEOUT_MS,
+          });
+        }
+      ).catch((error) => {
+        degraded = true;
+        console.error("[admin/activity] Presence details failed.", error);
+        return null;
       })
     : null;
 
   return NextResponse.json(
     {
+      meta: {
+        degraded,
+      },
       summary: {
         ...summary,
         updatedAt: new Date().toISOString(),

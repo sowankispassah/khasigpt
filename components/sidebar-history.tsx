@@ -113,11 +113,6 @@ async function chatHistoryFetcher(url: string) {
         body?.message ?? `history_fetch_failed:${response.status}`
       );
     }
-    if (body?.degraded) {
-      throw new ChatHistoryUnavailableError(
-        body.message ?? "Chat history could not be confirmed."
-      );
-    }
     if (!body || !Array.isArray(body.chats)) {
       throw new ChatHistoryUnavailableError("history_payload_invalid");
     }

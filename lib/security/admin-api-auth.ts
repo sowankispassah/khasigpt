@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import type { UserRole } from "@/app/(auth)/auth";
-import { getUserById } from "@/lib/db/queries";
+import { getAuthUserRoleById } from "@/lib/db/auth-queries";
 import { withTimeout } from "@/lib/utils/async";
 
 type AdminApiUser = {
@@ -14,7 +14,7 @@ const ADMIN_DB_TIMEOUT_MS = 4_000;
 
 async function resolveActiveAdminUser(userId: string): Promise<AdminApiUser | null> {
   const user = await withTimeout(
-    getUserById(userId),
+    getAuthUserRoleById(userId),
     ADMIN_DB_TIMEOUT_MS
   ).catch((error) => {
     console.error("[admin-api-auth] Admin user lookup failed.", error);

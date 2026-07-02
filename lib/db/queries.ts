@@ -403,8 +403,8 @@ const parseOr = (value: string | undefined, fallback: number) => {
 };
 
 type GlobalDbState = {
-  postgresClient?: ReturnType<typeof postgres>;
-  drizzleDb?: PostgresJsDatabase;
+  __khasigptMainPostgresClient?: ReturnType<typeof postgres>;
+  __khasigptMainDrizzleDb?: PostgresJsDatabase;
 };
 
 const globalDbState = globalThis as typeof globalThis & GlobalDbState;
@@ -514,13 +514,13 @@ const poolConfig = {
 // surface naturally through actual query errors and timeouts.
 
 const client =
-  globalDbState.postgresClient ?? postgres(postgresUrl, poolConfig);
+  globalDbState.__khasigptMainPostgresClient ?? postgres(postgresUrl, poolConfig);
 
-globalDbState.postgresClient ??= client;
+globalDbState.__khasigptMainPostgresClient ??= client;
 
-export const db = globalDbState.drizzleDb ?? drizzle(client);
+export const db = globalDbState.__khasigptMainDrizzleDb ?? drizzle(client);
 
-globalDbState.drizzleDb ??= db;
+globalDbState.__khasigptMainDrizzleDb ??= db;
 
 function normalizeEmailValue(email: string): string {
   return email.trim().toLowerCase();
@@ -2345,25 +2345,27 @@ export async function getPresenceSummary(): Promise<PresenceSummary> {
   const active60mSince = new Date(now - 60 * 60 * 1000);
 
   try {
-    const [nowRow, min15Row, min60Row] = await Promise.all([
-      db
-        .select({ total: count() })
-        .from(userPresence)
-        .where(gte(userPresence.lastSeenAt, activeNowSince)),
-      db
-        .select({ total: count() })
-        .from(userPresence)
-        .where(gte(userPresence.lastSeenAt, active15mSince)),
-      db
-        .select({ total: count() })
-        .from(userPresence)
-        .where(gte(userPresence.lastSeenAt, active60mSince)),
-    ]);
+    const [row] = await db
+      .select({
+        activeNow:
+          sql<number>`COUNT(*) FILTER (WHERE ${userPresence.lastSeenAt} >= ${activeNowSince})`.as(
+            "activeNow"
+          ),
+        active15m:
+          sql<number>`COUNT(*) FILTER (WHERE ${userPresence.lastSeenAt} >= ${active15mSince})`.as(
+            "active15m"
+          ),
+        active60m:
+          sql<number>`COUNT(*) FILTER (WHERE ${userPresence.lastSeenAt} >= ${active60mSince})`.as(
+            "active60m"
+          ),
+      })
+      .from(userPresence);
 
     return {
-      activeNow: Number(nowRow?.[0]?.total ?? 0),
-      active15m: Number(min15Row?.[0]?.total ?? 0),
-      active60m: Number(min60Row?.[0]?.total ?? 0),
+      activeNow: Number(row?.activeNow ?? 0),
+      active15m: Number(row?.active15m ?? 0),
+      active60m: Number(row?.active60m ?? 0),
     };
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -2388,96 +2390,108 @@ export async function getPresenceDetails({
   limit?: number;
 }): Promise<PresenceDetails> {
   const since = new Date(Date.now() - windowMinutes * 60 * 1000);
-  const countExpr = sql<number>`COUNT(*)`;
+  type RawBreakdownRow = { label: string | null; count: number | string | null };
+  type RawPresenceDetails = {
+    byCountry: RawBreakdownRow[] | null;
+    byRegion: RawBreakdownRow[] | null;
+    byCity: RawBreakdownRow[] | null;
+    byDevice: RawBreakdownRow[] | null;
+    byRole: RawBreakdownRow[] | null;
+    topPaths: RawBreakdownRow[] | null;
+  };
 
-  const normalizeRows = (
-    rows: { label: string | null; count: number | null }[]
-  ) =>
-    rows.map((row) => ({
+  const normalizeRows = (rows: RawBreakdownRow[] | null | undefined) =>
+    (rows ?? []).map((row) => ({
       label: row.label?.trim() || "Unknown",
       count: Number(row.count ?? 0),
     }));
 
   try {
-    const [byCountry, byRegion, byCity, byDevice, byRole, topPaths] =
-      await Promise.all([
-        db
-          .select({
-            label: userPresence.country,
-            count: countExpr.as("count"),
-          })
-          .from(userPresence)
-          .where(gte(userPresence.lastSeenAt, since))
-          .groupBy(userPresence.country)
-          .orderBy(desc(countExpr))
-          .limit(limit),
-        db
-          .select({
-            label: userPresence.region,
-            count: countExpr.as("count"),
-          })
-          .from(userPresence)
-          .where(gte(userPresence.lastSeenAt, since))
-          .groupBy(userPresence.region)
-          .orderBy(desc(countExpr))
-          .limit(limit),
-        db
-          .select({
-            label: userPresence.city,
-            count: countExpr.as("count"),
-          })
-          .from(userPresence)
-          .where(gte(userPresence.lastSeenAt, since))
-          .groupBy(userPresence.city)
-          .orderBy(desc(countExpr))
-          .limit(limit),
-        db
-          .select({
-            label: userPresence.device,
-            count: countExpr.as("count"),
-          })
-          .from(userPresence)
-          .where(gte(userPresence.lastSeenAt, since))
-          .groupBy(userPresence.device)
-          .orderBy(desc(countExpr))
-          .limit(limit),
-        db
-          .select({
-            label: user.role,
-            count: countExpr.as("count"),
-          })
-          .from(userPresence)
-          .leftJoin(user, eq(userPresence.userId, user.id))
-          .where(gte(userPresence.lastSeenAt, since))
-          .groupBy(user.role)
-          .orderBy(desc(countExpr))
-          .limit(limit),
-        db
-          .select({
-            label: userPresence.lastPath,
-            count: countExpr.as("count"),
-          })
-          .from(userPresence)
-          .where(
-            and(
-              gte(userPresence.lastSeenAt, since),
-              isNotNull(userPresence.lastPath),
-              ne(userPresence.lastPath, "")
-            )
-          )
-          .groupBy(userPresence.lastPath)
-          .orderBy(desc(countExpr))
-          .limit(limit),
-      ]);
+    const [row] = await client<RawPresenceDetails[]>`
+      WITH recent AS (
+        SELECT
+          p."country",
+          p."region",
+          p."city",
+          p."device",
+          p."lastPath",
+          u."role"::text AS "role"
+        FROM "UserPresence" p
+        LEFT JOIN "User" u ON u."id" = p."userId"
+        WHERE p."lastSeenAt" >= ${since}
+      )
+      SELECT
+        (
+          SELECT COALESCE(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+          FROM (
+            SELECT COALESCE("country", 'Unknown') AS "label", COUNT(*)::integer AS "count"
+            FROM recent
+            GROUP BY "country"
+            ORDER BY COUNT(*) DESC
+            LIMIT ${limit}
+          ) rows
+        ) AS "byCountry",
+        (
+          SELECT COALESCE(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+          FROM (
+            SELECT COALESCE("region", 'Unknown') AS "label", COUNT(*)::integer AS "count"
+            FROM recent
+            GROUP BY "region"
+            ORDER BY COUNT(*) DESC
+            LIMIT ${limit}
+          ) rows
+        ) AS "byRegion",
+        (
+          SELECT COALESCE(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+          FROM (
+            SELECT COALESCE("city", 'Unknown') AS "label", COUNT(*)::integer AS "count"
+            FROM recent
+            GROUP BY "city"
+            ORDER BY COUNT(*) DESC
+            LIMIT ${limit}
+          ) rows
+        ) AS "byCity",
+        (
+          SELECT COALESCE(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+          FROM (
+            SELECT COALESCE("device", 'Unknown') AS "label", COUNT(*)::integer AS "count"
+            FROM recent
+            GROUP BY "device"
+            ORDER BY COUNT(*) DESC
+            LIMIT ${limit}
+          ) rows
+        ) AS "byDevice",
+        (
+          SELECT COALESCE(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+          FROM (
+            SELECT COALESCE("role", 'Unknown') AS "label", COUNT(*)::integer AS "count"
+            FROM recent
+            GROUP BY "role"
+            ORDER BY COUNT(*) DESC
+            LIMIT ${limit}
+          ) rows
+        ) AS "byRole",
+        (
+          SELECT COALESCE(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+          FROM (
+            SELECT "lastPath" AS "label", COUNT(*)::integer AS "count"
+            FROM recent
+            WHERE "lastPath" IS NOT NULL AND "lastPath" <> ''
+            GROUP BY "lastPath"
+            ORDER BY COUNT(*) DESC
+            LIMIT ${limit}
+          ) rows
+        ) AS "topPaths"
+    `;
 
     return {
       windowMinutes,
-      byCountry: normalizeRows(byCountry),
-      byRegion: normalizeRows(byRegion),
-      byCity: normalizeRows(byCity),
-      byDevice: normalizeRows(byDevice),
-      byRole: normalizeRows(byRole),
-      topPaths: normalizeRows(topPaths),
+      byCountry: normalizeRows(row?.byCountry),
+      byRegion: normalizeRows(row?.byRegion),
+      byCity: normalizeRows(row?.byCity),
+      byDevice: normalizeRows(row?.byDevice),
+      byRole: normalizeRows(row?.byRole),
+      topPaths: normalizeRows(row?.topPaths),
     };
   } catch (error) {
     if (isTableMissingError(error)) {

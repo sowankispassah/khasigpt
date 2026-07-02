@@ -31,7 +31,7 @@ const UUID_REGEX =
 type LiteSqlClient = ReturnType<typeof postgres>;
 
 const globalForLiteDb = globalThis as typeof globalThis & {
-  postgresClient?: LiteSqlClient;
+  __khasigptLitePostgresClient?: LiteSqlClient;
 };
 
 try {
@@ -106,13 +106,13 @@ function parseOr(value: string | undefined, fallback: number) {
 }
 
 function getLiteSqlClient() {
-  if (!globalForLiteDb.postgresClient) {
+  if (!globalForLiteDb.__khasigptLitePostgresClient) {
     const postgresUrl = getPostgresUrl();
     const usesPooler = isSupabasePoolerUrl(postgresUrl);
     const poolConfig = {
       max: parseOr(
         process.env.POSTGRES_LITE_POOL_SIZE,
-        usesPooler ? 3 : process.env.NODE_ENV === "development" ? 5 : 3
+        usesPooler ? 1 : process.env.NODE_ENV === "development" ? 2 : 1
       ),
       idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
       max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
@@ -128,10 +128,13 @@ function getLiteSqlClient() {
       max_pipeline: usesPooler ? 1 : 100,
       prepare: false,
     };
-    globalForLiteDb.postgresClient = postgres(postgresUrl, poolConfig);
+    globalForLiteDb.__khasigptLitePostgresClient = postgres(
+      postgresUrl,
+      poolConfig
+    );
   }
 
-  return globalForLiteDb.postgresClient;
+  return globalForLiteDb.__khasigptLitePostgresClient;
 }
 
 function normalizeSettingKeys(keys: string[]) {

@@ -17,6 +17,9 @@ type PresenceSummary = {
 };
 
 type ActivityResponse = {
+  meta?: {
+    degraded?: boolean;
+  };
   summary: PresenceSummary;
   details?: unknown;
 };
@@ -122,7 +125,7 @@ export function AdminLiveActivityPanel() {
           <span>{updatedLabel}</span>
         </div>
 
-        {error ? (
+        {error || data?.meta?.degraded ? (
           <p className="text-destructive text-xs">
             Unable to load live activity right now.
           </p>

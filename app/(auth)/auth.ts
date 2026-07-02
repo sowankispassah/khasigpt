@@ -9,12 +9,15 @@ import {
   PRELAUNCH_INVITE_COOKIE_NAME,
 } from "@/lib/constants";
 import {
+  type AuthDbUser,
+  getAuthUserById,
+  getAuthUsersByEmail,
+} from "@/lib/db/auth-queries";
+import {
   consumeImpersonationToken,
   createAuditLogEntry,
   createGuestUser,
   ensureOAuthUser,
-  getUser,
-  getUserById,
   redeemPrelaunchInviteTokenForUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
@@ -69,6 +72,26 @@ async function runAuthDb<T>(
   });
 }
 
+function toNextAuthUser(user: AuthDbUser) {
+  const imageVersion =
+    user.image && user.updatedAt instanceof Date
+      ? user.updatedAt.toISOString()
+      : user.image
+        ? new Date().toISOString()
+        : null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role as UserRole,
+    dateOfBirth: user.dateOfBirth ?? null,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
+    imageVersion,
+    allowPersonalKnowledge: user.allowPersonalKnowledge ?? false,
+  };
+}
+
 const providers: any[] = [
   Credentials({
     credentials: {},
@@ -91,11 +114,11 @@ const providers: any[] = [
         );
       }
 
-      let users: Awaited<ReturnType<typeof getUser>>;
+      let users: Awaited<ReturnType<typeof getAuthUsersByEmail>>;
       try {
         users = await runAuthDb(
           "credentials.user_lookup",
-          getUser(normalizedEmail)
+          getAuthUsersByEmail(normalizedEmail)
         );
       } catch (error) {
         console.error("[auth] Credentials user lookup failed.", error);
@@ -128,20 +151,7 @@ const providers: any[] = [
 
       resetRateLimit(rateLimitKey);
 
-      const { image, ...rest } = user;
-      const imageVersion =
-        image && user.updatedAt instanceof Date
-          ? user.updatedAt.toISOString()
-          : image
-            ? new Date().toISOString()
-            : null;
-
-      return {
-        ...rest,
-        role: user.role,
-        imageVersion,
-        allowPersonalKnowledge: user.allowPersonalKnowledge ?? false,
-      } as typeof rest & { role: UserRole; imageVersion: string | null };
+      return toNextAuthUser(user);
     },
   }),
 ];
@@ -160,7 +170,7 @@ providers.push(
 
       const targetUser = await runAuthDb(
         "mobile_token.user_lookup",
-        getUserById(verified.userId)
+        getAuthUserById(verified.userId)
       ).catch((error) => {
         console.error("[auth] Mobile token user lookup failed.", error);
         return null;
@@ -169,20 +179,7 @@ providers.push(
         return null;
       }
 
-      const { image, ...rest } = targetUser;
-      const imageVersion =
-        image && targetUser.updatedAt instanceof Date
-          ? targetUser.updatedAt.toISOString()
-          : image
-            ? new Date().toISOString()
-            : null;
-
-      return {
-        ...rest,
-        role: targetUser.role as UserRole,
-        imageVersion,
-        allowPersonalKnowledge: targetUser.allowPersonalKnowledge ?? false,
-      } as typeof rest & { role: UserRole; imageVersion: string | null };
+      return toNextAuthUser(targetUser);
     },
   })
 );
@@ -240,7 +237,7 @@ providers.push(
 
       const targetUser = await runAuthDb(
         "impersonation.user_lookup",
-        getUserById(record.targetUserId)
+        getAuthUserById(record.targetUserId)
       ).catch((error) => {
         console.error("[auth] Impersonation user lookup failed.", error);
         return null;
@@ -249,20 +246,7 @@ providers.push(
         return null;
       }
 
-      const { image, ...rest } = targetUser;
-      const imageVersion =
-        image && targetUser.updatedAt instanceof Date
-          ? targetUser.updatedAt.toISOString()
-          : image
-            ? new Date().toISOString()
-            : null;
-
-      return {
-        ...rest,
-        role: targetUser.role as UserRole,
-        imageVersion,
-        allowPersonalKnowledge: targetUser.allowPersonalKnowledge ?? false,
-      } as typeof rest & { role: UserRole; imageVersion: string | null };
+      return toNextAuthUser(targetUser);
     },
   })
 );
@@ -460,7 +444,7 @@ export const {
       }
 
       let cachedDbUser:
-        | Awaited<ReturnType<typeof getUserById>>
+        | Awaited<ReturnType<typeof getAuthUserById>>
         | null
         | undefined;
       let dbLookupTimedOut = false;
@@ -504,11 +488,11 @@ export const {
         }
         try {
           cachedDbUser = await withTimeout(
-            getUserById(token.id as string),
+            getAuthUserById(token.id as string),
             AUTH_DB_TIMEOUT_MS,
             () => {
               console.warn(
-                `[auth] getUserById timed out after ${AUTH_DB_TIMEOUT_MS}ms.`
+                `[auth] getAuthUserById timed out after ${AUTH_DB_TIMEOUT_MS}ms.`
               );
             }
           );

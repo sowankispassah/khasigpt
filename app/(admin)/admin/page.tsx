@@ -1,26 +1,33 @@
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
-import { Suspense } from "react";
 
 import { AdminDataPanel } from "@/components/admin-data-panel";
 import { AdminLiveActivityPanelDeferred } from "@/components/admin-live-activity-panel-deferred";
-import { adminQueryResult } from "@/lib/admin/safe-query";
+import {
+  type AdminQueryResult,
+  adminQueryResult,
+} from "@/lib/admin/safe-query";
 import {
   type AdminOverviewAudit,
   type AdminOverviewChat,
   type AdminOverviewContactMessage,
+  type AdminOverviewSnapshot,
   type AdminOverviewUser,
-  getChatCount,
-  getContactMessageCount,
-  getUserCount,
-  listAuditLog,
-  listChats,
-  listContactMessages,
-  listUsers,
+  getAdminOverviewSnapshot,
 } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+const EMPTY_ADMIN_OVERVIEW_SNAPSHOT: AdminOverviewSnapshot = {
+  userCount: 0,
+  chatCount: 0,
+  contactMessageCount: 0,
+  recentUsers: [],
+  recentChats: [],
+  recentAudits: [],
+  recentContactMessages: [],
+};
 
 function adminOverviewQuery<T>(
   label: string,
@@ -34,212 +41,61 @@ function adminOverviewQuery<T>(
   });
 }
 
-function isSupabasePoolerUrl(value: string | undefined | null) {
-  if (!value) {
-    return false;
+type SnapshotPanelResult<T> = AdminQueryResult<T>;
+type AdminOverviewSnapshotResult = AdminQueryResult<AdminOverviewSnapshot>;
+
+function snapshotPanelResult<T>(
+  overviewResult: AdminOverviewSnapshotResult,
+  select: (snapshot: AdminOverviewSnapshot) => T
+): SnapshotPanelResult<T> {
+  if (overviewResult.ok) {
+    return {
+      data: select(overviewResult.data),
+      error: null,
+      ok: true,
+    };
   }
-  try {
-    return new URL(value).hostname.endsWith(".pooler.supabase.com");
-  } catch {
-    return value.includes(".pooler.supabase.com");
-  }
+
+  return {
+    data: select(overviewResult.data),
+    error: overviewResult.error,
+    ok: false,
+  };
 }
 
-function parsePositiveInteger(value: string | undefined | null) {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function getConfiguredAdminOverviewPoolSize() {
-  return (
-    parsePositiveInteger(process.env.POSTGRES_POOL_SIZE) ??
-    (process.env.NODE_ENV === "development" ? 5 : 3)
+export default async function AdminOverviewPage() {
+  const overviewResult = await adminOverviewQuery<AdminOverviewSnapshot>(
+    "overview.snapshot",
+    getAdminOverviewSnapshot,
+    EMPTY_ADMIN_OVERVIEW_SNAPSHOT
   );
-}
 
-function hasConfiguredSupabasePoolerUrl() {
-  const candidates = [
-    process.env.POSTGRES_URL,
-    process.env.DATABASE_URL,
-    process.env.POSTGRES_DIRECT_URL,
-    process.env.POSTGRES_PRISMA_URL,
-  ].filter(Boolean);
-
-  return candidates.some((value) => isSupabasePoolerUrl(value));
-}
-
-function shouldSerializeAdminOverviewDbReads() {
-  if (process.env.ADMIN_OVERVIEW_SERIALIZE_DB_READS === "true") {
-    return true;
-  }
-  if (process.env.ADMIN_OVERVIEW_SERIALIZE_DB_READS === "false") {
-    return false;
-  }
-
-  const onlyOneDbConnection = getConfiguredAdminOverviewPoolSize() <= 1;
-  if (process.env.POSTGRES_USE_POOLER === "true") {
-    return onlyOneDbConnection;
-  }
-
-  const hasPoolerUrl = hasConfiguredSupabasePoolerUrl();
-  if (process.env.VERCEL === "1" && hasPoolerUrl) {
-    return onlyOneDbConnection;
-  }
-
-  return onlyOneDbConnection && hasPoolerUrl;
-}
-
-function getAdminOverviewDbReadConcurrency(taskCount: number) {
-  if (taskCount <= 1) {
-    return taskCount;
-  }
-
-  const explicitConcurrency = parsePositiveInteger(
-    process.env.ADMIN_OVERVIEW_DB_READ_CONCURRENCY
-  );
-  if (explicitConcurrency !== null) {
-    return Math.min(taskCount, explicitConcurrency);
-  }
-
-  if (shouldSerializeAdminOverviewDbReads()) {
-    return 1;
-  }
-
-  if (process.env.ADMIN_OVERVIEW_SERIALIZE_DB_READS === "false") {
-    return taskCount;
-  }
-
-  const usesPooler =
-    process.env.POSTGRES_USE_POOLER === "true" ||
-    (process.env.VERCEL === "1" && hasConfiguredSupabasePoolerUrl());
-
-  if (!usesPooler) {
-    return taskCount;
-  }
-
-  const poolSize = getConfiguredAdminOverviewPoolSize();
-  return Math.max(1, Math.min(taskCount, poolSize - 1, 2));
-}
-
-async function resolveAdminOverviewDbReadGroup<
-  const T extends readonly unknown[],
->(tasks: { [K in keyof T]: () => Promise<T[K]> }): Promise<T> {
-  const concurrency = getAdminOverviewDbReadConcurrency(tasks.length);
-
-  if (concurrency >= tasks.length) {
-    return Promise.all(tasks.map((task) => task())) as unknown as Promise<T>;
-  }
-
-  const results = new Array<unknown>(tasks.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < tasks.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await tasks[index]();
-    }
-  }
-
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  return results as unknown as T;
-}
-
-export default function AdminOverviewPage() {
   return (
     <div className="flex flex-col gap-10">
-      <Suspense fallback={<OverviewMetricsFallback />}>
-        <AdminOverviewMetricsSection />
-      </Suspense>
+      <AdminOverviewMetricsSection overviewResult={overviewResult} />
 
       <AdminLiveActivityPanelDeferred />
 
       <section className="grid items-stretch gap-8 xl:grid-cols-2">
-        <Suspense
-          fallback={<AdminDataPanelFallback rows={5} title="Newest users" />}
-        >
-          <NewestUsersPanel />
-        </Suspense>
+        <NewestUsersPanel overviewResult={overviewResult} />
 
-        <Suspense
-          fallback={
-            <AdminDataPanelFallback rows={5} title="Latest contact requests" />
-          }
-        >
-          <LatestContactRequestsPanel />
-        </Suspense>
+        <LatestContactRequestsPanel overviewResult={overviewResult} />
       </section>
 
-      <Suspense
-        fallback={<AdminDataPanelFallback rows={5} title="Latest chats" />}
-      >
-        <LatestChatsPanel />
-      </Suspense>
+      <LatestChatsPanel overviewResult={overviewResult} />
 
-      <Suspense
-        fallback={
-          <AdminDataPanelFallback rows={5} title="Recent audit activity" />
-        }
-      >
-        <RecentAuditActivityPanel />
-      </Suspense>
+      <RecentAuditActivityPanel overviewResult={overviewResult} />
     </div>
   );
 }
 
-async function AdminOverviewMetricsSection() {
-  const [
-    userCountResult,
-    chatCountResult,
-    contactMessageCountResult,
-    recentUsersResult,
-    recentAuditsResult,
-  ] = await resolveAdminOverviewDbReadGroup([
-    () =>
-      adminOverviewQuery<number | null>(
-        "overview.user-count",
-        () => getUserCount({ isActive: "all", role: "all", search: null }),
-        null
-      ),
-    () =>
-      adminOverviewQuery<number | null>(
-        "overview.chat-count",
-        () => getChatCount({ onlyDeleted: false, search: null }),
-        null
-      ),
-    () =>
-      adminOverviewQuery<number | null>(
-        "overview.contact-message-count",
-        () => getContactMessageCount({ status: "all", search: null }),
-        null
-      ),
-    () =>
-      adminOverviewQuery<AdminOverviewUser[]>(
-        "overview.metric-recent-users",
-        () =>
-          listUsers({
-            isActive: "all",
-            limit: 5,
-            offset: 0,
-            role: "all",
-            search: null,
-          }),
-        []
-      ),
-    () =>
-      adminOverviewQuery<AdminOverviewAudit[]>(
-        "overview.metric-recent-audits",
-        () => listAuditLog({ limit: 5, offset: 0 }),
-        []
-      ),
-  ]);
-  const degraded = [
-    userCountResult,
-    chatCountResult,
-    contactMessageCountResult,
-    recentUsersResult,
-    recentAuditsResult,
-  ].some((result) => !result.ok);
+function AdminOverviewMetricsSection({
+  overviewResult,
+}: {
+  overviewResult: AdminOverviewSnapshotResult;
+}) {
+  const degraded = !overviewResult.ok;
+  const snapshot = overviewResult.data;
 
   return (
     <>
@@ -256,50 +112,46 @@ async function AdminOverviewMetricsSection() {
       ) : null}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard
-          confirmed={userCountResult.ok}
+          confirmed={overviewResult.ok}
           label="Total users"
-          value={userCountResult.data}
+          value={snapshot.userCount}
         />
         <MetricCard
-          confirmed={chatCountResult.ok}
+          confirmed={overviewResult.ok}
           label="Total chats"
-          value={chatCountResult.data}
+          value={snapshot.chatCount}
         />
         <MetricCard
-          confirmed={recentUsersResult.ok}
+          confirmed={overviewResult.ok}
           description="Last 5 accounts"
           label="Recent users"
-          value={recentUsersResult.ok ? recentUsersResult.data.length : null}
+          value={overviewResult.ok ? snapshot.recentUsers.length : null}
         />
         <MetricCard
-          confirmed={recentAuditsResult.ok}
+          confirmed={overviewResult.ok}
           description="Last 5 records"
           label="Audit events"
-          value={recentAuditsResult.ok ? recentAuditsResult.data.length : null}
+          value={overviewResult.ok ? snapshot.recentAudits.length : null}
         />
         <MetricCard
-          confirmed={contactMessageCountResult.ok}
+          confirmed={overviewResult.ok}
           description="Total messages received"
           label="Contact requests"
-          value={contactMessageCountResult.data}
+          value={snapshot.contactMessageCount}
         />
       </section>
     </>
   );
 }
 
-async function NewestUsersPanel() {
-  const recentUsersResult = await adminOverviewQuery<AdminOverviewUser[]>(
-    "overview.panel-recent-users",
-    () =>
-      listUsers({
-        isActive: "all",
-        limit: 5,
-        offset: 0,
-        role: "all",
-        search: null,
-      }),
-    []
+function NewestUsersPanel({
+  overviewResult,
+}: {
+  overviewResult: AdminOverviewSnapshotResult;
+}) {
+  const recentUsersResult = snapshotPanelResult<AdminOverviewUser[]>(
+    overviewResult,
+    (snapshot) => snapshot.recentUsers
   );
   const recentUsers = recentUsersResult.data;
 
@@ -411,13 +263,16 @@ async function NewestUsersPanel() {
   );
 }
 
-async function LatestContactRequestsPanel() {
-  const recentContactMessagesResult = await adminOverviewQuery<
+function LatestContactRequestsPanel({
+  overviewResult,
+}: {
+  overviewResult: AdminOverviewSnapshotResult;
+}) {
+  const recentContactMessagesResult = snapshotPanelResult<
     AdminOverviewContactMessage[]
   >(
-    "overview.panel-recent-contact-messages",
-    () => listContactMessages({ limit: 5, offset: 0, search: null, status: "all" }),
-    []
+    overviewResult,
+    (snapshot) => snapshot.recentContactMessages
   );
   const recentContactMessages = recentContactMessagesResult.data;
 
@@ -517,11 +372,14 @@ async function LatestContactRequestsPanel() {
   );
 }
 
-async function LatestChatsPanel() {
-  const recentChatsResult = await adminOverviewQuery<AdminOverviewChat[]>(
-    "overview.panel-recent-chats",
-    () => listChats({ limit: 5, offset: 0, onlyDeleted: false, search: null }),
-    []
+function LatestChatsPanel({
+  overviewResult,
+}: {
+  overviewResult: AdminOverviewSnapshotResult;
+}) {
+  const recentChatsResult = snapshotPanelResult<AdminOverviewChat[]>(
+    overviewResult,
+    (snapshot) => snapshot.recentChats
   );
   const recentChats = recentChatsResult.data;
 
@@ -620,11 +478,14 @@ async function LatestChatsPanel() {
   );
 }
 
-async function RecentAuditActivityPanel() {
-  const recentAuditsResult = await adminOverviewQuery<AdminOverviewAudit[]>(
-    "overview.panel-recent-audits",
-    () => listAuditLog({ limit: 5, offset: 0 }),
-    []
+function RecentAuditActivityPanel({
+  overviewResult,
+}: {
+  overviewResult: AdminOverviewSnapshotResult;
+}) {
+  const recentAuditsResult = snapshotPanelResult<AdminOverviewAudit[]>(
+    overviewResult,
+    (snapshot) => snapshot.recentAudits
   );
   const recentAudits = recentAuditsResult.data;
 
@@ -695,40 +556,6 @@ async function RecentAuditActivityPanel() {
             </div>
           ))
         )}
-      </div>
-    </AdminDataPanel>
-  );
-}
-
-function OverviewMetricsFallback() {
-  return (
-    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-      {Array.from({ length: 5 }, (_, index) => (
-        <div
-          className="h-24 animate-pulse rounded-lg border bg-card"
-          key={`admin-overview-metric-${index + 1}`}
-        />
-      ))}
-    </section>
-  );
-}
-
-function AdminDataPanelFallback({
-  rows,
-  title,
-}: {
-  rows: number;
-  title: string;
-}) {
-  return (
-    <AdminDataPanel title={title}>
-      <div className="space-y-3">
-        {Array.from({ length: rows }, (_, index) => (
-          <div
-            className="h-12 animate-pulse rounded-lg bg-muted/50"
-            key={`${title}-loading-${index + 1}`}
-          />
-        ))}
       </div>
     </AdminDataPanel>
   );
