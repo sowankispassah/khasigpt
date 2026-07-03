@@ -2,11 +2,11 @@ import { getDownloadUrl } from "@vercel/blob";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { getActiveUserProfileImage, getUserById } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
 import { listPersonalKnowledgeForUser } from "@/lib/rag/service";
+import { getChatRouteSession } from "../chat-route-session";
 import { AvatarForm } from "./avatar-form";
 import { BackToHomeButton } from "./back-to-home-button";
 import { DeactivateAccountForm } from "./deactivate-account-form";
@@ -21,7 +21,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   if (!session?.user) {
     redirect("/login");

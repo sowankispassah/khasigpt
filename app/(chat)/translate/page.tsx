@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import { TranslatePageClient } from "@/components/translate-page-client";
 import {
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -19,11 +18,12 @@ import {
   parseTranslateProviderModeSetting,
 } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
+import { getChatRouteSession } from "../chat-route-session";
 
 const TRANSLATE_PAGE_QUERY_TIMEOUT_MS = 8_000;
 
 export default async function TranslatePage() {
-  const session = await auth();
+  const session = await getChatRouteSession();
   const cookieStore = await cookies();
 
   if (!session?.user) {

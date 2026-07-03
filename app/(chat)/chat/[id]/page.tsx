@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
@@ -51,6 +50,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { getChatRouteSession } from "../../chat-route-session";
 
 const chatPageInitialLimitRaw = Number.parseInt(
   process.env.CHAT_PAGE_INITIAL_MESSAGE_LIMIT ?? "",
@@ -127,7 +127,7 @@ export default async function Page(props: {
     typeof resolvedSearchParams?.mode === "string"
       ? resolvedSearchParams.mode
       : null;
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   // Avoid hitting the database at all for logged-out users.
   if (!session) {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth, signOut } from "@/app/(auth)/auth";
+import { signOut } from "@/app/(auth)/auth";
 import {
   createAuditLogEntry,
   updateUserActiveState,
@@ -17,9 +17,10 @@ import {
 } from "@/lib/rag/service";
 import type { SanitizedRagEntry } from "@/lib/rag/types";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { getChatRequestSession } from "../chat-route-session";
 
 async function requireUser() {
-  const session = await auth();
+  const session = await getChatRequestSession();
 
   if (!session?.user) {
     throw new Error("unauthorized");

@@ -3,7 +3,6 @@
 import { generateText, type UIMessage } from "ai";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { auth } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { getTitleLanguageModel } from "@/lib/ai/providers";
 import {
@@ -17,6 +16,7 @@ import {
 } from "@/lib/db/queries";
 import type { ModelConfig } from "@/lib/db/schema";
 import { getClientInfoFromHeaders } from "@/lib/security/client-info";
+import { getChatRequestSession } from "./chat-route-session";
 
 export async function saveChatLanguageAsCookie(languageCode: string) {
   const cookieStore = await cookies();
@@ -118,7 +118,7 @@ export async function ensureChatExistsAction({
   mode: "default" | "study" | "jobs";
   firstMessageText: string;
 }) {
-  const session = await auth();
+  const session = await getChatRequestSession();
 
   if (!session?.user) {
     throw new Error("unauthorized");
@@ -145,7 +145,7 @@ export async function ensureChatExistsAction({
 
 export async function rechargeSubscriptionAction(formData: FormData) {
   "use server";
-  const session = await auth();
+  const session = await getChatRequestSession();
 
   if (!session?.user) {
     throw new Error("unauthorized");

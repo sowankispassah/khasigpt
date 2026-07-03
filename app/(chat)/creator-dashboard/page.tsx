@@ -2,13 +2,13 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import {
   getCreatorCouponRedemptions,
   getCreatorCouponSummary,
 } from "@/lib/db/queries";
 import { getTranslationBundle } from "@/lib/i18n/dictionary";
+import { getChatRouteSession } from "../chat-route-session";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +59,7 @@ export default async function CreatorDashboardPage({
   searchParams,
 }: DashboardPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/creator-dashboard");

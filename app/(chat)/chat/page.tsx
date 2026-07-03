@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import { ChatPageClient } from "@/components/chat-page-client";
 import {
   buildImageGenerationAccessFromAvailability,
@@ -35,6 +34,7 @@ import {
   parseVoiceChatAccessModeSetting,
   resolvePlatformVoiceChatSetting,
 } from "@/lib/voice/config";
+import { getChatRouteSession } from "../chat-route-session";
 
 const CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS = 2500;
 const CHAT_HOME_FEATURE_ACCESS_TIMEOUT_MS = 2000;
@@ -77,7 +77,7 @@ export default async function Page({
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;
 
-  const session = await auth();
+  const session = await getChatRouteSession();
   if (!session) {
     redirect("/login?callbackUrl=/chat");
   }

@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import { LiveTranslationPageClient } from "@/components/live-translation-page-client";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import {
@@ -12,11 +11,12 @@ import {
   resolveLiveTranslationLanguageCode,
 } from "@/lib/live-translation/config";
 import { loadLiveTranslationSettingsValues } from "@/lib/live-translation/settings-read";
+import { getChatRouteSession } from "../chat-route-session";
 
 const LIVE_TRANSLATION_PAGE_QUERY_TIMEOUT_MS = 5_000;
 
 export default async function LiveTranslationPage() {
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/live-translation");

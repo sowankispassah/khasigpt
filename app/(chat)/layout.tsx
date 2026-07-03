@@ -29,7 +29,7 @@ import {
 import { parseStudyModeAccessModeSetting } from "@/lib/study/config";
 import { parseTranslateAccessModeSetting } from "@/lib/translate/config";
 import { withTimeout } from "@/lib/utils/async";
-import { auth } from "../(auth)/auth";
+import { getChatRouteSession } from "./chat-route-session";
 
 const CHAT_LAYOUT_FEATURE_ACCESS_TIMEOUT_MS = 2_000;
 const CHAT_LAYOUT_PROFILE_TIMEOUT_MS = 1_500;
@@ -47,7 +47,7 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   const cookieStore = await cookies();
   const preferredLanguage = cookieStore.get("lang")?.value ?? null;

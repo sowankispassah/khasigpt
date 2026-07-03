@@ -344,7 +344,11 @@ function getConfiguredAdminSettingsPoolSize() {
   return (
     parsePositiveInteger(process.env.POSTGRES_LITE_POOL_SIZE) ??
     parsePositiveInteger(process.env.POSTGRES_POOL_SIZE) ??
-    (process.env.NODE_ENV === "development" ? 5 : 3)
+    (process.env.NODE_ENV === "development"
+      ? 5
+      : hasConfiguredSupabasePoolerUrl()
+        ? 1
+        : 2)
   );
 }
 

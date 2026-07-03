@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LoaderIcon } from "@/components/icons";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -219,27 +219,43 @@ export function FeatureAccessModeControl({
   title: string;
 }) {
   const [mode, setMode] = useState<FeatureAccessMode | null>(currentMode);
+  const [displayReadState, setDisplayReadState] =
+    useState<FeatureAccessControlReadState>(readState);
   const [pendingTarget, setPendingTarget] = useState<FeatureAccessMode | null>(
     null
   );
   const [isSaving, setIsSaving] = useState(false);
+  const lastSyncedServerStateRef = useRef({ currentMode, readState });
 
   useEffect(() => {
-    if (!isSaving) {
-      setMode(currentMode);
+    const lastSyncedServerState = lastSyncedServerStateRef.current;
+    const serverStateChanged =
+      lastSyncedServerState.currentMode !== currentMode ||
+      lastSyncedServerState.readState !== readState;
+
+    if (!serverStateChanged || isSaving) {
+      return;
     }
-  }, [currentMode, isSaving]);
+
+    lastSyncedServerStateRef.current = { currentMode, readState };
+    setMode(currentMode);
+    setDisplayReadState(readState);
+  }, [currentMode, isSaving, readState]);
 
   useEffect(() => {
     console.info("[admin/settings/feature-access] frontend_state", {
       currentMode,
+      displayReadState,
       fieldName,
-      readState,
+      propReadState: readState,
       selectedMode: mode,
     });
-  }, [currentMode, fieldName, mode, readState]);
+  }, [currentMode, displayReadState, fieldName, mode, readState]);
 
-  const currentModeSummary = getCurrentModeSummary({ mode, readState });
+  const currentModeSummary = getCurrentModeSummary({
+    mode,
+    readState: displayReadState,
+  });
 
   const submitMode = async (nextMode: FeatureAccessMode) => {
     if (isSaving || nextMode === mode) {
@@ -247,6 +263,7 @@ export function FeatureAccessModeControl({
     }
 
     const previousMode = mode;
+    const previousReadState = displayReadState;
     setMode(nextMode);
     setPendingTarget(nextMode);
     setIsSaving(true);
@@ -257,6 +274,7 @@ export function FeatureAccessModeControl({
         mode: nextMode,
       });
       setMode(savedMode);
+      setDisplayReadState("confirmed");
 
       toast({
         type: "success",
@@ -273,6 +291,7 @@ export function FeatureAccessModeControl({
           : null;
 
       setMode(previousMode ?? currentMode);
+      setDisplayReadState(previousReadState);
       toast({
         type: "error",
         description: requestTimedOut
@@ -294,7 +313,7 @@ export function FeatureAccessModeControl({
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">{title}</span>
-          <AccessModeBadge mode={mode} readState={readState} />
+          <AccessModeBadge mode={mode} readState={displayReadState} />
         </div>
         <p className="text-muted-foreground text-xs">{description}</p>
       </div>
@@ -336,22 +355,22 @@ export function FeatureAccessModeControl({
           access. Enable for all: everyone can access.
         </p>
         <p className="text-muted-foreground text-xs">{currentModeSummary}</p>
-        {readState === "missing" ? (
+        {displayReadState === "missing" ? (
           <p className="text-amber-700 text-xs">
             The database has no saved value for this setting. Choosing a value
             here will write a new explicit database value.
           </p>
-        ) : readState === "unreadable" ? (
+        ) : displayReadState === "unreadable" ? (
           <p className="text-orange-700 text-xs">
             The saved database value is not a recognized feature access mode.
             Choosing a value here will replace it with a valid value.
           </p>
-        ) : readState === "unavailable" ? (
+        ) : displayReadState === "unavailable" ? (
           <p className="text-amber-700 text-xs">
             The saved value could not be loaded. This page is not treating
             fallback data as confirmed database state.
           </p>
-        ) : readState === "stale" ? (
+        ) : displayReadState === "stale" ? (
           <p className="text-amber-700 text-xs">
             This value is stale. Saving will verify the database write before
             showing success.

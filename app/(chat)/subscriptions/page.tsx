@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { DailyUsageChartSwitcher } from "@/components/daily-usage-chart-switcher";
 import { DailyUsageRangeSelect } from "@/components/daily-usage-range-select";
@@ -24,6 +23,7 @@ import {
   type SessionSortOption,
 } from "@/lib/subscriptions/session-sort";
 import { withTimeout } from "@/lib/utils/async";
+import { getChatRouteSession } from "../chat-route-session";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +123,7 @@ export default async function SubscriptionsPage({
   searchParams,
 }: SubscriptionsPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   if (!session?.user) {
     redirect("/login");

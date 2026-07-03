@@ -2073,6 +2073,8 @@ export async function createImageModelConfigAction(formData: FormData) {
   });
 
   revalidateAdminImageModelSettings("image_model.create");
+
+  redirect("/admin/settings?notice=image-model-created");
 }
 
 export async function updateImageModelConfigAction(formData: FormData) {

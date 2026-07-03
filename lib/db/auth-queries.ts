@@ -100,7 +100,7 @@ function getAuthDb() {
     const poolConfig = {
       max: parseOr(
         process.env.POSTGRES_AUTH_POOL_SIZE,
-        usesPooler ? 2 : process.env.NODE_ENV === "development" ? 3 : 2
+        usesPooler ? 1 : process.env.NODE_ENV === "development" ? 3 : 1
       ),
       idle_timeout: parseOr(process.env.POSTGRES_AUTH_IDLE_TIMEOUT, 10),
       max_lifetime: parseOr(process.env.POSTGRES_AUTH_MAX_LIFETIME, 60 * 15),

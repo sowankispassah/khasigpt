@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/app/(auth)/auth";
 import { Response } from "@/components/elements/response";
 import { BackToJobsButton } from "@/components/jobs/back-to-jobs-button";
 import { ExternalPreviewFrame } from "@/components/jobs/external-preview-frame";
@@ -21,6 +20,7 @@ import type { ChatMessage } from "@/lib/types";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
+import { getChatRouteSession } from "../../chat-route-session";
 
 export const dynamic = "force-dynamic";
 const JOB_DETAIL_TIMEOUT_MS = 7000;
@@ -103,7 +103,7 @@ export default async function JobPostingDetailPage(props: {
   const resolvedSearchParams = props.searchParams
     ? await props.searchParams
     : undefined;
-  const session = await auth();
+  const session = await getChatRouteSession();
   const jobsAccess = await getJobsAccessForRole(session?.user?.role ?? null);
 
   if (!jobsAccess.enabled) {

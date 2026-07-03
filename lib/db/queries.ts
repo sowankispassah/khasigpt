@@ -476,11 +476,12 @@ if (!postgresUrl) {
 }
 
 const usesSupabasePooler = isSupabasePoolerUrl(postgresUrl);
-// Supabase pooler mode disables pipelining, so each connection can only make
-// one query progress at a time. Keep a small bounded pool so an abandoned slow
-// render cannot block the next request's tiny settings reads behind one socket.
+// Supabase's transaction pooler sits in front of a small project-level
+// connection budget. Vercel can create several serverless instances at once, so
+// keep the per-instance default tiny and let callers queue locally instead of
+// exhausting database connections globally.
 const defaultPoolSize =
-  process.env.NODE_ENV === "development" ? 5 : usesSupabasePooler ? 3 : 3;
+  process.env.NODE_ENV === "development" ? 5 : usesSupabasePooler ? 1 : 2;
 
 const poolConfig = {
   max: parseOr(process.env.POSTGRES_POOL_SIZE, defaultPoolSize),
@@ -5954,51 +5955,89 @@ export async function createModelConfig({
   const now = new Date();
 
   try {
-    const [created] = await db
-      .insert(modelConfig)
-      .values({
-        key,
-        provider,
-        providerModelId,
-        displayName,
-        description,
-        systemPrompt,
-        codeTemplate,
-        supportsReasoning,
-        reasoningTag,
-        config,
-        isEnabled,
-        isDefault,
-        isMarginBaseline,
-        freeMessagesPerDay,
-        inputProviderCostPerMillion,
-        outputProviderCostPerMillion,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      })
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(modelConfig)
+        .values({
+          key,
+          provider,
+          providerModelId,
+          displayName,
+          description,
+          systemPrompt,
+          codeTemplate,
+          supportsReasoning,
+          reasoningTag,
+          config,
+          isEnabled,
+          isDefault: false,
+          isMarginBaseline: false,
+          freeMessagesPerDay,
+          inputProviderCostPerMillion,
+          outputProviderCostPerMillion,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+        .returning();
 
-    if (!created) {
-      throw new ChatSDKError(
-        "bad_request:database",
-        "Failed to create model configuration"
+      if (!created) {
+        throw new Error("Failed to create model configuration");
+      }
+
+      const statePatch: Partial<typeof modelConfig.$inferInsert> = {};
+
+      if (isDefault) {
+        await tx
+          .update(modelConfig)
+          .set({ isDefault: false, updatedAt: now })
+          .where(
+            and(
+              eq(modelConfig.isDefault, true),
+              isNull(modelConfig.deletedAt),
+              ne(modelConfig.id, created.id)
+            )
+          );
+        statePatch.isDefault = true;
+      }
+
+      if (isMarginBaseline) {
+        await tx
+          .update(modelConfig)
+          .set({ isMarginBaseline: false, updatedAt: now })
+          .where(
+            and(
+              eq(modelConfig.isMarginBaseline, true),
+              isNull(modelConfig.deletedAt),
+              ne(modelConfig.id, created.id)
+            )
+          );
+        statePatch.isMarginBaseline = true;
+      }
+
+      if (Object.keys(statePatch).length === 0) {
+        return created;
+      }
+
+      const [updated] = await tx
+        .update(modelConfig)
+        .set({
+          ...statePatch,
+          ...(isDefault ? { isEnabled: true } : {}),
+          updatedAt: now,
+        })
+        .where(eq(modelConfig.id, created.id))
+        .returning();
+
+      return (
+        updated ??
+        {
+          ...created,
+          ...statePatch,
+          ...(isDefault ? { isEnabled: true } : {}),
+        }
       );
-    }
-
-    let result = created;
-
-    if (isDefault) {
-      await setDefaultModelConfig(created.id);
-      result = { ...result, isDefault: true };
-    }
-
-    if (isMarginBaseline) {
-      await setMarginBaselineModel(created.id);
-      result = { ...result, isMarginBaseline: true };
-    }
-
-    return result;
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -6181,7 +6220,7 @@ export async function updateModelConfig({
     if (patch.freeMessagesPerDay !== undefined) {
       updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
     }
-    if (patch.isMarginBaseline !== undefined) {
+    if (patch.isMarginBaseline === false) {
       updateData.isMarginBaseline = patch.isMarginBaseline;
     }
 
@@ -6322,10 +6361,10 @@ export async function setDefaultModelConfig(id: string) {
   try {
     await db.transaction(async (tx) => {
       const [target] = await tx
-        .update(modelConfig)
-        .set({ isDefault: true, isEnabled: true, updatedAt: now })
+        .select({ id: modelConfig.id })
+        .from(modelConfig)
         .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
-        .returning();
+        .limit(1);
 
       if (!target) {
         throw new Error("Model configuration not found");
@@ -6341,6 +6380,11 @@ export async function setDefaultModelConfig(id: string) {
             ne(modelConfig.id, id)
           )
         );
+
+      await tx
+        .update(modelConfig)
+        .set({ isDefault: true, isEnabled: true, updatedAt: now })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
     });
   } catch (_error) {
     throw new ChatSDKError(
@@ -6356,10 +6400,10 @@ export async function setMarginBaselineModel(id: string) {
   try {
     await db.transaction(async (tx) => {
       const [target] = await tx
-        .update(modelConfig)
-        .set({ isMarginBaseline: true, updatedAt: now })
+        .select({ id: modelConfig.id })
+        .from(modelConfig)
         .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)))
-        .returning();
+        .limit(1);
 
       if (!target) {
         throw new Error("Model configuration not found");
@@ -6375,6 +6419,11 @@ export async function setMarginBaselineModel(id: string) {
             ne(modelConfig.id, id)
           )
         );
+
+      await tx
+        .update(modelConfig)
+        .set({ isMarginBaseline: true, updatedAt: now })
+        .where(and(eq(modelConfig.id, id), isNull(modelConfig.deletedAt)));
     });
   } catch (_error) {
     throw new ChatSDKError(
@@ -6412,38 +6461,58 @@ export async function createImageModelConfig({
   const resolvedPriceInPaise = Math.max(0, Math.round(priceInPaise));
 
   try {
-    const [created] = await db
-      .insert(imageModelConfig)
-      .values({
-        key,
-        provider,
-        providerModelId,
-        displayName,
-        description,
-        config,
-        priceInPaise: resolvedPriceInPaise,
-        tokensPerImage: resolvedTokensPerImage,
-        isEnabled,
-        isActive: false,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      })
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(imageModelConfig)
+        .values({
+          key,
+          provider,
+          providerModelId,
+          displayName,
+          description,
+          config,
+          priceInPaise: resolvedPriceInPaise,
+          tokensPerImage: resolvedTokensPerImage,
+          isEnabled,
+          isActive: false,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+        .returning();
 
-    if (!created) {
-      throw new ChatSDKError(
-        "bad_request:database",
-        "Failed to create image model configuration"
-      );
-    }
+      if (!created) {
+        throw new Error("Failed to create image model configuration");
+      }
 
-    if (isActive) {
-      await setActiveImageModelConfig(created.id);
-      return { ...created, isActive: true };
-    }
+      if (!isActive) {
+        return created;
+      }
 
-    return created;
+      await tx
+        .update(imageModelConfig)
+        .set({ isActive: false, updatedAt: now })
+        .where(
+          and(
+            eq(imageModelConfig.isActive, true),
+            isNull(imageModelConfig.deletedAt),
+            ne(imageModelConfig.id, created.id)
+          )
+        );
+
+      const [activated] = await tx
+        .update(imageModelConfig)
+        .set({ isActive: true, isEnabled: true, updatedAt: now })
+        .where(
+          and(
+            eq(imageModelConfig.id, created.id),
+            isNull(imageModelConfig.deletedAt)
+          )
+        )
+        .returning();
+
+      return activated ?? { ...created, isActive: true, isEnabled: true };
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -6752,10 +6821,12 @@ export async function setActiveImageModelConfig(id: string) {
   try {
     await db.transaction(async (tx) => {
       const [target] = await tx
-        .update(imageModelConfig)
-        .set({ isActive: true, isEnabled: true, updatedAt: now })
-        .where(and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt)))
-        .returning();
+        .select({ id: imageModelConfig.id })
+        .from(imageModelConfig)
+        .where(
+          and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt))
+        )
+        .limit(1);
 
       if (!target) {
         throw new Error("Image model configuration not found");
@@ -6770,6 +6841,13 @@ export async function setActiveImageModelConfig(id: string) {
             isNull(imageModelConfig.deletedAt),
             ne(imageModelConfig.id, id)
           )
+        );
+
+      await tx
+        .update(imageModelConfig)
+        .set({ isActive: true, isEnabled: true, updatedAt: now })
+        .where(
+          and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt))
         );
     });
   } catch (_error) {
@@ -6822,44 +6900,64 @@ export async function createLiveVoiceModelConfig({
       : 1;
 
   try {
-    const [created] = await db
-      .insert(liveVoiceModelConfig)
-      .values({
-        key,
-        provider,
-        providerModelId,
-        displayName,
-        description,
-        systemInstruction,
-        voiceName,
-        mediaResolution,
-        creditMultiplier: resolvedMultiplier,
-        inputProviderCostPerMillion,
-        outputProviderCostPerMillion,
-        config,
-        isEnabled,
-        enabledOnWeb,
-        enabledOnNative,
-        isDefault: false,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      })
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(liveVoiceModelConfig)
+        .values({
+          key,
+          provider,
+          providerModelId,
+          displayName,
+          description,
+          systemInstruction,
+          voiceName,
+          mediaResolution,
+          creditMultiplier: resolvedMultiplier,
+          inputProviderCostPerMillion,
+          outputProviderCostPerMillion,
+          config,
+          isEnabled,
+          enabledOnWeb,
+          enabledOnNative,
+          isDefault: false,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+        .returning();
 
-    if (!created) {
-      throw new ChatSDKError(
-        "bad_request:database",
-        "Failed to create live voice model configuration"
-      );
-    }
+      if (!created) {
+        throw new Error("Failed to create live voice model configuration");
+      }
 
-    if (isDefault) {
-      await setDefaultLiveVoiceModelConfig(created.id);
-      return { ...created, isDefault: true };
-    }
+      if (!isDefault) {
+        return created;
+      }
 
-    return created;
+      await tx
+        .update(liveVoiceModelConfig)
+        .set({ isDefault: false, updatedAt: now })
+        .where(
+          and(
+            eq(liveVoiceModelConfig.isDefault, true),
+            isNull(liveVoiceModelConfig.deletedAt),
+            ne(liveVoiceModelConfig.id, created.id)
+          )
+        );
+
+      const [defaulted] = await tx
+        .update(liveVoiceModelConfig)
+        .set({ isDefault: true, isEnabled: true, updatedAt: now })
+        .where(
+          and(
+            eq(liveVoiceModelConfig.id, created.id),
+            isNull(liveVoiceModelConfig.deletedAt)
+          )
+        )
+        .returning();
+
+      return defaulted ?? { ...created, isDefault: true, isEnabled: true };
+    });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
@@ -7248,6 +7346,18 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
 
   try {
     await db.transaction(async (tx) => {
+      const [target] = await tx
+        .select({ id: liveVoiceModelConfig.id })
+        .from(liveVoiceModelConfig)
+        .where(
+          and(eq(liveVoiceModelConfig.id, id), isNull(liveVoiceModelConfig.deletedAt))
+        )
+        .limit(1);
+
+      if (!target) {
+        throw new Error("Live voice model configuration not found");
+      }
+
       await tx
         .update(liveVoiceModelConfig)
         .set({ isDefault: false, updatedAt: now })
@@ -7259,7 +7369,7 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
           )
         );
 
-      const [target] = await tx
+      const [updated] = await tx
         .update(liveVoiceModelConfig)
         .set({ isDefault: true, isEnabled: true, updatedAt: now })
         .where(
@@ -7267,7 +7377,7 @@ export async function setDefaultLiveVoiceModelConfig(id: string) {
         )
         .returning();
 
-      if (!target) {
+      if (!updated) {
         throw new Error("Live voice model configuration not found");
       }
     });

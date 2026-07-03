@@ -3,7 +3,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/app/(auth)/auth";
 import { BackToHomeButton } from "@/app/(chat)/profile/back-to-home-button";
 import { RechargePlans } from "@/components/recharge-plans";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -13,13 +12,14 @@ import {
   getTranslationValuesForKeys,
 } from "@/lib/i18n/dictionary";
 import { withTimeout } from "@/lib/utils/async";
+import { getChatRouteSession } from "../chat-route-session";
 
 const PRICING_TIMEOUT_MS = 7000;
 const BALANCE_TIMEOUT_MS = 7000;
 const PLAN_TRANSLATIONS_TIMEOUT_MS = 4000;
 
 export default async function RechargePage() {
-  const session = await auth();
+  const session = await getChatRouteSession();
 
   if (!session?.user) {
     redirect("/login?callbackUrl=/recharge");
