@@ -10,14 +10,14 @@ import {
 } from "@/lib/constants";
 import {
   type AuthDbUser,
+  createAuthGuestUser,
+  ensureAuthOAuthUser,
   getAuthUserById,
   getAuthUsersByEmail,
 } from "@/lib/db/auth-queries";
 import {
   consumeImpersonationToken,
   createAuditLogEntry,
-  createGuestUser,
-  ensureOAuthUser,
   redeemPrelaunchInviteTokenForUser,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
@@ -190,7 +190,7 @@ providers.push(
     name: "Guest",
     credentials: {},
     async authorize() {
-      const [record] = await runAuthDb("guest.create_user", createGuestUser());
+      const record = await runAuthDb("guest.create_user", createAuthGuestUser());
 
       return {
         ...record,
@@ -373,7 +373,7 @@ export const {
 
           const { user: dbUser, isNewUser: isNewOAuthUser } = await runAuthDb(
             "google.ensure_user",
-            ensureOAuthUser(user.email, {
+            ensureAuthOAuthUser(user.email, {
               image: profileImage,
               firstName: googleFirstName || null,
               lastName: googleLastName || null,

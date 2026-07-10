@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withApiTiming } from "@/lib/api/observability";
 import { DUMMY_PASSWORD } from "@/lib/constants";
-import { getUser } from "@/lib/db/queries";
+import { getAuthUsersByEmail } from "@/lib/db/auth-queries";
 import { createMobileSessionFromUser } from "@/lib/mobile-auth-session";
 import { createMobileAuthToken } from "@/lib/mobile-auth-token";
 import {
@@ -81,12 +81,12 @@ export async function POST(request: Request) {
     return authError("Too many login attempts. Please try again later.", 429);
   }
 
-  let userRecords: Awaited<ReturnType<typeof getUser>>;
+  let userRecords: Awaited<ReturnType<typeof getAuthUsersByEmail>>;
   try {
     userRecords = await withApiTiming(
       "mobile.auth.login.user_lookup",
       () =>
-        withTimeout(getUser(email), MOBILE_AUTH_DB_TIMEOUT_MS, () => {
+        withTimeout(getAuthUsersByEmail(email), MOBILE_AUTH_DB_TIMEOUT_MS, () => {
           console.warn(
             `[mobile-auth] User lookup timed out after ${MOBILE_AUTH_DB_TIMEOUT_MS}ms.`
           );

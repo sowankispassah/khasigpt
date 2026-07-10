@@ -51,4 +51,29 @@ test.describe("auth startup isolation guardrails", () => {
     expect(postSource).toContain("statePatch");
     expect(postSource).not.toContain("await loadSiteAccessState()");
   });
+
+
+  test("native and OAuth login use the dedicated auth query pool", async () => {
+    const mobileLoginSource = await readWorkspaceFile(
+      "app/api/mobile/auth/login/route.ts"
+    );
+    expect(mobileLoginSource).toContain(
+      'import { getAuthUsersByEmail } from "@/lib/db/auth-queries"'
+    );
+    expect(mobileLoginSource).not.toContain("getUser(email)");
+
+    const mobileGoogleSource = await readWorkspaceFile(
+      "app/api/mobile/auth/google-callback/route.ts"
+    );
+    expect(mobileGoogleSource).toContain(
+      'import { ensureAuthOAuthUser } from "@/lib/db/auth-queries"'
+    );
+    expect(mobileGoogleSource).not.toContain("ensureOAuthUser(userInfo.email");
+
+    const nextAuthSource = await readWorkspaceFile("app/(auth)/auth.ts");
+    expect(nextAuthSource).toContain("createAuthGuestUser()");
+    expect(nextAuthSource).toContain("ensureAuthOAuthUser(user.email");
+    expect(nextAuthSource).not.toContain("createGuestUser()");
+    expect(nextAuthSource).not.toContain("ensureOAuthUser(user.email");
+  });
 });

@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import {
-  createAuditLogEntry,
-  ensureOAuthUser,
-} from "@/lib/db/queries";
+import { ensureAuthOAuthUser } from "@/lib/db/auth-queries";
+import { createAuditLogEntry } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { createMobileOAuthHandoffToken } from "@/lib/mobile-auth-token";
 import { verifyMobileGoogleOAuthState } from "@/lib/mobile-google-oauth-state";
@@ -228,7 +226,7 @@ async function exchangeGoogleCodeForHandoff({
     }
 
     const fallbackName = splitFullName(userInfo.name);
-    const { user, isNewUser } = await ensureOAuthUser(userInfo.email, {
+    const { user, isNewUser } = await ensureAuthOAuthUser(userInfo.email, {
       image: userInfo.picture ?? null,
       firstName: userInfo.given_name?.trim() || fallbackName.firstName,
       lastName: userInfo.family_name?.trim() || fallbackName.lastName,

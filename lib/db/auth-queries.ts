@@ -5,7 +5,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { type User, user } from "@/lib/db/schema";
+import { generateHashedPassword } from "@/lib/db/utils";
 import { ChatSDKError } from "@/lib/errors";
+import { generateUUID } from "@/lib/utils";
 
 export type AuthDbUser = Pick<
   User,
@@ -207,6 +209,125 @@ export async function getAuthUserRoleById(
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to get auth user role by id"
+    );
+  }
+}
+
+export async function createAuthGuestUser(): Promise<AuthDbUser> {
+  const email = ["guest", Date.now(), generateUUID().slice(0, 8)].join("-");
+  const password = generateHashedPassword(generateUUID());
+
+  try {
+    const [record] = await getAuthDb()
+      .insert(user)
+      .values({
+        email,
+        password,
+        isActive: true,
+        authProvider: "credentials",
+        firstName: "Guest",
+        lastName: "User",
+        dateOfBirth: "1990-01-01",
+      })
+      .returning(authUserColumns);
+
+    if (!record) {
+      throw new Error("guest_user_not_created");
+    }
+
+    return record;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to create guest user"
+    );
+  }
+}
+
+export async function ensureAuthOAuthUser(
+  email: string,
+  profile?: {
+    image?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  }
+): Promise<{ user: AuthDbUser; isNewUser: boolean }> {
+  const normalizedEmail = normalizeEmailValue(email);
+  const [existing] = await getAuthUsersByEmail(normalizedEmail);
+
+  if (existing) {
+    if (!existing.isActive) {
+      throw new ChatSDKError("forbidden:auth", "account_inactive");
+    }
+
+    const firstName = profile?.firstName?.trim() || null;
+    const lastName = profile?.lastName?.trim() || null;
+    const image = profile?.image?.trim() || null;
+    const updates: Partial<typeof user.$inferInsert> = {};
+
+    if (firstName && firstName !== (existing.firstName ?? "")) {
+      updates.firstName = firstName;
+    }
+    if (lastName && lastName !== (existing.lastName ?? "")) {
+      updates.lastName = lastName;
+    }
+    if (image && !existing.image) {
+      updates.image = image;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return { user: existing, isNewUser: false };
+    }
+
+    void getAuthDb()
+      .update(user)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(user.id, existing.id))
+      .then(() => undefined)
+      .catch((error) => {
+        console.warn("[auth-db] Optional OAuth profile sync failed.", {
+          userId: existing.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return { user: existing, isNewUser: false };
+  }
+
+  try {
+    const [created] = await getAuthDb()
+      .insert(user)
+      .values({
+        email: normalizedEmail,
+        isActive: true,
+        authProvider: "google",
+        image: profile?.image?.trim() || null,
+        firstName: profile?.firstName?.trim() || null,
+        lastName: profile?.lastName?.trim() || null,
+      })
+      .onConflictDoNothing()
+      .returning(authUserColumns);
+
+    if (created) {
+      return { user: created, isNewUser: true };
+    }
+
+    const [raceWinner] = await getAuthUsersByEmail(normalizedEmail);
+    if (!raceWinner) {
+      throw new Error("oauth_user_not_created");
+    }
+    if (!raceWinner.isActive) {
+      throw new ChatSDKError("forbidden:auth", "account_inactive");
+    }
+
+    return { user: raceWinner, isNewUser: false };
+  } catch (error) {
+    if (error instanceof ChatSDKError) {
+      throw error;
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to create OAuth user"
     );
   }
 }
