@@ -32,6 +32,7 @@ import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
+import { withAdminDatabase } from "@/lib/db/admin-database";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import {
   assertFeatureSettingWriteAllowed,
@@ -439,9 +440,11 @@ function pickPostgresUrl() {
     process.env.POSTGRES_DIRECT_URL,
     process.env.POSTGRES_PRISMA_URL,
   ].filter((value): value is string => Boolean(value));
+  const configuredPoolerUrl = process.env.POSTGRES_POOLER_URL?.trim();
   const poolerCandidate =
-    process.env.POSTGRES_POOLER_URL ??
-    candidates.find((value) => isSupabasePoolerUrl(value));
+    (configuredPoolerUrl && isSupabasePoolerUrl(configuredPoolerUrl)
+      ? configuredPoolerUrl
+      : undefined) ?? candidates.find((value) => isSupabasePoolerUrl(value));
 
   if (process.env.POSTGRES_USE_POOLER === "true") {
     return poolerCandidate ?? candidates[0] ?? null;
@@ -449,6 +452,12 @@ function pickPostgresUrl() {
 
   if (process.env.VERCEL === "1" && poolerCandidate) {
     return poolerCandidate;
+  }
+
+  if (process.env.VERCEL === "1") {
+    console.error(
+      "[db.config] No valid Supabase pooler URL is configured for Vercel. Direct database connections are more vulnerable to serverless connection churn."
+    );
   }
 
   const directCandidate = candidates.find(
@@ -485,8 +494,14 @@ const defaultPoolSize =
 
 const poolConfig = {
   max: parseOr(process.env.POSTGRES_POOL_SIZE, defaultPoolSize),
-  idle_timeout: parseOr(process.env.POSTGRES_IDLE_TIMEOUT, 20),
-  max_lifetime: parseOr(process.env.POSTGRES_MAX_LIFETIME, 60 * 30),
+  idle_timeout: parseOr(
+    process.env.POSTGRES_IDLE_TIMEOUT,
+    usesSupabasePooler ? 5 : 20
+  ),
+  max_lifetime: parseOr(
+    process.env.POSTGRES_MAX_LIFETIME,
+    usesSupabasePooler ? 60 * 5 : 60 * 30
+  ),
   connect_timeout: parseOr(
     process.env.POSTGRES_CONNECT_TIMEOUT ?? process.env.PGCONNECT_TIMEOUT,
     defaultConnectTimeout
@@ -626,7 +641,9 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
   const startedAt = Date.now();
 
   try {
-    const [row] = await client<AdminOverviewRawSnapshot[]>`
+    const [row] = await withAdminDatabase(
+      "overview.snapshot",
+      (_adminDb, adminClient) => adminClient<AdminOverviewRawSnapshot[]>`
       SELECT
         (SELECT COUNT(*)::integer FROM "User") AS "userCount",
         (SELECT COUNT(*)::integer FROM "Chat" WHERE "deletedAt" IS NULL) AS "chatCount",
@@ -707,7 +724,8 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
             LIMIT 5
           ) recent_contact_messages
         ) AS "recentContactMessages"
-    `;
+      `
+    );
 
     const snapshot: AdminOverviewSnapshot = {
       userCount: toInteger(row?.userCount),
@@ -3873,6 +3891,19 @@ export async function updateUserAuthProvider({
   }
 }
 
+export type AdminUserListItem = Pick<
+  User,
+  "allowPersonalKnowledge" | "email" | "id" | "isActive" | "role"
+>;
+
+const adminUserListColumns = {
+  allowPersonalKnowledge: user.allowPersonalKnowledge,
+  email: user.email,
+  id: user.id,
+  isActive: user.isActive,
+  role: user.role,
+};
+
 export async function listUsers({
   limit = 50,
   offset = 0,
@@ -3885,7 +3916,7 @@ export async function listUsers({
   search?: string | null;
   role?: User["role"] | "all" | null;
   isActive?: boolean | "all" | null;
-} = {}): Promise<User[]> {
+} = {}): Promise<AdminUserListItem[]> {
   try {
     const conditions: SQL<boolean>[] = [];
     const normalizedSearch = search?.trim().toLowerCase();
@@ -3910,11 +3941,16 @@ export async function listUsers({
       conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
     }
 
-    const builder = db.select().from(user);
-    const query =
-      conditions.length > 0 ? builder.where(and(...conditions)) : builder;
+    return await withAdminDatabase("users.list", async (adminDb) => {
+      const builder = adminDb.select(adminUserListColumns).from(user);
+      const query =
+        conditions.length > 0 ? builder.where(and(...conditions)) : builder;
 
-    return await query.orderBy(desc(user.createdAt)).limit(limit).offset(offset);
+      return await query
+        .orderBy(desc(user.createdAt), desc(user.id))
+        .limit(limit)
+        .offset(offset);
+    });
   } catch (_error) {
     if (isTableMissingError(_error)) {
       throw new ChatSDKError("bad_request:database", "User table is not available");
@@ -3971,20 +4007,17 @@ export async function getUserCount({
       conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
     }
 
-    const builder = db.select({ total: count(user.id) }).from(user);
-    const query =
-      conditions.length > 0 ? builder.where(and(...conditions)) : builder;
-    const [result] = await query;
+    const [result] = await withAdminDatabase("users.count", async (adminDb) => {
+      const builder = adminDb.select({ total: count(user.id) }).from(user);
+      const query =
+        conditions.length > 0 ? builder.where(and(...conditions)) : builder;
+      return await query;
+    });
     return Number(result?.total ?? 0);
   } catch (_error) {
     throw new ChatSDKError("bad_request:database", "Failed to count users");
   }
 }
-
-export type AdminUserListItem = Pick<
-  User,
-  "allowPersonalKnowledge" | "email" | "id" | "isActive" | "role"
->;
 
 export type AdminUsersSnapshot = {
   totalUsers: number;
@@ -4030,14 +4063,16 @@ export async function getAdminUsersSnapshot({
   const startedAt = Date.now();
 
   try {
-    const [row] = await client<AdminUsersRawSnapshot[]>`
+    const [row] = await withAdminDatabase(
+      "users.snapshot",
+      (_adminDb, adminClient) => adminClient<AdminUsersRawSnapshot[]>`
       SELECT
         (SELECT COUNT(*)::integer FROM "User") AS "totalUsers",
         (
           SELECT COALESCE(
             jsonb_agg(
               to_jsonb(paged_users) - 'createdAt'
-              ORDER BY paged_users."createdAt" DESC
+              ORDER BY paged_users."createdAt" DESC, paged_users."id" DESC
             ),
             '[]'::jsonb
           )
@@ -4050,12 +4085,13 @@ export async function getAdminUsersSnapshot({
               "allowPersonalKnowledge",
               "createdAt"
             FROM "User"
-            ORDER BY "createdAt" DESC
+            ORDER BY "createdAt" DESC, "id" DESC
             LIMIT ${safeLimit}
             OFFSET ${safeOffset}
           ) paged_users
         ) AS "users"
-    `;
+      `
+    );
 
     const users = toArray<AdminUsersRawSnapshot["users"][number]>(row?.users);
 
@@ -4098,7 +4134,9 @@ export async function getAdminUsersPageSnapshot({
   const nowTimestamp = new Date().toISOString().replace("T", " ").replace("Z", "");
 
   try {
-    const [row] = await client<AdminUsersPageRawSnapshot[]>`
+    const [row] = await withAdminDatabase(
+      "users.page-snapshot",
+      (_adminDb, adminClient) => adminClient<AdminUsersPageRawSnapshot[]>`
       WITH paged_users AS (
         SELECT
           "id",
@@ -4108,7 +4146,7 @@ export async function getAdminUsersPageSnapshot({
           "allowPersonalKnowledge",
           "createdAt"
         FROM "User"
-        ORDER BY "createdAt" DESC
+        ORDER BY "createdAt" DESC, "id" DESC
         LIMIT ${safeLimit}
         OFFSET ${safeOffset}
       ),
@@ -4192,7 +4230,8 @@ export async function getAdminUsersPageSnapshot({
           )
           FROM recent_active_subscriptions
         ) AS "activeSubscriptions"
-    `;
+      `
+    );
 
     const balanceByUserId = new Map<string, UserBalanceSummary>();
     for (const balance of toArray<AdminUsersPageRawSnapshot["balances"][number]>(
@@ -4278,23 +4317,6 @@ export async function listChats({
       );
     }
 
-    const baseQuery = db
-      .select({
-        id: chat.id,
-        createdAt: chat.createdAt,
-        title: chat.title,
-        userId: chat.userId,
-        mode: chat.mode,
-        status: chat.status,
-        statusReason: chat.statusReason,
-        visibility: chat.visibility,
-        lastContext: chat.lastContext,
-        deletedAt: chat.deletedAt,
-        userEmail: user.email,
-      })
-      .from(chat)
-      .leftJoin(user, eq(chat.userId, user.id));
-
     const whereCondition =
       conditions.length === 0
         ? undefined
@@ -4302,15 +4324,33 @@ export async function listChats({
           ? conditions[0]
           : (and(...conditions) as SQL<boolean>);
 
-    const query =
-      whereCondition !== undefined
-        ? baseQuery.where(whereCondition)
-        : baseQuery;
+    return await withAdminDatabase("chats.list", async (adminDb) => {
+      const baseQuery = adminDb
+        .select({
+          id: chat.id,
+          createdAt: chat.createdAt,
+          title: chat.title,
+          userId: chat.userId,
+          mode: chat.mode,
+          status: chat.status,
+          statusReason: chat.statusReason,
+          visibility: chat.visibility,
+          lastContext: chat.lastContext,
+          deletedAt: chat.deletedAt,
+          userEmail: user.email,
+        })
+        .from(chat)
+        .leftJoin(user, eq(chat.userId, user.id));
+      const query =
+        whereCondition !== undefined
+          ? baseQuery.where(whereCondition)
+          : baseQuery;
 
-    return await query
-      .orderBy(desc(chat.createdAt))
-      .limit(limit)
-      .offset(offset);
+      return await query
+        .orderBy(desc(chat.createdAt), desc(chat.id))
+        .limit(limit)
+        .offset(offset);
+    });
   } catch (_error) {
     if (isTableMissingError(_error)) {
       throw new ChatSDKError("bad_request:database", "Chat table is not available");
@@ -4350,15 +4390,17 @@ export async function getChatCount({
       );
     }
 
-    const baseBuilder = db
-      .select({ total: count(chat.id) })
-      .from(chat)
-      .leftJoin(user, eq(chat.userId, user.id));
-
-    const query =
-      conditions.length > 0 ? baseBuilder.where(and(...conditions)) : baseBuilder;
-
-    const [result] = await query;
+    const [result] = await withAdminDatabase("chats.count", async (adminDb) => {
+      const baseBuilder = adminDb
+        .select({ total: count(chat.id) })
+        .from(chat)
+        .leftJoin(user, eq(chat.userId, user.id));
+      const query =
+        conditions.length > 0
+          ? baseBuilder.where(and(...conditions))
+          : baseBuilder;
+      return await query;
+    });
     return Number(result?.total ?? 0);
   } catch (_error) {
     if (isTableMissingError(_error)) {
@@ -4796,22 +4838,24 @@ export async function listAuditLog({
       );
     }
 
-    if (conditions.length > 0) {
-      return await db
+    return await withAdminDatabase("audit-log.list", async (adminDb) => {
+      if (conditions.length > 0) {
+        return await adminDb
+          .select()
+          .from(auditLog)
+          .where(and(...conditions))
+          .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+          .limit(limit)
+          .offset(offset);
+      }
+
+      return await adminDb
         .select()
         .from(auditLog)
-        .where(and(...conditions))
-        .orderBy(desc(auditLog.createdAt))
+        .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
         .limit(limit)
         .offset(offset);
-    }
-
-    return await db
-      .select()
-      .from(auditLog)
-      .orderBy(desc(auditLog.createdAt))
-      .limit(limit)
-      .offset(offset);
+    });
   } catch (_error) {
     if (isTableMissingError(_error)) {
       throw new ChatSDKError(
@@ -4842,10 +4886,15 @@ export async function getAuditLogCount({
       );
     }
 
-    const builder = db.select({ total: count() }).from(auditLog);
-    const query =
-      conditions.length > 0 ? builder.where(and(...conditions)) : builder;
-    const [result] = await query;
+    const [result] = await withAdminDatabase(
+      "audit-log.count",
+      async (adminDb) => {
+        const builder = adminDb.select({ total: count() }).from(auditLog);
+        const query =
+          conditions.length > 0 ? builder.where(and(...conditions)) : builder;
+        return await query;
+      }
+    );
     return Number(result?.total ?? 0);
   } catch (_error) {
     if (isTableMissingError(_error)) {
@@ -5141,45 +5190,51 @@ export async function listAccountDeletionRequests({
     const whereClause =
       conditions.length > 0 ? (and(...conditions) as SQL<boolean>) : undefined;
 
-    const query = db
-      .select({
-        id: accountDeletionRequest.id,
-        referenceId: accountDeletionRequest.referenceId,
-        userId: accountDeletionRequest.userId,
-        email: accountDeletionRequest.email,
-        fullName: accountDeletionRequest.fullName,
-        usernameOrUserId: accountDeletionRequest.usernameOrUserId,
-        reason: accountDeletionRequest.reason,
-        notes: accountDeletionRequest.notes,
-        status: accountDeletionRequest.status,
-        requestSource: accountDeletionRequest.requestSource,
-        verifiedAt: accountDeletionRequest.verifiedAt,
-        reviewedAt: accountDeletionRequest.reviewedAt,
-        reviewedByAdminId: accountDeletionRequest.reviewedByAdminId,
-        isViewed: accountDeletionRequest.isViewed,
-        viewedAt: accountDeletionRequest.viewedAt,
-        viewedByAdminId: accountDeletionRequest.viewedByAdminId,
-        approvedAt: accountDeletionRequest.approvedAt,
-        approvedByAdminId: accountDeletionRequest.approvedByAdminId,
-        completedAt: accountDeletionRequest.completedAt,
-        completedByAdminId: accountDeletionRequest.completedByAdminId,
-        rejectedAt: accountDeletionRequest.rejectedAt,
-        rejectedByAdminId: accountDeletionRequest.rejectedByAdminId,
-        internalNotes: accountDeletionRequest.internalNotes,
-        createdAt: accountDeletionRequest.createdAt,
-        updatedAt: accountDeletionRequest.updatedAt,
-        userEmail: user.email,
-        userIsActive: user.isActive,
-      })
-      .from(accountDeletionRequest)
-      .leftJoin(user, eq(accountDeletionRequest.userId, user.id));
+    return await withAdminDatabase(
+      "account-deletion.list",
+      async (adminDb) => {
+        const query = adminDb
+          .select({
+            id: accountDeletionRequest.id,
+            referenceId: accountDeletionRequest.referenceId,
+            userId: accountDeletionRequest.userId,
+            email: accountDeletionRequest.email,
+            fullName: accountDeletionRequest.fullName,
+            usernameOrUserId: accountDeletionRequest.usernameOrUserId,
+            reason: accountDeletionRequest.reason,
+            notes: accountDeletionRequest.notes,
+            status: accountDeletionRequest.status,
+            requestSource: accountDeletionRequest.requestSource,
+            verifiedAt: accountDeletionRequest.verifiedAt,
+            reviewedAt: accountDeletionRequest.reviewedAt,
+            reviewedByAdminId: accountDeletionRequest.reviewedByAdminId,
+            isViewed: accountDeletionRequest.isViewed,
+            viewedAt: accountDeletionRequest.viewedAt,
+            viewedByAdminId: accountDeletionRequest.viewedByAdminId,
+            approvedAt: accountDeletionRequest.approvedAt,
+            approvedByAdminId: accountDeletionRequest.approvedByAdminId,
+            completedAt: accountDeletionRequest.completedAt,
+            completedByAdminId: accountDeletionRequest.completedByAdminId,
+            rejectedAt: accountDeletionRequest.rejectedAt,
+            rejectedByAdminId: accountDeletionRequest.rejectedByAdminId,
+            internalNotes: accountDeletionRequest.internalNotes,
+            createdAt: accountDeletionRequest.createdAt,
+            updatedAt: accountDeletionRequest.updatedAt,
+            userEmail: user.email,
+            userIsActive: user.isActive,
+          })
+          .from(accountDeletionRequest)
+          .leftJoin(user, eq(accountDeletionRequest.userId, user.id));
 
-    const rows = await (whereClause ? query.where(whereClause) : query)
-      .orderBy(desc(accountDeletionRequest.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    return rows;
+        return await (whereClause ? query.where(whereClause) : query)
+          .orderBy(
+            desc(accountDeletionRequest.createdAt),
+            desc(accountDeletionRequest.id)
+          )
+          .limit(limit)
+          .offset(offset);
+      }
+    );
   } catch (error) {
     if (isTableMissingError(error)) {
       throw new ChatSDKError(
@@ -5221,11 +5276,17 @@ export async function getAccountDeletionRequestCount({
       );
     }
 
-    const query = db.select({ total: count() }).from(accountDeletionRequest);
-    const [row] =
-      conditions.length > 0
-        ? await query.where(and(...conditions))
-        : await query;
+    const [row] = await withAdminDatabase(
+      "account-deletion.count",
+      async (adminDb) => {
+        const query = adminDb
+          .select({ total: count() })
+          .from(accountDeletionRequest);
+        return conditions.length > 0
+          ? await query.where(and(...conditions))
+          : await query;
+      }
+    );
     return Number(row?.total ?? 0);
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -5243,10 +5304,14 @@ export async function getAccountDeletionRequestCount({
 
 export async function getUnviewedAccountDeletionRequestCount(): Promise<number> {
   try {
-    const [row] = await db
-      .select({ total: count() })
-      .from(accountDeletionRequest)
-      .where(eq(accountDeletionRequest.isViewed, false));
+    const [row] = await withAdminDatabase(
+      "admin-shell.account-deletion-unviewed-count",
+      async (adminDb) =>
+        await adminDb
+          .select({ total: count() })
+          .from(accountDeletionRequest)
+          .where(eq(accountDeletionRequest.isViewed, false))
+    );
 
     return Number(row?.total ?? 0);
   } catch (error) {
@@ -5677,16 +5742,18 @@ export async function listContactMessages({
       );
     }
 
-    const baseQuery = db.select().from(contactMessage);
-    const filteredQuery =
-      conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
+    return await withAdminDatabase("contacts.list", async (adminDb) => {
+      const baseQuery = adminDb.select().from(contactMessage);
+      const filteredQuery =
+        conditions.length > 0
+          ? baseQuery.where(and(...conditions))
+          : baseQuery;
 
-    const finalQuery = filteredQuery
-      .orderBy(desc(contactMessage.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    return await finalQuery;
+      return await filteredQuery
+        .orderBy(desc(contactMessage.createdAt), desc(contactMessage.id))
+        .limit(limit)
+        .offset(offset);
+    });
   } catch (error) {
     if (isTableMissingError(error)) {
       throw new ChatSDKError(
@@ -5727,11 +5794,19 @@ export async function getContactMessageCount({
       );
     }
 
-    const baseQuery = db.select({ value: count() }).from(contactMessage);
-    const filteredQuery =
-      conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
-
-    const [result] = await filteredQuery;
+    const [result] = await withAdminDatabase(
+      "contacts.count",
+      async (adminDb) => {
+        const baseQuery = adminDb
+          .select({ value: count() })
+          .from(contactMessage);
+        const filteredQuery =
+          conditions.length > 0
+            ? baseQuery.where(and(...conditions))
+            : baseQuery;
+        return await filteredQuery;
+      }
+    );
     return result?.value ?? 0;
   } catch (error) {
     if (isTableMissingError(error)) {
@@ -9342,54 +9417,59 @@ export async function grantUserCredits({
   const expiresAt = addDays(now, Math.max(1, expiresInDays));
 
   try {
-    return await db.transaction(async (tx) => {
-      const active = await getActiveSubscriptionInternal(tx, userId, now);
+    return await withAdminDatabase(
+      "users.grant-credits",
+      async (adminDb) =>
+        await adminDb.transaction(async (tx) => {
+          const active = await getActiveSubscriptionInternal(tx, userId, now);
 
-      if (active) {
-        const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
-        const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
-        const updatedManual = currentManual + tokens;
-        const updatedBalance = updatedManual + currentPaid;
+          if (active) {
+            const currentManual = Math.max(0, active.manualTokenBalance ?? 0);
+            const currentPaid = Math.max(0, active.paidTokenBalance ?? 0);
+            const updatedManual = currentManual + tokens;
+            const updatedBalance = updatedManual + currentPaid;
 
-        const [updated] = await tx
-          .update(userSubscription)
-          .set({
-            tokenBalance: updatedBalance,
-            tokenAllowance: active.tokenAllowance + tokens,
-            manualTokenBalance: updatedManual,
-            paidTokenBalance: currentPaid,
-            expiresAt:
-              active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
-            updatedAt: now,
-          })
-          .where(eq(userSubscription.id, active.id))
-          .returning();
+            const [updated] = await tx
+              .update(userSubscription)
+              .set({
+                tokenBalance: updatedBalance,
+                tokenAllowance: active.tokenAllowance + tokens,
+                manualTokenBalance: updatedManual,
+                paidTokenBalance: currentPaid,
+                expiresAt:
+                  active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
+                updatedAt: now,
+              })
+              .where(eq(userSubscription.id, active.id))
+              .returning();
 
-        return updated;
-      }
+            return updated;
+          }
 
-      const plan = await ensureManualPlan(tx, now);
+          const plan = await ensureManualPlan(tx, now);
 
-      const [subscription] = await tx
-        .insert(userSubscription)
-        .values({
-          userId,
-          planId: plan.id,
-          status: "active",
-          tokenAllowance: tokens,
-          tokenBalance: tokens,
-          manualTokenBalance: tokens,
-          paidTokenBalance: 0,
-          tokensUsed: 0,
-          startedAt: now,
-          expiresAt,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
+          const [subscription] = await tx
+            .insert(userSubscription)
+            .values({
+              userId,
+              planId: plan.id,
+              status: "active",
+              tokenAllowance: tokens,
+              tokenBalance: tokens,
+              manualTokenBalance: tokens,
+              paidTokenBalance: 0,
+              tokensUsed: 0,
+              startedAt: now,
+              expiresAt,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning();
 
-      return subscription;
-    });
+          return subscription;
+        }),
+      { retry: false }
+    );
   } catch (error) {
     if (error instanceof ChatSDKError) {
       throw error;
@@ -9527,45 +9607,62 @@ export async function getUserBalanceSummaries(
   const now = new Date();
 
   try {
-    const [activeSubscriptions, latestSubscriptions] = await Promise.all([
-      db
-        .selectDistinctOn([userSubscription.userId])
-        .from(userSubscription)
-        .where(
-          and(
-            inArray(userSubscription.userId, validUserIds),
-            eq(userSubscription.status, "active"),
-            gt(userSubscription.expiresAt, now),
-            gt(userSubscription.tokenBalance, 0)
-          )
-        )
-        .orderBy(userSubscription.userId, desc(userSubscription.expiresAt)),
-      db
-        .selectDistinctOn([userSubscription.userId])
-        .from(userSubscription)
-        .where(inArray(userSubscription.userId, validUserIds))
-        .orderBy(userSubscription.userId, desc(userSubscription.updatedAt)),
-    ]);
-
-    const planIds = Array.from(
-      new Set(
-        latestSubscriptions
-          .map((subscription) => subscription.planId)
-          .filter((planId): planId is string => typeof planId === "string")
-      )
-    );
-    const plans =
-      planIds.length > 0
-        ? await db
-            .select()
-            .from(pricingPlan)
+    const { activeSubscriptions, latestSubscriptions, plans } =
+      await withAdminDatabase("users.balances", async (adminDb) => {
+        const [activeRows, latestRows] = await Promise.all([
+          adminDb
+            .selectDistinctOn([userSubscription.userId])
+            .from(userSubscription)
             .where(
               and(
-                inArray(pricingPlan.id, planIds),
-                isNull(pricingPlan.deletedAt)
+                inArray(userSubscription.userId, validUserIds),
+                eq(userSubscription.status, "active"),
+                gt(userSubscription.expiresAt, now),
+                gt(userSubscription.tokenBalance, 0)
               )
             )
-        : [];
+            .orderBy(
+              userSubscription.userId,
+              desc(userSubscription.expiresAt),
+              desc(userSubscription.id)
+            ),
+          adminDb
+            .selectDistinctOn([userSubscription.userId])
+            .from(userSubscription)
+            .where(inArray(userSubscription.userId, validUserIds))
+            .orderBy(
+              userSubscription.userId,
+              desc(userSubscription.updatedAt),
+              desc(userSubscription.id)
+            ),
+        ]);
+
+        const planIds = Array.from(
+          new Set(
+            latestRows
+              .map((subscription) => subscription.planId)
+              .filter((planId): planId is string => typeof planId === "string")
+          )
+        );
+        const planRows =
+          planIds.length > 0
+            ? await adminDb
+                .select()
+                .from(pricingPlan)
+                .where(
+                  and(
+                    inArray(pricingPlan.id, planIds),
+                    isNull(pricingPlan.deletedAt)
+                  )
+                )
+            : [];
+
+        return {
+          activeSubscriptions: activeRows,
+          latestSubscriptions: latestRows,
+          plans: planRows,
+        };
+      });
 
     const activeByUserId = new Map(
       activeSubscriptions.map((subscription) => [subscription.userId, subscription])
@@ -9643,33 +9740,37 @@ export async function listActiveSubscriptionSummaries({
   const now = new Date();
 
   try {
-    return await db
-      .select({
-        subscriptionId: userSubscription.id,
-        userEmail: user.email,
-        planName: pricingPlan.name,
-        tokenAllowance: userSubscription.tokenAllowance,
-        tokenBalance: userSubscription.tokenBalance,
-        expiresAt: userSubscription.expiresAt,
-      })
-      .from(userSubscription)
-      .innerJoin(user, eq(userSubscription.userId, user.id))
-      .leftJoin(
-        pricingPlan,
-        and(
-          eq(userSubscription.planId, pricingPlan.id),
-          isNull(pricingPlan.deletedAt)
-        )
-      )
-      .where(
-        and(
-          eq(userSubscription.status, "active"),
-          gt(userSubscription.expiresAt, now),
-          gt(userSubscription.tokenBalance, 0)
-        )
-      )
-      .orderBy(desc(userSubscription.updatedAt))
-      .limit(limit);
+    return await withAdminDatabase(
+      "users.active-subscriptions",
+      async (adminDb) =>
+        await adminDb
+          .select({
+            subscriptionId: userSubscription.id,
+            userEmail: user.email,
+            planName: pricingPlan.name,
+            tokenAllowance: userSubscription.tokenAllowance,
+            tokenBalance: userSubscription.tokenBalance,
+            expiresAt: userSubscription.expiresAt,
+          })
+          .from(userSubscription)
+          .innerJoin(user, eq(userSubscription.userId, user.id))
+          .leftJoin(
+            pricingPlan,
+            and(
+              eq(userSubscription.planId, pricingPlan.id),
+              isNull(pricingPlan.deletedAt)
+            )
+          )
+          .where(
+            and(
+              eq(userSubscription.status, "active"),
+              gt(userSubscription.expiresAt, now),
+              gt(userSubscription.tokenBalance, 0)
+            )
+          )
+          .orderBy(desc(userSubscription.updatedAt), desc(userSubscription.id))
+          .limit(limit)
+    );
   } catch (_error) {
     if (isTableMissingError(_error)) {
       return [];

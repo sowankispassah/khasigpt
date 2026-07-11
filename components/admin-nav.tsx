@@ -174,6 +174,7 @@ export function AdminNav({
       "admin:account-deletion-unviewed-count",
       handleCountUpdate
     );
+    void refreshDeletionRequestCount();
     const intervalId = window.setInterval(refreshDeletionRequestCount, 120_000);
 
     return () => {

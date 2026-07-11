@@ -10,8 +10,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { adminQueryOr } from "@/lib/admin/safe-query";
-import { getUnviewedAccountDeletionRequestCount } from "@/lib/db/queries";
 import type { LanguageOption } from "@/lib/i18n/languages";
 
 const ADMIN_SHELL_TRANSLATIONS = [
@@ -105,13 +103,6 @@ export default async function AdminLayout({
   const languages = [FALLBACK_LANGUAGE];
   const activeLanguage = FALLBACK_LANGUAGE;
   const dictionary = buildFallbackDictionary();
-  const accountDeletionRequestCount = await adminQueryOr({
-    fallback: 0,
-    label: "admin-shell.account-deletion-unviewed-count",
-    promise: getUnviewedAccountDeletionRequestCount(),
-    timeoutMs: 1500,
-  });
-
   return (
     <SiteShell
       activeLanguage={activeLanguage}
@@ -120,11 +111,7 @@ export default async function AdminLayout({
       session={session}
     >
       <SidebarProvider defaultOpen={defaultSidebarOpen}>
-        <AdminNav
-          initialBadgeCounts={{
-            accountDeletionRequests: accountDeletionRequestCount,
-          }}
-        />
+        <AdminNav />
         <SidebarInset>
           <div className="flex min-h-screen flex-col">
             <header className="sticky top-0 z-20 border-b bg-background/95 py-3 pr-16 pl-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:pr-20 sm:pl-6">

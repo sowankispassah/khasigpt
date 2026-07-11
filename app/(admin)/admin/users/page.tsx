@@ -9,10 +9,9 @@ import {
 import {
   type ActiveSubscriptionSummary,
   type AdminUsersSnapshot,
+  getAdminUsersSnapshot,
   getUserBalanceSummaries,
-  getUserCount,
   listActiveSubscriptionSummaries,
-  listUsers,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
@@ -54,52 +53,54 @@ export default async function AdminUsersPage({
       promise,
     });
 
-  const totalUsersState = await withQueryState<number | null>(
-    "users.count",
-    getUserCount({ isActive: "all", role: "all", search: null }),
-    null
+  const activeSubscriptionsStatePromise = withQueryState<
+    ActiveSubscriptionSummary[]
+  >(
+    "users.active-subscriptions",
+    listActiveSubscriptionSummaries({ limit: 20 }),
+    []
   );
 
-  const totalUsers = totalUsersState.data ?? EMPTY_ADMIN_USERS_SNAPSHOT.totalUsers;
-  const totalUsersConfirmed =
-    totalUsersState.ok && typeof totalUsersState.data === "number";
+  let usersSnapshotState = await withQueryState<AdminUsersSnapshot>(
+    "users.snapshot",
+    getAdminUsersSnapshot({
+      limit: USERS_PAGE_SIZE,
+      offset: (requestedPage - 1) * USERS_PAGE_SIZE,
+    }),
+    EMPTY_ADMIN_USERS_SNAPSHOT
+  );
+
+  let totalUsers = usersSnapshotState.data.totalUsers;
+  const totalUsersConfirmed = usersSnapshotState.ok;
   const totalPages = totalUsersConfirmed
     ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
     : requestedPage;
   const page = totalUsersConfirmed ? Math.min(requestedPage, totalPages) : requestedPage;
-  const pageOffset = (page - 1) * USERS_PAGE_SIZE;
 
-  const pagedUsersState = await withQueryState<AdminUsersSnapshot["users"]>(
-    "users.list",
-    listUsers({
-      isActive: "all",
-      limit: USERS_PAGE_SIZE,
-      offset: pageOffset,
-      role: "all",
-      search: null,
-    }),
-    []
-  );
-  const pagedUsers = pagedUsersState.data;
+  if (usersSnapshotState.ok && page !== requestedPage) {
+    usersSnapshotState = await withQueryState<AdminUsersSnapshot>(
+      "users.snapshot.clamped-page",
+      getAdminUsersSnapshot({
+        limit: USERS_PAGE_SIZE,
+        offset: (page - 1) * USERS_PAGE_SIZE,
+      }),
+      EMPTY_ADMIN_USERS_SNAPSHOT
+    );
+    totalUsers = usersSnapshotState.data.totalUsers;
+  }
 
-  const [balanceByUserIdState, activeSubscriptionsState] = await Promise.all([
-    pagedUsersState.ok
-      ? withQueryState<Map<string, UserBalanceSummary>>(
-          "users.balances",
-          getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
-          new Map<string, UserBalanceSummary>()
-        )
-      : Promise.resolve<AdminQueryResult<Map<string, UserBalanceSummary>>>({
-          data: new Map<string, UserBalanceSummary>(),
-          error: pagedUsersState.error,
-          ok: false,
-        }),
-    withQueryState<ActiveSubscriptionSummary[]>(
-      "users.active-subscriptions",
-      listActiveSubscriptionSummaries({ limit: 20 }),
-      []
-    ),
-  ]);
+  const pagedUsers = usersSnapshotState.data.users;
+  const balanceByUserIdStatePromise = usersSnapshotState.ok
+    ? withQueryState<Map<string, UserBalanceSummary>>(
+        "users.balances",
+        getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
+        new Map<string, UserBalanceSummary>()
+      )
+    : Promise.resolve<AdminQueryResult<Map<string, UserBalanceSummary>>>({
+        data: new Map<string, UserBalanceSummary>(),
+        error: usersSnapshotState.error,
+        ok: false,
+      });
 
   return (
     <div className="flex flex-col gap-6">
@@ -121,36 +122,34 @@ export default async function AdminUsersPage({
         <AdminUsersQueryWarning message="User count could not be confirmed." />
       )}
 
-      {!pagedUsersState.ok && (
+      {!usersSnapshotState.ok && (
         <AdminUsersQueryWarning
           message="User list could not be confirmed."
         />
       )}
 
-      <Suspense fallback={<UsersTableFallback />}>
-        <UsersTableSection
-          balanceByUserIdState={balanceByUserIdState}
-          currentUserId={currentUserId}
-          page={page}
-          pagedUsers={pagedUsers}
-          resolvedSearchParams={resolvedSearchParams}
-          totalUsers={totalUsers}
-          totalUsersConfirmed={totalUsersConfirmed}
-          usersConfirmed={pagedUsersState.ok}
-        />
-      </Suspense>
+      <UsersTableSection
+        balanceByUserIdStatePromise={balanceByUserIdStatePromise}
+        currentUserId={currentUserId}
+        page={page}
+        pagedUsers={pagedUsers}
+        resolvedSearchParams={resolvedSearchParams}
+        totalUsers={totalUsers}
+        totalUsersConfirmed={totalUsersConfirmed}
+        usersConfirmed={usersSnapshotState.ok}
+      />
 
       <Suspense fallback={<SubscriptionsFallback />}>
         <ActiveSubscriptionsSection
-          activeSubscriptionsState={activeSubscriptionsState}
+          activeSubscriptionsStatePromise={activeSubscriptionsStatePromise}
         />
       </Suspense>
     </div>
   );
 }
 
-async function UsersTableSection({
-  balanceByUserIdState,
+function UsersTableSection({
+  balanceByUserIdStatePromise,
   currentUserId,
   page,
   pagedUsers,
@@ -159,7 +158,9 @@ async function UsersTableSection({
   totalUsersConfirmed,
   usersConfirmed,
 }: {
-  balanceByUserIdState: AdminQueryResult<Map<string, UserBalanceSummary>>;
+  balanceByUserIdStatePromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
   currentUserId: string | undefined;
   page: number;
   pagedUsers: AdminUsersSnapshot["users"];
@@ -168,13 +169,13 @@ async function UsersTableSection({
   totalUsersConfirmed: boolean;
   usersConfirmed: boolean;
 }) {
-  const balanceByUserId = balanceByUserIdState.data;
-
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
-      {!balanceByUserIdState.ok && (
-        <AdminUsersQueryWarning message="Credit balances could not be confirmed. Rows keep credit actions available, but balances are shown as unavailable instead of zero." />
-      )}
+      <Suspense fallback={null}>
+        <BalanceQueryWarning
+          balanceByUserIdStatePromise={balanceByUserIdStatePromise}
+        />
+      </Suspense>
       <div className="overflow-x-auto">
         <table className="w-full whitespace-nowrap text-sm">
           <thead className="text-muted-foreground text-xs uppercase">
@@ -225,14 +226,21 @@ async function UsersTableSection({
                         isSelf={user.id === currentUserId}
                         userId={user.id}
                       />
-                      <AddCreditsForm
-                        creditsRemaining={
-                          balanceByUserIdState.ok
-                            ? balanceByUserId.get(user.id)?.creditsRemaining ?? 0
-                            : null
+                      <Suspense
+                        fallback={
+                          <AddCreditsForm
+                            creditsRemaining={null}
+                            userId={user.id}
+                          />
                         }
-                        userId={user.id}
-                      />
+                      >
+                        <UserCreditAction
+                          balanceByUserIdStatePromise={
+                            balanceByUserIdStatePromise
+                          }
+                          userId={user.id}
+                        />
+                      </Suspense>
                     </div>
                   </td>
                 </tr>
@@ -256,11 +264,49 @@ async function UsersTableSection({
   );
 }
 
-async function ActiveSubscriptionsSection({
-  activeSubscriptionsState,
+async function BalanceQueryWarning({
+  balanceByUserIdStatePromise,
 }: {
-  activeSubscriptionsState: AdminQueryResult<ActiveSubscriptionSummary[]>;
+  balanceByUserIdStatePromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
 }) {
+  const balanceByUserIdState = await balanceByUserIdStatePromise;
+  return balanceByUserIdState.ok ? null : (
+    <AdminUsersQueryWarning message="Credit balances could not be confirmed. User rows remain available and credit balances stay unconfirmed instead of falling back to zero." />
+  );
+}
+
+async function UserCreditAction({
+  balanceByUserIdStatePromise,
+  userId,
+}: {
+  balanceByUserIdStatePromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
+  userId: string;
+}) {
+  const balanceByUserIdState = await balanceByUserIdStatePromise;
+  return (
+    <AddCreditsForm
+      creditsRemaining={
+        balanceByUserIdState.ok
+          ? (balanceByUserIdState.data.get(userId)?.creditsRemaining ?? 0)
+          : null
+      }
+      userId={userId}
+    />
+  );
+}
+
+async function ActiveSubscriptionsSection({
+  activeSubscriptionsStatePromise,
+}: {
+  activeSubscriptionsStatePromise: Promise<
+    AdminQueryResult<ActiveSubscriptionSummary[]>
+  >;
+}) {
+  const activeSubscriptionsState = await activeSubscriptionsStatePromise;
   const activeSubscriptions = activeSubscriptionsState.data;
 
   return (
@@ -336,21 +382,6 @@ function AdminUsersQueryWarning({ message }: { message: string }) {
   return (
     <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
       {message} Refresh this admin section to retry.
-    </div>
-  );
-}
-
-function UsersTableFallback() {
-  return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="space-y-3">
-        {Array.from({ length: 6 }, (_, index) => (
-          <div
-            className="h-12 animate-pulse rounded-lg bg-muted/50"
-            key={`users-row-${index + 1}`}
-          />
-        ))}
-      </div>
     </div>
   );
 }
