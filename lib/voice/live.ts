@@ -75,6 +75,7 @@ export type GeminiVoiceTokenResponse =
       voiceName: string;
       mediaResolution: string;
       systemInstruction: string;
+      tools?: Array<Record<string, unknown>>;
       creditMultiplier: number;
       tokensPerVoiceInteraction: number;
       webSocketUrl: string;

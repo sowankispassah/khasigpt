@@ -9,7 +9,6 @@ export type SanitizedRagEntry = RagEntry & {
   tags: string[];
   models: string[];
   metadata: Record<string, unknown>;
-  categoryName?: string | null;
 };
 
 export type RagVersionDiff = {
@@ -77,7 +76,31 @@ export type UpsertRagEntryInput = {
   models: string[];
   sourceUrl?: string | null;
   metadata?: Record<string, unknown>;
-  categoryId?: string | null;
+  language?: string;
+  priority?: number;
   personalForUserId?: string | null;
   approvedBy?: string | null;
+};
+
+export type RagRetrievalScope = "default" | "study" | "jobs";
+
+export type RagRetrievalMatch = {
+  entryId: string;
+  chunkId: string;
+  chunkIndex: number;
+  title: string;
+  content: string;
+  sourceUrl: string | null;
+  language: string;
+  semanticScore: number;
+  keywordScore: number;
+  score: number;
+};
+
+export type RagRetrievalResult = {
+  context: string;
+  matches: RagRetrievalMatch[];
+  language: string;
+  durationMs: number;
+  status: "hit" | "miss" | "skipped" | "failed";
 };

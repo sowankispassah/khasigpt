@@ -7,12 +7,10 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from "react";
 import { toast } from "sonner";
 import {
   bulkUpdateRagEntryStatusAction,
-  createRagCategoryAction,
   createRagEntryAction,
   deleteRagEntriesAction,
   restoreRagEntryAction,
@@ -26,15 +24,9 @@ import {
   TrashIcon,
 } from "@/components/icons";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  EditableTranslation,
+  useEditableTranslation,
+} from "@/components/translation-edit-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,8 +63,7 @@ export type SerializedAdminRagEntry = {
     models: string[];
     chatScope: RagChatScope | null;
     sourceUrl: string | null;
-    categoryId: string | null;
-    categoryName: string | null;
+    embeddingStatus: SanitizedRagEntry["embeddingStatus"];
     createdAt: string;
     updatedAt: string;
   };
@@ -89,7 +80,6 @@ type AdminRagManagerProps = {
   entries: SerializedAdminRagEntry[];
   modelOptions: Array<{ id: string; label: string; provider: string }>;
   tagOptions: string[];
-  categories: Array<{ id: string; name: string }>;
   degradedSections?: string[];
 };
 
@@ -135,19 +125,17 @@ type RagFormState = {
   models: string[];
   chatScope: RagChatScope | "";
   sourceUrl: string;
-  categoryId: string;
 };
 
 const DEFAULT_FORM: RagFormState = {
   title: "",
   content: "",
   type: "text" as (typeof RAG_TYPES)[number],
-  status: "inactive" as RagEntryStatus,
+  status: "active" as RagEntryStatus,
   tags: [] as string[],
   models: [] as string[],
   chatScope: "default" as RagChatScope,
   sourceUrl: "",
-  categoryId: "",
 };
 
 const CHAT_SCOPE_LABELS: Record<RagChatScope, string> = {
@@ -189,9 +177,6 @@ const QUICK_CREATE_SCOPES: Array<{
   },
 ];
 
-const sortCategories = (list: Array<{ id: string; name: string }>) =>
-  [...list].sort((a, b) => a.name.localeCompare(b.name));
-
 function withClientTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
@@ -218,14 +203,10 @@ export function AdminRagManager({
   entries,
   modelOptions,
   tagOptions,
-  categories,
   degradedSections = [],
 }: AdminRagManagerProps) {
   const [entriesState, setEntriesState] = useState(entries);
   const [availableTags, setAvailableTags] = useState(tagOptions);
-  const [categoryOptions, setCategoryOptions] = useState(
-    sortCategories(categories)
-  );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<RagEntryStatus | "all">(
@@ -244,15 +225,21 @@ export function AdminRagManager({
   const [versions, setVersions] = useState<RagVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [isCreatingCategory, startCreateCategory] = useTransition();
-  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [categoryError, setCategoryError] = useState("");
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [showAllEntries, setShowAllEntries] = useState(false);
+  const titlePlaceholder = useEditableTranslation(
+    "admin.rag.form.title_placeholder",
+    "A short, specific title",
+    "Placeholder for the custom knowledge title field.",
+  );
+  const contentPlaceholder = useEditableTranslation(
+    "admin.rag.form.content_placeholder",
+    "Write the fact or guidance exactly as KhasiGPT should understand it.",
+    "Placeholder for the custom knowledge content field.",
+  );
 
   useEffect(() => {
     setEntriesState(entries);
@@ -261,10 +248,6 @@ export function AdminRagManager({
   useEffect(() => {
     setAvailableTags(tagOptions);
   }, [tagOptions]);
-
-  useEffect(() => {
-    setCategoryOptions(sortCategories(categories));
-  }, [categories]);
 
   const clearProgressTimers = useCallback(() => {
     for (const timer of progressTimers.current) {
@@ -414,8 +397,7 @@ export function AdminRagManager({
           models: entry.models,
           chatScope: getRagChatScope(entry.metadata),
           sourceUrl: entry.sourceUrl ?? null,
-          categoryId: entry.categoryId ?? null,
-          categoryName: entry.categoryName ?? null,
+          embeddingStatus: entry.embeddingStatus,
           createdAt: new Date(entry.createdAt).toISOString(),
           updatedAt: new Date(entry.updatedAt).toISOString(),
         },
@@ -440,36 +422,6 @@ export function AdminRagManager({
     setSheetOpen(true);
   };
 
-  const handleCreateCategory = () => {
-    const trimmed = newCategoryName.trim();
-    if (!trimmed) {
-      setCategoryError("Name is required");
-      return;
-    }
-    setCategoryError("");
-    startCreateCategory(() => {
-      createRagCategoryAction(trimmed)
-        .then((category) => {
-          setCategoryOptions((prev) => sortCategories([...prev, category]));
-          setFormState((prev) => ({
-            ...prev,
-            categoryId: category.id,
-          }));
-          toast.success(`Category "${category.name}" created.`);
-          setNewCategoryName("");
-          setCategoryError("");
-          setCategoryDialogOpen(false);
-        })
-        .catch((error) => {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Unable to create category";
-          toast.error(message);
-        });
-    });
-  };
-
   const openEditor = (entry: SerializedAdminRagEntry) => {
     setEditingEntry(entry);
     setFormState({
@@ -479,9 +431,8 @@ export function AdminRagManager({
       status: entry.entry.status,
       tags: entry.entry.tags,
       models: entry.entry.models,
-      chatScope: entry.entry.chatScope ?? "",
+      chatScope: entry.entry.chatScope ?? "default",
       sourceUrl: entry.entry.sourceUrl ?? "",
-      categoryId: entry.entry.categoryId ?? "",
     });
     setSheetOpen(true);
   };
@@ -497,7 +448,6 @@ export function AdminRagManager({
       models: formState.models,
       metadata: { chatScope: formState.chatScope || null },
       sourceUrl: formState.sourceUrl.trim() || null,
-      categoryId: formState.categoryId ? formState.categoryId : null,
     };
 
     if (!payload.title || !payload.content) {
@@ -528,7 +478,13 @@ export function AdminRagManager({
           }
           return Array.from(next);
         });
-        toast.success(editingEntry ? "Entry updated" : "Entry created");
+        if (entry.embeddingStatus === "failed") {
+          toast.error(
+            "Entry saved, but indexing failed. Check its index status and rebuild.",
+          );
+        } else {
+          toast.success(editingEntry ? "Entry updated" : "Entry created");
+        }
         setSheetOpen(false);
       })
       .catch((error) => {
@@ -895,7 +851,6 @@ export function AdminRagManager({
                 </th>
                 <th className="px-2 py-2">Title</th>
                 <th className="px-2 py-2">Scope</th>
-                <th className="px-2 py-2">Category</th>
                 <th className="px-2 py-2">Status</th>
                 <th className="px-2 py-2">Model restriction</th>
                 <th className="px-2 py-2">Tags</th>
@@ -908,7 +863,7 @@ export function AdminRagManager({
                 <tr>
                   <td
                     className="px-2 py-6 text-center text-muted-foreground"
-                      colSpan={9}
+                      colSpan={8}
                     >
                       {degradedSections.includes("RAG entries")
                         ? "RAG entries could not be confirmed. Retry before treating this table as empty."
@@ -939,17 +894,6 @@ export function AdminRagManager({
                       ) : (
                         <span className="text-muted-foreground text-xs">
                           Legacy / unscoped
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-3">
-                      {item.entry.categoryName ? (
-                        <Badge variant="secondary">
-                          {item.entry.categoryName}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">
-                          Uncategorized
                         </span>
                       )}
                     </td>
@@ -1059,76 +1003,33 @@ export function AdminRagManager({
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle>
-              {editingEntry ? "Update entry" : "Create entry"}
+              <EditableTranslation
+                defaultText={editingEntry ? "Update entry" : "Create entry"}
+                description="Heading for the custom knowledge editor."
+                translationKey={
+                  editingEntry
+                    ? "admin.rag.form.update_title"
+                    : "admin.rag.form.create_title"
+                }
+              />
             </SheetTitle>
             <SheetDescription>
-              Provide descriptive titles, clean content, and rich tags to
-              improve match quality.
+              <EditableTranslation
+                defaultText="Add a clear title and the fact or guidance KhasiGPT should know."
+                description="Short instructions shown above the custom knowledge form."
+                translationKey="admin.rag.form.description"
+              />
             </SheetDescription>
           </SheetHeader>
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
             <div>
-              <Label htmlFor="rag-chat-scope">Knowledge scope</Label>
-              <select
-                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                id="rag-chat-scope"
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    chatScope: event.target.value as RagChatScope | "",
-                  }))
-                }
-                value={formState.chatScope}
-              >
-                <option value="">Legacy / unscoped</option>
-                {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
-                  <option key={scope} value={scope}>
-                    {CHAT_SCOPE_LABELS[scope]}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-muted-foreground text-xs">
-                {formState.chatScope
-                  ? CHAT_SCOPE_DESCRIPTIONS[formState.chatScope]
-                  : "Legacy entries are not retrieved by new scoped chat flows until a scope is selected."}
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="rag-category">Category</Label>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <select
-                  className="flex-1 rounded-md border px-3 py-2 text-sm"
-                  id="rag-category"
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      categoryId: event.target.value,
-                    }))
-                  }
-                  value={formState.categoryId}
-                >
-                  <option value="">Uncategorized</option>
-                  {categoryOptions.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  disabled={isCreatingCategory}
-                  onClick={() => {
-                    setCategoryDialogOpen(true);
-                    setCategoryError("");
-                  }}
-                  type="button"
-                  variant="outline"
-                >
-                  Add category
-                </Button>
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="rag-title">Title</Label>
+              <Label htmlFor="rag-title">
+                <EditableTranslation
+                  defaultText="Title"
+                  description="Label for the custom knowledge title."
+                  translationKey="admin.rag.form.title"
+                />
+              </Label>
               <Input
                 id="rag-title"
                 onChange={(event) =>
@@ -1137,80 +1038,133 @@ export function AdminRagManager({
                     title: event.target.value,
                   }))
                 }
+                placeholder={titlePlaceholder.text}
                 required
                 value={formState.title}
               />
             </div>
             <div>
-              <Label htmlFor="rag-type">Content type</Label>
-              <select
-                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                id="rag-type"
+              <Label htmlFor="rag-content">
+                <EditableTranslation
+                  defaultText="Content"
+                  description="Label for the custom knowledge content."
+                  translationKey="admin.rag.form.content"
+                />
+              </Label>
+              <Textarea
+                className="h-56 resize-y"
+                id="rag-content"
                 onChange={(event) =>
                   setFormState((prev) => ({
                     ...prev,
-                    type: event.target.value as (typeof RAG_TYPES)[number],
+                    content: event.target.value,
                   }))
                 }
-                value={formState.type}
-              >
-                {RAG_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+                placeholder={contentPlaceholder.text}
+                required
+                value={formState.content}
+              />
             </div>
             <div>
-              <Label htmlFor="rag-status">Status</Label>
-              <select
-                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                id="rag-status"
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    status: event.target.value as RagEntryStatus,
-                  }))
-                }
-                value={formState.status}
-              >
-                {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="rag-source">Source URL (optional)</Label>
-              <Input
-                id="rag-source"
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    sourceUrl: event.target.value,
-                  }))
-                }
-                placeholder="https://example.com/policy.pdf"
-                value={formState.sourceUrl}
+              <Label>
+                <EditableTranslation
+                  defaultText="Tags (optional)"
+                  description="Label for optional custom knowledge tags."
+                  translationKey="admin.rag.form.tags"
+                />
+              </Label>
+              <TagInput
+                onAdd={addTag}
+                onRemove={removeTag}
+                tags={formState.tags}
               />
             </div>
             <details className="rounded-lg border p-3">
               <summary className="cursor-pointer font-medium text-sm">
-                Advanced: model restrictions (optional)
+                <EditableTranslation
+                  defaultText="Advanced details (optional)"
+                  description="Expandable heading for less commonly used custom knowledge settings."
+                  translationKey="admin.rag.form.advanced"
+                />
               </summary>
-              <p className="mt-2 text-muted-foreground text-xs">
-                Leave empty to apply this knowledge to all enabled chat models.
-                Only choose models when the content is intentionally
-                model-specific.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3 space-y-4">
+                <div>
+                  <Label htmlFor="rag-chat-scope">Knowledge scope</Label>
+                  <select
+                    className="mt-1 w-full cursor-pointer rounded-md border px-3 py-2 text-sm"
+                    id="rag-chat-scope"
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        chatScope: event.target.value as RagChatScope,
+                      }))
+                    }
+                    value={formState.chatScope || "default"}
+                  >
+                    {RAG_CHAT_SCOPE_OPTIONS.map((scope) => (
+                      <option key={scope} value={scope}>
+                        {CHAT_SCOPE_LABELS[scope]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    {CHAT_SCOPE_DESCRIPTIONS[
+                      formState.chatScope || "default"
+                    ]}
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="rag-source">Source URL (optional)</Label>
+                  <Input
+                    id="rag-source"
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        sourceUrl: event.target.value,
+                      }))
+                    }
+                    placeholder="https://example.com/policy"
+                    value={formState.sourceUrl}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="rag-status">Status</Label>
+                  <select
+                    className="mt-1 w-full cursor-pointer rounded-md border px-3 py-2 text-sm"
+                    id="rag-status"
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        status: event.target.value as RagEntryStatus,
+                      }))
+                    }
+                    value={formState.status}
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {editingEntry && formState.type !== "text" ? (
+                  <p className="text-muted-foreground text-xs">
+                    Legacy content type: {formState.type}
+                  </p>
+                ) : null}
+                <div>
+                  <Label>Model restrictions</Label>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    Leave empty for all models. Restrict only when this knowledge
+                    is intentionally model-specific.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
                 {modelOptions.map((model) => {
                   const checked = formState.models.includes(model.id);
                   return (
                     <button
                       className={cn(
-                        "rounded-full border px-3 py-1 font-medium text-xs transition",
+                        "cursor-pointer rounded-full border px-3 py-1 font-medium text-xs transition",
                         checked
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-muted text-muted-foreground hover:border-primary/40"
@@ -1226,31 +1180,10 @@ export function AdminRagManager({
                     </button>
                   );
                 })}
+                  </div>
+                </div>
               </div>
             </details>
-            <div>
-              <Label>Tags</Label>
-              <TagInput
-                onAdd={addTag}
-                onRemove={removeTag}
-                tags={formState.tags}
-              />
-            </div>
-            <div>
-              <Label htmlFor="rag-content">Content</Label>
-              <Textarea
-                className="h-48 resize-y"
-                id="rag-content"
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    content: event.target.value,
-                  }))
-                }
-                required
-                value={formState.content}
-              />
-            </div>
             {editingEntry ? (
               <VersionTimeline
                 isLoading={versionsLoading}
@@ -1260,7 +1193,7 @@ export function AdminRagManager({
               />
             ) : null}
             <div className="flex items-center gap-2">
-              <Button disabled={isActionPending} type="submit">
+              <Button className="cursor-pointer" disabled={isActionPending} type="submit">
                 {pendingAction === "submit" ? (
                   <>
                     <LoaderIcon className="animate-spin" />
@@ -1271,6 +1204,7 @@ export function AdminRagManager({
                 )}
               </Button>
               <Button
+                className="cursor-pointer"
                 disabled={isActionPending}
                 onClick={() => {
                   setSheetOpen(false);
@@ -1285,58 +1219,6 @@ export function AdminRagManager({
           </form>
         </SheetContent>
       </Sheet>
-
-      <AlertDialog
-        onOpenChange={(open) => {
-          setCategoryDialogOpen(open);
-          if (!open) {
-            setNewCategoryName("");
-            setCategoryError("");
-          }
-        }}
-        open={categoryDialogOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Create category</AlertDialogTitle>
-            <AlertDialogDescription>
-              Give this category a descriptive name. You can reuse it for future
-              entries.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="new-category-name">Category name</Label>
-            <Input
-              autoFocus
-              disabled={isCreatingCategory}
-              id="new-category-name"
-              onChange={(event) => {
-                setNewCategoryName(event.target.value);
-                setCategoryError("");
-              }}
-              placeholder="e.g. News, Study, FAQ"
-              value={newCategoryName}
-            />
-            {categoryError ? (
-              <p className="text-destructive text-xs">{categoryError}</p>
-            ) : null}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isCreatingCategory}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isCreatingCategory}
-              onClick={(event) => {
-                event.preventDefault();
-                handleCreateCategory();
-              }}
-            >
-              {isCreatingCategory ? "Creating..." : "Create"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

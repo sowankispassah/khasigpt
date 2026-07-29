@@ -51,7 +51,6 @@ export type JobPostingRecord = {
   embeddingStatus: RagEmbeddingStatus;
   metadata: Record<string, unknown>;
   models: string[];
-  categoryId: string | null;
   parseError?: string | null;
   createdAt: Date;
   updatedAt: Date;

@@ -3,48 +3,28 @@ import "server-only";
 import { diff_match_patch } from "diff-match-patch";
 import {
   and,
-  asc,
   desc,
   eq,
   inArray,
   isNotNull,
   isNull,
+  or,
   sql,
 } from "drizzle-orm";
 import { getModelRegistry } from "@/lib/ai/model-registry";
-import { isStrongDefaultModeRagTitleMatch } from "@/lib/chat/default-mode-rag";
 import { db } from "@/lib/db/queries";
 import {
   type RagEntryApprovalStatus,
   type RagEntry as RagEntryModel,
   type RagEntryStatus,
-  ragCategory,
   ragEntry,
   ragEntryVersion,
   user,
 } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import { withTimeout } from "@/lib/utils/async";
-import {
-  isDefaultChatRagScope,
-  isJobsChatRagScope,
-  isStudyChatRagScope,
-  normalizeRagChatScope,
-} from "./chat-scope";
 import { DEFAULT_RAG_VERSION_HISTORY_LIMIT } from "./constants";
-import {
-  deleteFileSearchDocument,
-  deleteGeminiFile,
-  extractDocumentNameFromOperation,
-  findFileSearchDocumentNameByRagEntryId,
-  type GeminiFileSearchCustomMetadata,
-  getGeminiApiKey,
-  getGeminiFileSearchStoreName,
-  importFileToSearchStore,
-  normalizeFileSearchDocumentName,
-  uploadFileResumable,
-  waitForFileSearchOperation,
-} from "./gemini-file-search";
+import { indexRagEntry } from "./indexing";
+import { detectQueryLanguage } from "./language";
 import type {
   AdminRagEntry,
   RagAnalyticsSummary,
@@ -60,10 +40,8 @@ import {
 import { ragEntrySchema } from "./validation";
 
 const diffEngine = new diff_match_patch();
-const GEMINI_FILE_SEARCH_METADATA_KEY = "geminiFileSearch";
 const JOBS_RAG_KIND = "job_posting";
 const JOBS_RAG_SOURCE = "supabase_jobs_table";
-const RAG_FILE_SEARCH_SYNC_TIMEOUT_MS = 15_000;
 
 function customAdminRagEntryCondition() {
   return sql<boolean>`NOT (
@@ -73,7 +51,7 @@ function customAdminRagEntryCondition() {
   )`;
 }
 
-function toMetadataRecord(value: unknown) {
+function toMetadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
@@ -81,491 +59,41 @@ function toMetadataRecord(value: unknown) {
 
 function normalizeRagEntryMetadata(value: unknown) {
   const metadata = { ...toMetadataRecord(value) };
-  if ("chatScope" in metadata) {
-    const scope = normalizeRagChatScope(metadata.chatScope);
-    if (scope) {
-      metadata.chatScope = scope;
-    } else {
-      delete metadata.chatScope;
-    }
+  const scope =
+    typeof metadata.chatScope === "string"
+      ? metadata.chatScope.trim().toLowerCase()
+      : "";
+  if (!["default", "identity", "study", "jobs", "shared"].includes(scope)) {
+    delete metadata.chatScope;
+  } else {
+    metadata.chatScope = scope;
   }
   return metadata;
 }
 
-function mergeRagEntryMetadata({
-  existing,
-  incoming,
-}: {
-  existing: unknown;
-  incoming: unknown;
-}) {
-  const incomingRecord = toMetadataRecord(incoming);
-  const metadata = {
+function mergeRagEntryMetadata(existing: unknown, incoming: unknown) {
+  return normalizeRagEntryMetadata({
     ...toMetadataRecord(existing),
-    ...incomingRecord,
-  };
-
-  if (
-    Object.hasOwn(incomingRecord, "chatScope") &&
-    !normalizeRagChatScope(incomingRecord.chatScope)
-  ) {
-    delete metadata.chatScope;
-  }
-
-  return normalizeRagEntryMetadata(metadata);
+    ...toMetadataRecord(incoming),
+  });
 }
 
-function toSanitizedEntry(
-  entry: RagEntryModel,
-  extras?: { categoryName?: string | null }
-): SanitizedRagEntry {
+function toSanitizedEntry(entry: RagEntryModel): SanitizedRagEntry {
   return {
     ...entry,
     tags: Array.isArray(entry.tags) ? entry.tags : [],
     models: Array.isArray(entry.models) ? entry.models : [],
-    metadata: (entry.metadata ?? {}) as Record<string, unknown>,
-    categoryName: extras?.categoryName ?? null,
+    metadata: toMetadataRecord(entry.metadata),
   };
 }
 
-async function getCategoryNameById(categoryId: string | null | undefined) {
-  if (!categoryId) {
-    return null;
-  }
-  const [record] = await db
-    .select({ name: ragCategory.name })
-    .from(ragCategory)
-    .where(eq(ragCategory.id, categoryId))
-    .limit(1);
-  return record?.name ?? null;
-}
-
-export function listRagCategories() {
-  return db
-    .select({
-      id: ragCategory.id,
-      name: ragCategory.name,
-    })
-    .from(ragCategory)
-    .orderBy(asc(ragCategory.name));
-}
-
-export async function createRagCategory({ name }: { name: string }) {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    throw new ChatSDKError("bad_request:api", "Category name is required");
-  }
-
-  const [record] = await db
-    .insert(ragCategory)
-    .values({ name: trimmed })
-    .onConflictDoNothing()
-    .returning();
-
-  if (!record) {
-    const [existing] = await db
-      .select()
-      .from(ragCategory)
-      .where(eq(ragCategory.name, trimmed))
-      .limit(1);
-    if (existing) {
-      return existing;
-    }
-    throw new ChatSDKError("bad_request:api", "Unable to create category");
-  }
-
-  return record;
-}
-
-function buildIndexableText(entry: RagEntryModel) {
-  const metadata =
-    (entry.metadata as Record<string, unknown> | null | undefined) ?? {};
-  const tags =
-    Array.isArray(entry.tags) && entry.tags.length
-      ? `Tags: ${entry.tags.join(", ")}`
-      : "";
-  const company =
-    typeof metadata.company === "string" && metadata.company.trim().length > 0
-      ? `Company: ${metadata.company.trim()}`
-      : "";
-  const location =
-    typeof metadata.location === "string" && metadata.location.trim().length > 0
-      ? `Location: ${metadata.location.trim()}`
-      : "";
-  const employmentType =
-    typeof metadata.employment_type === "string" &&
-    metadata.employment_type.trim().length > 0
-      ? `Employment Type: ${metadata.employment_type.trim()}`
-      : "";
-  const salary =
-    typeof metadata.salary === "string" && metadata.salary.trim().length > 0
-      ? `Salary: ${metadata.salary.trim()}`
-      : "";
-  const qualification =
-    typeof metadata.qualification === "string" &&
-    metadata.qualification.trim().length > 0
-      ? `Qualification: ${metadata.qualification.trim()}`
-      : "";
-  const eligibility =
-    typeof metadata.eligibility === "string" &&
-    metadata.eligibility.trim().length > 0
-      ? `Eligibility: ${metadata.eligibility.trim()}`
-      : "";
-  const instructions =
-    typeof metadata.instructions === "string" &&
-    metadata.instructions.trim().length > 0
-      ? `Instructions: ${metadata.instructions.trim()}`
-      : "";
-  const requirements =
-    typeof metadata.requirements === "string" &&
-    metadata.requirements.trim().length > 0
-      ? `Requirements: ${metadata.requirements.trim()}`
-      : "";
-  const applicationLastDate =
-    typeof metadata.application_last_date === "string" &&
-    metadata.application_last_date.trim().length > 0
-      ? `Application Last Date: ${metadata.application_last_date.trim()}`
-      : "";
-  const notificationDate =
-    typeof metadata.notification_date === "string" &&
-    metadata.notification_date.trim().length > 0
-      ? `Notification Date: ${metadata.notification_date.trim()}`
-      : "";
-  const source = entry.sourceUrl ? `Source: ${entry.sourceUrl}` : "";
-  return [
-    `Title: ${entry.title}`,
-    `Type: ${entry.type}`,
-    company,
-    location,
-    employmentType,
-    salary,
-    qualification,
-    eligibility,
-    instructions,
-    requirements,
-    applicationLastDate,
-    notificationDate,
-    tags,
-    source,
-    "\n",
-    entry.content,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-async function getEntryById(id: string): Promise<RagEntryModel | null> {
-  const [record] = await db
+async function getEntryById(id: string) {
+  const [entry] = await db
     .select()
     .from(ragEntry)
     .where(eq(ragEntry.id, id))
     .limit(1);
-  return record ?? null;
-}
-
-function readGeminiFileSearchDocumentName(
-  entry: RagEntryModel
-): string | null {
-  const metadata =
-    (entry.metadata as Record<string, unknown> | null | undefined) ?? {};
-  const geminiMetadata = metadata[GEMINI_FILE_SEARCH_METADATA_KEY] as any;
-  const documentName =
-    typeof geminiMetadata?.documentName === "string"
-      ? geminiMetadata.documentName
-      : null;
-  return normalizeFileSearchDocumentName(documentName);
-}
-
-async function syncGeminiFileSearchIndex(entry: RagEntryModel) {
-  const storeName = getGeminiFileSearchStoreName();
-  const apiKey = getGeminiApiKey();
-  const canUseGemini = Boolean(storeName && apiKey);
-
-  const shouldIndex =
-    entry.status === "active" &&
-    entry.approvalStatus === "approved" &&
-    !entry.deletedAt;
-
-  const existingDocumentName = readGeminiFileSearchDocumentName(entry);
-  const metadata =
-    (entry.metadata as Record<string, unknown> | null | undefined) ?? {};
-  const removeGeminiMetadata = () => {
-    const { [GEMINI_FILE_SEARCH_METADATA_KEY]: _omit, ...rest } = metadata;
-    return rest;
-  };
-
-  const markFailed = async (error: unknown) => {
-    await db
-      .update(ragEntry)
-      .set({
-        embeddingStatus: "failed",
-        embeddingError:
-          error instanceof Error ? error.message : "File Search indexing failed",
-        embeddingUpdatedAt: new Date(),
-      })
-      .where(eq(ragEntry.id, entry.id));
-  };
-
-  if (!shouldIndex) {
-    if (!canUseGemini) {
-      await db
-        .update(ragEntry)
-        .set({
-          metadata: removeGeminiMetadata(),
-          embeddingStatus: "ready",
-          embeddingModel: "gemini-file-search",
-          embeddingDimensions: null,
-          embeddingError: null,
-          embeddingUpdatedAt: new Date(),
-        })
-        .where(eq(ragEntry.id, entry.id));
-      return;
-    }
-
-    const documentNamesToDelete = new Set<string>();
-    if (existingDocumentName) {
-      documentNamesToDelete.add(existingDocumentName);
-    } else if (storeName) {
-      const discovered = await findFileSearchDocumentNameByRagEntryId({
-        fileSearchStoreName: storeName,
-        ragEntryId: entry.id,
-      });
-      if (discovered) {
-        documentNamesToDelete.add(
-          normalizeFileSearchDocumentName(discovered) ?? discovered
-        );
-      }
-    }
-
-    if (documentNamesToDelete.size === 0) {
-      await db
-        .update(ragEntry)
-        .set({
-          metadata: removeGeminiMetadata(),
-          embeddingStatus: "ready",
-          embeddingModel: "gemini-file-search",
-          embeddingDimensions: null,
-          embeddingError: null,
-          embeddingUpdatedAt: new Date(),
-        })
-        .where(eq(ragEntry.id, entry.id));
-      return;
-    }
-
-    try {
-      for (const documentName of documentNamesToDelete) {
-        await deleteFileSearchDocument(documentName);
-      }
-
-      await db
-        .update(ragEntry)
-        .set({
-          metadata: removeGeminiMetadata(),
-          embeddingStatus: "ready",
-          embeddingModel: "gemini-file-search",
-          embeddingDimensions: null,
-          embeddingError: null,
-          embeddingUpdatedAt: new Date(),
-        })
-        .where(eq(ragEntry.id, entry.id));
-    } catch (error) {
-      console.warn("[rag] failed to de-index File Search document", {
-        entryId: entry.id,
-        documentName: existingDocumentName,
-        error,
-      });
-      await markFailed(error);
-    }
-    return;
-  }
-
-  if (!storeName) {
-    await db
-      .update(ragEntry)
-      .set({
-        embeddingStatus: "failed",
-        embeddingError:
-          "Missing GEMINI_FILE_SEARCH_STORE_NAME. Cannot index custom knowledge into Gemini File Search.",
-        embeddingUpdatedAt: new Date(),
-      })
-      .where(eq(ragEntry.id, entry.id));
-    return;
-  }
-  if (!apiKey) {
-    await db
-      .update(ragEntry)
-      .set({
-        embeddingStatus: "failed",
-        embeddingError:
-          "Missing Gemini API key. Set GEMINI_API_KEY (or GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY).",
-        embeddingUpdatedAt: new Date(),
-      })
-      .where(eq(ragEntry.id, entry.id));
-    return;
-  }
-
-  await db
-    .update(ragEntry)
-    .set({
-      embeddingStatus: "pending",
-      embeddingError: null,
-    })
-    .where(eq(ragEntry.id, entry.id));
-
-  try {
-    if (existingDocumentName) {
-      await deleteFileSearchDocument(existingDocumentName);
-    }
-
-    const title = entry.title?.trim() ?? "";
-    const displayNameBase = title.length > 0 ? title : `RAG ${entry.id}`;
-    const displayName = `${displayNameBase}`.slice(0, 512);
-
-    const rawModels = Array.isArray(entry.models) ? entry.models : [];
-    const modelValues = new Set<string>();
-    for (const value of rawModels) {
-      if (typeof value === "string" && value.trim().length > 0) {
-        modelValues.add(value.trim());
-      }
-    }
-    if (modelValues.size === 0) {
-      modelValues.add("*");
-    } else {
-      const registry = await getModelRegistry();
-      const idToKey = new Map(registry.configs.map((config) => [config.id, config.key]));
-      for (const value of rawModels) {
-        const key = idToKey.get(value);
-        if (key) {
-          modelValues.add(key);
-        }
-      }
-    }
-
-    const customMetadata: GeminiFileSearchCustomMetadata[] = [
-      { key: "rag_entry_id", stringValue: entry.id },
-      { key: "models", stringListValue: { values: Array.from(modelValues) } },
-    ];
-
-    const bytes = new TextEncoder().encode(buildIndexableText(entry));
-    const uploadedFile = await uploadFileResumable({
-      bytes,
-      mimeType: "text/plain",
-      displayName,
-    });
-
-    let documentName: string | null = null;
-    try {
-      const operation = await importFileToSearchStore({
-        fileSearchStoreName: storeName,
-        fileName: uploadedFile.name,
-        customMetadata,
-      });
-
-      const finished = await waitForFileSearchOperation({
-        operationName: operation.name,
-      });
-
-      documentName =
-        extractDocumentNameFromOperation(finished) ??
-        (await findFileSearchDocumentNameByRagEntryId({
-          fileSearchStoreName: storeName,
-          ragEntryId: entry.id,
-        }));
-      if (!documentName) {
-        throw new Error(
-          `Gemini importFile operation finished without a document name (${operation.name}).`
-        );
-      }
-    } finally {
-      deleteGeminiFile(uploadedFile.name).catch((error) => {
-        console.warn("[rag] failed to delete temporary Gemini file", {
-          entryId: entry.id,
-          fileName: uploadedFile.name,
-          error,
-        });
-      });
-    }
-
-    const nextMetadata = {
-      ...removeGeminiMetadata(),
-      [GEMINI_FILE_SEARCH_METADATA_KEY]: {
-        storeName,
-        documentName,
-        indexedAt: new Date().toISOString(),
-      },
-    };
-
-    await db
-      .update(ragEntry)
-      .set({
-        metadata: nextMetadata,
-        embeddingStatus: "ready",
-        embeddingModel: "gemini-file-search",
-        embeddingDimensions: null,
-        embeddingError: null,
-        embeddingUpdatedAt: new Date(),
-        supabaseVectorId: null,
-      })
-      .where(eq(ragEntry.id, entry.id));
-  } catch (error) {
-    console.warn("[rag] Gemini File Search index sync failed", {
-      entryId: entry.id,
-      error,
-    });
-    await markFailed(error);
-  }
-}
-
-async function markFileSearchSyncFailed({
-  entryId,
-  error,
-  source,
-}: {
-  entryId: string;
-  error: unknown;
-  source: string;
-}) {
-  await db
-    .update(ragEntry)
-    .set({
-      embeddingStatus: "failed",
-      embeddingError:
-        error instanceof Error
-          ? error.message
-          : "File Search indexing timed out or failed",
-      embeddingUpdatedAt: new Date(),
-    })
-    .where(eq(ragEntry.id, entryId));
-
-  console.warn("[rag] File Search sync failed or timed out", {
-    entryId,
-    source,
-    timeoutMs: RAG_FILE_SEARCH_SYNC_TIMEOUT_MS,
-    error,
-  });
-}
-
-async function syncGeminiFileSearchIndexBounded(
-  entry: RagEntryModel,
-  source: string
-) {
-  try {
-    await withTimeout(
-      syncGeminiFileSearchIndex(entry),
-      RAG_FILE_SEARCH_SYNC_TIMEOUT_MS,
-      () => {
-        console.warn("[rag] File Search sync timed out", {
-          entryId: entry.id,
-          source,
-          timeoutMs: RAG_FILE_SEARCH_SYNC_TIMEOUT_MS,
-        });
-      }
-    );
-    return true;
-  } catch (error) {
-    await markFileSearchSyncFailed({ entryId: entry.id, error, source });
-    return false;
-  }
+  return entry ?? null;
 }
 
 async function normalizeModelAssignments(modelIds: string[]) {
@@ -581,25 +109,26 @@ function buildVersionDiff(previous: RagEntryModel, next: RagEntryModel) {
   const fields: Record<string, { before: unknown; after: unknown }> = {};
   const compare = <K extends keyof RagEntryModel>(key: K) => {
     if (JSON.stringify(previous[key]) !== JSON.stringify(next[key])) {
-      fields[key as string] = {
-        before: previous[key],
-        after: next[key],
-      };
+      fields[key as string] = { before: previous[key], after: next[key] };
     }
   };
-
-  compare("title");
-  compare("content");
-  compare("type");
-  compare("status");
-  compare("approvalStatus");
-  compare("tags");
-  compare("models");
-  compare("sourceUrl");
-  compare("categoryId");
-  compare("metadata");
-  compare("personalForUserId");
-  compare("approvedBy");
+  (
+    [
+      "title",
+      "content",
+      "type",
+      "status",
+      "approvalStatus",
+      "tags",
+      "models",
+      "sourceUrl",
+      "language",
+      "priority",
+      "metadata",
+      "personalForUserId",
+      "approvedBy",
+    ] as const
+  ).forEach(compare);
 
   let textDelta: string | undefined;
   if (previous.content !== next.content) {
@@ -607,11 +136,40 @@ function buildVersionDiff(previous: RagEntryModel, next: RagEntryModel) {
     diffEngine.diff_cleanupSemantic(diff);
     textDelta = diffEngine.diff_toDelta(diff);
   }
+  return { fields, textDelta };
+}
 
-  return {
-    fields,
-    textDelta,
-  };
+async function writeVersion({
+  entry,
+  actorId,
+  diff,
+  changeSummary,
+}: {
+  entry: RagEntryModel;
+  actorId: string;
+  diff: Record<string, unknown>;
+  changeSummary: string;
+}) {
+  await db.insert(ragEntryVersion).values({
+    ragEntryId: entry.id,
+    version: entry.version,
+    title: entry.title,
+    content: entry.content,
+    type: entry.type,
+    status: entry.status,
+    approvalStatus: entry.approvalStatus,
+    personalForUserId: entry.personalForUserId,
+    approvedBy: entry.approvedBy,
+    tags: entry.tags,
+    models: entry.models,
+    sourceUrl: entry.sourceUrl,
+    language: entry.language,
+    priority: entry.priority,
+    metadata: entry.metadata,
+    diff,
+    changeSummary,
+    editorId: actorId,
+  });
 }
 
 export async function createRagEntry({
@@ -623,74 +181,50 @@ export async function createRagEntry({
 }): Promise<SanitizedRagEntry> {
   const parsed = ragEntrySchema.parse({
     ...input,
+    language: input.language ?? detectQueryLanguage(input.content),
+    priority: input.priority ?? 0,
     approvalStatus: input.approvalStatus ?? "approved",
     personalForUserId: input.personalForUserId ?? null,
     approvedBy:
       input.approvedBy ??
       ((input.approvalStatus ?? "approved") === "approved" ? actorId : null),
   });
-  const tags = normalizeTags(parsed.tags);
-  const models = await normalizeModelAssignments(
-    normalizeModels(parsed.models)
-  );
-  const title = parsed.title.trim();
-  const content = sanitizeRagContent(parsed.content);
-  const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
-  const metadata =
-    input.metadata !== undefined
-      ? normalizeRagEntryMetadata(parsed.metadata)
-      : {};
   const now = new Date();
-
   const [created] = await db
     .insert(ragEntry)
     .values({
       ...(parsed.id ? { id: parsed.id } : {}),
-      title,
-      content,
+      title: parsed.title.trim(),
+      content: sanitizeRagContent(parsed.content),
       type: parsed.type,
       status: parsed.status,
-      tags,
-      models,
-      sourceUrl,
-      categoryId: parsed.categoryId ?? null,
-      metadata,
-      addedBy: actorId,
       approvalStatus: parsed.approvalStatus,
       personalForUserId: parsed.personalForUserId ?? null,
-      approvedBy:
-        parsed.approvedBy ??
-        (parsed.approvalStatus === "approved" ? actorId : null),
+      approvedBy: parsed.approvedBy ?? null,
+      tags: normalizeTags(parsed.tags),
+      models: await normalizeModelAssignments(normalizeModels(parsed.models)),
+      sourceUrl: normalizeSourceUrl(parsed.sourceUrl),
+      language: parsed.language,
+      priority: parsed.priority,
+      metadata: normalizeRagEntryMetadata(parsed.metadata),
+      addedBy: actorId,
       createdAt: now,
       updatedAt: now,
       embeddingStatus: "pending",
     })
     .returning();
+  if (!created) {
+    throw new ChatSDKError("bad_request:api", "Unable to create RAG entry");
+  }
 
-  await db.insert(ragEntryVersion).values({
-    ragEntryId: created.id,
-    version: created.version,
-    title: created.title,
-    content: created.content,
-    type: created.type,
-    status: created.status,
-    approvalStatus: created.approvalStatus,
-    personalForUserId: created.personalForUserId,
-    approvedBy: created.approvedBy,
-    tags: created.tags,
-    models: created.models,
-    sourceUrl: created.sourceUrl,
-    categoryId: created.categoryId,
-    diff: { fields: {}, textDelta: undefined },
+  await writeVersion({
+    entry: created,
+    actorId,
+    diff: { fields: {} },
     changeSummary: "Initial version",
-    editorId: actorId,
   });
-
-  await syncGeminiFileSearchIndexBounded(created, "rag.entry.create");
-
-  const refreshed = await getEntryById(created.id);
-  const categoryName = await getCategoryNameById(created.categoryId);
-  return toSanitizedEntry(refreshed ?? created, { categoryName });
+  await indexRagEntry(created.id);
+  return toSanitizedEntry((await getEntryById(created.id)) ?? created);
 }
 
 export async function updateRagEntry({
@@ -706,43 +240,37 @@ export async function updateRagEntry({
   if (!existing) {
     throw new ChatSDKError("not_found:chat", "RAG entry not found");
   }
-
-  const approvalStatus =
-    input.approvalStatus ?? existing.approvalStatus ?? "approved";
-  const personalForUserId =
-    input.personalForUserId ?? existing.personalForUserId ?? null;
-  const approvedBy =
-    input.approvedBy ?? (approvalStatus === "approved" ? actorId : null);
-
+  const approvalStatus = input.approvalStatus ?? existing.approvalStatus;
   const parsed = ragEntrySchema.parse({
     ...input,
     id,
+    language: input.language ?? existing.language,
+    priority: input.priority ?? existing.priority,
     approvalStatus,
-    personalForUserId,
-    approvedBy,
+    personalForUserId:
+      input.personalForUserId ?? existing.personalForUserId ?? null,
+    approvedBy:
+      input.approvedBy ??
+      (approvalStatus === "approved" ? existing.approvedBy ?? actorId : null),
   });
-  const tags = normalizeTags(parsed.tags);
-  const models = await normalizeModelAssignments(
-    normalizeModels(parsed.models)
-  );
   const title = parsed.title.trim();
   const content = sanitizeRagContent(parsed.content);
+  const tags = normalizeTags(parsed.tags);
+  const models = await normalizeModelAssignments(normalizeModels(parsed.models));
   const sourceUrl = normalizeSourceUrl(parsed.sourceUrl);
   const metadata =
-    input.metadata !== undefined
-      ? mergeRagEntryMetadata({
-          existing: existing.metadata,
-          incoming: parsed.metadata ?? {},
-        })
-      : toMetadataRecord(existing.metadata);
-  const shouldReembed =
-    existing.title !== title ||
-    existing.content !== content ||
-    existing.type !== parsed.type ||
-    existing.sourceUrl !== sourceUrl ||
-    existing.status !== parsed.status ||
-    JSON.stringify(existing.tags) !== JSON.stringify(tags) ||
-    JSON.stringify(existing.metadata ?? {}) !== JSON.stringify(metadata ?? {});
+    input.metadata === undefined
+      ? toMetadataRecord(existing.metadata)
+      : mergeRagEntryMetadata(existing.metadata, parsed.metadata);
+  const shouldReindex =
+    title !== existing.title ||
+    content !== existing.content ||
+    parsed.status !== existing.status ||
+    parsed.approvalStatus !== existing.approvalStatus ||
+    parsed.language !== existing.language ||
+    JSON.stringify(tags) !== JSON.stringify(existing.tags) ||
+    JSON.stringify(models) !== JSON.stringify(existing.models) ||
+    JSON.stringify(metadata) !== JSON.stringify(existing.metadata);
 
   const [updated] = await db
     .update(ragEntry)
@@ -753,48 +281,33 @@ export async function updateRagEntry({
       status: parsed.status,
       approvalStatus: parsed.approvalStatus,
       personalForUserId: parsed.personalForUserId ?? null,
-      approvedBy:
-        parsed.approvalStatus === "approved"
-          ? (parsed.approvedBy ?? existing.approvedBy ?? actorId)
-          : null,
+      approvedBy: parsed.approvedBy ?? null,
       tags,
       models,
       sourceUrl,
-      categoryId: parsed.categoryId ?? null,
+      language: parsed.language,
+      priority: parsed.priority,
       metadata,
       version: existing.version + 1,
       updatedAt: new Date(),
-      embeddingStatus: shouldReembed ? "pending" : existing.embeddingStatus,
+      embeddingStatus: shouldReindex ? "pending" : existing.embeddingStatus,
     })
     .where(eq(ragEntry.id, id))
     .returning();
+  if (!updated) {
+    throw new ChatSDKError("bad_request:api", "Unable to update RAG entry");
+  }
 
-  const diff = buildVersionDiff(existing, updated);
-
-  await db.insert(ragEntryVersion).values({
-    ragEntryId: updated.id,
-    version: updated.version,
-    title: updated.title,
-    content: updated.content,
-    type: updated.type,
-    status: updated.status,
-    approvalStatus: updated.approvalStatus,
-    personalForUserId: updated.personalForUserId,
-    approvedBy: updated.approvedBy,
-    tags: updated.tags,
-    models: updated.models,
-    sourceUrl: updated.sourceUrl,
-    categoryId: updated.categoryId,
-    diff,
+  await writeVersion({
+    entry: updated,
+    actorId,
+    diff: buildVersionDiff(existing, updated),
     changeSummary: "Entry updated",
-    editorId: actorId,
   });
-
-  await syncGeminiFileSearchIndexBounded(updated, "rag.entry.update");
-
-  const refreshed = await getEntryById(updated.id);
-  const categoryName = await getCategoryNameById(updated.categoryId);
-  return toSanitizedEntry(refreshed ?? updated, { categoryName });
+  if (shouldReindex) {
+    await indexRagEntry(updated.id);
+  }
+  return toSanitizedEntry((await getEntryById(updated.id)) ?? updated);
 }
 
 export async function bulkUpdateRagStatus({
@@ -809,61 +322,35 @@ export async function bulkUpdateRagStatus({
   if (!ids.length) {
     return [];
   }
-
-  const [updated] = await Promise.all([
-    db
-      .update(ragEntry)
-      .set({
-        status,
-        updatedAt: new Date(),
-        version: sql`${ragEntry.version} + 1`,
-      })
-      .where(
-        and(
-          inArray(ragEntry.id, ids),
-          isNull(ragEntry.deletedAt),
-          isNull(ragEntry.personalForUserId),
-          customAdminRagEntryCondition()
-        )
-      )
-      .returning(),
-  ]);
-
-  for (const entry of updated) {
-    await db.insert(ragEntryVersion).values({
-      ragEntryId: entry.id,
-      version: entry.version,
-      title: entry.title,
-      content: entry.content,
-      type: entry.type,
-      status: entry.status,
-      approvalStatus: entry.approvalStatus,
-      personalForUserId: entry.personalForUserId,
-      approvedBy: entry.approvedBy,
-      tags: entry.tags,
-      models: entry.models,
-      sourceUrl: entry.sourceUrl,
-      categoryId: entry.categoryId,
-      diff: { fields: { status: { before: null, after: status } } },
-      changeSummary: `Status changed to ${status}`,
-      editorId: actorId,
-    });
-
-  }
-
-  await Promise.all(
-    updated.map((entry) =>
-      syncGeminiFileSearchIndexBounded(entry, "rag.entry.bulk_status")
+  const updated = await db
+    .update(ragEntry)
+    .set({
+      status,
+      updatedAt: new Date(),
+      version: sql`${ragEntry.version} + 1`,
+      embeddingStatus: "pending",
+    })
+    .where(
+      and(
+        inArray(ragEntry.id, ids),
+        isNull(ragEntry.deletedAt),
+        isNull(ragEntry.personalForUserId),
+        customAdminRagEntryCondition(),
+      ),
     )
+    .returning();
+  await Promise.all(
+    updated.map(async (entry) => {
+      await writeVersion({
+        entry,
+        actorId,
+        diff: { fields: { status: { before: null, after: status } } },
+        changeSummary: `Status changed to ${status}`,
+      });
+      await indexRagEntry(entry.id);
+    }),
   );
-
-  const categoryNames = await Promise.all(
-    updated.map((entry) => getCategoryNameById(entry.categoryId))
-  );
-
-  return updated.map((entry, index) =>
-    toSanitizedEntry(entry, { categoryName: categoryNames[index] ?? null })
-  );
+  return updated.map(toSanitizedEntry);
 }
 
 export async function deleteRagEntries({
@@ -878,55 +365,35 @@ export async function deleteRagEntries({
   if (!ids.length) {
     return;
   }
-
-  const [updated] = await Promise.all([
-    db
-      .update(ragEntry)
-      .set({
-        status: "archived",
-        deletedAt: new Date(),
-        updatedAt: new Date(),
-        version: sql`${ragEntry.version} + 1`,
-      })
-      .where(
-        customOnly
-          ? and(
-              inArray(ragEntry.id, ids),
-              isNull(ragEntry.deletedAt),
-              isNull(ragEntry.personalForUserId),
-              customAdminRagEntryCondition()
-            )
-          : inArray(ragEntry.id, ids)
+  const condition = customOnly
+    ? and(
+        inArray(ragEntry.id, ids),
+        isNull(ragEntry.deletedAt),
+        isNull(ragEntry.personalForUserId),
+        customAdminRagEntryCondition(),
       )
-      .returning(),
-  ]);
-
-  for (const entry of updated) {
-    await db.insert(ragEntryVersion).values({
-      ragEntryId: entry.id,
-      version: entry.version,
-      title: entry.title,
-      content: entry.content,
-      type: entry.type,
-      status: entry.status,
-      approvalStatus: entry.approvalStatus,
-      personalForUserId: entry.personalForUserId,
-      approvedBy: entry.approvedBy,
-      tags: entry.tags,
-      models: entry.models,
-      sourceUrl: entry.sourceUrl,
-      categoryId: entry.categoryId,
-      diff: { fields: { status: { before: null, after: "archived" } } },
-      changeSummary: "Entry archived",
-      editorId: actorId,
-    });
-
-  }
-
+    : inArray(ragEntry.id, ids);
+  const updated = await db
+    .update(ragEntry)
+    .set({
+      status: "archived",
+      deletedAt: new Date(),
+      updatedAt: new Date(),
+      version: sql`${ragEntry.version} + 1`,
+      embeddingStatus: "pending",
+    })
+    .where(condition)
+    .returning();
   await Promise.all(
-    updated.map((entry) =>
-      syncGeminiFileSearchIndexBounded(entry, "rag.entry.archive")
-    )
+    updated.map(async (entry) => {
+      await writeVersion({
+        entry,
+        actorId,
+        diff: { fields: { status: { before: null, after: "archived" } } },
+        changeSummary: "Entry archived",
+      });
+      await indexRagEntry(entry.id);
+    }),
   );
 }
 
@@ -941,7 +408,6 @@ export async function restoreRagEntry({
   if (!existing) {
     throw new ChatSDKError("not_found:chat", "RAG entry not found");
   }
-
   const [updated] = await db
     .update(ragEntry)
     .set({
@@ -949,30 +415,19 @@ export async function restoreRagEntry({
       status: "inactive",
       version: existing.version + 1,
       updatedAt: new Date(),
+      embeddingStatus: "pending",
     })
     .where(eq(ragEntry.id, id))
     .returning();
-
-  await db.insert(ragEntryVersion).values({
-    ragEntryId: updated.id,
-    version: updated.version,
-    title: updated.title,
-    content: updated.content,
-    type: updated.type,
-    status: updated.status,
-    approvalStatus: updated.approvalStatus,
-    personalForUserId: updated.personalForUserId,
-    approvedBy: updated.approvedBy,
-    tags: updated.tags,
-    models: updated.models,
-    sourceUrl: updated.sourceUrl,
-    categoryId: updated.categoryId,
-    diff: { fields: { deletedAt: { before: true, after: false } } },
-    changeSummary: "Entry restored",
-    editorId: actorId,
-  });
-
-  await syncGeminiFileSearchIndexBounded(updated, "rag.entry.restore");
+  if (updated) {
+    await writeVersion({
+      entry: updated,
+      actorId,
+      diff: { fields: { deletedAt: { before: true, after: false } } },
+      changeSummary: "Entry restored",
+    });
+    await indexRagEntry(updated.id);
+  }
 }
 
 export function getRagVersions(entryId: string) {
@@ -1004,22 +459,15 @@ export async function restoreRagVersion({
   versionId: string;
   actorId: string;
 }) {
-  const version = await db
+  const [snapshot] = await db
     .select()
     .from(ragEntryVersion)
     .where(eq(ragEntryVersion.id, versionId))
     .limit(1);
-
-  const snapshot = version[0];
-  if (!snapshot) {
-    throw new ChatSDKError("not_found:chat", "Version not found");
-  }
-
   const existing = await getEntryById(entryId);
-  if (!existing) {
-    throw new ChatSDKError("not_found:chat", "RAG entry not found");
+  if (!snapshot || !existing) {
+    throw new ChatSDKError("not_found:chat", "RAG version not found");
   }
-
   const [updated] = await db
     .update(ragEntry)
     .set({
@@ -1033,50 +481,35 @@ export async function restoreRagVersion({
       tags: snapshot.tags,
       models: snapshot.models,
       sourceUrl: snapshot.sourceUrl,
+      language: snapshot.language,
+      priority: snapshot.priority,
+      metadata: snapshot.metadata,
       version: existing.version + 1,
       updatedAt: new Date(),
+      embeddingStatus: "pending",
     })
     .where(eq(ragEntry.id, entryId))
     .returning();
-
-  await db.insert(ragEntryVersion).values({
-    ragEntryId: updated.id,
-    version: updated.version,
-    title: updated.title,
-    content: updated.content,
-    type: updated.type,
-    status: updated.status,
-    approvalStatus: updated.approvalStatus,
-    personalForUserId: updated.personalForUserId,
-    approvedBy: updated.approvedBy,
-    tags: updated.tags,
-    models: updated.models,
-    sourceUrl: updated.sourceUrl,
-    categoryId: updated.categoryId,
-    diff: buildVersionDiff(existing, updated),
-    changeSummary: `Restored version ${snapshot.version}`,
-    editorId: actorId,
-  });
-
-  await syncGeminiFileSearchIndexBounded(updated, "rag.entry.version.restore");
+  if (updated) {
+    await writeVersion({
+      entry: updated,
+      actorId,
+      diff: buildVersionDiff(existing, updated),
+      changeSummary: `Restored version ${snapshot.version}`,
+    });
+    await indexRagEntry(updated.id);
+  }
 }
 
 export async function listPersonalKnowledgeForUser(userId: string) {
   const rows = await db
-    .select({
-      entry: ragEntry,
-      categoryName: ragCategory.name,
-    })
+    .select()
     .from(ragEntry)
-    .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
     .where(
-      and(eq(ragEntry.personalForUserId, userId), isNull(ragEntry.deletedAt))
+      and(eq(ragEntry.personalForUserId, userId), isNull(ragEntry.deletedAt)),
     )
     .orderBy(desc(ragEntry.updatedAt));
-
-  return rows.map((row) =>
-    toSanitizedEntry(row.entry, { categoryName: row.categoryName ?? null })
-  );
+  return rows.map(toSanitizedEntry);
 }
 
 export function createPersonalKnowledgeEntry({
@@ -1099,7 +532,7 @@ export function createPersonalKnowledgeEntry({
       tags: [],
       models: [],
       sourceUrl: null,
-      metadata: { personalKnowledge: true },
+      metadata: { personalKnowledge: true, chatScope: "default" },
       personalForUserId: userId,
       approvedBy: null,
     },
@@ -1118,32 +551,24 @@ export async function updatePersonalKnowledgeEntry({
   content: string;
 }) {
   const existing = await getEntryById(entryId);
-  if (
-    !existing ||
-    existing.personalForUserId !== userId ||
-    existing.deletedAt
-  ) {
+  if (!existing || existing.personalForUserId !== userId || existing.deletedAt) {
     throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
   }
-
-  const metadata =
-    (existing.metadata as Record<string, unknown> | null | undefined) ?? {};
-  const mergedMetadata = { ...metadata, personalKnowledge: true };
-
   return updateRagEntry({
     id: entryId,
     actorId: userId,
     input: {
       title,
       content,
-      type: existing.type ?? "text",
+      type: existing.type,
       status: "inactive",
       approvalStatus: "pending",
-      tags: Array.isArray(existing.tags) ? existing.tags : [],
-      models: Array.isArray(existing.models) ? existing.models : [],
+      tags: existing.tags,
+      models: existing.models,
       sourceUrl: existing.sourceUrl,
-      metadata: mergedMetadata,
-      categoryId: existing.categoryId,
+      language: detectQueryLanguage(content),
+      priority: existing.priority,
+      metadata: { ...toMetadataRecord(existing.metadata), personalKnowledge: true },
       personalForUserId: userId,
       approvedBy: null,
     },
@@ -1160,13 +585,12 @@ export async function deletePersonalKnowledgeEntry({
   allowOverride?: boolean;
 }) {
   const existing = await getEntryById(entryId);
-  if (!existing || !existing.personalForUserId) {
+  if (!existing?.personalForUserId) {
     throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
   }
   if (!allowOverride && existing.personalForUserId !== actorId) {
     throw new ChatSDKError("forbidden:chat", "You cannot delete this entry");
   }
-
   await deleteRagEntries({ ids: [entryId], actorId });
 }
 
@@ -1181,38 +605,29 @@ export async function listUserAddedKnowledgeEntries({
     isNull(ragEntry.deletedAt),
     isNotNull(ragEntry.personalForUserId),
   ];
-
   if (approvalStatus && approvalStatus !== "all") {
     conditions.push(eq(ragEntry.approvalStatus, approvalStatus));
   }
-
   const rows = await db
     .select({
       entry: ragEntry,
       ownerId: user.id,
       ownerName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       ownerEmail: user.email,
-      categoryName: ragCategory.name,
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.personalForUserId))
-    .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
     .where(and(...conditions))
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
-
-  return rows.map((row) => {
-    return {
-      entry: toSanitizedEntry(row.entry, {
-        categoryName: row.categoryName ?? null,
-      }),
-      creator: {
-        id: row.ownerId ?? "",
-        name: row.ownerName,
-        email: row.ownerEmail,
-      },
-    };
-  });
+  return rows.map((row) => ({
+    entry: toSanitizedEntry(row.entry),
+    creator: {
+      id: row.ownerId ?? "",
+      name: row.ownerName,
+      email: row.ownerEmail,
+    },
+  }));
 }
 
 export async function updateUserAddedKnowledgeApproval({
@@ -1225,70 +640,46 @@ export async function updateUserAddedKnowledgeApproval({
   actorId: string;
 }): Promise<SanitizedRagEntry> {
   const existing = await getEntryById(entryId);
-  if (!existing || !existing.personalForUserId) {
+  if (!existing?.personalForUserId || existing.deletedAt) {
     throw new ChatSDKError("not_found:chat", "Personal knowledge not found");
   }
-  if (existing.deletedAt) {
-    throw new ChatSDKError("bad_request:chat", "This entry has been deleted");
-  }
-
-  const now = new Date();
   const status: RagEntryStatus =
     approvalStatus === "approved" ? "active" : "inactive";
-  const approvedBy =
-    approvalStatus === "approved" || approvalStatus === "rejected"
-      ? actorId
-      : null;
-
   const [updated] = await db
     .update(ragEntry)
     .set({
       approvalStatus,
       status,
-      approvedBy,
-      updatedAt: now,
+      approvedBy: approvalStatus === "pending" ? null : actorId,
+      updatedAt: new Date(),
       version: existing.version + 1,
+      embeddingStatus: "pending",
     })
     .where(eq(ragEntry.id, entryId))
     .returning();
-
-  const diffFields: Record<string, { before: unknown; after: unknown }> = {
-    approvalStatus: { before: existing.approvalStatus, after: approvalStatus },
-  };
-  if (existing.status !== status) {
-    diffFields.status = { before: existing.status, after: status };
+  if (!updated) {
+    throw new ChatSDKError("bad_request:api", "Unable to review entry");
   }
-
-  await db.insert(ragEntryVersion).values({
-    ragEntryId: updated.id,
-    version: updated.version,
-    title: updated.title,
-    content: updated.content,
-    type: updated.type,
-    status: updated.status,
-    approvalStatus: updated.approvalStatus,
-    personalForUserId: updated.personalForUserId,
-    approvedBy: updated.approvedBy,
-    tags: updated.tags,
-    models: updated.models,
-    sourceUrl: updated.sourceUrl,
-    categoryId: updated.categoryId,
-    diff: { fields: diffFields },
+  await writeVersion({
+    entry: updated,
+    actorId,
+    diff: {
+      fields: {
+        approvalStatus: {
+          before: existing.approvalStatus,
+          after: approvalStatus,
+        },
+        status: { before: existing.status, after: status },
+      },
+    },
     changeSummary: `Approval set to ${approvalStatus}`,
-    editorId: actorId,
   });
-
-  await syncGeminiFileSearchIndexBounded(
-    updated,
-    "user.personal_knowledge.review"
-  );
-
-  const categoryName = await getCategoryNameById(updated.categoryId);
-  return toSanitizedEntry(updated, { categoryName });
+  await indexRagEntry(updated.id);
+  return toSanitizedEntry((await getEntryById(updated.id)) ?? updated);
 }
 
 export async function listAdminRagEntries(
-  limit = 120
+  limit = 120,
 ): Promise<AdminRagEntry[]> {
   const rows = await db
     .select({
@@ -1296,83 +687,72 @@ export async function listAdminRagEntries(
       creatorId: user.id,
       creatorName: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
       creatorEmail: user.email,
-      categoryName: ragCategory.name,
     })
     .from(ragEntry)
     .leftJoin(user, eq(user.id, ragEntry.addedBy))
-    .leftJoin(ragCategory, eq(ragCategory.id, ragEntry.categoryId))
     .where(
       and(
         isNull(ragEntry.deletedAt),
         isNull(ragEntry.personalForUserId),
-        customAdminRagEntryCondition()
-      )
+        customAdminRagEntryCondition(),
+      ),
     )
     .orderBy(desc(ragEntry.updatedAt))
     .limit(limit);
-
-  return rows.map((row) => {
-    return {
-      entry: toSanitizedEntry(row.entry, {
-        categoryName: row.categoryName ?? null,
-      }),
-      creator: {
-        id: row.creatorId ?? "",
-        name: row.creatorName,
-        email: row.creatorEmail,
-      },
-    };
-  });
+  return rows.map((row) => ({
+    entry: toSanitizedEntry(row.entry),
+    creator: {
+      id: row.creatorId ?? "",
+      name: row.creatorName,
+      email: row.creatorEmail,
+    },
+  }));
 }
 
 export async function getRagAnalyticsSummary(): Promise<RagAnalyticsSummary> {
-  const [statusCounts] = await db
-    .select({
-      totalEntries: sql<number>`COUNT(*)`,
-      activeEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'active' THEN 1 ELSE 0 END)`,
-      inactiveEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'inactive' THEN 1 ELSE 0 END)`,
-      archivedEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'archived' THEN 1 ELSE 0 END)`,
-      pendingEmbeddings: sql<number>`SUM(CASE WHEN ${ragEntry.embeddingStatus} <> 'ready' THEN 1 ELSE 0 END)`,
-    })
-    .from(ragEntry)
-    .where(
-      and(
-        isNull(ragEntry.deletedAt),
-        isNull(ragEntry.personalForUserId),
-        customAdminRagEntryCondition()
-      )
-    );
-
-  const creatorStats = await db
-    .select({
-      id: user.id,
-      name: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
-      email: user.email,
-      entryCount: sql<number>`COUNT(${ragEntry.id})`,
-      activeEntries: sql<number>`SUM(CASE WHEN ${ragEntry.status} = 'active' THEN 1 ELSE 0 END)`,
-    })
-    .from(ragEntry)
-    .leftJoin(user, eq(user.id, ragEntry.addedBy))
-    .where(
-      and(
-        isNull(ragEntry.deletedAt),
-        isNull(ragEntry.personalForUserId),
-        customAdminRagEntryCondition()
-      )
-    )
-    .groupBy(user.id, user.firstName, user.lastName, user.email)
-    .orderBy(desc(sql<number>`COUNT(${ragEntry.id})`))
-    .limit(6);
-
+  const condition = and(
+    isNull(ragEntry.deletedAt),
+    isNull(ragEntry.personalForUserId),
+    customAdminRagEntryCondition(),
+  );
+  const [statusCounts, creatorStats] = await Promise.all([
+    db
+      .select({
+        totalEntries: sql<number>`COUNT(*)`,
+        activeEntries: sql<number>`COUNT(*) FILTER (WHERE ${ragEntry.status} = 'active')`,
+        inactiveEntries: sql<number>`COUNT(*) FILTER (WHERE ${ragEntry.status} = 'inactive')`,
+        archivedEntries: sql<number>`COUNT(*) FILTER (WHERE ${ragEntry.status} = 'archived')`,
+        pendingEmbeddings: sql<number>`COUNT(*) FILTER (WHERE ${ragEntry.embeddingStatus} <> 'ready')`,
+      })
+      .from(ragEntry)
+      .where(condition),
+    db
+      .select({
+        id: user.id,
+        name: sql<string>`COALESCE(${user.firstName} || ' ' || ${user.lastName}, ${user.email})`,
+        email: user.email,
+        entryCount: sql<number>`COUNT(${ragEntry.id})`,
+        activeEntries: sql<number>`COUNT(*) FILTER (WHERE ${ragEntry.status} = 'active')`,
+      })
+      .from(ragEntry)
+      .leftJoin(user, eq(user.id, ragEntry.addedBy))
+      .where(condition)
+      .groupBy(user.id, user.firstName, user.lastName, user.email)
+      .orderBy(desc(sql<number>`COUNT(${ragEntry.id})`))
+      .limit(6),
+  ]);
+  const counts = statusCounts[0];
   return {
-    totalEntries: statusCounts?.totalEntries ?? 0,
-    activeEntries: statusCounts?.activeEntries ?? 0,
-    inactiveEntries: statusCounts?.inactiveEntries ?? 0,
-    archivedEntries: statusCounts?.archivedEntries ?? 0,
-    pendingEmbeddings: statusCounts?.pendingEmbeddings ?? 0,
+    totalEntries: Number(counts?.totalEntries ?? 0),
+    activeEntries: Number(counts?.activeEntries ?? 0),
+    inactiveEntries: Number(counts?.inactiveEntries ?? 0),
+    archivedEntries: Number(counts?.archivedEntries ?? 0),
+    pendingEmbeddings: Number(counts?.pendingEmbeddings ?? 0),
     creatorStats: creatorStats.map((creator) => ({
       ...creator,
       id: creator.id ?? "",
+      entryCount: Number(creator.entryCount),
+      activeEntries: Number(creator.activeEntries),
     })),
   };
 }
@@ -1384,219 +764,53 @@ export async function listActiveRagEntryIdsForModel({
   modelConfigId: string;
   modelKey?: string | null;
 }): Promise<string[]> {
+  const modelCondition = modelKey
+    ? sql`(
+        cardinality(${ragEntry.models}) = 0
+        OR ${modelConfigId} = ANY(${ragEntry.models})
+        OR ${modelKey} = ANY(${ragEntry.models})
+      )`
+    : or(
+        sql`cardinality(${ragEntry.models}) = 0`,
+        sql`${modelConfigId} = ANY(${ragEntry.models})`,
+      );
   const rows = await db
-    .select({
-      id: ragEntry.id,
-      models: ragEntry.models,
-    })
+    .select({ id: ragEntry.id })
     .from(ragEntry)
     .where(
       and(
         isNull(ragEntry.deletedAt),
         eq(ragEntry.status, "active"),
-        eq(ragEntry.approvalStatus, "approved")
-      )
+        eq(ragEntry.approvalStatus, "approved"),
+        modelCondition,
+      ),
     )
     .orderBy(desc(ragEntry.updatedAt));
-
-  const normalizedKey = modelKey?.trim() ?? null;
-
-  return rows
-    .filter((row) => {
-      const models = Array.isArray(row.models) ? row.models : [];
-      if (models.length === 0) {
-        return true;
-      }
-      if (models.includes(modelConfigId)) {
-        return true;
-      }
-      if (normalizedKey && models.includes(normalizedKey)) {
-        return true;
-      }
-      return false;
-    })
-    .map((row) => row.id);
+  return rows.map((row) => row.id);
 }
 
-export async function listActiveDefaultChatRagEntryIdsForModel({
-  modelConfigId,
-  modelKey,
-}: {
-  modelConfigId: string;
-  modelKey?: string | null;
-}): Promise<string[]> {
-  return listActiveRagEntryIdsForModelAndScope({
-    isScopeMatch: isDefaultChatRagScope,
-    modelConfigId,
-    modelKey,
-  });
-}
-
-export async function listActiveStudyChatRagEntryIdsForModel({
-  modelConfigId,
-  modelKey,
-}: {
-  modelConfigId: string;
-  modelKey?: string | null;
-}): Promise<string[]> {
-  return listActiveRagEntryIdsForModelAndScope({
-    isScopeMatch: isStudyChatRagScope,
-    modelConfigId,
-    modelKey,
-  });
-}
-
-export async function listActiveJobsChatRagEntryIdsForModel({
-  modelConfigId,
-  modelKey,
-}: {
-  modelConfigId: string;
-  modelKey?: string | null;
-}): Promise<string[]> {
-  return listActiveRagEntryIdsForModelAndScope({
-    isScopeMatch: isJobsChatRagScope,
-    modelConfigId,
-    modelKey,
-  });
-}
-
-async function listActiveRagEntryIdsForModelAndScope({
-  isScopeMatch,
-  modelConfigId,
-  modelKey,
-}: {
-  isScopeMatch: (metadata: Record<string, unknown>) => boolean;
-  modelConfigId: string;
-  modelKey?: string | null;
-}): Promise<string[]> {
-  const rows = await db
-    .select({
-      id: ragEntry.id,
-      models: ragEntry.models,
-      metadata: ragEntry.metadata,
-    })
-    .from(ragEntry)
-    .where(
-      and(
-        isNull(ragEntry.deletedAt),
-        eq(ragEntry.status, "active"),
-        eq(ragEntry.approvalStatus, "approved")
-      )
-    )
-    .orderBy(desc(ragEntry.updatedAt));
-
-  const normalizedKey = modelKey?.trim() ?? null;
-
-  return rows
-    .filter((row) => {
-      if (!isScopeMatch(toMetadataRecord(row.metadata))) {
-        return false;
-      }
-
-      const models = Array.isArray(row.models) ? row.models : [];
-      if (models.length === 0) {
-        return true;
-      }
-      if (models.includes(modelConfigId)) {
-        return true;
-      }
-      if (normalizedKey && models.includes(normalizedKey)) {
-        return true;
-      }
-      return false;
-    })
-    .map((row) => row.id);
-}
-
-export async function findBestDefaultChatRagEntryTitleMatch({
-  modelConfigId,
-  modelKey,
-  queryText,
-}: {
-  modelConfigId: string;
-  modelKey?: string | null;
-  queryText: string;
-}): Promise<{ id: string; title: string; content: string } | null> {
-  const normalizedKey = modelKey?.trim() ?? null;
-  const rows = await db
-    .select({
-      id: ragEntry.id,
-      title: ragEntry.title,
-      content: ragEntry.content,
-      models: ragEntry.models,
-      metadata: ragEntry.metadata,
-    })
-    .from(ragEntry)
-    .where(
-      and(
-        isNull(ragEntry.deletedAt),
-        eq(ragEntry.status, "active"),
-        eq(ragEntry.approvalStatus, "approved")
-      )
-    )
-    .orderBy(desc(ragEntry.updatedAt))
-    .limit(200);
-
-  const scopedRows = rows.filter((row) => {
-    if (!isDefaultChatRagScope(toMetadataRecord(row.metadata))) {
-      return false;
-    }
-
-    const models = Array.isArray(row.models) ? row.models : [];
-    if (models.length === 0) {
-      return true;
-    }
-    if (models.includes(modelConfigId)) {
-      return true;
-    }
-    if (normalizedKey && models.includes(normalizedKey)) {
-      return true;
-    }
-    return false;
-  });
-
-  const match = scopedRows.find((row) =>
-    isStrongDefaultModeRagTitleMatch({
-      userText: queryText,
-      entryTitle: row.title,
-    })
-  );
-
-  return match
-    ? {
-        id: match.id,
-        title: match.title,
-        content: match.content,
-      }
-    : null;
-}
-
-export async function rebuildAllRagFileSearchIndexes() {
+export async function rebuildAllRagIndexes() {
   const entries = await db
-    .select()
+    .select({ id: ragEntry.id })
     .from(ragEntry)
     .where(
       and(
         isNull(ragEntry.deletedAt),
         isNull(ragEntry.personalForUserId),
-        customAdminRagEntryCondition()
-      )
+        customAdminRagEntryCondition(),
+      ),
     );
   let reindexed = 0;
   let failed = 0;
-
-  for (const entry of entries) {
-    const synced = await syncGeminiFileSearchIndexBounded(
-      entry,
-      "rag.file_search.rebuild"
+  for (let index = 0; index < entries.length; index += 3) {
+    const results = await Promise.all(
+      entries
+        .slice(index, index + 3)
+        .map((entry) => indexRagEntry(entry.id)),
     );
-    if (synced) {
-      reindexed += 1;
-    } else {
-      failed += 1;
-    }
+    reindexed += results.filter((result) => result.status === "ready").length;
+    failed += results.filter((result) => result.status === "failed").length;
   }
-
   return {
     processed: entries.length,
     reindexed,

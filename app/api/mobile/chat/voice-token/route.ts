@@ -12,6 +12,10 @@ import { getAuthenticatedUser } from "@/lib/api/auth";
 import { noStoreHeaders } from "@/lib/api/cache";
 import { withApiTiming } from "@/lib/api/observability";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  RAG_LIVE_SYSTEM_INSTRUCTION,
+  RAG_LIVE_TOOL,
+} from "@/lib/rag/live-tool";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import { withTimeout } from "@/lib/utils/async";
@@ -242,7 +246,8 @@ export async function POST(request: Request) {
                   },
                   turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
                 },
-                systemInstruction: liveVoiceModel.systemInstruction,
+                tools: [RAG_LIVE_TOOL],
+                systemInstruction: `${liveVoiceModel.systemInstruction}\n\n${RAG_LIVE_SYSTEM_INSTRUCTION}`,
               },
             },
           },
@@ -272,7 +277,8 @@ export async function POST(request: Request) {
       modelProviderModelId: liveVoiceModel.providerModelId,
       voiceName: liveVoiceModel.voiceName,
       mediaResolution: liveVoiceModel.mediaResolution,
-      systemInstruction: liveVoiceModel.systemInstruction,
+      systemInstruction: `${liveVoiceModel.systemInstruction}\n\n${RAG_LIVE_SYSTEM_INSTRUCTION}`,
+      tools: [RAG_LIVE_TOOL] as Array<Record<string, unknown>>,
       creditMultiplier: liveVoiceModel.creditMultiplier,
       tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
       webSocketUrl: GEMINI_LIVE_WS_URL,

@@ -146,6 +146,7 @@ function buildSetupMessage(tokenResponse: Extract<GeminiVoiceTokenResponse, { li
       },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
+      ...(tokenResponse.tools?.length ? { tools: tokenResponse.tools } : {}),
       realtimeInputConfig: {
         activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
         automaticActivityDetection: {
@@ -594,6 +595,41 @@ export async function startWebGeminiVoiceTurn({
         outputTokens: currentTurnUsage.outputTokens + outputDelta,
       };
       applyUsageToActiveAssistantMessage();
+    }
+
+    const functionCalls = message.toolCall?.functionCalls;
+    if (Array.isArray(functionCalls) && functionCalls.length > 0) {
+      const functionResponses = await Promise.all(
+        functionCalls.map(async (call: Record<string, any>) => {
+          const query =
+            typeof call.args?.query === "string" ? call.args.query.trim() : "";
+          try {
+            const response = await fetch("/api/rag/search", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ query, scope: "default" }),
+            });
+            const payload = await response.json();
+            return {
+              id: call.id,
+              name: call.name,
+              response: response.ok
+                ? { output: payload }
+                : { error: payload?.message ?? "Knowledge search failed." },
+            };
+          } catch {
+            return {
+              id: call.id,
+              name: call.name,
+              response: { error: "Knowledge search was unavailable." },
+            };
+          }
+        }),
+      );
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ toolResponse: { functionResponses } }));
+      }
     }
 
     const serverContent = message.serverContent;

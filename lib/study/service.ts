@@ -107,7 +107,6 @@ function normalizeQuestionPaperRecord(
     parseError: parseErrorFromMetadata || null,
     metadata,
     models: Array.isArray(entry.models) ? entry.models : [],
-    categoryId: entry.categoryId ?? null,
     embeddingStatus: entry.embeddingStatus,
     createdAt:
       entry.createdAt instanceof Date

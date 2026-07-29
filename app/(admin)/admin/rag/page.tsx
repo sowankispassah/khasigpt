@@ -13,13 +13,12 @@ import { getRagChatScope } from "@/lib/rag/chat-scope";
 import {
   getRagAnalyticsSummary,
   listAdminRagEntries,
-  listRagCategories,
   listUserAddedKnowledgeEntries,
 } from "@/lib/rag/service";
 import { parseBooleanSetting } from "@/lib/settings/boolean-setting";
 import { withTimeout } from "@/lib/utils/async";
 import { CustomKnowledgeToggle } from "./custom-knowledge-toggle";
-import { RebuildFileSearchButton } from "./rebuild-file-search-button";
+import { RebuildRagIndexButton } from "./rebuild-rag-index-button";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +93,6 @@ export default async function AdminRagPage() {
     ),
     null
   );
-  const categoriesPromise = safeQuery("RAG categories", listRagCategories(), []);
   const modelConfigsPromise = safeQuery(
     "model registry",
     getModelRegistry().then((registry) => registry.configs),
@@ -147,12 +145,13 @@ export default async function AdminRagPage() {
 
       <section className="rounded-lg border bg-card p-4 shadow-sm">
         <div className="flex flex-col gap-2">
-          <h3 className="font-semibold text-base">Rebuild File Search index</h3>
+          <h3 className="font-semibold text-base">Rebuild knowledge index</h3>
           <p className="text-muted-foreground text-sm">
-            Re-index all knowledge entries into Gemini File Search.
+            Rebuild multilingual search chunks and embeddings for all custom
+            knowledge entries.
           </p>
           <div className="flex justify-start">
-            <RebuildFileSearchButton />
+            <RebuildRagIndexButton />
           </div>
         </div>
       </section>
@@ -160,7 +159,6 @@ export default async function AdminRagPage() {
       <Suspense fallback={<AdminPageLoading rows={6} summaryCards={4} titleWidth="w-28" />}>
         <RagManagerSection
           analyticsPromise={analyticsPromise}
-          categoriesPromise={categoriesPromise}
           currentUser={currentUser}
           entriesPromise={entriesPromise}
           modelConfigsPromise={modelConfigsPromise}
@@ -187,18 +185,12 @@ export default async function AdminRagPage() {
 
 async function RagManagerSection({
   analyticsPromise,
-  categoriesPromise,
   currentUser,
   entriesPromise,
   modelConfigsPromise,
 }: {
   analyticsPromise: Promise<{
     data: Awaited<ReturnType<typeof getRagAnalyticsSummary>>;
-    degraded: boolean;
-    label: string;
-  }>;
-  categoriesPromise: Promise<{
-    data: Awaited<ReturnType<typeof listRagCategories>>;
     degraded: boolean;
     label: string;
   }>;
@@ -221,12 +213,10 @@ async function RagManagerSection({
   >;
 }) {
   const [
-    categoriesState,
     modelConfigsState,
     entriesState,
     analyticsState,
   ] = await Promise.all([
-    categoriesPromise,
     modelConfigsPromise,
     entriesPromise,
     analyticsPromise,
@@ -243,8 +233,7 @@ async function RagManagerSection({
       models: entry.entry.models,
       chatScope: getRagChatScope(entry.entry.metadata),
       sourceUrl: entry.entry.sourceUrl ?? null,
-      categoryId: entry.entry.categoryId ?? null,
-      categoryName: entry.entry.categoryName ?? null,
+      embeddingStatus: entry.entry.embeddingStatus,
       createdAt: serializeDate(entry.entry.createdAt),
       updatedAt: serializeDate(entry.entry.updatedAt),
     },
@@ -264,7 +253,6 @@ async function RagManagerSection({
   ).sort();
   const degradedSections = [
     analyticsState.degraded ? analyticsState.label : null,
-    categoriesState.degraded ? categoriesState.label : null,
     entriesState.degraded ? entriesState.label : null,
     modelConfigsState.degraded ? modelConfigsState.label : null,
   ].filter((section): section is string => Boolean(section));
@@ -272,7 +260,6 @@ async function RagManagerSection({
   return (
     <AdminRagManager
       analytics={analyticsState.data}
-      categories={categoriesState.data}
       currentUser={currentUser}
       degradedSections={degradedSections}
       entries={serializedEntries}

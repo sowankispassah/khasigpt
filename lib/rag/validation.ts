@@ -10,14 +10,21 @@ import {
 export const ragEntrySchema = z.object({
   id: z.string().uuid().optional().nullable(),
   title: z.string().min(3).max(160),
-  content: z.string().min(16),
+  content: z.string().min(16).max(500_000),
   type: z.enum(ragEntryTypeEnum.enumValues),
   status: z.enum(ragEntryStatusEnum.enumValues),
   approvalStatus: z
     .enum(ragEntryApprovalStatusEnum.enumValues)
     .default("approved"),
   sourceUrl: z.string().url().optional().nullable(),
-  categoryId: z.string().uuid().optional().nullable(),
+  language: z
+    .string()
+    .trim()
+    .min(2)
+    .max(16)
+    .regex(/^[a-z]{2,3}(?:-[A-Z]{2})?$|^und$|^mul$/)
+    .default("und"),
+  priority: z.number().int().min(-100).max(100).default(0),
   personalForUserId: z.string().uuid().optional().nullable(),
   approvedBy: z.string().uuid().optional().nullable(),
   tags: z.array(z.string().min(1).max(48)).max(24).optional().default([]),

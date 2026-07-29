@@ -37,7 +37,6 @@ function createJob(overrides: Partial<JobPostingRecord>): JobPostingRecord {
     embeddingStatus: overrides.embeddingStatus ?? "ready",
     metadata: overrides.metadata ?? {},
     models: overrides.models ?? [],
-    categoryId: overrides.categoryId ?? null,
     parseError: overrides.parseError ?? null,
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,

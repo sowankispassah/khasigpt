@@ -44,7 +44,6 @@ import { getJobPostingCount, listJobPostingEntries } from "@/lib/jobs/service";
 import {
   getRagAnalyticsSummary,
   listAdminRagEntries,
-  listRagCategories,
 } from "@/lib/rag/service";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -476,7 +475,6 @@ async function loadSection(section: string, request: NextRequest) {
           getRagAnalyticsSummary(),
           null
         ),
-        categories: await sectionQuery("rag.categories", listRagCategories(), []),
         entries: await sectionQuery("rag.entries", listAdminRagEntries(50), []),
       };
     case "jobs": {

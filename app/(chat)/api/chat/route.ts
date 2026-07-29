@@ -3,13 +3,11 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
-  extractReasoningMiddleware,
   generateText,
   type LanguageModelUsage,
   type StepResult,
   smoothStream,
   streamText,
-  wrapLanguageModel,
 } from "ai";
 import { unstable_cache } from "next/cache";
 import { after } from "next/server";
@@ -24,11 +22,9 @@ import { z } from "zod";
 import type { UserRole } from "@/app/(auth)/auth";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { entitlementsByUserRole } from "@/lib/ai/entitlements";
-import { createGeminiFileSearchLanguageModel } from "@/lib/ai/gemini-file-search-model";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
-import { shouldUseDefaultModeRag } from "@/lib/chat/default-mode-rag";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -83,13 +79,7 @@ import {
 } from "@/lib/jobs/service";
 import type { JobCard } from "@/lib/jobs/types";
 import { getMobileSession } from "@/lib/mobile-auth-session";
-import { getGeminiFileSearchStoreName } from "@/lib/rag/gemini-file-search";
-import {
-  findBestDefaultChatRagEntryTitleMatch,
-  listActiveDefaultChatRagEntryIdsForModel,
-  listActiveJobsChatRagEntryIdsForModel,
-  listActiveStudyChatRagEntryIdsForModel,
-} from "@/lib/rag/service";
+import { retrieveRagContext } from "@/lib/rag/retrieval";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import {
@@ -752,40 +742,6 @@ function _buildStructuredJobsListingText({
   }
 
   return `I found ${matchedCards.length} matching job${matchedCards.length === 1 ? "" : "s"}.`;
-}
-
-function supportsGeminiFileSearchModel(providerModelId: string) {
-  const normalized = providerModelId.includes("/")
-    ? providerModelId.split("/").at(-1) ?? providerModelId
-    : providerModelId;
-
-  return (
-    normalized === "gemini-pro-latest" ||
-    normalized === "gemini-flash-latest" ||
-    normalized === "gemini-3-pro-preview" ||
-    normalized.startsWith("gemini-3-pro-preview-") ||
-    normalized === "gemini-2.5-pro" ||
-    normalized.startsWith("gemini-2.5-pro-") ||
-    normalized === "gemini-2.5-flash" ||
-    normalized.startsWith("gemini-2.5-flash-") ||
-    normalized === "gemini-2.5-flash-lite" ||
-    normalized.startsWith("gemini-2.5-flash-lite-")
-  );
-}
-
-const DEFAULT_GEMINI_FILE_SEARCH_MODEL_ID = "gemini-2.5-flash";
-
-function resolveGeminiFileSearchModelId(
-  ...candidates: Array<string | null | undefined>
-) {
-  for (const candidate of candidates) {
-    const normalized = candidate?.trim();
-    if (normalized && supportsGeminiFileSearchModel(normalized)) {
-      return normalized;
-    }
-  }
-
-  return DEFAULT_GEMINI_FILE_SEARCH_MODEL_ID;
 }
 
 function _parseJobsRagSelection(rawText: string) {
@@ -2890,154 +2846,43 @@ export async function POST(request: Request) {
         ? systemInstructionParts.join("\n\n")
         : null;
 
-    const escapeFilterValue = (value: string) =>
-      value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-
-    const fileSearchStoreName = getGeminiFileSearchStoreName();
-    const geminiFileSearchModelId = resolveGeminiFileSearchModelId(
-      modelConfig.provider === "google" ? modelConfig.providerModelId : null,
-      process.env.RAG_GEMINI_MODEL_ID,
-      process.env.GEMINI_FILE_SEARCH_MODEL_ID,
-      resolvedChatMode === JOBS_CHAT_MODE
-        ? process.env.JOBS_RAG_GEMINI_MODEL_ID
-        : null
-    );
-    const allowModeSpecificFileSearch =
-      resolvedChatMode === STUDY_CHAT_MODE || resolvedChatMode === JOBS_CHAT_MODE;
-    const defaultChatTitleMatchEntry =
-      resolvedChatMode === "default" && customKnowledgeEnabled
-        ? await findBestDefaultChatRagEntryTitleMatch({
-            modelConfigId: modelConfig.id,
-            modelKey: modelConfig.key,
-            queryText: getTextFromMessage(message),
-          })
-        : null;
-    const shouldEnableDefaultModeRag =
-      resolvedChatMode === "default" &&
-      customKnowledgeEnabled &&
-      (Boolean(defaultChatTitleMatchEntry) ||
-        shouldUseDefaultModeRag({
-          userText: getTextFromMessage(message),
-          hasDocumentContext: documentContextText.length > 0,
-          hasHiddenPrompt: normalizedHiddenPrompt.length > 0,
-        }));
-    const canUseGeminiFileSearch =
-      (shouldEnableDefaultModeRag || allowModeSpecificFileSearch) &&
-      typeof fileSearchStoreName === "string" &&
-      supportsGeminiFileSearchModel(geminiFileSearchModelId);
-    const scopedStudyRagEntryIds =
-      canUseGeminiFileSearch && resolvedChatMode === STUDY_CHAT_MODE
-        ? await listActiveStudyChatRagEntryIdsForModel({
-            modelConfigId: modelConfig.id,
-            modelKey: modelConfig.key,
-          })
-        : [];
-    const scopedJobsRagEntryIds =
-      canUseGeminiFileSearch && resolvedChatMode === JOBS_CHAT_MODE
-        ? await listActiveJobsChatRagEntryIdsForModel({
-            modelConfigId: modelConfig.id,
-            modelKey: modelConfig.key,
-          })
-        : [];
-
-    const activeEntryIds = canUseGeminiFileSearch
-      ? resolvedChatMode === STUDY_CHAT_MODE
-        ? Array.from(
-            new Set([...(studyPaperIdsForModel ?? []), ...scopedStudyRagEntryIds])
-          )
-        : resolvedChatMode === JOBS_CHAT_MODE
-          ? Array.from(
-              new Set([
-                ...(jobPostingIdsForModel ?? []),
-                ...(studyPaperIdsForModel ?? []),
-                ...scopedJobsRagEntryIds,
-              ])
-            )
-        : await listActiveDefaultChatRagEntryIdsForModel({
-            modelConfigId: modelConfig.id,
-            modelKey: modelConfig.key,
-          })
-      : [];
-    const jobsLinkedStudyPaperIds =
-      resolvedChatMode === JOBS_CHAT_MODE &&
-      (jobsIntent === "exam_prep" || jobsIntent === "answer_help")
-        ? jobsLinkedStudyPapers.map((paper) => paper.id)
-        : [];
-    const filteredEntryIds =
+    const shouldRetrieveCustomKnowledge =
+      customKnowledgeEnabled || resolvedChatMode !== "default";
+    const ragScope =
       resolvedChatMode === STUDY_CHAT_MODE
-        ? effectiveStudyPaperId
-          ? Array.from(
-              new Set([effectiveStudyPaperId, ...scopedStudyRagEntryIds])
-            )
-          : scopedStudyRagEntryIds
+        ? "study"
         : resolvedChatMode === JOBS_CHAT_MODE
-          ? effectiveJobPostingId
-            ? Array.from(
-                new Set([
-                  effectiveJobPostingId,
-                  ...jobsLinkedStudyPaperIds,
-                  ...scopedJobsRagEntryIds,
-                ])
-              )
-            : scopedJobsRagEntryIds
-        : defaultChatTitleMatchEntry
-          ? [defaultChatTitleMatchEntry.id]
-        : activeEntryIds;
+          ? "jobs"
+          : "default";
+    const ragResult = shouldRetrieveCustomKnowledge
+      ? await measurePreModelStep("rag.retrieve", () =>
+          retrieveRagContext({
+            query: getTextFromMessage(message),
+            scope: ragScope,
+            chatId: id,
+            userId: session.user.id,
+            modelConfigId: modelConfig.id,
+            modelKey: modelConfig.key,
+            signal: request.signal,
+          }),
+        )
+      : {
+          context: "",
+          matches: [],
+          language: "und",
+          durationMs: 0,
+          status: "skipped" as const,
+        };
+    const customRagUsed = ragResult.status === "hit";
+    const activeEntryCount = ragResult.matches.length;
+    const filteredEntryCount = ragResult.matches.length;
+    const languageModel = resolveLanguageModel(modelConfig);
 
-    const metadataFilter =
-      canUseGeminiFileSearch && filteredEntryIds.length > 0
-        ? filteredEntryIds
-            .map((entryId) => `rag_entry_id = "${escapeFilterValue(entryId)}"`)
-            .join(" OR ")
-        : null;
-
-    const useGeminiFileSearch =
-      canUseGeminiFileSearch &&
-      typeof metadataFilter === "string" &&
-      metadataFilter.trim().length > 0;
-    const activeEntryCount = activeEntryIds.length;
-    const filteredEntryCount = filteredEntryIds.length;
-
-    const geminiFileSearchStoreName =
-      useGeminiFileSearch && typeof fileSearchStoreName === "string"
-        ? fileSearchStoreName
-        : null;
-
-    let languageModel = geminiFileSearchStoreName
-      ? createGeminiFileSearchLanguageModel({
-          modelId: geminiFileSearchModelId,
-          storeName: geminiFileSearchStoreName,
-          metadataFilter,
-        })
-      : resolveLanguageModel(modelConfig);
-
-    if (
-      useGeminiFileSearch &&
-      modelConfig.provider === "google" &&
-      geminiFileSearchModelId === modelConfig.providerModelId &&
-      modelConfig.supportsReasoning &&
-      modelConfig.reasoningTag
-    ) {
-      languageModel = wrapLanguageModel({
-        model: languageModel,
-        middleware: extractReasoningMiddleware({
-          tagName: modelConfig.reasoningTag,
-        }),
-      });
-    }
-
-    const shouldAttachStudyContext =
-      studyContextText &&
-      (!useGeminiFileSearch || studyEntry?.embeddingStatus !== "ready");
-    const shouldAttachJobsContext =
-      jobsContextText &&
-      (!useGeminiFileSearch || jobEntry?.embeddingStatus !== "ready");
-    const jobsLinkedStudyEmbeddingsReady =
-      jobsLinkedStudyPapers.length > 0 &&
-      jobsLinkedStudyPapers.every((paper) => paper.embeddingStatus === "ready");
-    const shouldAttachJobsLinkedStudyContext =
-      jobsLinkedStudyContextText &&
-      (!useGeminiFileSearch || !jobsLinkedStudyEmbeddingsReady);
+    const shouldAttachStudyContext = Boolean(studyContextText);
+    const shouldAttachJobsContext = Boolean(jobsContextText);
+    const shouldAttachJobsLinkedStudyContext = Boolean(
+      jobsLinkedStudyContextText,
+    );
 
     if (shouldAttachStudyContext) {
       modelParts = [
@@ -3066,17 +2911,12 @@ export async function POST(request: Request) {
         },
       ];
     }
-    if (resolvedChatMode === "default" && defaultChatTitleMatchEntry) {
+    if (ragResult.context) {
       modelParts = [
         ...modelParts,
         {
           type: "text" as const,
-          text: [
-            "Authoritative custom knowledge entry matched this request.",
-            `Title: ${defaultChatTitleMatchEntry.title}`,
-            "Use the following content as the primary source for the answer:",
-            defaultChatTitleMatchEntry.content,
-          ].join("\n\n"),
+          text: ragResult.context,
         },
       ];
     }
@@ -3389,10 +3229,11 @@ export async function POST(request: Request) {
         mode: resolvedChatMode,
         provider: modelConfig.provider,
         modelId: modelConfig.providerModelId,
-        used_gemini_file_search: useGeminiFileSearch,
+        used_hybrid_rag: customRagUsed,
         active_entry_count: activeEntryCount,
         filtered_entry_count: filteredEntryCount,
-        default_mode_rag_enabled: shouldEnableDefaultModeRag,
+        rag_retrieval_status: ragResult.status,
+        rag_retrieval_ms: ragResult.durationMs,
         pre_model_ms: preModelMs,
         first_chunk_ms: firstTextDeltaMs,
         pre_model_breakdown_ms: [...preModelTimingEntries].sort(
@@ -3414,7 +3255,7 @@ export async function POST(request: Request) {
         mode: resolvedChatMode,
         provider: modelConfig.provider,
         modelId: modelConfig.providerModelId,
-        used_gemini_file_search: useGeminiFileSearch,
+        used_hybrid_rag: customRagUsed,
         pre_model_ms: preModelMs,
         first_chunk_ms: firstTextDeltaMs,
       });
@@ -3552,8 +3393,8 @@ export async function POST(request: Request) {
       process.env.PLAYWRIGHT === "true"
         ? {
             ...STREAM_HEADERS,
-            "x-chat-debug-rag-path": useGeminiFileSearch
-              ? "gemini-file-search"
+            "x-chat-debug-rag-path": customRagUsed
+              ? "hybrid-db"
               : "direct-model",
           }
         : STREAM_HEADERS;

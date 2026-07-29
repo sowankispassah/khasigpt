@@ -6,7 +6,6 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 
 const REBUILD_ENDPOINT = "/api/admin/rag/rebuild";
-const REBUILD_CLIENT_TIMEOUT_MS = 50_000;
 
 type RebuildResponse = {
   message?: string;
@@ -25,44 +24,28 @@ class RebuildError extends Error {
   }
 }
 
-async function rebuildFileSearchIndex() {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(
-    () => controller.abort(),
-    REBUILD_CLIENT_TIMEOUT_MS
-  );
+async function rebuildRagIndex() {
+  const response = await fetch(REBUILD_ENDPOINT, {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const body = (await response.json().catch(() => null)) as
+    | RebuildResponse
+    | null;
 
-  try {
-    const response = await fetch(REBUILD_ENDPOINT, {
-      method: "POST",
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    const body = (await response.json().catch(() => null)) as
-      | RebuildResponse
-      | null;
-
-    if (!response.ok || !body?.ok) {
-      throw new RebuildError(
-        typeof body?.message === "string"
-          ? body.message
-          : `Rebuild failed (${response.status}).`
-      );
-    }
-
-    return body.summary ?? {};
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new RebuildError("Rebuild timed out. Please try again.");
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
+  if (!response.ok || !body?.ok) {
+    throw new RebuildError(
+      typeof body?.message === "string"
+        ? body.message
+        : `Rebuild failed (${response.status}).`,
+    );
   }
+
+  return body.summary ?? {};
 }
 
-export function RebuildFileSearchButton() {
+export function RebuildRagIndexButton() {
   const [isRebuilding, setIsRebuilding] = useState(false);
 
   const handleClick = async () => {
@@ -72,7 +55,7 @@ export function RebuildFileSearchButton() {
 
     setIsRebuilding(true);
     try {
-      const summary = await rebuildFileSearchIndex();
+      const summary = await rebuildRagIndex();
       const failed = summary.failed ?? 0;
       const reindexed = summary.reindexed ?? 0;
       const processed = summary.processed ?? reindexed + failed;
@@ -89,7 +72,7 @@ export function RebuildFileSearchButton() {
         description:
           error instanceof Error
             ? error.message
-            : "Unable to rebuild File Search index.",
+            : "Unable to rebuild the knowledge index.",
       });
     } finally {
       setIsRebuilding(false);
@@ -97,7 +80,12 @@ export function RebuildFileSearchButton() {
   };
 
   return (
-    <Button disabled={isRebuilding} onClick={handleClick} type="button">
+    <Button
+      className="cursor-pointer"
+      disabled={isRebuilding}
+      onClick={handleClick}
+      type="button"
+    >
       {isRebuilding ? (
         <span className="flex items-center gap-2">
           <span className="h-4 w-4 animate-spin">

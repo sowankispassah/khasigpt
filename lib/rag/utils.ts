@@ -2,7 +2,7 @@ import "server-only";
 
 import { sanitizeText } from "@/lib/utils";
 
-const BASIC_LATIN_REGEX = /^[a-z0-9\s.,!?'"()-:;]+$/i;
+export { detectQueryLanguage } from "./language";
 
 export function normalizeTags(tags: string[] | undefined | null): string[] {
   if (!tags?.length) {
@@ -18,7 +18,6 @@ export function normalizeTags(tags: string[] | undefined | null): string[] {
   }
   return Array.from(seen);
 }
-
 export function normalizeModels(models: string[] | undefined | null): string[] {
   if (!models?.length) {
     return [];
@@ -33,7 +32,6 @@ export function normalizeModels(models: string[] | undefined | null): string[] {
   }
   return Array.from(seen);
 }
-
 export function sanitizeRagContent(value: string): string {
   return sanitizeText(value).trim();
 }
@@ -55,24 +53,4 @@ export function normalizeSourceUrl(value?: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-export function detectQueryLanguage(text: string): string {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return "und";
-  }
-  const khasiMarkers = ["khasi", "kumno", "khublei", "shibun"];
-  const pnarMarkers = ["pnar", "narwan", "u moo"];
-
-  if (khasiMarkers.some((marker) => normalized.includes(marker))) {
-    return "kha";
-  }
-  if (pnarMarkers.some((marker) => normalized.includes(marker))) {
-    return "pna";
-  }
-  if (BASIC_LATIN_REGEX.test(normalized)) {
-    return "en";
-  }
-  return "mul";
 }

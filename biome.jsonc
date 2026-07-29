@@ -9,6 +9,7 @@
       "!**/node_modules",
       "!**/.next",
       "!**/.next-build-clean",
+      "!**/.vercel",
       "!**/build_output",
       "!**/dist-next",
       "!**/out",

@@ -141,11 +141,10 @@ import {
 } from "@/lib/live-translation/config";
 import {
   bulkUpdateRagStatus,
-  createRagCategory,
   createRagEntry,
   deletePersonalKnowledgeEntry,
   deleteRagEntries,
-  rebuildAllRagFileSearchIndexes,
+  rebuildAllRagIndexes,
   restoreRagEntry,
   restoreRagVersion,
   updateRagEntry,
@@ -208,7 +207,6 @@ function revalidateAppSettingCache(key: string, source = "admin.appSetting") {
     tags: [appSettingCacheTagForKey(key)],
   });
 }
-
 function revalidateAdminSettingsSection(source = "admin.settings") {
   invalidateAdminMutation({
     source,
@@ -221,7 +219,6 @@ function revalidateAdminSettingsSection(source = "admin.settings") {
     });
   }
 }
-
 function revalidateAdminModelSettings(source = "admin.models") {
   invalidateAdminMutation({
     source,
@@ -1151,17 +1148,17 @@ export async function updateCustomKnowledgeSettingsAction(formData: FormData) {
   revalidateAdminSettingsSection("settings.custom_knowledge.update");
 }
 
-export async function rebuildRagFileSearchIndexAction() {
+export async function rebuildRagIndexAction() {
   "use server";
   const actor = await requireAdmin();
-  const summary = await rebuildAllRagFileSearchIndexes();
+  const summary = await rebuildAllRagIndexes();
   await createAuditLogEntrySafely({
     actorId: actor.id,
-    action: "rag.file_search.rebuild",
-    target: { feature: "rag.file_search" },
+    action: "rag.index.rebuild",
+    target: { feature: "rag.index" },
     metadata: summary,
   });
-  revalidateAdminPath("/admin/rag", "rag.file_search.rebuild");
+  revalidateAdminPath("/admin/rag", "rag.index.rebuild");
 }
 
 function parseBoolean(value: FormDataEntryValue | null | undefined) {
@@ -4037,7 +4034,6 @@ export async function updateQuestionPaperAction(formData: FormData) {
       models: Array.isArray(existing.models) ? existing.models : [],
       sourceUrl,
       metadata,
-      categoryId: existing.categoryId,
     },
   });
 
@@ -4603,7 +4599,6 @@ export async function updateJobPostingAction(formData: FormData) {
       models: Array.isArray(existing.models) ? existing.models : [],
       sourceUrl,
       metadata,
-      categoryId: existing.categoryId,
     },
   });
 
@@ -4905,19 +4900,4 @@ export async function restoreRagVersionAction({
     target: { ragEntryId: entryId, versionId },
   });
   revalidateAdminPath("/admin/rag", "rag.entry.version.restore");
-}
-
-export async function createRagCategoryAction(name: string) {
-  const actor = await requireAdmin();
-  const category = await createRagCategory({ name });
-
-  await createAuditLogEntrySafely({
-    actorId: actor.id,
-    action: "rag.category.create",
-    target: { ragCategoryId: category.id },
-    metadata: { name: category.name },
-  });
-
-  revalidateAdminPath("/admin/rag", "rag.category.create");
-  return category;
 }

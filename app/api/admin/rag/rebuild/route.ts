@@ -1,18 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import { createAuditLogEntry } from "@/lib/db/queries";
-import { rebuildAllRagFileSearchIndexes } from "@/lib/rag/service";
+import { rebuildAllRagIndexes } from "@/lib/rag/service";
 import { requireAdminApiUser } from "@/lib/security/admin-api-auth";
 import { withTimeout } from "@/lib/utils/async";
 
 export const runtime = "nodejs";
 
-const REBUILD_TIMEOUT_MS = 45_000;
 const AUDIT_TIMEOUT_MS = 3_000;
-
-function isTimeoutError(error: unknown) {
-  return error instanceof Error && error.message === "timeout";
-}
 
 export async function POST(request: NextRequest) {
   const user = await requireAdminApiUser(request);
@@ -26,27 +21,18 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    const summary = await withTimeout(
-      rebuildAllRagFileSearchIndexes(),
-      REBUILD_TIMEOUT_MS,
-      () => {
-        console.warn("[api/admin/rag/rebuild] timeout", {
-          actorId: user.id,
-          timeoutMs: REBUILD_TIMEOUT_MS,
-        });
-      }
-    );
+    const summary = await rebuildAllRagIndexes();
 
     invalidateAdminMutation({
       paths: [{ path: "/admin/rag" }],
-      source: "rag.file_search.rebuild",
+      source: "rag.index.rebuild",
     });
 
     void withTimeout(
       createAuditLogEntry({
         actorId: user.id,
-        action: "rag.file_search.rebuild",
-        target: { feature: "rag.file_search", scope: "custom_rag" },
+        action: "rag.index.rebuild",
+        target: { feature: "rag.index", scope: "custom_rag" },
         metadata: summary,
       }),
       AUDIT_TIMEOUT_MS
@@ -70,12 +56,10 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(
       {
-        error: isTimeoutError(error) ? "timeout" : "rebuild_failed",
-        message: isTimeoutError(error)
-          ? "RAG rebuild timed out. Some entries may still be marked failed; try again later."
-          : "Unable to rebuild the RAG File Search index.",
+        error: "rebuild_failed",
+        message: "Unable to rebuild the knowledge index.",
       },
-      { status: isTimeoutError(error) ? 504 : 500 }
+      { status: 500 }
     );
   }
 }

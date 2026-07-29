@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   uuid,
   varchar,
+  vector,
 } from "drizzle-orm/pg-core";
 import type { AppUsage } from "../usage";
 
@@ -372,20 +373,6 @@ export const ragEmbeddingStatusEnum = pgEnum("rag_embedding_status", [
 export type RagEmbeddingStatus =
   (typeof ragEmbeddingStatusEnum.enumValues)[number];
 
-export const ragCategory = pgTable(
-  "RagCategory",
-  {
-    id: uuid("id").primaryKey().notNull().defaultRandom(),
-    name: text("name").notNull().unique(),
-    createdAt: timestamp("createdAt").notNull().defaultNow(),
-  },
-  (table) => ({
-    nameIdx: uniqueIndex("RagCategory_name_idx").on(table.name),
-  })
-);
-
-export type RagCategory = InferSelectModel<typeof ragCategory>;
-
 export const ragEntry = pgTable(
   "RagEntry",
   {
@@ -395,9 +382,8 @@ export const ragEntry = pgTable(
     type: ragEntryTypeEnum("type").notNull().default("text"),
     tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
     sourceUrl: text("sourceUrl"),
-    categoryId: uuid("categoryId").references(() => ragCategory.id, {
-      onDelete: "set null",
-    }),
+    language: varchar("language", { length: 16 }).notNull().default("und"),
+    priority: integer("priority").notNull().default(0),
     status: ragEntryStatusEnum("status").notNull().default("inactive"),
     models: text("models").array().notNull().default(sql`ARRAY[]::text[]`),
     addedBy: uuid("addedBy")
@@ -421,10 +407,8 @@ export const ragEntry = pgTable(
       .notNull()
       .default("pending"),
     embeddingModel: text("embeddingModel"),
-    embeddingDimensions: integer("embeddingDimensions"),
     embeddingUpdatedAt: timestamp("embeddingUpdatedAt"),
     embeddingError: text("embeddingError"),
-    supabaseVectorId: uuid("supabaseVectorId"),
   },
   (table) => ({
     statusIdx: index("RagEntry_status_idx").on(table.status),
@@ -435,12 +419,51 @@ export const ragEntry = pgTable(
     approvalStatusIdx: index("RagEntry_approvalStatus_idx").on(
       table.approvalStatus
     ),
+    approvedByIdx: index("RagEntry_approvedBy_idx").on(table.approvedBy),
     createdAtIdx: index("RagEntry_createdAt_idx").on(table.createdAt),
-    categoryIdx: index("RagEntry_category_idx").on(table.categoryId),
+    retrievalIdx: index("RagEntry_retrieval_idx").on(
+      table.status,
+      table.approvalStatus,
+      table.updatedAt
+    ),
   })
 );
 
 export type RagEntry = InferSelectModel<typeof ragEntry>;
+
+export const ragChunk = pgTable(
+  "RagChunk",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    ragEntryId: uuid("ragEntryId")
+      .notNull()
+      .references(() => ragEntry.id, { onDelete: "cascade" }),
+    chunkIndex: integer("chunkIndex").notNull(),
+    content: text("content").notNull(),
+    searchText: text("searchText").notNull(),
+    contentHash: varchar("contentHash", { length: 64 }).notNull(),
+    tokenCount: integer("tokenCount").notNull(),
+    language: varchar("language", { length: 16 }).notNull().default("und"),
+    embedding: vector("embedding", { dimensions: 768 }).notNull(),
+    embeddingModel: text("embeddingModel").notNull(),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    entryChunkUniqueIdx: uniqueIndex("RagChunk_entry_chunk_idx").on(
+      table.ragEntryId,
+      table.chunkIndex
+    ),
+    entryIdx: index("RagChunk_entry_idx").on(table.ragEntryId),
+    embeddingIdx: index("RagChunk_embedding_hnsw_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops")
+    ),
+  })
+);
+
+export type RagChunk = InferSelectModel<typeof ragChunk>;
 
 export const ragEntryVersion = pgTable(
   "RagEntryVersion",
@@ -464,7 +487,9 @@ export const ragEntryVersion = pgTable(
     tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
     models: text("models").array().notNull().default(sql`ARRAY[]::text[]`),
     sourceUrl: text("sourceUrl"),
-    categoryId: uuid("categoryId"),
+    language: varchar("language", { length: 16 }).notNull().default("und"),
+    priority: integer("priority").notNull().default(0),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
     diff: jsonb("diff").notNull().default(sql`'{}'::jsonb`),
     changeSummary: text("changeSummary"),
     editorId: uuid("editorId")
@@ -908,6 +933,9 @@ export const ragRetrievalLog = pgTable(
     ragEntryId: uuid("ragEntryId")
       .notNull()
       .references(() => ragEntry.id, { onDelete: "cascade" }),
+    ragChunkId: uuid("ragChunkId").references(() => ragChunk.id, {
+      onDelete: "set null",
+    }),
     chatId: uuid("chatId").references(() => chat.id, { onDelete: "cascade" }),
     modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
       onDelete: "set null",
@@ -915,7 +943,8 @@ export const ragRetrievalLog = pgTable(
     modelKey: text("modelKey").notNull(),
     userId: uuid("userId").references(() => user.id, { onDelete: "set null" }),
     score: doublePrecision("score").notNull().default(0),
-    queryText: text("queryText").notNull(),
+    queryText: text("queryText"),
+    queryHash: varchar("queryHash", { length: 64 }),
     queryLanguage: varchar("queryLanguage", { length: 16 }),
     applied: boolean("applied").notNull().default(true),
     metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
@@ -923,12 +952,59 @@ export const ragRetrievalLog = pgTable(
   },
   (table) => ({
     ragEntryLogIdx: index("RagRetrievalLog_entry_idx").on(table.ragEntryId),
+    ragChunkLogIdx: index("RagRetrievalLog_chunk_idx").on(table.ragChunkId),
     modelKeyIdx: index("RagRetrievalLog_model_idx").on(table.modelKey),
+    chatIdx: index("RagRetrievalLog_chat_idx").on(table.chatId),
+    modelConfigIdx: index("RagRetrievalLog_modelConfig_idx").on(
+      table.modelConfigId
+    ),
+    userIdx: index("RagRetrievalLog_user_idx").on(table.userId),
     createdIdx: index("RagRetrievalLog_createdAt_idx").on(table.createdAt),
   })
 );
 
 export type RagRetrievalLog = InferSelectModel<typeof ragRetrievalLog>;
+
+export const ragSearchLog = pgTable(
+  "RagSearchLog",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    chatId: uuid("chatId").references(() => chat.id, { onDelete: "cascade" }),
+    modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
+      onDelete: "set null",
+    }),
+    modelKey: text("modelKey").notNull(),
+    userId: uuid("userId").references(() => user.id, { onDelete: "set null" }),
+    chatScope: varchar("chatScope", { length: 24 }).notNull(),
+    queryText: text("queryText"),
+    queryHash: varchar("queryHash", { length: 64 }).notNull(),
+    queryLanguage: varchar("queryLanguage", { length: 16 }).notNull(),
+    status: varchar("status", { length: 24 }).notNull(),
+    resultCount: integer("resultCount").notNull().default(0),
+    selectedCount: integer("selectedCount").notNull().default(0),
+    durationMs: integer("durationMs").notNull().default(0),
+    failureReason: text("failureReason"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    createdIdx: index("RagSearchLog_createdAt_idx").on(table.createdAt),
+    statusCreatedIdx: index("RagSearchLog_status_createdAt_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    userCreatedIdx: index("RagSearchLog_user_createdAt_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    chatIdx: index("RagSearchLog_chat_idx").on(table.chatId),
+    modelConfigIdx: index("RagSearchLog_modelConfig_idx").on(
+      table.modelConfigId
+    ),
+  })
+);
+
+export type RagSearchLog = InferSelectModel<typeof ragSearchLog>;
 
 // DEPRECATED: The following schema is deprecated and will be removed in the future.
 // Read the migration guide at https://chat-sdk.dev/docs/migration-guides/message-parts

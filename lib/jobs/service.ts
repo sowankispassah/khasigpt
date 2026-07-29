@@ -306,7 +306,6 @@ export function normalizeJobPostingRecord(row: JobsSupabaseRow): JobPostingRecor
       sector,
     },
     models: [],
-    categoryId: null,
     parseError: null,
     createdAt,
     updatedAt: createdAt,
@@ -993,7 +992,6 @@ function applyRagStateToJob(
     | "embeddingStatus"
     | "metadata"
     | "models"
-    | "categoryId"
     | "createdAt"
     | "updatedAt"
   > | null
@@ -1036,7 +1034,6 @@ function applyRagStateToJob(
     embeddingStatus: ragState.embeddingStatus,
     metadata: mergedMetadata,
     models: Array.isArray(ragState.models) ? ragState.models : [],
-    categoryId: ragState.categoryId ?? null,
     createdAt:
       ragState.createdAt instanceof Date
         ? ragState.createdAt

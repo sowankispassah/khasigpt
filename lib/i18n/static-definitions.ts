@@ -2,6 +2,53 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "admin.rag.form.create_title",
+    defaultText: "Create entry",
+    description: "Heading for creating a custom knowledge entry.",
+  },
+  {
+    key: "admin.rag.form.update_title",
+    defaultText: "Update entry",
+    description: "Heading for editing a custom knowledge entry.",
+  },
+  {
+    key: "admin.rag.form.description",
+    defaultText:
+      "Add a clear title and the fact or guidance KhasiGPT should know.",
+    description: "Instructions above the custom knowledge form.",
+  },
+  {
+    key: "admin.rag.form.title",
+    defaultText: "Title",
+    description: "Custom knowledge title field label.",
+  },
+  {
+    key: "admin.rag.form.title_placeholder",
+    defaultText: "A short, specific title",
+    description: "Custom knowledge title field placeholder.",
+  },
+  {
+    key: "admin.rag.form.content",
+    defaultText: "Content",
+    description: "Custom knowledge content field label.",
+  },
+  {
+    key: "admin.rag.form.content_placeholder",
+    defaultText:
+      "Write the fact or guidance exactly as KhasiGPT should understand it.",
+    description: "Custom knowledge content field placeholder.",
+  },
+  {
+    key: "admin.rag.form.tags",
+    defaultText: "Tags (optional)",
+    description: "Optional custom knowledge tags field label.",
+  },
+  {
+    key: "admin.rag.form.advanced",
+    defaultText: "Advanced details (optional)",
+    description: "Expandable custom knowledge advanced settings heading.",
+  },
+  {
     key: "app.brand",
     defaultText: "KhasiGPT",
     description: "Application brand name shown in app chrome.",

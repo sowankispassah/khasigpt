@@ -617,6 +617,20 @@
       "when": 1779068700018,
       "tag": "0085_add_audit_log_client_source",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1779068700019,
+      "tag": "0086_shared_hybrid_rag",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1779068700020,
+      "tag": "0087_rag_foreign_key_indexes",
+      "breakpoints": true
     }
   ]
 }
