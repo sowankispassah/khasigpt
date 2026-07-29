@@ -34,6 +34,34 @@ test("web and native live voice return tool responses through shared RAG", async
   expect(nativeToken).toContain("RAG_LIVE_TOOL");
 });
 
+test("live voice removes surrounding waits without weakening retrieval", async () => {
+  const [route, retrieval, runtimeSetting, telemetry, webVoice, nativeVoice] =
+    await Promise.all([
+      source("app/api/rag/search/route.ts"),
+      source("lib/rag/retrieval.ts"),
+      source("lib/rag/runtime-settings.ts"),
+      source("app/api/rag/telemetry/route.ts"),
+      source("lib/voice/web-live-voice.ts"),
+      source("native/src/lib/gemini-live-voice.ts"),
+    ]);
+
+  expect(route).toContain("await Promise.all([");
+  expect(route).toContain("loadCustomKnowledgeEnabledCached");
+  expect(route).toContain("deferLogWrites: (task) => after(task)");
+  expect(route).toContain('"Server-Timing"');
+  expect(route).not.toContain("withTimeout");
+  expect(retrieval).toContain("persistLogWrites");
+  expect(retrieval).toContain("rankRagCandidates");
+  expect(runtimeSetting).toContain("appSettingCacheTagForKey");
+  expect(telemetry).toContain("[voice/rag] client timing");
+
+  for (const client of [webVoice, nativeVoice]) {
+    expect(client).toContain("speechToFirstAudioMs");
+    expect(client).toContain("toolToFirstAudioMs");
+    expect(client).toContain("timing: _timing");
+  }
+});
+
 test("admin custom knowledge form defaults active and hides taxonomy noise", async () => {
   const manager = await source(
     "components/admin-rag/admin-rag-manager.tsx",

@@ -29,6 +29,13 @@ import type {
 
 const CANDIDATE_LIMIT = 14;
 
+export type RagRetrievalDiagnostics = {
+  surface: "live_voice" | "smoke" | "text_chat";
+  requestId?: string;
+  authSource?: "bearer" | "cookie";
+  phaseDurationsMs?: Record<string, number>;
+};
+
 export type RetrieveRagContextInput = {
   query: string;
   scope?: RagRetrievalScope;
@@ -37,6 +44,8 @@ export type RetrieveRagContextInput = {
   modelConfigId?: string | null;
   modelKey: string;
   signal?: AbortSignal;
+  diagnostics?: RagRetrievalDiagnostics;
+  deferLogWrites?: (task: () => Promise<void>) => void;
 };
 
 function scopeCondition(scope: RagRetrievalScope) {
@@ -90,13 +99,30 @@ async function writeSearchLog(
       selectedCount: details.selectedCount,
       durationMs: details.durationMs,
       failureReason: details.failureReason?.slice(0, 1_000),
-      metadata: {},
+      metadata: input.diagnostics ?? {},
     });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("[rag] search log write failed", error);
     }
   }
+}
+
+async function persistLogWrites(
+  input: RetrieveRagContextInput,
+  task: () => Promise<void>,
+) {
+  if (input.deferLogWrites) {
+    try {
+      input.deferLogWrites(task);
+      return;
+    } catch (error) {
+      console.warn("[rag] failed to defer diagnostic writes", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  await task();
 }
 
 export async function retrieveRagContext(
@@ -116,14 +142,16 @@ export async function retrieveRagContext(
       durationMs,
       status: "skipped",
     };
-    await writeSearchLog(input, {
-      queryHash,
-      language,
-      status: result.status,
-      resultCount: 0,
-      selectedCount: 0,
-      durationMs,
-    });
+    await persistLogWrites(input, () =>
+      writeSearchLog(input, {
+        queryHash,
+        language,
+        status: result.status,
+        resultCount: 0,
+        selectedCount: 0,
+        durationMs,
+      }),
+    );
     return result;
   }
 
@@ -243,46 +271,48 @@ export async function retrieveRagContext(
       });
     }
 
-    await Promise.all([
-      writeSearchLog(input, {
-        queryHash,
-        language,
-        status,
-        resultCount: semanticRows.length + keywordRows.length,
-        selectedCount: matches.length,
-        durationMs,
-      }),
-      matches.length
-        ? db
-            .insert(ragRetrievalLog)
-            .values(
-              matches.map((match) => ({
-                ragEntryId: match.entryId,
-                ragChunkId: match.chunkId,
-                chatId: input.chatId ?? null,
-                modelConfigId: input.modelConfigId ?? null,
-                modelKey: input.modelKey,
-                userId: input.userId ?? null,
-                score: match.score,
-                queryText:
-                  process.env.NODE_ENV === "production" ? null : input.query,
-                queryHash,
-                queryLanguage: language,
-                applied: true,
-                metadata: {
-                  semanticScore: match.semanticScore,
-                  keywordScore: match.keywordScore,
-                  chunkIndex: match.chunkIndex,
-                },
-              })),
-            )
-            .catch((error) => {
-              if (process.env.NODE_ENV !== "production") {
-                console.warn("[rag] retrieval log write failed", error);
-              }
-            })
-        : Promise.resolve(),
-    ]);
+    await persistLogWrites(input, async () => {
+      await Promise.all([
+        writeSearchLog(input, {
+          queryHash,
+          language,
+          status,
+          resultCount: semanticRows.length + keywordRows.length,
+          selectedCount: matches.length,
+          durationMs,
+        }),
+        matches.length
+          ? db
+              .insert(ragRetrievalLog)
+              .values(
+                matches.map((match) => ({
+                  ragEntryId: match.entryId,
+                  ragChunkId: match.chunkId,
+                  chatId: input.chatId ?? null,
+                  modelConfigId: input.modelConfigId ?? null,
+                  modelKey: input.modelKey,
+                  userId: input.userId ?? null,
+                  score: match.score,
+                  queryText:
+                    process.env.NODE_ENV === "production" ? null : input.query,
+                  queryHash,
+                  queryLanguage: language,
+                  applied: true,
+                  metadata: {
+                    semanticScore: match.semanticScore,
+                    keywordScore: match.keywordScore,
+                    chunkIndex: match.chunkIndex,
+                  },
+                })),
+              )
+              .catch((error) => {
+                if (process.env.NODE_ENV !== "production") {
+                  console.warn("[rag] retrieval log write failed", error);
+                }
+              })
+          : Promise.resolve(),
+      ]);
+    });
 
     return {
       context: buildContext(matches),
@@ -301,15 +331,17 @@ export async function retrieveRagContext(
       durationMs,
       failureReason,
     });
-    await writeSearchLog(input, {
-      queryHash,
-      language,
-      status: "failed",
-      resultCount: 0,
-      selectedCount: 0,
-      durationMs,
-      failureReason,
-    });
+    await persistLogWrites(input, () =>
+      writeSearchLog(input, {
+        queryHash,
+        language,
+        status: "failed",
+        resultCount: 0,
+        selectedCount: 0,
+        durationMs,
+        failureReason,
+      }),
+    );
     return {
       context: "",
       matches: [],

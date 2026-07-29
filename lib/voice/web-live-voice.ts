@@ -49,6 +49,14 @@ type WebGeminiVoiceStartOptions = WebGeminiVoiceCallbacks & {
   unavailableMessage?: string;
 };
 
+type PendingRagToolTiming = {
+  requestId: string;
+  retrievalMs: number;
+  serverTotalMs: number;
+  toolRoundTripMs: number;
+  toolStartedAt: number;
+};
+
 const LIVE_SETUP_TIMEOUT_MS = 15_000;
 const TURN_RESULT_TIMEOUT_MS = 30_000;
 const PROCESSOR_BUFFER_SIZE = 4096;
@@ -332,6 +340,8 @@ export async function startWebGeminiVoiceTurn({
   let stopTimeout: ReturnType<typeof setTimeout> | null = null;
   let listeningReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let playbackCursor = 0;
+  let lastSpeechActivityAt: number | null = null;
+  let pendingRagToolTiming: PendingRagToolTiming | null = null;
   const playbackNodes = new Set<AudioBufferSourceNode>();
   let resolveResult: ((result: WebGeminiVoiceTurnResult) => void) | null = null;
   let rejectResult: ((error: Error) => void) | null = null;
@@ -519,7 +529,11 @@ export async function startWebGeminiVoiceTurn({
       return;
     }
     const input = event.inputBuffer.getChannelData(0);
-    onInputLevel?.(getInputLevel(input));
+    const inputLevel = getInputLevel(input);
+    if (inputLevel >= 0.08) {
+      lastSpeechActivityAt = performance.now();
+    }
+    onInputLevel?.(inputLevel);
     ws.send(
       JSON.stringify({
         realtimeInput: {
@@ -603,6 +617,7 @@ export async function startWebGeminiVoiceTurn({
         functionCalls.map(async (call: Record<string, any>) => {
           const query =
             typeof call.args?.query === "string" ? call.args.query.trim() : "";
+          const toolStartedAt = performance.now();
           try {
             const response = await fetch("/api/rag/search", {
               method: "POST",
@@ -611,11 +626,30 @@ export async function startWebGeminiVoiceTurn({
               body: JSON.stringify({ query, scope: "default" }),
             });
             const payload = await response.json();
+            const toolRoundTripMs = Math.round(
+              performance.now() - toolStartedAt,
+            );
+            const timing = payload?.timing;
+            if (
+              response.ok &&
+              typeof timing?.requestId === "string" &&
+              Number.isFinite(timing?.retrievalMs) &&
+              Number.isFinite(timing?.serverTotalMs)
+            ) {
+              pendingRagToolTiming = {
+                requestId: timing.requestId,
+                retrievalMs: Math.round(timing.retrievalMs),
+                serverTotalMs: Math.round(timing.serverTotalMs),
+                toolRoundTripMs,
+                toolStartedAt,
+              };
+            }
+            const { timing: _timing, ...toolOutput } = payload ?? {};
             return {
               id: call.id,
               name: call.name,
               response: response.ok
-                ? { output: payload }
+                ? { output: toolOutput }
                 : { error: payload?.message ?? "Knowledge search failed." },
             };
           } catch {
@@ -665,6 +699,37 @@ export async function startWebGeminiVoiceTurn({
       for (const part of parts) {
         const audioData = part?.inlineData?.data;
         if (typeof audioData === "string" && audioData.length > 0) {
+          if (pendingRagToolTiming) {
+            const firstAudioAt = performance.now();
+            const speechToFirstAudioMs =
+              lastSpeechActivityAt === null
+                ? null
+                : Math.round(firstAudioAt - lastSpeechActivityAt);
+            const telemetry = {
+              requestId: pendingRagToolTiming.requestId,
+              platform: "web",
+              toolRoundTripMs: pendingRagToolTiming.toolRoundTripMs,
+              toolToFirstAudioMs: Math.round(
+                firstAudioAt - pendingRagToolTiming.toolStartedAt,
+              ),
+              speechToFirstAudioMs:
+                speechToFirstAudioMs !== null &&
+                speechToFirstAudioMs >= 0 &&
+                speechToFirstAudioMs <= 120_000
+                  ? speechToFirstAudioMs
+                  : null,
+              serverTotalMs: pendingRagToolTiming.serverTotalMs,
+              retrievalMs: pendingRagToolTiming.retrievalMs,
+            };
+            pendingRagToolTiming = null;
+            void fetch("/api/rag/telemetry", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(telemetry),
+              keepalive: true,
+            }).catch(() => undefined);
+          }
           onStatus?.("speaking");
           const buffer = base64Pcm16ToAudioBuffer({
             audioContext,

@@ -2864,6 +2864,8 @@ export async function POST(request: Request) {
             modelConfigId: modelConfig.id,
             modelKey: modelConfig.key,
             signal: request.signal,
+            diagnostics: { surface: "text_chat" },
+            deferLogWrites: (task) => after(task),
           }),
         )
       : {
