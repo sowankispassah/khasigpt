@@ -1191,6 +1191,7 @@ export const auditLog = pgTable(
     ipAddress: varchar("ipAddress", { length: 128 }),
     userAgent: text("userAgent"),
     device: varchar("device", { length: 64 }),
+    clientSource: varchar("clientSource", { length: 64 }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({

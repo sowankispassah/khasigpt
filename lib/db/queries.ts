@@ -4775,6 +4775,7 @@ export async function createAuditLogEntry({
   ipAddress,
   userAgent,
   device,
+  clientSource,
 }: {
   actorId: string;
   action: string;
@@ -4784,6 +4785,7 @@ export async function createAuditLogEntry({
   ipAddress?: string | null;
   userAgent?: string | null;
   device?: string | null;
+  clientSource?: string | null;
 }): Promise<AuditLog | null> {
   const targetUserId =
     typeof target?.userId === "string" ? (target.userId as string) : null;
@@ -4803,6 +4805,7 @@ export async function createAuditLogEntry({
         ipAddress: sanitizeAuditString(ipAddress, 128),
         userAgent: sanitizeAuditString(userAgent),
         device: sanitizeAuditString(device, 64),
+        clientSource: sanitizeAuditString(clientSource, 64),
       })
       .returning();
 
@@ -5942,6 +5945,54 @@ export async function getUserEmailsByIds(
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to load user emails"
+    );
+  }
+}
+
+export type UserAuditIdentity = {
+  email: string;
+  firstName: string | null;
+  id: string;
+  lastName: string | null;
+};
+
+export async function getUserAuditIdentitiesByIds(
+  userIds: string[]
+): Promise<Map<string, UserAuditIdentity>> {
+  const validUserIds = Array.from(
+    new Set(userIds.filter((userId) => isValidUUID(userId)))
+  );
+
+  if (validUserIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const rows = await withAdminDatabase(
+      "audit-log.actor-identities",
+      async (adminDb) =>
+        adminDb
+          .select({
+            email: user.email,
+            firstName: user.firstName,
+            id: user.id,
+            lastName: user.lastName,
+          })
+          .from(user)
+          .where(inArray(user.id, validUserIds))
+    );
+
+    return new Map(rows.map((row) => [row.id, row]));
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      throw new ChatSDKError(
+        "bad_request:database",
+        "User table is not available"
+      );
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load audit user identities"
     );
   }
 }

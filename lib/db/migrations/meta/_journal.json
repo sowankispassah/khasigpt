@@ -610,6 +610,13 @@
       "when": 1779068700017,
       "tag": "0084_restore_app_setting_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1779068700018,
+      "tag": "0085_add_audit_log_client_source",
+      "breakpoints": true
     }
   ]
 }

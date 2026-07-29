@@ -249,6 +249,7 @@ async function exchangeGoogleCodeForHandoff({
       },
       subjectUserId: user.id,
       ...clientInfo,
+      clientSource: "android_native",
     }).catch((error) => {
       console.error("[mobile-google-oauth] Failed to record audit log.", error);
     });

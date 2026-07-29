@@ -5,6 +5,7 @@ import {
   createImpersonationToken,
   getUserById,
 } from "@/lib/db/queries";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,14 @@ export async function GET(
     targetUserId,
     createdByAdminId: session.user.id,
   });
+  const clientInfo = await getClientInfoFromHeaders();
+  const adminName =
+    [session.user.firstName, session.user.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    session.user.name?.trim() ||
+    null;
 
   await createAuditLogEntry({
     actorId: session.user.id,
@@ -37,8 +46,11 @@ export async function GET(
     metadata: {
       tokenId: tokenRecord.id,
       expiresAt: tokenRecord.expiresAt,
+      adminEmail: session.user.email ?? null,
+      adminName,
     },
     subjectUserId: targetUserId,
+    ...clientInfo,
   });
 
   const redirectUrl = new URL("/auth/impersonate", _request.url);

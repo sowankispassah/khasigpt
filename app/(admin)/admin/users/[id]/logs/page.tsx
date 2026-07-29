@@ -1,7 +1,18 @@
 import { format, formatDistanceToNow } from "date-fns";
 import { notFound } from "next/navigation";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
-import { getUserById, listAuditLog } from "@/lib/db/queries";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import {
+  type AuditClientSource,
+  resolveAuditClientSource,
+} from "@/lib/audit/client-source";
+import {
+  getUserAuditIdentitiesByIds,
+  getUserById,
+  listAuditLog,
+  type UserAuditIdentity,
+} from "@/lib/db/queries";
+import type { AuditLog } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +21,117 @@ function truncate(value: string | null, max = 140) {
     return "—";
   }
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+const CLIENT_SOURCE_LABELS: Record<
+  AuditClientSource,
+  { defaultText: string; description: string; key: string }
+> = {
+  android_native: {
+    key: "admin.user_activity.source.android_native",
+    defaultText: "Android native app",
+    description: "Audit log source label for the Android native app.",
+  },
+  ios_native: {
+    key: "admin.user_activity.source.ios_native",
+    defaultText: "iOS native app",
+    description: "Audit log source label for the iOS native app.",
+  },
+  mobile_browser: {
+    key: "admin.user_activity.source.mobile_browser",
+    defaultText: "Mobile browser",
+    description: "Audit log source label for a browser on a mobile device.",
+  },
+  desktop_browser: {
+    key: "admin.user_activity.source.desktop_browser",
+    defaultText: "Desktop browser",
+    description: "Audit log source label for a browser on a desktop device.",
+  },
+  browser: {
+    key: "admin.user_activity.source.browser",
+    defaultText: "Web browser",
+    description: "Audit log source label for an unspecified web browser.",
+  },
+  bot: {
+    key: "admin.user_activity.source.bot",
+    defaultText: "Bot / crawler",
+    description: "Audit log source label for an automated bot or crawler.",
+  },
+  unknown: {
+    key: "admin.user_activity.source.unknown",
+    defaultText: "Unknown",
+    description: "Audit log source label when the source cannot be identified.",
+  },
+};
+
+function ClientSourceLabel({ entry }: { entry: AuditLog }) {
+  const source = resolveAuditClientSource({
+    clientSource: entry.clientSource,
+    device: entry.device,
+    metadata: entry.metadata,
+    userAgent: entry.userAgent,
+  });
+  const definition = CLIENT_SOURCE_LABELS[source];
+
+  return (
+    <EditableTranslation
+      defaultText={definition.defaultText}
+      description={definition.description}
+      translationKey={definition.key}
+    />
+  );
+}
+
+function readMetadataString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getAdminIdentityLabel(
+  entry: AuditLog,
+  identity: UserAuditIdentity | undefined
+) {
+  const name =
+    readMetadataString(entry.metadata, "adminName") ??
+    [identity?.firstName, identity?.lastName].filter(Boolean).join(" ").trim() ??
+    null;
+  const email =
+    readMetadataString(entry.metadata, "adminEmail") ?? identity?.email ?? null;
+
+  if (name && email) {
+    return `${name} (${email})`;
+  }
+  return name || email || `Admin ${entry.actorId.slice(0, 8)}`;
+}
+
+function AuditAction({
+  entry,
+  identity,
+}: {
+  entry: AuditLog;
+  identity?: UserAuditIdentity;
+}) {
+  if (entry.action !== "user.impersonation.start") {
+    return <>{entry.action}</>;
+  }
+
+  return (
+    <div>
+      <div>
+        <EditableTranslation
+          defaultText="Admin login"
+          description="Audit action shown when an administrator logs in as a user."
+          translationKey="admin.user_activity.action.admin_login"
+        />
+      </div>
+      <div className="mt-1 break-words font-normal text-muted-foreground text-xs">
+        {getAdminIdentityLabel(entry, identity)}
+      </div>
+    </div>
+  );
 }
 
 export default async function AdminUserLogsPage({
@@ -26,16 +148,23 @@ export default async function AdminUserLogsPage({
   const safeOffset = Number.isFinite(offset) && offset > 0 ? offset : 0;
   const pageSize = 10;
 
-  const user = await getUserById(id);
+  const [user, auditEntries] = await Promise.all([
+    getUserById(id),
+    listAuditLog({
+      userId: id,
+      limit: pageSize,
+      offset: safeOffset,
+    }),
+  ]);
   if (!user) {
     notFound();
   }
 
-  const auditEntries = await listAuditLog({
-    userId: id,
-    limit: pageSize,
-    offset: safeOffset,
-  });
+  const adminIdentities = await getUserAuditIdentitiesByIds(
+    auditEntries
+      .filter((entry) => entry.action === "user.impersonation.start")
+      .map((entry) => entry.actorId)
+  );
   const hasMore = auditEntries.length === pageSize;
   const hasPrev = safeOffset > 0;
   const nextOffset = safeOffset + pageSize;
@@ -108,7 +237,11 @@ export default async function AdminUserLogsPage({
             {auditEntries.length} recent events
           </div>
           <span className="rounded-md bg-muted px-3 py-1 text-muted-foreground text-xs">
-            IP · Device · User agent captured
+            <EditableTranslation
+              defaultText="IP · Access source · Device · User agent captured"
+              description="Summary of the client details captured in user audit logs."
+              translationKey="admin.user_activity.capture_summary"
+            />
           </span>
         </div>
 
@@ -117,18 +250,25 @@ export default async function AdminUserLogsPage({
           <table className="w-full table-fixed text-sm">
             <thead className="bg-muted/50 text-[11px] text-muted-foreground uppercase tracking-wide">
               <tr>
-                <th className="w-[15%] px-4 py-3 text-left">Timestamp</th>
-                <th className="w-[12%] px-4 py-3 text-left">Action</th>
+                <th className="w-[14%] px-4 py-3 text-left">Timestamp</th>
+                <th className="w-[16%] px-4 py-3 text-left">Action</th>
                 <th className="w-[8%] px-4 py-3 text-left">IP</th>
-                <th className="w-[10%] px-4 py-3 text-left">Device</th>
-                <th className="w-[40%] px-4 py-3 text-left">User agent</th>
-                <th className="w-[15%] px-4 py-3 text-left">Metadata</th>
+                <th className="w-[13%] px-4 py-3 text-left">
+                  <EditableTranslation
+                    defaultText="Access source"
+                    description="Table column heading for the app or browser used."
+                    translationKey="admin.user_activity.source.heading"
+                  />
+                </th>
+                <th className="w-[8%] px-4 py-3 text-left">Device</th>
+                <th className="w-[28%] px-4 py-3 text-left">User agent</th>
+                <th className="w-[13%] px-4 py-3 text-left">Metadata</th>
               </tr>
             </thead>
             <tbody>
               {auditEntries.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-muted-foreground" colSpan={6}>
+                  <td className="px-4 py-4 text-muted-foreground" colSpan={7}>
                     No audit entries yet.
                   </td>
                 </tr>
@@ -147,10 +287,16 @@ export default async function AdminUserLogsPage({
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top font-medium">
-                        {entry.action}
+                        <AuditAction
+                          entry={entry}
+                          identity={adminIdentities.get(entry.actorId)}
+                        />
                       </td>
                       <td className="px-4 py-3 align-top font-mono text-xs">
                         {entry.ipAddress ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 align-top font-medium text-xs">
+                        <ClientSourceLabel entry={entry} />
                       </td>
                       <td className="px-4 py-3 align-top capitalize">
                         {entry.device ?? "—"}
@@ -209,9 +355,12 @@ export default async function AdminUserLogsPage({
                         {formatDistanceToNow(createdAt, { addSuffix: true })}
                       </div>
                     </div>
-                    <span className="rounded-full bg-muted px-2 py-1 font-semibold text-[11px]">
-                      {entry.action}
-                    </span>
+                    <div className="rounded-md bg-muted px-2 py-1 text-right font-semibold text-[11px]">
+                      <AuditAction
+                        entry={entry}
+                        identity={adminIdentities.get(entry.actorId)}
+                      />
+                    </div>
                   </div>
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex items-center gap-2">
@@ -220,6 +369,18 @@ export default async function AdminUserLogsPage({
                       </span>
                       <span className="font-mono text-xs">
                         {entry.ipAddress ?? "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-xs uppercase">
+                        <EditableTranslation
+                          defaultText="Access source"
+                          description="Audit detail label for the app or browser used."
+                          translationKey="admin.user_activity.source.heading"
+                        />
+                      </span>
+                      <span className="font-medium">
+                        <ClientSourceLabel entry={entry} />
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

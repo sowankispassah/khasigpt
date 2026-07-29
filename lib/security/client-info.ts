@@ -1,6 +1,11 @@
 import { headers } from "next/headers";
+import {
+  type AuditClientSource,
+  resolveAuditClientSource,
+} from "@/lib/audit/client-source";
 
 export type ClientInfo = {
+  clientSource: AuditClientSource;
   ipAddress: string | null;
   userAgent: string | null;
   device: string | null;
@@ -75,14 +80,25 @@ export async function getClientInfoFromHeaders(): Promise<ClientInfo> {
 
     const userAgent = sanitizeHeaderValue(getHeader("user-agent"));
     const device = detectDeviceFromUserAgent(userAgent);
+    const clientSource = resolveAuditClientSource({
+      clientSource: sanitizeHeaderValue(
+        getHeader("x-khasigpt-client"),
+        null,
+        64
+      ),
+      device,
+      userAgent,
+    });
 
     return {
+      clientSource,
       ipAddress,
       userAgent,
       device,
     };
   } catch (_error) {
     return {
+      clientSource: "unknown",
       ipAddress: null,
       userAgent: null,
       device: null,

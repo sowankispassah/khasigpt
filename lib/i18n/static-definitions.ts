@@ -3850,4 +3850,55 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Last: {date}",
     description: "Helper text showing the last redemption date for a coupon.",
   },
+  {
+    key: "admin.user_activity.action.admin_login",
+    defaultText: "Admin login",
+    description:
+      "Audit action shown when an administrator logs in as another user.",
+  },
+  {
+    key: "admin.user_activity.capture_summary",
+    defaultText: "IP · Access source · Device · User agent captured",
+    description: "Summary of the client details captured in user audit logs.",
+  },
+  {
+    key: "admin.user_activity.source.heading",
+    defaultText: "Access source",
+    description: "Audit log heading for the app or browser used.",
+  },
+  {
+    key: "admin.user_activity.source.android_native",
+    defaultText: "Android native app",
+    description: "Audit log source label for the Android native app.",
+  },
+  {
+    key: "admin.user_activity.source.ios_native",
+    defaultText: "iOS native app",
+    description: "Audit log source label for the iOS native app.",
+  },
+  {
+    key: "admin.user_activity.source.mobile_browser",
+    defaultText: "Mobile browser",
+    description: "Audit log source label for a browser on a mobile device.",
+  },
+  {
+    key: "admin.user_activity.source.desktop_browser",
+    defaultText: "Desktop browser",
+    description: "Audit log source label for a browser on a desktop device.",
+  },
+  {
+    key: "admin.user_activity.source.browser",
+    defaultText: "Web browser",
+    description: "Audit log source label for an unspecified web browser.",
+  },
+  {
+    key: "admin.user_activity.source.bot",
+    defaultText: "Bot / crawler",
+    description: "Audit log source label for an automated bot or crawler.",
+  },
+  {
+    key: "admin.user_activity.source.unknown",
+    defaultText: "Unknown",
+    description: "Audit log source label when the source cannot be identified.",
+  },
 ];
