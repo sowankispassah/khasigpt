@@ -155,6 +155,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         found: false,
+        answerMode: "general_knowledge",
         context: "",
         sources: [],
         timing: { requestId, retrievalMs: 0, serverTotalMs: totalMs },
@@ -196,6 +197,10 @@ export async function POST(request: Request) {
   return Response.json(
     {
       found: result.status === "hit",
+      answerMode:
+        result.status === "hit"
+          ? "custom_knowledge_augmented"
+          : "general_knowledge",
       context: result.context,
       sources: result.matches.map((match) => ({
         title: match.title,

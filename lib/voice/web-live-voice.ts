@@ -650,13 +650,29 @@ export async function startWebGeminiVoiceTurn({
               name: call.name,
               response: response.ok
                 ? { output: toolOutput }
-                : { error: payload?.message ?? "Knowledge search failed." },
+                : {
+                    output: {
+                      found: false,
+                      answerMode: "general_knowledge",
+                      context: "",
+                      sources: [],
+                      unavailable: true,
+                    },
+                  },
             };
           } catch {
             return {
               id: call.id,
               name: call.name,
-              response: { error: "Knowledge search was unavailable." },
+              response: {
+                output: {
+                  found: false,
+                  answerMode: "general_knowledge",
+                  context: "",
+                  sources: [],
+                  unavailable: true,
+                },
+              },
             };
           }
         }),

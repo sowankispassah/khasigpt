@@ -34,6 +34,49 @@ test("web and native live voice return tool responses through shared RAG", async
   expect(nativeToken).toContain("RAG_LIVE_TOOL");
 });
 
+test("custom knowledge augments rather than replaces general model knowledge", async () => {
+  const [
+    answering,
+    retrieval,
+    liveTool,
+    chatRoute,
+    ragRoute,
+    webVoice,
+    nativeVoice,
+  ] = await Promise.all([
+    source("lib/rag/answering.ts"),
+    source("lib/rag/retrieval.ts"),
+    source("lib/rag/live-tool.ts"),
+    source("app/(chat)/api/chat/route.ts"),
+    source("app/api/rag/search/route.ts"),
+    source("lib/voice/web-live-voice.ts"),
+    source("native/src/lib/gemini-live-voice.ts"),
+  ]);
+
+  expect(answering).toContain(
+    "Custom KhasiGPT knowledge supplements your general knowledge",
+  );
+  expect(answering).toContain("answer normally from your general knowledge");
+  expect(answering).toContain(
+    "miss or unavailable search is not a reason to refuse",
+  );
+  expect(retrieval).toContain("RAG_CONTEXT_HEADER");
+  expect(liveTool).toContain("RAG_HYBRID_ANSWERING_INSTRUCTION");
+  expect(liveTool).not.toContain(
+    "do not invent facts when the tool reports no match",
+  );
+  expect(chatRoute).toContain("RAG_HYBRID_ANSWERING_INSTRUCTION");
+  expect(ragRoute).toContain('answerMode: "general_knowledge"');
+
+  for (const client of [webVoice, nativeVoice]) {
+    expect(client).toContain('answerMode: "general_knowledge"');
+    expect(client).toContain("unavailable: true");
+    expect(client).not.toContain(
+      'response: { error: "Knowledge search was unavailable." }',
+    );
+  }
+});
+
 test("live voice removes surrounding waits without weakening retrieval", async () => {
   const [route, retrieval, runtimeSetting, telemetry, webVoice, nativeVoice] =
     await Promise.all([

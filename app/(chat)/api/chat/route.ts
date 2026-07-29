@@ -79,6 +79,7 @@ import {
 } from "@/lib/jobs/service";
 import type { JobCard } from "@/lib/jobs/types";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { RAG_HYBRID_ANSWERING_INSTRUCTION } from "@/lib/rag/answering";
 import { retrieveRagContext } from "@/lib/rag/retrieval";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -2795,6 +2796,9 @@ export async function POST(request: Request) {
       typeof baseInstruction === "string" ? baseInstruction.trim() : "",
       languageSystemPrompt ?? "",
       documentInstruction ?? "",
+      resolvedChatMode === "default" && customKnowledgeEnabled
+        ? RAG_HYBRID_ANSWERING_INSTRUCTION
+        : "",
       resolvedChatMode === STUDY_CHAT_MODE
         ? "You are in Study mode. Use the selected question paper as your primary source. If the user asks for the answer to a numbered question and no verified answer key is available, you may use model knowledge only when confident; otherwise respond exactly: I don't know."
         : "",

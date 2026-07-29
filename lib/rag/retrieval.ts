@@ -17,6 +17,7 @@ import {
   ragRetrievalLog,
   ragSearchLog,
 } from "@/lib/db/schema";
+import { RAG_CONTEXT_HEADER } from "./answering";
 import { embedRagQuery } from "./embeddings";
 import { detectQueryLanguage } from "./language";
 import { shouldSkipRagQuery } from "./query-policy";
@@ -63,7 +64,7 @@ function buildContext(matches: RagRetrievalMatch[]): string {
     return "";
   }
   return [
-    "Curated KhasiGPT knowledge follows. Use only relevant facts from it. If it does not answer the question, do not invent an answer from this context.",
+    RAG_CONTEXT_HEADER,
     ...matches.map((match, index) => {
       const source = match.sourceUrl ? ` | source: ${match.sourceUrl}` : "";
       return `[Knowledge ${index + 1} | ${match.title}${source}]\n${match.content}`;

@@ -1,4 +1,5 @@
 import type { Tool } from "@google/genai";
+import { RAG_HYBRID_ANSWERING_INSTRUCTION } from "@/lib/rag/answering";
 
 export const RAG_LIVE_TOOL_NAME = "search_custom_knowledge";
 
@@ -7,7 +8,7 @@ export const RAG_LIVE_TOOL = {
     {
       name: RAG_LIVE_TOOL_NAME,
       description:
-        "Search KhasiGPT's curated custom knowledge. Use this before answering questions about KhasiGPT, local Khasi or Pnar facts, policies, people, organizations, products, or other facts that may be stored by an administrator.",
+        "Search KhasiGPT's curated custom knowledge for relevant supplemental facts. A no-match result means continue with normal general knowledge when the question can be answered without private or administrator-maintained facts.",
       parameters: {
         type: "OBJECT",
         properties: {
@@ -24,4 +25,9 @@ export const RAG_LIVE_TOOL = {
 } as unknown as Tool;
 
 export const RAG_LIVE_SYSTEM_INSTRUCTION =
-  "When a factual question may relate to KhasiGPT custom knowledge, call search_custom_knowledge before answering. Use relevant returned knowledge, but do not invent facts when the tool reports no match.";
+  [
+    "When a factual question may relate to KhasiGPT custom knowledge, call search_custom_knowledge before answering.",
+    RAG_HYBRID_ANSWERING_INSTRUCTION,
+    "If the tool returns answerMode general_knowledge, answer the question normally from general knowledge when possible.",
+    "Do not mention the search, tool, RAG, or provided knowledge unless the user explicitly asks about it.",
+  ].join(" ");
