@@ -425,6 +425,7 @@ function PureMultimodalInput({
   const voiceTurnControllerRef = useRef<WebGeminiVoiceTurnController | null>(
     null
   );
+  const voiceSessionIdRef = useRef(0);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
   const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] =
@@ -441,21 +442,41 @@ function PureMultimodalInput({
     [documentUploadsEnabled]
   );
   const shouldSubmitOnEnter = !(width && width <= 768);
-  const voiceStatusLabel = useMemo(() => {
+  const voiceStatusTranslation = useMemo(() => {
     if (voiceError) {
-      return translate("voice.chat.error", "Voice chat failed");
+      return {
+        defaultText: "Voice chat failed",
+        description: "Voice chat status shown after an active session fails.",
+        key: "voice.chat.error",
+      };
     }
     switch (voiceStatus) {
       case "listening":
-        return translate("voice.chat.listening", "Listening...");
+        return {
+          defaultText: "Listening...",
+          description: "Voice chat status while recording the user's speech.",
+          key: "voice.chat.listening",
+        };
       case "thinking":
-        return translate("voice.chat.thinking", "Thinking...");
+        return {
+          defaultText: "Thinking...",
+          description: "Voice chat status while waiting for the final response.",
+          key: "voice.chat.thinking",
+        };
       case "speaking":
-        return translate("voice.chat.speaking", "Speaking...");
+        return {
+          defaultText: "Speaking...",
+          description: "Voice chat status while assistant audio is playing.",
+          key: "voice.chat.speaking",
+        };
       default:
-        return translate("voice.chat.connecting", "Connecting...");
+        return {
+          defaultText: "Connecting...",
+          description: "Voice chat status while connecting to the voice model.",
+          key: "voice.chat.connecting",
+        };
     }
-  }, [translate, voiceError, voiceStatus]);
+  }, [voiceError, voiceStatus]);
 
   const submitForm = useCallback(async () => {
     try {
@@ -562,26 +583,31 @@ function PureMultimodalInput({
   }, [isVoiceDialogOpen, voiceStatus]);
 
   const cancelVoiceChat = useCallback(() => {
+    voiceSessionIdRef.current += 1;
     voiceTurnControllerRef.current?.cancel();
     voiceTurnControllerRef.current = null;
     setIsVoiceDialogOpen(false);
     resetVoiceState();
   }, [resetVoiceState]);
 
+  useEffect(
+    () => () => {
+      voiceSessionIdRef.current += 1;
+      voiceTurnControllerRef.current?.cancel();
+      voiceTurnControllerRef.current = null;
+    },
+    []
+  );
+
   const saveVoiceConversation = useCallback(
     async (conversationMessages: WebGeminiVoiceConversationMessage[]) => {
-      setIsVoiceSaving(true);
       const pairs = buildVoiceConversationPairs(conversationMessages);
-      try {
-        if (pairs.length === 0) {
-          throw new Error(
-            translate(
-              "voice.chat.empty_result",
-              "I could not hear enough speech. Please try again."
-            )
-          );
-        }
+      if (pairs.length === 0) {
+        return;
+      }
 
+      setIsVoiceSaving(true);
+      try {
         const messagePairs = pairs.map((pair) => ({
           ...pair,
           assistantMessageId: crypto.randomUUID(),
@@ -671,6 +697,7 @@ function PureMultimodalInput({
     if (!controller || isVoiceSaving) {
       return;
     }
+    voiceSessionIdRef.current += 1;
 
     const completedPairs = buildVoiceConversationPairs(voiceMessages);
     if (
@@ -699,13 +726,19 @@ function PureMultimodalInput({
       voiceTurnControllerRef.current = null;
       setIsVoiceDialogOpen(false);
       resetVoiceState();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : translate("voice.chat.failed", "Voice chat failed. Please try again.");
-      setVoiceError(message);
-      setIsVoiceSaving(false);
+    } catch {
+      const controllerMessages = controller.getMessages();
+      controller.cancel();
+      voiceTurnControllerRef.current = null;
+      setIsVoiceDialogOpen(false);
+      resetVoiceState();
+      void saveVoiceConversation(controllerMessages).catch((error) => {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : translate("voice.chat.save_failed", "Unable to save this voice chat.")
+        );
+      });
     }
   }, [
     isVoiceSaving,
@@ -728,19 +761,43 @@ function PureMultimodalInput({
 
     voiceTurnControllerRef.current?.cancel();
     voiceTurnControllerRef.current = null;
+    const voiceSessionId = voiceSessionIdRef.current + 1;
+    voiceSessionIdRef.current = voiceSessionId;
     resetVoiceState();
     setIsVoiceDialogOpen(true);
     try {
       const controller = await startWebGeminiVoiceTurn({
         onError: (error) => {
+          if (voiceSessionIdRef.current !== voiceSessionId) {
+            return;
+          }
           setVoiceError(error.message);
         },
-        onInputLevel: setVoiceInputLevel,
-        onMessages: setVoiceMessages,
-        onStatus: setVoiceStatus,
+        onInputLevel: (level) => {
+          if (voiceSessionIdRef.current === voiceSessionId) {
+            setVoiceInputLevel(level);
+          }
+        },
+        onMessages: (messages) => {
+          if (voiceSessionIdRef.current === voiceSessionId) {
+            setVoiceMessages(messages);
+          }
+        },
+        onStatus: (nextStatus) => {
+          if (voiceSessionIdRef.current === voiceSessionId) {
+            setVoiceStatus(nextStatus);
+          }
+        },
       });
+      if (voiceSessionIdRef.current !== voiceSessionId) {
+        controller.cancel();
+        return;
+      }
       voiceTurnControllerRef.current = controller;
     } catch (error) {
+      if (voiceSessionIdRef.current !== voiceSessionId) {
+        return;
+      }
       setVoiceError(
         error instanceof Error
           ? error.message
@@ -1044,7 +1101,13 @@ function PureMultimodalInput({
                   description="Title for the web voice chat dialog."
                   translationKey="voice.chat.title"
                 />
-                <p className="text-muted-foreground text-sm">{voiceStatusLabel}</p>
+                <p className="text-muted-foreground text-sm">
+                  <EditableTranslation
+                    defaultText={voiceStatusTranslation.defaultText}
+                    description={voiceStatusTranslation.description}
+                    translationKey={voiceStatusTranslation.key}
+                  />
+                </p>
               </div>
             </div>
 
@@ -1112,11 +1175,19 @@ function PureMultimodalInput({
                 type="button"
                 variant="outline"
               >
-                {translate("voice.chat.cancel", "Cancel")}
+                <EditableTranslation
+                  defaultText="Cancel"
+                  description="Button label to cancel the web voice chat dialog."
+                  translationKey="voice.chat.cancel"
+                />
               </Button>
               {isVoiceSetupError ? (
                 <Button onClick={() => void startVoiceChat()} type="button">
-                  {translate("voice.chat.retry", "Retry")}
+                  <EditableTranslation
+                    defaultText="Retry"
+                    description="Button label to retry web voice chat setup."
+                    translationKey="voice.chat.retry"
+                  />
                 </Button>
               ) : (
                 <Button
@@ -1125,8 +1196,20 @@ function PureMultimodalInput({
                   type="button"
                 >
                   {isVoiceSaving
-                    ? translate("voice.chat.saving", "Saving...")
-                    : translate("voice.chat.end", "End voice chat")}
+                    ? (
+                        <EditableTranslation
+                          defaultText="Saving..."
+                          description="Button label while the web voice chat is ending and saving."
+                          translationKey="voice.chat.saving"
+                        />
+                      )
+                    : (
+                        <EditableTranslation
+                          defaultText="End voice chat"
+                          description="Button label to end an active web voice chat session."
+                          translationKey="voice.chat.end"
+                        />
+                      )}
                 </Button>
               )}
             </div>
