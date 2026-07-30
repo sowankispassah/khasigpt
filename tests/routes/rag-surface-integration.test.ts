@@ -17,12 +17,14 @@ test("web chat uses the shared hybrid retriever without File Search fallback", a
   expect(chatRoute).not.toContain("shouldUseDefaultModeRag");
 });
 test("web and native live voice return tool responses through shared RAG", async () => {
-  const [webVoice, nativeVoice, webToken, nativeToken] = await Promise.all([
-    source("lib/voice/web-live-voice.ts"),
-    source("native/src/lib/gemini-live-voice.ts"),
-    source("app/api/chat/voice-token/route.ts"),
-    source("app/api/mobile/chat/voice-token/route.ts"),
-  ]);
+  const [webVoice, nativeVoice, nativeApi, webToken, nativeToken] =
+    await Promise.all([
+      source("lib/voice/web-live-voice.ts"),
+      source("native/src/lib/gemini-live-voice.ts"),
+      source("native/src/api/client.ts"),
+      source("app/api/chat/voice-token/route.ts"),
+      source("app/api/mobile/chat/voice-token/route.ts"),
+    ]);
 
   for (const client of [webVoice, nativeVoice]) {
     expect(client).toContain("tokenResponse.tools");
@@ -30,8 +32,29 @@ test("web and native live voice return tool responses through shared RAG", async
   }
   expect(webVoice).toContain('fetch("/api/rag/search"');
   expect(nativeVoice).toContain("api.searchCustomKnowledge(query)");
+  expect(nativeApi).toContain("json: { supportsRagTool: true }");
   expect(webToken).toContain("RAG_LIVE_TOOL");
   expect(nativeToken).toContain("RAG_LIVE_TOOL");
+});
+
+test("legacy native voice clients are not assigned a tool they cannot answer", async () => {
+  const nativeToken = await source("app/api/mobile/chat/voice-token/route.ts");
+
+  expect(nativeToken).toContain(
+    "supportsRagTool: z.boolean().optional().default(false)",
+  );
+  expect(nativeToken).toContain(
+    "const supportsRagTool = parsedBody.data?.supportsRagTool === true",
+  );
+  expect(nativeToken).toContain(
+    "supportsRagTool ? { tools: [RAG_LIVE_TOOL] } : {}",
+  );
+  expect(nativeToken).toContain(
+    "supportsRagTool ? RAG_LIVE_SYSTEM_INSTRUCTION :",
+  );
+  expect(nativeToken).toContain(
+    "[api/mobile/chat/voice-token] capabilities",
+  );
 });
 
 test("custom knowledge augments rather than replaces general model knowledge", async () => {

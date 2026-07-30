@@ -48,6 +48,7 @@ const VOICE_TOKEN_RATE_LIMIT = {
 const voiceTokenSchema = z
   .object({
     modelId: z.string().uuid().optional(),
+    supportsRagTool: z.boolean().optional().default(false),
   })
   .optional();
 
@@ -118,6 +119,7 @@ export async function POST(request: Request) {
       400
     );
   }
+  const supportsRagTool = parsedBody.data?.supportsRagTool === true;
 
   const voiceModePromise = withApiTiming(
     "mobile.voice-token.settings",
@@ -208,6 +210,12 @@ export async function POST(request: Request) {
     now + VOICE_TOKEN_NEW_SESSION_WINDOW_MS
   ).toISOString();
   const expireTime = new Date(now + VOICE_TOKEN_SESSION_WINDOW_MS).toISOString();
+  const systemInstruction = [
+    liveVoiceModel.systemInstruction,
+    supportsRagTool ? RAG_LIVE_SYSTEM_INSTRUCTION : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const token = await withApiTiming(
     "mobile.voice-token.google-token",
@@ -246,8 +254,8 @@ export async function POST(request: Request) {
                   },
                   turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
                 },
-                tools: [RAG_LIVE_TOOL],
-                systemInstruction: `${liveVoiceModel.systemInstruction}\n\n${RAG_LIVE_SYSTEM_INSTRUCTION}`,
+                ...(supportsRagTool ? { tools: [RAG_LIVE_TOOL] } : {}),
+                systemInstruction,
               },
             },
           },
@@ -267,6 +275,9 @@ export async function POST(request: Request) {
       503
     );
   }
+  console.info("[api/mobile/chat/voice-token] capabilities", {
+    supportsRagTool,
+  });
 
   return Response.json(
     {
@@ -277,8 +288,10 @@ export async function POST(request: Request) {
       modelProviderModelId: liveVoiceModel.providerModelId,
       voiceName: liveVoiceModel.voiceName,
       mediaResolution: liveVoiceModel.mediaResolution,
-      systemInstruction: `${liveVoiceModel.systemInstruction}\n\n${RAG_LIVE_SYSTEM_INSTRUCTION}`,
-      tools: [RAG_LIVE_TOOL] as Array<Record<string, unknown>>,
+      systemInstruction,
+      ...(supportsRagTool
+        ? { tools: [RAG_LIVE_TOOL] as Array<Record<string, unknown>> }
+        : {}),
       creditMultiplier: liveVoiceModel.creditMultiplier,
       tokensPerVoiceInteraction: liveVoiceModel.tokensPerVoiceInteraction,
       webSocketUrl: GEMINI_LIVE_WS_URL,
