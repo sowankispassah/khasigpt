@@ -141,6 +141,8 @@ const PurePreviewMessage = ({
     }
     return part.data;
   }, null);
+  const isWebSearchStatusOnly =
+    isAssistantMessage && hasWebSearchStatus && assistantText.length === 0;
 
   return (
     <div
@@ -466,7 +468,7 @@ const PurePreviewMessage = ({
             </div>
           ) : null}
 
-          {!isReadonly && (
+          {!isReadonly && !isWebSearchStatusOnly && (
             <MessageActions
               chatId={chatId}
               isLoading={isLoading}

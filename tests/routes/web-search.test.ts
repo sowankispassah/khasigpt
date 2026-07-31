@@ -54,8 +54,10 @@ test.describe("web search grounding", () => {
     expect(route).toContain("webSearchFinalStatusPart");
     expect(route).toContain("Falling back to normal model answer");
     expect(chat).toContain("sendMessageWithWebSearchStatus");
+    expect(chat).toContain("transientWebSearchMessageIds");
     expect(chat).not.toContain("isSearchingWeb");
     expect(message).toContain("WebSearchStatus");
+    expect(message).toContain("isWebSearchStatusOnly");
     expect(message).toContain("WebSearchSources");
     expect(sources).toContain('data-testid="web-search-status"');
     expect(sources).toContain('data-testid="web-search-sources"');

@@ -996,25 +996,51 @@ export function Chat({
       return;
     }
 
-    const hasAssistantResponse = messages
-      .slice(userIndex + 1)
-      .some(
-        (entry) =>
-          entry.role === "assistant" &&
-          entry.id !== pendingWebSearch.placeholderId &&
-          entry.parts.some(
-            (part) =>
-              part.type === "text" ||
-              part.type === "data-webSources" ||
-              part.type === "data-webSearchStatus"
-          )
+    const responseMessages = messages.slice(userIndex + 1).filter((entry) => {
+      if (
+        entry.role !== "assistant" ||
+        entry.id === pendingWebSearch.placeholderId
+      ) {
+        return false;
+      }
+
+      return (
+        getTextFromMessage(entry).trim().length > 0 ||
+        entry.parts.some((part) => part.type === "data-webSources")
       );
+    });
+    const hasAssistantResponse = responseMessages.length > 0;
     if (!hasAssistantResponse) {
       return;
     }
 
+    const transientWebSearchMessageIds = new Set(
+      messages
+        .slice(userIndex + 1)
+        .filter((entry) => {
+          if (
+            entry.role !== "assistant" ||
+            getTextFromMessage(entry).trim().length > 0 ||
+            entry.parts.some((part) => part.type === "data-webSources")
+          ) {
+            return false;
+          }
+
+          return entry.parts.some(
+            (part) =>
+              part.type === "data-webSearchStatus" &&
+              (part.data.status === "searching" ||
+                part.data.status === "reading" ||
+                part.data.status === "generating" ||
+                part.data.status === "completed")
+          );
+        })
+        .map((entry) => entry.id)
+    );
+    transientWebSearchMessageIds.add(pendingWebSearch.placeholderId);
+
     setMessages((current) =>
-      current.filter((entry) => entry.id !== pendingWebSearch.placeholderId)
+      current.filter((entry) => !transientWebSearchMessageIds.has(entry.id))
     );
   }, [messages, setMessages]);
 
