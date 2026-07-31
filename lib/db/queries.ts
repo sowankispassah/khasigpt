@@ -130,6 +130,8 @@ import {
   userSubscription,
   vote,
   voteDeprecated,
+  type WebSearchUsage,
+  webSearchUsage,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -10072,6 +10074,95 @@ export async function recordTokenUsage({
       "bad_request:database",
       "Failed to record token usage"
     );
+  }
+}
+
+export async function getWebSearchUsageCountSince({
+  since,
+  userId,
+}: {
+  since: Date;
+  userId: string;
+}): Promise<number | null> {
+  if (!isValidUUID(userId)) {
+    return 0;
+  }
+
+  try {
+    const [result] = await db
+      .select({ count: count() })
+      .from(webSearchUsage)
+      .where(and(eq(webSearchUsage.userId, userId), gte(webSearchUsage.createdAt, since)));
+    return Number(result?.count ?? 0);
+  } catch (error) {
+    if (isTableMissingError(error)) {
+      console.error(
+        "[web-search] Usage table is missing; refusing to run web search until migrations are applied."
+      );
+      return null;
+    }
+    console.error("[web-search] Failed to count daily usage.", error);
+    return null;
+  }
+}
+
+export async function recordWebSearchUsage({
+  chatId,
+  creditCostTokens,
+  creditMultiplier,
+  errorReason,
+  platform,
+  provider,
+  queryHash,
+  responseTimeMs,
+  searchCallCount,
+  sourceCount,
+  sources,
+  status,
+  triggerReason,
+  userId,
+}: {
+  chatId: string;
+  creditCostTokens: number;
+  creditMultiplier: number;
+  errorReason?: string | null;
+  platform: "web" | "native";
+  provider: string;
+  queryHash: string;
+  responseTimeMs: number;
+  searchCallCount: number;
+  sourceCount: number;
+  sources: Array<{ title: string; url: string; domain?: string | null }>;
+  status: "completed" | "failed";
+  triggerReason: string;
+  userId: string;
+}): Promise<WebSearchUsage | null> {
+  try {
+    const [record] = await db
+      .insert(webSearchUsage)
+      .values({
+        chatId,
+        creditCostTokens: Math.max(0, Math.round(creditCostTokens)),
+        creditMultiplier: Number.isFinite(creditMultiplier)
+          ? Math.max(1, creditMultiplier)
+          : 1,
+        errorReason: errorReason?.trim().slice(0, 500) || null,
+        platform,
+        provider: provider.slice(0, 64),
+        queryHash: queryHash.slice(0, 64),
+        responseTimeMs: Math.max(0, Math.round(responseTimeMs)),
+        searchCallCount: Math.max(0, Math.round(searchCallCount)),
+        sourceCount: Math.max(0, Math.round(sourceCount)),
+        sources,
+        status,
+        triggerReason: triggerReason.slice(0, 256),
+        userId,
+      })
+      .returning();
+    return record ?? null;
+  } catch (error) {
+    console.error("[web-search] Failed to record usage.", error);
+    return null;
   }
 }
 

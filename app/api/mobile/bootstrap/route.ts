@@ -133,6 +133,7 @@ const FALLBACK_FEATURE_SNAPSHOT: FeatureSnapshot = {
   liveTranslationWeb: false,
   study: true,
   translate: true,
+  webSearch: false,
   voiceChat: false,
   voiceChatAndroid: false,
   voiceChatWeb: false,
@@ -397,6 +398,7 @@ export async function GET(request: Request) {
         voiceChat: featureSnapshot.voiceChat,
         voiceChatAndroid: featureSnapshot.voiceChatAndroid,
         voiceChatWeb: featureSnapshot.voiceChatWeb,
+        webSearch: featureSnapshot.webSearch,
       },
       modelConfig,
       chat: {

@@ -13,6 +13,7 @@ import {
   TRANSLATE_FEATURE_FLAG_KEY,
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   appSettingCacheTagForKey,
@@ -83,6 +84,10 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
   iconPromptsAccessMode: {
     settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
     auditAction: "feature.icon_prompts.toggle",
+  },
+  webSearchAccessMode: {
+    settingKey: WEB_SEARCH_ENABLED_SETTING_KEY,
+    auditAction: "feature.web_search.toggle",
   },
 };
 

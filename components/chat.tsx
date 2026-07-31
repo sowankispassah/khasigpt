@@ -60,6 +60,7 @@ import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { setClientCookie } from "@/lib/ui/client-cookies";
 import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { detectWebSearchNeed } from "@/lib/web-search/detection";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import {
@@ -222,6 +223,7 @@ export function Chat({
   const [isJobsComposerVisible, setIsJobsComposerVisible] = useState(false);
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
+  const [isSearchingWeb, setIsSearchingWeb] = useState(false);
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
   const currentModelId = initialChatModel;
   const [currentLanguageCode, setCurrentLanguageCode] = useState(
@@ -768,10 +770,12 @@ export function Chat({
     },
     
     onFinish: () => {
+      setIsSearchingWeb(false);
       syncCurrentChatUrl();
       refreshAndPromoteHistory();
     },
     onError: (error) => {
+      setIsSearchingWeb(false);
       const message =
         error instanceof Error ? error.message : String(error ?? "");
       const normalized = message.toLowerCase();
@@ -1292,7 +1296,15 @@ export function Chat({
   );
 
   const handleBeforeSubmit = useCallback(async () => {
-    await ensureChatExistsBeforeNavigation(input);
+    setIsSearchingWeb(
+      !isJobsMode && detectWebSearchNeed(input).shouldSearch
+    );
+    try {
+      await ensureChatExistsBeforeNavigation(input);
+    } catch (error) {
+      setIsSearchingWeb(false);
+      throw error;
+    }
     syncCurrentChatUrl();
     if (!isJobsMode) {
       return;
@@ -1301,8 +1313,8 @@ export function Chat({
     void mutate("messages:should-scroll", "auto", { revalidate: false });
   }, [
     ensureChatExistsBeforeNavigation,
-    input,
     isJobsMode,
+    input,
     mutate,
     syncCurrentChatUrl,
   ]);
@@ -1677,6 +1689,15 @@ export function Chat({
             >
               {isReadonly ? null : (
                 <div className="flex w-full flex-col gap-2">
+                  {isSearchingWeb ? (
+                    <div
+                      aria-live="polite"
+                      className="flex items-center justify-center gap-2 px-2 text-muted-foreground text-xs"
+                    >
+                      <span className="size-3 animate-spin rounded-full border border-primary border-t-transparent" />
+                      {translate("chat.web_search.searching", "Searching the web...")}
+                    </div>
+                  ) : null}
                   {iconPromptSuggestions.length > 0 ? (
                     <div className="rounded-lg bg-background p-2">
                       {iconPromptSuggestions.map((suggestion, index) => (

@@ -32,6 +32,21 @@ export const DEFAULT_SUGGESTED_PROMPTS = [
 
 export const RECOMMENDED_PRICING_PLAN_SETTING_KEY = "billing.recommendedPlanId";
 export const CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY = "chat.customKnowledge";
+export const WEB_SEARCH_ENABLED_SETTING_KEY = "web_search_enabled";
+export const WEB_SEARCH_PROVIDER_SETTING_KEY = "web_search_provider";
+export const WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY =
+  "web_search_fallback_provider";
+export const WEB_SEARCH_ENABLED_WEB_SETTING_KEY = "web_search_enabled_web";
+export const WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY =
+  "web_search_enabled_native";
+export const WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY =
+  "web_search_free_users_enabled";
+export const WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY =
+  "web_search_paid_users_enabled";
+export const WEB_SEARCH_MAX_CALLS_SETTING_KEY = "web_search_max_calls";
+export const WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY =
+  "web_search_credit_multiplier";
+export const WEB_SEARCH_DAILY_LIMIT_SETTING_KEY = "web_search_daily_limit";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
 export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";

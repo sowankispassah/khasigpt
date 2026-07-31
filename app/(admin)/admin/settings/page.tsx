@@ -96,6 +96,16 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_DAILY_LIMIT_SETTING_KEY,
+  WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
+  WEB_SEARCH_ENABLED_WEB_SETTING_KEY,
+  WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_MAX_CALLS_SETTING_KEY,
+  WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_PROVIDER_SETTING_KEY,
 } from "@/lib/constants";
 import {
   getAppSettingsByKeys,
@@ -155,6 +165,7 @@ import {
   LIVE_VOICE_MEDIA_RESOLUTION_OPTIONS,
   LIVE_VOICE_MODEL_CONFIG_CACHE_TAG,
 } from "@/lib/voice/live";
+import { resolveWebSearchConfig } from "@/lib/web-search/config";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
@@ -166,6 +177,7 @@ import { PlanPricingFields } from "./plan-pricing-fields";
 import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
 import { PricingPlanEditForm } from "./pricing-plan-edit-form";
 import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
+import { WebSearchSettingsForm } from "./web-search-settings-form";
 
 export const dynamic = "force-dynamic";
 
@@ -220,6 +232,15 @@ const SETTINGS_SNAPSHOT_KEYS = [
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
+  WEB_SEARCH_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
+  WEB_SEARCH_ENABLED_WEB_SETTING_KEY,
+  WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY,
+  WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_MAX_CALLS_SETTING_KEY,
+  WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_DAILY_LIMIT_SETTING_KEY,
 ] as const;
 const ESSENTIAL_FALLBACK_SETTING_KEYS = [
   SITE_PUBLIC_LAUNCHED_SETTING_KEY,
@@ -857,6 +878,25 @@ async function loadAdminSettingsData() {
     liveTranslationDefaultLanguageA,
     liveTranslationDefaultLanguageB,
     liveTranslationSystemInstruction,
+    webSearchConfig: resolveWebSearchConfig(
+      new Map(
+        [
+          WEB_SEARCH_PROVIDER_SETTING_KEY,
+          WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
+          WEB_SEARCH_ENABLED_WEB_SETTING_KEY,
+          WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY,
+          WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY,
+          WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
+          WEB_SEARCH_MAX_CALLS_SETTING_KEY,
+          WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
+          WEB_SEARCH_DAILY_LIMIT_SETTING_KEY,
+        ].map((key) => [key, appSettingValuesByKey.get(key)])
+      ),
+      {
+        accessMode: featureAccessState.values.get(WEB_SEARCH_ENABLED_SETTING_KEY),
+        readState: appSettingState.source === "snapshot-db" ? "confirmed" : "fallback",
+      }
+    ),
   };
 }
 
@@ -914,6 +954,10 @@ function buildFallbackAdminSettingsData() {
     liveTranslationDefaultLanguageB: DEFAULT_LIVE_TRANSLATION_LANGUAGE_B,
     liveTranslationSystemInstruction:
       DEFAULT_LIVE_TRANSLATION_SYSTEM_INSTRUCTION,
+    webSearchConfig: resolveWebSearchConfig(new Map(), {
+      accessMode: "admin_only",
+      readState: "fallback",
+    }),
   } as Awaited<ReturnType<typeof loadAdminSettingsData>>;
 }
 
@@ -1180,6 +1224,7 @@ export default async function AdminSettingsPage({
     liveTranslationDefaultLanguageA,
     liveTranslationDefaultLanguageB,
     liveTranslationSystemInstruction,
+    webSearchConfig,
   } = settingsData;
   const featureAccessControlStateByField = new Map(
     ADMIN_FEATURE_ACCESS_SETTINGS.map((setting) => [
@@ -1458,6 +1503,13 @@ export default async function AdminSettingsPage({
   const calculatorAccessMode = calculatorAccessState.mode;
   const studyModeAccessMode = studyModeAccessState.mode;
   const translateAccessMode = translateAccessState.mode;
+  const webSearchAccessState =
+    featureAccessControlStateByField.get("webSearchAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: WEB_SEARCH_ENABLED_SETTING_KEY,
+      snapshot: featureAccessState,
+    });
+  const webSearchAccessMode = webSearchAccessState.mode;
   const translateProviderMode = parseTranslateProviderModeSetting(
     translateProviderModeSetting
   );
@@ -1915,7 +1967,23 @@ export default async function AdminSettingsPage({
               successMessage="Web Live Translation availability updated."
               title="Live Translation - Web"
             />
+
+            <FeatureAccessModeControl
+              currentMode={webSearchAccessMode}
+              description="Control whether time-sensitive public questions may use grounded web search."
+              fieldName="webSearchAccessMode"
+              readState={webSearchAccessState.readState}
+              successMessage="Web Search availability updated."
+              title="Web Search"
+            />
           </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          description="Configure Gemini grounding, platform availability, credit pricing, and daily search limits."
+          title="Web Search settings"
+        >
+          <WebSearchSettingsForm config={webSearchConfig} />
         </CollapsibleSection>
 
         <CollapsibleSection

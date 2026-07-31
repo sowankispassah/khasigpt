@@ -23,6 +23,7 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   getAppSetting,
@@ -33,7 +34,10 @@ import {
   listTranslationFeatureLanguagesWithModels,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+} from "@/lib/feature-access";
 import {
   getCachedTranslationBundle,
   getFreshTranslationBundle,
@@ -159,7 +163,9 @@ export async function loadFeatureAccessReadModel({
     return typeof value === "string" || typeof value === "boolean"
       ? value
       : featureAccessUnavailable
-        ? "enabled"
+        ? failOpen
+          ? "enabled"
+          : LIVE_TRANSLATION_ACCESS_MODE_FALLBACK
         : null;
   };
   const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
@@ -177,6 +183,9 @@ export async function loadFeatureAccessReadModel({
     LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
     { failOpen: false }
   );
+  const webSearchSetting = getFeatureSetting(WEB_SEARCH_ENABLED_SETTING_KEY, {
+    failOpen: false,
+  });
   const voiceChatSettings = resolvePlatformVoiceChatSetting({
     androidValue: getFeatureSetting(VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY),
     legacyValue: getFeatureSetting(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
@@ -208,6 +217,10 @@ export async function loadFeatureAccessReadModel({
     ),
     translate: isFeatureEnabledForRole(
       parseTranslateAccessModeSetting(translateSetting),
+      role
+    ),
+    webSearch: isFeatureEnabledForRole(
+      parseFeatureAccessMode(webSearchSetting, "admin_only"),
       role
     ),
     liveTranslation: isFeatureEnabledForRole(

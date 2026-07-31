@@ -12,6 +12,7 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import {
   type FeatureAccessMode,
@@ -57,6 +58,7 @@ const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
     "feature.voice_chat.android.toggle",
     "feature.voice_chat.web.toggle",
   ]),
+  [WEB_SEARCH_ENABLED_SETTING_KEY]: new Set(["feature.web_search.toggle"]),
 };
 
 export const FEATURE_ACCESS_SETTING_KEYS = new Set(

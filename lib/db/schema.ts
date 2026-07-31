@@ -1531,6 +1531,44 @@ export const tokenUsage = pgTable(
 
 export type TokenUsage = InferSelectModel<typeof tokenUsage>;
 
+export const webSearchUsage = pgTable(
+  "WebSearchUsage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    chatId: uuid("chatId")
+      .notNull()
+      .references(() => chat.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 64 }).notNull(),
+    platform: varchar("platform", { length: 16 }).notNull(),
+    status: varchar("status", { length: 24 }).notNull(),
+    queryHash: varchar("queryHash", { length: 64 }).notNull(),
+    triggerReason: varchar("triggerReason", { length: 256 }).notNull(),
+    searchCallCount: integer("searchCallCount").notNull().default(0),
+    sourceCount: integer("sourceCount").notNull().default(0),
+    responseTimeMs: integer("responseTimeMs").notNull().default(0),
+    creditMultiplier: doublePrecision("creditMultiplier")
+      .notNull()
+      .default(1),
+    creditCostTokens: integer("creditCostTokens").notNull().default(0),
+    sources: jsonb("sources").notNull().default(sql`'[]'::jsonb`),
+    errorReason: text("errorReason"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userCreatedAtIdx: index("WebSearchUsage_user_createdAt_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    chatIdx: index("WebSearchUsage_chat_idx").on(table.chatId),
+    createdAtIdx: index("WebSearchUsage_createdAt_idx").on(table.createdAt),
+  })
+);
+
+export type WebSearchUsage = InferSelectModel<typeof webSearchUsage>;
+
 export const freeChatUsageDaily = pgTable(
   "FreeChatUsageDaily",
   {

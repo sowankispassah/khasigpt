@@ -32,6 +32,14 @@ const StudyPaperCards = dynamic(
   }
 );
 
+const WebSearchSources = dynamic(
+  () =>
+    import("./web-search-sources").then(
+      (module) => module.WebSearchSources
+    ),
+  { loading: () => null }
+);
+
 const PurePreviewMessage = ({
   chatId,
   message,
@@ -252,6 +260,24 @@ const PurePreviewMessage = ({
                   ) : (
                     referenceBody
                   )}
+                </div>
+              );
+            }
+
+            if (type === "data-webSources") {
+              const data = (part as {
+                data?: { provider?: string; sources?: Array<{ title: string; url: string; domain?: string | null }> };
+              }).data;
+              const sources = data?.sources ?? [];
+              if (sources.length === 0) {
+                return null;
+              }
+              return (
+                <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4" key={key}>
+                  <WebSearchSources
+                    provider={data?.provider ?? "web search"}
+                    sources={sources}
+                  />
                 </div>
               );
             }

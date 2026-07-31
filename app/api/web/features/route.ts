@@ -22,6 +22,7 @@ function buildDegradedFeatureSnapshot() {
     liveTranslationWeb: false,
     study: true,
     translate: true,
+    webSearch: false,
     voiceChatWeb: false,
     imageGeneration: {
       enabled: true,
@@ -64,6 +65,7 @@ export async function GET(request: Request) {
         study: snapshot.study,
         translate: snapshot.translate,
         voiceChat: snapshot.voiceChatWeb,
+        webSearch: snapshot.webSearch,
       },
       imageGeneration: snapshot.imageGeneration,
       meta: snapshot.meta,

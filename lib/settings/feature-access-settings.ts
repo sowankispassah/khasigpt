@@ -15,6 +15,7 @@ import {
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import { getLiteAppSettingsByKeysUncached } from "@/lib/db/app-settings-lite";
 import {
@@ -72,6 +73,10 @@ export const ADMIN_FEATURE_ACCESS_SETTINGS = [
     fieldName: "iconPromptsAccessMode",
     settingKey: ICON_PROMPTS_ENABLED_SETTING_KEY,
   },
+  {
+    fieldName: "webSearchAccessMode",
+    settingKey: WEB_SEARCH_ENABLED_SETTING_KEY,
+  },
 ] as const;
 
 export const USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS = [
@@ -85,6 +90,7 @@ export const USER_VISIBLE_FEATURE_ACCESS_SETTING_KEYS = [
   VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 ] as const;
 
 export type FeatureAccessReadStatus =

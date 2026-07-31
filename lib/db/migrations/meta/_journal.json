@@ -631,6 +631,13 @@
       "when": 1779068700020,
       "tag": "0087_rag_foreign_key_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1779068700021,
+      "tag": "0088_web_search_usage",
+      "breakpoints": true
     }
   ]
 }

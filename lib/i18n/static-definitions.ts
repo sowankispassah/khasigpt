@@ -3948,4 +3948,99 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Unknown",
     description: "Audit log source label when the source cannot be identified.",
   },
+  {
+    key: "chat.web_search.searching",
+    defaultText: "Searching the web...",
+    description: "Status shown while a current-information answer is grounded with web search.",
+  },
+  {
+    key: "chat.web_search.sources",
+    defaultText: "Sources",
+    description: "Heading above links returned by grounded web search.",
+  },
+  {
+    key: "admin.web_search.provider",
+    defaultText: "Primary provider",
+    description: "Web Search admin setting label for the primary provider.",
+  },
+  {
+    key: "admin.web_search.fallback",
+    defaultText: "Fallback provider",
+    description: "Web Search admin setting label for the fallback provider.",
+  },
+  {
+    key: "admin.web_search.provider.gemini",
+    defaultText: "Gemini Grounding with Google Search",
+    description: "Web Search provider option for Gemini grounding.",
+  },
+  {
+    key: "admin.web_search.provider.openai",
+    defaultText: "OpenAI web search (when implemented)",
+    description: "Web Search provider option for the future OpenAI adapter.",
+  },
+  {
+    key: "admin.web_search.provider.disabled",
+    defaultText: "Disabled",
+    description: "Web Search provider option that disables provider calls.",
+  },
+  {
+    key: "admin.web_search.enabledWeb",
+    defaultText: "Enable on web",
+    description: "Web Search admin setting that enables search on web clients.",
+  },
+  {
+    key: "admin.web_search.enabledNative",
+    defaultText: "Enable on native",
+    description: "Web Search admin setting that enables search on native clients.",
+  },
+  {
+    key: "admin.web_search.freeUsersEnabled",
+    defaultText: "Allow free users",
+    description: "Web Search admin setting that allows free users to search.",
+  },
+  {
+    key: "admin.web_search.paidUsersEnabled",
+    defaultText: "Allow paid users",
+    description: "Web Search admin setting that allows paid users to search.",
+  },
+  {
+    key: "admin.web_search.max_calls",
+    defaultText: "Max search calls",
+    description: "Web Search admin setting for the maximum provider calls per request.",
+  },
+  {
+    key: "admin.web_search.multiplier",
+    defaultText: "Credit multiplier",
+    description: "Web Search admin setting for the credit charge multiplier.",
+  },
+  {
+    key: "admin.web_search.daily_limit",
+    defaultText: "Daily search limit",
+    description: "Web Search admin setting for the per-user daily call limit.",
+  },
+  {
+    key: "admin.web_search.read_state",
+    defaultText: "Configuration read: {readState}. Access mode: {accessMode}.",
+    description: "Web Search admin status showing configuration health and access mode.",
+  },
+  {
+    key: "admin.web_search.saved",
+    defaultText: "Web Search settings saved.",
+    description: "Confirmation toast after Web Search settings are saved.",
+  },
+  {
+    key: "admin.web_search.save_failed",
+    defaultText: "Failed to save Web Search settings.",
+    description: "Error toast after Web Search settings fail to save.",
+  },
+  {
+    key: "common.save",
+    defaultText: "Save settings",
+    description: "Generic settings save button label.",
+  },
+  {
+    key: "common.saving",
+    defaultText: "Saving...",
+    description: "Generic settings save button pending label.",
+  },
 ];
