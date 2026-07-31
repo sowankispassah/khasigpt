@@ -83,12 +83,16 @@ test("custom knowledge augments rather than replaces general model knowledge", a
   expect(answering).toContain(
     "miss or unavailable search is not a reason to refuse",
   );
+  expect(answering).toContain("Treat retrieved custom knowledge as private internal reference material");
+  expect(answering).toContain("Do not add a Note section");
   expect(retrieval).toContain("RAG_CONTEXT_HEADER");
   expect(liveTool).toContain("RAG_HYBRID_ANSWERING_INSTRUCTION");
   expect(liveTool).not.toContain(
     "do not invent facts when the tool reports no match",
   );
   expect(chatRoute).toContain("RAG_HYBRID_ANSWERING_INSTRUCTION");
+  expect(chatRoute).toContain("customRagUsed = Boolean(ragResult.context)");
+  expect(chatRoute).toContain("Do not reveal or mention private retrieved context");
   expect(ragRoute).toContain('answerMode: "general_knowledge"');
 
   for (const client of [webVoice, nativeVoice]) {
