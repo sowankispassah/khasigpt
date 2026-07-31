@@ -21,19 +21,48 @@ test.describe("web search grounding", () => {
   });
 
   test("keeps grounding provider, admin controls, source streaming, and safe fallback wired", async () => {
-    const [service, route, adminRoute, migration] = await Promise.all([
+    const [
+      service,
+      route,
+      adminRoute,
+      migration,
+      chat,
+      message,
+      sources,
+      nativeChat,
+      nativeTypes,
+    ] = await Promise.all([
       readWorkspaceFile("lib/web-search/service.ts"),
       readWorkspaceFile("app/(chat)/api/chat/route.ts"),
       readWorkspaceFile("app/api/admin/settings/web-search/route.ts"),
       readWorkspaceFile("lib/db/migrations/0088_web_search_usage.sql"),
+      readWorkspaceFile("components/chat.tsx"),
+      readWorkspaceFile("components/message.tsx"),
+      readWorkspaceFile("components/web-search-sources.tsx"),
+      readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
+      readWorkspaceFile("native/src/api/types.ts"),
     ]);
 
     expect(service).toContain('tools: [{ googleSearch: {} }]');
+    expect(service).toContain("groundingSupports");
+    expect(service).toContain("webSearchQueries");
     expect(service).toContain('case "openai_web_search"');
     expect(route).toContain("retrieveRagContext");
     expect(route).toContain("webSearchService.answerWithSearch");
     expect(route).toContain('type: "data-webSources"');
+    expect(route).toContain('type: "data-webSearchStatus"');
+    expect(route).toContain("webSearchFinalStatusPart");
     expect(route).toContain("Falling back to normal model answer");
+    expect(chat).toContain("sendMessageWithWebSearchStatus");
+    expect(chat).not.toContain("isSearchingWeb");
+    expect(message).toContain("WebSearchStatus");
+    expect(message).toContain("WebSearchSources");
+    expect(sources).toContain('data-testid="web-search-status"');
+    expect(sources).toContain('data-testid="web-search-sources"');
+    expect(nativeChat).toContain("WebSearchProgress");
+    expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
+    expect(nativeChat).not.toContain("isSearchingWeb");
+    expect(nativeTypes).toContain('type: "data-webSearchStatus"');
     expect(adminRoute).toContain('requireAdminApiUser');
     expect(adminRoute).toContain('settings.web_search.update');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS "WebSearchUsage"');

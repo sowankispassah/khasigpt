@@ -5,7 +5,10 @@ import { memo, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
-import type { ChatMessage } from "@/lib/types";
+import type {
+  ChatMessage,
+  CustomUIDataTypes,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
@@ -40,6 +43,14 @@ const WebSearchSources = dynamic(
   { loading: () => null }
 );
 
+const WebSearchStatus = dynamic(
+  () =>
+    import("./web-search-sources").then(
+      (module) => module.WebSearchStatus
+    ),
+  { loading: () => null }
+);
+
 const PurePreviewMessage = ({
   chatId,
   message,
@@ -51,6 +62,7 @@ const PurePreviewMessage = ({
   requiresScrollPadding,
   studyActions,
   jobActions,
+  onRetryWebSearch,
 }: {
   chatId: string;
   message: ChatMessage;
@@ -74,6 +86,7 @@ const PurePreviewMessage = ({
     onAsk: (job: JobCard) => void;
     activeJobId?: string | null;
   };
+  onRetryWebSearch?: (userMessageId?: string) => Promise<void> | void;
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
 
@@ -112,6 +125,22 @@ const PurePreviewMessage = ({
     );
 
   const isAssistantMessage = message.role === "assistant";
+  const hasWebSearchStatus = message.parts.some(
+    (part) => part.type === "data-webSearchStatus"
+  );
+  const assistantText = message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim();
+  const webSearchData = message.parts.reduce<
+    CustomUIDataTypes["webSources"] | null
+  >((current, part) => {
+    if (part.type !== "data-webSources" || !part.data) {
+      return current;
+    }
+    return part.data;
+  }, null);
 
   return (
     <div
@@ -127,14 +156,17 @@ const PurePreviewMessage = ({
       >
         <div
           className={cn("flex flex-col", {
-            "gap-2 md:gap-4": message.parts?.some(
-              (p) => p.type === "text" && p.text?.trim()
-            ),
+            "gap-2 md:gap-4":
+              message.parts?.some(
+                (p) => p.type === "text" && p.text?.trim()
+              ) || hasWebSearchStatus,
             "min-h-96": isAssistantMessage && requiresScrollPadding,
             "w-full":
               (isAssistantMessage &&
                 message.parts?.some(
-                  (p) => p.type === "text" && p.text?.trim()
+                  (p) =>
+                    (p.type === "text" && p.text?.trim()) ||
+                    p.type === "data-webSearchStatus"
                 )) ||
               mode === "edit",
             "max-w-[calc(100%-2.5rem)] sm:max-w-[min(fit-content,80%)]":
@@ -265,20 +297,26 @@ const PurePreviewMessage = ({
             }
 
             if (type === "data-webSources") {
-              const data = (part as {
-                data?: { provider?: string; sources?: Array<{ title: string; url: string; domain?: string | null }> };
-              }).data;
-              const sources = data?.sources ?? [];
-              if (sources.length === 0) {
+              return null;
+            }
+
+            if (type === "data-webSearchStatus") {
+              if (
+                !isAssistantMessage ||
+                !part.data ||
+                (part.data.status === "generating" && assistantText.length > 0) ||
+                part.data.status === "completed"
+              ) {
                 return null;
               }
               return (
-                <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4" key={key}>
-                  <WebSearchSources
-                    provider={data?.provider ?? "web search"}
-                    sources={sources}
-                  />
-                </div>
+                <WebSearchStatus
+                  key={key}
+                  onRetry={
+                    part.data.status === "failed" ? onRetryWebSearch : undefined
+                  }
+                  status={part.data}
+                />
               );
             }
 
@@ -399,6 +437,7 @@ const PurePreviewMessage = ({
 
           {isAssistantMessage &&
             isLoading &&
+            !hasWebSearchStatus &&
             !message.parts?.some(
               (part) => part.type === "text" && part.text?.trim()
             ) && (
@@ -415,6 +454,17 @@ const PurePreviewMessage = ({
                 </MessageContent>
               </div>
             )}
+
+          {isAssistantMessage && webSearchData && assistantText.length > 0 ? (
+            <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4">
+              <WebSearchSources
+                citations={webSearchData.citations}
+                provider={webSearchData.provider}
+                searchQueries={webSearchData.searchQueries}
+                sources={webSearchData.sources}
+              />
+            </div>
+          ) : null}
 
           {!isReadonly && (
             <MessageActions

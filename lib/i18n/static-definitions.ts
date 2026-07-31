@@ -3954,9 +3954,69 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Status shown while a current-information answer is grounded with web search.",
   },
   {
+    key: "chat.web_search.reading",
+    defaultText: "Reading relevant sources...",
+    description: "Status shown while Web Search reads grounded sources.",
+  },
+  {
+    key: "chat.web_search.generating",
+    defaultText: "Preparing an answer...",
+    description: "Status shown while the assistant prepares a grounded answer.",
+  },
+  {
+    key: "chat.web_search.failed",
+    defaultText: "I couldn’t complete the web search. Please try again.",
+    description: "Error shown when grounded Web Search cannot be completed.",
+  },
+  {
+    key: "chat.web_search.retry",
+    defaultText: "Retry",
+    description: "Button that retries a failed Web Search request.",
+  },
+  {
+    key: "chat.web_search.retrying",
+    defaultText: "Retrying...",
+    description: "Button label shown while retrying a failed Web Search request.",
+  },
+  {
     key: "chat.web_search.sources",
     defaultText: "Sources",
     description: "Heading above links returned by grounded web search.",
+  },
+  {
+    key: "chat.web_search.sources_count",
+    defaultText: "Sources ({count})",
+    description: "Expandable heading above links returned by grounded Web Search.",
+  },
+  {
+    key: "chat.web_search.searches_used",
+    defaultText: "Searches used",
+    description: "Label above the web queries used to ground an answer.",
+  },
+  {
+    key: "chat.web_search.citation",
+    defaultText: "{count} citation",
+    description: "Singular citation count shown beside a grounded Web Search source.",
+  },
+  {
+    key: "chat.web_search.citations",
+    defaultText: "{count} citations",
+    description: "Plural citation count shown beside a grounded Web Search source.",
+  },
+  {
+    key: "chat.web_search.citation_highlights",
+    defaultText: "Referenced claims",
+    description: "Label above claim-level citations returned by grounded Web Search.",
+  },
+  {
+    key: "chat.web_search.provider.gemini",
+    defaultText: "Google Search",
+    description: "Provider label shown for Gemini grounded web search.",
+  },
+  {
+    key: "chat.web_search.provider.web",
+    defaultText: "Web Search",
+    description: "Provider label shown for grounded web search.",
   },
   {
     key: "admin.web_search.provider",

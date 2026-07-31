@@ -5,7 +5,11 @@ import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Suggestion } from "./db/schema";
 import type { AppUsage } from "./usage";
-import type { WebSearchSource } from "./web-search/types";
+import type {
+  WebSearchCitation,
+  WebSearchSource,
+  WebSearchStatusData,
+} from "./web-search/types";
 
 export type DataPart = { type: "append-message"; message: string };
 
@@ -58,7 +62,10 @@ export type CustomUIDataTypes = {
   webSources: {
     provider: string;
     sources: WebSearchSource[];
+    searchQueries?: string[];
+    citations?: WebSearchCitation[];
   };
+  webSearchStatus: WebSearchStatusData;
 };
 
 export type ChatMessage = UIMessage<

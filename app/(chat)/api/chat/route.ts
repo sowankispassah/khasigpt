@@ -132,7 +132,11 @@ import {
 } from "@/lib/web-search/config";
 import { detectWebSearchNeed, getWebSearchDecisionReason } from "@/lib/web-search/detection";
 import { webSearchService } from "@/lib/web-search/service";
-import type { WebSearchAnswer } from "@/lib/web-search/types";
+import type {
+  WebSearchAnswer,
+  WebSearchProvider,
+  WebSearchStatusData,
+} from "@/lib/web-search/types";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
@@ -2900,16 +2904,19 @@ export async function POST(request: Request) {
       platform: webSearchPlatform,
       role: userRole,
     });
-    let webSearchAnswer: WebSearchAnswer | null = null;
-    let webSearchUsed = false;
-    let webSearchFailureReason: string | null = null;
-
-    if (
+    const shouldAttemptWebSearch =
       resolvedChatMode === "default" &&
       webSearchDecision.shouldSearch &&
       webSearchAllowed &&
-      webSearchConfig.maxCalls > 0
-    ) {
+      webSearchConfig.maxCalls > 0;
+    let webSearchAnswer: WebSearchAnswer | null = null;
+    let webSearchUsed = false;
+    let webSearchAttempted = false;
+    let webSearchAttemptedProvider: WebSearchProvider | null = null;
+    let webSearchFailureReason: string | null = null;
+
+    if (shouldAttemptWebSearch) {
+      webSearchAttempted = true;
       const minimumWebSearchCreditTokens = Math.ceil(
         TOKENS_PER_CREDIT * webSearchConfig.creditMultiplier
       );
@@ -2953,6 +2960,7 @@ export async function POST(request: Request) {
           .filter(Boolean)
           .join("\n\n");
         let attemptedProvider = webSearchConfig.provider;
+        webSearchAttemptedProvider = attemptedProvider;
 
         try {
           webSearchAnswer = await webSearchService.answerWithSearch({
@@ -2973,6 +2981,7 @@ export async function POST(request: Request) {
             fallbackProvider !== attemptedProvider
           ) {
             attemptedProvider = fallbackProvider;
+            webSearchAttemptedProvider = attemptedProvider;
             try {
               webSearchAnswer = await webSearchService.answerWithSearch({
                 conversationContext,
@@ -3027,6 +3036,14 @@ export async function POST(request: Request) {
         });
       }
     }
+
+    const webSearchStatusData: WebSearchStatusData | null = webSearchAttempted
+      ? {
+          status: webSearchAnswer ? "generating" : "failed",
+          usedWebSearch: Boolean(webSearchAnswer),
+          provider: webSearchAnswer?.provider ?? webSearchAttemptedProvider,
+        }
+      : null;
 
     if (webSearchFailureReason) {
       console.warn("[web-search] Falling back to normal model answer.", {
@@ -3540,10 +3557,15 @@ export async function POST(request: Request) {
         console.warn("Unable to resolve stream usage", { chatId: id }, error);
       });
 
-    const webSourcesData = webSearchAnswer?.sources.length
+    const webSourcesData = webSearchAnswer &&
+      (webSearchAnswer.sources.length > 0 ||
+        webSearchAnswer.searchQueries.length > 0 ||
+        webSearchAnswer.citations.length > 0)
       ? {
           provider: webSearchAnswer.provider,
           sources: webSearchAnswer.sources,
+          searchQueries: webSearchAnswer.searchQueries,
+          citations: webSearchAnswer.citations,
         }
       : null;
     const webSourcesPart = webSourcesData
@@ -3551,6 +3573,27 @@ export async function POST(request: Request) {
           type: "data-webSources",
           data: webSourcesData,
         } as Extract<ChatMessage["parts"][number], { type: "data-webSources" }>)
+      : null;
+    const webSearchStreamStatusPart = webSearchStatusData
+      ? ({
+          type: "data-webSearchStatus",
+          data: webSearchStatusData,
+        } as Extract<
+          ChatMessage["parts"][number],
+          { type: "data-webSearchStatus" }
+        >)
+      : null;
+    const webSearchFinalStatusPart = webSearchStatusData
+      ? ({
+          type: "data-webSearchStatus",
+          data: {
+            ...webSearchStatusData,
+            status: webSearchAnswer ? "completed" : "failed",
+          },
+        } as Extract<
+          ChatMessage["parts"][number],
+          { type: "data-webSearchStatus" }
+        >)
       : null;
     const modelUiStream = result.toUIMessageStream({
       sendReasoning: modelConfig.supportsReasoning,
@@ -3575,6 +3618,21 @@ export async function POST(request: Request) {
             persistedMessages[index] = {
               ...persistedMessages[index],
               parts: [...persistedMessages[index].parts, webSourcesPart],
+            };
+            break;
+          }
+        }
+        if (webSearchFinalStatusPart) {
+          for (let index = persistedMessages.length - 1; index >= 0; index -= 1) {
+            if (persistedMessages[index]?.role !== "assistant") {
+              continue;
+            }
+            persistedMessages[index] = {
+              ...persistedMessages[index],
+              parts: [
+                ...persistedMessages[index].parts,
+                webSearchFinalStatusPart,
+              ],
             };
             break;
           }
@@ -3606,13 +3664,15 @@ export async function POST(request: Request) {
         return "Oops, an error occurred!";
       },
     });
-    const uiStream = webSourcesData
+    const uiStream = webSourcesData || webSearchStreamStatusPart
       ? createUIMessageStream<ChatMessage>({
           execute: ({ writer }) => {
-            writer.write({
-              type: "data-webSources",
-              data: webSourcesData,
-            });
+            if (webSearchStreamStatusPart) {
+              writer.write(webSearchStreamStatusPart);
+            }
+            if (webSourcesPart) {
+              writer.write(webSourcesPart);
+            }
             writer.merge(
               modelUiStream as Parameters<typeof writer.merge>[0]
             );

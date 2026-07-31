@@ -5,10 +5,30 @@ export type WebSearchProvider =
 
 export type WebSearchPlatform = "web" | "native";
 
+export type WebSearchStatus =
+  | "searching"
+  | "reading"
+  | "generating"
+  | "completed"
+  | "failed";
+
+export type WebSearchStatusData = {
+  status: WebSearchStatus;
+  usedWebSearch: boolean;
+  provider?: WebSearchProvider | null;
+};
+
 export type WebSearchSource = {
   title: string;
   url: string;
   domain?: string | null;
+};
+
+export type WebSearchCitation = {
+  text: string;
+  sourceIndexes: number[];
+  startIndex?: number;
+  endIndex?: number;
 };
 
 export type WebSearchUsageMetadata = {
@@ -23,6 +43,7 @@ export type WebSearchAnswer = {
   grounded: boolean;
   sources: WebSearchSource[];
   searchQueries: string[];
+  citations: WebSearchCitation[];
   searchCallCount: number;
   usage: WebSearchUsageMetadata;
 };

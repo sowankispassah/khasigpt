@@ -59,7 +59,13 @@ import {
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { setClientCookie } from "@/lib/ui/client-cookies";
-import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import {
+  cn,
+  fetcher,
+  fetchWithErrorHandlers,
+  generateUUID,
+  getTextFromMessage,
+} from "@/lib/utils";
 import { detectWebSearchNeed } from "@/lib/web-search/detection";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
@@ -223,7 +229,6 @@ export function Chat({
   const [isJobsComposerVisible, setIsJobsComposerVisible] = useState(false);
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
-  const [isSearchingWeb, setIsSearchingWeb] = useState(false);
   const [showImageUpgradeDialog, setShowImageUpgradeDialog] = useState(false);
   const currentModelId = initialChatModel;
   const [currentLanguageCode, setCurrentLanguageCode] = useState(
@@ -270,6 +275,10 @@ export function Chat({
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
+  const webSearchPlaceholderRef = useRef<{
+    placeholderId: string;
+    userMessageId: string;
+  } | null>(null);
   const chatPersistenceConfirmedRef = useRef(
     (pathname !== "/" && pathname !== "/chat") || initialMessages.length > 0
   );
@@ -770,15 +779,44 @@ export function Chat({
     },
     
     onFinish: () => {
-      setIsSearchingWeb(false);
+      const pendingWebSearch = webSearchPlaceholderRef.current;
+      if (pendingWebSearch) {
+        setMessages((current) =>
+          current.filter((message) => message.id !== pendingWebSearch.placeholderId)
+        );
+      }
       syncCurrentChatUrl();
       refreshAndPromoteHistory();
     },
     onError: (error) => {
-      setIsSearchingWeb(false);
       const message =
         error instanceof Error ? error.message : String(error ?? "");
       const normalized = message.toLowerCase();
+      const pendingWebSearch = webSearchPlaceholderRef.current;
+      const hadPendingWebSearch = Boolean(pendingWebSearch);
+
+      if (pendingWebSearch) {
+        setMessages((current) =>
+          current.map((entry) => {
+            if (entry.id !== pendingWebSearch.placeholderId) {
+              return entry;
+            }
+            return {
+              ...entry,
+              parts: [
+                {
+                  type: "data-webSearchStatus" as const,
+                  data: {
+                    status: "failed" as const,
+                    usedWebSearch: true,
+                    provider: null,
+                  },
+                },
+              ],
+            };
+          })
+        );
+      }
 
       const isCreditError =
         normalized.includes("recharge") || normalized.includes("credit");
@@ -788,13 +826,19 @@ export function Chat({
           if (!prev.length) {
             return prev;
           }
-          const next = [...prev];
+          const withoutPlaceholder = pendingWebSearch
+            ? prev.filter(
+                (entry) => entry.id !== pendingWebSearch.placeholderId
+              )
+            : prev;
+          const next = [...withoutPlaceholder];
           const last = next.at(-1);
           if (last?.role === "user") {
             next.pop();
           }
           return next;
         });
+        webSearchPlaceholderRef.current = null;
 
         setInput("");
         setAttachments([]);
@@ -820,7 +864,7 @@ export function Chat({
         return;
       }
 
-      if (message) {
+      if (message && !hadPendingWebSearch) {
         toast({
           type: "error",
           description: message,
@@ -828,6 +872,151 @@ export function Chat({
       }
     },
   });
+
+  const addWebSearchPlaceholder = useCallback(
+    (userMessageId: string, removePlaceholderId?: string) => {
+      const placeholderId = `web-search-${generateUUID()}`;
+      webSearchPlaceholderRef.current = { placeholderId, userMessageId };
+      const placeholder = {
+        id: placeholderId,
+        role: "assistant" as const,
+        metadata: { createdAt: new Date().toISOString() },
+        parts: [
+          {
+            type: "data-webSearchStatus" as const,
+            data: {
+              status: "searching" as const,
+              usedWebSearch: true,
+              provider: null,
+            },
+          },
+        ],
+      } as ChatMessage;
+
+      window.setTimeout(() => {
+        setMessages((current) => {
+          const withoutPreviousPlaceholder = removePlaceholderId
+            ? current.filter((entry) => entry.id !== removePlaceholderId)
+            : current;
+          if (
+            withoutPreviousPlaceholder.some(
+              (entry) => entry.id === placeholderId
+            )
+          ) {
+            return withoutPreviousPlaceholder;
+          }
+          const userIndex = withoutPreviousPlaceholder.findIndex(
+            (entry) => entry.id === userMessageId
+          );
+          if (userIndex === -1) {
+            return withoutPreviousPlaceholder;
+          }
+          return [
+            ...withoutPreviousPlaceholder.slice(0, userIndex + 1),
+            placeholder,
+            ...withoutPreviousPlaceholder.slice(userIndex + 1),
+          ];
+        });
+      }, 0);
+    },
+    [setMessages]
+  );
+
+  const sendMessageWithWebSearchStatus = useCallback(
+    (
+      message: Parameters<typeof sendMessage>[0],
+      options?: Parameters<typeof sendMessage>[1]
+    ) => {
+      if (!message) {
+        return sendMessage(message, options);
+      }
+      const generatedMessageId = generateUUID();
+      const messageWithId = {
+        ...message,
+        id:
+          "id" in message && typeof message.id === "string" && message.id
+            ? message.id
+            : generatedMessageId,
+      } as Exclude<Parameters<typeof sendMessage>[0], undefined>;
+      const messageText =
+        "parts" in messageWithId && Array.isArray(messageWithId.parts)
+          ? getTextFromMessage(messageWithId as ChatMessage)
+          : "text" in messageWithId && typeof messageWithId.text === "string"
+            ? messageWithId.text
+            : "";
+      const shouldShowWebSearch =
+        resolvedChatMode === "default" && detectWebSearchNeed(messageText).shouldSearch;
+
+      const result = sendMessage(messageWithId, options);
+      if (shouldShowWebSearch) {
+        addWebSearchPlaceholder(
+          "id" in messageWithId && typeof messageWithId.id === "string"
+            ? messageWithId.id
+            : generatedMessageId
+        );
+      }
+      return result;
+    },
+    [addWebSearchPlaceholder, resolvedChatMode, sendMessage]
+  );
+
+  const retryWebSearch = useCallback(async (userMessageId?: string) => {
+    const pendingWebSearch = webSearchPlaceholderRef.current;
+    const retryUserMessageId = userMessageId ?? pendingWebSearch?.userMessageId;
+    if (!retryUserMessageId) {
+      return;
+    }
+
+    const retryPromise = regenerate({
+      messageId: retryUserMessageId,
+    });
+    addWebSearchPlaceholder(
+      retryUserMessageId,
+      pendingWebSearch?.userMessageId === retryUserMessageId
+        ? pendingWebSearch.placeholderId
+        : undefined
+    );
+    await retryPromise;
+  }, [addWebSearchPlaceholder, regenerate]);
+
+  useEffect(() => {
+    const pendingWebSearch = webSearchPlaceholderRef.current;
+    if (!pendingWebSearch) {
+      return;
+    }
+
+    const userIndex = messages.findIndex(
+      (entry) => entry.id === pendingWebSearch.userMessageId
+    );
+    if (userIndex === -1) {
+      return;
+    }
+
+    if (!messages.some((entry) => entry.id === pendingWebSearch.placeholderId)) {
+      return;
+    }
+
+    const hasAssistantResponse = messages
+      .slice(userIndex + 1)
+      .some(
+        (entry) =>
+          entry.role === "assistant" &&
+          entry.id !== pendingWebSearch.placeholderId &&
+          entry.parts.some(
+            (part) =>
+              part.type === "text" ||
+              part.type === "data-webSources" ||
+              part.type === "data-webSearchStatus"
+          )
+      );
+    if (!hasAssistantResponse) {
+      return;
+    }
+
+    setMessages((current) =>
+      current.filter((entry) => entry.id !== pendingWebSearch.placeholderId)
+    );
+  }, [messages, setMessages]);
 
   useEffect(() => {
     if (!isStudyMode) {
@@ -905,7 +1094,7 @@ export function Chat({
       setStudyContext(paper);
       setStudyQuizActive(true);
       setStudyQuestionReference(reference);
-      sendMessage({
+      sendMessageWithWebSearchStatus({
         role: "user",
         parts: [
           {
@@ -916,7 +1105,7 @@ export function Chat({
         ],
       });
     },
-    [sendMessage, status]
+    [sendMessageWithWebSearchStatus, status]
   );
 
   const handleJumpToQuestionPaper = useCallback((paperId: string) => {
@@ -1029,12 +1218,17 @@ export function Chat({
       queryAppendStartedRef.current = true;
       setHasAppendedQuery(true);
       syncCurrentChatUrl();
-      sendMessage({
+      sendMessageWithWebSearchStatus({
         role: "user" as const,
         parts: [{ type: "text", text: query }],
       });
     }
-  }, [query, sendMessage, hasAppendedQuery, syncCurrentChatUrl]);
+  }, [
+    query,
+    sendMessageWithWebSearchStatus,
+    hasAppendedQuery,
+    syncCurrentChatUrl,
+  ]);
 
   useEffect(() => {
     if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
@@ -1255,7 +1449,7 @@ export function Chat({
         { type: "text" as const, text: displayedPrompt },
       ];
 
-      sendMessage(
+      sendMessageWithWebSearchStatus(
         {
           role: "user",
           parts: messageParts,
@@ -1273,7 +1467,7 @@ export function Chat({
       generateImageFromPrompt, 
       isGeneratingImage, 
       isImageMode, 
-      sendMessage, 
+      sendMessageWithWebSearchStatus,
       status, syncCurrentChatUrl
     ]
   );
@@ -1296,15 +1490,7 @@ export function Chat({
   );
 
   const handleBeforeSubmit = useCallback(async () => {
-    setIsSearchingWeb(
-      !isJobsMode && detectWebSearchNeed(input).shouldSearch
-    );
-    try {
-      await ensureChatExistsBeforeNavigation(input);
-    } catch (error) {
-      setIsSearchingWeb(false);
-      throw error;
-    }
+    await ensureChatExistsBeforeNavigation(input);
     syncCurrentChatUrl();
     if (!isJobsMode) {
       return;
@@ -1432,7 +1618,7 @@ export function Chat({
       <StudyPromptChips
         assistChips={studyAssistChips}
         chatId={id}
-        sendMessage={sendMessage}
+        sendMessage={sendMessageWithWebSearchStatus}
       />
     </div>
   ) : null;
@@ -1548,13 +1734,14 @@ export function Chat({
             regenerate={regenerate}
             selectedModelId={currentModelId}
             selectedVisibilityType={visibilityType}
-            sendMessage={sendMessage}
+            sendMessage={sendMessageWithWebSearchStatus}
             setMessages={setMessages}
             showGreeting={false}
             showScrollbar={true}
             status={status}
             suggestedPrompts={[]}
             jobActions={jobActions}
+            onRetryWebSearch={retryWebSearch}
             studyActions={studyActions}
             votes={votes}
           />
@@ -1599,7 +1786,7 @@ export function Chat({
               }
               onJumpToQuestionPaper={handleJumpToQuestionPaper}
               onBeforeSubmit={handleBeforeSubmit}
-              sendMessage={sendMessage}
+              sendMessage={sendMessageWithWebSearchStatus}
               setAttachments={setAttachments}
               setInput={setInput}
               setMessages={setMessages}
@@ -1666,7 +1853,7 @@ export function Chat({
               regenerate={regenerate}
               selectedModelId={currentModelId}
               selectedVisibilityType={visibilityType}
-              sendMessage={sendMessage}
+              sendMessage={sendMessageWithWebSearchStatus}
               setMessages={setMessages}
               status={status}
               suggestedPrompts={
@@ -1677,6 +1864,7 @@ export function Chat({
               }
               onIconPromptSelect={handleIconPromptSelect}
               jobActions={jobActions}
+              onRetryWebSearch={retryWebSearch}
               studyActions={studyActions}
               votes={votes}
             />
@@ -1689,15 +1877,6 @@ export function Chat({
             >
               {isReadonly ? null : (
                 <div className="flex w-full flex-col gap-2">
-                  {isSearchingWeb ? (
-                    <div
-                      aria-live="polite"
-                      className="flex items-center justify-center gap-2 px-2 text-muted-foreground text-xs"
-                    >
-                      <span className="size-3 animate-spin rounded-full border border-primary border-t-transparent" />
-                      {translate("chat.web_search.searching", "Searching the web...")}
-                    </div>
-                  ) : null}
                   {iconPromptSuggestions.length > 0 ? (
                     <div className="rounded-lg bg-background p-2">
                       {iconPromptSuggestions.map((suggestion, index) => (
@@ -1741,7 +1920,7 @@ export function Chat({
                     }
                     onJumpToQuestionPaper={handleJumpToQuestionPaper}
                     onBeforeSubmit={handleBeforeSubmit}
-                    sendMessage={sendMessage}
+                    sendMessage={sendMessageWithWebSearchStatus}
                     setAttachments={setAttachments}
                     setInput={setInput}
                     setMessages={setMessages}

@@ -1,7 +1,12 @@
 import "server-only";
 
 import { GoogleGenAI } from "@google/genai";
-import type { WebSearchAnswer, WebSearchProvider, WebSearchSource } from "./types";
+import type {
+  WebSearchAnswer,
+  WebSearchCitation,
+  WebSearchProvider,
+  WebSearchSource,
+} from "./types";
 
 const DEFAULT_GEMINI_WEB_SEARCH_MODEL = "gemini-2.5-flash";
 const MAX_SOURCES = 12;
@@ -36,11 +41,23 @@ function normalizeSource(source: unknown): WebSearchSource | null {
 }
 
 function getGroundingMetadata(response: unknown) {
-  const candidate = (response as { candidates?: Array<{ groundingMetadata?: unknown }> })
-    .candidates?.[0];
+  const candidate = (response as {
+    candidates?: Array<{ groundingMetadata?: unknown }>;
+  }).candidates?.[0];
   return candidate?.groundingMetadata as
     | {
         groundingChunks?: Array<{ web?: unknown }>;
+        groundingSupports?: Array<{
+          groundingChunkIndices?: number[];
+          segment?: {
+            endIndex?: number;
+            startIndex?: number;
+            text?: string;
+          };
+        }>;
+        searchEntryPoint?: {
+          renderedContent?: string;
+        };
         webSearchQueries?: string[];
       }
     | undefined;
@@ -98,15 +115,29 @@ async function answerWithGeminiGrounding({
   }
 
   const metadata = getGroundingMetadata(response);
-  const sourceMap = new Map<string, WebSearchSource>();
-  for (const chunk of metadata?.groundingChunks ?? []) {
+  const sourceMap = new Map<string, number>();
+  const sourceIndexesByGroundingChunk = new Map<number, number>();
+  const sources: WebSearchSource[] = [];
+  for (const [groundingIndex, chunk] of (metadata?.groundingChunks ?? []).entries()) {
     const source = normalizeSource(chunk.web);
-    if (source && !sourceMap.has(source.url)) {
-      sourceMap.set(source.url, source);
+    if (!source) {
+      continue;
     }
-    if (sourceMap.size >= MAX_SOURCES) {
+
+    const existingIndex = sourceMap.get(source.url);
+    if (existingIndex) {
+      sourceIndexesByGroundingChunk.set(groundingIndex, existingIndex);
+      continue;
+    }
+
+    if (sources.length >= MAX_SOURCES) {
       break;
     }
+
+    sources.push(source);
+    const displayIndex = sources.length;
+    sourceMap.set(source.url, displayIndex);
+    sourceIndexesByGroundingChunk.set(groundingIndex, displayIndex);
   }
   const searchQueries = Array.from(
     new Set(
@@ -115,6 +146,33 @@ async function answerWithGeminiGrounding({
       )
     )
   ).slice(0, Math.max(1, maxSearches));
+  const citations: WebSearchCitation[] = (metadata?.groundingSupports ?? [])
+    .map((support) => {
+      const text = support.segment?.text?.trim();
+      const sourceIndexes = Array.from(
+        new Set(
+          (support.groundingChunkIndices ?? [])
+            .map((index) => sourceIndexesByGroundingChunk.get(index))
+            .filter((index): index is number => typeof index === "number")
+        )
+      );
+      if (!text || sourceIndexes.length === 0) {
+        return null;
+      }
+
+      return {
+        text,
+        sourceIndexes,
+        ...(typeof support.segment?.startIndex === "number"
+          ? { startIndex: support.segment.startIndex }
+          : {}),
+        ...(typeof support.segment?.endIndex === "number"
+          ? { endIndex: support.segment.endIndex }
+          : {}),
+      } satisfies WebSearchCitation;
+    })
+    .filter((citation): citation is WebSearchCitation => citation !== null)
+    .slice(0, 24);
   const usageMetadata = response.usageMetadata;
   const inputTokens = usageMetadata?.promptTokenCount ?? 0;
   const outputTokens = usageMetadata?.candidatesTokenCount ?? 0;
@@ -123,8 +181,9 @@ async function answerWithGeminiGrounding({
     answer,
     provider: "gemini_grounding",
     grounded: searchQueries.length > 0 || sourceMap.size > 0,
-    sources: Array.from(sourceMap.values()),
+    sources,
     searchQueries,
+    citations,
     searchCallCount: searchQueries.length,
     usage: {
       inputTokens,

@@ -58,6 +58,7 @@ type MessagesProps = {
     onAsk: (job: JobCard) => void;
     activeJobId?: string | null;
   };
+  onRetryWebSearch?: (userMessageId?: string) => Promise<void> | void;
   header?: ReactNode;
   headerFullWidth?: boolean;
   showGreeting?: boolean;
@@ -106,6 +107,7 @@ function PureMessages({
   onLoadMoreHistory,
   studyActions,
   jobActions,
+  onRetryWebSearch,
   header,
   headerFullWidth = false,
   showGreeting = true,
@@ -700,25 +702,34 @@ function PureMessages({
 
           {visibleMessages.map((message, index) => {
             const originalIndex = baseIndex + index;
+            const precedingUserMessageId = [...renderMessages]
+              .slice(0, originalIndex)
+              .reverse()
+              .find((entry) => entry.role === "user")?.id;
             return (
-            <PreviewMessage
-              chatId={chatId}
-              isLoading={
-                status === "streaming" &&
-                renderMessages.length - 1 === originalIndex
-              }
-              isReadonly={isReadonly}
-              key={message.id}
-              message={message}
-              regenerate={regenerate}
-              requiresScrollPadding={
-                hasSentMessage && originalIndex === renderMessages.length - 1
-              }
-              setMessages={setMessages}
-              studyActions={studyActions}
-              jobActions={jobActions}
-              vote={votesByMessageId?.get(message.id)}
-            />
+              <PreviewMessage
+                chatId={chatId}
+                isLoading={
+                  status === "streaming" &&
+                  renderMessages.length - 1 === originalIndex
+                }
+                isReadonly={isReadonly}
+                key={message.id}
+                message={message}
+                regenerate={regenerate}
+                requiresScrollPadding={
+                  hasSentMessage && originalIndex === renderMessages.length - 1
+                }
+                setMessages={setMessages}
+                studyActions={studyActions}
+                jobActions={jobActions}
+                onRetryWebSearch={
+                  onRetryWebSearch
+                    ? () => onRetryWebSearch(precedingUserMessageId)
+                    : undefined
+                }
+                vote={votesByMessageId?.get(message.id)}
+              />
             );
           })}
 
