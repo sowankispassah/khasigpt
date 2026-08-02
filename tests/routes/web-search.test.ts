@@ -1,10 +1,12 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import type { ChatMessage } from "@/lib/types";
 import {
   detectWebSearchNeed,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
+import { clearTransientWebSearchMessages } from "@/lib/web-search/status";
 import { getYouTubeVideoId } from "@/lib/web-search/youtube";
 
 const repoRoot = process.cwd();
@@ -46,6 +48,51 @@ test.describe("web search grounding", () => {
     });
   });
 
+  test("removes temporary status messages after the answer arrives", () => {
+    const messages = [
+      {
+        id: "user-1",
+        role: "user",
+        parts: [{ type: "text", text: "Find today's news" }],
+      },
+      {
+        id: "placeholder-1",
+        role: "assistant",
+        parts: [
+          {
+            type: "data-webSearchStatus",
+            data: { status: "searching", usedWebSearch: true },
+          },
+        ],
+      },
+      {
+        id: "stream-status-1",
+        role: "assistant",
+        parts: [
+          {
+            type: "data-webSearchStatus",
+            data: { status: "generating", usedWebSearch: true },
+          },
+        ],
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Here are today's updates." }],
+      },
+    ] as ChatMessage[];
+
+    const result = clearTransientWebSearchMessages(messages, {
+      placeholderId: "placeholder-1",
+      userMessageId: "user-1",
+    });
+
+    expect(result.map((message) => message.id)).toEqual([
+      "user-1",
+      "assistant-1",
+    ]);
+  });
+
   test("keeps grounding provider, admin controls, source streaming, and safe fallback wired", async () => {
     const [
       service,
@@ -83,7 +130,7 @@ test.describe("web search grounding", () => {
     expect(route).toContain("webSearchFinalStatusPart");
     expect(route).toContain("Falling back to normal model answer");
     expect(chat).toContain("sendMessageWithWebSearchStatus");
-    expect(chat).toContain("transientWebSearchMessageIds");
+    expect(chat).toContain("clearTransientWebSearchMessages");
     expect(chat).not.toContain("isSearchingWeb");
     expect(message).toContain("WebSearchStatus");
     expect(message).toContain("isWebSearchStatusOnly");
@@ -92,6 +139,8 @@ test.describe("web search grounding", () => {
     expect(sources).toContain('data-testid="web-search-sources"');
     expect(nativeChat).toContain("WebSearchProgress");
     expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
+    expect(nativeChat).toContain("WebSearchVideoResults");
+    expect(nativeChat).toContain("getWebSearchVideosFromMessage");
     expect(nativeChat).not.toContain("isSearchingWeb");
     expect(nativeTypes).toContain('type: "data-webSearchStatus"');
     expect(adminRoute).toContain('requireAdminApiUser');

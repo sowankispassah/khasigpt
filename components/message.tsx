@@ -141,6 +141,7 @@ const PurePreviewMessage = ({
     }
     return part.data;
   }, null);
+  const hasWebSearchAnswer = assistantText.length > 0 || webSearchData !== null;
   const isWebSearchStatusOnly =
     isAssistantMessage && hasWebSearchStatus && assistantText.length === 0;
 
@@ -306,7 +307,7 @@ const PurePreviewMessage = ({
               if (
                 !isAssistantMessage ||
                 !part.data ||
-                (part.data.status === "generating" && assistantText.length > 0) ||
+                (hasWebSearchAnswer && part.data.status !== "failed") ||
                 part.data.status === "completed"
               ) {
                 return null;

@@ -67,6 +67,10 @@ import {
   getTextFromMessage,
 } from "@/lib/utils";
 import { detectWebSearchNeed } from "@/lib/web-search/detection";
+import {
+  clearTransientWebSearchMessages,
+  type PendingWebSearch,
+} from "@/lib/web-search/status";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import {
@@ -275,10 +279,7 @@ export function Chat({
   const [studyViewerPaper, setStudyViewerPaper] =
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
-  const webSearchPlaceholderRef = useRef<{
-    placeholderId: string;
-    userMessageId: string;
-  } | null>(null);
+  const webSearchPlaceholderRef = useRef<PendingWebSearch | null>(null);
   const chatPersistenceConfirmedRef = useRef(
     (pathname !== "/" && pathname !== "/chat") || initialMessages.length > 0
   );
@@ -781,9 +782,18 @@ export function Chat({
     onFinish: () => {
       const pendingWebSearch = webSearchPlaceholderRef.current;
       if (pendingWebSearch) {
-        setMessages((current) =>
-          current.filter((message) => message.id !== pendingWebSearch.placeholderId)
-        );
+        setMessages((current) => {
+          const clearedMessages = clearTransientWebSearchMessages(
+            current,
+            pendingWebSearch
+          );
+          if (clearedMessages !== current) {
+            return clearedMessages;
+          }
+          return current.filter(
+            (message) => message.id !== pendingWebSearch.placeholderId
+          );
+        });
       }
       syncCurrentChatUrl();
       refreshAndPromoteHistory();
@@ -985,63 +995,14 @@ export function Chat({
       return;
     }
 
-    const userIndex = messages.findIndex(
-      (entry) => entry.id === pendingWebSearch.userMessageId
+    const clearedMessages = clearTransientWebSearchMessages(
+      messages,
+      pendingWebSearch
     );
-    if (userIndex === -1) {
+    if (clearedMessages === messages) {
       return;
     }
-
-    if (!messages.some((entry) => entry.id === pendingWebSearch.placeholderId)) {
-      return;
-    }
-
-    const responseMessages = messages.slice(userIndex + 1).filter((entry) => {
-      if (
-        entry.role !== "assistant" ||
-        entry.id === pendingWebSearch.placeholderId
-      ) {
-        return false;
-      }
-
-      return (
-        getTextFromMessage(entry).trim().length > 0 ||
-        entry.parts.some((part) => part.type === "data-webSources")
-      );
-    });
-    const hasAssistantResponse = responseMessages.length > 0;
-    if (!hasAssistantResponse) {
-      return;
-    }
-
-    const transientWebSearchMessageIds = new Set(
-      messages
-        .slice(userIndex + 1)
-        .filter((entry) => {
-          if (
-            entry.role !== "assistant" ||
-            getTextFromMessage(entry).trim().length > 0 ||
-            entry.parts.some((part) => part.type === "data-webSources")
-          ) {
-            return false;
-          }
-
-          return entry.parts.some(
-            (part) =>
-              part.type === "data-webSearchStatus" &&
-              (part.data.status === "searching" ||
-                part.data.status === "reading" ||
-                part.data.status === "generating" ||
-                part.data.status === "completed")
-          );
-        })
-        .map((entry) => entry.id)
-    );
-    transientWebSearchMessageIds.add(pendingWebSearch.placeholderId);
-
-    setMessages((current) =>
-      current.filter((entry) => !transientWebSearchMessageIds.has(entry.id))
-    );
+    setMessages(() => clearedMessages);
   }, [messages, setMessages]);
 
   useEffect(() => {
