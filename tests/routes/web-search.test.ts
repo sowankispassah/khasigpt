@@ -5,6 +5,7 @@ import {
   detectWebSearchNeed,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
+import { getYouTubeVideoId } from "@/lib/web-search/youtube";
 
 const repoRoot = process.cwd();
 
@@ -24,12 +25,20 @@ test.describe("web search grounding", () => {
       hasExplicitWebIntent: true,
       shouldSearch: true,
     });
+    expect(detectWebSearchNeed("Find me YouTube videos about phone repair")).toMatchObject({
+      hasVideoIntent: true,
+      shouldSearch: true,
+    });
     expect(
       resolveWebSearchQuery({
         currentText: "browse the net",
         previousUserMessages: ["who is Jeimon Sumer"],
       })
     ).toBe("who is Jeimon Sumer");
+    expect(getYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe(
+      "dQw4w9WgXcQ"
+    );
+    expect(getYouTubeVideoId("https://example.com/watch?v=dQw4w9WgXcQ")).toBeNull();
     expect(detectWebSearchNeed("What is the current price and our message limit?")).toMatchObject({
       hasCurrentIntent: true,
       hasCustomKnowledgeIntent: true,
@@ -67,6 +76,8 @@ test.describe("web search grounding", () => {
     expect(route).toContain("retrieveRagContext");
     expect(route).toContain("webSearchService.answerWithSearch");
     expect(route).toContain("resolveWebSearchQuery");
+    expect(route).toContain("includeVideos: webSearchDecision.hasVideoIntent");
+    expect(service).toContain("Prioritize relevant YouTube video results");
     expect(route).toContain('type: "data-webSources"');
     expect(route).toContain('type: "data-webSearchStatus"');
     expect(route).toContain("webSearchFinalStatusPart");

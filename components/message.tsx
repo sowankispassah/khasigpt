@@ -464,6 +464,7 @@ const PurePreviewMessage = ({
                 provider={webSearchData.provider}
                 searchQueries={webSearchData.searchQueries}
                 sources={webSearchData.sources}
+                videos={webSearchData.videos}
               />
             </div>
           ) : null}

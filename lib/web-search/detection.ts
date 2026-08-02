@@ -35,6 +35,13 @@ const EXPLICIT_WEB_SEARCH_PATTERNS: Array<[string, RegExp]> = [
   ["explicit_web_search", /\buse\s+(?:google|web\s+search|the\s+internet)\b/i],
 ];
 
+const VIDEO_SEARCH_PATTERNS: Array<[string, RegExp]> = [
+  [
+    "video_search",
+    /\b(?:find|show|search|look\s+for|give|send|recommend)\b.{0,100}\b(?:youtube|videos?|tutorials?|walkthroughs?)\b/i,
+  ],
+];
+
 const BARE_WEB_SEARCH_REQUEST_PATTERN =
   /^(?:please\s+)?(?:(?:browse|search)(?:\s+(?:the\s+)?(?:web|net|internet)|\s+online)|(?:look|check)\s+(?:it|this|that)\s+up(?:\s+online)?|google\s+(?:it|this|that))[\s.!?]*$/i;
 
@@ -55,6 +62,7 @@ export type WebSearchDecision = {
   hasCurrentIntent: boolean;
   hasCustomKnowledgeIntent: boolean;
   hasExplicitWebIntent: boolean;
+  hasVideoIntent: boolean;
 };
 
 export function detectWebSearchNeed(text: string): WebSearchDecision {
@@ -66,6 +74,7 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
       hasCurrentIntent: false,
       hasCustomKnowledgeIntent: false,
       hasExplicitWebIntent: false,
+      hasVideoIntent: false,
     };
   }
 
@@ -75,19 +84,26 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
   const explicitReasons = EXPLICIT_WEB_SEARCH_PATTERNS.flatMap(
     ([reason, pattern]) => (pattern.test(normalized) ? [reason] : [])
   );
-  const reasons = Array.from(new Set([...currentReasons, ...explicitReasons]));
+  const videoReasons = VIDEO_SEARCH_PATTERNS.flatMap(([reason, pattern]) =>
+    pattern.test(normalized) ? [reason] : []
+  );
+  const reasons = Array.from(
+    new Set([...currentReasons, ...explicitReasons, ...videoReasons])
+  );
   const hasCustomKnowledgeIntent = CUSTOM_KNOWLEDGE_PATTERNS.some((pattern) =>
     pattern.test(normalized)
   );
   const hasExplicitWebIntent = explicitReasons.length > 0;
+  const hasVideoIntent = videoReasons.length > 0;
   const hasCurrentIntent = currentReasons.length > 0 || hasExplicitWebIntent;
 
   return {
-    shouldSearch: hasCurrentIntent,
+    shouldSearch: hasCurrentIntent || hasVideoIntent,
     reasons,
     hasCurrentIntent,
     hasCustomKnowledgeIntent,
     hasExplicitWebIntent,
+    hasVideoIntent,
   };
 }
 

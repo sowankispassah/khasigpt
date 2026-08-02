@@ -70,6 +70,7 @@ const frameSrc = [
   "'self'",
   "https://checkout.razorpay.com",
   "https://api.razorpay.com",
+  "https://www.youtube-nocookie.com",
 ].join(" ");
 
 const frameAncestors = isDevelopment
@@ -83,7 +84,7 @@ const securityHeaders = [
       "default-src 'self'",
       scriptSrc,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh",
+      "img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com https://avatar.vercel.sh https://i.ytimg.com",
       "font-src 'self'",
       "worker-src 'self' blob:",
       connectSrc,

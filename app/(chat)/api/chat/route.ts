@@ -2975,6 +2975,7 @@ export async function POST(request: Request) {
         try {
           webSearchAnswer = await webSearchService.answerWithSearch({
             conversationContext,
+            includeVideos: webSearchDecision.hasVideoIntent,
             maxSearches: webSearchConfig.maxCalls,
             model: modelConfig.providerModelId,
             provider: attemptedProvider,
@@ -2995,6 +2996,7 @@ export async function POST(request: Request) {
             try {
               webSearchAnswer = await webSearchService.answerWithSearch({
                 conversationContext,
+                includeVideos: webSearchDecision.hasVideoIntent,
                 maxSearches: webSearchConfig.maxCalls,
                 model: modelConfig.providerModelId,
                 provider: fallbackProvider,
@@ -3573,12 +3575,14 @@ export async function POST(request: Request) {
     const webSourcesData = webSearchAnswer &&
       (webSearchAnswer.sources.length > 0 ||
         webSearchAnswer.searchQueries.length > 0 ||
-        webSearchAnswer.citations.length > 0)
+        webSearchAnswer.citations.length > 0 ||
+        webSearchAnswer.videos.length > 0)
       ? {
           provider: webSearchAnswer.provider,
           sources: webSearchAnswer.sources,
           searchQueries: webSearchAnswer.searchQueries,
           citations: webSearchAnswer.citations,
+          videos: webSearchAnswer.videos,
         }
       : null;
     const webSourcesPart = webSourcesData

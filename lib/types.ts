@@ -9,6 +9,7 @@ import type {
   WebSearchCitation,
   WebSearchSource,
   WebSearchStatusData,
+  WebSearchVideo,
 } from "./web-search/types";
 
 export type DataPart = { type: "append-message"; message: string };
@@ -64,6 +65,7 @@ export type CustomUIDataTypes = {
     sources: WebSearchSource[];
     searchQueries?: string[];
     citations?: WebSearchCitation[];
+    videos?: WebSearchVideo[];
   };
   webSearchStatus: WebSearchStatusData;
 };

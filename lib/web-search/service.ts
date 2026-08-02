@@ -6,10 +6,60 @@ import type {
   WebSearchCitation,
   WebSearchProvider,
   WebSearchSource,
+  WebSearchVideo,
 } from "./types";
+import { getYouTubeThumbnailUrl, getYouTubeVideoId } from "./youtube";
 
 const DEFAULT_GEMINI_WEB_SEARCH_MODEL = "gemini-2.5-flash";
 const MAX_SOURCES = 12;
+
+function normalizeVideoLink(
+  url: string,
+  title: string,
+  domain = "youtube.com"
+): WebSearchVideo | null {
+  const videoId = getYouTubeVideoId(url);
+  if (!videoId) {
+    return null;
+  }
+
+  return {
+    title: title.trim().slice(0, 240) || "YouTube video",
+    url,
+    videoId,
+    thumbnailUrl: getYouTubeThumbnailUrl(videoId),
+    domain: domain.trim() || "youtube.com",
+  };
+}
+
+function normalizeVideo(source: WebSearchSource) {
+  return normalizeVideoLink(
+    source.url,
+    source.title,
+    source.domain ?? undefined
+  );
+}
+
+function extractVideosFromAnswer(answer: string) {
+  const candidates: Array<{ title: string; url: string }> = [];
+  const markdownLinkPattern = /\[([^\]]{1,240})\]\((https?:\/\/[^)\s]+)\)/gi;
+  for (const match of answer.matchAll(markdownLinkPattern)) {
+    if (match[1] && match[2]) {
+      candidates.push({ title: match[1], url: match[2] });
+    }
+  }
+
+  const plainUrlPattern = /https?:\/\/[^\s)\]"<>]+/gi;
+  for (const url of answer.match(plainUrlPattern) ?? []) {
+    candidates.push({ title: "YouTube video", url: url.replace(/[.,;:!?]+$/, "") });
+  }
+
+  return candidates
+    .map((candidate) =>
+      normalizeVideoLink(candidate.url, candidate.title, "youtube.com")
+    )
+    .filter((video): video is WebSearchVideo => video !== null);
+}
 
 function normalizeSource(source: unknown): WebSearchSource | null {
   if (!source || typeof source !== "object") {
@@ -75,11 +125,13 @@ function resolveGeminiModel(model: string) {
 
 async function answerWithGeminiGrounding({
   conversationContext,
+  includeVideos,
   maxSearches,
   model,
   userMessage,
 }: {
   conversationContext?: string;
+  includeVideos: boolean;
   maxSearches: number;
   model: string;
   userMessage: string;
@@ -94,6 +146,9 @@ async function answerWithGeminiGrounding({
     "Answer the user's question using current public web information.",
     "Google Search is enabled for this request. Use it before answering, especially when the user asks to browse, search online, look something up, or find a person or place, instead of relying only on model memory.",
     "Answer the user's actual information request directly; do not describe your search capabilities or say that you cannot browse when Google Search is enabled.",
+    includeVideos
+      ? "The user is asking for videos. Prioritize relevant YouTube video results, preserve direct YouTube URLs, and include each result as a Markdown link with its title and direct watch URL. Do not replace the results with generic search instructions. If no suitable videos are found, say so clearly instead of inventing links."
+      : "",
     `Use no more than ${Math.max(1, maxSearches)} distinct web searches when possible.`,
     "Cite factual claims from the grounded web sources in your answer when supported.",
     conversationContext?.trim()
@@ -175,6 +230,18 @@ async function answerWithGeminiGrounding({
     })
     .filter((citation): citation is WebSearchCitation => citation !== null)
     .slice(0, 24);
+  const videos = includeVideos
+    ? Array.from(
+        new Map(
+          [
+            ...sources.map(normalizeVideo),
+            ...extractVideosFromAnswer(answer),
+          ]
+            .filter((video): video is WebSearchVideo => video !== null)
+            .map((video) => [video.videoId, video])
+        ).values()
+      ).slice(0, 8)
+    : [];
   const usageMetadata = response.usageMetadata;
   const inputTokens = usageMetadata?.promptTokenCount ?? 0;
   const outputTokens = usageMetadata?.candidatesTokenCount ?? 0;
@@ -184,6 +251,7 @@ async function answerWithGeminiGrounding({
     provider: "gemini_grounding",
     grounded: searchQueries.length > 0 || sourceMap.size > 0,
     sources,
+    videos,
     searchQueries,
     citations,
     searchCallCount: searchQueries.length,
@@ -199,6 +267,7 @@ export type WebSearchAnswerInput = {
   provider: WebSearchProvider;
   userMessage: string;
   conversationContext?: string;
+  includeVideos?: boolean;
   model: string;
   maxSearches: number;
 };
@@ -206,6 +275,7 @@ export type WebSearchAnswerInput = {
 export const webSearchService = {
   async answerWithSearch({
     conversationContext,
+    includeVideos = false,
     maxSearches,
     model,
     provider,
@@ -215,6 +285,7 @@ export const webSearchService = {
       case "gemini_grounding":
         return answerWithGeminiGrounding({
           conversationContext,
+          includeVideos,
           maxSearches,
           model,
           userMessage,

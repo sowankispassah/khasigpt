@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Globe2,
   LoaderCircle,
+  Play,
   Search,
 } from "lucide-react";
 import { useState } from "react";
@@ -15,7 +16,13 @@ import type {
   WebSearchCitation,
   WebSearchSource,
   WebSearchStatusData,
+  WebSearchVideo,
 } from "@/lib/web-search/types";
+import {
+  getYouTubeEmbedUrl,
+  getYouTubeThumbnailUrl,
+  getYouTubeVideoId,
+} from "@/lib/web-search/youtube";
 
 function getStatusCopy(status: WebSearchStatusData["status"]) {
   switch (status) {
@@ -157,16 +164,117 @@ function normalizeSource(source: WebSearchSource) {
   }
 }
 
+function normalizeVideo(video: WebSearchVideo) {
+  const videoId = getYouTubeVideoId(video.url);
+  if (!videoId || videoId !== video.videoId) {
+    return null;
+  }
+  return {
+    ...video,
+    thumbnailUrl: getYouTubeThumbnailUrl(videoId),
+    videoId,
+  };
+}
+
+function WebSearchVideos({ videos }: { videos: WebSearchVideo[] }) {
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+  const safeVideos = videos
+    .map(normalizeVideo)
+    .filter(
+      (video): video is NonNullable<ReturnType<typeof normalizeVideo>> =>
+        Boolean(video)
+    )
+    .filter(
+      (video, index, all) =>
+        all.findIndex((item) => item.videoId === video.videoId) === index
+    )
+    .slice(0, 8);
+
+  if (safeVideos.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2" data-testid="web-search-videos">
+      <div className="font-medium text-foreground text-sm">
+        <EditableTranslation
+          defaultText="Videos"
+          description="Heading above video results returned by grounded Web Search."
+          translationKey="chat.web_search.videos"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {safeVideos.map((video) => {
+          const isActive = activeVideoId === video.videoId;
+          return (
+            <div
+              className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-background/70"
+              key={video.videoId}
+            >
+              {isActive ? (
+                <iframe
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  className="aspect-video w-full border-0"
+                  src={getYouTubeEmbedUrl(video.videoId)}
+                  title={video.title}
+                />
+              ) : (
+                <button
+                  aria-label={`Play ${video.title}`}
+                  className="group relative block aspect-video w-full cursor-pointer overflow-hidden bg-muted text-left"
+                  onClick={() => setActiveVideoId(video.videoId)}
+                  type="button"
+                >
+                  {/* biome-ignore lint/performance/noImgElement: YouTube thumbnails are dynamic remote media derived from a validated video ID. */}
+                  <img
+                    alt=""
+                    className="size-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                    loading="lazy"
+                    src={video.thumbnailUrl}
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/15 transition group-hover:bg-black/25">
+                    <span className="flex size-12 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition group-hover:scale-105">
+                      <Play className="ml-0.5 size-5 fill-current" />
+                    </span>
+                  </span>
+                </button>
+              )}
+              <a
+                className="flex items-start gap-2 px-3 py-2.5 transition hover:bg-muted/40"
+                href={video.url}
+                rel="noreferrer noopener"
+                target="_blank"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block line-clamp-2 font-medium text-foreground text-xs">
+                    {video.title}
+                  </span>
+                  <span className="mt-1 block truncate text-muted-foreground text-[11px]">
+                    {video.domain}
+                  </span>
+                </span>
+                <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              </a>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function WebSearchSources({
   citations = [],
   provider,
   searchQueries = [],
   sources,
+  videos = [],
 }: {
   citations?: WebSearchCitation[];
   provider: string;
   searchQueries?: string[];
   sources: WebSearchSource[];
+  videos?: WebSearchVideo[];
 }) {
   const safeSources = sources
     .map(normalizeSource)
@@ -180,8 +288,19 @@ export function WebSearchSources({
   const safeCitations = citations
     .filter((citation) => citation.text?.trim() && citation.sourceIndexes?.length)
     .slice(0, 6);
+  const safeVideos = videos
+    .map(normalizeVideo)
+    .filter(
+      (video): video is NonNullable<ReturnType<typeof normalizeVideo>> =>
+        Boolean(video)
+    );
 
-  if (safeSources.length === 0 && safeQueries.length === 0 && safeCitations.length === 0) {
+  if (
+    safeSources.length === 0 &&
+    safeQueries.length === 0 &&
+    safeCitations.length === 0 &&
+    safeVideos.length === 0
+  ) {
     return null;
   }
 
@@ -225,6 +344,7 @@ export function WebSearchSources({
       </summary>
 
       <div className="space-y-3 border-border/60 border-t px-3 py-3">
+        {safeVideos.length > 0 ? <WebSearchVideos videos={safeVideos} /> : null}
         {safeSources.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2">
             {safeSources.map((source, index) => {

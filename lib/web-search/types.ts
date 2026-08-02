@@ -24,6 +24,14 @@ export type WebSearchSource = {
   domain?: string | null;
 };
 
+export type WebSearchVideo = {
+  title: string;
+  url: string;
+  videoId: string;
+  thumbnailUrl: string;
+  domain: string;
+};
+
 export type WebSearchCitation = {
   text: string;
   sourceIndexes: number[];
@@ -42,6 +50,7 @@ export type WebSearchAnswer = {
   provider: WebSearchProvider;
   grounded: boolean;
   sources: WebSearchSource[];
+  videos: WebSearchVideo[];
   searchQueries: string[];
   citations: WebSearchCitation[];
   searchCallCount: number;
