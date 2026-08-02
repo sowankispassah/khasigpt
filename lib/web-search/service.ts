@@ -92,6 +92,8 @@ async function answerWithGeminiGrounding({
   const ai = new GoogleGenAI({ apiKey });
   const prompt = [
     "Answer the user's question using current public web information.",
+    "Google Search is enabled for this request. Use it before answering, especially when the user asks to browse, search online, look something up, or find a person or place, instead of relying only on model memory.",
+    "Answer the user's actual information request directly; do not describe your search capabilities or say that you cannot browse when Google Search is enabled.",
     `Use no more than ${Math.max(1, maxSearches)} distinct web searches when possible.`,
     "Cite factual claims from the grounded web sources in your answer when supported.",
     conversationContext?.trim()

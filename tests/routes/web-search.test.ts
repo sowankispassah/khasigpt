@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { detectWebSearchNeed } from "@/lib/web-search/detection";
+import {
+  detectWebSearchNeed,
+  resolveWebSearchQuery,
+} from "@/lib/web-search/detection";
 
 const repoRoot = process.cwd();
 
@@ -13,6 +16,20 @@ test.describe("web search grounding", () => {
   test("detects current-information prompts without searching every message", () => {
     expect(detectWebSearchNeed("What is the latest KhasiGPT release?").shouldSearch).toBe(true);
     expect(detectWebSearchNeed("Explain photosynthesis in simple terms.").shouldSearch).toBe(false);
+    expect(detectWebSearchNeed("Who is Jeimon Sumer?")).toMatchObject({
+      hasCurrentIntent: true,
+      shouldSearch: true,
+    });
+    expect(detectWebSearchNeed("Browse the net")).toMatchObject({
+      hasExplicitWebIntent: true,
+      shouldSearch: true,
+    });
+    expect(
+      resolveWebSearchQuery({
+        currentText: "browse the net",
+        previousUserMessages: ["who is Jeimon Sumer"],
+      })
+    ).toBe("who is Jeimon Sumer");
     expect(detectWebSearchNeed("What is the current price and our message limit?")).toMatchObject({
       hasCurrentIntent: true,
       hasCustomKnowledgeIntent: true,
@@ -49,6 +66,7 @@ test.describe("web search grounding", () => {
     expect(service).toContain('case "openai_web_search"');
     expect(route).toContain("retrieveRagContext");
     expect(route).toContain("webSearchService.answerWithSearch");
+    expect(route).toContain("resolveWebSearchQuery");
     expect(route).toContain('type: "data-webSources"');
     expect(route).toContain('type: "data-webSearchStatus"');
     expect(route).toContain("webSearchFinalStatusPart");

@@ -130,7 +130,11 @@ import {
   isWebSearchAllowedForUser,
   loadWebSearchConfig,
 } from "@/lib/web-search/config";
-import { detectWebSearchNeed, getWebSearchDecisionReason } from "@/lib/web-search/detection";
+import {
+  detectWebSearchNeed,
+  getWebSearchDecisionReason,
+  resolveWebSearchQuery,
+} from "@/lib/web-search/detection";
 import { webSearchService } from "@/lib/web-search/service";
 import type {
   WebSearchAnswer,
@@ -2947,7 +2951,13 @@ export async function POST(request: Request) {
         );
       } else {
         const webSearchStartedAt = performance.now();
-        const webSearchQuery = getTextFromMessage(message).trim();
+        const webSearchQuery = resolveWebSearchQuery({
+          currentText: getTextFromMessage(message),
+          previousUserMessages: baseUiMessages
+            .filter((entry) => entry.role === "user")
+            .map((entry) => getTextFromMessage(entry))
+            .filter((text) => text.trim().length > 0),
+        });
         const queryHash = createHash("sha256")
           .update(webSearchQuery)
           .digest("hex");
