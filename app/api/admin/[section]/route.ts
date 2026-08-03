@@ -19,6 +19,7 @@ import {
   getAuditLogCount,
   getChatCount,
   getContactMessageCount,
+  getUserBalanceSummaries,
   getUserCount,
   listAuditLog,
   listCharactersForAdmin,
@@ -30,6 +31,7 @@ import {
   listTranslationEntries,
   listTranslationFeatureLanguagesWithModels,
   listUsers,
+  type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { ContactMessageStatus, UserRole } from "@/lib/db/schema";
 import {
@@ -157,7 +159,25 @@ async function loadUsers(searchParams: URLSearchParams) {
     sectionQuery("users.total", getUserCount({ isActive, role, search }), 0),
   ]);
 
-  return { items, limit, offset, page, total };
+  const balanceByUserId = await sectionQuery(
+    "users.balances",
+    getUserBalanceSummaries(items.map((item) => item.id)),
+    new Map<string, UserBalanceSummary>()
+  );
+
+  return {
+    balances: Object.fromEntries(
+      Array.from(balanceByUserId.entries()).map(([userId, balance]) => [
+        userId,
+        balance.creditsRemaining,
+      ])
+    ),
+    items,
+    limit,
+    offset,
+    page,
+    total,
+  };
 }
 
 async function loadChats(searchParams: URLSearchParams) {

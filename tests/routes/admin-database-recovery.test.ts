@@ -66,6 +66,10 @@ test.describe("admin database recovery", () => {
     expect(source).toContain("getAdminUsersSnapshot({");
     expect(source).not.toContain("getUserCount(");
     expect(source).not.toContain("listUsers({");
+    expect(source).not.toContain("<AdminPagination");
+    expect(source).toContain("<AdminUsersTable");
+    expect(source).toContain("lastLoginAt");
+    expect(source).toContain('search={search ?? ""}');
     expect(source).toContain("balanceByUserIdStatePromise");
     expect(source).toContain("activeSubscriptionsStatePromise");
     expect(source).toContain("<UserCreditAction");
@@ -73,6 +77,21 @@ test.describe("admin database recovery", () => {
     expect(source).toContain(
       "<Suspense fallback={<SubscriptionsFallback />}>"
     );
+  });
+
+  test("keeps user search and appended loading on the admin users surface", async () => {
+    const [pageSource, tableSource, querySource] = await Promise.all([
+      readWorkspaceFile("app/(admin)/admin/users/page.tsx"),
+      readWorkspaceFile("app/(admin)/admin/users/admin-users-table.tsx"),
+      readWorkspaceFile("lib/db/queries.ts"),
+    ]);
+
+    expect(pageSource).toContain("search,");
+    expect(tableSource).toContain("/api/admin/users?");
+    expect(tableSource).toContain("setLoadedUsers((current) => [");
+    expect(tableSource).toContain('defaultText="Load more"');
+    expect(querySource).toContain('action" = \'user.login\'');
+    expect(querySource).toContain('search?: string | null');
   });
 
   test("does not block the shared admin shell on an optional badge query", async () => {

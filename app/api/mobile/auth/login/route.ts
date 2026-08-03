@@ -4,8 +4,10 @@ import { z } from "zod";
 import { withApiTiming } from "@/lib/api/observability";
 import { DUMMY_PASSWORD } from "@/lib/constants";
 import { getAuthUsersByEmail } from "@/lib/db/auth-queries";
+import { createAuditLogEntry } from "@/lib/db/queries";
 import { createMobileSessionFromUser } from "@/lib/mobile-auth-session";
 import { createMobileAuthToken } from "@/lib/mobile-auth-token";
+import { getClientInfoFromHeaders } from "@/lib/security/client-info";
 import {
   incrementRateLimit,
   resetRateLimit,
@@ -143,6 +145,28 @@ export async function POST(request: Request) {
   }
 
   resetRateLimit(rateLimitKey);
+  const clientInfo = await getClientInfoFromHeaders();
+  void withTimeout(
+    createAuditLogEntry({
+      actorId: user.id,
+      action: "user.login",
+      target: { userId: user.id, email: user.email },
+      metadata: {
+        provider: "credentials",
+        type: "password",
+        client: "native",
+      },
+      subjectUserId: user.id,
+      ...clientInfo,
+      clientSource: "android_native",
+    }),
+    1500,
+    () => {
+      console.warn("[mobile-auth] Login audit timed out.");
+    }
+  ).catch((error) => {
+    console.error("[mobile-auth] Failed to record login audit.", error);
+  });
 
   return NextResponse.json(
     {

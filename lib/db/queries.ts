@@ -3895,8 +3895,15 @@ export async function updateUserAuthProvider({
 
 export type AdminUserListItem = Pick<
   User,
-  "allowPersonalKnowledge" | "email" | "id" | "isActive" | "role"
->;
+  | "allowPersonalKnowledge"
+  | "createdAt"
+  | "email"
+  | "id"
+  | "isActive"
+  | "role"
+> & {
+  lastLoginAt: Date | null;
+};
 
 const adminUserListColumns = {
   allowPersonalKnowledge: user.allowPersonalKnowledge,
@@ -3904,6 +3911,13 @@ const adminUserListColumns = {
   id: user.id,
   isActive: user.isActive,
   role: user.role,
+  createdAt: user.createdAt,
+  lastLoginAt: sql<Date | null>`(
+    SELECT MAX(${auditLog.createdAt})
+    FROM ${auditLog}
+    WHERE ${auditLog.action} = 'user.login'
+      AND ${auditLog.subjectUserId} = ${user.id}
+  )`.as("lastLoginAt"),
 };
 
 export async function listUsers({
@@ -4031,9 +4045,17 @@ export type AdminUsersPageSnapshot = AdminUsersSnapshot & {
   balanceByUserId: Map<string, UserBalanceSummary>;
 };
 
+type AdminUsersRawUser = Omit<
+  AdminUserListItem,
+  "createdAt" | "lastLoginAt"
+> & {
+  createdAt: Date | string;
+  lastLoginAt: Date | string | null;
+};
+
 type AdminUsersRawSnapshot = {
   totalUsers: number | string | bigint;
-  users: AdminUserListItem[];
+  users: AdminUsersRawUser[];
 };
 
 type AdminUsersPageRawSnapshot = AdminUsersRawSnapshot & {
@@ -4053,16 +4075,55 @@ type AdminUsersPageRawSnapshot = AdminUsersRawSnapshot & {
   }>;
 };
 
+function normalizeAdminUsers(value: unknown): AdminUserListItem[] {
+  return toArray<AdminUsersRawUser>(value)
+    .map((item) => {
+      const createdAt = toDate(item.createdAt);
+      const lastLoginAt = item.lastLoginAt ? toDate(item.lastLoginAt) : null;
+
+      if (!createdAt) {
+        console.warn(
+          "[admin.users.snapshot] Skipping user with invalid signup date.",
+          { userId: item.id }
+        );
+        return null;
+      }
+
+      return {
+        ...item,
+        createdAt,
+        lastLoginAt,
+      } satisfies AdminUserListItem;
+    })
+    .filter((item): item is AdminUserListItem => item !== null);
+}
+
 export async function getAdminUsersSnapshot({
   limit = 25,
   offset = 0,
+  search,
 }: {
   limit?: number;
   offset?: number;
+  search?: string | null;
 } = {}): Promise<AdminUsersSnapshot> {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   const safeOffset = Math.max(Math.trunc(offset), 0);
+  const normalizedSearch = search?.trim();
   const startedAt = Date.now();
+
+  if (normalizedSearch) {
+    const [users, totalUsers] = await Promise.all([
+      listUsers({
+        limit: safeLimit,
+        offset: safeOffset,
+        search: normalizedSearch,
+      }),
+      getUserCount({ search: normalizedSearch }),
+    ]);
+
+    return { totalUsers, users };
+  }
 
   try {
     const [row] = await withAdminDatabase(
@@ -4073,21 +4134,27 @@ export async function getAdminUsersSnapshot({
         (
           SELECT COALESCE(
             jsonb_agg(
-              to_jsonb(paged_users) - 'createdAt'
+              to_jsonb(paged_users)
               ORDER BY paged_users."createdAt" DESC, paged_users."id" DESC
             ),
             '[]'::jsonb
           )
           FROM (
             SELECT
-              "id",
-              "email",
-              "role",
-              "isActive",
-              "allowPersonalKnowledge",
-              "createdAt"
-            FROM "User"
-            ORDER BY "createdAt" DESC, "id" DESC
+              u."id",
+              u."email",
+              u."role",
+              u."isActive",
+              u."allowPersonalKnowledge",
+              u."createdAt",
+              (
+                SELECT MAX(a."createdAt")
+                FROM "AuditLog" a
+                WHERE a."action" = 'user.login'
+                  AND a."subjectUserId" = u."id"
+              ) AS "lastLoginAt"
+            FROM "User" u
+            ORDER BY u."createdAt" DESC, u."id" DESC
             LIMIT ${safeLimit}
             OFFSET ${safeOffset}
           ) paged_users
@@ -4095,7 +4162,7 @@ export async function getAdminUsersSnapshot({
       `
     );
 
-    const users = toArray<AdminUsersRawSnapshot["users"][number]>(row?.users);
+    const users = normalizeAdminUsers(row?.users);
 
     console.info(
       `[admin.users.snapshot] loaded in ${Date.now() - startedAt}ms`
@@ -4141,14 +4208,20 @@ export async function getAdminUsersPageSnapshot({
       (_adminDb, adminClient) => adminClient<AdminUsersPageRawSnapshot[]>`
       WITH paged_users AS (
         SELECT
-          "id",
-          "email",
-          "role",
-          "isActive",
-          "allowPersonalKnowledge",
-          "createdAt"
-        FROM "User"
-        ORDER BY "createdAt" DESC, "id" DESC
+          u."id",
+          u."email",
+          u."role",
+          u."isActive",
+          u."allowPersonalKnowledge",
+          u."createdAt",
+          (
+            SELECT MAX(a."createdAt")
+            FROM "AuditLog" a
+            WHERE a."action" = 'user.login'
+              AND a."subjectUserId" = u."id"
+          ) AS "lastLoginAt"
+        FROM "User" u
+        ORDER BY u."createdAt" DESC, u."id" DESC
         LIMIT ${safeLimit}
         OFFSET ${safeOffset}
       ),
@@ -4195,7 +4268,7 @@ export async function getAdminUsersPageSnapshot({
         (
           SELECT COALESCE(
             jsonb_agg(
-              to_jsonb(paged_users) - 'createdAt'
+              to_jsonb(paged_users)
               ORDER BY paged_users."createdAt" DESC
             ),
             '[]'::jsonb
@@ -4270,7 +4343,7 @@ export async function getAdminUsersPageSnapshot({
       })),
       balanceByUserId,
       totalUsers: toInteger(row?.totalUsers),
-      users: toArray<AdminUsersRawSnapshot["users"][number]>(row?.users),
+      users: normalizeAdminUsers(row?.users),
     };
   } catch (error) {
     console.error(

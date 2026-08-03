@@ -2,6 +2,111 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "admin.users.search.label",
+    defaultText: "Search users",
+    description: "Label for the admin user keyword search field.",
+  },
+  {
+    key: "admin.users.search.placeholder",
+    defaultText: "Search by email, name, or user ID",
+    description: "Placeholder for searching users by keyword.",
+  },
+  {
+    key: "admin.users.search.submit",
+    defaultText: "Search",
+    description: "Button label that searches the admin user list.",
+  },
+  {
+    key: "admin.users.search.searching",
+    defaultText: "Searching...",
+    description: "Button label shown while the admin user search is loading.",
+  },
+  {
+    key: "admin.users.status.active",
+    defaultText: "Active",
+    description: "Status badge for an active admin user account.",
+  },
+  {
+    key: "admin.users.status.suspended",
+    defaultText: "Suspended",
+    description: "Status badge for a suspended admin user account.",
+  },
+  {
+    key: "admin.users.date.unavailable",
+    defaultText: "Unavailable",
+    description: "Fallback when a user's signup date cannot be displayed.",
+  },
+  {
+    key: "admin.users.last_login.never",
+    defaultText: "Never",
+    description: "Shown when a user has no recorded successful login.",
+  },
+  {
+    key: "admin.users.table.email",
+    defaultText: "Email",
+    description: "Admin user table email column heading.",
+  },
+  {
+    key: "admin.users.table.role",
+    defaultText: "Role",
+    description: "Admin user table role column heading.",
+  },
+  {
+    key: "admin.users.table.status",
+    defaultText: "Status",
+    description: "Admin user table status column heading.",
+  },
+  {
+    key: "admin.users.table.signed_up",
+    defaultText: "Signed up",
+    description: "Admin user table signup date and time column heading.",
+  },
+  {
+    key: "admin.users.table.last_login",
+    defaultText: "Last login",
+    description: "Admin user table latest successful login column heading.",
+  },
+  {
+    key: "admin.users.table.actions",
+    defaultText: "Actions",
+    description: "Admin user table actions column heading.",
+  },
+  {
+    key: "admin.users.table.showing",
+    defaultText: "Showing {shown} of {total} users",
+    description: "Admin user table count showing how many filtered users are currently visible.",
+  },
+  {
+    key: "admin.users.table.count_unavailable",
+    defaultText: "User count unavailable",
+    description: "Shown when the admin user count cannot be confirmed.",
+  },
+  {
+    key: "admin.users.load_more.button",
+    defaultText: "Load more",
+    description: "Button label that appends the next users to the current admin user list.",
+  },
+  {
+    key: "admin.users.load_more.loading",
+    defaultText: "Loading...",
+    description: "Button label shown while more admin users are loading.",
+  },
+  {
+    key: "admin.users.load_more.complete",
+    defaultText: "All users loaded",
+    description: "Message shown when every filtered admin user is visible.",
+  },
+  {
+    key: "admin.users.load_more.error",
+    defaultText: "Unable to load more users. Please retry.",
+    description: "Error shown when loading more admin users fails.",
+  },
+  {
+    key: "admin.users.load_more.timeout",
+    defaultText: "Loading users timed out. Please retry.",
+    description: "Error shown when loading more admin users times out.",
+  },
+  {
     key: "admin.rag.form.create_title",
     defaultText: "Create entry",
     description: "Heading for creating a custom knowledge entry.",

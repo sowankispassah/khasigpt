@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
-import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   type AdminQueryResult,
   adminQueryResult,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { AddCreditsForm } from "./add-credits-form";
+import { AdminUsersTable } from "./admin-users-table";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,19 @@ function parsePage(value: string | string[] | undefined) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+function parseSearch(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const normalized = rawValue?.trim();
+  return normalized ? normalized.slice(0, 120) : undefined;
+}
+
+function formatAdminDateTime(value: Date) {
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value);
+}
+
 export default async function AdminUsersPage({
   searchParams,
 }: {
@@ -41,6 +55,7 @@ export default async function AdminUsersPage({
   const currentUserId = session?.user?.id;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
+  const search = parseSearch(resolvedSearchParams?.q);
 
   const withQueryState = async <T,>(
     label: string,
@@ -66,6 +81,7 @@ export default async function AdminUsersPage({
     getAdminUsersSnapshot({
       limit: USERS_PAGE_SIZE,
       offset: (requestedPage - 1) * USERS_PAGE_SIZE,
+      search,
     }),
     EMPTY_ADMIN_USERS_SNAPSHOT
   );
@@ -83,6 +99,7 @@ export default async function AdminUsersPage({
       getAdminUsersSnapshot({
         limit: USERS_PAGE_SIZE,
         offset: (page - 1) * USERS_PAGE_SIZE,
+        search,
       }),
       EMPTY_ADMIN_USERS_SNAPSHOT
     );
@@ -133,7 +150,7 @@ export default async function AdminUsersPage({
         currentUserId={currentUserId}
         page={page}
         pagedUsers={pagedUsers}
-        resolvedSearchParams={resolvedSearchParams}
+        search={search ?? ""}
         totalUsers={totalUsers}
         totalUsersConfirmed={totalUsersConfirmed}
         usersConfirmed={usersSnapshotState.ok}
@@ -153,7 +170,7 @@ function UsersTableSection({
   currentUserId,
   page,
   pagedUsers,
-  resolvedSearchParams,
+  search,
   totalUsers,
   totalUsersConfirmed,
   usersConfirmed,
@@ -164,7 +181,7 @@ function UsersTableSection({
   currentUserId: string | undefined;
   page: number;
   pagedUsers: AdminUsersSnapshot["users"];
-  resolvedSearchParams: Record<string, string | string[] | undefined> | undefined;
+  search: string;
   totalUsers: number;
   totalUsersConfirmed: boolean;
   usersConfirmed: boolean;
@@ -176,90 +193,105 @@ function UsersTableSection({
           balanceByUserIdStatePromise={balanceByUserIdStatePromise}
         />
       </Suspense>
-      <div className="overflow-x-auto">
-        <table className="w-full whitespace-nowrap text-sm">
-          <thead className="text-muted-foreground text-xs uppercase">
-            <tr>
-              <th className="py-3 text-left">Email</th>
-              <th className="py-3 text-left">Role</th>
-              <th className="py-3 text-left">Status</th>
-              <th className="py-3 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!usersConfirmed ? (
-              <tr>
-                <td className="py-6 text-muted-foreground" colSpan={4}>
-                  Unable to load users for this page.
-                </td>
-              </tr>
-            ) : pagedUsers.length === 0 ? (
-              <tr>
-                <td className="py-6 text-muted-foreground" colSpan={4}>
-                  No users found.
-                </td>
-              </tr>
-            ) : (
-              pagedUsers.map((user) => (
-                <tr className="border-t text-sm" key={user.id}>
-                  <td className="py-3">{user.email}</td>
-                  <td className="py-3 capitalize">{user.role}</td>
-                  <td className="py-3">
-                    {user.isActive ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
-                        Suspended
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
-                      <AdminUserActionsMenu
-                        allowPersonalKnowledge={Boolean(
-                          user.allowPersonalKnowledge
-                        )}
-                        currentRole={user.role as UserRole}
-                        isActive={user.isActive}
-                        isSelf={user.id === currentUserId}
-                        userId={user.id}
+      <AdminUsersTable
+        currentUserId={currentUserId}
+        key={`${page}:${search}`}
+        initialPage={page}
+        initialSearch={search}
+        initialUserIds={pagedUsers.map((user) => user.id)}
+        pageSize={USERS_PAGE_SIZE}
+        totalUsers={totalUsers}
+        totalUsersConfirmed={totalUsersConfirmed}
+      >
+        {!usersConfirmed ? (
+          <tr>
+            <td className="py-6 text-muted-foreground" colSpan={6}>
+              Unable to load users for this page.
+            </td>
+          </tr>
+        ) : pagedUsers.length === 0 ? (
+          <tr>
+            <td className="py-6 text-muted-foreground" colSpan={6}>
+              No users found.
+            </td>
+          </tr>
+        ) : (
+          pagedUsers.map((user) => {
+            const lastLoginAt = user.lastLoginAt;
+            return (
+              <tr className="border-t text-sm" key={user.id}>
+                <td className="py-3">{user.email}</td>
+                <td className="py-3 capitalize">{user.role}</td>
+                <td className="py-3">
+                  {user.isActive ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
+                      <EditableTranslation
+                        defaultText="Active"
+                        description="Status badge for an active admin user account."
+                        translationKey="admin.users.status.active"
                       />
-                      <Suspense
-                        fallback={
-                          <AddCreditsForm
-                            creditsRemaining={null}
-                            userId={user.id}
-                          />
-                        }
-                      >
-                        <UserCreditAction
-                          balanceByUserIdStatePromise={
-                            balanceByUserIdStatePromise
-                          }
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
+                      <EditableTranslation
+                        defaultText="Suspended"
+                        description="Status badge for a suspended admin user account."
+                        translationKey="admin.users.status.suspended"
+                      />
+                    </span>
+                  )}
+                </td>
+                <td className="py-3">
+                  <time dateTime={user.createdAt.toISOString()}>
+                    {formatAdminDateTime(user.createdAt)}
+                  </time>
+                </td>
+                <td className="py-3">
+                  {lastLoginAt ? (
+                    <time dateTime={lastLoginAt.toISOString()}>
+                      {formatAdminDateTime(lastLoginAt)}
+                    </time>
+                  ) : (
+                    <EditableTranslation
+                      defaultText="Never"
+                      description="Shown when a user has no recorded successful login."
+                      translationKey="admin.users.last_login.never"
+                    />
+                  )}
+                </td>
+                <td className="py-3">
+                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
+                    <AdminUserActionsMenu
+                      allowPersonalKnowledge={Boolean(
+                        user.allowPersonalKnowledge
+                      )}
+                      currentRole={user.role as UserRole}
+                      isActive={user.isActive}
+                      isSelf={user.id === currentUserId}
+                      userId={user.id}
+                    />
+                    <Suspense
+                      fallback={
+                        <AddCreditsForm
+                          creditsRemaining={null}
                           userId={user.id}
                         />
-                      </Suspense>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-4">
-        <AdminPagination
-          itemLabel="users"
-          page={page}
-          pageSize={USERS_PAGE_SIZE}
-          pathname="/admin/users"
-          searchParams={resolvedSearchParams}
-          totalItems={totalUsersConfirmed ? totalUsers : pagedUsers.length}
-        />
-      </div>
+                      }
+                    >
+                      <UserCreditAction
+                        balanceByUserIdStatePromise={
+                          balanceByUserIdStatePromise
+                        }
+                        userId={user.id}
+                      />
+                    </Suspense>
+                  </div>
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </AdminUsersTable>
     </div>
   );
 }
