@@ -16,6 +16,7 @@ import {
   getDefaultIconPromptActions,
 } from "@/lib/icon-prompts";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -190,10 +191,17 @@ async function safeBootstrapSection<T>({
   loader: () => Promise<T>;
   phase: "startup" | "full";
 }): Promise<BootstrapSectionResult<T>> {
+  const timeoutMs = phase === "startup" ? 2500 : 5000;
   try {
     const data = await withApiTiming(
       label,
-      () => loader(),
+      () =>
+        withTimeout(loader(), timeoutMs, () => {
+          console.warn(
+            `[api/mobile/bootstrap] ${label} timed out during ${phase}; using fallback.`,
+            { timeoutMs }
+          );
+        }),
       { slowMs: phase === "startup" ? 500 : 1500 }
     );
     return { data, degraded: false };

@@ -160,10 +160,11 @@ export const getDefaultLanguage = async () => {
 };
 
 export async function resolveLanguage(preferredCode?: string | null) {
-  const [languages, preferred] = await Promise.all([
-    getActiveLanguages(),
-    preferredCode ? getLanguageByCode(preferredCode) : Promise.resolve(null),
-  ]);
+  const languages = await getActiveLanguages();
+  const normalizedPreferredCode = preferredCode?.trim().toLowerCase() ?? null;
+  const preferred = normalizedPreferredCode
+    ? languages.find((entry) => entry.code === normalizedPreferredCode) ?? null
+    : null;
 
   const fallback =
     languages.find((entry) => entry.isDefault) ?? languages[0] ?? null;

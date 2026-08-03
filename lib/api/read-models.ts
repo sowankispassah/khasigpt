@@ -29,7 +29,6 @@ import {
   getAppSetting,
   getLastKnownAppSetting,
   getUserBalanceSummary,
-  listLanguagesWithSettings,
   listPricingPlans,
   listTranslationFeatureLanguagesWithModels,
 } from "@/lib/db/queries";
@@ -271,11 +270,7 @@ export async function loadFeatureAccessReadModel({
 async function buildLanguageReadModelFromBundle(
   translationBundle: Awaited<ReturnType<typeof getTranslationBundle>>
 ) {
-  const languagesWithSettings = await listLanguagesWithSettings().catch((error) => {
-    console.error("[read-models] Failed to load chat languages.", error);
-    return [];
-  });
-  const activeChatLanguages = languagesWithSettings
+  const chatLanguages = translationBundle.languages
     .filter((language) => language.isActive)
     .map((language) => ({
       id: language.id,
@@ -285,20 +280,6 @@ async function buildLanguageReadModelFromBundle(
       isActive: language.isActive,
       syncUiLanguage: language.syncUiLanguage,
     }));
-
-  const chatLanguages =
-    activeChatLanguages.length > 0
-      ? activeChatLanguages
-      : translationBundle.languages
-          .filter((language) => language.isActive)
-          .map((language) => ({
-            id: language.id,
-            code: language.code,
-            name: language.name,
-            isDefault: language.isDefault,
-            isActive: language.isActive,
-            syncUiLanguage: language.syncUiLanguage,
-          }));
 
   return {
     i18n: {

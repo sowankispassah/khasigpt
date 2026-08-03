@@ -7,9 +7,13 @@ import {
   loadLanguageReadModel,
 } from "@/lib/api/read-models";
 import { getFallbackTranslationBundle } from "@/lib/i18n/dictionary";
+import { withTimeout } from "@/lib/utils/async";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const FRESH_READ_TIMEOUT_MS = 4000;
+const CACHED_READ_TIMEOUT_MS = 1500;
 
 function normalizeLanguageCode(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null;
@@ -37,9 +41,19 @@ export async function GET(request: Request) {
       languageSnapshot = await withApiTiming(
         "mobile.i18n.fresh",
         () =>
-          loadLanguageReadModel(preferredLanguage, {
-            requireFresh: true,
-          }),
+          withTimeout(
+            loadLanguageReadModel(preferredLanguage, {
+              requireFresh: true,
+              timeoutMs: 2500,
+            }),
+            FRESH_READ_TIMEOUT_MS,
+            () => {
+              console.warn("[api/mobile/i18n] Fresh read timed out.", {
+                language: preferredLanguage,
+                timeoutMs: FRESH_READ_TIMEOUT_MS,
+              });
+            }
+          ),
         { slowMs: 750 }
       );
     } catch (freshError) {
@@ -50,7 +64,17 @@ export async function GET(request: Request) {
       });
       languageSnapshot = await withApiTiming(
         "mobile.i18n.cached_fallback",
-        () => loadCachedLanguageReadModel(preferredLanguage),
+        () =>
+          withTimeout(
+            loadCachedLanguageReadModel(preferredLanguage),
+            CACHED_READ_TIMEOUT_MS,
+            () => {
+              console.warn("[api/mobile/i18n] Cached read timed out.", {
+                language: preferredLanguage,
+                timeoutMs: CACHED_READ_TIMEOUT_MS,
+              });
+            }
+          ),
         { slowMs: 500 }
       );
     }

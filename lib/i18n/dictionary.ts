@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/queries";
 import { translationKey, translationValue } from "@/lib/db/schema";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
+import { withTimeout } from "@/lib/utils/async";
 
 import {
   getAllLanguages,
@@ -688,7 +689,7 @@ export async function getTranslationBundle(
 
 export async function getFreshTranslationBundle(
   preferredCode?: string | null,
-  _timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
+  timeoutMs = TRANSLATION_INITIAL_TIMEOUT_MS
 ): Promise<TranslationBundle> {
   if (isProductionBuildPhase()) {
     return typeof preferredCode === "string" && preferredCode.trim().length > 0
@@ -696,19 +697,43 @@ export async function getFreshTranslationBundle(
       : FALLBACK_BUNDLE;
   }
 
-  const key = cacheKeyForLanguage(preferredCode);
-  const bundle = await loadTranslationBundleCached(preferredCode);
+  if (shouldSkipTranslationDb()) {
+    throw new Error("translation_db_temporarily_unavailable");
+  }
 
-  clearTranslationDbFailure();
-  BUNDLE_CACHE.set(key, {
-    data: bundle,
-    cachedAt: Date.now(),
-    source: "db",
-  });
-  void persistBundle(key, bundle).catch((error) => {
-    logTranslationError("[i18n] Failed to persist translation bundle.", error);
-  });
-  return bundle;
+  const key = cacheKeyForLanguage(preferredCode);
+  try {
+    const bundle = await withTimeout(
+      loadTranslationBundleCached(preferredCode),
+      timeoutMs,
+      () => {
+        console.warn("[i18n] Fresh translation bundle timed out.", {
+          language: preferredCode ?? null,
+          timeoutMs,
+        });
+      }
+    );
+
+    clearTranslationDbFailure();
+    BUNDLE_CACHE.set(key, {
+      data: bundle,
+      cachedAt: Date.now(),
+      source: "db",
+    });
+    void persistBundle(key, bundle).catch((error) => {
+      logTranslationError("[i18n] Failed to persist translation bundle.", error);
+    });
+    return bundle;
+  } catch (error) {
+    if (isTimeoutError(error) || shouldMarkTranslationDbFailure(error)) {
+      markTranslationDbFailure();
+    }
+    logTranslationError(
+      "[i18n] Fresh translation bundle load failed.",
+      error
+    );
+    throw error;
+  }
 }
 
 export async function invalidateTranslationBundleCache(
