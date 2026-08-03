@@ -6,6 +6,7 @@ import {
   loadCachedLanguageReadModel,
   loadLanguageReadModel,
 } from "@/lib/api/read-models";
+import { getFallbackTranslationBundle } from "@/lib/i18n/dictionary";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -92,6 +93,37 @@ export async function GET(request: Request) {
       error,
       language: preferredLanguage,
     });
+
+    const fallbackBundle = getFallbackTranslationBundle(preferredLanguage);
+    const fallbackLanguageCode = normalizeLanguageCode(
+      fallbackBundle.activeLanguage.code
+    );
+    if (
+      fallbackLanguageCode &&
+      fallbackLanguageCode === preferredLanguage &&
+      fallbackBundle.activeLanguage.isActive &&
+      fallbackBundle.activeLanguage.syncUiLanguage
+    ) {
+      return NextResponse.json(
+        {
+          meta: {
+            degraded: true,
+            source: "fallback",
+          },
+          i18n: {
+            activeLanguage: fallbackBundle.activeLanguage,
+            dictionary: fallbackBundle.dictionary,
+            dictionaryLanguageCode: fallbackLanguageCode,
+            languages: fallbackBundle.languages,
+          },
+          chatLanguages: fallbackBundle.languages.filter(
+            (language) => language.isActive
+          ),
+        },
+        { headers: noStoreHeaders() }
+      );
+    }
+
     return NextResponse.json(
       {
         code: "language_load_failed",
