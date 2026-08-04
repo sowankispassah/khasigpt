@@ -8,43 +8,9 @@ const HEARTBEAT_JITTER_MS = 5_000;
 const PRESENCE_DISABLED_IN_DEV =
   process.env.NODE_ENV === "development" &&
   process.env.NEXT_PUBLIC_ENABLE_PRESENCE_IN_DEV !== "1";
-const PRESENCE_TRACKED_PATH_SEGMENTS = new Set([
-  "chat",
-  "forum",
-  "profile",
-  "subscriptions",
-  "recharge",
-  "creator-dashboard",
-  "admin",
-]);
 
 function shouldTrackPresencePath(pathname: string | null) {
-  if (!pathname) {
-    return false;
-  }
-
-  const segments = pathname
-    .toLowerCase()
-    .split("/")
-    .filter((segment) => segment.length > 0);
-  if (segments.length === 0) {
-    return false;
-  }
-
-  if (PRESENCE_TRACKED_PATH_SEGMENTS.has(segments[0])) {
-    return true;
-  }
-
-  // Locale-prefixed routes: /en/chat, /hi/forum, etc.
-  if (
-    segments.length > 1 &&
-    segments[0].length <= 5 &&
-    PRESENCE_TRACKED_PATH_SEGMENTS.has(segments[1])
-  ) {
-    return true;
-  }
-
-  return false;
+  return Boolean(pathname);
 }
 
 export function UserPresenceTracker({ userId }: { userId: string }) {

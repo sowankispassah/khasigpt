@@ -22,6 +22,10 @@ import {
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import type {
+  AdminUserPresenceFilter,
+  AdminUserSortOption,
+} from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { doneGlobalProgress, startGlobalProgress } from "@/lib/ui/global-progress";
 import { AddCreditsForm } from "./add-credits-form";
@@ -34,7 +38,9 @@ type AdminUserRow = {
   email: string;
   id: string;
   isActive: boolean;
+  isOnline: boolean;
   lastLoginAt: string | Date | null;
+  lastSeenAt: string | Date | null;
   role: UserRole;
   creditsRemaining: number | null;
 };
@@ -74,7 +80,9 @@ function isAdminUserRow(value: unknown): value is Omit<AdminUserRow, "creditsRem
     typeof row.id === "string" &&
     row.id.length > 0 &&
     typeof row.isActive === "boolean" &&
+    typeof row.isOnline === "boolean" &&
     isValidDateValue(row.lastLoginAt, true) &&
+    isValidDateValue(row.lastSeenAt, true) &&
     (row.role === "admin" || row.role === "creator" || row.role === "regular")
   );
 }
@@ -106,10 +114,29 @@ function LoadingLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function AdminUsersSearchForm({ initialSearch }: { initialSearch: string }) {
+type AdminUserAccountStatusFilter = "active" | "all" | "suspended";
+
+function AdminUsersSearchForm({
+  initialAccountStatus,
+  initialPresence,
+  initialRole,
+  initialSearch,
+  initialSort,
+}: {
+  initialAccountStatus: AdminUserAccountStatusFilter;
+  initialPresence: AdminUserPresenceFilter;
+  initialRole: UserRole | "all";
+  initialSearch: string;
+  initialSort: AdminUserSortOption;
+}) {
   const router = useRouter();
   const [value, setValue] = useState(initialSearch);
+  const [accountStatus, setAccountStatus] = useState(initialAccountStatus);
+  const [presence, setPresence] = useState(initialPresence);
+  const [role, setRole] = useState(initialRole);
+  const [sort, setSort] = useState(initialSort);
   const [isPending, startTransition] = useTransition();
+  const { translate } = useTranslation();
   const { editButton, text: placeholder } = useEditableTranslation(
     "admin.users.search.placeholder",
     "Search by email, name, or user ID",
@@ -118,7 +145,17 @@ function AdminUsersSearchForm({ initialSearch }: { initialSearch: string }) {
 
   useEffect(() => {
     setValue(initialSearch);
-  }, [initialSearch]);
+    setAccountStatus(initialAccountStatus);
+    setPresence(initialPresence);
+    setRole(initialRole);
+    setSort(initialSort);
+  }, [
+    initialAccountStatus,
+    initialPresence,
+    initialRole,
+    initialSearch,
+    initialSort,
+  ]);
 
   useEffect(() => {
     if (!isPending) {
@@ -132,6 +169,18 @@ function AdminUsersSearchForm({ initialSearch }: { initialSearch: string }) {
     const params = new URLSearchParams();
     if (search) {
       params.set("q", search);
+    }
+    if (role !== "all") {
+      params.set("role", role);
+    }
+    if (accountStatus !== "all") {
+      params.set("active", accountStatus === "active" ? "true" : "false");
+    }
+    if (presence !== "all") {
+      params.set("presence", presence);
+    }
+    if (sort !== "created_desc") {
+      params.set("sort", sort);
     }
 
     startGlobalProgress();
@@ -160,6 +209,136 @@ function AdminUsersSearchForm({ initialSearch }: { initialSearch: string }) {
           value={value}
         />
         {editButton}
+      </div>
+      <div className="space-y-1">
+        <label className="font-medium text-sm" htmlFor="admin-user-role">
+          <EditableTranslation
+            defaultText="Role"
+            description="Label for the admin user role filter."
+            translationKey="admin.users.filters.role.label"
+          />
+        </label>
+        <select
+          className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
+          id="admin-user-role"
+          onChange={(event) => setRole(event.target.value as UserRole | "all")}
+          value={role}
+        >
+          <option value="all">
+            {translate("admin.users.filters.role.all", "All roles")}
+          </option>
+          <option value="admin">
+            {translate("admin.users.filters.role.admin", "Admins")}
+          </option>
+          <option value="creator">
+            {translate("admin.users.filters.role.creator", "Creators")}
+          </option>
+          <option value="regular">
+            {translate("admin.users.filters.role.regular", "Regular users")}
+          </option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="font-medium text-sm" htmlFor="admin-user-account-status">
+          <EditableTranslation
+            defaultText="Account status"
+            description="Label for the admin user account status filter."
+            translationKey="admin.users.filters.account_status.label"
+          />
+        </label>
+        <select
+          className="h-9 min-w-36 rounded-md border border-input bg-background px-2 text-sm"
+          id="admin-user-account-status"
+          onChange={(event) =>
+            setAccountStatus(event.target.value as AdminUserAccountStatusFilter)
+          }
+          value={accountStatus}
+        >
+          <option value="all">
+            {translate("admin.users.filters.account_status.all", "All statuses")}
+          </option>
+          <option value="active">
+            {translate("admin.users.filters.account_status.active", "Active")}
+          </option>
+          <option value="suspended">
+            {translate(
+              "admin.users.filters.account_status.suspended",
+              "Suspended"
+            )}
+          </option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="font-medium text-sm" htmlFor="admin-user-presence">
+          <EditableTranslation
+            defaultText="Presence"
+            description="Label for the admin user online presence filter."
+            translationKey="admin.users.filters.presence.label"
+          />
+        </label>
+        <select
+          className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
+          id="admin-user-presence"
+          onChange={(event) =>
+            setPresence(event.target.value as AdminUserPresenceFilter)
+          }
+          value={presence}
+        >
+          <option value="all">
+            {translate("admin.users.filters.presence.all", "All users")}
+          </option>
+          <option value="online">
+            {translate("admin.users.filters.presence.online", "Online now")}
+          </option>
+          <option value="offline">
+            {translate("admin.users.filters.presence.offline", "Offline")}
+          </option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="font-medium text-sm" htmlFor="admin-user-sort">
+          <EditableTranslation
+            defaultText="Sort by"
+            description="Label for the admin user sort order control."
+            translationKey="admin.users.filters.sort.label"
+          />
+        </label>
+        <select
+          className="h-9 min-w-44 rounded-md border border-input bg-background px-2 text-sm"
+          id="admin-user-sort"
+          onChange={(event) =>
+            setSort(event.target.value as AdminUserSortOption)
+          }
+          value={sort}
+        >
+          <option value="created_desc">
+            {translate("admin.users.filters.sort.newest", "Newest signups")}
+          </option>
+          <option value="created_asc">
+            {translate("admin.users.filters.sort.oldest", "Oldest signups")}
+          </option>
+          <option value="last_login_desc">
+            {translate(
+              "admin.users.filters.sort.last_login_newest",
+              "Latest login"
+            )}
+          </option>
+          <option value="last_login_asc">
+            {translate(
+              "admin.users.filters.sort.last_login_oldest",
+              "Oldest login"
+            )}
+          </option>
+          <option value="online_first">
+            {translate("admin.users.filters.sort.online_first", "Online first")}
+          </option>
+          <option value="email_asc">
+            {translate("admin.users.filters.sort.email_asc", "Email A-Z")}
+          </option>
+          <option value="email_desc">
+            {translate("admin.users.filters.sort.email_desc", "Email Z-A")}
+          </option>
+        </select>
       </div>
       <Button
         className="cursor-pointer"
@@ -210,7 +389,15 @@ function LoadedUserRow({
       <td className="py-3">{user.email}</td>
       <td className="py-3 capitalize">{user.role}</td>
       <td className="py-3">
-        {user.isActive ? (
+        {user.isOnline ? (
+          <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700 text-xs">
+            <EditableTranslation
+              defaultText="Online"
+              description="Status badge for an admin user who has sent a recent presence heartbeat."
+              translationKey="admin.users.status.online"
+            />
+          </span>
+        ) : user.isActive ? (
           <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
             <EditableTranslation
               defaultText="Active"
@@ -240,7 +427,13 @@ function LoadedUserRow({
         )}
       </td>
       <td className="py-3">
-        {lastLoginAt ? (
+        {user.isOnline ? (
+          <EditableTranslation
+            defaultText="Online"
+            description="Shown in the last-login column while the user is currently online."
+            translationKey="admin.users.last_login.online"
+          />
+        ) : lastLoginAt ? (
           <time dateTime={lastLoginAt.toISOString()}>
             {formatDateTime(lastLoginAt)}
           </time>
@@ -275,18 +468,26 @@ function LoadedUserRow({
 export function AdminUsersTable({
   children,
   currentUserId,
+  initialAccountStatus,
   initialPage,
+  initialPresence,
+  initialRole,
   initialSearch,
   initialUserIds,
+  initialSort,
   pageSize,
   totalUsers,
   totalUsersConfirmed,
 }: {
   children: ReactNode;
   currentUserId: string | undefined;
+  initialAccountStatus: AdminUserAccountStatusFilter;
   initialPage: number;
+  initialPresence: AdminUserPresenceFilter;
+  initialRole: UserRole | "all";
   initialSearch: string;
   initialUserIds: string[];
+  initialSort: AdminUserSortOption;
   pageSize: number;
   totalUsers: number;
   totalUsersConfirmed: boolean;
@@ -341,6 +542,21 @@ export function AdminUsersTable({
       });
       if (initialSearch) {
         params.set("q", initialSearch);
+      }
+      if (initialRole !== "all") {
+        params.set("role", initialRole);
+      }
+      if (initialAccountStatus !== "all") {
+        params.set(
+          "active",
+          initialAccountStatus === "active" ? "true" : "false"
+        );
+      }
+      if (initialPresence !== "all") {
+        params.set("presence", initialPresence);
+      }
+      if (initialSort !== "created_desc") {
+        params.set("sort", initialSort);
       }
 
       const response = await fetch(`/api/admin/users?${params}`, {
@@ -416,7 +632,13 @@ export function AdminUsersTable({
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <AdminUsersSearchForm initialSearch={initialSearch} />
+      <AdminUsersSearchForm
+        initialAccountStatus={initialAccountStatus}
+        initialPresence={initialPresence}
+        initialRole={initialRole}
+        initialSearch={initialSearch}
+        initialSort={initialSort}
+      />
       <AdminUsersBulkActionBar />
       <div className="mt-4 overflow-x-auto">
         <table className="w-full whitespace-nowrap text-sm">

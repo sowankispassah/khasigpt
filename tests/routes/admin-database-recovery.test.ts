@@ -90,8 +90,36 @@ test.describe("admin database recovery", () => {
     expect(tableSource).toContain("/api/admin/users?");
     expect(tableSource).toContain("setLoadedUsers((current) => [");
     expect(tableSource).toContain('defaultText="Load more"');
-    expect(querySource).toContain('action" = \'user.login\'');
+    expect(querySource).toContain(
+      'action" IN (\'user.login\', \'user.signup\')'
+    );
     expect(querySource).toContain('search?: string | null');
+  });
+
+  test("supports online presence, role/status filters, and stable user sorting", async () => {
+    const [pageSource, tableSource, apiSource, querySource, trackerSource] =
+      await Promise.all([
+        readWorkspaceFile("app/(admin)/admin/users/page.tsx"),
+        readWorkspaceFile("app/(admin)/admin/users/admin-users-table.tsx"),
+        readWorkspaceFile("app/api/admin/[section]/route.ts"),
+        readWorkspaceFile("lib/db/queries.ts"),
+        readWorkspaceFile("components/user-presence-tracker.tsx"),
+      ]);
+
+    expect(pageSource).toContain('parsePresence(resolvedSearchParams?.presence)');
+    expect(pageSource).toContain('parseSort(resolvedSearchParams?.sort)');
+    expect(pageSource).toContain('defaultText="Online"');
+    expect(tableSource).toContain('id="admin-user-presence"');
+    expect(tableSource).toContain('id="admin-user-sort"');
+    expect(tableSource).toContain('params.set("presence", presence)');
+    expect(tableSource).toContain('params.set("sort", sort)');
+    expect(apiSource).toContain("isAdminUserPresenceFilter");
+    expect(apiSource).toContain("isAdminUserSortOption");
+    expect(querySource).toContain('LEFT JOIN "UserPresence"');
+    expect(querySource).toContain("NOW() - INTERVAL '5 minutes'");
+    expect(querySource).toContain('case "online_first"');
+    expect(querySource).toContain("user.login', 'user.signup");
+    expect(trackerSource).toContain("return Boolean(pathname)");
   });
 
   test("does not block the shared admin shell on an optional badge query", async () => {

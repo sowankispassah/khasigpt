@@ -13,9 +13,13 @@ import {
 } from "@/lib/admin/safe-query";
 import {
   type ActiveSubscriptionSummary,
+  type AdminUserPresenceFilter,
+  type AdminUserSortOption,
   type AdminUsersSnapshot,
   getAdminUsersSnapshot,
   getUserBalanceSummaries,
+  isAdminUserPresenceFilter,
+  isAdminUserSortOption,
   listActiveSubscriptionSummaries,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
@@ -44,6 +48,42 @@ function parseSearch(value: string | string[] | undefined) {
   return normalized ? normalized.slice(0, 120) : undefined;
 }
 
+function parseRole(value: string | string[] | undefined): UserRole | "all" {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return rawValue === "admin" || rawValue === "creator" || rawValue === "regular"
+    ? rawValue
+    : "all";
+}
+
+function parseAccountStatus(
+  value: string | string[] | undefined
+): "all" | "active" | "suspended" {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (rawValue === "active" || rawValue === "true") {
+    return "active";
+  }
+  if (
+    rawValue === "inactive" ||
+    rawValue === "false" ||
+    rawValue === "suspended"
+  ) {
+    return "suspended";
+  }
+  return "all";
+}
+
+function parsePresence(
+  value: string | string[] | undefined
+): AdminUserPresenceFilter {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return isAdminUserPresenceFilter(rawValue) ? rawValue : "all";
+}
+
+function parseSort(value: string | string[] | undefined): AdminUserSortOption {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return isAdminUserSortOption(rawValue) ? rawValue : "created_desc";
+}
+
 function formatAdminDateTime(value: Date) {
   return new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",
@@ -61,6 +101,16 @@ export default async function AdminUsersPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = parsePage(resolvedSearchParams?.page);
   const search = parseSearch(resolvedSearchParams?.q);
+  const role = parseRole(resolvedSearchParams?.role);
+  const accountStatus = parseAccountStatus(resolvedSearchParams?.active);
+  const presence = parsePresence(resolvedSearchParams?.presence);
+  const sort = parseSort(resolvedSearchParams?.sort);
+  const isActive =
+    accountStatus === "active"
+      ? true
+      : accountStatus === "suspended"
+        ? false
+        : "all";
 
   const withQueryState = async <T,>(
     label: string,
@@ -86,7 +136,11 @@ export default async function AdminUsersPage({
     getAdminUsersSnapshot({
       limit: USERS_PAGE_SIZE,
       offset: (requestedPage - 1) * USERS_PAGE_SIZE,
+      isActive,
+      presence,
+      role,
       search,
+      sort,
     }),
     EMPTY_ADMIN_USERS_SNAPSHOT
   );
@@ -104,7 +158,11 @@ export default async function AdminUsersPage({
       getAdminUsersSnapshot({
         limit: USERS_PAGE_SIZE,
         offset: (page - 1) * USERS_PAGE_SIZE,
+        isActive,
+        presence,
+        role,
         search,
+        sort,
       }),
       EMPTY_ADMIN_USERS_SNAPSHOT
     );
@@ -112,6 +170,14 @@ export default async function AdminUsersPage({
   }
 
   const pagedUsers = usersSnapshotState.data.users;
+  const userListScope = [
+    page,
+    search ?? "",
+    role,
+    accountStatus,
+    presence,
+    sort,
+  ].join(":");
   const balanceByUserIdStatePromise = usersSnapshotState.ok
     ? withQueryState<Map<string, UserBalanceSummary>>(
         "users.balances",
@@ -128,8 +194,8 @@ export default async function AdminUsersPage({
     <AdminUsersSelectionProvider
       currentUserId={currentUserId}
       initialUserIds={pagedUsers.map((user) => user.id)}
-      key={`${page}:${search ?? ""}`}
-      scopeKey={`${page}:${search ?? ""}`}
+      key={userListScope}
+      scopeKey={userListScope}
     >
       <div className="flex flex-col gap-6">
         <header className="flex items-center justify-between gap-3">
@@ -164,7 +230,11 @@ export default async function AdminUsersPage({
           currentUserId={currentUserId}
           page={page}
           pagedUsers={pagedUsers}
+          accountStatus={accountStatus}
+          presence={presence}
+          role={role}
           search={search ?? ""}
+          sort={sort}
           totalUsers={totalUsers}
           totalUsersConfirmed={totalUsersConfirmed}
           usersConfirmed={usersSnapshotState.ok}
@@ -185,7 +255,11 @@ function UsersTableSection({
   currentUserId,
   page,
   pagedUsers,
+  accountStatus,
+  presence,
+  role,
   search,
+  sort,
   totalUsers,
   totalUsersConfirmed,
   usersConfirmed,
@@ -196,7 +270,11 @@ function UsersTableSection({
   currentUserId: string | undefined;
   page: number;
   pagedUsers: AdminUsersSnapshot["users"];
+  accountStatus: "all" | "active" | "suspended";
+  presence: AdminUserPresenceFilter;
+  role: UserRole | "all";
   search: string;
+  sort: AdminUserSortOption;
   totalUsers: number;
   totalUsersConfirmed: boolean;
   usersConfirmed: boolean;
@@ -210,10 +288,14 @@ function UsersTableSection({
       </Suspense>
       <AdminUsersTable
         currentUserId={currentUserId}
-        key={`${page}:${search}`}
+        key={`${page}:${search}:${role}:${accountStatus}:${presence}:${sort}`}
         initialPage={page}
         initialSearch={search}
         initialUserIds={pagedUsers.map((user) => user.id)}
+        initialAccountStatus={accountStatus}
+        initialPresence={presence}
+        initialRole={role}
+        initialSort={sort}
         pageSize={USERS_PAGE_SIZE}
         totalUsers={totalUsers}
         totalUsersConfirmed={totalUsersConfirmed}
@@ -243,7 +325,15 @@ function UsersTableSection({
                 <td className="py-3">{user.email}</td>
                 <td className="py-3 capitalize">{user.role}</td>
                 <td className="py-3">
-                  {user.isActive ? (
+                  {user.isOnline ? (
+                    <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700 text-xs">
+                      <EditableTranslation
+                        defaultText="Online"
+                        description="Status badge for an admin user who has sent a recent presence heartbeat."
+                        translationKey="admin.users.status.online"
+                      />
+                    </span>
+                  ) : user.isActive ? (
                     <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
                       <EditableTranslation
                         defaultText="Active"
@@ -267,7 +357,13 @@ function UsersTableSection({
                   </time>
                 </td>
                 <td className="py-3">
-                  {lastLoginAt ? (
+                  {user.isOnline ? (
+                    <EditableTranslation
+                      defaultText="Online"
+                      description="Shown in the last-login column while the user is currently online."
+                      translationKey="admin.users.last_login.online"
+                    />
+                  ) : lastLoginAt ? (
                     <time dateTime={lastLoginAt.toISOString()}>
                       {formatAdminDateTime(lastLoginAt)}
                     </time>

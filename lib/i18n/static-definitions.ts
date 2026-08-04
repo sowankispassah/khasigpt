@@ -32,6 +32,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Status badge for a suspended admin user account.",
   },
   {
+    key: "admin.users.status.online",
+    defaultText: "Online",
+    description:
+      "Status badge for an admin user who has sent a recent presence heartbeat.",
+  },
+  {
     key: "admin.users.date.unavailable",
     defaultText: "Unavailable",
     description: "Fallback when a user's signup date cannot be displayed.",
@@ -40,6 +46,117 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "admin.users.last_login.never",
     defaultText: "Never",
     description: "Shown when a user has no recorded successful login.",
+  },
+  {
+    key: "admin.users.last_login.online",
+    defaultText: "Online",
+    description: "Shown in the last-login column while the user is currently online.",
+  },
+  {
+    key: "admin.users.filters.role.label",
+    defaultText: "Role",
+    description: "Label for the admin user role filter.",
+  },
+  {
+    key: "admin.users.filters.role.all",
+    defaultText: "All roles",
+    description: "Option that shows admin users in every role.",
+  },
+  {
+    key: "admin.users.filters.role.admin",
+    defaultText: "Admins",
+    description: "Option that filters the admin user list to administrators.",
+  },
+  {
+    key: "admin.users.filters.role.creator",
+    defaultText: "Creators",
+    description: "Option that filters the admin user list to creators.",
+  },
+  {
+    key: "admin.users.filters.role.regular",
+    defaultText: "Regular users",
+    description: "Option that filters the admin user list to regular users.",
+  },
+  {
+    key: "admin.users.filters.account_status.label",
+    defaultText: "Account status",
+    description: "Label for the admin user account status filter.",
+  },
+  {
+    key: "admin.users.filters.account_status.all",
+    defaultText: "All statuses",
+    description: "Option that shows admin users in every account status.",
+  },
+  {
+    key: "admin.users.filters.account_status.active",
+    defaultText: "Active",
+    description: "Option that filters the admin user list to active accounts.",
+  },
+  {
+    key: "admin.users.filters.account_status.suspended",
+    defaultText: "Suspended",
+    description:
+      "Option that filters the admin user list to suspended accounts.",
+  },
+  {
+    key: "admin.users.filters.presence.label",
+    defaultText: "Presence",
+    description: "Label for the admin user online presence filter.",
+  },
+  {
+    key: "admin.users.filters.presence.all",
+    defaultText: "All users",
+    description: "Option that shows admin users regardless of online presence.",
+  },
+  {
+    key: "admin.users.filters.presence.online",
+    defaultText: "Online now",
+    description: "Option that filters the admin user list to online users.",
+  },
+  {
+    key: "admin.users.filters.presence.offline",
+    defaultText: "Offline",
+    description: "Option that filters the admin user list to offline users.",
+  },
+  {
+    key: "admin.users.filters.sort.label",
+    defaultText: "Sort by",
+    description: "Label for the admin user sort order control.",
+  },
+  {
+    key: "admin.users.filters.sort.newest",
+    defaultText: "Newest signups",
+    description: "Sort option that places newest signups first.",
+  },
+  {
+    key: "admin.users.filters.sort.oldest",
+    defaultText: "Oldest signups",
+    description: "Sort option that places oldest signups first.",
+  },
+  {
+    key: "admin.users.filters.sort.last_login_newest",
+    defaultText: "Latest login",
+    description: "Sort option that places users with the latest login first.",
+  },
+  {
+    key: "admin.users.filters.sort.last_login_oldest",
+    defaultText: "Oldest login",
+    description: "Sort option that places users with the oldest login first.",
+  },
+  {
+    key: "admin.users.filters.sort.online_first",
+    defaultText: "Online first",
+    description: "Sort option that places currently online users first.",
+  },
+  {
+    key: "admin.users.filters.sort.email_asc",
+    defaultText: "Email A-Z",
+    description: "Sort option that orders user email addresses A-Z.",
+  },
+  {
+    key: "admin.users.filters.sort.email_desc",
+    defaultText: "Email Z-A",
+    description: "Sort option that orders user email addresses Z-A.",
   },
   {
     key: "admin.users.table.email",

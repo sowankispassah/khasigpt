@@ -4115,8 +4115,85 @@ export type AdminUserListItem = Pick<
   | "isActive"
   | "role"
 > & {
+  isOnline: boolean;
   lastLoginAt: Date | null;
+  lastSeenAt: Date | null;
 };
+
+export type AdminUserPresenceFilter = "all" | "offline" | "online";
+export type AdminUserSortOption =
+  | "created_asc"
+  | "created_desc"
+  | "email_asc"
+  | "email_desc"
+  | "last_login_asc"
+  | "last_login_desc"
+  | "online_first";
+
+export function isAdminUserPresenceFilter(
+  value: unknown
+): value is AdminUserPresenceFilter {
+  return value === "all" || value === "online" || value === "offline";
+}
+
+export function isAdminUserSortOption(
+  value: unknown
+): value is AdminUserSortOption {
+  return (
+    value === "created_asc" ||
+    value === "created_desc" ||
+    value === "email_asc" ||
+    value === "email_desc" ||
+    value === "last_login_asc" ||
+    value === "last_login_desc" ||
+    value === "online_first"
+  );
+}
+
+const adminUserLastLoginAtExpression = sql<Date | null>`(
+  SELECT MAX(${auditLog.createdAt})
+  FROM ${auditLog}
+  WHERE ${auditLog.action} IN ('user.login', 'user.signup')
+    AND ${auditLog.subjectUserId} = ${user.id}
+)`;
+const adminUserIsOnlineExpression = sql<boolean>`COALESCE(
+  ${userPresence.lastSeenAt} >= NOW() - INTERVAL '5 minutes',
+  false
+)`;
+const adminUserIsOfflineExpression = sql<boolean>`(
+  ${userPresence.lastSeenAt} IS NULL
+  OR ${userPresence.lastSeenAt} < NOW() - INTERVAL '5 minutes'
+)`;
+
+function adminUserOrderBy(sort: AdminUserSortOption) {
+  switch (sort) {
+    case "created_asc":
+      return [asc(user.createdAt), asc(user.id)];
+    case "email_asc":
+      return [asc(sql`LOWER(${user.email})`), asc(user.id)];
+    case "email_desc":
+      return [desc(sql`LOWER(${user.email})`), desc(user.id)];
+    case "last_login_asc":
+      return [
+        sql`${adminUserLastLoginAtExpression} ASC NULLS LAST`,
+        asc(user.id),
+      ];
+    case "last_login_desc":
+      return [
+        sql`${adminUserLastLoginAtExpression} DESC NULLS LAST`,
+        desc(user.id),
+      ];
+    case "online_first":
+      return [
+        desc(adminUserIsOnlineExpression),
+        sql`${userPresence.lastSeenAt} DESC NULLS LAST`,
+        desc(user.createdAt),
+        desc(user.id),
+      ];
+    default:
+      return [desc(user.createdAt), desc(user.id)];
+  }
+}
 
 const adminUserListColumns = {
   allowPersonalKnowledge: user.allowPersonalKnowledge,
@@ -4125,12 +4202,9 @@ const adminUserListColumns = {
   isActive: user.isActive,
   role: user.role,
   createdAt: user.createdAt,
-  lastLoginAt: sql<Date | null>`(
-    SELECT MAX(${auditLog.createdAt})
-    FROM ${auditLog}
-    WHERE ${auditLog.action} = 'user.login'
-      AND ${auditLog.subjectUserId} = ${user.id}
-  )`.as("lastLoginAt"),
+  lastLoginAt: adminUserLastLoginAtExpression.as("lastLoginAt"),
+  lastSeenAt: userPresence.lastSeenAt,
+  isOnline: adminUserIsOnlineExpression.as("isOnline"),
 };
 
 export async function listUsers({
@@ -4139,12 +4213,16 @@ export async function listUsers({
   search,
   role,
   isActive,
+  presence = "all",
+  sort = "created_desc",
 }: {
   limit?: number;
   offset?: number;
   search?: string | null;
   role?: User["role"] | "all" | null;
   isActive?: boolean | "all" | null;
+  presence?: AdminUserPresenceFilter;
+  sort?: AdminUserSortOption;
 } = {}): Promise<AdminUserListItem[]> {
   try {
     const conditions: SQL<boolean>[] = [];
@@ -4170,13 +4248,22 @@ export async function listUsers({
       conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
     }
 
+    if (presence === "online") {
+      conditions.push(adminUserIsOnlineExpression);
+    } else if (presence === "offline") {
+      conditions.push(adminUserIsOfflineExpression);
+    }
+
     return await withAdminDatabase("users.list", async (adminDb) => {
-      const builder = adminDb.select(adminUserListColumns).from(user);
+      const builder = adminDb
+        .select(adminUserListColumns)
+        .from(user)
+        .leftJoin(userPresence, eq(userPresence.userId, user.id));
       const query =
         conditions.length > 0 ? builder.where(and(...conditions)) : builder;
 
       return await query
-        .orderBy(desc(user.createdAt), desc(user.id))
+        .orderBy(...adminUserOrderBy(sort))
         .limit(limit)
         .offset(offset);
     });
@@ -4207,10 +4294,12 @@ export async function getUserCount({
   search,
   role,
   isActive,
+  presence = "all",
 }: {
   search?: string | null;
   role?: User["role"] | "all" | null;
   isActive?: boolean | "all" | null;
+  presence?: AdminUserPresenceFilter;
 } = {}): Promise<number> {
   try {
     const conditions: SQL<boolean>[] = [];
@@ -4236,8 +4325,17 @@ export async function getUserCount({
       conditions.push(eq(user.isActive, isActive) as SQL<boolean>);
     }
 
+    if (presence === "online") {
+      conditions.push(adminUserIsOnlineExpression);
+    } else if (presence === "offline") {
+      conditions.push(adminUserIsOfflineExpression);
+    }
+
     const [result] = await withAdminDatabase("users.count", async (adminDb) => {
-      const builder = adminDb.select({ total: count(user.id) }).from(user);
+      const builder = adminDb
+        .select({ total: count(user.id) })
+        .from(user)
+        .leftJoin(userPresence, eq(userPresence.userId, user.id));
       const query =
         conditions.length > 0 ? builder.where(and(...conditions)) : builder;
       return await query;
@@ -4260,10 +4358,12 @@ export type AdminUsersPageSnapshot = AdminUsersSnapshot & {
 
 type AdminUsersRawUser = Omit<
   AdminUserListItem,
-  "createdAt" | "lastLoginAt"
+  "createdAt" | "isOnline" | "lastLoginAt" | "lastSeenAt"
 > & {
   createdAt: Date | string;
   lastLoginAt: Date | string | null;
+  lastSeenAt: Date | string | null;
+  isOnline: boolean | string | null;
 };
 
 type AdminUsersRawSnapshot = {
@@ -4293,6 +4393,8 @@ function normalizeAdminUsers(value: unknown): AdminUserListItem[] {
     .map((item) => {
       const createdAt = toDate(item.createdAt);
       const lastLoginAt = item.lastLoginAt ? toDate(item.lastLoginAt) : null;
+      const lastSeenAt = item.lastSeenAt ? toDate(item.lastSeenAt) : null;
+      const isOnline = item.isOnline === true || item.isOnline === "true";
 
       if (!createdAt) {
         console.warn(
@@ -4305,7 +4407,9 @@ function normalizeAdminUsers(value: unknown): AdminUserListItem[] {
       return {
         ...item,
         createdAt,
+        isOnline,
         lastLoginAt,
+        lastSeenAt,
       } satisfies AdminUserListItem;
     })
     .filter((item): item is AdminUserListItem => item !== null);
@@ -4315,24 +4419,42 @@ export async function getAdminUsersSnapshot({
   limit = 25,
   offset = 0,
   search,
+  role = "all",
+  isActive = "all",
+  presence = "all",
+  sort = "created_desc",
 }: {
   limit?: number;
   offset?: number;
   search?: string | null;
+  role?: User["role"] | "all" | null;
+  isActive?: boolean | "all" | null;
+  presence?: AdminUserPresenceFilter;
+  sort?: AdminUserSortOption;
 } = {}): Promise<AdminUsersSnapshot> {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   const safeOffset = Math.max(Math.trunc(offset), 0);
   const normalizedSearch = search?.trim();
   const startedAt = Date.now();
+  const hasAdvancedOptions =
+    Boolean(normalizedSearch) ||
+    (role ?? "all") !== "all" ||
+    isActive !== "all" ||
+    presence !== "all" ||
+    sort !== "created_desc";
 
-  if (normalizedSearch) {
+  if (hasAdvancedOptions) {
     const [users, totalUsers] = await Promise.all([
       listUsers({
         limit: safeLimit,
         offset: safeOffset,
         search: normalizedSearch,
+        role,
+        isActive,
+        presence,
+        sort,
       }),
-      getUserCount({ search: normalizedSearch }),
+      getUserCount({ search: normalizedSearch, role, isActive, presence }),
     ]);
 
     return { totalUsers, users };
@@ -4360,13 +4482,19 @@ export async function getAdminUsersSnapshot({
               u."isActive",
               u."allowPersonalKnowledge",
               u."createdAt",
+              p."lastSeenAt",
+              COALESCE(
+                p."lastSeenAt" >= NOW() - INTERVAL '5 minutes',
+                false
+              ) AS "isOnline",
               (
                 SELECT MAX(a."createdAt")
                 FROM "AuditLog" a
-                WHERE a."action" = 'user.login'
+                WHERE a."action" IN ('user.login', 'user.signup')
                   AND a."subjectUserId" = u."id"
               ) AS "lastLoginAt"
             FROM "User" u
+            LEFT JOIN "UserPresence" p ON p."userId" = u."id"
             ORDER BY u."createdAt" DESC, u."id" DESC
             LIMIT ${safeLimit}
             OFFSET ${safeOffset}
@@ -4427,13 +4555,19 @@ export async function getAdminUsersPageSnapshot({
           u."isActive",
           u."allowPersonalKnowledge",
           u."createdAt",
+          p."lastSeenAt",
+          COALESCE(
+            p."lastSeenAt" >= NOW() - INTERVAL '5 minutes',
+            false
+          ) AS "isOnline",
           (
             SELECT MAX(a."createdAt")
             FROM "AuditLog" a
-            WHERE a."action" = 'user.login'
+            WHERE a."action" IN ('user.login', 'user.signup')
               AND a."subjectUserId" = u."id"
           ) AS "lastLoginAt"
         FROM "User" u
+        LEFT JOIN "UserPresence" p ON p."userId" = u."id"
         ORDER BY u."createdAt" DESC, u."id" DESC
         LIMIT ${safeLimit}
         OFFSET ${safeOffset}

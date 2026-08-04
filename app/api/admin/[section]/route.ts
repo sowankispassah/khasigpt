@@ -21,6 +21,8 @@ import {
   getContactMessageCount,
   getUserBalanceSummaries,
   getUserCount,
+  isAdminUserPresenceFilter,
+  isAdminUserSortOption,
   listAuditLog,
   listCharactersForAdmin,
   listChats,
@@ -150,13 +152,23 @@ async function loadUsers(searchParams: URLSearchParams) {
       ? (roleParam as UserRole)
       : "all";
   const isActive = parseBooleanFilter(searchParams.get("active"));
+  const presenceParam = searchParams.get("presence");
+  const presence = isAdminUserPresenceFilter(presenceParam)
+    ? presenceParam
+    : "all";
+  const sortParam = searchParams.get("sort");
+  const sort = isAdminUserSortOption(sortParam) ? sortParam : "created_desc";
   const [items, total] = await Promise.all([
     sectionQuery(
       "users.items",
-      listUsers({ isActive, limit, offset, role, search }),
+      listUsers({ isActive, limit, offset, presence, role, search, sort }),
       []
     ),
-    sectionQuery("users.total", getUserCount({ isActive, role, search }), 0),
+    sectionQuery(
+      "users.total",
+      getUserCount({ isActive, presence, role, search }),
+      0
+    ),
   ]);
 
   const balanceByUserId = await sectionQuery(
