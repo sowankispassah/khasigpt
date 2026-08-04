@@ -266,6 +266,7 @@ function UsersTableSection({
                         user.allowPersonalKnowledge
                       )}
                       currentRole={user.role as UserRole}
+                      email={user.email}
                       isActive={user.isActive}
                       isSelf={user.id === currentUserId}
                       userId={user.id}

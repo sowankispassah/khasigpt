@@ -107,6 +107,92 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Error shown when loading more admin users times out.",
   },
   {
+    key: "admin.users.delete.title",
+    defaultText: "Delete user",
+    description: "Title for the admin user deletion confirmation dialog.",
+  },
+  {
+    key: "admin.users.delete.description",
+    defaultText: "Choose how to delete {email}.",
+    description:
+      "Instruction above the soft and permanent admin user deletion choices.",
+  },
+  {
+    key: "admin.users.delete.soft.title",
+    defaultText: "Soft delete",
+    description:
+      "Admin user deletion option that keeps the account data and marks it inactive.",
+  },
+  {
+    key: "admin.users.delete.soft.description",
+    defaultText:
+      "Suspend the account and keep its data. An admin can restore it later.",
+    description: "Explanation of the admin soft-delete option.",
+  },
+  {
+    key: "admin.users.delete.soft.confirm",
+    defaultText: "Soft delete user",
+    description:
+      "Confirmation button for the admin soft user deletion option.",
+  },
+  {
+    key: "admin.users.delete.permanent.title",
+    defaultText: "Permanent delete",
+    description:
+      "Admin user deletion option that permanently removes the account and its associated data.",
+  },
+  {
+    key: "admin.users.delete.permanent.description",
+    defaultText:
+      "Permanently remove the account and associated data. This cannot be undone.",
+    description: "Warning for the admin permanent user deletion option.",
+  },
+  {
+    key: "admin.users.delete.permanent.acknowledgement",
+    defaultText:
+      "I understand that permanent deletion cannot be undone.",
+    description:
+      "Required acknowledgement before an admin can permanently delete a user.",
+  },
+  {
+    key: "admin.users.delete.permanent.confirm",
+    defaultText: "Delete permanently",
+    description:
+      "Confirmation button for the admin permanent user deletion option.",
+  },
+  {
+    key: "admin.users.delete.cancel",
+    defaultText: "Cancel",
+    description: "Cancel button in the admin user deletion dialog.",
+  },
+  {
+    key: "admin.users.delete.pending",
+    defaultText: "Deleting...",
+    description:
+      "Button label shown while an admin user deletion is in progress.",
+  },
+  {
+    key: "admin.users.delete.success.soft",
+    defaultText: "User soft-deleted. The account is now suspended.",
+    description: "Success toast after an admin soft-deletes a user.",
+  },
+  {
+    key: "admin.users.delete.success.permanent",
+    defaultText: "User permanently deleted.",
+    description: "Success toast after an admin permanently deletes a user.",
+  },
+  {
+    key: "admin.users.delete.timeout",
+    defaultText:
+      "User deletion timed out. Refresh the list before retrying.",
+    description: "Timeout toast after an admin user deletion request.",
+  },
+  {
+    key: "admin.users.delete.error",
+    defaultText: "Unable to delete user. Please retry.",
+    description: "Fallback error toast after an admin user deletion fails.",
+  },
+  {
     key: "admin.rag.form.create_title",
     defaultText: "Create entry",
     description: "Heading for creating a custom knowledge entry.",

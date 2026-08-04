@@ -246,6 +246,7 @@ function LoadedUserRow({
           <AdminUserActionsMenu
             allowPersonalKnowledge={user.allowPersonalKnowledge}
             currentRole={user.role}
+            email={user.email}
             isActive={user.isActive}
             isSelf={user.id === currentUserId}
             userId={user.id}

@@ -9,9 +9,11 @@ import {
   useState,
   useTransition,
 } from "react";
+import { AdminUserDeleteDialog } from "@/components/admin-user-delete-dialog";
 import { LoaderIcon } from "@/components/icons";
 import { SessionUsageChatLink } from "@/components/session-usage-chat-link";
 import { toast } from "@/components/toast";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 type AdminUserActionsMenuProps = {
+  email: string;
   userId: string;
   isActive: boolean;
   allowPersonalKnowledge: boolean;
@@ -102,6 +105,7 @@ function LoadingMenuLabel({
 }
 
 export function AdminUserActionsMenu({
+  email,
   userId,
   isActive,
   allowPersonalKnowledge,
@@ -115,6 +119,7 @@ export function AdminUserActionsMenu({
   const [impersonateError, setImpersonateError] = useState<string | null>(null);
   const [impersonateLoading, setImpersonateLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isRefreshing, startRefresh] = useTransition();
   const router = useRouter();
 
@@ -229,7 +234,8 @@ export function AdminUserActionsMenu({
   }, [open, userId]);
 
   return (
-    <DropdownMenu onOpenChange={setOpen} open={open}>
+    <>
+      <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger asChild>
         <Button size="sm" variant="outline">
           <MoreVertical className="h-4 w-4" />
@@ -365,7 +371,35 @@ export function AdminUserActionsMenu({
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        <DropdownMenuItem
+          className="p-0"
+          disabled={isSelf || Boolean(pendingAction) || isRefreshing}
+          onSelect={(event) => {
+            event.preventDefault();
+            setOpen(false);
+            setDeleteDialogOpen(true);
+          }}
+        >
+          <button
+            className="flex w-full cursor-pointer items-center justify-start rounded-sm px-3 py-2 font-normal text-destructive text-sm hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSelf || Boolean(pendingAction) || isRefreshing}
+            type="button"
+          >
+            <EditableTranslation
+              defaultText="Delete user"
+              description="Menu item that opens the admin user deletion dialog."
+              translationKey="admin.users.delete.title"
+            />
+          </button>
+        </DropdownMenuItem>
       </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenu>
+      <AdminUserDeleteDialog
+        email={email}
+        onOpenChange={setDeleteDialogOpen}
+        open={deleteDialogOpen}
+        userId={userId}
+      />
+    </>
   );
 }
