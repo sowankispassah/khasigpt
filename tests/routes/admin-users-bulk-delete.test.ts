@@ -42,6 +42,20 @@ test.describe("admin bulk user deletion", () => {
     expect(deletionSource).toContain("userIds: deletedUserIds");
   });
 
+  test("deletes bulk selections one user at a time with visible progress", async () => {
+    const source = await readWorkspaceFile(
+      "components/admin-user-delete-dialog.tsx"
+    );
+
+    expect(source).toContain(
+      "for (const [index, targetId] of deletionTargets.entries())"
+    );
+    expect(source).toContain("await deleteUser(targetId)");
+    expect(source).toContain("<Progress");
+    expect(source).toContain("admin.users.delete.progress");
+    expect(source).not.toContain('bulk ? "/api/admin/users/bulk"');
+  });
+
   test("scopes selection to visible rows and resets it with the page/search scope", async () => {
     const [pageSource, tableSource, selectionSource] = await Promise.all([
       readWorkspaceFile("app/(admin)/admin/users/page.tsx"),

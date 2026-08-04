@@ -232,6 +232,17 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
       "Button label shown while an admin user deletion is in progress.",
   },
   {
+    key: "admin.users.delete.progress",
+    defaultText: "Deleting user {current} of {total}...",
+    description:
+      "Progress label while the admin deletes selected users one at a time.",
+  },
+  {
+    key: "admin.users.delete.progress.label",
+    defaultText: "Bulk user deletion progress",
+    description: "Accessible label for the bulk user deletion progress bar.",
+  },
+  {
     key: "admin.users.delete.success.soft",
     defaultText: "User soft-deleted. The account is now suspended.",
     description: "Success toast after an admin soft-deletes a user.",
@@ -251,6 +262,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     defaultText: "Permanently deleted {count} users.",
     description:
       "Success toast after an admin permanently deletes selected users.",
+  },
+  {
+    key: "admin.users.delete.success.bulk_partial",
+    defaultText: "Deleted {deleted} of {total} users. {failed} failed.",
+    description:
+      "Error toast when some selected admin users were deleted but others failed.",
   },
   {
     key: "admin.users.delete.timeout",
