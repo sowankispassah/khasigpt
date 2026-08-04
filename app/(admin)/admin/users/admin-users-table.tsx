@@ -191,16 +191,9 @@ function AdminUsersSearchForm({
 
   return (
     <form className="flex flex-wrap items-end gap-2" onSubmit={handleSubmit}>
-      <div className="min-w-0 flex-1 space-y-1 sm:min-w-[18rem]">
-        <label className="font-medium text-sm" htmlFor="admin-user-search">
-          <EditableTranslation
-            defaultText="Search users"
-            description="Label for the admin user keyword search field."
-            translationKey="admin.users.search.label"
-          />
-        </label>
+      <div className="min-w-0 flex-1 sm:min-w-[18rem]">
         <input
-          aria-label="Search users"
+          aria-label={translate("admin.users.search.label", "Search users")}
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           id="admin-user-search"
           onChange={(event) => setValue(event.target.value)}
@@ -210,15 +203,9 @@ function AdminUsersSearchForm({
         />
         {editButton}
       </div>
-      <div className="space-y-1">
-        <label className="font-medium text-sm" htmlFor="admin-user-role">
-          <EditableTranslation
-            defaultText="Role"
-            description="Label for the admin user role filter."
-            translationKey="admin.users.filters.role.label"
-          />
-        </label>
+      <div className="shrink-0">
         <select
+          aria-label={translate("admin.users.filters.role.label", "Role")}
           className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-role"
           onChange={(event) => setRole(event.target.value as UserRole | "all")}
@@ -238,15 +225,12 @@ function AdminUsersSearchForm({
           </option>
         </select>
       </div>
-      <div className="space-y-1">
-        <label className="font-medium text-sm" htmlFor="admin-user-account-status">
-          <EditableTranslation
-            defaultText="Account status"
-            description="Label for the admin user account status filter."
-            translationKey="admin.users.filters.account_status.label"
-          />
-        </label>
+      <div className="shrink-0">
         <select
+          aria-label={translate(
+            "admin.users.filters.account_status.label",
+            "Account status"
+          )}
           className="h-9 min-w-36 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-account-status"
           onChange={(event) =>
@@ -268,15 +252,9 @@ function AdminUsersSearchForm({
           </option>
         </select>
       </div>
-      <div className="space-y-1">
-        <label className="font-medium text-sm" htmlFor="admin-user-presence">
-          <EditableTranslation
-            defaultText="Presence"
-            description="Label for the admin user online presence filter."
-            translationKey="admin.users.filters.presence.label"
-          />
-        </label>
+      <div className="shrink-0">
         <select
+          aria-label={translate("admin.users.filters.presence.label", "Presence")}
           className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-presence"
           onChange={(event) =>
@@ -295,15 +273,9 @@ function AdminUsersSearchForm({
           </option>
         </select>
       </div>
-      <div className="space-y-1">
-        <label className="font-medium text-sm" htmlFor="admin-user-sort">
-          <EditableTranslation
-            defaultText="Sort by"
-            description="Label for the admin user sort order control."
-            translationKey="admin.users.filters.sort.label"
-          />
-        </label>
+      <div className="shrink-0">
         <select
+          aria-label={translate("admin.users.filters.sort.label", "Sort by")}
           className="h-9 min-w-44 rounded-md border border-input bg-background px-2 text-sm"
           id="admin-user-sort"
           onChange={(event) =>
