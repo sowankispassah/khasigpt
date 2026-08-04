@@ -32,16 +32,21 @@ test.describe("admin user deletion", () => {
       "export async function updateUserAuthProvider",
       start
     ));
+    const cleanupStart = source.indexOf(
+      "async function deleteUserPermanentlyInTransaction"
+    );
+    expect(cleanupStart).toBeGreaterThanOrEqual(0);
+    const cleanupSource = source.slice(cleanupStart, start);
 
     expect(deletionSource).toContain('mode === "soft"');
     expect(deletionSource).toContain("db.transaction");
-    expect(deletionSource).toContain('DELETE FROM "Vote"');
-    expect(deletionSource).toContain('DELETE FROM "Message_v2"');
-    expect(deletionSource).toContain('DELETE FROM "Document"');
-    expect(deletionSource).toContain('DELETE FROM "Chat"');
-    expect(deletionSource).toContain("accountDeletionRequest");
-    expect(deletionSource).toContain("auditLog.actorId");
-    expect(deletionSource).toContain(".delete(user)");
+    expect(cleanupSource).toContain('DELETE FROM "Vote"');
+    expect(cleanupSource).toContain('DELETE FROM "Message_v2"');
+    expect(cleanupSource).toContain('DELETE FROM "Document"');
+    expect(cleanupSource).toContain('DELETE FROM "Chat"');
+    expect(cleanupSource).toContain("accountDeletionRequest");
+    expect(cleanupSource).toContain("auditLog.actorId");
+    expect(cleanupSource).toContain(".delete(user)");
   });
 
   test("exposes an acknowledged soft or permanent choice in the admin UI", async () => {

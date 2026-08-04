@@ -10,6 +10,12 @@ import {
   useTransition,
 } from "react";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import {
+  AdminUsersBulkActionBar,
+  AdminUsersSelectAllCheckbox,
+  AdminUsersSelectionCheckbox,
+  useAdminUsersSelection,
+} from "@/components/admin-users-selection";
 import { useTranslation } from "@/components/language-provider";
 import {
   EditableTranslation,
@@ -196,6 +202,13 @@ function LoadedUserRow({
 
   return (
     <tr className="border-t text-sm" key={user.id}>
+      <td className="py-3">
+        <AdminUsersSelectionCheckbox
+          disabled={user.id === currentUserId}
+          email={user.email}
+          userId={user.id}
+        />
+      </td>
       <td className="py-3">{user.email}</td>
       <td className="py-3 capitalize">{user.role}</td>
       <td className="py-3">
@@ -281,6 +294,7 @@ export function AdminUsersTable({
   totalUsersConfirmed: boolean;
 }) {
   const { translate } = useTranslation();
+  const { registerVisibleUserIds } = useAdminUsersSelection();
   const loadMoreErrorMessage = translate(
     "admin.users.load_more.error",
     "Unable to load more users. Please retry."
@@ -303,6 +317,10 @@ export function AdminUsersTable({
     setNextPage(initialPage + 1);
     setHasMore(totalUsersConfirmed && initialPage * pageSize < totalUsers);
   }, [initialPage, pageSize, totalUsers, totalUsersConfirmed]);
+
+  useEffect(() => {
+    registerVisibleUserIds(loadedUsers.map((user) => user.id));
+  }, [loadedUsers, registerVisibleUserIds]);
 
   async function handleLoadMore() {
     if (isLoadingMore || !hasMore) {
@@ -401,10 +419,14 @@ export function AdminUsersTable({
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
       <AdminUsersSearchForm initialSearch={initialSearch} />
+      <AdminUsersBulkActionBar />
       <div className="mt-4 overflow-x-auto">
         <table className="w-full whitespace-nowrap text-sm">
           <thead className="text-muted-foreground text-xs uppercase">
             <tr>
+              <th className="py-3 text-left">
+                <AdminUsersSelectAllCheckbox />
+              </th>
               <th className="py-3 text-left">
                 <EditableTranslation
                   defaultText="Email"

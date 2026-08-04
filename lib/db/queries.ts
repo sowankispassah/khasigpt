@@ -3866,6 +3866,121 @@ export type AdminUserDeletionResult =
   | { mode: "permanent"; userId: string }
   | { mode: "soft"; user: User };
 
+export type AdminUserBulkDeletionResult = {
+  mode: AdminUserDeletionMode;
+  userIds: string[];
+};
+
+type AdminUserDeletionTransaction = Parameters<
+  Parameters<typeof db.transaction>[0]
+>[0];
+
+async function deleteUserPermanentlyInTransaction(
+  tx: AdminUserDeletionTransaction,
+  id: string
+) {
+  const [existing] = await tx
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.id, id))
+    .limit(1);
+
+  if (!existing) {
+    return null;
+  }
+
+  // These legacy relationships do not cascade from User or Chat.
+  await tx.execute(sql`
+    DELETE FROM "Vote"
+    WHERE "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+    OR "messageId" IN (
+      SELECT "id" FROM "Message"
+      WHERE "chatId" IN (
+        SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+      )
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Vote_v2"
+    WHERE "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+    OR "messageId" IN (
+      SELECT "id" FROM "Message_v2"
+      WHERE "chatId" IN (
+        SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+      )
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Message"
+    WHERE "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Message_v2"
+    WHERE "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Stream"
+    WHERE "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "RagRetrievalLog"
+    WHERE "userId" = ${id}
+    OR "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "RagSearchLog"
+    WHERE "userId" = ${id}
+    OR "chatId" IN (
+      SELECT "id" FROM "Chat" WHERE "userId" = ${id}
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Suggestion" AS suggestion_row
+    WHERE suggestion_row."userId" = ${id}
+    OR EXISTS (
+      SELECT 1
+      FROM "Document" AS document_row
+      WHERE document_row."userId" = ${id}
+        AND document_row."id" = suggestion_row."documentId"
+        AND document_row."createdAt" = suggestion_row."documentCreatedAt"
+    )
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Document"
+    WHERE "userId" = ${id}
+  `);
+  await tx.execute(sql`
+    DELETE FROM "Chat"
+    WHERE "userId" = ${id}
+  `);
+
+  // Remove records that otherwise retain the deleted user's identity or
+  // block deletion through a non-cascading foreign key.
+  await tx.delete(accountDeletionRequest).where(eq(accountDeletionRequest.userId, id));
+  await tx.delete(auditLog).where(
+    or(eq(auditLog.actorId, id), eq(auditLog.subjectUserId, id))
+  );
+
+  const [deleted] = await tx
+    .delete(user)
+    .where(eq(user.id, id))
+    .returning({ id: user.id });
+
+  return deleted?.id ?? null;
+}
+
 /**
  * Deactivate a user or permanently remove the user and their owned data.
  *
@@ -3899,111 +4014,61 @@ export async function deleteUserForAdmin({
 
   try {
     return await db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ id: user.id })
-        .from(user)
-        .where(eq(user.id, id))
-        .limit(1);
-
-      if (!existing) {
-        return null;
-      }
-
-      // These legacy relationships do not cascade from User or Chat.
-      await tx.execute(sql`
-        DELETE FROM "Vote"
-        WHERE "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-        OR "messageId" IN (
-          SELECT "id" FROM "Message"
-          WHERE "chatId" IN (
-            SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-          )
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Vote_v2"
-        WHERE "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-        OR "messageId" IN (
-          SELECT "id" FROM "Message_v2"
-          WHERE "chatId" IN (
-            SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-          )
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Message"
-        WHERE "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Message_v2"
-        WHERE "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Stream"
-        WHERE "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "RagRetrievalLog"
-        WHERE "userId" = ${id}
-        OR "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "RagSearchLog"
-        WHERE "userId" = ${id}
-        OR "chatId" IN (
-          SELECT "id" FROM "Chat" WHERE "userId" = ${id}
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Suggestion" AS suggestion_row
-        WHERE suggestion_row."userId" = ${id}
-        OR EXISTS (
-          SELECT 1
-          FROM "Document" AS document_row
-          WHERE document_row."userId" = ${id}
-            AND document_row."id" = suggestion_row."documentId"
-            AND document_row."createdAt" = suggestion_row."documentCreatedAt"
-        )
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Document"
-        WHERE "userId" = ${id}
-      `);
-      await tx.execute(sql`
-        DELETE FROM "Chat"
-        WHERE "userId" = ${id}
-      `);
-
-      // Remove records that otherwise retain the deleted user's identity or
-      // block deletion through a non-cascading foreign key.
-      await tx.delete(accountDeletionRequest).where(eq(accountDeletionRequest.userId, id));
-      await tx.delete(auditLog).where(
-        or(eq(auditLog.actorId, id), eq(auditLog.subjectUserId, id))
-      );
-
-      const [deleted] = await tx
-        .delete(user)
-        .where(eq(user.id, id))
-        .returning({ id: user.id });
-
-      return deleted ? { mode: "permanent", userId: deleted.id } : null;
+      const deletedUserId = await deleteUserPermanentlyInTransaction(tx, id);
+      return deletedUserId ? { mode: "permanent", userId: deletedUserId } : null;
     });
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to permanently delete user"
+    );
+  }
+}
+
+export async function deleteUsersForAdmin({
+  ids,
+  mode,
+}: {
+  ids: string[];
+  mode: AdminUserDeletionMode;
+}): Promise<AdminUserBulkDeletionResult> {
+  const uniqueIds = Array.from(new Set(ids));
+
+  if (uniqueIds.length === 0) {
+    return { mode, userIds: [] };
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      if (mode === "soft") {
+        const updated = await tx
+          .update(user)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(inArray(user.id, uniqueIds))
+          .returning({ id: user.id });
+
+        return {
+          mode,
+          userIds: updated.map((row) => row.id),
+        };
+      }
+
+      const deletedUserIds: string[] = [];
+      for (const id of uniqueIds) {
+        const deletedUserId = await deleteUserPermanentlyInTransaction(tx, id);
+        if (deletedUserId) {
+          deletedUserIds.push(deletedUserId);
+        }
+      }
+
+      return { mode, userIds: deletedUserIds };
+    });
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      mode === "soft"
+        ? "Failed to soft-delete selected users"
+        : "Failed to permanently delete selected users"
     );
   }
 }

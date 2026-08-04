@@ -107,6 +107,48 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Error shown when loading more admin users times out.",
   },
   {
+    key: "admin.users.selection.select_all",
+    defaultText: "Select all users on this page",
+    description: "Accessible label for selecting all visible admin user rows.",
+  },
+  {
+    key: "admin.users.selection.select_user",
+    defaultText: "Select user {email}",
+    description: "Accessible label for selecting an individual admin user row.",
+  },
+  {
+    key: "admin.users.bulk_delete.button",
+    defaultText: "Bulk delete",
+    description:
+      "Button next to the admin user count that opens bulk deletion for selected users.",
+  },
+  {
+    key: "admin.users.bulk_delete.title",
+    defaultText: "Delete selected users",
+    description: "Title for the admin bulk user deletion dialog.",
+  },
+  {
+    key: "admin.users.bulk_delete.description",
+    defaultText: "Choose how to delete {count} selected users.",
+    description: "Instruction above the bulk soft and permanent deletion choices.",
+  },
+  {
+    key: "admin.users.bulk_delete.selected",
+    defaultText: "{count} users selected",
+    description: "Selected user count in the admin bulk action bar.",
+  },
+  {
+    key: "admin.users.bulk_delete.clear",
+    defaultText: "Clear selection",
+    description: "Button that clears selected admin user rows.",
+  },
+  {
+    key: "admin.users.bulk_delete.delete_selected",
+    defaultText: "Delete selected users",
+    description:
+      "Button that opens deletion confirmation for selected admin user rows.",
+  },
+  {
     key: "admin.users.delete.title",
     defaultText: "Delete user",
     description: "Title for the admin user deletion confirmation dialog.",
@@ -136,6 +178,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
       "Confirmation button for the admin soft user deletion option.",
   },
   {
+    key: "admin.users.delete.soft.bulk_confirm",
+    defaultText: "Soft delete selected users",
+    description:
+      "Confirmation button for the admin bulk soft user deletion option.",
+  },
+  {
     key: "admin.users.delete.permanent.title",
     defaultText: "Permanent delete",
     description:
@@ -161,6 +209,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
       "Confirmation button for the admin permanent user deletion option.",
   },
   {
+    key: "admin.users.delete.permanent.bulk_confirm",
+    defaultText: "Delete selected users permanently",
+    description:
+      "Confirmation button for the admin bulk permanent user deletion option.",
+  },
+  {
     key: "admin.users.delete.cancel",
     defaultText: "Cancel",
     description: "Cancel button in the admin user deletion dialog.",
@@ -180,6 +234,17 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "admin.users.delete.success.permanent",
     defaultText: "User permanently deleted.",
     description: "Success toast after an admin permanently deletes a user.",
+  },
+  {
+    key: "admin.users.delete.success.bulk_soft",
+    defaultText: "Soft-deleted {count} users.",
+    description: "Success toast after an admin soft-deletes selected users.",
+  },
+  {
+    key: "admin.users.delete.success.bulk_permanent",
+    defaultText: "Permanently deleted {count} users.",
+    description:
+      "Success toast after an admin permanently deletes selected users.",
   },
   {
     key: "admin.users.delete.timeout",

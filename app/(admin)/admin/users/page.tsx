@@ -1,6 +1,11 @@
 import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
 import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
+import {
+  AdminUsersBulkDeleteButton,
+  AdminUsersSelectionCheckbox,
+  AdminUsersSelectionProvider,
+} from "@/components/admin-users-selection";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   type AdminQueryResult,
@@ -120,48 +125,58 @@ export default async function AdminUsersPage({
       });
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-xl">User management</h2>
-          <p className="text-muted-foreground text-sm">
-            Promote admins, suspend accounts, and monitor roles.
-          </p>
-        </div>
-        <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
-          {totalUsersConfirmed
-            ? `${totalUsers.toLocaleString()} users`
-            : "User count unavailable"}
-        </span>
-      </header>
+    <AdminUsersSelectionProvider
+      currentUserId={currentUserId}
+      initialUserIds={pagedUsers.map((user) => user.id)}
+      key={`${page}:${search ?? ""}`}
+      scopeKey={`${page}:${search ?? ""}`}
+    >
+      <div className="flex flex-col gap-6">
+        <header className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-xl">User management</h2>
+            <p className="text-muted-foreground text-sm">
+              Promote admins, suspend accounts, and monitor roles.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
+              {totalUsersConfirmed
+                ? `${totalUsers.toLocaleString()} users`
+                : "User count unavailable"}
+            </span>
+            <AdminUsersBulkDeleteButton />
+          </div>
+        </header>
 
-      {!totalUsersConfirmed && (
-        <AdminUsersQueryWarning message="User count could not be confirmed." />
-      )}
+        {!totalUsersConfirmed && (
+          <AdminUsersQueryWarning message="User count could not be confirmed." />
+        )}
 
-      {!usersSnapshotState.ok && (
-        <AdminUsersQueryWarning
-          message="User list could not be confirmed."
+        {!usersSnapshotState.ok && (
+          <AdminUsersQueryWarning
+            message="User list could not be confirmed."
+          />
+        )}
+
+        <UsersTableSection
+          balanceByUserIdStatePromise={balanceByUserIdStatePromise}
+          currentUserId={currentUserId}
+          page={page}
+          pagedUsers={pagedUsers}
+          search={search ?? ""}
+          totalUsers={totalUsers}
+          totalUsersConfirmed={totalUsersConfirmed}
+          usersConfirmed={usersSnapshotState.ok}
         />
-      )}
 
-      <UsersTableSection
-        balanceByUserIdStatePromise={balanceByUserIdStatePromise}
-        currentUserId={currentUserId}
-        page={page}
-        pagedUsers={pagedUsers}
-        search={search ?? ""}
-        totalUsers={totalUsers}
-        totalUsersConfirmed={totalUsersConfirmed}
-        usersConfirmed={usersSnapshotState.ok}
-      />
-
-      <Suspense fallback={<SubscriptionsFallback />}>
-        <ActiveSubscriptionsSection
-          activeSubscriptionsStatePromise={activeSubscriptionsStatePromise}
-        />
-      </Suspense>
-    </div>
+        <Suspense fallback={<SubscriptionsFallback />}>
+          <ActiveSubscriptionsSection
+            activeSubscriptionsStatePromise={activeSubscriptionsStatePromise}
+          />
+        </Suspense>
+      </div>
+    </AdminUsersSelectionProvider>
   );
 }
 
@@ -205,13 +220,13 @@ function UsersTableSection({
       >
         {!usersConfirmed ? (
           <tr>
-            <td className="py-6 text-muted-foreground" colSpan={6}>
+            <td className="py-6 text-muted-foreground" colSpan={7}>
               Unable to load users for this page.
             </td>
           </tr>
         ) : pagedUsers.length === 0 ? (
           <tr>
-            <td className="py-6 text-muted-foreground" colSpan={6}>
+            <td className="py-6 text-muted-foreground" colSpan={7}>
               No users found.
             </td>
           </tr>
@@ -220,6 +235,13 @@ function UsersTableSection({
             const lastLoginAt = user.lastLoginAt;
             return (
               <tr className="border-t text-sm" key={user.id}>
+                <td className="py-3">
+                  <AdminUsersSelectionCheckbox
+                    disabled={user.id === currentUserId}
+                    email={user.email}
+                    userId={user.id}
+                  />
+                </td>
                 <td className="py-3">{user.email}</td>
                 <td className="py-3 capitalize">{user.role}</td>
                 <td className="py-3">

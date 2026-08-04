@@ -18,10 +18,13 @@ import { fetchWithTimeout } from "@/lib/utils/async";
 type DeleteMode = "permanent" | "soft";
 
 type AdminUserDeleteDialogProps = {
-  email: string;
+  bulk?: boolean;
+  email?: string;
   onOpenChange: (open: boolean) => void;
+  onDeleted?: () => void;
   open: boolean;
-  userId: string;
+  userId?: string;
+  userIds?: string[];
 };
 
 const USER_DELETE_TIMEOUT_MS = 25_000;
@@ -42,16 +45,20 @@ async function readDeleteError(response: Response) {
 }
 
 export function AdminUserDeleteDialog({
+  bulk = false,
   email,
   onOpenChange,
+  onDeleted,
   open,
   userId,
+  userIds,
 }: AdminUserDeleteDialogProps) {
   const { translate } = useTranslation();
   const [mode, setMode] = useState<DeleteMode>("soft");
   const [permanentConfirmed, setPermanentConfirmed] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRefreshing, startRefresh] = useTransition();
+  const targetUserIds = bulk ? (userIds ?? []) : userId ? [userId] : [];
 
   useEffect(() => {
     if (open) {
@@ -64,19 +71,22 @@ export function AdminUserDeleteDialog({
   const canDelete = mode === "soft" || permanentConfirmed;
 
   async function handleDelete() {
-    if (isBusy || !canDelete) {
+    if (isBusy || !canDelete || targetUserIds.length === 0) {
       return;
     }
 
     setIsDeleting(true);
     try {
       const response = await fetchWithTimeout(
-        `/api/admin/users/${userId}`,
+        bulk
+          ? "/api/admin/users/bulk"
+          : `/api/admin/users/${targetUserIds[0] ?? ""}`,
         {
           body: JSON.stringify({
             confirmation:
               mode === "permanent" ? "PERMANENT_DELETE" : undefined,
             mode,
+            ...(bulk ? { userIds: targetUserIds } : {}),
           }),
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -91,15 +101,24 @@ export function AdminUserDeleteDialog({
 
       toast({
         description: translate(
-          mode === "soft"
-            ? "admin.users.delete.success.soft"
-            : "admin.users.delete.success.permanent",
-          mode === "soft"
-            ? "User soft-deleted. The account is now suspended."
-            : "User permanently deleted."
-        ),
+          bulk
+            ? mode === "soft"
+              ? "admin.users.delete.success.bulk_soft"
+              : "admin.users.delete.success.bulk_permanent"
+            : mode === "soft"
+              ? "admin.users.delete.success.soft"
+              : "admin.users.delete.success.permanent",
+          bulk
+            ? mode === "soft"
+              ? "Soft-deleted {count} users."
+              : "Permanently deleted {count} users."
+            : mode === "soft"
+              ? "User soft-deleted. The account is now suspended."
+              : "User permanently deleted."
+        ).replace("{count}", String(targetUserIds.length)),
         type: "success",
       });
+      onDeleted?.();
       onOpenChange(false);
       startRefresh(() => {
         window.location.reload();
@@ -137,17 +156,31 @@ export function AdminUserDeleteDialog({
         <DialogHeader>
           <DialogTitle>
             <EditableTranslation
-              defaultText="Delete user"
+              defaultText={bulk ? "Delete selected users" : "Delete user"}
               description="Title for the admin user deletion confirmation dialog."
-              translationKey="admin.users.delete.title"
+              translationKey={
+                bulk
+                  ? "admin.users.bulk_delete.title"
+                  : "admin.users.delete.title"
+              }
             />
           </DialogTitle>
           <DialogDescription>
             <EditableTranslation
-              defaultText="Choose how to delete {email}."
+              defaultText={
+                bulk
+                  ? "Choose how to delete {count} selected users."
+                  : "Choose how to delete {email}."
+              }
               description="Instruction above the soft and permanent admin user deletion choices."
-              translationKey="admin.users.delete.description"
-              values={{ email }}
+              translationKey={
+                bulk
+                  ? "admin.users.bulk_delete.description"
+                  : "admin.users.delete.description"
+              }
+              values={
+                bulk ? { count: targetUserIds.length } : { email: email ?? "" }
+              }
             />
           </DialogDescription>
         </DialogHeader>
@@ -267,13 +300,23 @@ export function AdminUserDeleteDialog({
             ) : (
               <EditableTranslation
                 defaultText={
-                  mode === "permanent" ? "Delete permanently" : "Soft delete user"
+                  mode === "permanent"
+                    ? bulk
+                      ? "Delete selected users permanently"
+                      : "Delete permanently"
+                    : bulk
+                      ? "Soft delete selected users"
+                      : "Soft delete user"
                 }
                 description="Confirmation button for the selected admin user deletion mode."
                 translationKey={
                   mode === "permanent"
-                    ? "admin.users.delete.permanent.confirm"
-                    : "admin.users.delete.soft.confirm"
+                    ? bulk
+                      ? "admin.users.delete.permanent.bulk_confirm"
+                      : "admin.users.delete.permanent.confirm"
+                    : bulk
+                      ? "admin.users.delete.soft.bulk_confirm"
+                      : "admin.users.delete.soft.confirm"
                 }
               />
             )}
