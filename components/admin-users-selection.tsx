@@ -17,11 +17,13 @@ import { Button } from "@/components/ui/button";
 type AdminUsersSelectionContextValue = {
   allVisibleUsersSelected: boolean;
   clearSelection: () => void;
+  isBulkDeleteMode: boolean;
   openBulkDeleteDialog: () => void;
   registerVisibleUserIds: (userIds: string[]) => void;
   selectedCount: number;
   selectedUserIds: string[];
   someVisibleUsersSelected: boolean;
+  toggleBulkDeleteMode: () => void;
   toggleSelectAllVisibleUsers: () => void;
   toggleUser: (userId: string) => void;
   isUserSelected: (userId: string) => boolean;
@@ -31,11 +33,13 @@ type AdminUsersSelectionContextValue = {
 const EMPTY_SELECTION_CONTEXT: AdminUsersSelectionContextValue = {
   allVisibleUsersSelected: false,
   clearSelection: () => {},
+  isBulkDeleteMode: false,
   openBulkDeleteDialog: () => {},
   registerVisibleUserIds: () => {},
   selectedCount: 0,
   selectedUserIds: [],
   someVisibleUsersSelected: false,
+  toggleBulkDeleteMode: () => {},
   toggleSelectAllVisibleUsers: () => {},
   toggleUser: () => {},
   isUserSelected: () => false,
@@ -60,6 +64,7 @@ export function AdminUsersSelectionProvider({
   );
   const [registeredUserIds, setRegisteredUserIds] = useState<string[]>([]);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
 
   const visibleUserIds = useMemo(
     () =>
@@ -73,6 +78,7 @@ export function AdminUsersSelectionProvider({
       setSelectedUserIds(new Set());
       setRegisteredUserIds([]);
       setBulkDeleteDialogOpen(false);
+      setIsBulkDeleteMode(false);
     }
   }, [scopeKey]);
 
@@ -115,6 +121,14 @@ export function AdminUsersSelectionProvider({
     setSelectedUserIds(new Set());
   }, []);
 
+  const toggleBulkDeleteMode = useCallback(() => {
+    if (isBulkDeleteMode) {
+      setSelectedUserIds(new Set());
+      setBulkDeleteDialogOpen(false);
+    }
+    setIsBulkDeleteMode((current) => !current);
+  }, [isBulkDeleteMode]);
+
   const toggleSelectAllVisibleUsers = useCallback(() => {
     setSelectedUserIds((current) => {
       const allSelected =
@@ -144,11 +158,13 @@ export function AdminUsersSelectionProvider({
     () => ({
       allVisibleUsersSelected,
       clearSelection,
+      isBulkDeleteMode,
       openBulkDeleteDialog,
       registerVisibleUserIds,
       selectedCount: selectedUserIdList.length,
       selectedUserIds: selectedUserIdList,
       someVisibleUsersSelected,
+      toggleBulkDeleteMode,
       toggleSelectAllVisibleUsers,
       toggleUser,
       isUserSelected: (userId: string) => selectedUserIds.has(userId),
@@ -157,11 +173,13 @@ export function AdminUsersSelectionProvider({
     [
       allVisibleUsersSelected,
       clearSelection,
+      isBulkDeleteMode,
       openBulkDeleteDialog,
       registerVisibleUserIds,
       selectedUserIdList,
       selectedUserIds,
       someVisibleUsersSelected,
+      toggleBulkDeleteMode,
       toggleSelectAllVisibleUsers,
       toggleUser,
       visibleUserIds.length,
@@ -187,21 +205,28 @@ export function useAdminUsersSelection() {
 }
 
 export function AdminUsersBulkDeleteButton() {
-  const { openBulkDeleteDialog, selectedCount } = useAdminUsersSelection();
+  const {
+    isBulkDeleteMode,
+    toggleBulkDeleteMode,
+  } = useAdminUsersSelection();
 
   return (
     <Button
+      aria-pressed={isBulkDeleteMode}
       className="cursor-pointer"
-      disabled={selectedCount === 0}
-      onClick={openBulkDeleteDialog}
+      onClick={toggleBulkDeleteMode}
       size="sm"
       type="button"
-      variant="outline"
+      variant={isBulkDeleteMode ? "secondary" : "outline"}
     >
       <EditableTranslation
-        defaultText="Bulk delete"
-        description="Button next to the admin user count that opens bulk deletion for selected users."
-        translationKey="admin.users.bulk_delete.button"
+        defaultText={isBulkDeleteMode ? "Exit bulk delete" : "Bulk delete"}
+        description="Button next to the admin user count that toggles bulk user deletion mode."
+        translationKey={
+          isBulkDeleteMode
+            ? "admin.users.bulk_delete.exit"
+            : "admin.users.bulk_delete.button"
+        }
       />
     </Button>
   );
@@ -216,32 +241,40 @@ export function AdminUsersSelectionCheckbox({
   email: string;
   userId: string;
 }) {
-  const { isUserSelected, toggleUser } = useAdminUsersSelection();
+  const { isBulkDeleteMode, isUserSelected, toggleUser } =
+    useAdminUsersSelection();
+
+  if (!isBulkDeleteMode) {
+    return null;
+  }
 
   return (
-    <label className="flex cursor-pointer items-center justify-center">
-      <input
-        checked={isUserSelected(userId)}
-        className="cursor-pointer"
-        disabled={disabled}
-        onChange={() => toggleUser(userId)}
-        type="checkbox"
-      />
-      <span className="sr-only">
-        <EditableTranslation
-          defaultText="Select user {email}"
-          description="Accessible label for selecting an individual admin user row."
-          translationKey="admin.users.selection.select_user"
-          values={{ email }}
+    <td className="py-3">
+      <label className="flex cursor-pointer items-center justify-center">
+        <input
+          checked={isUserSelected(userId)}
+          className="cursor-pointer"
+          disabled={disabled}
+          onChange={() => toggleUser(userId)}
+          type="checkbox"
         />
-      </span>
-    </label>
+        <span className="sr-only">
+          <EditableTranslation
+            defaultText="Select user {email}"
+            description="Accessible label for selecting an individual admin user row."
+            translationKey="admin.users.selection.select_user"
+            values={{ email }}
+          />
+        </span>
+      </label>
+    </td>
   );
 }
 
 export function AdminUsersSelectAllCheckbox() {
   const {
     allVisibleUsersSelected,
+    isBulkDeleteMode,
     selectableUserCount,
     someVisibleUsersSelected,
     toggleSelectAllVisibleUsers,
@@ -254,24 +287,30 @@ export function AdminUsersSelectAllCheckbox() {
     }
   }, [someVisibleUsersSelected]);
 
+  if (!isBulkDeleteMode) {
+    return null;
+  }
+
   return (
-    <label className="flex cursor-pointer items-center justify-center">
-      <input
-        checked={allVisibleUsersSelected}
-        className="cursor-pointer"
-        disabled={selectableUserCount === 0}
-        onChange={toggleSelectAllVisibleUsers}
-        ref={checkboxRef}
-        type="checkbox"
-      />
-      <span className="sr-only">
-        <EditableTranslation
-          defaultText="Select all users on this page"
-          description="Accessible label for selecting all visible admin user rows."
-          translationKey="admin.users.selection.select_all"
+    <th className="py-3 text-left">
+      <label className="flex cursor-pointer items-center justify-center">
+        <input
+          checked={allVisibleUsersSelected}
+          className="cursor-pointer"
+          disabled={selectableUserCount === 0}
+          onChange={toggleSelectAllVisibleUsers}
+          ref={checkboxRef}
+          type="checkbox"
         />
-      </span>
-    </label>
+        <span className="sr-only">
+          <EditableTranslation
+            defaultText="Select all users on this page"
+            description="Accessible label for selecting all visible admin user rows."
+            translationKey="admin.users.selection.select_all"
+          />
+        </span>
+      </label>
+    </th>
   );
 }
 

@@ -235,13 +235,11 @@ function UsersTableSection({
             const lastLoginAt = user.lastLoginAt;
             return (
               <tr className="border-t text-sm" key={user.id}>
-                <td className="py-3">
-                  <AdminUsersSelectionCheckbox
-                    disabled={user.id === currentUserId}
-                    email={user.email}
-                    userId={user.id}
-                  />
-                </td>
+                <AdminUsersSelectionCheckbox
+                  disabled={user.id === currentUserId}
+                  email={user.email}
+                  userId={user.id}
+                />
                 <td className="py-3">{user.email}</td>
                 <td className="py-3 capitalize">{user.role}</td>
                 <td className="py-3">

@@ -120,7 +120,13 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "admin.users.bulk_delete.button",
     defaultText: "Bulk delete",
     description:
-      "Button next to the admin user count that opens bulk deletion for selected users.",
+      "Button next to the admin user count that enters bulk user deletion mode.",
+  },
+  {
+    key: "admin.users.bulk_delete.exit",
+    defaultText: "Exit bulk delete",
+    description:
+      "Button next to the admin user count that exits bulk user deletion mode.",
   },
   {
     key: "admin.users.bulk_delete.title",

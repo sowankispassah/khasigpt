@@ -55,6 +55,9 @@ test.describe("admin bulk user deletion", () => {
     expect(tableSource).toContain("<AdminUsersSelectAllCheckbox />");
     expect(tableSource).toContain("<AdminUsersBulkActionBar />");
     expect(selectionSource).toContain("setSelectedUserIds(new Set())");
+    expect(selectionSource).toContain("isBulkDeleteMode");
+    expect(selectionSource).toContain("toggleBulkDeleteMode");
+    expect(selectionSource).toContain("setIsBulkDeleteMode(false)");
     expect(selectionSource).toContain("userId !== currentUserId");
     expect(selectionSource).toContain("toggleSelectAllVisibleUsers");
   });
