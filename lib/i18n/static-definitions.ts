@@ -2,6 +2,29 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "admin.section.error.title",
+    defaultText: "Unable to load {section}",
+    description: "Heading shown when an admin section cannot load.",
+  },
+  {
+    key: "admin.section.error.description",
+    defaultText:
+      "This admin section failed independently. The sidebar and other admin sections remain available.",
+    description:
+      "Explanation shown when an admin section fails independently.",
+  },
+  {
+    key: "admin.section.error.retry",
+    defaultText: "Retry section",
+    description: "Button label that retries a failed admin section.",
+  },
+  {
+    key: "admin.section.error.retrying",
+    defaultText: "Retrying...",
+    description:
+      "Button label shown while an admin section is being retried.",
+  },
+  {
     key: "admin.users.search.label",
     defaultText: "Search users",
     description: "Label for the admin user keyword search field.",

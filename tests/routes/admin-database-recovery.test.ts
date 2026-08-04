@@ -122,6 +122,23 @@ test.describe("admin database recovery", () => {
     expect(trackerSource).toContain("return Boolean(pathname)");
   });
 
+  test("normalizes filtered user dates and keeps section retry actionable", async () => {
+    const [querySource, errorSource] = await Promise.all([
+      readWorkspaceFile("lib/db/queries.ts"),
+      readWorkspaceFile("components/admin/admin-section-error.tsx"),
+    ]);
+
+    expect(querySource).toContain("const rows = await query");
+    expect(querySource).toContain("return normalizeAdminUsers(rows);");
+    expect(errorSource).toContain("useTransition");
+    expect(errorSource).toContain("onClick={() => startRetry(reset)}");
+    expect(errorSource).toContain("disabled={isRetrying}");
+    expect(errorSource).toContain('translationKey="admin.section.error.retry"');
+    expect(errorSource).toContain(
+      'translationKey="admin.section.error.retrying"'
+    );
+  });
+
   test("does not block the shared admin shell on an optional badge query", async () => {
     const [layoutSource, navSource] = await Promise.all([
       readWorkspaceFile("app/(admin)/admin/layout.tsx"),

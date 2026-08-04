@@ -4262,10 +4262,12 @@ export async function listUsers({
       const query =
         conditions.length > 0 ? builder.where(and(...conditions)) : builder;
 
-      return await query
+      const rows = await query
         .orderBy(...adminUserOrderBy(sort))
         .limit(limit)
         .offset(offset);
+
+      return normalizeAdminUsers(rows);
     });
   } catch (_error) {
     if (isTableMissingError(_error)) {
