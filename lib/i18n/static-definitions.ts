@@ -2,6 +2,175 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "admin.characters.references.added",
+    defaultText: "Reference image added",
+    description: "Toast shown after a character reference image is added.",
+  },
+  {
+    key: "admin.characters.references.upload_failed",
+    defaultText: "Upload failed",
+    description: "Fallback error shown when a character reference upload fails.",
+  },
+  {
+    key: "admin.characters.references.url_required",
+    defaultText: "Paste an image URL first",
+    description: "Validation shown when an image URL is missing.",
+  },
+  {
+    key: "admin.characters.references.front_required",
+    defaultText:
+      "A front-facing reference image is required before this person can be used for image generation.",
+    description: "Validation shown when a character has no front reference image.",
+  },
+  {
+    key: "admin.characters.references.title",
+    defaultText: "Reference images",
+    description: "Heading for the structured character reference image editor.",
+  },
+  {
+    key: "admin.characters.references.description",
+    defaultText:
+      "Add a front face first. Side angles and expressions improve matching when the prompt asks for them.",
+    description: "Helper text for the structured character reference image editor.",
+  },
+  {
+    key: "admin.characters.references.identity.title",
+    defaultText: "Identity references",
+    description: "Heading for front and side identity reference slots.",
+  },
+  {
+    key: "admin.characters.references.expressions.title",
+    defaultText: "Expression references",
+    description: "Heading for optional expression reference slots.",
+  },
+  {
+    key: "admin.characters.references.expressions.description",
+    defaultText:
+      "Optional. Matching expressions are selected automatically when requested in the prompt.",
+    description: "Helper text for optional expression reference slots.",
+  },
+  {
+    key: "admin.characters.references.additional.title",
+    defaultText: "Additional references",
+    description: "Heading for extra character reference images.",
+  },
+  {
+    key: "admin.characters.references.additional.description",
+    defaultText:
+      "Store any extra view, outfit, lighting, or expression image. These are kept for future prompt-aware selection.",
+    description: "Helper text for extra character reference images.",
+  },
+  {
+    key: "admin.characters.references.required",
+    defaultText: "Required",
+    description: "Badge for the required front identity reference slot.",
+  },
+  {
+    key: "admin.characters.references.optional",
+    defaultText: "Optional",
+    description: "Badge for optional character reference slots.",
+  },
+  {
+    key: "admin.characters.references.upload",
+    defaultText: "Upload",
+    description: "Button for uploading a character reference image.",
+  },
+  {
+    key: "admin.characters.references.replace",
+    defaultText: "Replace",
+    description: "Button for replacing a character reference image.",
+  },
+  {
+    key: "admin.characters.references.add",
+    defaultText: "Add",
+    description: "Button for adding an optional character reference image.",
+  },
+  {
+    key: "admin.characters.references.delete",
+    defaultText: "Delete",
+    description: "Button for deleting a character reference image.",
+  },
+  {
+    key: "admin.characters.references.add_url",
+    defaultText: "Add URL",
+    description: "Button for adding a character reference image URL.",
+  },
+  {
+    key: "admin.characters.references.add_image",
+    defaultText: "Add reference image",
+    description: "Button for adding an additional character reference image.",
+  },
+  {
+    key: "admin.characters.references.uploading",
+    defaultText: "Uploading...",
+    description: "Button label shown while a character reference image uploads.",
+  },
+  {
+    key: "admin.characters.references.type.front",
+    defaultText: "Front Face",
+    description: "Label for the front face reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.front.helper",
+    defaultText: "Required identity anchor",
+    description: "Helper for the front face reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.left",
+    defaultText: "Left Side / 3/4 Face",
+    description: "Label for the left side reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.left.helper",
+    defaultText: "Optional angle reference",
+    description: "Helper for the left side reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.right",
+    defaultText: "Right Side / 3/4 Face",
+    description: "Label for the right side reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.right.helper",
+    defaultText: "Optional angle reference",
+    description: "Helper for the right side reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.smile",
+    defaultText: "Smiling",
+    description: "Label for the smiling expression reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.laugh",
+    defaultText: "Laughing",
+    description: "Label for the laughing expression reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.sad",
+    defaultText: "Sad / Crying",
+    description: "Label for the sad expression reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.shock",
+    defaultText: "Shocked / Surprised",
+    description: "Label for the shocked expression reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.angry",
+    defaultText: "Angry",
+    description: "Label for the angry expression reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.neutral",
+    defaultText: "Neutral / Serious",
+    description: "Label for the neutral expression reference slot.",
+  },
+  {
+    key: "admin.characters.references.type.other",
+    defaultText: "Other",
+    description: "Label for an other expression or additional reference type.",
+  },
+  {
     key: "admin.section.error.title",
     defaultText: "Unable to load {section}",
     description: "Heading shown when an admin section cannot load.",
