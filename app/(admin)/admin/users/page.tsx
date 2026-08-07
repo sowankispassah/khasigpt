@@ -1,113 +1,525 @@
-import { grantUserCreditsAction, setUserActiveStateAction, setUserRoleAction } from "@/app/(admin)/actions";
+import { Suspense } from "react";
 import { auth } from "@/app/(auth)/auth";
-import { InfoIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
+import { AdminUserActionsMenu } from "@/components/admin-user-actions-menu";
 import {
-  getUserBalanceSummary,
-  listPricingPlans,
-  listUserCreditHistory,
-  listUsers,
-  type CreditHistoryEntry,
+  AdminUsersBulkDeleteButton,
+  AdminUsersSelectionCheckbox,
+  AdminUsersSelectionProvider,
+} from "@/components/admin-users-selection";
+import { EditableTranslation } from "@/components/translation-edit-provider";
+import {
+  type AdminQueryResult,
+  adminQueryResult,
+} from "@/lib/admin/safe-query";
+import {
+  type ActiveSubscriptionSummary,
+  type AdminUserPresenceFilter,
+  type AdminUserSortOption,
+  type AdminUsersSnapshot,
+  getAdminUsersSnapshot,
+  getUserBalanceSummaries,
+  isAdminUserPresenceFilter,
+  isAdminUserSortOption,
+  listActiveSubscriptionSummaries,
   type UserBalanceSummary,
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { formatDistanceToNow } from "date-fns";
+import { AddCreditsForm } from "./add-credits-form";
+import { AdminUsersTable } from "./admin-users-table";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage() {
+const USERS_PAGE_SIZE = 25;
+
+const EMPTY_ADMIN_USERS_SNAPSHOT: AdminUsersSnapshot = {
+  totalUsers: 0,
+  users: [],
+};
+
+function parsePage(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(rawValue ?? "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function parseSearch(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const normalized = rawValue?.trim();
+  return normalized ? normalized.slice(0, 120) : undefined;
+}
+
+function parseRole(value: string | string[] | undefined): UserRole | "all" {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return rawValue === "admin" || rawValue === "creator" || rawValue === "regular"
+    ? rawValue
+    : "all";
+}
+
+function parseAccountStatus(
+  value: string | string[] | undefined
+): "all" | "active" | "suspended" {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (rawValue === "active" || rawValue === "true") {
+    return "active";
+  }
+  if (
+    rawValue === "inactive" ||
+    rawValue === "false" ||
+    rawValue === "suspended"
+  ) {
+    return "suspended";
+  }
+  return "all";
+}
+
+function parsePresence(
+  value: string | string[] | undefined
+): AdminUserPresenceFilter {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return isAdminUserPresenceFilter(rawValue) ? rawValue : "all";
+}
+
+function parseSort(value: string | string[] | undefined): AdminUserSortOption {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return isAdminUserSortOption(rawValue) ? rawValue : "created_desc";
+}
+
+function formatAdminDateTime(value: Date) {
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value);
+}
+
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await auth();
   const currentUserId = session?.user?.id;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedPage = parsePage(resolvedSearchParams?.page);
+  const search = parseSearch(resolvedSearchParams?.q);
+  const role = parseRole(resolvedSearchParams?.role);
+  const accountStatus = parseAccountStatus(resolvedSearchParams?.active);
+  const presence = parsePresence(resolvedSearchParams?.presence);
+  const sort = parseSort(resolvedSearchParams?.sort);
+  const isActive =
+    accountStatus === "active"
+      ? true
+      : accountStatus === "suspended"
+        ? false
+        : "all";
 
-  const [users, plans] = await Promise.all([
-    listUsers({ limit: 100 }),
-    listPricingPlans({ includeInactive: true, includeDeleted: true }),
-  ]);
+  const withQueryState = async <T,>(
+    label: string,
+    promise: Promise<T>,
+    fallback: T
+  ) =>
+    adminQueryResult({
+      fallback,
+      label,
+      promise,
+    });
 
-  const planNameById = new Map(plans.map((plan) => [plan.id, plan.name]));
-  const userEmailById = new Map(users.map((user) => [user.id, user.email]));
-
-  const usersWithData = await Promise.all(
-    users.map(async (user) => {
-      const [balance, history] = await Promise.all([
-        getUserBalanceSummary(user.id),
-        listUserCreditHistory({ userId: user.id, limit: 8 }),
-      ]);
-
-      return { user, balance, history };
-    })
+  const activeSubscriptionsStatePromise = withQueryState<
+    ActiveSubscriptionSummary[]
+  >(
+    "users.active-subscriptions",
+    listActiveSubscriptionSummaries({ limit: 20 }),
+    []
   );
 
-  const getPlanName = (planId: string | null | undefined) =>
-    planId ? planNameById.get(planId) ?? null : null;
-  const getUserEmail = (userId: string | null | undefined) =>
-    userId ? userEmailById.get(userId) ?? null : null;
+  let usersSnapshotState = await withQueryState<AdminUsersSnapshot>(
+    "users.snapshot",
+    getAdminUsersSnapshot({
+      limit: USERS_PAGE_SIZE,
+      offset: (requestedPage - 1) * USERS_PAGE_SIZE,
+      isActive,
+      presence,
+      role,
+      search,
+      sort,
+    }),
+    EMPTY_ADMIN_USERS_SNAPSHOT
+  );
+
+  let totalUsers = usersSnapshotState.data.totalUsers;
+  const totalUsersConfirmed = usersSnapshotState.ok;
+  const totalPages = totalUsersConfirmed
+    ? Math.max(1, Math.ceil(totalUsers / USERS_PAGE_SIZE))
+    : requestedPage;
+  const page = totalUsersConfirmed ? Math.min(requestedPage, totalPages) : requestedPage;
+
+  if (usersSnapshotState.ok && page !== requestedPage) {
+    usersSnapshotState = await withQueryState<AdminUsersSnapshot>(
+      "users.snapshot.clamped-page",
+      getAdminUsersSnapshot({
+        limit: USERS_PAGE_SIZE,
+        offset: (page - 1) * USERS_PAGE_SIZE,
+        isActive,
+        presence,
+        role,
+        search,
+        sort,
+      }),
+      EMPTY_ADMIN_USERS_SNAPSHOT
+    );
+    totalUsers = usersSnapshotState.data.totalUsers;
+  }
+
+  const pagedUsers = usersSnapshotState.data.users;
+  const userListScope = [
+    page,
+    search ?? "",
+    role,
+    accountStatus,
+    presence,
+    sort,
+  ].join(":");
+  const balanceByUserIdStatePromise = usersSnapshotState.ok
+    ? withQueryState<Map<string, UserBalanceSummary>>(
+        "users.balances",
+        getUserBalanceSummaries(pagedUsers.map((user) => user.id)),
+        new Map<string, UserBalanceSummary>()
+      )
+    : Promise.resolve<AdminQueryResult<Map<string, UserBalanceSummary>>>({
+        data: new Map<string, UserBalanceSummary>(),
+        error: usersSnapshotState.error,
+        ok: false,
+      });
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">User management</h2>
-          <p className="text-muted-foreground text-sm">
-            Promote admins, suspend accounts, and monitor roles.
-          </p>
-        </div>
-      </header>
+    <AdminUsersSelectionProvider
+      currentUserId={currentUserId}
+      initialUserIds={pagedUsers.map((user) => user.id)}
+      key={userListScope}
+      scopeKey={userListScope}
+    >
+      <div className="flex flex-col gap-6">
+        <header className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-xl">User management</h2>
+            <p className="text-muted-foreground text-sm">
+              Promote admins, suspend accounts, and monitor roles.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border bg-background px-3 py-1 font-medium text-xs text-muted-foreground">
+              {totalUsersConfirmed
+                ? `${totalUsers.toLocaleString()} users`
+                : "User count unavailable"}
+            </span>
+            <AdminUsersBulkDeleteButton />
+          </div>
+        </header>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-muted-foreground text-xs uppercase">
-            <tr>
-              <th className="py-3 text-left">Email</th>
-              <th className="py-3 text-left">Role</th>
-              <th className="py-3 text-left">Status</th>
-              <th className="py-3 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usersWithData.map(({ user, balance, history }) => (
-              <tr key={user.id} className="border-t text-sm">
+        {!totalUsersConfirmed && (
+          <AdminUsersQueryWarning message="User count could not be confirmed." />
+        )}
+
+        {!usersSnapshotState.ok && (
+          <AdminUsersQueryWarning
+            message="User list could not be confirmed."
+          />
+        )}
+
+        <UsersTableSection
+          balanceByUserIdStatePromise={balanceByUserIdStatePromise}
+          currentUserId={currentUserId}
+          page={page}
+          pagedUsers={pagedUsers}
+          accountStatus={accountStatus}
+          presence={presence}
+          role={role}
+          search={search ?? ""}
+          sort={sort}
+          totalUsers={totalUsers}
+          totalUsersConfirmed={totalUsersConfirmed}
+          usersConfirmed={usersSnapshotState.ok}
+        />
+
+        <Suspense fallback={<SubscriptionsFallback />}>
+          <ActiveSubscriptionsSection
+            activeSubscriptionsStatePromise={activeSubscriptionsStatePromise}
+          />
+        </Suspense>
+      </div>
+    </AdminUsersSelectionProvider>
+  );
+}
+
+function UsersTableSection({
+  balanceByUserIdStatePromise,
+  currentUserId,
+  page,
+  pagedUsers,
+  accountStatus,
+  presence,
+  role,
+  search,
+  sort,
+  totalUsers,
+  totalUsersConfirmed,
+  usersConfirmed,
+}: {
+  balanceByUserIdStatePromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
+  currentUserId: string | undefined;
+  page: number;
+  pagedUsers: AdminUsersSnapshot["users"];
+  accountStatus: "all" | "active" | "suspended";
+  presence: AdminUserPresenceFilter;
+  role: UserRole | "all";
+  search: string;
+  sort: AdminUserSortOption;
+  totalUsers: number;
+  totalUsersConfirmed: boolean;
+  usersConfirmed: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <Suspense fallback={null}>
+        <BalanceQueryWarning
+          balanceByUserIdStatePromise={balanceByUserIdStatePromise}
+        />
+      </Suspense>
+      <AdminUsersTable
+        currentUserId={currentUserId}
+        key={`${page}:${search}:${role}:${accountStatus}:${presence}:${sort}`}
+        initialPage={page}
+        initialSearch={search}
+        initialUserIds={pagedUsers.map((user) => user.id)}
+        initialAccountStatus={accountStatus}
+        initialPresence={presence}
+        initialRole={role}
+        initialSort={sort}
+        pageSize={USERS_PAGE_SIZE}
+        totalUsers={totalUsers}
+        totalUsersConfirmed={totalUsersConfirmed}
+      >
+        {!usersConfirmed ? (
+          <tr>
+            <td className="py-6 text-muted-foreground" colSpan={7}>
+              Unable to load users for this page.
+            </td>
+          </tr>
+        ) : pagedUsers.length === 0 ? (
+          <tr>
+            <td className="py-6 text-muted-foreground" colSpan={7}>
+              No users found.
+            </td>
+          </tr>
+        ) : (
+          pagedUsers.map((user) => {
+            const lastLoginAt = user.lastLoginAt;
+            return (
+              <tr className="border-t text-sm" key={user.id}>
+                <AdminUsersSelectionCheckbox
+                  disabled={user.id === currentUserId}
+                  email={user.email}
+                  userId={user.id}
+                />
                 <td className="py-3">{user.email}</td>
                 <td className="py-3 capitalize">{user.role}</td>
                 <td className="py-3">
-                  {user.isActive ? (
+                  {user.isOnline ? (
+                    <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700 text-xs">
+                      <EditableTranslation
+                        defaultText="Online"
+                        description="Status badge for an admin user who has sent a recent presence heartbeat."
+                        translationKey="admin.users.status.online"
+                      />
+                    </span>
+                  ) : user.isActive ? (
                     <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700 text-xs">
-                      Active
+                      <EditableTranslation
+                        defaultText="Active"
+                        description="Status badge for an active admin user account."
+                        translationKey="admin.users.status.active"
+                      />
                     </span>
                   ) : (
                     <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700 text-xs">
-                      Suspended
+                      <EditableTranslation
+                        defaultText="Suspended"
+                        description="Status badge for a suspended admin user account."
+                        translationKey="admin.users.status.suspended"
+                      />
                     </span>
                   )}
                 </td>
                 <td className="py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <RoleToggleForm
-                      currentRole={user.role as UserRole}
-                      isSelf={user.id === currentUserId}
-                      userId={user.id}
+                  <time dateTime={user.createdAt.toISOString()}>
+                    {formatAdminDateTime(user.createdAt)}
+                  </time>
+                </td>
+                <td className="py-3">
+                  {user.isOnline ? (
+                    <EditableTranslation
+                      defaultText="Online"
+                      description="Shown in the last-login column while the user is currently online."
+                      translationKey="admin.users.last_login.online"
                     />
-                    <StatusToggleForm
+                  ) : lastLoginAt ? (
+                    <time dateTime={lastLoginAt.toISOString()}>
+                      {formatAdminDateTime(lastLoginAt)}
+                    </time>
+                  ) : (
+                    <EditableTranslation
+                      defaultText="Never"
+                      description="Shown when a user has no recorded successful login."
+                      translationKey="admin.users.last_login.never"
+                    />
+                  )}
+                </td>
+                <td className="py-3">
+                  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
+                    <AdminUserActionsMenu
+                      allowPersonalKnowledge={Boolean(
+                        user.allowPersonalKnowledge
+                      )}
+                      currentRole={user.role as UserRole}
+                      email={user.email}
                       isActive={user.isActive}
                       isSelf={user.id === currentUserId}
                       userId={user.id}
                     />
-                    <AddCreditsForm
-                      balance={balance}
-                      getPlanName={getPlanName}
-                      getUserEmail={getUserEmail}
-                      history={history}
-                      userId={user.id}
-                    />
+                    <Suspense
+                      fallback={
+                        <AddCreditsForm
+                          creditsRemaining={null}
+                          userId={user.id}
+                        />
+                      }
+                    >
+                      <UserCreditAction
+                        balanceByUserIdStatePromise={
+                          balanceByUserIdStatePromise
+                        }
+                        userId={user.id}
+                      />
+                    </Suspense>
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+          })
+        )}
+      </AdminUsersTable>
+    </div>
+  );
+}
+
+async function BalanceQueryWarning({
+  balanceByUserIdStatePromise,
+}: {
+  balanceByUserIdStatePromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
+}) {
+  const balanceByUserIdState = await balanceByUserIdStatePromise;
+  return balanceByUserIdState.ok ? null : (
+    <AdminUsersQueryWarning message="Credit balances could not be confirmed. User rows remain available and credit balances stay unconfirmed instead of falling back to zero." />
+  );
+}
+
+async function UserCreditAction({
+  balanceByUserIdStatePromise,
+  userId,
+}: {
+  balanceByUserIdStatePromise: Promise<
+    AdminQueryResult<Map<string, UserBalanceSummary>>
+  >;
+  userId: string;
+}) {
+  const balanceByUserIdState = await balanceByUserIdStatePromise;
+  return (
+    <AddCreditsForm
+      creditsRemaining={
+        balanceByUserIdState.ok
+          ? (balanceByUserIdState.data.get(userId)?.creditsRemaining ?? 0)
+          : null
+      }
+      userId={userId}
+    />
+  );
+}
+
+async function ActiveSubscriptionsSection({
+  activeSubscriptionsStatePromise,
+}: {
+  activeSubscriptionsStatePromise: Promise<
+    AdminQueryResult<ActiveSubscriptionSummary[]>
+  >;
+}) {
+  const activeSubscriptionsState = await activeSubscriptionsStatePromise;
+  const activeSubscriptions = activeSubscriptionsState.data;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-base">Active subscriptions</h3>
+          <p className="text-muted-foreground text-sm">
+            Recent users with active plans and their remaining balances.
+          </p>
+        </div>
+      </div>
+      {!activeSubscriptionsState.ok && (
+        <AdminUsersQueryWarning message="Active subscriptions could not be confirmed. Existing rows are hidden until this section loads real data." />
+      )}
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="text-muted-foreground text-xs uppercase">
+            <tr>
+              <th className="py-2 text-left">User</th>
+              <th className="py-2 text-left">Plan</th>
+              <th className="py-2 text-right">Tokens left</th>
+              <th className="py-2 text-right">Expires</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!activeSubscriptionsState.ok ? (
+              <tr>
+                <td className="py-4 text-muted-foreground" colSpan={4}>
+                  Unable to load active subscriptions.
+                </td>
+              </tr>
+            ) : activeSubscriptions.length === 0 ? (
+              <tr>
+                <td className="py-4 text-muted-foreground" colSpan={4}>
+                  No active subscriptions yet.
+                </td>
+              </tr>
+            ) : (
+              activeSubscriptions.map((subscription) => (
+                <tr className="border-t" key={subscription.subscriptionId}>
+                  <td className="py-2 font-mono text-xs">
+                    {subscription.userEmail}
+                  </td>
+                  <td className="py-2">
+                    {subscription.planName ?? "Plan removed"}
+                  </td>
+                  <td className="py-2 text-right">
+                    {subscription.tokenBalance.toLocaleString()} /{" "}
+                    {subscription.tokenAllowance.toLocaleString()}
+                  </td>
+                  <td className="py-2 text-right">
+                    {new Date(subscription.expiresAt).toLocaleDateString(
+                      "en-IN",
+                      {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      }
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -115,206 +527,25 @@ export default async function AdminUsersPage() {
   );
 }
 
-function RoleToggleForm({
-  userId,
-  currentRole,
-  isSelf,
-}: {
-  userId: string;
-  currentRole: UserRole;
-  isSelf: boolean;
-}) {
-  const nextRole: UserRole = currentRole === "admin" ? "regular" : "admin";
-  const label = currentRole === "admin" ? "Revoke admin" : "Promote to admin";
-
+function AdminUsersQueryWarning({ message }: { message: string }) {
   return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserRoleAction({ userId, role: nextRole });
-      }}
-    >
-      <Button disabled={isSelf} size="sm" type="submit" variant="outline">
-        {label}
-      </Button>
-    </form>
-  );
-}
-
-function AddCreditsForm({
-  userId,
-  balance,
-  history,
-  getPlanName,
-  getUserEmail,
-}: {
-  userId: string;
-  balance: UserBalanceSummary;
-  history: CreditHistoryEntry[];
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const creditsRemaining = balance.creditsRemaining;
-  const creditsLabel = `${creditsRemaining.toLocaleString()} credits available`;
-
-  return (
-    <form
-      action={grantUserCreditsAction}
-      className="flex flex-wrap items-center gap-2"
-    >
-      <input name="userId" type="hidden" value={userId} />
-      <input name="billingCycleDays" type="hidden" value="90" />
-      <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-        <span>{creditsLabel}</span>
-        <CreditHistoryButton
-          getPlanName={getPlanName}
-          getUserEmail={getUserEmail}
-          history={history}
-        />
-      </div>
-      <input
-        aria-label="Credits to grant"
-        className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm"
-        min={0}
-        name="credits"
-        placeholder="Credits"
-        required
-        step="0.5"
-        type="number"
-      />
-      <Button size="sm" type="submit" variant="secondary">
-        Add credits
-      </Button>
-    </form>
-  );
-}
-
-function CreditHistoryButton({
-  history,
-  getPlanName,
-  getUserEmail,
-}: {
-  history: CreditHistoryEntry[];
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const hasHistory = history.length > 0;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-background/60 hover:text-foreground"
-          type="button"
-        >
-          <InfoIcon size={10} />
-          <span className="sr-only">View credit history</span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="w-80 max-h-64 space-y-2 overflow-y-auto p-3"
-        side="top"
-      >
-        {hasHistory ? (
-          history.map((entry) => (
-            <CreditHistoryItem
-              entry={entry}
-              getPlanName={getPlanName}
-              getUserEmail={getUserEmail}
-              key={entry.id}
-            />
-          ))
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No credit activity recorded yet.
-          </p>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function CreditHistoryItem({
-  entry,
-  getPlanName,
-  getUserEmail,
-}: {
-  entry: CreditHistoryEntry;
-  getPlanName: (planId: string | null | undefined) => string | null;
-  getUserEmail: (userId: string | null | undefined) => string | null;
-}) {
-  const createdAt = entry.createdAt instanceof Date ? entry.createdAt : new Date(entry.createdAt);
-  const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
-  const target = (entry.target ?? {}) as Record<string, unknown>;
-
-  let description = entry.action;
-
-  if (entry.action === "billing.manual_credit.grant") {
-    const credits = typeof metadata.credits === "number" ? metadata.credits : null;
-    const tokens = typeof metadata.tokens === "number" ? metadata.tokens : null;
-    const expiresInDays = typeof metadata.expiresInDays === "number" ? metadata.expiresInDays : null;
-    const actor = getUserEmail(entry.actorId) ?? "Admin";
-
-    const parts = [
-      `${actor} granted${credits !== null ? ` ${credits.toLocaleString()} credits` : ""}`,
-    ];
-    if (tokens !== null) {
-      parts.push(`(${tokens.toLocaleString()} tokens)`);
-    }
-    if (expiresInDays !== null) {
-      parts.push(`expires in ${expiresInDays} day${expiresInDays === 1 ? "" : "s"}`);
-    }
-    description = parts.join(" • ");
-  } else if (entry.action === "billing.recharge") {
-    const planId = (metadata.planId ?? target.planId) as string | undefined;
-    const planName = getPlanName(planId) ?? planId ?? "Plan";
-    description = `User activated ${planName}`;
-  }
-
-  return (
-    <div className="rounded-md border bg-background p-2 shadow-sm">
-      <p className="text-xs font-medium text-foreground">{description}</p>
-      <p className="text-[11px] text-muted-foreground">
-        {formatDistanceToNow(createdAt, { addSuffix: true })}
-      </p>
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-sm">
+      {message} Refresh this admin section to retry.
     </div>
   );
 }
 
-function StatusToggleForm({
-  userId,
-  isActive,
-  isSelf,
-}: {
-  userId: string;
-  isActive: boolean;
-  isSelf: boolean;
-}) {
+function SubscriptionsFallback() {
   return (
-    <form
-      action={async () => {
-        "use server";
-        if (isSelf) {
-          return;
-        }
-        await setUserActiveStateAction({ userId, isActive: !isActive });
-      }}
-    >
-      <Button
-        disabled={isSelf}
-        size="sm"
-        type="submit"
-        variant={isActive ? "destructive" : "secondary"}
-      >
-        {isActive ? "Suspend" : "Restore"}
-      </Button>
-    </form>
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <div className="space-y-3">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div
+            className="h-10 animate-pulse rounded-lg bg-muted/50"
+            key={`subscriptions-row-${index + 1}`}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
-
-
-

@@ -7,6 +7,13 @@ test.describe("chat activity with reasoning", () => {
   test.beforeEach(async ({ curieContext }) => {
     chatPage = new ChatPage(curieContext.page);
     await chatPage.createNewChat();
+    const selectedReasoningModel = await chatPage.tryChooseModelFromSelector(
+      "chat-model-reasoning"
+    );
+    test.skip(
+      !selectedReasoningModel,
+      "No reasoning-capable model is configured for this environment."
+    );
   });
 
   test("Curie can send message and generate response with reasoning", async () => {

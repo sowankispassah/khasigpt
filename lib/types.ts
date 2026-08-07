@@ -1,8 +1,16 @@
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import type { ArtifactKind } from "@/components/artifact";
+import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Suggestion } from "./db/schema";
 import type { AppUsage } from "./usage";
+import type {
+  WebSearchCitation,
+  WebSearchSource,
+  WebSearchStatusData,
+  WebSearchVideo,
+} from "./web-search/types";
 
 export type DataPart = { type: "append-message"; message: string };
 
@@ -27,6 +35,39 @@ export type CustomUIDataTypes = {
   clear: null;
   finish: null;
   usage: AppUsage;
+  ragUsage: {
+    chatId: string;
+    modelId: string;
+    modelName: string;
+    entries: Array<{
+      id: string;
+      title: string;
+      status: string;
+      tags: string[];
+      score: number;
+      sourceUrl: string | null;
+    }>;
+  };
+  studyCards: {
+    papers: StudyPaperCard[];
+  };
+  studyAssistChips: {
+    question: string;
+    chips: string[];
+  };
+  studyQuestionReference: StudyQuestionReference;
+  jobTitleReference: JobTitleReference;
+  jobCards: {
+    jobs: JobCard[];
+  };
+  webSources: {
+    provider: string;
+    sources: WebSearchSource[];
+    searchQueries?: string[];
+    citations?: WebSearchCitation[];
+    videos?: WebSearchVideo[];
+  };
+  webSearchStatus: WebSearchStatusData;
 };
 
 export type ChatMessage = UIMessage<

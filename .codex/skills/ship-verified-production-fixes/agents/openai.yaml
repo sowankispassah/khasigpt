@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship Verified Production Fixes"
+  short_description: "Commit, deploy, and verify production fixes"
+  default_prompt: "Use $ship-verified-production-fixes to publish this verified production fix end to end."

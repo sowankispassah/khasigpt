@@ -1,0 +1,17 @@
+
+> ai-chatbot@3.1.0 start D:\Coding\ai-chatbot-main\ai-chatbot-main
+> next start
+
+▲ Next.js 16.1.6
+- Local:         http://localhost:3300
+- Network:       http://172.20.128.1:3300
+
+✓ Starting...
+✓ Ready in 1392ms
+[admin] Query "user count" succeeded in 219ms.
+[admin] Query "contact message count" succeeded in 1412ms.
+[admin] Query "chat count" succeeded in 1491ms.
+[admin] Query "recent users" succeeded in 267ms.
+[admin] Query "recent chats" succeeded in 489ms.
+[admin] Query "recent audit log entries" succeeded in 558ms.
+[admin] Query "recent contact messages" succeeded in 732ms.

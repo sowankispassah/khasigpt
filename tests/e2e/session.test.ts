@@ -1,3 +1,4 @@
+import type { Request as PlaywrightRequest } from "@playwright/test";
 import { getMessageByErrorCode } from "@/lib/errors";
 import { expect, test } from "../fixtures";
 import { generateRandomTestUser } from "../helpers";
@@ -6,7 +7,7 @@ import { ChatPage } from "../pages/chat";
 
 test.describe
   .serial("Guest Session", () => {
-    test("Authenticate as guest user when a new session is loaded", async ({
+    test("Redirect anonymous visitors to login when a new session is loaded", async ({
       page,
     }) => {
       const response = await page.goto("/");
@@ -15,29 +16,31 @@ test.describe
         throw new Error("Failed to load page");
       }
 
-      let request = response.request();
+      let request: PlaywrightRequest | null = response.request();
 
       const chain: string[] = [];
 
       while (request) {
         chain.unshift(request.url());
-        request = request.redirectedFrom();
+        request = request.redirectedFrom() ?? null;
       }
 
       expect(chain).toEqual([
         "http://localhost:3000/",
-        "http://localhost:3000/api/auth/guest?redirectUrl=http%3A%2F%2Flocalhost%3A3000%2F",
-        "http://localhost:3000/",
+        "http://localhost:3000/login?callbackUrl=%2Fchat",
       ]);
     });
 
-    test("Log out is not available for guest users", async ({ page }) => {
-      await page.goto("/");
+    test("Sign out is available for explicit guest users", async ({ page }) => {
+      await page.goto("/api/auth/guest?redirectUrl=/chat");
+      await page.waitForURL("/chat");
 
       const sidebarToggleButton = page.getByTestId("sidebar-toggle-button");
       await sidebarToggleButton.click();
 
-      const userNavButton = page.getByTestId("user-nav-button");
+      const userNavButton = page.getByRole("button", {
+        name: /Open user menu/,
+      });
       await expect(userNavButton).toBeVisible();
 
       await userNavButton.click();
@@ -45,7 +48,7 @@ test.describe
       await expect(userNavMenu).toBeVisible();
 
       const authMenuItem = page.getByTestId("user-nav-item-auth");
-      await expect(authMenuItem).toContainText("Login to your account");
+      await expect(authMenuItem).toContainText("Sign out");
     });
 
     test("Do not authenticate as guest user when an existing non-guest session is active", async ({
@@ -57,16 +60,19 @@ test.describe
         throw new Error("Failed to load page");
       }
 
-      let request = response.request();
+      let request: PlaywrightRequest | null = response.request();
 
       const chain: string[] = [];
 
       while (request) {
         chain.unshift(request.url());
-        request = request.redirectedFrom();
+        request = request.redirectedFrom() ?? null;
       }
 
-      expect(chain).toEqual(["http://localhost:3000/"]);
+      expect(chain).toEqual([
+        "http://localhost:3000/",
+        "http://localhost:3000/chat",
+      ]);
     });
 
     test("Allow navigating to /login as guest user", async ({ page }) => {
@@ -82,12 +88,16 @@ test.describe
     });
 
     test("Do not show email in user menu for guest user", async ({ page }) => {
-      await page.goto("/");
+      await page.goto("/api/auth/guest?redirectUrl=/chat");
+      await page.waitForURL("/chat");
 
-      const sidebarToggleButton = page.getByTestId("sidebar-toggle-button");
-      await sidebarToggleButton.click();
+      const userNavButton = page.getByRole("button", {
+        name: /Open user menu/,
+      });
+      await expect(userNavButton).toBeVisible();
+      await userNavButton.click();
 
-      const userEmail = page.getByTestId("user-email");
+      const userEmail = page.getByTestId("user-nav-item-email");
       await expect(userEmail).toContainText("Guest");
     });
   });
@@ -104,7 +114,7 @@ test.describe
 
     test("Register new account", async () => {
       await authPage.register(testUser.email, testUser.password);
-      await authPage.expectToastToContain("Account created successfully!");
+      await authPage.expectToastToContain("Check your email");
     });
 
     test("Register new account with existing email", async () => {
@@ -115,18 +125,19 @@ test.describe
     test("Log into account that exists", async ({ page }) => {
       await authPage.login(testUser.email, testUser.password);
 
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
       await expect(page.getByPlaceholder("Send a message...")).toBeVisible();
     });
 
-    test("Display user email in user menu", async ({ page }) => {
+    test("Display user name in user menu", async ({ page }) => {
       await authPage.login(testUser.email, testUser.password);
 
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
       await expect(page.getByPlaceholder("Send a message...")).toBeVisible();
 
-      const userEmail = await page.getByTestId("user-email");
-      await expect(userEmail).toHaveText(testUser.email);
+      await authPage.openUserMenu();
+      const userLabel = await page.getByTestId("user-nav-item-email");
+      await expect(userLabel).toHaveText("Playwright User");
     });
 
     test("Log out as non-guest user", async () => {
@@ -137,25 +148,27 @@ test.describe
       page,
     }) => {
       await authPage.login(testUser.email, testUser.password);
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
 
-      const userEmail = await page.getByTestId("user-email");
-      await expect(userEmail).toHaveText(testUser.email);
+      await authPage.openUserMenu();
+      const userLabel = await page.getByTestId("user-nav-item-email");
+      await expect(userLabel).toHaveText("Playwright User");
 
       await page.goto("/api/auth/guest");
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
 
-      const updatedUserEmail = await page.getByTestId("user-email");
-      await expect(updatedUserEmail).toHaveText(testUser.email);
+      await authPage.openUserMenu();
+      const updatedUserLabel = await page.getByTestId("user-nav-item-email");
+      await expect(updatedUserLabel).toHaveText("Playwright User");
     });
 
     test("Log out is available for non-guest users", async ({ page }) => {
       await authPage.login(testUser.email, testUser.password);
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
 
-      authPage.openSidebar();
-
-      const userNavButton = page.getByTestId("user-nav-button");
+      const userNavButton = page.getByRole("button", {
+        name: /Open user menu/,
+      });
       await expect(userNavButton).toBeVisible();
 
       await userNavButton.click();
@@ -170,18 +183,18 @@ test.describe
       page,
     }) => {
       await authPage.login(testUser.email, testUser.password);
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
 
       await page.goto("/register");
-      await expect(page).toHaveURL("/");
+      await expect(page).toHaveURL("/chat");
     });
 
     test("Do not navigate to /login for non-guest users", async ({ page }) => {
       await authPage.login(testUser.email, testUser.password);
-      await page.waitForURL("/");
+      await page.waitForURL("/chat");
 
       await page.goto("/login");
-      await expect(page).toHaveURL("/");
+      await expect(page).toHaveURL("/chat");
     });
   });
 
