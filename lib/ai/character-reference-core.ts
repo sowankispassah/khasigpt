@@ -261,7 +261,6 @@ export async function detectCharacters({
         characterId,
         matchedAlias,
         aliasLength: aliasLengths.get(characterId) ?? matchedAlias.length,
-        priority: candidate?.priority ?? 0,
         refCount: candidate?.refImages.length ?? 0,
         enabled: candidate?.enabled ?? true,
       };
@@ -276,11 +275,6 @@ export async function detectCharacters({
     const aliasDiff = b.aliasLength - a.aliasLength;
     if (aliasDiff !== 0) {
       return aliasDiff;
-    }
-
-    const priorityDiff = b.priority - a.priority;
-    if (priorityDiff !== 0) {
-      return priorityDiff;
     }
 
     return b.refCount - a.refCount;

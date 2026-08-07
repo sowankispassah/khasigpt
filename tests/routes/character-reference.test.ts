@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   buildCharacterReference,
+  detectCharacters,
   MAX_CHARACTER_REFS,
   MAX_TOTAL_CHARACTER_REFS,
 } from "@/lib/ai/character-reference-core";
@@ -387,4 +388,36 @@ test("buildCharacterReference leaves complexion to the reference images", async 
   expect(result.prompt).toContain("weight: 75 kg");
   expect(result.prompt).not.toContain("skin tone");
   expect(result.prompt).not.toContain("medium brown");
+});
+
+test("detectCharacters does not use the hidden priority value", async () => {
+  const matches = await detectCharacters({
+    prompt: "Generate Alpha Beta and Gamma Zeta",
+    aliasIndex: [
+      { aliasNormalized: "alpha beta", characterId: "character-a" },
+      { aliasNormalized: "gamma zeta", characterId: "character-b" },
+    ],
+    getCharactersByIds: async () => [
+      {
+        id: "character-a",
+        priority: 0,
+        enabled: true,
+        refImages: [
+          { imageId: "a-1", mimeType: "image/png" },
+          { imageId: "a-2", mimeType: "image/png" },
+        ],
+      },
+      {
+        id: "character-b",
+        priority: 100,
+        enabled: true,
+        refImages: [{ imageId: "b-1", mimeType: "image/png" }],
+      },
+    ],
+  });
+
+  expect(matches.map(({ characterId }) => characterId)).toEqual([
+    "character-a",
+    "character-b",
+  ]);
 });
