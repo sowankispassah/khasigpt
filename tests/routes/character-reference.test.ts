@@ -99,6 +99,9 @@ test("buildCharacterReference caps refs and uses only matched character images",
   expect(result.referenceImages?.length ?? 0).toBeLessThanOrEqual(
     MAX_CHARACTER_REFS
   );
+  expect(result.referenceImages).toHaveLength(MAX_CHARACTER_REFS);
+  expect(result.prompt).toContain("REFERENCE IMAGE GUIDANCE:");
+  expect(result.prompt).toContain("Reference image 1: Tirot Sing");
   expect(
     fetchedIds.every((id) =>
       matchedRefImages.some((ref) => ref.imageId === id)
@@ -236,4 +239,105 @@ test("buildCharacterReference attaches refs for multiple matches", async () => {
         refsB.some((ref) => ref.imageId === id)
     )
   ).toBeTruthy();
+});
+
+test("buildCharacterReference keeps healthy refs when one ref fails", async () => {
+  const characterId = "character-1";
+  const refImages: CharacterRefImage[] = [
+    {
+      imageId: "front",
+      mimeType: "image/png",
+      isPrimary: true,
+      role: "front face",
+      updatedAt: "2024-06-03T00:00:00Z",
+    },
+    {
+      imageId: "left",
+      mimeType: "image/png",
+      isPrimary: true,
+      role: "left profile",
+      updatedAt: "2024-06-02T00:00:00Z",
+    },
+    {
+      imageId: "right",
+      mimeType: "image/png",
+      isPrimary: true,
+      role: "right profile",
+      updatedAt: "2024-06-01T00:00:00Z",
+    },
+  ];
+
+  const result = await buildCharacterReference({
+    prompt: "Generate a photo of Tirot Sing",
+    deps: {
+      listAliasIndex: async () => [
+        { aliasNormalized: "tirot sing", characterId },
+      ],
+      getCharactersByIds: async () => [
+        { id: characterId, priority: 0, enabled: true, refImages },
+      ],
+      getCharacterById: async () => ({
+        id: characterId,
+        canonicalName: "Tirot Sing",
+        refImages,
+        lockedPrompt: null,
+        negativePrompt: null,
+        gender: null,
+        height: null,
+        weight: null,
+        complexion: null,
+        enabled: true,
+        priority: 0,
+      }),
+      fetchReferenceImage: async (ref) =>
+        ref.imageId === "left"
+          ? null
+          : { data: ref.imageId ?? "unknown", mediaType: "image/png" },
+    },
+  });
+
+  expect(result.referenceImages).toHaveLength(2);
+  expect(result.prompt).toContain("view/role: front face");
+  expect(result.prompt).toContain("view/role: right profile");
+  expect(result.prompt).not.toContain("view/role: left profile");
+});
+
+test("buildCharacterReference stops when every configured ref fails", async () => {
+  const characterId = "character-1";
+  const refImages: CharacterRefImage[] = [
+    {
+      imageId: "front",
+      mimeType: "image/png",
+      isPrimary: true,
+      role: "front face",
+    },
+  ];
+
+  await expect(
+    buildCharacterReference({
+      prompt: "Generate a photo of Tirot Sing",
+      deps: {
+        listAliasIndex: async () => [
+          { aliasNormalized: "tirot sing", characterId },
+        ],
+        getCharactersByIds: async () => [
+          { id: characterId, priority: 0, enabled: true, refImages },
+        ],
+        getCharacterById: async () => ({
+          id: characterId,
+          canonicalName: "Tirot Sing",
+          refImages,
+          lockedPrompt: null,
+          negativePrompt: null,
+          gender: null,
+          height: null,
+          weight: null,
+          complexion: null,
+          enabled: true,
+          priority: 0,
+        }),
+        fetchReferenceImage: async () => null,
+      },
+    })
+  ).rejects.toThrow("No configured character reference images could be loaded.");
 });

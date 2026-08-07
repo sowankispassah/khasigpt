@@ -414,6 +414,37 @@ function applyCharacterConstraints(
   return finalPrompt;
 }
 
+type LoadedCharacterReference = {
+  character: CharacterForImageGeneration;
+  image: ImageInput;
+  ref: CharacterRefImage;
+};
+
+function normalizeReferenceRole(role: string | null | undefined) {
+  const normalized = role?.trim().replace(/\s+/g, " ") ?? "";
+  return normalized.slice(0, 80);
+}
+
+function applyReferenceImageGuidance(
+  basePrompt: string,
+  references: LoadedCharacterReference[]
+) {
+  if (references.length === 0) {
+    return basePrompt;
+  }
+
+  const referenceLines = references.map(({ character, ref }, index) => {
+    const role = normalizeReferenceRole(ref.role);
+    return `Reference image ${index + 1}: ${character.canonicalName}${
+      role ? `; view/role: ${role}` : ""
+    }.`;
+  });
+
+  return `${basePrompt}\n\nREFERENCE IMAGE GUIDANCE:\n${referenceLines.join(
+    "\n"
+  )}\nImages assigned to the same character name depict the same person. Use every available view as identity evidence, preserve consistent facial features, and do not create multiple copies of a person unless the user explicitly requests them.`;
+}
+
 export async function buildCharacterReference({
   prompt,
   abortSignal,
@@ -483,7 +514,10 @@ export async function buildCharacterReference({
   }
 
   const selectedRefs = matchedCharacters.flatMap(({ character }) =>
-    selectRefImages(character.refImages ?? [])
+    selectRefImages(character.refImages ?? []).map((ref) => ({
+      character,
+      ref,
+    }))
   );
   if (!selectedRefs.length) {
     return {
@@ -510,24 +544,45 @@ export async function buildCharacterReference({
   }
 
   const cappedRefs = selectedRefs.slice(0, MAX_TOTAL_CHARACTER_REFS);
-  const referenceImages = await Promise.all(
-    cappedRefs.map((ref) => fetcher(ref, abortSignal))
+  const loadedReferences = await Promise.all(
+    cappedRefs.map(async ({ character, ref }) => ({
+      character,
+      image: await fetcher(ref, abortSignal),
+      ref,
+    }))
   );
 
-  if (referenceImages.some((image) => !image)) {
-    console.error("Failed to load character reference images", {
+  const validReferences = loadedReferences.filter(
+    (
+      entry
+    ): entry is {
+      character: CharacterForImageGeneration;
+      image: ImageInput;
+      ref: CharacterRefImage;
+    } => Boolean(entry.image)
+  );
+  const failedReferenceCount = loadedReferences.length - validReferences.length;
+
+  if (failedReferenceCount > 0) {
+    console.warn("Some character reference images could not be loaded", {
+      failedReferenceCount,
       matchedCharacterIds,
       matchedAliases,
     });
-    return { prompt };
   }
 
+  if (validReferences.length === 0) {
+    throw new Error("No configured character reference images could be loaded.");
+  }
+
+  const constrainedPrompt = applyCharacterConstraints(
+    prompt,
+    matchedCharacters.map(({ character }) => character)
+  );
+
   return {
-    prompt: applyCharacterConstraints(
-      prompt,
-      matchedCharacters.map(({ character }) => character)
-    ),
-    referenceImages: referenceImages as ImageInput[],
+    prompt: applyReferenceImageGuidance(constrainedPrompt, validReferences),
+    referenceImages: validReferences.map(({ image }) => image),
     matchedCharacterId: matchedCharacters[0]?.character.id,
     matchedAlias: matchedCharacters[0]?.match.matchedAlias,
     matchedCharacterIds,
