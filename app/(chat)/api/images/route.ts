@@ -11,6 +11,7 @@ import {
   buildGenerationRequest,
   generateNanoBananaImage,
   getImageGenerationAccess,
+  getMaxReferenceImagesForModel,
 } from "@/lib/ai/image-generation";
 import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
 import {
@@ -492,6 +493,9 @@ export async function POST(request: Request) {
       prompt,
       sourceImages,
       abortSignal: request.signal,
+      maxReferenceImages: getMaxReferenceImagesForModel(
+        access.model.providerModelId
+      ),
     });
 
     const images = await generateNanoBananaImage({

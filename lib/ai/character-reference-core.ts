@@ -1,5 +1,10 @@
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
 import {
+  type CharacterReferenceImage,
+  type CharacterReferenceType,
+  normalizeCharacterReferences,
+} from "@/lib/ai/character-reference-types";
+import {
   ALLOWED_IMAGE_MEDIA_TYPES,
   MAX_IMAGE_UPLOAD_BYTES,
 } from "@/lib/ai/image-constants";
@@ -8,8 +13,7 @@ import type { CharacterRefImage } from "@/lib/db/schema";
 
 export const MAX_CHARACTER_REFS = 3;
 export const MAX_MATCHED_CHARACTERS = 3;
-export const MAX_TOTAL_CHARACTER_REFS =
-  MAX_CHARACTER_REFS * MAX_MATCHED_CHARACTERS;
+export const MAX_TOTAL_CHARACTER_REFS = MAX_CHARACTER_REFS;
 
 export type CharacterAliasIndexEntry = {
   aliasNormalized: string;
@@ -298,26 +302,126 @@ function parseUpdatedAt(updatedAt: string | null | undefined) {
 
 export function selectRefImages(
   refImages: CharacterRefImage[],
-  maxRefs = MAX_CHARACTER_REFS
+  maxRefs = MAX_CHARACTER_REFS,
+  prompt = ""
 ): CharacterRefImage[] {
   if (!Array.isArray(refImages) || refImages.length === 0 || maxRefs <= 0) {
     return [];
   }
 
-  const primaries = refImages.filter((image) => image.isPrimary);
-  const pool = primaries.length > 0 ? primaries : refImages;
+  const normalizedReferences = normalizeCharacterReferences(refImages);
+  const normalizedPrompt = prompt.trim().toLowerCase();
+  const requestedExpressions = detectRequestedExpressions(normalizedPrompt);
+  const requestedAngles = detectRequestedAngles(normalizedPrompt);
 
-  const sorted = [...pool].sort((a, b) => {
-    const aFace = (a.role ?? "").toLowerCase() === "face";
-    const bFace = (b.role ?? "").toLowerCase() === "face";
-    if (aFace !== bFace) {
-      return aFace ? -1 : 1;
+  const scored = normalizedReferences.map((reference, index) => ({
+    reference,
+    index,
+    score: scoreReference({
+      reference,
+      requestedAngles,
+      requestedExpressions,
+    }),
+  }));
+
+  scored.sort((a, b) => {
+    if (a.score !== b.score) {
+      return b.score - a.score;
     }
-
-    return parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt);
+    const updatedAtDiff =
+      parseUpdatedAt(b.reference.updatedAt) -
+      parseUpdatedAt(a.reference.updatedAt);
+    if (updatedAtDiff !== 0) {
+      return updatedAtDiff;
+    }
+    return a.index - b.index;
   });
 
-  return sorted.slice(0, maxRefs);
+  return scored.slice(0, maxRefs).map(({ reference }) => reference);
+}
+
+const EXPRESSION_TERMS: Array<{
+  type: CharacterReferenceType;
+  terms: string[];
+}> = [
+  { type: "smile", terms: ["smil", "happy", "happily", "grin"] },
+  { type: "laugh", terms: ["laugh", "laughing", "joyful"] },
+  { type: "sad", terms: ["sad", "cry", "crying", "tearful", "sorrow"] },
+  {
+    type: "shock",
+    terms: ["shock", "shocked", "surpris", "astonish", "amazed"],
+  },
+  { type: "angry", terms: ["angry", "anger", "furious", "rage"] },
+  { type: "neutral", terms: ["serious", "neutral", "calm"] },
+];
+
+function detectRequestedExpressions(prompt: string) {
+  return new Set(
+    EXPRESSION_TERMS.filter(({ terms }) =>
+      terms.some((term) => prompt.includes(term))
+    ).map(({ type }) => type)
+  );
+}
+
+function detectRequestedAngles(prompt: string) {
+  const requested = new Set<CharacterReferenceType>();
+  if (
+    prompt.includes("left profile") ||
+    prompt.includes("left side") ||
+    prompt.includes("looking left")
+  ) {
+    requested.add("left");
+  }
+  if (
+    prompt.includes("right profile") ||
+    prompt.includes("right side") ||
+    prompt.includes("looking right")
+  ) {
+    requested.add("right");
+  }
+  if (
+    prompt.includes("profile") ||
+    prompt.includes("side view") ||
+    prompt.includes("side profile")
+  ) {
+    requested.add("left");
+    requested.add("right");
+  }
+  return requested;
+}
+
+function scoreReference({
+  reference,
+  requestedAngles,
+  requestedExpressions,
+}: {
+  reference: CharacterReferenceImage;
+  requestedAngles: Set<CharacterReferenceType>;
+  requestedExpressions: Set<CharacterReferenceType>;
+}) {
+  const type = reference.type ?? "other";
+  let score = 0;
+
+  if (type === "front") {
+    score += 100;
+  }
+  if (type === "left" || type === "right") {
+    score += requestedAngles.has(type) ? 75 : 25;
+  }
+  if (requestedExpressions.has(type)) {
+    score += 80;
+  }
+  if (reference.category === "identity") {
+    score += 20;
+  }
+  if (reference.category === "expression") {
+    score += requestedExpressions.has(type) ? 25 : -20;
+  }
+  if (reference.isPrimary) {
+    score += 5;
+  }
+
+  return score;
 }
 
 export function detectImageMime(
@@ -410,7 +514,7 @@ function applyCharacterConstraints(
 type LoadedCharacterReference = {
   character: CharacterForImageGeneration;
   image: ImageInput;
-  ref: CharacterRefImage;
+  ref: CharacterReferenceImage;
 };
 
 function normalizeReferenceRole(role: string | null | undefined) {
@@ -427,9 +531,11 @@ function applyReferenceImageGuidance(
   }
 
   const referenceLines = references.map(({ character, ref }, index) => {
-    const role = normalizeReferenceRole(ref.role);
+    const referenceType = normalizeReferenceRole(ref.role ?? ref.type ?? ref.category);
+    const label = normalizeReferenceRole(ref.label);
+    const descriptor = [referenceType, label].filter(Boolean).join("; ");
     return `Reference image ${index + 1}: ${character.canonicalName}${
-      role ? `; view/role: ${role}` : ""
+      descriptor ? `; view/role: ${descriptor}` : ""
     }.`;
   });
 
@@ -442,10 +548,12 @@ export async function buildCharacterReference({
   prompt,
   abortSignal,
   deps,
+  maxReferenceImages = MAX_TOTAL_CHARACTER_REFS,
 }: {
   prompt: string;
   abortSignal?: AbortSignal;
   deps?: CharacterReferenceDeps;
+  maxReferenceImages?: number;
 }): Promise<CharacterReferenceResult> {
   const aliasIndex = deps?.listAliasIndex ? await deps.listAliasIndex() : [];
 
@@ -507,7 +615,11 @@ export async function buildCharacterReference({
   }
 
   const selectedRefs = matchedCharacters.flatMap(({ character }) =>
-    selectRefImages(character.refImages ?? []).map((ref) => ({
+    selectRefImages(
+      character.refImages ?? [],
+      Math.max(1, maxReferenceImages),
+      prompt
+    ).map((ref) => ({
       character,
       ref,
     }))
@@ -536,7 +648,7 @@ export async function buildCharacterReference({
     };
   }
 
-  const cappedRefs = selectedRefs.slice(0, MAX_TOTAL_CHARACTER_REFS);
+  const cappedRefs = selectedRefs.slice(0, Math.max(1, maxReferenceImages));
   const loadedReferences = await Promise.all(
     cappedRefs.map(async ({ character, ref }) => ({
       character,

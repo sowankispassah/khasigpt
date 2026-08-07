@@ -16,6 +16,7 @@ import {
   deleteCharacterAction,
   updateCharacterAction,
 } from "@/app/(admin)/actions";
+import { useTranslation } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,10 +37,68 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  type CharacterReferenceCategory,
+  type CharacterReferenceImage,
+  type CharacterReferenceType,
+  hasFrontReference,
+  normalizeCharacterReferences,
+} from "@/lib/ai/character-reference-types";
 import type { CharacterRefImage } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
 
-const MAX_REFS = 3;
+const IDENTITY_REFERENCE_SLOTS: Array<{
+  type: Extract<CharacterReferenceType, "front" | "left" | "right">;
+  label: string;
+  helper: string;
+  required?: boolean;
+}> = [
+  {
+    type: "front",
+    label: "Front Face",
+    helper: "Required identity anchor",
+    required: true,
+  },
+  {
+    type: "left",
+    label: "Left Side / 3/4 Face",
+    helper: "Optional angle reference",
+  },
+  {
+    type: "right",
+    label: "Right Side / 3/4 Face",
+    helper: "Optional angle reference",
+  },
+];
+
+const EXPRESSION_REFERENCE_SLOTS: Array<{
+  type: Extract<
+    CharacterReferenceType,
+    "smile" | "laugh" | "sad" | "shock" | "angry" | "neutral" | "other"
+  >;
+  label: string;
+}> = [
+  { type: "smile", label: "Smiling" },
+  { type: "laugh", label: "Laughing" },
+  { type: "sad", label: "Sad / Crying" },
+  { type: "shock", label: "Shocked / Surprised" },
+  { type: "angry", label: "Angry" },
+  { type: "neutral", label: "Neutral / Serious" },
+  { type: "other", label: "Other" },
+];
+
+const ADDITIONAL_REFERENCE_TYPES: CharacterReferenceType[] = [
+  "front",
+  "left",
+  "right",
+  "smile",
+  "laugh",
+  "sad",
+  "shock",
+  "angry",
+  "neutral",
+  "other",
+];
 
 export type SerializedCharacter = {
   id: string;
@@ -58,8 +117,14 @@ export type SerializedCharacter = {
   updatedAt: string;
 };
 
-type EditableRefImage = CharacterRefImage & {
+type EditableRefImage = CharacterReferenceImage & {
   localId: string;
+};
+
+type UploadTarget = {
+  category: CharacterReferenceCategory;
+  type: CharacterReferenceType;
+  label?: string | null;
 };
 
 type CharacterFormState = {
@@ -118,7 +183,7 @@ function formatDate(value: string) {
 }
 
 function buildEditableRefImages(refImages: CharacterRefImage[]) {
-  return refImages.map((ref) => ({
+  return normalizeCharacterReferences(refImages).map((ref) => ({
     ...ref,
     isPrimary: Boolean(ref.isPrimary),
     mimeType: ref.mimeType || "image/png",
@@ -137,6 +202,7 @@ export function AdminCharactersManager({
   characters: SerializedCharacter[];
   charactersConfirmed: boolean;
 }) {
+  const { translate } = useTranslation();
   const [charactersState, setCharactersState] = useState(() =>
     characters.map(serializeCharacter)
   );
@@ -147,12 +213,15 @@ export function AdminCharactersManager({
   const [formState, setFormState] = useState<CharacterFormState>(DEFAULT_FORM);
   const [refImages, setRefImages] = useState<EditableRefImage[]>([]);
   const [urlInput, setUrlInput] = useState("");
+  const [urlType, setUrlType] = useState<CharacterReferenceType>("other");
+  const [urlLabel, setUrlLabel] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [progressVisible, setProgressVisible] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadTargetRef = useRef<UploadTarget | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryCharacter, setGalleryCharacter] =
     useState<SerializedCharacter | null>(null);
@@ -210,6 +279,8 @@ export function AdminCharactersManager({
     setFormState(DEFAULT_FORM);
     setRefImages([]);
     setUrlInput("");
+    setUrlType("other");
+    setUrlLabel("");
     setSheetOpen(true);
   }, []);
 
@@ -227,24 +298,17 @@ export function AdminCharactersManager({
     });
     setRefImages(buildEditableRefImages(character.refImages ?? []));
     setUrlInput("");
+    setUrlType("other");
+    setUrlLabel("");
     setSheetOpen(true);
   }, []);
-
-  const updateRefImage = useCallback(
-    (id: string, patch: Partial<EditableRefImage>) => {
-      setRefImages((prev) =>
-        prev.map((ref) => (ref.localId === id ? { ...ref, ...patch } : ref))
-      );
-    },
-    []
-  );
 
   const removeRefImage = useCallback((id: string) => {
     setRefImages((prev) => prev.filter((ref) => ref.localId !== id));
   }, []);
 
   const handleUpload = useCallback(
-    async (file: File) => {
+    async (file: File, target: UploadTarget) => {
       beginProgress();
       setIsUploading(true);
       try {
@@ -274,34 +338,57 @@ export function AdminCharactersManager({
         }
 
         const now = new Date().toISOString();
-        setRefImages((prev) => [
-          ...prev,
-          {
-            localId: crypto.randomUUID(),
-            url,
-            mimeType: file.type || data.contentType || "image/png",
-            role: "",
-            isPrimary: false,
-            updatedAt: now,
-          },
-        ]);
-        toast.success("Reference image added");
+        const nextRef: EditableRefImage = {
+          localId: crypto.randomUUID(),
+          url,
+          mimeType: file.type || data.contentType || "image/png",
+          role: target.type,
+          category: target.category,
+          type: target.type,
+          label: target.label ?? null,
+          isPrimary: target.type === "front",
+          updatedAt: now,
+        };
+        setRefImages((prev) => {
+          if (target.category === "additional") {
+            return [...prev, nextRef];
+          }
+          const existingIndex = prev.findIndex(
+            (ref) =>
+              ref.category === target.category && ref.type === target.type
+          );
+          if (existingIndex === -1) {
+            return [...prev, nextRef];
+          }
+          return prev.map((ref, index) =>
+            index === existingIndex ? nextRef : ref
+          );
+        });
+        toast.success(
+          translate("admin.characters.references.added", "Reference image added")
+        );
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : translate("admin.characters.references.upload_failed", "Upload failed")
+        );
       } finally {
         finishProgress();
         setIsUploading(false);
       }
     },
-    [beginProgress, finishProgress]
+    [beginProgress, finishProgress, translate]
   );
 
   const handleFileSelect = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const [file] = event.target.files ?? [];
-      if (file) {
-        void handleUpload(file);
+      const target = uploadTargetRef.current;
+      if (file && target) {
+        void handleUpload(file, target);
       }
+      uploadTargetRef.current = null;
       if (event.target) {
         event.target.value = "";
       }
@@ -309,26 +396,47 @@ export function AdminCharactersManager({
     [handleUpload]
   );
 
+  const chooseUpload = useCallback((target: UploadTarget) => {
+    uploadTargetRef.current = target;
+    fileInputRef.current?.click();
+  }, []);
+
   const handleAddUrl = useCallback(() => {
     const trimmed = urlInput.trim();
     if (!trimmed) {
-      toast.error("Paste an image URL first");
+      toast.error(
+        translate("admin.characters.references.url_required", "Paste an image URL first")
+      );
       return;
     }
 
-    setRefImages((prev) => [
-      ...prev,
-      {
-        localId: crypto.randomUUID(),
-        url: trimmed,
-        mimeType: "image/png",
-        role: "",
-        isPrimary: false,
-        updatedAt: new Date().toISOString(),
-      },
-    ]);
+    const category: CharacterReferenceCategory = "additional";
+    const nextRef: EditableRefImage = {
+      localId: crypto.randomUUID(),
+      url: trimmed,
+      mimeType: "image/png",
+      role: urlType,
+      category,
+      type: urlType,
+      label: urlLabel.trim() || null,
+      isPrimary: false,
+      updatedAt: new Date().toISOString(),
+    };
+    setRefImages((prev) => {
+      if (category === "additional") {
+        return [...prev, nextRef];
+      }
+      const existingIndex = prev.findIndex(
+        (ref) => ref.category === category && ref.type === urlType
+      );
+      if (existingIndex === -1) {
+        return [...prev, nextRef];
+      }
+      return prev.map((ref, index) => (index === existingIndex ? nextRef : ref));
+    });
     setUrlInput("");
-  }, [urlInput]);
+    setUrlLabel("");
+  }, [translate, urlInput, urlLabel, urlType]);
 
   const handleSubmit = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -348,6 +456,16 @@ export function AdminCharactersManager({
       const weight = formState.weight.trim() || null;
       const enabled = formState.enabled;
 
+      if (!hasFrontReference(refImages)) {
+        toast.error(
+          translate(
+            "admin.characters.references.front_required",
+            "A front-facing reference image is required before this person can be used for image generation."
+          )
+        );
+        return;
+      }
+
       const refPayload = refImages.map((ref) => ({
         imageId: ref.imageId ?? null,
         storageKey: ref.storageKey ?? null,
@@ -356,6 +474,9 @@ export function AdminCharactersManager({
         role: ref.role ?? null,
         isPrimary: Boolean(ref.isPrimary),
         updatedAt: ref.updatedAt ?? new Date().toISOString(),
+        category: ref.category ?? null,
+        type: ref.type ?? null,
+        label: ref.label ?? null,
       }));
 
       beginProgress();
@@ -431,6 +552,7 @@ export function AdminCharactersManager({
       finishProgress,
       formState,
       refImages,
+      translate,
     ]
   );
 
@@ -512,7 +634,7 @@ export function AdminCharactersManager({
             value={searchTerm}
           />
           <span className="text-muted-foreground text-xs">
-            Attach up to {MAX_REFS} primary reference images per character.
+            Reference images are selected automatically from the stored set for each prompt.
           </span>
         </div>
 
@@ -759,140 +881,318 @@ export function AdminCharactersManager({
             </div>
 
             <div className="rounded-xl border bg-muted/30 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <input
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={handleFileSelect}
+                ref={fileInputRef}
+                type="file"
+              />
+              <div>
+                <h3 className="font-medium">
+                  {translate("admin.characters.references.title", "Reference images")}
+                </h3>
+                <p className="text-muted-foreground text-xs">
+                  {translate(
+                    "admin.characters.references.description",
+                    "Add a front face first. Side angles and expressions improve matching when the prompt asks for them."
+                  )}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <h4 className="font-medium text-sm">
+                  {translate(
+                    "admin.characters.references.identity.title",
+                    "Identity references"
+                  )}
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {IDENTITY_REFERENCE_SLOTS.map((slot) => {
+                    const ref = refImages.find(
+                      (item) =>
+                        item.category === "identity" && item.type === slot.type
+                    );
+                    return (
+                      <div className="grid gap-2 rounded-lg border bg-background p-3" key={slot.type}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-medium text-sm">
+                              {translate(
+                                `admin.characters.references.type.${slot.type}`,
+                                slot.label
+                              )}
+                            </div>
+                            <div className="text-muted-foreground text-xs">
+                              {translate(
+                                `admin.characters.references.type.${slot.type}.helper`,
+                                slot.helper
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant={slot.required ? "default" : "outline"}>
+                            {slot.required
+                              ? translate(
+                                  "admin.characters.references.required",
+                                  "Required"
+                                )
+                              : translate(
+                                  "admin.characters.references.optional",
+                                  "Optional"
+                                )}
+                          </Badge>
+                        </div>
+                        {ref?.url && isOptimizedPreviewUrl(ref.url) ? (
+                          <Image
+                            alt={translate(
+                              `admin.characters.references.type.${slot.type}`,
+                              slot.label
+                            )}
+                            className="h-32 w-full rounded-md border object-cover"
+                            height={128}
+                            src={ref.url}
+                            width={180}
+                          />
+                        ) : (
+                          <div className="flex h-32 items-center justify-center rounded-md border text-xs text-muted-foreground">
+                            {ref ? "External preview" : "No image selected"}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            className="cursor-pointer flex-1"
+                            disabled={isUploading}
+                            onClick={() =>
+                              chooseUpload({
+                                category: "identity",
+                                type: slot.type,
+                              })
+                            }
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {ref
+                              ? translate(
+                                  "admin.characters.references.replace",
+                                  "Replace"
+                                )
+                              : translate(
+                                  "admin.characters.references.upload",
+                                  "Upload"
+                                )}
+                          </Button>
+                          {ref ? (
+                            <Button
+                              className="cursor-pointer"
+                              onClick={() => removeRefImage(ref.localId)}
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              {translate("admin.characters.references.delete", "Delete")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3">
                 <div>
-                  <h3 className="font-medium">Reference images</h3>
+                  <h4 className="font-medium text-sm">
+                    {translate(
+                      "admin.characters.references.expressions.title",
+                      "Expression references"
+                    )}
+                  </h4>
                   <p className="text-muted-foreground text-xs">
-                    Only primary images are injected; selection caps at {MAX_REFS}.
+                    {translate(
+                      "admin.characters.references.expressions.description",
+                      "Optional. Matching expressions are selected automatically when requested in the prompt."
+                    )}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    accept="image/png,image/jpeg"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                    ref={fileInputRef}
-                    type="file"
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {EXPRESSION_REFERENCE_SLOTS.map((slot) => {
+                    const ref = refImages.find(
+                      (item) =>
+                        item.category === "expression" && item.type === slot.type
+                    );
+                    return (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-background p-3" key={slot.type}>
+                        <div className="flex min-w-0 items-center gap-2">
+                          {ref?.url && isOptimizedPreviewUrl(ref.url) ? (
+                            <Image
+                            alt={translate(
+                              `admin.characters.references.type.${slot.type}`,
+                              slot.label
+                            )}
+                              className="h-12 w-12 rounded-md border object-cover"
+                              height={48}
+                              src={ref.url}
+                              width={48}
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded-md border" />
+                          )}
+                          <span className="truncate text-sm">
+                            {translate(
+                              `admin.characters.references.type.${slot.type}`,
+                              slot.label
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <Button
+                            className="cursor-pointer"
+                            disabled={isUploading}
+                            onClick={() =>
+                              chooseUpload({
+                                category: "expression",
+                                type: slot.type,
+                              })
+                            }
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {ref
+                              ? translate(
+                                  "admin.characters.references.replace",
+                                  "Replace"
+                                )
+                              : translate("admin.characters.references.add", "Add")}
+                          </Button>
+                          {ref ? (
+                            <Button
+                              className="cursor-pointer"
+                              onClick={() => removeRefImage(ref.localId)}
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              {translate("admin.characters.references.delete", "Delete")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3">
+                <div>
+                  <h4 className="font-medium text-sm">
+                    {translate(
+                      "admin.characters.references.additional.title",
+                      "Additional references"
+                    )}
+                  </h4>
+                  <p className="text-muted-foreground text-xs">
+                    {translate(
+                      "admin.characters.references.additional.description",
+                      "Store any extra view, outfit, lighting, or expression image. These are kept for future prompt-aware selection."
+                    )}
+                  </p>
+                </div>
+                <div className="grid gap-2 rounded-lg border bg-background p-3 sm:grid-cols-[1fr_180px_1fr_auto]">
+                  <Input
+                    onChange={(event) => setUrlInput(event.target.value)}
+                    placeholder="Paste existing image URL"
+                    value={urlInput}
+                  />
+                  <select
+                    aria-label="Reference type"
+                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                    onChange={(event) =>
+                      setUrlType(event.target.value as CharacterReferenceType)
+                    }
+                    value={urlType}
+                  >
+                    {ADDITIONAL_REFERENCE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {translate(
+                          `admin.characters.references.type.${type}`,
+                          type
+                        )}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    onChange={(event) => setUrlLabel(event.target.value)}
+                    placeholder="Optional label"
+                    value={urlLabel}
                   />
                   <Button
                     className="cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
-                    size="sm"
+                    onClick={handleAddUrl}
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                   >
-                    {isUploading ? "Uploading..." : "Upload image"}
+                    {translate("admin.characters.references.add_url", "Add URL")}
                   </Button>
                 </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Input
-                  className="min-w-[240px]"
-                  onChange={(event) => setUrlInput(event.target.value)}
-                  placeholder="Paste existing image URL"
-                  value={urlInput}
-                />
                 <Button
-                  className="cursor-pointer"
-                  onClick={handleAddUrl}
-                  size="sm"
+                  className="w-fit cursor-pointer"
+                  disabled={isUploading}
+                  onClick={() =>
+                    chooseUpload({ category: "additional", type: "other" })
+                  }
                   type="button"
-                  variant="secondary"
+                  variant="outline"
                 >
-                  Add URL
-                </Button>
-              </div>
-
-              <div className="mt-4 grid gap-4">
-                {refImages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No reference images yet.
-                  </p>
-                ) : (
-                  refImages.map((ref) => (
-                    <div
-                      className={cn(
-                        "flex flex-col gap-3 rounded-lg border bg-background p-3",
-                        ref.isPrimary ? "border-primary/50" : "border-border"
+                  {isUploading
+                    ? translate(
+                        "admin.characters.references.uploading",
+                        "Uploading..."
+                      )
+                    : translate(
+                        "admin.characters.references.add_image",
+                        "Add reference image"
                       )}
-                      key={ref.localId}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-3">
-                          {ref.url ? (
-                            isOptimizedPreviewUrl(ref.url) ? (
+                </Button>
+                {refImages.filter((ref) => ref.category === "additional").length > 0 ? (
+                  <div className="grid gap-2">
+                    {refImages
+                      .filter((ref) => ref.category === "additional")
+                      .map((ref) => (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2" key={ref.localId}>
+                          <div className="flex min-w-0 items-center gap-2">
+                            {ref.url && isOptimizedPreviewUrl(ref.url) ? (
                               <Image
-                                alt={ref.role || "Reference image"}
-                                className="rounded-md border"
-                                height={64}
+                                alt={ref.label || "Additional reference"}
+                                className="h-12 w-12 rounded-md border object-cover"
+                                height={48}
                                 src={ref.url}
-                                width={64}
+                                width={48}
                               />
-                            ) : (
-                              <div className="flex h-16 w-16 items-center justify-center rounded-md border text-[10px] text-muted-foreground">
-                                <span className="text-center leading-tight">
-                                  External preview blocked
-                                </span>
+                            ) : null}
+                            <div className="min-w-0 text-xs">
+                              <div className="font-medium">
+                                {ref.label || ref.type || "Additional reference"}
                               </div>
-                            )
-                          ) : (
-                            <div className="flex h-16 w-16 items-center justify-center rounded-md border text-xs text-muted-foreground">
-                              No preview
-                            </div>
-                          )}
-                          <div className="text-xs text-muted-foreground">
-                            <div>{ref.mimeType}</div>
-                            <div className="line-clamp-2 max-w-xs">
-                              {ref.url ?? ref.storageKey ?? ref.imageId ?? ""}
+                              <div className="truncate text-muted-foreground">
+                                {ref.mimeType || "image/png"}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <Button
-                          className="cursor-pointer"
-                          onClick={() => removeRefImage(ref.localId)}
-                          size="sm"
-                          type="button"
-                          variant="destructive"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="grid gap-1">
-                          <Label className="text-xs">Role</Label>
-                          <Input
-                            onChange={(event) =>
-                              updateRefImage(ref.localId, {
-                                role: event.target.value,
-                              })
-                            }
-                            placeholder="face"
-                            value={ref.role ?? ""}
-                          />
-                        </div>
-                        <div className="grid gap-1">
-                          <Label className="text-xs">Mime type</Label>
-                          <Input readOnly value={ref.mimeType || "image/png"} />
-                        </div>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            checked={Boolean(ref.isPrimary)}
+                          <Button
                             className="cursor-pointer"
-                            onChange={(event) =>
-                              updateRefImage(ref.localId, {
-                                isPrimary: event.target.checked,
-                              })
-                            }
-                            type="checkbox"
-                          />
-                          Primary reference
-                        </label>
-                      </div>
-                    </div>
-                  ))
-                )}
+                            onClick={() => removeRefImage(ref.localId)}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            {translate("admin.characters.references.delete", "Delete")}
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -928,7 +1228,8 @@ export function AdminCharactersManager({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(galleryCharacter?.refImages ?? []).map((ref, index) => (
+            {normalizeCharacterReferences(galleryCharacter?.refImages ?? []).map(
+              (ref, index) => (
               <div
                 className={cn(
                   "flex flex-col gap-2 rounded-lg border bg-muted/10 p-3",
@@ -961,7 +1262,7 @@ export function AdminCharactersManager({
                   </div>
                 )}
                 <div className="text-xs text-muted-foreground">
-                  <div>{ref.role || "no role"}</div>
+                    <div>{ref.label || ref.type || ref.role || "additional"}</div>
                   <div>{ref.mimeType || "image/png"}</div>
                   {ref.isPrimary ? (
                     <Badge className="mt-2" variant="default">
@@ -970,7 +1271,8 @@ export function AdminCharactersManager({
                   ) : null}
                 </div>
               </div>
-            ))}
+              )
+            )}
             {galleryCharacter && galleryCharacter.refImages.length === 0 ? (
               <div className="text-sm text-muted-foreground">
                 No reference images uploaded.

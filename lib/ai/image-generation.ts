@@ -43,6 +43,19 @@ const IMAGE_TRANSLATION_LANGUAGE_CODE =
   process.env.IMAGE_PROMPT_TRANSLATION_LANGUAGE_CODE ?? "kha";
 const IMAGE_TRANSLATION_MODE =
   process.env.IMAGE_PROMPT_TRANSLATION_MODE ?? "language";
+const DEFAULT_MAX_REFERENCE_IMAGES = 3;
+const GEMINI_3_MAX_REFERENCE_IMAGES = 14;
+
+export function getMaxReferenceImagesForModel(modelId: string) {
+  const normalized = modelId.trim().toLowerCase();
+  if (
+    normalized.includes("gemini-3.1-flash-image") ||
+    normalized.includes("gemini-3-pro-image")
+  ) {
+    return GEMINI_3_MAX_REFERENCE_IMAGES;
+  }
+  return DEFAULT_MAX_REFERENCE_IMAGES;
+}
 
 export type ImageGenerationAccess = {
   enabled: boolean;
@@ -679,11 +692,13 @@ export async function buildGenerationRequest({
   sourceImages = [],
   abortSignal,
   characterReferenceDeps,
+  maxReferenceImages = DEFAULT_MAX_REFERENCE_IMAGES,
 }: {
   prompt: string;
   sourceImages?: ImageInput[];
   abortSignal?: AbortSignal;
   characterReferenceDeps?: CharacterReferenceDeps;
+  maxReferenceImages?: number;
 }): Promise<{
   prompt: string;
   images?: ImageInput[];
@@ -692,20 +707,39 @@ export async function buildGenerationRequest({
   matchedCharacterIds?: string[];
   matchedAliases?: string[];
 }> {
+  const normalizedMaxReferenceImages = Math.max(
+    1,
+    Math.floor(maxReferenceImages)
+  );
+  const sourceImageCount = Math.min(
+    sourceImages.length,
+    Math.max(0, normalizedMaxReferenceImages - 1)
+  );
   const reference = await buildCharacterReference({
     prompt,
     abortSignal,
     deps: characterReferenceDeps,
+    maxReferenceImages: Math.max(
+      1,
+      normalizedMaxReferenceImages - sourceImageCount
+    ),
   });
 
+  const selectedSourceImages = sourceImages.slice(
+    0,
+    Math.max(0, normalizedMaxReferenceImages - (reference.referenceImages?.length ?? 0))
+  );
   const combinedImages = [
-    ...sourceImages,
     ...(reference.referenceImages ?? []),
+    ...selectedSourceImages,
   ];
 
   return {
     prompt: reference.prompt,
-    images: combinedImages.length > 0 ? combinedImages : undefined,
+    images:
+      combinedImages.length > 0
+        ? combinedImages.slice(0, normalizedMaxReferenceImages)
+        : undefined,
     matchedCharacterId: reference.matchedCharacterId,
     matchedAlias: reference.matchedAlias,
     matchedCharacterIds: reference.matchedCharacterIds,

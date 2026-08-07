@@ -4,7 +4,13 @@ import {
   detectCharacters,
   MAX_CHARACTER_REFS,
   MAX_TOTAL_CHARACTER_REFS,
+  selectRefImages,
 } from "@/lib/ai/character-reference-core";
+import type { CharacterReferenceImage } from "@/lib/ai/character-reference-types";
+import {
+  hasFrontReference,
+  normalizeCharacterReferences,
+} from "@/lib/ai/character-reference-types";
 import type { CharacterRefImage } from "@/lib/db/schema";
 
 test("buildCharacterReference caps refs and uses only matched character images", async () => {
@@ -420,4 +426,80 @@ test("detectCharacters does not use the hidden priority value", async () => {
     "character-a",
     "character-b",
   ]);
+});
+
+test("normalizes legacy references without losing the first identity image", () => {
+  const normalized = normalizeCharacterReferences([
+    { imageId: "legacy-front", mimeType: "image/png" },
+    { imageId: "legacy-extra", mimeType: "image/png", role: "attire" },
+  ]);
+
+  expect(normalized[0]).toMatchObject({
+    category: "identity",
+    type: "front",
+  });
+  expect(normalized[1]).toMatchObject({
+    category: "additional",
+    type: "other",
+  });
+  expect(hasFrontReference(normalized)).toBeTruthy();
+});
+
+test("selects requested expression and angle while keeping the front anchor", () => {
+  const refs = [
+    {
+      imageId: "front",
+      mimeType: "image/png",
+      category: "identity" as const,
+      type: "front" as const,
+    },
+    {
+      imageId: "left",
+      mimeType: "image/png",
+      category: "identity" as const,
+      type: "left" as const,
+    },
+    {
+      imageId: "smile",
+      mimeType: "image/png",
+      category: "expression" as const,
+      type: "smile" as const,
+    },
+    {
+      imageId: "other",
+      mimeType: "image/png",
+      category: "additional" as const,
+      type: "other" as const,
+    },
+  ];
+
+  const selected = selectRefImages(refs, 3, "smiling left profile portrait");
+  expect(selected.map((ref) => ref.imageId)).toEqual([
+    "front",
+    "smile",
+    "left",
+  ]);
+});
+
+test("falls back to identity references when a requested expression is unavailable", () => {
+  const selected = selectRefImages(
+    [
+      {
+        imageId: "front",
+        mimeType: "image/png",
+        category: "identity",
+        type: "front",
+      },
+      {
+        imageId: "right",
+        mimeType: "image/png",
+        category: "identity",
+        type: "right",
+      },
+    ] as CharacterReferenceImage[],
+    3,
+    "laughing portrait"
+  );
+
+  expect(selected.map((ref) => ref.imageId)).toEqual(["front", "right"]);
 });
