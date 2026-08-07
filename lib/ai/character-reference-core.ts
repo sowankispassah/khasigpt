@@ -376,7 +376,6 @@ function applyCharacterConstraints(
       character.gender ? `gender: ${character.gender}` : null,
       character.height ? `height: ${character.height}` : null,
       character.weight ? `weight: ${character.weight}` : null,
-      character.complexion ? `skin tone: ${character.complexion}` : null,
     ].filter((entry): entry is string => Boolean(entry));
 
     if (profileParts.length > 0) {

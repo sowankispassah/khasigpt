@@ -341,3 +341,50 @@ test("buildCharacterReference stops when every configured ref fails", async () =
     })
   ).rejects.toThrow("No configured character reference images could be loaded.");
 });
+
+test("buildCharacterReference leaves complexion to the reference images", async () => {
+  const characterId = "character-1";
+  const refImages: CharacterRefImage[] = [
+    {
+      imageId: "front",
+      mimeType: "image/png",
+      isPrimary: true,
+      role: "front face",
+    },
+  ];
+
+  const result = await buildCharacterReference({
+    prompt: "Generate a photo of Tirot Sing",
+    deps: {
+      listAliasIndex: async () => [
+        { aliasNormalized: "tirot sing", characterId },
+      ],
+      getCharactersByIds: async () => [
+        { id: characterId, priority: 0, enabled: true, refImages },
+      ],
+      getCharacterById: async () => ({
+        id: characterId,
+        canonicalName: "Tirot Sing",
+        refImages,
+        lockedPrompt: null,
+        negativePrompt: null,
+        gender: "male",
+        height: "180 cm",
+        weight: "75 kg",
+        complexion: "medium brown",
+        enabled: true,
+        priority: 0,
+      }),
+      fetchReferenceImage: async () => ({
+        data: "front",
+        mediaType: "image/png",
+      }),
+    },
+  });
+
+  expect(result.prompt).toContain("gender: male");
+  expect(result.prompt).toContain("height: 180 cm");
+  expect(result.prompt).toContain("weight: 75 kg");
+  expect(result.prompt).not.toContain("skin tone");
+  expect(result.prompt).not.toContain("medium brown");
+});

@@ -70,8 +70,6 @@ type CharacterFormState = {
   gender: string;
   height: string;
   weight: string;
-  complexion: string;
-  priority: string;
   enabled: boolean;
 };
 
@@ -83,8 +81,6 @@ const DEFAULT_FORM: CharacterFormState = {
   gender: "",
   height: "",
   weight: "",
-  complexion: "",
-  priority: "0",
   enabled: true,
 };
 
@@ -227,8 +223,6 @@ export function AdminCharactersManager({
       gender: character.gender ?? "",
       height: character.height ?? "",
       weight: character.weight ?? "",
-      complexion: character.complexion ?? "",
-      priority: character.priority.toString(),
       enabled: character.enabled,
     });
     setRefImages(buildEditableRefImages(character.refImages ?? []));
@@ -352,8 +346,6 @@ export function AdminCharactersManager({
       const gender = formState.gender.trim() || null;
       const height = formState.height.trim() || null;
       const weight = formState.weight.trim() || null;
-      const complexion = formState.complexion.trim() || null;
-      const priority = Number(formState.priority || 0);
       const enabled = formState.enabled;
 
       const refPayload = refImages.map((ref) => ({
@@ -379,8 +371,6 @@ export function AdminCharactersManager({
               gender,
               height,
               weight,
-              complexion,
-              priority,
               enabled,
             })
           : createCharacterAction({
@@ -392,8 +382,6 @@ export function AdminCharactersManager({
               gender,
               height,
               weight,
-              complexion,
-              priority,
               enabled,
             });
 
@@ -569,9 +557,6 @@ export function AdminCharactersManager({
                       <div className="font-medium">
                         {character.canonicalName}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        Priority {character.priority}
-                      </div>
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground">
                       {character.aliases.length > 0
@@ -727,20 +712,6 @@ export function AdminCharactersManager({
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="complexion">Skin tone / complexion</Label>
-                    <Input
-                      id="complexion"
-                      onChange={(event) =>
-                        setFormState((prev) => ({
-                          ...prev,
-                          complexion: event.target.value,
-                        }))
-                      }
-                      placeholder="fair, medium brown, dark"
-                      value={formState.complexion}
-                    />
-                  </div>
-                  <div className="grid gap-2">
                     <Label htmlFor="height">Height</Label>
                     <Input
                       id="height"
@@ -771,38 +742,20 @@ export function AdminCharactersManager({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label htmlFor="priority">Priority</Label>
-                  <Input
-                    id="priority"
-                    inputMode="numeric"
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        priority: event.target.value,
-                      }))
-                    }
-                    type="number"
-                    value={formState.priority}
-                  />
-                </div>
-
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    checked={formState.enabled}
-                    className="cursor-pointer"
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        enabled: event.target.checked,
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  Enabled
-                </label>
-              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  checked={formState.enabled}
+                  className="cursor-pointer"
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      enabled: event.target.checked,
+                    }))
+                  }
+                  type="checkbox"
+                />
+                Enabled
+              </label>
             </div>
 
             <div className="rounded-xl border bg-muted/30 p-4">
