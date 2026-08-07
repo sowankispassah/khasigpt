@@ -14,6 +14,10 @@ import {
   ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
   invalidateAdminMutation,
 } from "@/lib/admin/cache-invalidation";
+import {
+  hasFrontReference,
+  normalizeCharacterReferences,
+} from "@/lib/ai/character-reference-types";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -4709,7 +4713,7 @@ function sanitizeOptionalText(value: string | null | undefined) {
 }
 
 function sanitizeRefImages(refImages: CharacterRefImage[]) {
-  return refImages
+  return normalizeCharacterReferences(refImages)
     .map((ref) => ({
       imageId: ref.imageId?.trim() || null,
       storageKey: ref.storageKey?.trim() || null,
@@ -4718,8 +4722,19 @@ function sanitizeRefImages(refImages: CharacterRefImage[]) {
       role: ref.role?.trim() || null,
       isPrimary: Boolean(ref.isPrimary),
       updatedAt: ref.updatedAt?.trim() || new Date().toISOString(),
+      category: ref.category ?? null,
+      type: ref.type ?? null,
+      label: ref.label?.trim() || null,
     }))
     .filter((ref) => ref.url || ref.storageKey || ref.imageId);
+}
+
+function requireFrontReference(refImages: CharacterRefImage[]) {
+  if (!hasFrontReference(refImages)) {
+    throw new Error(
+      "A front-facing reference image is required before this person can be used for image generation."
+    );
+  }
 }
 
 export async function createCharacterAction({
@@ -4756,6 +4771,7 @@ export async function createCharacterAction({
 
   const sanitizedAliases = sanitizeAliasList(aliases);
   const sanitizedRefImages = sanitizeRefImages(refImages);
+  requireFrontReference(sanitizedRefImages);
 
   const character = await createCharacterWithAliases({
     canonicalName: trimmedName,
@@ -4811,6 +4827,7 @@ export async function updateCharacterAction({
 
   const sanitizedAliases = sanitizeAliasList(aliases);
   const sanitizedRefImages = sanitizeRefImages(refImages);
+  requireFrontReference(sanitizedRefImages);
 
   const character = await updateCharacterWithAliases({
     id,

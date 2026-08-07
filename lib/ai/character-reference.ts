@@ -179,14 +179,17 @@ export async function buildCharacterReference({
   prompt,
   abortSignal,
   deps,
+  maxReferenceImages,
 }: {
   prompt: string;
   abortSignal?: AbortSignal;
   deps?: import("./character-reference-core").CharacterReferenceDeps;
+  maxReferenceImages?: number;
 }) {
   return buildCharacterReferenceCore({
     prompt,
     abortSignal,
+    maxReferenceImages,
     deps: {
       listAliasIndex: deps?.listAliasIndex ?? getAliasIndexCached,
       getCharactersByIds:
