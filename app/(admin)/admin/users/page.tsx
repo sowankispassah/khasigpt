@@ -25,7 +25,10 @@ import {
 } from "@/lib/db/queries";
 import type { UserRole } from "@/lib/db/schema";
 import { AddCreditsForm } from "./add-credits-form";
-import { AdminUsersTable } from "./admin-users-table";
+import {
+  AdminUserChatsButton,
+  AdminUsersTable,
+} from "./admin-users-table";
 
 export const dynamic = "force-dynamic";
 
@@ -302,13 +305,13 @@ function UsersTableSection({
       >
         {!usersConfirmed ? (
           <tr>
-            <td className="py-6 text-muted-foreground" colSpan={7}>
+            <td className="py-6 text-muted-foreground" colSpan={8}>
               Unable to load users for this page.
             </td>
           </tr>
         ) : pagedUsers.length === 0 ? (
           <tr>
-            <td className="py-6 text-muted-foreground" colSpan={7}>
+            <td className="py-6 text-muted-foreground" colSpan={8}>
               No users found.
             </td>
           </tr>
@@ -374,6 +377,12 @@ function UsersTableSection({
                       translationKey="admin.users.last_login.never"
                     />
                   )}
+                </td>
+                <td className="py-3">
+                  <AdminUserChatsButton
+                    chatCount={user.chatCount}
+                    userId={user.id}
+                  />
                 </td>
                 <td className="py-3">
                   <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">

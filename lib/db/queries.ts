@@ -4115,6 +4115,7 @@ export type AdminUserListItem = Pick<
   | "isActive"
   | "role"
 > & {
+  chatCount: number;
   isOnline: boolean;
   lastLoginAt: Date | null;
   lastSeenAt: Date | null;
@@ -4155,6 +4156,12 @@ const adminUserLastLoginAtExpression = sql<Date | null>`(
   FROM ${auditLog}
   WHERE ${auditLog.action} IN ('user.login', 'user.signup')
     AND ${auditLog.subjectUserId} = ${user.id}
+)`;
+const adminUserChatCountExpression = sql<number>`(
+  SELECT COUNT(*)::integer
+  FROM ${chat} c
+  WHERE c."userId" = ${user.id}
+    AND c."deletedAt" IS NULL
 )`;
 const adminUserIsOnlineExpression = sql<boolean>`COALESCE(
   ${userPresence.lastSeenAt} >= NOW() - INTERVAL '5 minutes',
@@ -4202,6 +4209,7 @@ const adminUserListColumns = {
   isActive: user.isActive,
   role: user.role,
   createdAt: user.createdAt,
+  chatCount: adminUserChatCountExpression.as("chatCount"),
   lastLoginAt: adminUserLastLoginAtExpression.as("lastLoginAt"),
   lastSeenAt: userPresence.lastSeenAt,
   isOnline: adminUserIsOnlineExpression.as("isOnline"),
@@ -4360,8 +4368,9 @@ export type AdminUsersPageSnapshot = AdminUsersSnapshot & {
 
 type AdminUsersRawUser = Omit<
   AdminUserListItem,
-  "createdAt" | "isOnline" | "lastLoginAt" | "lastSeenAt"
+  "chatCount" | "createdAt" | "isOnline" | "lastLoginAt" | "lastSeenAt"
 > & {
+  chatCount: number | string | bigint | null;
   createdAt: Date | string;
   lastLoginAt: Date | string | null;
   lastSeenAt: Date | string | null;
@@ -4408,6 +4417,7 @@ function normalizeAdminUsers(value: unknown): AdminUserListItem[] {
 
       return {
         ...item,
+        chatCount: Math.max(0, toInteger(item.chatCount)),
         createdAt,
         isOnline,
         lastLoginAt,
@@ -4484,6 +4494,12 @@ export async function getAdminUsersSnapshot({
               u."isActive",
               u."allowPersonalKnowledge",
               u."createdAt",
+              (
+                SELECT COUNT(*)::integer
+                FROM "Chat" c
+                WHERE c."userId" = u."id"
+                  AND c."deletedAt" IS NULL
+              ) AS "chatCount",
               p."lastSeenAt",
               COALESCE(
                 p."lastSeenAt" >= NOW() - INTERVAL '5 minutes',
@@ -4557,6 +4573,12 @@ export async function getAdminUsersPageSnapshot({
           u."isActive",
           u."allowPersonalKnowledge",
           u."createdAt",
+          (
+            SELECT COUNT(*)::integer
+            FROM "Chat" c
+            WHERE c."userId" = u."id"
+              AND c."deletedAt" IS NULL
+          ) AS "chatCount",
           p."lastSeenAt",
           COALESCE(
             p."lastSeenAt" >= NOW() - INTERVAL '5 minutes',
@@ -4712,16 +4734,23 @@ export async function listChats({
   includeDeleted = false,
   onlyDeleted = false,
   search,
+  userId,
 }: {
   limit?: number;
   offset?: number;
   includeDeleted?: boolean;
   onlyDeleted?: boolean;
   search?: string | null;
+  userId?: string | null;
 } = {}): Promise<ChatListItem[]> {
   try {
     const conditions: SQL<boolean>[] = [];
     const normalizedSearch = search?.trim().toLowerCase();
+    const normalizedUserId = userId?.trim();
+
+    if (normalizedUserId) {
+      conditions.push(eq(chat.userId, normalizedUserId) as SQL<boolean>);
+    }
 
     if (onlyDeleted) {
       conditions.push(isNotNull(chat.deletedAt) as SQL<boolean>);
@@ -4787,14 +4816,21 @@ export async function getChatCount({
   includeDeleted = false,
   onlyDeleted = false,
   search,
+  userId,
 }: {
   includeDeleted?: boolean;
   onlyDeleted?: boolean;
   search?: string | null;
+  userId?: string | null;
 } = {}): Promise<number> {
   try {
     const conditions: SQL<boolean>[] = [];
     const normalizedSearch = search?.trim().toLowerCase();
+    const normalizedUserId = userId?.trim();
+
+    if (normalizedUserId) {
+      conditions.push(eq(chat.userId, normalizedUserId) as SQL<boolean>);
+    }
 
     if (onlyDeleted) {
       conditions.push(isNotNull(chat.deletedAt) as SQL<boolean>);

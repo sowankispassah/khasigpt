@@ -376,6 +376,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Admin user table latest successful login column heading.",
   },
   {
+    key: "admin.users.table.chats",
+    defaultText: "Chats",
+    description:
+      "Admin user table column showing the count of active chats created by each user.",
+  },
+  {
     key: "admin.users.table.actions",
     defaultText: "Actions",
     description: "Admin user table actions column heading.",
@@ -414,6 +420,62 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "admin.users.load_more.timeout",
     defaultText: "Loading users timed out. Please retry.",
     description: "Error shown when loading more admin users times out.",
+  },
+  {
+    key: "admin.users.chats.open",
+    defaultText: "View user chats",
+    description: "Accessible label for opening a user's chat list popup.",
+  },
+  {
+    key: "admin.users.chats.dialog.title",
+    defaultText: "User chats",
+    description: "Title for the popup listing chats created by one user.",
+  },
+  {
+    key: "admin.users.chats.dialog.description",
+    defaultText: "Select a chat to open it as an administrator.",
+    description: "Helper text for the user chat list popup.",
+  },
+  {
+    key: "admin.users.chats.loading",
+    defaultText: "Loading chats...",
+    description: "Loading state shown while a user's chats are fetched.",
+  },
+  {
+    key: "admin.users.chats.load_error",
+    defaultText: "Unable to load this user's chats.",
+    description: "Error shown when a user's chat list cannot be loaded.",
+  },
+  {
+    key: "admin.users.chats.timeout",
+    defaultText: "Loading this user's chats timed out.",
+    description: "Error shown when a user's chat list request times out.",
+  },
+  {
+    key: "admin.users.chats.retry",
+    defaultText: "Retry",
+    description: "Button that retries loading a user's chats.",
+  },
+  {
+    key: "admin.users.chats.empty",
+    defaultText: "No chats found.",
+    description: "Empty state shown when a user has no active chats.",
+  },
+  {
+    key: "admin.users.chats.untitled",
+    defaultText: "Untitled chat",
+    description: "Fallback title for a chat without a title.",
+  },
+  {
+    key: "admin.users.chats.date_unavailable",
+    defaultText: "Date unavailable",
+    description: "Fallback when a chat creation date cannot be displayed.",
+  },
+  {
+    key: "admin.users.chats.showing",
+    defaultText: "Showing the first {shown} of {total} chats.",
+    description:
+      "Notice shown when the chat popup reaches its maximum loaded page size.",
   },
   {
     key: "admin.users.selection.select_all",

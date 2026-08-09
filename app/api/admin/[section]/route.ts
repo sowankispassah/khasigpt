@@ -59,6 +59,7 @@ const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_FORUM_THREAD_LIMIT = 25;
 const DEFAULT_FORUM_POST_LIMIT = 50;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const adminSectionReadMeta = new AsyncLocalStorage<{
   degradedReads: string[];
 }>();
@@ -197,14 +198,23 @@ async function loadChats(searchParams: URLSearchParams) {
   const limit = parsePositiveInt(searchParams.get("limit"), DEFAULT_PAGE_SIZE);
   const offset = (page - 1) * limit;
   const search = searchParams.get("q");
+  const requestedUserId = searchParams.get("userId")?.trim() ?? "";
+  if (requestedUserId && !UUID_PATTERN.test(requestedUserId)) {
+    return { items: [], limit, offset, page, total: 0 };
+  }
+  const userId = requestedUserId || null;
   const onlyDeleted = searchParams.get("deleted") === "true";
   const [items, total] = await Promise.all([
     sectionQuery(
       "chats.items",
-      listChats({ limit, offset, onlyDeleted, search }),
+      listChats({ limit, offset, onlyDeleted, search, userId }),
       []
     ),
-    sectionQuery("chats.total", getChatCount({ onlyDeleted, search }), 0),
+    sectionQuery(
+      "chats.total",
+      getChatCount({ onlyDeleted, search, userId }),
+      0
+    ),
   ]);
 
   return { items, limit, offset, page, total };
