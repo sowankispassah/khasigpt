@@ -14,6 +14,80 @@ const CURRENT_INFORMATION_PATTERNS: Array<[string, RegExp]> = [
   ["person_lookup", /\bwho\s+is\b|\bwho['’]s\b/i],
 ];
 
+const CURRENT_TIME_PATTERNS: Array<[string, RegExp]> = [
+  [
+    "current_time",
+    /\b(?:what(?:'s| is)|tell\s+me|show\s+me|give\s+me)\s+(?:the\s+)?(?:current\s+|local\s+)?time\b/i,
+  ],
+  ["current_time", /\bwhat\s+time\s+is\s+it\b/i],
+  ["current_time", /\b(?:current|local)\s+time\b/i],
+  ["current_time", /\btime\s+(?:now|currently|at\s+the\s+moment)\b/i],
+  ["current_time", /\bkatno\s+baje\b/i],
+  ["current_time", /\bbaje\s+mynta\b/i],
+  ["current_time", /\b(?:ka\s+)?por\s+mynta\b/i],
+  ["current_time", /\bmynta\s+(?:ka\s+)?por\b/i],
+];
+
+const CURRENT_WEATHER_PATTERNS: Array<[string, RegExp]> = [
+  ["current_weather", /\b(?:current\s+)?weather\b/i],
+  ["current_weather", /\b(?:current\s+)?temperature\b/i],
+  ["current_weather", /\b(?:what(?:'s| is)\s+the\s+)?forecast\b/i],
+  ["current_weather", /\b(?:will|is)\s+it\s+(?:rain|raining)\b/i],
+  ["current_weather", /\b(?:rain|raining)\s+(?:today|now)\b/i],
+  ["current_weather", /\b(?:jinglong\s+ka\s+)?suiñbneng\b/i],
+  ["current_weather", /\bka\s+suiñ\b/i],
+];
+
+const FUTURE_WEATHER_PATTERN =
+  /\b(?:forecast|tomorrow|tonight|next\s+(?:day|week)|this\s+weekend)\b/i;
+
+export type CurrentInfoIntent = "time" | "weather";
+
+export type CurrentInfoDecision = {
+  intent: CurrentInfoIntent | null;
+  locationQuery: string | null;
+  reasons: string[];
+};
+
+function extractCurrentInfoLocation(text: string) {
+  const match = text.match(/\b(?:in|at|for|near|ha)\s+([^?.!]+?)[?.!]*$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const location = match[1]
+    .replace(/\s+(?:right\s+)?now$/i, "")
+    .replace(/\s+(?:mynta|today)$/i, "")
+    .trim();
+  return location.length > 0 && location.length <= 100 ? location : null;
+}
+
+export function detectCurrentInfoNeed(text: string): CurrentInfoDecision {
+  const normalized = text.trim();
+  if (!normalized) {
+    return { intent: null, locationQuery: null, reasons: [] };
+  }
+
+  const timeReasons = CURRENT_TIME_PATTERNS.flatMap(([reason, pattern]) =>
+    pattern.test(normalized) ? [reason] : []
+  );
+  const weatherReasons = CURRENT_WEATHER_PATTERNS.flatMap(([reason, pattern]) =>
+    pattern.test(normalized) ? [reason] : []
+  );
+  const reasons = Array.from(new Set([...timeReasons, ...weatherReasons]));
+  const intent = timeReasons.length > 0
+    ? "time"
+    : weatherReasons.length > 0 && !FUTURE_WEATHER_PATTERN.test(normalized)
+      ? "weather"
+      : null;
+
+  return {
+    intent,
+    locationQuery: intent ? extractCurrentInfoLocation(normalized) : null,
+    reasons,
+  };
+}
+
 const EXPLICIT_WEB_SEARCH_PATTERNS: Array<[string, RegExp]> = [
   [
     "explicit_web_search",
@@ -63,6 +137,8 @@ export type WebSearchDecision = {
   hasCustomKnowledgeIntent: boolean;
   hasExplicitWebIntent: boolean;
   hasVideoIntent: boolean;
+  currentInfoIntent: CurrentInfoIntent | null;
+  currentInfoLocationQuery: string | null;
 };
 
 export function detectWebSearchNeed(text: string): WebSearchDecision {
@@ -75,6 +151,8 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
       hasCustomKnowledgeIntent: false,
       hasExplicitWebIntent: false,
       hasVideoIntent: false,
+      currentInfoIntent: null,
+      currentInfoLocationQuery: null,
     };
   }
 
@@ -87,8 +165,14 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
   const videoReasons = VIDEO_SEARCH_PATTERNS.flatMap(([reason, pattern]) =>
     pattern.test(normalized) ? [reason] : []
   );
+  const currentInfo = detectCurrentInfoNeed(normalized);
   const reasons = Array.from(
-    new Set([...currentReasons, ...explicitReasons, ...videoReasons])
+    new Set([
+      ...currentReasons,
+      ...explicitReasons,
+      ...videoReasons,
+      ...currentInfo.reasons,
+    ])
   );
   const hasCustomKnowledgeIntent = CUSTOM_KNOWLEDGE_PATTERNS.some((pattern) =>
     pattern.test(normalized)
@@ -96,14 +180,21 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
   const hasExplicitWebIntent = explicitReasons.length > 0;
   const hasVideoIntent = videoReasons.length > 0;
   const hasCurrentIntent = currentReasons.length > 0 || hasExplicitWebIntent;
+  const shouldUseWebSearch =
+    hasExplicitWebIntent ||
+    hasVideoIntent ||
+    (hasCurrentIntent && currentInfo.intent === null) ||
+    (currentInfo.reasons.length > 0 && currentInfo.intent === null);
 
   return {
-    shouldSearch: hasCurrentIntent || hasVideoIntent,
+    shouldSearch: shouldUseWebSearch,
     reasons,
     hasCurrentIntent,
     hasCustomKnowledgeIntent,
     hasExplicitWebIntent,
     hasVideoIntent,
+    currentInfoIntent: currentInfo.intent,
+    currentInfoLocationQuery: currentInfo.locationQuery,
   };
 }
 

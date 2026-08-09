@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import type { ChatMessage } from "@/lib/types";
 import {
+  detectCurrentInfoNeed,
   detectWebSearchNeed,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
@@ -16,6 +17,42 @@ async function readWorkspaceFile(relativePath: string) {
 }
 
 test.describe("web search grounding", () => {
+  test("detects live time and weather questions before RAG or web search", () => {
+    expect(detectCurrentInfoNeed("Katno baje mynta?")).toMatchObject({
+      intent: "time",
+      locationQuery: null,
+    });
+    expect(detectCurrentInfoNeed("Katno baje mynta ha Shillong?")).toMatchObject({
+      intent: "time",
+      locationQuery: "Shillong",
+    });
+    expect(detectCurrentInfoNeed("What time is it in London?")).toMatchObject({
+      intent: "time",
+      locationQuery: "London",
+    });
+    expect(detectCurrentInfoNeed("What is the current weather in Shillong?")).toMatchObject({
+      intent: "weather",
+      locationQuery: "Shillong",
+    });
+    expect(detectWebSearchNeed("Katno baje mynta?")).toMatchObject({
+      currentInfoIntent: "time",
+      shouldSearch: false,
+    });
+    expect(detectWebSearchNeed("What is the current weather in Shillong?")).toMatchObject({
+      currentInfoIntent: "weather",
+      shouldSearch: false,
+    });
+    expect(detectWebSearchNeed("What will the weather be tomorrow in Shillong?")).toMatchObject({
+      currentInfoIntent: null,
+      shouldSearch: true,
+    });
+    expect(detectWebSearchNeed("Search the web for the current weather in Shillong")).toMatchObject({
+      currentInfoIntent: "weather",
+      hasExplicitWebIntent: true,
+      shouldSearch: true,
+    });
+  });
+
   test("detects current-information prompts without searching every message", () => {
     expect(detectWebSearchNeed("What is the latest KhasiGPT release?").shouldSearch).toBe(true);
     expect(detectWebSearchNeed("Explain photosynthesis in simple terms.").shouldSearch).toBe(false);

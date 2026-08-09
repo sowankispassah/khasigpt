@@ -1,5 +1,6 @@
 import "server-only";
 
+import { buildKhasiGptSystemInstruction } from "@/lib/ai/identity";
 import {
   getDefaultLiveVoiceModelConfig,
   getLiveVoiceModelConfigById,
@@ -54,7 +55,7 @@ function toResolvedLiveVoiceModelConfig(
     config.creditMultiplier
   );
   const systemInstruction = config.systemInstruction?.trim()
-    ? config.systemInstruction.trim()
+    ? buildKhasiGptSystemInstruction(config.systemInstruction)
     : buildVoiceChatSystemInstruction();
 
   return {

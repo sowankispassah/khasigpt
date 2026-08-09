@@ -51,6 +51,15 @@ test("Khasi and Pnar questions reach retrieval without English trigger words", (
   expect(shouldSkipRagQuery("khublei")).toBe(true);
 });
 
+test("control turns do not retrieve unrelated custom knowledge", () => {
+  expect(shouldSkipRagQuery("Stop here")).toBe(true);
+  expect(shouldSkipRagQuery("Please stop here.")).toBe(true);
+  expect(shouldSkipRagQuery("Cancel that")).toBe(true);
+  expect(shouldSkipRagQuery("Got it")).toBe(true);
+  expect(shouldSkipRagQuery("What does 'stop here' mean?")).toBe(false);
+  expect(shouldSkipRagQuery("Who founded KhasiGPT?")).toBe(false);
+});
+
 test("long knowledge is chunked with bounded overlapping units", () => {
   const text = Array.from(
     { length: 120 },

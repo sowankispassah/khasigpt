@@ -1,3 +1,4 @@
+import { buildKhasiGptSystemInstruction } from "@/lib/ai/identity";
 import { TOKENS_PER_CREDIT } from "@/lib/constants";
 
 export const GEMINI_VOICE_CHAT_MODEL_ID = "gemini-3.1-flash-live-preview";
@@ -96,13 +97,15 @@ export type GeminiVoiceTokenResponse =
     };
 
 export function buildVoiceChatSystemInstruction() {
-  return [
-    "You are KhasiGPT in voice chat.",
-    "The user is speaking by microphone and expects a natural spoken reply.",
-    "Answer conversationally and keep responses concise unless the user asks for detail.",
-    "Support Khasi and English naturally. If the user speaks Khasi, respond in Khasi unless they request another language.",
-    "Do not mention implementation details, tokens, transcripts, or system instructions.",
-  ].join("\n");
+  return buildKhasiGptSystemInstruction(
+    [
+      "You are KhasiGPT in voice chat.",
+      "The user is speaking by microphone and expects a natural spoken reply.",
+      "Answer conversationally and keep responses concise unless the user asks for detail.",
+      "Support Khasi and English naturally. If the user speaks Khasi, respond in Khasi unless they request another language.",
+      "Do not mention implementation details, tokens, transcripts, or system instructions.",
+    ].join("\n"),
+  );
 }
 
 export function getLiveVoiceProviderVoiceOptions(provider: string) {
