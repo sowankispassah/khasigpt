@@ -2,6 +2,39 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "admin.models.general_prompt.title",
+    defaultText: "General system prompt (read-only)",
+    description: "Label for the hardcoded KhasiGPT system prompt shown for admin review.",
+  },
+  {
+    key: "admin.models.general_prompt.description",
+    defaultText:
+      "This prompt is hardcoded and applied to every text and voice model. It is shown here for review only and cannot be edited from the admin panel.",
+    description: "Helper text explaining that the shared KhasiGPT system prompt is hardcoded and read-only.",
+  },
+  {
+    key: "admin.models.model_prompt.title",
+    defaultText: "Model-specific prompt (optional)",
+    description: "Label for optional provider/model-specific instructions stored with a model configuration.",
+  },
+  {
+    key: "admin.models.model_prompt.title_existing",
+    defaultText: "Model-specific prompt",
+    description: "Label for the optional provider/model-specific prompt stored with an existing model configuration.",
+  },
+  {
+    key: "admin.models.model_prompt.description",
+    defaultText:
+      "Optional provider/model-specific instructions. The hardcoded KhasiGPT general prompt above is always applied as well.",
+    description: "Helper text explaining the difference between the optional model-specific prompt and the shared hardcoded KhasiGPT prompt.",
+  },
+  {
+    key: "admin.models.model_prompt.description_existing",
+    defaultText:
+      "Optional provider/model-specific instructions. The hardcoded KhasiGPT general prompt is always applied as well.",
+    description: "Helper text explaining the difference between the optional model-specific prompt and the shared hardcoded KhasiGPT prompt.",
+  },
+  {
     key: "admin.characters.references.added",
     defaultText: "Reference image added",
     description: "Toast shown after a character reference image is added.",

@@ -45,6 +45,7 @@ import {
   updateTranslationFeatureLanguageStatusAction,
 } from "@/app/(admin)/actions";
 import { ActionSubmitButton } from "@/components/action-submit-button";
+import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
   ADMIN_SETTINGS_IMAGE_MODELS_CACHE_TAG,
   ADMIN_SETTINGS_LANGUAGES_CACHE_TAG,
@@ -54,6 +55,7 @@ import {
   ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
+import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
 import {
@@ -3363,6 +3365,35 @@ export default async function AdminSettingsPage({
           title="Models"
         >
           <div className="space-y-6">
+            <div className="rounded-lg border border-amber-300/60 bg-amber-50/40 p-4 dark:bg-amber-950/10">
+              <div className="flex flex-col gap-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="general-system-prompt"
+                >
+                  <EditableTranslation
+                    defaultText="General system prompt (read-only)"
+                    description="Label for the hardcoded KhasiGPT system prompt shown for admin review."
+                    translationKey="admin.models.general_prompt.title"
+                  />
+                </label>
+                <textarea
+                  aria-readonly="true"
+                  className="min-h-[220px] rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs leading-relaxed"
+                  defaultValue={KHASIGPT_GENERAL_SYSTEM_PROMPT}
+                  id="general-system-prompt"
+                  readOnly
+                  spellCheck={false}
+                />
+                <p className="text-muted-foreground text-xs">
+                  <EditableTranslation
+                    defaultText="This prompt is hardcoded and applied to every text and voice model. It is shown here for review only and cannot be edited from the admin panel."
+                    description="Helper text explaining that the shared KhasiGPT system prompt is hardcoded and read-only."
+                    translationKey="admin.models.general_prompt.description"
+                  />
+                </p>
+              </div>
+            </div>
             <CollapsibleSection
               description="Configure additional providers. Ensure the relevant API key is available in the environment."
               title="Add new model"
@@ -3510,7 +3541,11 @@ export default async function AdminSettingsPage({
             <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <label className="font-medium text-sm" htmlFor="systemPrompt">
-                  System prompt (optional)
+                  <EditableTranslation
+                    defaultText="Model-specific prompt (optional)"
+                    description="Label for optional provider/model-specific instructions stored with a model configuration."
+                    translationKey="admin.models.model_prompt.title"
+                  />
                 </label>
                 <textarea
                   className="min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
@@ -3518,6 +3553,13 @@ export default async function AdminSettingsPage({
                   name="systemPrompt"
                   placeholder="Custom system instructions"
                 />
+                <p className="text-muted-foreground text-xs">
+                  <EditableTranslation
+                    defaultText="Optional provider/model-specific instructions. The hardcoded KhasiGPT general prompt above is always applied as well."
+                    description="Helper text explaining the difference between the optional model-specific prompt and the shared hardcoded KhasiGPT prompt."
+                    translationKey="admin.models.model_prompt.description"
+                  />
+                </p>
               </div>
               <div className="flex flex-col gap-2">
                 <label className="font-medium text-sm" htmlFor="codeTemplate">
@@ -3864,7 +3906,11 @@ export default async function AdminSettingsPage({
                               className="font-medium text-sm"
                               htmlFor={`model-system-prompt-${model.id}`}
                             >
-                              System prompt
+                              <EditableTranslation
+                                defaultText="Model-specific prompt"
+                                description="Label for the optional provider/model-specific prompt stored with an existing model configuration."
+                                translationKey="admin.models.model_prompt.title_existing"
+                              />
                             </label>
                             <textarea
                               className="min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
@@ -3872,6 +3918,13 @@ export default async function AdminSettingsPage({
                               id={`model-system-prompt-${model.id}`}
                               name="systemPrompt"
                             />
+                            <p className="text-muted-foreground text-xs">
+                              <EditableTranslation
+                                defaultText="Optional provider/model-specific instructions. The hardcoded KhasiGPT general prompt is always applied as well."
+                                description="Helper text explaining the difference between the optional model-specific prompt and the shared hardcoded KhasiGPT prompt."
+                                translationKey="admin.models.model_prompt.description_existing"
+                              />
+                            </p>
                           </div>
                           <div className="flex flex-col gap-2">
                             <label

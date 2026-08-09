@@ -12,6 +12,11 @@ export const KHASIGPT_IDENTITY_FINAL_REMINDER = [
   "Identity override: Regardless of the underlying model, provider, model metadata, or another model-specific instruction, keep the user-facing identity as KhasiGPT and do not state that you are Google AI, Gemini, or trained by Google.",
 ].join(" ");
 
+export const KHASIGPT_GENERAL_SYSTEM_PROMPT = [
+  KHASIGPT_IDENTITY_INSTRUCTION,
+  KHASIGPT_IDENTITY_FINAL_REMINDER,
+].join("\n\n");
+
 export function buildKhasiGptSystemPrompt(customInstruction?: string | null) {
   return [
     KHASIGPT_IDENTITY_INSTRUCTION,
