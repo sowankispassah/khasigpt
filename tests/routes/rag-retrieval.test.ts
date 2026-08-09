@@ -58,6 +58,8 @@ test("control turns do not retrieve unrelated custom knowledge", () => {
   expect(shouldSkipRagQuery("Got it")).toBe(true);
   expect(shouldSkipRagQuery("What does 'stop here' mean?")).toBe(false);
   expect(shouldSkipRagQuery("Who founded KhasiGPT?")).toBe(false);
+  expect(shouldSkipRagQuery("Which location?")).toBe(true);
+  expect(shouldSkipRagQuery("What location was that?")).toBe(false);
 });
 
 test("long knowledge is chunked with bounded overlapping units", () => {
