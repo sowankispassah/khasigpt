@@ -11,7 +11,6 @@ const CURRENT_INFORMATION_PATTERNS: Array<[string, RegExp]> = [
   ["schedule", /\bschedule\b|\bstandings?\b|\bscore\b/i],
   ["release", /\brelease\s+date\b|\bnew\s+update\b|\bnew\s+release\b/i],
   ["availability", /\bcurrently\s+available\b|\bavailable\s+now\b/i],
-  ["person_lookup", /\bwho\s+is\b|\bwho['’]s\b/i],
 ];
 
 const CURRENT_TIME_PATTERNS: Array<[string, RegExp]> = [
