@@ -3,11 +3,6 @@ import "server-only";
 import type { CurrentInfoDecision, CurrentInfoIntent } from "@/lib/web-search/detection";
 
 export const DEFAULT_TIMEZONE = "Asia/Kolkata";
-export const DEFAULT_WEATHER_LOCATION = {
-  name: "Shillong, Meghalaya, India",
-  latitude: 25.5788,
-  longitude: 91.8933,
-} as const;
 
 const OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
@@ -186,32 +181,15 @@ async function getCurrentTimeInfo(
 
 async function getCurrentWeatherInfo({
   decision,
-  latitude,
-  longitude,
-  city,
-  country,
   signal,
 }: {
   decision: CurrentInfoDecision;
-  latitude?: number;
-  longitude?: number;
-  city?: string;
-  country?: string;
   signal?: AbortSignal;
 }): Promise<LiveCurrentInfo> {
-  const resolvedLocation = decision.locationQuery
-    ? await geocodeLocation(decision.locationQuery, signal)
-    : isFiniteNumber(latitude) && isFiniteNumber(longitude)
-      ? {
-          name: [city, country].filter(Boolean).join(", ") || "Your detected location",
-          latitude,
-          longitude,
-          timezone: null,
-        }
-      : {
-          ...DEFAULT_WEATHER_LOCATION,
-          timezone: DEFAULT_TIMEZONE,
-        };
+  if (!decision.locationQuery) {
+    throw new Error("A user-provided location is required for live weather.");
+  }
+  const resolvedLocation = await geocodeLocation(decision.locationQuery, signal);
 
   const url = new URL(OPEN_METEO_FORECAST_URL);
   url.searchParams.set("latitude", String(resolvedLocation.latitude));
@@ -269,17 +247,9 @@ async function getCurrentWeatherInfo({
 
 export async function getLiveCurrentInfo({
   decision,
-  latitude,
-  longitude,
-  city,
-  country,
   signal,
 }: {
   decision: CurrentInfoDecision;
-  latitude?: number;
-  longitude?: number;
-  city?: string;
-  country?: string;
   signal?: AbortSignal;
 }): Promise<LiveCurrentInfo | null> {
   if (!decision.intent) {
@@ -290,10 +260,6 @@ export async function getLiveCurrentInfo({
   }
   return getCurrentWeatherInfo({
     decision,
-    latitude,
-    longitude,
-    city,
-    country,
     signal,
   });
 }

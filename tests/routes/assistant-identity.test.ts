@@ -15,10 +15,13 @@ test("the product identity stays KhasiGPT across configurable prompts", () => {
   expect(KHASIGPT_IDENTITY_INSTRUCTION).toContain("Do not identify the assistant as Google AI, Gemini");
   expect(KHASIGPT_IDENTITY_INSTRUCTION).toContain("trained a foundation model from scratch");
   expect(KHASIGPT_IDENTITY_FINAL_REMINDER).toContain(
-    "Answer only the user's latest request",
+    "Return only information the user explicitly requested",
   );
   expect(KHASIGPT_IDENTITY_FINAL_REMINDER).toContain(
-    "Do not volunteer unrelated self-introductions",
+    "This rule applies regardless of source",
+  );
+  expect(KHASIGPT_IDENTITY_FINAL_REMINDER).toContain(
+    "Do not infer or answer additional questions",
   );
 
   const instruction = buildKhasiGptSystemInstruction(

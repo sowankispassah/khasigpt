@@ -86,7 +86,10 @@ import {
 import type { JobCard } from "@/lib/jobs/types";
 import { getMobileSession } from "@/lib/mobile-auth-session";
 import { RAG_HYBRID_ANSWERING_INSTRUCTION } from "@/lib/rag/answering";
-import { shouldSkipRagQuery } from "@/lib/rag/query-policy";
+import {
+  isContextualFollowupQuery,
+  shouldSkipRagQuery,
+} from "@/lib/rag/query-policy";
 import { retrieveRagContext } from "@/lib/rag/retrieval";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -134,9 +137,9 @@ import {
   loadWebSearchConfig,
 } from "@/lib/web-search/config";
 import {
-  detectCurrentInfoNeed,
   detectWebSearchNeed,
   getWebSearchDecisionReason,
+  resolveCurrentInfoDecision,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
 import { webSearchService } from "@/lib/web-search/service";
@@ -2811,20 +2814,15 @@ export async function POST(request: Request) {
         ? resolvedLanguageConfig.systemPrompt.trim()
         : null;
     const userMessageText = getTextFromMessage(message).trim();
-    const currentInfoDecision = detectCurrentInfoNeed(userMessageText);
+    const previousUserMessageTexts = baseUiMessages
+      .filter((entry) => entry.role === "user")
+      .map((entry) => getTextFromMessage(entry))
+      .filter((text) => text.trim().length > 0);
+    const currentInfoDecision = resolveCurrentInfoDecision({
+      currentText: userMessageText,
+      previousUserMessages: previousUserMessageTexts,
+    });
     const webSearchDecision = detectWebSearchNeed(userMessageText);
-    const liveLatitude =
-      typeof latitude === "number"
-        ? latitude
-        : typeof latitude === "string" && Number.isFinite(Number(latitude))
-          ? Number(latitude)
-          : undefined;
-    const liveLongitude =
-      typeof longitude === "number"
-        ? longitude
-        : typeof longitude === "string" && Number.isFinite(Number(longitude))
-          ? Number(longitude)
-          : undefined;
 
     const baseInstruction = systemPrompt({
       requestHints,
@@ -2917,27 +2915,27 @@ export async function POST(request: Request) {
           durationMs: 0,
           status: "skipped" as const,
         };
-    const isConversationalControlTurn = shouldSkipRagQuery(
-      userMessageText,
-    );
+    const isContextualFollowupTurn = isContextualFollowupQuery(userMessageText);
+    const isConversationalControlTurn =
+      !isContextualFollowupTurn && shouldSkipRagQuery(userMessageText);
     const activeEntryCount = ragResult.matches.length;
     const filteredEntryCount = ragResult.matches.length;
     const webSearchPlatform = getWebSearchPlatform(request);
     let customRagUsed = ragResult.status === "hit";
     let liveCurrentInfo: LiveCurrentInfo | null = null;
     let liveCurrentInfoFailureReason: string | null = null;
+    const shouldAskForWeatherLocation =
+      currentInfoDecision.intent === "weather" &&
+      !currentInfoDecision.locationQuery;
     const shouldUseLiveCurrentInfo =
       Boolean(currentInfoDecision.intent) &&
+      !shouldAskForWeatherLocation &&
       !webSearchDecision.hasExplicitWebIntent;
     if (shouldUseLiveCurrentInfo) {
       try {
         liveCurrentInfo = await measurePreModelStep("current_info.fetch", () =>
           getLiveCurrentInfo({
             decision: currentInfoDecision,
-            latitude: liveLatitude,
-            longitude: liveLongitude,
-            city,
-            country,
             signal: request.signal,
           }),
         );
@@ -2960,6 +2958,7 @@ export async function POST(request: Request) {
     const shouldAttemptWebSearch =
       resolvedChatMode === "default" &&
       webSearchDecision.shouldSearch &&
+      !shouldAskForWeatherLocation &&
       (!currentInfoDecision.intent || webSearchDecision.hasExplicitWebIntent) &&
       webSearchAllowed &&
       webSearchConfig.maxCalls > 0;
@@ -3003,10 +3002,7 @@ export async function POST(request: Request) {
         const webSearchStartedAt = performance.now();
         const webSearchQuery = resolveWebSearchQuery({
           currentText: getTextFromMessage(message),
-          previousUserMessages: baseUiMessages
-            .filter((entry) => entry.role === "user")
-            .map((entry) => getTextFromMessage(entry))
-            .filter((text) => text.trim().length > 0),
+          previousUserMessages: previousUserMessageTexts,
         });
         const queryHash = createHash("sha256")
           .update(webSearchQuery)
@@ -3113,7 +3109,11 @@ export async function POST(request: Request) {
         reason: webSearchFailureReason,
       });
     }
-    if (liveCurrentInfo) {
+    if (shouldAskForWeatherLocation) {
+      systemInstructionParts.push(
+        "The user requested current weather or temperature without naming a location. Ask exactly one concise question requesting their city, town, or location. Do not infer a location from IP address, network geolocation, device data, profile data, or a default city. Do not provide weather information or any unrelated information until the user supplies a location.",
+      );
+    } else if (liveCurrentInfo) {
       systemInstructionParts.push(
         "Trusted live current-information data is attached below. For time and weather questions, use only those exact values, preserve the stated location and time zone, and do not estimate or add facts from memory, RAG, or other sources. Answer naturally in the user's language without mentioning hidden context or implementation details.",
       );
@@ -3133,6 +3133,11 @@ export async function POST(request: Request) {
     if (isConversationalControlTurn) {
       systemInstructionParts.push(
         "The latest user message is a conversational control or acknowledgement rather than a factual question. Respond briefly and naturally; do not introduce facts from custom knowledge or volunteer unrelated personal, biographical, promotional, or app details."
+      );
+    }
+    if (isContextualFollowupTurn) {
+      systemInstructionParts.push(
+        "The latest user message is a short contextual follow-up. Use only the recent conversation to resolve what it refers to and answer only the requested field or clarification in one concise sentence. If the recent conversation does not identify it, ask one concise clarifying question. Do not introduce KhasiGPT's identity, founder information, biographies, capabilities, or any unrelated facts."
       );
     }
     systemInstructionParts.push(KHASIGPT_IDENTITY_FINAL_REMINDER);

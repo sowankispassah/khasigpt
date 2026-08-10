@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { chunkRagContent } from "@/lib/rag/chunking";
 import { detectQueryLanguage } from "@/lib/rag/language";
-import { shouldSkipRagQuery } from "@/lib/rag/query-policy";
+import {
+  isContextualFollowupQuery,
+  shouldSkipRagQuery,
+} from "@/lib/rag/query-policy";
 import {
   type RagRankCandidate,
   rankRagCandidates,
@@ -59,7 +62,13 @@ test("control turns do not retrieve unrelated custom knowledge", () => {
   expect(shouldSkipRagQuery("What does 'stop here' mean?")).toBe(false);
   expect(shouldSkipRagQuery("Who founded KhasiGPT?")).toBe(false);
   expect(shouldSkipRagQuery("Which location?")).toBe(true);
-  expect(shouldSkipRagQuery("What location was that?")).toBe(false);
+  expect(shouldSkipRagQuery("Location?")).toBe(true);
+  expect(shouldSkipRagQuery("City?")).toBe(true);
+  expect(shouldSkipRagQuery("Where exactly?")).toBe(true);
+  expect(shouldSkipRagQuery("Kaei ka jaka?")).toBe(true);
+  expect(isContextualFollowupQuery("Location?")).toBe(true);
+  expect(shouldSkipRagQuery("What location was that?")).toBe(true);
+  expect(shouldSkipRagQuery("Where is Shillong?")).toBe(false);
 });
 
 test("long knowledge is chunked with bounded overlapping units", () => {

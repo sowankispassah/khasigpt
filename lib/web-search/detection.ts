@@ -62,6 +62,30 @@ function extractCurrentInfoLocation(text: string) {
   return location.length > 0 && location.length <= 100 ? location : null;
 }
 
+const NON_LOCATION_FOLLOWUP_PATTERN =
+  /\b(?:why|what|where|when|who|how|weather|temperature|don't|do\s+not|not\s+sure|yes|no|know)\b/i;
+
+function extractWeatherLocationFollowup(text: string) {
+  const normalized = text.trim();
+  if (!normalized || normalized.includes("?") || normalized.length > 100) {
+    return null;
+  }
+
+  const prefixed = normalized.match(
+    /^(?:i(?:'m|\s+am)\s+(?:currently\s+)?(?:in|at)|my\s+(?:current\s+)?location\s+is|(?:currently\s+)?in|location\s*(?:is|:))\s+(.+?)[.!]*$/i,
+  );
+  const candidate = (prefixed?.[1] ?? normalized).replace(/[.!]+$/, "").trim();
+  if (
+    !candidate ||
+    candidate.split(/\s+/).length > 6 ||
+    NON_LOCATION_FOLLOWUP_PATTERN.test(candidate) ||
+    !/^[\p{L}\p{M}\d][\p{L}\p{M}\d\s,.'-]*$/u.test(candidate)
+  ) {
+    return null;
+  }
+  return candidate;
+}
+
 export function detectCurrentInfoNeed(text: string): CurrentInfoDecision {
   const normalized = text.trim();
   if (!normalized) {
@@ -85,6 +109,36 @@ export function detectCurrentInfoNeed(text: string): CurrentInfoDecision {
     intent,
     locationQuery: intent ? extractCurrentInfoLocation(normalized) : null,
     reasons,
+  };
+}
+
+export function resolveCurrentInfoDecision({
+  currentText,
+  previousUserMessages = [],
+}: {
+  currentText: string;
+  previousUserMessages?: string[];
+}): CurrentInfoDecision {
+  const directDecision = detectCurrentInfoNeed(currentText);
+  if (directDecision.intent) {
+    return directDecision;
+  }
+
+  const previousUserText = previousUserMessages.at(-1)?.trim() ?? "";
+  const previousDecision = detectCurrentInfoNeed(previousUserText);
+  if (previousDecision.intent !== "weather" || previousDecision.locationQuery) {
+    return directDecision;
+  }
+
+  const locationQuery = extractWeatherLocationFollowup(currentText);
+  if (!locationQuery) {
+    return directDecision;
+  }
+
+  return {
+    intent: "weather",
+    locationQuery,
+    reasons: ["weather_location_followup"],
   };
 }
 

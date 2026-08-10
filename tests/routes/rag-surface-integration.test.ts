@@ -93,6 +93,10 @@ test("custom knowledge augments rather than replaces general model knowledge", a
   expect(chatRoute).toContain("RAG_HYBRID_ANSWERING_INSTRUCTION");
   expect(chatRoute).toContain("customRagUsed = Boolean(ragResult.context)");
   expect(chatRoute).toContain("Do not reveal or mention private retrieved context");
+  expect(chatRoute).toContain("isContextualFollowupQuery");
+  expect(chatRoute).toContain(
+    "answer only the requested field or clarification in one concise sentence",
+  );
   expect(ragRoute).toContain('answerMode: "general_knowledge"');
 
   for (const client of [webVoice, nativeVoice]) {

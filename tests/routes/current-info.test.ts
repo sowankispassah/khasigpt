@@ -9,12 +9,14 @@ async function readWorkspaceFile(relativePath: string) {
 }
 
 test.describe("live current information", () => {
-  test("uses India Standard Time and a safe weather fallback", async () => {
+  test("uses India Standard Time and requires a user-provided weather location", async () => {
     const service = await readWorkspaceFile("lib/current-info/service.ts");
     expect(service).toContain('DEFAULT_TIMEZONE = "Asia/Kolkata"');
-    expect(service).toContain('name: "Shillong, Meghalaya, India"');
-    expect(service).toContain("latitude: 25.5788");
-    expect(service).toContain("longitude: 91.8933");
+    expect(service).toContain(
+      "A user-provided location is required for live weather.",
+    );
+    expect(service).not.toContain("DEFAULT_WEATHER_LOCATION");
+    expect(service).not.toContain("Your detected location");
   });
 
   test("keeps live facts ahead of RAG and provider search in the shared chat route", async () => {
@@ -23,9 +25,11 @@ test.describe("live current information", () => {
       readWorkspaceFile("lib/current-info/service.ts"),
     ]);
 
-    expect(route).toContain("detectCurrentInfoNeed");
+    expect(route).toContain("resolveCurrentInfoDecision");
     expect(route).toContain("getLiveCurrentInfo");
     expect(route).toContain("!currentInfoDecision.intent");
+    expect(route).toContain("shouldAskForWeatherLocation");
+    expect(route).toContain("Do not infer a location from IP address");
     expect(route).toContain("Trusted live current-information data is attached below");
     expect(route).toContain("Do not guess or provide a stale answer");
     expect(service).toContain("api.open-meteo.com/v1/forecast");

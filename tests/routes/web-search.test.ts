@@ -5,6 +5,7 @@ import type { ChatMessage } from "@/lib/types";
 import {
   detectCurrentInfoNeed,
   detectWebSearchNeed,
+  resolveCurrentInfoDecision,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
 import { clearTransientWebSearchMessages } from "@/lib/web-search/status";
@@ -51,6 +52,30 @@ test.describe("web search grounding", () => {
       hasExplicitWebIntent: true,
       shouldSearch: true,
     });
+    expect(
+      resolveCurrentInfoDecision({
+        currentText: "Shillong",
+        previousUserMessages: ["What is the current temperature?"],
+      }),
+    ).toMatchObject({
+      intent: "weather",
+      locationQuery: "Shillong",
+    });
+    expect(
+      resolveCurrentInfoDecision({
+        currentText: "I'm currently in Bengaluru",
+        previousUserMessages: ["What is the weather?"],
+      }),
+    ).toMatchObject({
+      intent: "weather",
+      locationQuery: "Bengaluru",
+    });
+    expect(
+      resolveCurrentInfoDecision({
+        currentText: "Why do you need it?",
+        previousUserMessages: ["What is the temperature?"],
+      }).intent,
+    ).toBeNull();
   });
 
   test("detects current-information prompts without searching every message", () => {
