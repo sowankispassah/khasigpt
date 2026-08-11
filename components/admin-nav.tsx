@@ -2,6 +2,7 @@
 
 import {
   BriefcaseBusiness,
+  CircleDollarSign,
   Contact,
   Database,
   Languages,
@@ -104,6 +105,7 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     label: "Administration",
     items: [
+      { href: "/admin/pricing", icon: CircleDollarSign, label: "Pricing" },
       { href: "/admin/settings", icon: Settings, label: "Settings" },
       { href: "/admin/translations", icon: Languages, label: "Translations" },
       { href: "/admin/logs", icon: ScrollText, label: "Audit Log" },

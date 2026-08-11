@@ -132,10 +132,18 @@ const ADMIN_SEARCH_ENTRIES: AdminSearchEntry[] = [
   {
     id: "settings",
     title: "Settings",
-    description: "Configure pricing, models, and platform behaviour.",
+    description: "Configure models and platform behaviour.",
     href: "/admin/settings",
     category: "Configuration",
-    keywords: ["pricing", "models", "limits", "settings"],
+    keywords: ["models", "limits", "settings"],
+  },
+  {
+    id: "pricing",
+    title: "Pricing",
+    description: "Compare and manage recharge tiers, credits, and margins.",
+    href: "/admin/pricing",
+    category: "Configuration",
+    keywords: ["pricing", "plans", "credits", "margins", "recharge"],
   },
   {
     id: "translations",

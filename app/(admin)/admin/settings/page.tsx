@@ -6,24 +6,20 @@ import {
   createLanguageAction,
   createLiveVoiceModelConfigAction,
   createModelConfigAction,
-  createPricingPlanAction,
   createTranslationFeatureLanguageAction,
   deleteImageModelConfigAction,
   deleteLanguageAction,
   deleteLiveVoiceModelConfigAction,
   deleteModelConfigAction,
-  deletePricingPlanAction,
   deleteTranslationFeatureLanguageAction,
   hardDeleteImageModelConfigAction,
   hardDeleteLiveVoiceModelConfigAction,
   hardDeleteModelConfigAction,
-  hardDeletePricingPlanAction,
   setActiveImageModelConfigAction,
   setDefaultLiveVoiceModelConfigAction,
   setDefaultModelConfigAction,
   setImagePromptTranslationModelAction,
   setMarginBaselineModelAction,
-  setRecommendedPricingPlanAction,
   updateAboutContentAction,
   updateComingSoonContentAction,
   updateComingSoonTimerAction,
@@ -36,7 +32,6 @@ import {
   updateLiveTranslationSettingsAction,
   updateLiveVoiceModelConfigAction,
   updateModelConfigAction,
-  updatePlanTranslationAction,
   updatePrivacyPolicyByLanguageAction,
   updateSuggestedPromptsAction,
   updateTermsOfServiceByLanguageAction,
@@ -112,7 +107,6 @@ import {
 import {
   getAppSettingsByKeys,
   getLastKnownAppSettingsByKeys,
-  getTranslationValuesForKeys,
   listImageModelConfigs,
   listLanguagesWithSettings,
   listLiveVoiceModelConfigs,
@@ -175,9 +169,7 @@ import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
 import { LiveVoiceProfitabilityFields } from "./live-voice-profitability-fields";
 import { AdminSettingsNotice } from "./notice";
-import { PlanPricingFields } from "./plan-pricing-fields";
 import { PrelaunchInvitesPanel } from "./prelaunch-invites-panel";
-import { PricingPlanEditForm } from "./pricing-plan-edit-form";
 import { SiteAccessSettingsPanel } from "./site-access-settings-panel";
 import { WebSearchSettingsForm } from "./web-search-settings-form";
 
@@ -193,7 +185,6 @@ const PROVIDER_OPTIONS = [
 const SETTINGS_PENDING_TIMEOUT_MS = 5000;
 const ADMIN_SETTINGS_SECTION_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(3500);
 const ADMIN_SETTINGS_SNAPSHOT_QUERY_TIMEOUT_MS = getAdminQueryTimeoutMs(6000);
-const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 const EXCHANGE_RATE_QUERY_TIMEOUT_MS = 800;
 const ADMIN_SETTINGS_LIST_CACHE_REVALIDATE_SECONDS = 300;
 const SETTINGS_SNAPSHOT_KEYS = [
@@ -1321,7 +1312,6 @@ export default async function AdminSettingsPage({
   );
 
   const activePlans = plansRaw.filter((plan) => !plan.deletedAt);
-  const deletedPlans = plansRaw.filter((plan) => plan.deletedAt);
 
   const recommendedPlanId =
     recommendedPlanSetting &&
@@ -1642,59 +1632,6 @@ export default async function AdminSettingsPage({
       content: contentForLanguage,
     };
   });
-
-  const planTranslationDefinitions = activePlans.flatMap((plan) => [
-    {
-      key: `recharge.plan.${plan.id}.name`,
-      defaultText: plan.name,
-    },
-    {
-      key: `recharge.plan.${plan.id}.description`,
-      defaultText: plan.description ?? "",
-    },
-  ]);
-
-  const planTranslationKeys = planTranslationDefinitions.map(
-    (definition) => definition.key
-  );
-  const planTranslationValuesByLanguage =
-    planTranslationKeys.length > 0
-      ? await withTimeout(
-          getTranslationValuesForKeys(planTranslationKeys),
-          PLAN_TRANSLATION_QUERY_TIMEOUT_MS
-        ).catch((error) => {
-          if (!(error instanceof Error && error.message === "timeout")) {
-            console.error(
-              "[admin/settings] Failed to load plan translations. Rendering settings without plan translations.",
-              error
-            );
-          }
-          return {} as Record<string, Record<string, string>>;
-        })
-      : {};
-
-  const planTranslationsByLanguage: Record<
-    string,
-    Record<string, { name: string; description: string }>
-  > = {};
-
-  for (const language of activeLanguagesList) {
-    const languageValues = planTranslationValuesByLanguage[language.code] ?? {};
-    const planMap: Record<string, { name: string; description: string }> = {};
-
-    for (const plan of activePlans) {
-      planMap[plan.id] = {
-        name: language.isDefault
-          ? plan.name
-          : (languageValues[`recharge.plan.${plan.id}.name`] ?? ""),
-        description: language.isDefault
-          ? (plan.description ?? "")
-          : (languageValues[`recharge.plan.${plan.id}.description`] ?? ""),
-      };
-    }
-
-    planTranslationsByLanguage[language.code] = planMap;
-  }
 
   const appBaseUrlRaw =
     process.env.APP_BASE_URL ??
@@ -2972,389 +2909,6 @@ export default async function AdminSettingsPage({
                     />
                   ))}
                 </div>
-              </div>
-            </div>
-          )}
-        </CollapsibleSection>
-        <CollapsibleSection
-          description="Define recharge tiers that control how many tokens and credits users receive. Plans become available immediately."
-          title="Pricing plans"
-        >
-          <div className="space-y-1 rounded-md border border-muted-foreground/40 border-dashed bg-muted/20 px-3 py-2 text-muted-foreground text-xs">
-            <div>
-              Current recommended plan: {recommendedPlanName ?? "None selected"}
-            </div>
-            {recommendedPlanSetting && !recommendedPlanId ? (
-              <div className="text-amber-600">
-                The previously selected plan is no longer active. Choose a new
-                recommended plan below.
-              </div>
-            ) : null}
-          </div>
-
-          <form
-            action={createPricingPlanAction}
-            className="grid gap-4 md:grid-cols-2"
-          >
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="plan-name">
-                Plan name
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-name"
-                name="name"
-                placeholder="Starter"
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="font-medium text-sm" htmlFor="plan-description">
-                Description
-              </label>
-              <textarea
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-description"
-                name="description"
-                placeholder="Great for individual builders."
-              />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label
-                className="font-medium text-sm"
-                htmlFor="plan-android-product-id"
-              >
-                Android product id
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-android-product-id"
-                name="androidProductId"
-                placeholder="khasigpt_starter"
-              />
-              <p className="text-muted-foreground text-xs">
-                Must exactly match the in-app product id configured in Google
-                Play Console.
-              </p>
-            </div>
-            <div className="space-y-3 md:col-span-2">
-              <PlanPricingFields
-                modelCosts={providerCostSummaries}
-                usdToInr={usdToInr}
-              />
-              <p className="text-muted-foreground text-xs">
-                Display credits are calculated automatically (
-                {TOKENS_PER_CREDIT} tokens per credit).
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-sm" htmlFor="plan-duration">
-                Billing cycle (days)
-              </label>
-              <input
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-                id="plan-duration"
-                min={0}
-                name="billingCycleDays"
-                placeholder="90"
-                required
-                type="number"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                className="h-4 w-4"
-                defaultChecked
-                id="plan-active"
-                name="isActive"
-                type="checkbox"
-              />
-              <label className="font-medium text-sm" htmlFor="plan-active">
-                Plan is active
-              </label>
-            </div>
-            <div className="flex justify-end md:col-span-2">
-              <SettingsSubmitButton pendingLabel="Creating...">
-                Create plan
-              </SettingsSubmitButton>
-            </div>
-          </form>
-
-          <div className="mt-8 space-y-4">
-            {pricingPlansLoadFailed ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm">
-                Pricing plans could not be loaded. Other admin settings remain
-                available, but this section needs a refresh before editing
-                plans.
-              </div>
-            ) : activePlans.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No plans created yet.
-              </p>
-            ) : (
-              activePlans.map((plan) => {
-                const priceInRupees = plan.priceInPaise / 100;
-                const credits = Math.floor(
-                  plan.tokenAllowance / TOKENS_PER_CREDIT
-                );
-                const isRecommendedPlan = recommendedPlanId === plan.id;
-                const nonDefaultLanguages = activeLanguagesList.filter(
-                  (language) => !language.isDefault
-                );
-                return (
-                  <details
-                    className="overflow-hidden rounded-lg border bg-background"
-                    key={plan.id}
-                  >
-                    <summary className="flex cursor-pointer items-center justify-between gap-4 bg-muted/50 px-4 py-3 font-medium text-sm">
-                      <span className="flex items-center gap-2">
-                        <span>{plan.name}</span>
-                        {isRecommendedPlan ? (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary text-xs">
-                            Recommended
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        {plan.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </summary>
-                    <div className="grid gap-6 border-t p-4 md:grid-cols-[3fr,2fr]">
-                      <div className="space-y-6">
-                        <PricingPlanEditForm
-                          modelCosts={providerCostSummaries}
-                          plan={plan}
-                          usdToInr={usdToInr}
-                        />
-
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-muted-foreground text-sm">
-                            Localized content
-                          </h4>
-                          <div className="grid gap-4 md:grid-cols-2">
-                            {nonDefaultLanguages.length === 0 ? (
-                              <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-muted-foreground text-sm">
-                                Add another language to provide localized plan
-                                details.
-                              </div>
-                            ) : (
-                              nonDefaultLanguages.map((language) => {
-                                const translation = planTranslationsByLanguage[
-                                  language.code
-                                ]?.[plan.id] ?? {
-                                  name: "",
-                                  description: "",
-                                };
-                                const formId = `plan-translation-${plan.id}-${language.code}`;
-
-                                return (
-                                  <form
-                                    action={updatePlanTranslationAction}
-                                    className="flex flex-col gap-3 rounded-lg border bg-background p-3"
-                                    key={formId}
-                                  >
-                                    <input
-                                      name="planId"
-                                      type="hidden"
-                                      value={plan.id}
-                                    />
-                                    <input
-                                      name="languageCode"
-                                      type="hidden"
-                                      value={language.code}
-                                    />
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="font-medium text-sm">
-                                        {language.name}
-                                      </span>
-                                      <span className="text-muted-foreground text-xs">
-                                        {language.code.toUpperCase()}
-                                      </span>
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                      <label
-                                        className="font-medium text-xs"
-                                        htmlFor={`${formId}-name`}
-                                      >
-                                        Plan name
-                                      </label>
-                                      <input
-                                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                                        defaultValue={translation.name}
-                                        id={`${formId}-name`}
-                                        name="name"
-                                        placeholder="Enter localized name"
-                                      />
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                      <label
-                                        className="font-medium text-xs"
-                                        htmlFor={`${formId}-description`}
-                                      >
-                                        Description
-                                      </label>
-                                      <textarea
-                                        className="rounded-md border bg-background px-3 py-2 text-sm"
-                                        defaultValue={translation.description}
-                                        id={`${formId}-description`}
-                                        name="description"
-                                        placeholder="Enter localized description"
-                                      />
-                                      <p className="text-[11px] text-muted-foreground">
-                                        Leave blank to fall back to English.
-                                      </p>
-                                    </div>
-                                    <div className="flex justify-end">
-                                      <SettingsSubmitButton
-                                        pendingLabel="Saving..."
-                                        size="sm"
-                                        variant="outline"
-                                      >
-                                        {`Save ${language.name}`}
-                                      </SettingsSubmitButton>
-                                    </div>
-                                  </form>
-                                );
-                              })
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col justify-between gap-4">
-                        <div className="flex flex-col gap-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-medium text-sm">
-                              {isRecommendedPlan
-                                ? "Recommended plan"
-                                : "Not recommended"}
-                            </span>
-                            <div className="flex flex-wrap gap-2">
-                              {isRecommendedPlan ? (
-                                <form action={setRecommendedPricingPlanAction}>
-                                  <input name="planId" type="hidden" value="" />
-                                  <SettingsSubmitButton
-                                    pendingLabel="Updating..."
-                                    variant="outline"
-                                  >
-                                    Remove recommendation
-                                  </SettingsSubmitButton>
-                                </form>
-                              ) : (
-                                <form action={setRecommendedPricingPlanAction}>
-                                  <input
-                                    name="planId"
-                                    type="hidden"
-                                    value={plan.id}
-                                  />
-                                  <SettingsSubmitButton
-                                    disabled={!plan.isActive}
-                                    pendingLabel="Updating..."
-                                  >
-                                    Set as recommended
-                                  </SettingsSubmitButton>
-                                </form>
-                              )}
-                            </div>
-                          </div>
-                          {!plan.isActive && !isRecommendedPlan ? (
-                            <p className="text-muted-foreground text-xs">
-                              Activate this plan before setting it as
-                              recommended.
-                            </p>
-                          ) : null}
-                        </div>
-                        <dl className="grid gap-2 text-sm">
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">
-                              Credits provided
-                            </dt>
-                            <dd className="font-medium">
-                              {credits.toLocaleString()}
-                            </dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">
-                              Tokens provided
-                            </dt>
-                            <dd className="font-medium">
-                              {plan.tokenAllowance.toLocaleString()}
-                            </dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">
-                              Billing cycle
-                            </dt>
-                            <dd className="font-medium">
-                              {plan.billingCycleDays} day
-                              {plan.billingCycleDays === 1 ? "" : "s"}
-                            </dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">
-                              Price (INR)
-                            </dt>
-                            <dd className="font-medium">
-                              {priceInRupees.toLocaleString("en-IN", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </dd>
-                          </div>
-                        </dl>
-                        <div className="flex flex-wrap gap-2">
-                          <form action={deletePricingPlanAction}>
-                            <input name="id" type="hidden" value={plan.id} />
-                            <SettingsSubmitButton
-                              className="border border-destructive text-destructive hover:bg-destructive/10"
-                              pendingLabel="Soft deleting..."
-                              variant="outline"
-                            >
-                              Soft delete
-                            </SettingsSubmitButton>
-                          </form>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                );
-              })
-            )}
-          </div>
-
-          {deletedPlans.length > 0 && (
-            <div className="mt-8 space-y-3">
-              <h3 className="font-semibold text-muted-foreground text-sm">
-                Deleted plans
-              </h3>
-              <div className="grid gap-2">
-                {deletedPlans.map((plan) => (
-                  <div
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm shadow-sm"
-                    key={plan.id}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{plan.name}</span>
-                      <span className="text-muted-foreground text-xs">
-                        Deleted{" "}
-                        {plan.deletedAt
-                          ? formatDistanceToNow(new Date(plan.deletedAt), {
-                              addSuffix: true,
-                            })
-                          : "recently"}
-                      </span>
-                    </div>
-                    <form action={hardDeletePricingPlanAction}>
-                      <input name="id" type="hidden" value={plan.id} />
-                      <SettingsSubmitButton
-                        pendingLabel="Hard deleting..."
-                        size="sm"
-                        variant="destructive"
-                      >
-                        Hard delete
-                      </SettingsSubmitButton>
-                    </form>
-                  </div>
-                ))}
               </div>
             </div>
           )}

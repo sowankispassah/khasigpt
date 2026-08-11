@@ -27,6 +27,7 @@ type PlanPricingFieldsProps = {
   usdToInr: number;
   initialPriceInRupees?: number;
   initialTokenAllowance?: number;
+  inputIdPrefix?: string;
 };
 
 export function PlanPricingFields({
@@ -34,6 +35,7 @@ export function PlanPricingFields({
   usdToInr,
   initialPriceInRupees,
   initialTokenAllowance,
+  inputIdPrefix = "plan",
 }: PlanPricingFieldsProps) {
   const [priceInRupees, setPriceInRupees] = useState<string>(() =>
     typeof initialPriceInRupees === "number"
@@ -117,7 +119,7 @@ export function PlanPricingFields({
           </label>
           <input
             className="rounded-md border bg-background px-3 py-2 text-sm"
-            id="plan-price"
+            id={`${inputIdPrefix}-price`}
             min="0"
             name="priceInRupees"
             onChange={handlePriceChange}
@@ -134,7 +136,7 @@ export function PlanPricingFields({
           </label>
           <input
             className="rounded-md border bg-background px-3 py-2 text-sm"
-            id="plan-tokens"
+            id={`${inputIdPrefix}-tokens`}
             min={0}
             name="tokenAllowance"
             onChange={handleAllowanceChange}

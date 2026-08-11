@@ -3402,7 +3402,7 @@ export async function createPricingPlanAction(formData: FormData) {
 
   revalidateAdminPricingSettings("billing.plan.create");
 
-  redirect("/admin/settings?notice=plan-created");
+  redirect("/admin/pricing?notice=plan-created");
 }
 
 export async function updatePricingPlanAction(formData: FormData) {
@@ -3464,7 +3464,7 @@ export async function updatePricingPlanAction(formData: FormData) {
   );
 
   if (!updatedPlan) {
-    redirect("/admin/settings?notice=plan-update-error");
+    redirect("/admin/pricing?notice=plan-update-error");
   }
 
   void createAuditLogEntrySafely({
@@ -3503,7 +3503,7 @@ export async function setRecommendedPricingPlanAction(formData: FormData) {
 
   revalidateAdminPricingSettings("billing.plan.recommendation.update");
 
-  redirect("/admin/settings?notice=plan-recommendation-updated");
+  redirect("/admin/pricing?notice=plan-recommendation-updated");
 }
 
 export async function deletePricingPlanAction(formData: FormData) {
@@ -3525,7 +3525,7 @@ export async function deletePricingPlanAction(formData: FormData) {
 
   revalidateAdminPricingSettings("billing.plan.delete");
 
-  redirect("/admin/settings?notice=plan-deleted");
+  redirect("/admin/pricing?notice=plan-deleted");
 }
 
 export async function hardDeletePricingPlanAction(formData: FormData) {
@@ -3547,7 +3547,7 @@ export async function hardDeletePricingPlanAction(formData: FormData) {
 
   revalidateAdminPricingSettings("billing.plan.hard_delete");
 
-  redirect("/admin/settings?notice=plan-hard-deleted");
+  redirect("/admin/pricing?notice=plan-hard-deleted");
 }
 
 export async function grantUserCreditsAction(formData: FormData) {

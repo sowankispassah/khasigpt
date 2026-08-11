@@ -143,6 +143,7 @@ export function PricingPlanEditForm({
         <PlanPricingFields
           initialPriceInRupees={plan.priceInPaise / 100}
           initialTokenAllowance={plan.tokenAllowance}
+          inputIdPrefix={`plan-update-${plan.id}`}
           modelCosts={modelCosts}
           usdToInr={usdToInr}
         />
