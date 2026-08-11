@@ -52,7 +52,13 @@ function formatUpdatedAt(value: string | null) {
     return "Unavailable";
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unavailable" : date.toLocaleString();
+  return Number.isNaN(date.getTime())
+    ? "Unavailable"
+    : new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Asia/Kolkata",
+      }).format(date);
 }
 
 export function PricingManagementTable({

@@ -51,5 +51,8 @@ test.describe("admin pricing loading isolation", () => {
     expect(source).toContain("plansConfirmed");
     expect(source).toContain("detailsLoading");
     expect(source).not.toContain("active pricing ${");
+    expect(source).toContain('new Intl.DateTimeFormat("en-IN"');
+    expect(source).toContain('timeZone: "Asia/Kolkata"');
+    expect(source).not.toContain("date.toLocaleString()");
   });
 });
