@@ -3140,7 +3140,7 @@ export async function POST(request: Request) {
     }
     if (isContextualFollowupTurn) {
       systemInstructionParts.push(
-        "The latest user message is a short contextual follow-up. Use only the recent conversation to resolve what it refers to and answer only the requested field or clarification in one concise sentence. If the recent conversation does not identify it, ask one concise clarifying question. Do not introduce KhasiGPT's identity, founder information, biographies, capabilities, or any unrelated facts."
+        "The latest user message is a short contextual follow-up. Use only the recent conversation to resolve what it refers to and answer only the requested field or clarification in one concise sentence. If the requested fact was not established in the recent conversation, say that it cannot be determined from the available conversation and ask one concise clarifying question. Do not use custom knowledge to fill the gap. Product identity instructions are not responsive to this turn: under no circumstance mention KhasiGPT's identity, founder, team, origin, mission, capabilities, biographies, or any unrelated facts."
       );
     }
     systemInstructionParts.push(KHASIGPT_IDENTITY_FINAL_REMINDER);

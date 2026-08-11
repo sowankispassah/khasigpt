@@ -97,6 +97,9 @@ test("custom knowledge augments rather than replaces general model knowledge", a
   expect(chatRoute).toContain(
     "answer only the requested field or clarification in one concise sentence",
   );
+  expect(chatRoute).toContain(
+    "under no circumstance mention KhasiGPT's identity, founder, team",
+  );
   expect(ragRoute).toContain('answerMode: "general_knowledge"');
 
   for (const client of [webVoice, nativeVoice]) {
