@@ -50,5 +50,6 @@ test.describe("admin pricing loading isolation", () => {
     expect(source).toContain('"Pricing configurations are unavailable"');
     expect(source).toContain("plansConfirmed");
     expect(source).toContain("detailsLoading");
+    expect(source).not.toContain("active pricing ${");
   });
 });

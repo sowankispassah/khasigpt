@@ -94,7 +94,7 @@ export function PricingManagementTable({
         <div>
           <p className="font-medium text-sm">
             {plansConfirmed
-              ? `${plans.length} active pricing ${plans.length === 1 ? "configuration" : "configurations"}`
+              ? `${plans.length} pricing ${plans.length === 1 ? "configuration" : "configurations"}`
               : "Pricing configurations are unavailable"}
           </p>
           <p className="mt-1 text-muted-foreground text-xs">
