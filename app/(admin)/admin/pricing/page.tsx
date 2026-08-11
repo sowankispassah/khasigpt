@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 
 import {
   createPricingPlanAction,
@@ -12,14 +12,16 @@ import { ActionSubmitButton } from "@/components/action-submit-button";
 import {
   ADMIN_SETTINGS_PRICING_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
+import { resolveAdminDbReadGroup } from "@/lib/admin/db-read-concurrency";
 import { adminQueryResult, getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { PRICING_PLAN_CACHE_TAG, RECOMMENDED_PRICING_PLAN_SETTING_KEY, TOKENS_PER_CREDIT } from "@/lib/constants";
 import {
   getAppSetting,
   getTranslationValuesForKeys,
+  listAdminPricingPlans,
   listLanguagesWithSettings,
   listModelConfigs,
-  listPricingPlans,
+  type listPricingPlans,
 } from "@/lib/db/queries";
 import { getFallbackUsdToInrRate, getUsdToInrRate } from "@/lib/services/exchange-rate";
 import { withTimeout } from "@/lib/utils/async";
@@ -34,7 +36,7 @@ const ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS = 300;
 const PLAN_TRANSLATION_QUERY_TIMEOUT_MS = 1500;
 
 const listAdminPricingPlansCached = unstable_cache(
-  () => listPricingPlans({ includeInactive: true, includeDeleted: true }),
+  () => listAdminPricingPlans({ includeInactive: true, includeDeleted: true }),
   ["admin-pricing:plans:v1"],
   {
     revalidate: ADMIN_PRICING_LIST_CACHE_REVALIDATE_SECONDS,
@@ -199,55 +201,46 @@ function PlanTranslationForms({
   );
 }
 
-export default async function AdminPricingPage({
-  searchParams,
+type PricingPlans = Awaited<ReturnType<typeof listAdminPricingPlans>>;
+
+function serializePlans({
+  activePlans,
+  baselineModel,
+  models,
+  recommendedPlanId,
+  usdToInr,
 }: {
-  searchParams?: Promise<{ notice?: string }>;
+  activePlans: PricingPlans;
+  baselineModel: ModelCostPreview | null;
+  models: Awaited<ReturnType<typeof listModelConfigs>>;
+  recommendedPlanId: string | null;
+  usdToInr: number;
 }) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
-  const [plansState, recommendedState, modelsState, languagesState, exchangeRateState] = await Promise.all([
-    adminQueryResult({ fallback: [] as Awaited<ReturnType<typeof listPricingPlans>>, label: "pricing.plans", promise: listAdminPricingPlansCached(), timeoutMs: queryTimeoutMs }),
-    adminQueryResult({ fallback: null as string | null, label: "pricing.recommended-plan", promise: getAppSetting<string | null>(RECOMMENDED_PRICING_PLAN_SETTING_KEY), timeoutMs: queryTimeoutMs }),
-    adminQueryResult({ fallback: [] as Awaited<ReturnType<typeof listModelConfigs>>, label: "pricing.provider-costs", promise: listModelConfigs({ includeDisabled: true, includeDeleted: false, limit: 200 }), timeoutMs: queryTimeoutMs }),
-    adminQueryResult({ fallback: [] as Awaited<ReturnType<typeof listLanguagesWithSettings>>, label: "pricing.languages", promise: listLanguagesWithSettings(), timeoutMs: queryTimeoutMs }),
-    adminQueryResult({ fallback: { rate: getFallbackUsdToInrRate(), fetchedAt: new Date() }, label: "pricing.exchange-rate", promise: withTimeout(getUsdToInrRate(), 1200), timeoutMs: queryTimeoutMs }),
-  ]);
+  const baselineModelRecord = baselineModel
+    ? models.find((model) => model.id === baselineModel.id)
+    : null;
 
-  const plans = plansState.data;
-  const activePlans = plans.filter((plan) => !plan.deletedAt);
-  const deletedPlans = plans.filter((plan) => Boolean(plan.deletedAt));
-  const recommendedPlanId = activePlans.some((plan) => plan.id === recommendedState.data) ? recommendedState.data : null;
-  const usdToInr = exchangeRateState.data.rate;
-  const modelCosts = buildModelCostPreviews(modelsState.data, usdToInr);
-  const baselineModel = modelCosts.find((model) => model.isMarginBaseline) ?? modelCosts[0] ?? null;
-
-  const translationDefinitions = activePlans.flatMap((plan) => [
-    { key: `recharge.plan.${plan.id}.name`, defaultText: plan.name },
-    { key: `recharge.plan.${plan.id}.description`, defaultText: plan.description ?? "" },
-  ]);
-  const translationState = translationDefinitions.length > 0
-    ? await adminQueryResult({
-        fallback: {} as Record<string, Record<string, string>>,
-        label: "pricing.plan-translations",
-        promise: withTimeout(getTranslationValuesForKeys(translationDefinitions.map((definition) => definition.key)), PLAN_TRANSLATION_QUERY_TIMEOUT_MS),
-        timeoutMs: PLAN_TRANSLATION_QUERY_TIMEOUT_MS,
-      })
-    : { data: {}, error: null, ok: true as const };
-  const { activeLanguages, result: translations } = buildPlanTranslations(activePlans, languagesState.data, translationState.data);
-
-  const serializedPlans = activePlans.map((plan) => {
+  return activePlans.map((plan) => {
     const priceInRupees = plan.priceInPaise / 100;
     const credits = Math.floor(plan.tokenAllowance / TOKENS_PER_CREDIT);
     const userCreditCostInr = credits > 0 ? priceInRupees / credits : null;
-    const effectivePerMillionInr = plan.tokenAllowance > 0 ? (priceInRupees / plan.tokenAllowance) * 1_000_000 : null;
-    const effectivePerMillionUsd = effectivePerMillionInr !== null && usdToInr > 0 ? effectivePerMillionInr / usdToInr : null;
-    const marginPercent = effectivePerMillionInr !== null && effectivePerMillionInr > 0 && baselineModel
-      ? ((effectivePerMillionInr - baselineModel.providerCostPerMillionInr) / effectivePerMillionInr) * 100
+    const effectivePerMillionInr = plan.tokenAllowance > 0
+      ? (priceInRupees / plan.tokenAllowance) * 1_000_000
       : null;
-    const baselineModelRecord = baselineModel
-      ? modelsState.data.find((model) => model.id === baselineModel.id)
-      : null;
+    const effectivePerMillionUsd =
+      effectivePerMillionInr !== null && usdToInr > 0
+        ? effectivePerMillionInr / usdToInr
+        : null;
+    const marginPercent =
+      effectivePerMillionInr !== null &&
+      effectivePerMillionInr > 0 &&
+      baselineModel
+        ? ((effectivePerMillionInr -
+            baselineModel.providerCostPerMillionInr) /
+            effectivePerMillionInr) *
+          100
+        : null;
+
     return {
       billingCycleDays: plan.billingCycleDays,
       credits,
@@ -258,38 +251,260 @@ export default async function AdminPricingPage({
       id: plan.id,
       isActive: plan.isActive,
       isRecommended: recommendedPlanId === plan.id,
+      marginPercent,
       name: plan.name,
       priceInPaise: plan.priceInPaise,
-      providerInputCostUsd: baselineModelRecord ? Number(baselineModelRecord.inputProviderCostPerMillion ?? 0) : null,
-      providerOutputCostUsd: baselineModelRecord ? Number(baselineModelRecord.outputProviderCostPerMillion ?? 0) : null,
-      marginPercent,
+      providerInputCostUsd: baselineModelRecord
+        ? Number(baselineModelRecord.inputProviderCostPerMillion ?? 0)
+        : null,
+      providerOutputCostUsd: baselineModelRecord
+        ? Number(baselineModelRecord.outputProviderCostPerMillion ?? 0)
+        : null,
       tokenAllowance: plan.tokenAllowance,
-      userCreditCostInr,
       updatedAt: toIsoString(plan.updatedAt),
+      userCreditCostInr,
     };
   });
+}
 
-  const editForms: Record<string, ReactNode> = Object.fromEntries(activePlans.map((plan) => [
-    plan.id,
-    <div className="space-y-6" key={plan.id}>
-      <PricingPlanEditForm modelCosts={modelCosts} plan={plan} usdToInr={usdToInr} />
-      <PlanTranslationForms activeLanguages={activeLanguages} plan={plan} translations={Object.fromEntries(Object.entries(translations).map(([languageCode, plansForLanguage]) => [languageCode, plansForLanguage[plan.id] ?? { description: "", name: "" }]))} />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
-        <span className="font-medium text-sm">{recommendedPlanId === plan.id ? "Recommended plan" : "Not recommended"}</span>
-        {recommendedPlanId === plan.id ? (
-          <form action={setRecommendedPricingPlanAction}><input name="planId" type="hidden" value="" /><ActionSubmitButton pendingLabel="Updating..." type="submit" variant="outline">Remove recommendation</ActionSubmitButton></form>
-        ) : (
-          <form action={setRecommendedPricingPlanAction}><input name="planId" type="hidden" value={plan.id} /><ActionSubmitButton disabled={!plan.isActive} pendingLabel="Updating..." type="submit">Set as recommended</ActionSubmitButton></form>
-        )}
-      </div>
-      <form action={deletePricingPlanAction} className="border-t pt-5"><input name="id" type="hidden" value={plan.id} /><ActionSubmitButton className="border border-destructive text-destructive hover:bg-destructive/10" pendingLabel="Soft deleting..." type="submit" variant="outline">Soft delete</ActionSubmitButton></form>
-    </div>,
-  ]));
+function buildDeletedForms(deletedPlans: PricingPlans) {
+  return Object.fromEntries(
+    deletedPlans.map((plan) => [
+      plan.id,
+      <form action={hardDeletePricingPlanAction} key={plan.id}>
+        <input name="id" type="hidden" value={plan.id} />
+        <ActionSubmitButton
+          pendingLabel="Hard deleting..."
+          size="sm"
+          type="submit"
+          variant="destructive"
+        >
+          Hard delete
+        </ActionSubmitButton>
+      </form>,
+    ])
+  );
+}
 
-  const deletedForms: Record<string, ReactNode> = Object.fromEntries(deletedPlans.map((plan) => [
-    plan.id,
-    <form action={hardDeletePricingPlanAction} key={plan.id}><input name="id" type="hidden" value={plan.id} /><ActionSubmitButton pendingLabel="Hard deleting..." size="sm" type="submit" variant="destructive">Hard delete</ActionSubmitButton></form>,
-  ]));
+async function PricingManagementContent({
+  activePlans,
+  deletedPlans,
+}: {
+  activePlans: PricingPlans;
+  deletedPlans: PricingPlans;
+}) {
+  const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
+  const exchangeRateStatePromise = adminQueryResult({
+    fallback: { rate: getFallbackUsdToInrRate(), fetchedAt: new Date() },
+    label: "pricing.exchange-rate",
+    promise: withTimeout(getUsdToInrRate(), 1200),
+    timeoutMs: queryTimeoutMs,
+  });
+  const [recommendedState, modelsState, languagesState] =
+    await resolveAdminDbReadGroup([
+      () =>
+        adminQueryResult({
+          fallback: null as string | null,
+          label: "pricing.recommended-plan",
+          promise: getAppSetting<string | null>(
+            RECOMMENDED_PRICING_PLAN_SETTING_KEY
+          ),
+          timeoutMs: queryTimeoutMs,
+        }),
+      () =>
+        adminQueryResult({
+          fallback: [] as Awaited<ReturnType<typeof listModelConfigs>>,
+          label: "pricing.provider-costs",
+          promise: listModelConfigs({
+            includeDisabled: true,
+            includeDeleted: false,
+            limit: 200,
+          }),
+          timeoutMs: queryTimeoutMs,
+        }),
+      () =>
+        adminQueryResult({
+          fallback: [] as Awaited<
+            ReturnType<typeof listLanguagesWithSettings>
+          >,
+          label: "pricing.languages",
+          promise: listLanguagesWithSettings(),
+          timeoutMs: queryTimeoutMs,
+        }),
+    ]);
+  const exchangeRateState = await exchangeRateStatePromise;
+  const recommendedPlanId = activePlans.some(
+    (plan) => plan.id === recommendedState.data
+  )
+    ? recommendedState.data
+    : null;
+  const usdToInr = exchangeRateState.data.rate;
+  const modelCosts = buildModelCostPreviews(modelsState.data, usdToInr);
+  const baselineModel =
+    modelCosts.find((model) => model.isMarginBaseline) ??
+    modelCosts[0] ??
+    null;
+  const translationDefinitions = activePlans.flatMap((plan) => [
+    { key: `recharge.plan.${plan.id}.name`, defaultText: plan.name },
+    {
+      key: `recharge.plan.${plan.id}.description`,
+      defaultText: plan.description ?? "",
+    },
+  ]);
+  const translationState =
+    languagesState.ok && translationDefinitions.length > 0
+      ? await adminQueryResult({
+          fallback: {} as Record<string, Record<string, string>>,
+          label: "pricing.plan-translations",
+          promise: withTimeout(
+            getTranslationValuesForKeys(
+              translationDefinitions.map((definition) => definition.key)
+            ),
+            PLAN_TRANSLATION_QUERY_TIMEOUT_MS
+          ),
+          timeoutMs: PLAN_TRANSLATION_QUERY_TIMEOUT_MS,
+        })
+      : { data: {}, error: null, ok: true as const };
+  const { activeLanguages, result: translations } = buildPlanTranslations(
+    activePlans,
+    languagesState.data,
+    translationState.data
+  );
+  const serializedPlans = serializePlans({
+    activePlans,
+    baselineModel,
+    models: modelsState.data,
+    recommendedPlanId,
+    usdToInr,
+  });
+  const editForms: Record<string, ReactNode> = Object.fromEntries(
+    activePlans.map((plan) => [
+      plan.id,
+      <div className="space-y-6" key={plan.id}>
+        <PricingPlanEditForm
+          modelCosts={modelCosts}
+          plan={plan}
+          usdToInr={usdToInr}
+        />
+        <PlanTranslationForms
+          activeLanguages={activeLanguages}
+          plan={plan}
+          translations={Object.fromEntries(
+            Object.entries(translations).map(
+              ([languageCode, plansForLanguage]) => [
+                languageCode,
+                plansForLanguage[plan.id] ?? { description: "", name: "" },
+              ]
+            )
+          )}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+          <span className="font-medium text-sm">
+            {recommendedPlanId === plan.id
+              ? "Recommended plan"
+              : "Not recommended"}
+          </span>
+          {recommendedPlanId === plan.id ? (
+            <form action={setRecommendedPricingPlanAction}>
+              <input name="planId" type="hidden" value="" />
+              <ActionSubmitButton
+                pendingLabel="Updating..."
+                type="submit"
+                variant="outline"
+              >
+                Remove recommendation
+              </ActionSubmitButton>
+            </form>
+          ) : (
+            <form action={setRecommendedPricingPlanAction}>
+              <input name="planId" type="hidden" value={plan.id} />
+              <ActionSubmitButton
+                disabled={!plan.isActive}
+                pendingLabel="Updating..."
+                type="submit"
+              >
+                Set as recommended
+              </ActionSubmitButton>
+            </form>
+          )}
+        </div>
+        <form action={deletePricingPlanAction} className="border-t pt-5">
+          <input name="id" type="hidden" value={plan.id} />
+          <ActionSubmitButton
+            className="border border-destructive text-destructive hover:bg-destructive/10"
+            pendingLabel="Soft deleting..."
+            type="submit"
+            variant="outline"
+          >
+            Soft delete
+          </ActionSubmitButton>
+        </form>
+      </div>,
+    ])
+  );
+
+  return (
+    <PricingManagementTable
+      baselineModelName={baselineModel?.name ?? null}
+      createForm={
+        <CreatePricingPlanForm modelCosts={modelCosts} usdToInr={usdToInr} />
+      }
+      deletedForms={buildDeletedForms(deletedPlans)}
+      editForms={editForms}
+      modelCostsConfirmed={modelsState.ok}
+      plans={serializedPlans}
+      plansConfirmed
+    />
+  );
+}
+
+function PricingManagementLoading({
+  activePlans,
+  deletedPlans,
+}: {
+  activePlans: PricingPlans;
+  deletedPlans: PricingPlans;
+}) {
+  const usdToInr = getFallbackUsdToInrRate();
+  const serializedPlans = serializePlans({
+    activePlans,
+    baselineModel: null,
+    models: [],
+    recommendedPlanId: null,
+    usdToInr,
+  });
+
+  return (
+    <PricingManagementTable
+      baselineModelName={null}
+      createForm={
+        <CreatePricingPlanForm modelCosts={[]} usdToInr={usdToInr} />
+      }
+      deletedForms={buildDeletedForms(deletedPlans)}
+      detailsLoading
+      editForms={{}}
+      modelCostsConfirmed={false}
+      plans={serializedPlans}
+      plansConfirmed
+    />
+  );
+}
+
+export default async function AdminPricingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ notice?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const queryTimeoutMs = getAdminQueryTimeoutMs(3500);
+  const plansState = await adminQueryResult({
+    fallback: [] as PricingPlans,
+    label: "pricing.plans",
+    promise: listAdminPricingPlansCached(),
+    timeoutMs: queryTimeoutMs,
+  });
+  const activePlans = plansState.data.filter((plan) => !plan.deletedAt);
+  const deletedPlans = plansState.data.filter((plan) => Boolean(plan.deletedAt));
 
   return (
     <div className="flex flex-col gap-6">
@@ -298,19 +513,44 @@ export default async function AdminPricingPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="font-semibold text-2xl">Pricing</h1>
-            <p className="mt-1 max-w-3xl text-muted-foreground text-sm">Review recharge tiers, compare effective user pricing with provider costs, and update plans without opening separate collapsible sections.</p>
+            <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
+              Review recharge tiers, compare effective user pricing with
+              provider costs, and update plans without opening separate
+              collapsible sections.
+            </p>
           </div>
         </div>
       </header>
-      <PricingManagementTable
-        baselineModelName={baselineModel?.name ?? null}
-        createForm={<CreatePricingPlanForm modelCosts={modelCosts} usdToInr={usdToInr} />}
-        deletedForms={deletedForms}
-        editForms={editForms}
-        modelCostsConfirmed={modelsState.ok}
-        plans={serializedPlans}
-        plansConfirmed={plansState.ok}
-      />
+      {plansState.ok ? (
+        <Suspense
+          fallback={
+            <PricingManagementLoading
+              activePlans={activePlans}
+              deletedPlans={deletedPlans}
+            />
+          }
+        >
+          <PricingManagementContent
+            activePlans={activePlans}
+            deletedPlans={deletedPlans}
+          />
+        </Suspense>
+      ) : (
+        <PricingManagementTable
+          baselineModelName={null}
+          createForm={
+            <CreatePricingPlanForm
+              modelCosts={[]}
+              usdToInr={getFallbackUsdToInrRate()}
+            />
+          }
+          deletedForms={{}}
+          editForms={{}}
+          modelCostsConfirmed={false}
+          plans={[]}
+          plansConfirmed={false}
+        />
+      )}
     </div>
   );
 }

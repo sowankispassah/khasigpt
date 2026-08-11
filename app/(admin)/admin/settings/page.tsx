@@ -49,6 +49,10 @@ import {
   ADMIN_SETTINGS_PRICING_CACHE_TAG,
   ADMIN_SETTINGS_TRANSLATION_FEATURE_LANGUAGES_CACHE_TAG,
 } from "@/lib/admin/cache-invalidation";
+import {
+  resolveAdminDbReadGroup,
+  shouldSerializeAdminDbReads,
+} from "@/lib/admin/db-read-concurrency";
 import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
@@ -338,128 +342,6 @@ const listAdminTranslationFeatureLanguagesCached = unstable_cache(
   }
 );
 
-function isSupabasePoolerUrl(value: string | undefined | null) {
-  if (!value) {
-    return false;
-  }
-  try {
-    return new URL(value).hostname.endsWith(".pooler.supabase.com");
-  } catch {
-    return value.includes(".pooler.supabase.com");
-  }
-}
-
-function parsePositiveInteger(value: string | undefined | null) {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function getConfiguredAdminSettingsPoolSize() {
-  return (
-    parsePositiveInteger(process.env.POSTGRES_LITE_POOL_SIZE) ??
-    parsePositiveInteger(process.env.POSTGRES_POOL_SIZE) ??
-    (process.env.NODE_ENV === "development"
-      ? 5
-      : hasConfiguredSupabasePoolerUrl()
-        ? 1
-        : 2)
-  );
-}
-
-function getConfiguredAdminSettingsDbReadConcurrency() {
-  return parsePositiveInteger(process.env.ADMIN_SETTINGS_DB_READ_CONCURRENCY);
-}
-
-function hasConfiguredSupabasePoolerUrl() {
-  const candidates = [
-    process.env.POSTGRES_URL,
-    process.env.DATABASE_URL,
-    process.env.POSTGRES_DIRECT_URL,
-    process.env.POSTGRES_PRISMA_URL,
-  ].filter(Boolean);
-
-  return candidates.some((value) => isSupabasePoolerUrl(value));
-}
-
-function shouldSerializeAdminSettingsDbReads() {
-  if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "true") {
-    return true;
-  }
-  if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "false") {
-    return false;
-  }
-  const onlyOneDbConnection = getConfiguredAdminSettingsPoolSize() <= 1;
-  if (process.env.POSTGRES_USE_POOLER === "true") {
-    return onlyOneDbConnection;
-  }
-
-  const hasPoolerUrl = hasConfiguredSupabasePoolerUrl();
-  if (process.env.VERCEL === "1" && hasPoolerUrl) {
-    return onlyOneDbConnection;
-  }
-
-  return (
-    onlyOneDbConnection &&
-    hasPoolerUrl
-  );
-}
-
-function getAdminSettingsDbReadConcurrency(taskCount: number) {
-  if (taskCount <= 1) {
-    return taskCount;
-  }
-
-  const explicitConcurrency = getConfiguredAdminSettingsDbReadConcurrency();
-  if (explicitConcurrency !== null) {
-    return Math.min(taskCount, explicitConcurrency);
-  }
-
-  if (shouldSerializeAdminSettingsDbReads()) {
-    return 1;
-  }
-
-  if (process.env.ADMIN_SETTINGS_SERIALIZE_DB_READS === "false") {
-    return taskCount;
-  }
-
-  const poolSize = getConfiguredAdminSettingsPoolSize();
-  const usesPooler =
-    process.env.POSTGRES_USE_POOLER === "true" ||
-    (process.env.VERCEL === "1" && hasConfiguredSupabasePoolerUrl());
-
-  if (!usesPooler) {
-    return taskCount;
-  }
-
-  return Math.max(1, Math.min(taskCount, poolSize - 1, 2));
-}
-
-async function resolveAdminDbReadGroup<const T extends readonly unknown[]>(
-  tasks: { [K in keyof T]: () => Promise<T[K]> }
-): Promise<T> {
-  const concurrency = getAdminSettingsDbReadConcurrency(tasks.length);
-
-  if (concurrency >= tasks.length) {
-    return Promise.all(tasks.map((task) => task())) as unknown as Promise<T>;
-  }
-
-  const results = new Array<unknown>(tasks.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < tasks.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await tasks[index]();
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: concurrency }, () => worker())
-  );
-  return results as unknown as T;
-}
-
 async function settingsQueryState<T>(
   label: string,
   query: () => Promise<T>,
@@ -655,7 +537,7 @@ async function loadAdminSettingsData() {
       fetchedAt: new Date(),
     };
   });
-  const serializeDbReads = shouldSerializeAdminSettingsDbReads();
+  const serializeDbReads = shouldSerializeAdminDbReads();
   const dedicatedFeatureAccessStatePromise = loadAdminFeatureAccessState();
   const appSettingStatePromise = serializeDbReads
     ? dedicatedFeatureAccessStatePromise.then(() => loadAppSettingValuesByKey())

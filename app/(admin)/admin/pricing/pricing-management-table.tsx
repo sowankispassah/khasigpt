@@ -59,6 +59,7 @@ export function PricingManagementTable({
   baselineModelName,
   createForm,
   deletedForms,
+  detailsLoading = false,
   editForms,
   modelCostsConfirmed,
   plans,
@@ -67,6 +68,7 @@ export function PricingManagementTable({
   baselineModelName: string | null;
   createForm: ReactNode;
   deletedForms: Record<string, ReactNode>;
+  detailsLoading?: boolean;
   editForms: Record<string, ReactNode>;
   modelCostsConfirmed: boolean;
   plans: PricingPlanRow[];
@@ -90,13 +92,23 @@ export function PricingManagementTable({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card/80 p-4 shadow-sm">
         <div>
-          <p className="font-medium text-sm">{plans.length} active pricing {plans.length === 1 ? "configuration" : "configurations"}</p>
-          <p className="mt-1 text-muted-foreground text-xs">{baselineModelName ? `Margin reference: ${baselineModelName}.` : "Margin reference is unavailable until an enabled model cost is configured."}</p>
+          <p className="font-medium text-sm">
+            {plansConfirmed
+              ? `${plans.length} active pricing ${plans.length === 1 ? "configuration" : "configurations"}`
+              : "Pricing configurations are unavailable"}
+          </p>
+          <p className="mt-1 text-muted-foreground text-xs">
+            {detailsLoading
+              ? "Loading provider costs and editing details..."
+              : baselineModelName
+                ? `Margin reference: ${baselineModelName}.`
+                : "Margin reference is unavailable until an enabled model cost is configured."}
+          </p>
         </div>
         <Button className="cursor-pointer" onClick={openCreate} type="button">+ Add Pricing</Button>
       </div>
 
-      {!modelCostsConfirmed ? <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</p> : null}
+      {plansConfirmed && !detailsLoading && !modelCostsConfirmed ? <p className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-amber-900 text-sm dark:bg-amber-950/20 dark:text-amber-100">Provider cost data could not be confirmed. Plans remain editable; margin values are shown as unavailable.</p> : null}
 
       <div className="overflow-x-auto rounded-xl border bg-card/80 shadow-sm">
         <table className="w-full min-w-[1120px] text-sm">
@@ -139,7 +151,7 @@ export function PricingManagementTable({
                 <td className={cn("px-4 py-3 text-right font-medium", plan.marginPercent === null ? "text-muted-foreground" : plan.marginPercent >= 0 ? "text-emerald-600" : "text-destructive")}>{plan.marginPercent === null ? "—" : `${plan.marginPercent.toFixed(2)}%`}</td>
                 <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span className={cn("rounded-full px-2 py-0.5 text-xs", plan.isActive ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{plan.isActive ? "Active" : "Inactive"}</span>{plan.isRecommended ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary text-xs">Recommended</span> : null}</div></td>
                 <td className="whitespace-nowrap px-4 py-3 text-muted-foreground text-xs">{formatUpdatedAt(plan.updatedAt)}</td>
-                <td className="px-4 py-3 text-right"><Button className="cursor-pointer" onClick={() => openEdit(plan.id)} size="sm" type="button" variant="outline">Edit</Button></td>
+                <td className="px-4 py-3 text-right"><Button className="cursor-pointer" disabled={detailsLoading} onClick={() => openEdit(plan.id)} size="sm" type="button" variant="outline">{detailsLoading ? "Loading..." : "Edit"}</Button></td>
               </tr>
             ))}
           </tbody>

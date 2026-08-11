@@ -8325,17 +8325,64 @@ export async function getCharacterForImageGeneration(
   }
 }
 
+type PricingPlanListOptions = {
+  includeInactive?: boolean;
+  includeDeleted?: boolean;
+  onlyDeleted?: boolean;
+  limit?: number;
+};
+
+export async function listAdminPricingPlans({
+  includeInactive = false,
+  includeDeleted = false,
+  onlyDeleted = false,
+  limit = 100,
+}: PricingPlanListOptions = {}): Promise<PricingPlan[]> {
+  try {
+    return await withAdminDatabase("pricing.plans", async (adminDb) => {
+      const baseBuilder = adminDb.select().from(pricingPlan);
+      const filters: SQL<boolean>[] = [];
+
+      if (onlyDeleted) {
+        filters.push(isNotNull(pricingPlan.deletedAt) as SQL<boolean>);
+      } else if (!includeDeleted) {
+        filters.push(isNull(pricingPlan.deletedAt) as SQL<boolean>);
+      }
+
+      if (!includeInactive) {
+        filters.push(eq(pricingPlan.isActive, true) as SQL<boolean>);
+      }
+
+      const whereCondition =
+        filters.length === 0
+          ? undefined
+          : filters.length === 1
+            ? filters[0]
+            : (and(...filters) as SQL<boolean>);
+      const builder =
+        whereCondition !== undefined
+          ? baseBuilder.where(whereCondition)
+          : baseBuilder;
+
+      return await builder.orderBy(desc(pricingPlan.createdAt)).limit(limit);
+    });
+  } catch (_error) {
+    if (isTableMissingError(_error)) {
+      return [];
+    }
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to list admin pricing plans"
+    );
+  }
+}
+
 export async function listPricingPlans({
   includeInactive = false,
   includeDeleted = false,
   onlyDeleted = false,
   limit = 100,
-}: {
-  includeInactive?: boolean;
-  includeDeleted?: boolean;
-  onlyDeleted?: boolean;
-  limit?: number;
-} = {}): Promise<PricingPlan[]> {
+}: PricingPlanListOptions = {}): Promise<PricingPlan[]> {
   try {
     const baseBuilder = db.select().from(pricingPlan);
 

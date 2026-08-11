@@ -70,8 +70,8 @@ test.describe("admin model config database resilience", () => {
   test("uses low production DB pool fanout by default", async () => {
     const mainDbSource = await readWorkspaceFile("lib/db/queries.ts");
     const authDbSource = await readWorkspaceFile("lib/db/auth-queries.ts");
-    const adminSettingsSource = await readWorkspaceFile(
-      "app/(admin)/admin/settings/page.tsx"
+    const adminDbReadSource = await readWorkspaceFile(
+      "lib/admin/db-read-concurrency.ts"
     );
 
     expect(mainDbSource).toContain(
@@ -80,8 +80,8 @@ test.describe("admin model config database resilience", () => {
     expect(authDbSource).toContain(
       'usesPooler ? 1 : process.env.NODE_ENV === "development" ? 3 : 1'
     );
-    expect(adminSettingsSource).toContain(": hasConfiguredSupabasePoolerUrl()");
-    expect(adminSettingsSource).toContain("? 1");
+    expect(adminDbReadSource).toContain(": hasConfiguredSupabasePoolerUrl()");
+    expect(adminDbReadSource).toContain("return 1;");
   });
 
   test("redirects image model creation to a confirmed success notice", async () => {
