@@ -13,6 +13,8 @@ import {
   getImageGenerationAccess,
   getMaxReferenceImagesForModel,
 } from "@/lib/ai/image-generation";
+import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
+import { verifyImageIntentToken } from "@/lib/ai/image-intent-token";
 import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
 import {
   deductImageCredits,
@@ -46,6 +48,8 @@ const imageRequestSchema = z.object({
   userMessageId: z.string().uuid().optional(),
   imageUrl: z.string().url().nullable().optional(),
   imageUrls: z.array(z.string().url()).optional(),
+  intent: z.enum(["image_generate", "image_edit"]).optional(),
+  decisionToken: z.string().min(1).optional(),
 });
 
 const DEFAULT_IMAGE_FILENAME_PREFIX = "khasigpt-image";
@@ -302,6 +306,50 @@ export async function POST(request: Request) {
     );
   }
   const payload = parsed.data;
+
+  const hasSignedDecision = Boolean(payload.intent && payload.decisionToken);
+  const signedDecisionIsValid =
+    payload.intent && payload.decisionToken
+      ? verifyImageIntentToken({
+          intent: payload.intent,
+          prompt: payload.prompt,
+          token: payload.decisionToken,
+          userId: session.user.id,
+        })
+      : false;
+  if (hasSignedDecision && !signedDecisionIsValid) {
+    return Response.json(
+      {
+        code: "forbidden:image_intent",
+        message: "Image intent must be confirmed before generation.",
+      },
+      { status: 403 }
+    );
+  }
+
+  if (!signedDecisionIsValid) {
+    const fallbackIntent = await classifyImageIntent({
+      message: payload.prompt,
+      imageHintSelected: true,
+      hasImageAttachment: Boolean(
+        payload.imageUrl || (payload.imageUrls?.length ?? 0) > 0
+      ),
+      hasPriorGeneratedImage: false,
+      recentMessages: [],
+    });
+    if (
+      fallbackIntent !== "image_generate" &&
+      fallbackIntent !== "image_edit"
+    ) {
+      return Response.json(
+        {
+          code: "bad_request:image_intent",
+          message: "The request does not ask to create or edit an image.",
+        },
+        { status: 422 }
+      );
+    }
+  }
 
   const access = await getImageGenerationAccess({
     userId: session.user.id,

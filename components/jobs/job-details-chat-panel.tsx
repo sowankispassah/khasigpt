@@ -232,7 +232,7 @@ export function JobDetailsChatPanel({
               input={input}
               isGeneratingImage={false}
               messages={messages}
-              onGenerateImage={() => {}}
+              onGenerateImage={async () => {}}
               onLanguageChange={handleLanguageChange}
               onToggleImageMode={() => {}}
               selectedLanguageCode={currentLanguageCode}

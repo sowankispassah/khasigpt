@@ -26,6 +26,7 @@ import {
   useEditableTranslation,
 } from "@/components/translation-edit-provider";
 import { SelectItem } from "@/components/ui/select";
+import type { ImageIntentResolution } from "@/lib/image-intent";
 import type { JobTitleReference } from "@/lib/jobs/types";
 import type { StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage } from "@/lib/types";
@@ -296,6 +297,8 @@ function PureMultimodalInput({
   onJumpToQuestionPaper,
   onBeforeSubmit,
   onGenerateImage,
+  onManualInputChange,
+  onResolveImageIntent,
   onToggleImageMode,
   onVoiceTurnSaved,
   autoFocus = true,
@@ -328,7 +331,11 @@ function PureMultimodalInput({
   onClearStudyQuestionReference?: () => void;
   onJumpToQuestionPaper?: (paperId: string) => void;
   onBeforeSubmit?: () => void | Promise<void>;
-  onGenerateImage: () => void;
+  onGenerateImage: (resolution: ImageIntentResolution) => Promise<void>;
+  onManualInputChange?: () => void;
+  onResolveImageIntent?: (
+    prompt: string
+  ) => Promise<ImageIntentResolution | null>;
   onToggleImageMode: () => void;
   onVoiceTurnSaved?: () => void;
   autoFocus?: boolean;
@@ -418,6 +425,7 @@ function PureMultimodalInput({
   }, []);
 
   const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onManualInputChange?.();
     setInput(event.target.value);
   };
 
@@ -427,6 +435,7 @@ function PureMultimodalInput({
   );
   const voiceSessionIdRef = useRef(0);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const [isResolvingIntent, setIsResolvingIntent] = useState(false);
   const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] =
     useState<WebGeminiVoiceTurnStatus>("connecting");
@@ -554,7 +563,33 @@ function PureMultimodalInput({
 
   const isResponsePending =
     status === "submitted" || status === "streaming";
-  const isBusy = (status !== "ready" && status !== "error") || isGeneratingImage;
+  const isBusy =
+    (status !== "ready" && status !== "error") ||
+    isGeneratingImage ||
+    isResolvingIntent;
+  const submitWithIntent = useCallback(async () => {
+    if (isResolvingIntent) {
+      return;
+    }
+
+    setIsResolvingIntent(true);
+    try {
+      const resolution = await onResolveImageIntent?.(input);
+      if (resolution) {
+        await onGenerateImage(resolution);
+        return;
+      }
+      await submitForm();
+    } finally {
+      setIsResolvingIntent(false);
+    }
+  }, [
+    input,
+    isResolvingIntent,
+    onGenerateImage,
+    onResolveImageIntent,
+    submitForm,
+  ]);
   const canStopVoice =
     isVoiceDialogOpen &&
     !voiceError &&
@@ -964,21 +999,17 @@ function PureMultimodalInput({
         className="rounded-xl border border-border bg-background p-3 shadow-xs transition-all duration-200 focus-within:border-border hover:border-muted-foreground/50"
         onSubmit={(event) => {
           event.preventDefault();
-        if (isBusy) {
-          toast.error(
-            translate(
-              "chat.input.wait_for_response",
-              "Please wait for the model to finish its response!"
-            )
-          );
-        } else {
-          if (imageGenerationSelected) {
-            onGenerateImage();
+          if (isBusy) {
+            toast.error(
+              translate(
+                "chat.input.wait_for_response",
+                "Please wait for the model to finish its response!"
+              )
+            );
           } else {
-            void submitForm();
+            void submitWithIntent();
           }
-        }
-      }}
+        }}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
           <div
@@ -1074,13 +1105,24 @@ function PureMultimodalInput({
                 </Button>
               ) : null}
               <PromptInputSubmit
-                aria-label="Send message"
+                aria-label={
+                  isResolvingIntent
+                    ? translate(
+                        "image.intent.checking",
+                        "Checking request..."
+                      )
+                    : translate("chat.actions.send", "Send message")
+                }
                 className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
                 data-testid="send-button"
                 disabled={!input.trim() || uploadQueue.length > 0 || isBusy}
                 status={status}
               >
-                <ArrowUpIcon size={14} />
+                {isResolvingIntent ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <ArrowUpIcon size={14} />
+                )}
               </PromptInputSubmit>
             </div>
           )}

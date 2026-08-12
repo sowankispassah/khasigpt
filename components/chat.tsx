@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { type DataUIPart, DefaultChatTransport } from "ai";
-import { BookOpen } from "lucide-react";
+import { BookOpen, LoaderCircle } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -46,6 +46,12 @@ import type {
   IconPromptAction,
   IconPromptSuggestion,
 } from "@/lib/icon-prompts";
+import {
+  type ImageIntentContextMessage,
+  type ImageIntentResolution,
+  parseImageIntent,
+  shouldClassifyImageIntent,
+} from "@/lib/image-intent";
 import { getJobTypeLabel } from "@/lib/jobs/sector";
 import type {
   JobCard,
@@ -93,6 +99,43 @@ type PromptActionsPayload = {
   iconPromptActions?: IconPromptAction[];
   prompts?: string[];
 };
+
+function getRecentImageIntentContext(messages: ChatMessage[]) {
+  return messages.slice(-8).map((message): ImageIntentContextMessage => {
+    const hasImage = message.parts.some(
+      (part) =>
+        part.type === "file" &&
+        typeof part.mediaType === "string" &&
+        part.mediaType.startsWith("image/")
+    );
+    return {
+      role: message.role === "assistant" ? "assistant" : "user",
+      text: getTextFromMessage(message).slice(0, 1000),
+      hasImage,
+    };
+  });
+}
+
+function getLatestAssistantImageUrl(messages: ChatMessage[]) {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex];
+    if (message?.role !== "assistant") {
+      continue;
+    }
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = message.parts[partIndex];
+      if (
+        part?.type === "file" &&
+        typeof part.url === "string" &&
+        typeof part.mediaType === "string" &&
+        part.mediaType.startsWith("image/")
+      ) {
+        return part.url;
+      }
+    }
+  }
+  return null;
+}
 
 type JobsListPayload =
   | JobListItem[]
@@ -882,6 +925,8 @@ export function Chat({
       }
     },
   });
+  const imageIntentMessagesRef = useRef(messages);
+  imageIntentMessagesRef.current = messages;
 
   const addWebSearchPlaceholder = useCallback(
     (userMessageId: string, removePlaceholderId?: string) => {
@@ -1240,6 +1285,11 @@ export function Chat({
   const [iconPromptSuggestions, setIconPromptSuggestions] = useState<
     IconPromptSuggestion[]
   >([]);
+  const [isResolvingImageSuggestion, setIsResolvingImageSuggestion] =
+    useState(false);
+  const handleManualInputChange = useCallback(() => {
+    setIconPromptSuggestions([]);
+  }, []);
   const handleIconPromptSelect = useCallback(
     (item: IconPromptAction) => {
       const trimmedPrompt = item.prompt.trim();
@@ -1269,8 +1319,74 @@ export function Chat({
     [refreshImageGenerationAccess]
   );
 
+  const resolveImageIntentForPrompt = useCallback(
+    async (
+      prompt: string,
+      imageHintSelected = isImageMode
+    ): Promise<ImageIntentResolution | null> => {
+      if (!(imageGeneration.enabled && !isStudyMode)) {
+        return null;
+      }
+
+      const imageAttachments = attachments.filter((attachment) =>
+        attachment.contentType?.startsWith("image/")
+      );
+      const currentMessages = imageIntentMessagesRef.current;
+      const latestAssistantImageUrl =
+        getLatestAssistantImageUrl(currentMessages);
+      const intentInput = {
+        message: prompt.trim(),
+        imageHintSelected,
+        hasImageAttachment: imageAttachments.length > 0,
+        hasPriorGeneratedImage: Boolean(latestAssistantImageUrl),
+        recentMessages: getRecentImageIntentContext(currentMessages),
+      };
+      if (!shouldClassifyImageIntent(intentInput)) {
+        return null;
+      }
+
+      try {
+        const response = await fetch("/api/images/intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(intentInput),
+        });
+        const data = (await response.json().catch(() => null)) as
+          | { decisionToken?: string | null; intent?: string; message?: string }
+          | null;
+        if (!response.ok) {
+          throw new Error(data?.message || "Image intent request failed");
+        }
+
+        const intent = parseImageIntent(data?.intent);
+        if (
+          (intent === "image_generate" || intent === "image_edit") &&
+          data?.decisionToken
+        ) {
+          return { intent, decisionToken: data.decisionToken };
+        }
+        return null;
+      } catch (error) {
+        console.warn("[chat] Unable to resolve image intent.", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    },
+    [
+      attachments,
+      imageGeneration.enabled,
+      isImageMode,
+      isStudyMode,
+    ]
+  );
+
   const generateImageFromPrompt = useCallback(
-    async (prompt: string, displayPrompt?: string) => {
+    async (
+      prompt: string,
+      resolution: ImageIntentResolution,
+      displayPrompt?: string
+    ) => {
       if (!(await confirmImageGenerationAccess())) {
         return;
       }
@@ -1292,6 +1408,19 @@ export function Chat({
       const imageAttachments = attachments.filter((attachment) =>
         attachment.contentType?.startsWith("image/")
       );
+      const latestAssistantImageUrl = getLatestAssistantImageUrl(
+        imageIntentMessagesRef.current
+      );
+      const priorImageUrls =
+        resolution.intent === "image_edit" && latestAssistantImageUrl
+          ? [latestAssistantImageUrl]
+          : [];
+      const referenceImageUrls = Array.from(
+        new Set([
+          ...imageAttachments.map((attachment) => attachment.url),
+          ...priorImageUrls,
+        ])
+      );
 
       syncCurrentChatUrl();
 
@@ -1303,6 +1432,17 @@ export function Chat({
           filename: attachment.name,
           mediaType: attachment.contentType,
         })),
+        ...priorImageUrls
+          .filter(
+            (url) =>
+              !imageAttachments.some((attachment) => attachment.url === url)
+          )
+          .map((url) => ({
+            type: "file" as const,
+            url,
+            filename: "previous-generated-image",
+            mediaType: "image/png",
+          })),
         { type: "text" as const, text: displayText },
       ];
 
@@ -1329,7 +1469,9 @@ export function Chat({
             prompt: trimmedPrompt,
             displayPrompt: displayText,
             userMessageId,
-            imageUrls: imageAttachments.map((attachment) => attachment.url),
+            imageUrls: referenceImageUrls,
+            intent: resolution.intent,
+            decisionToken: resolution.decisionToken,
           }),
         });
 
@@ -1400,14 +1542,18 @@ export function Chat({
   );
 
   const handleIconPromptSuggestionSelect = useCallback(
-    (suggestion: IconPromptSuggestion) => {
+    async (suggestion: IconPromptSuggestion) => {
       const visibleText = suggestion.label.trim();
       const trimmed = suggestion.prompt.trim();
       const hiddenText = trimmed || visibleText;
       if (!hiddenText) {
         return;
       }
-      if ((status !== "ready" && status !== "error") || isGeneratingImage) {
+      if (
+        (status !== "ready" && status !== "error") ||
+        isGeneratingImage ||
+        isResolvingImageSuggestion
+      ) {
         return;
       }
 
@@ -1419,41 +1565,48 @@ export function Chat({
         return;
       }
 
-      if (isImageMode) {
-        void generateImageFromPrompt(hiddenText, visibleText);
-        return;
+      setIsResolvingImageSuggestion(true);
+      try {
+        const imageIntent = await resolveImageIntentForPrompt(hiddenText);
+        if (imageIntent) {
+          await generateImageFromPrompt(hiddenText, imageIntent, visibleText);
+          return;
+        }
+
+        syncCurrentChatUrl();
+
+        const messageParts = [
+          ...attachments.map((attachment) => ({
+            type: "file" as const,
+            url: attachment.url,
+            name: attachment.name,
+            mediaType: attachment.contentType,
+          })),
+          { type: "text" as const, text: displayedPrompt },
+        ];
+
+        sendMessageWithWebSearchStatus(
+          {
+            role: "user",
+            parts: messageParts,
+          },
+          hiddenText !== displayedPrompt
+            ? { body: { hiddenPrompt: hiddenText } }
+            : undefined
+        );
+
+        setInput("");
+        setAttachments([]);
+      } finally {
+        setIsResolvingImageSuggestion(false);
       }
-
-      syncCurrentChatUrl();
-
-      const messageParts = [
-        ...attachments.map((attachment) => ({
-          type: "file" as const,
-          url: attachment.url,
-          name: attachment.name,
-          mediaType: attachment.contentType,
-        })),
-        { type: "text" as const, text: displayedPrompt },
-      ];
-
-      sendMessageWithWebSearchStatus(
-        {
-          role: "user",
-          parts: messageParts,
-        },
-        hiddenText !== displayedPrompt
-          ? { body: { hiddenPrompt: hiddenText } }
-          : undefined
-      );
-
-      setInput("");
-      setAttachments([]);
     },
     [
       attachments, 
       generateImageFromPrompt, 
       isGeneratingImage, 
-      isImageMode, 
+      isResolvingImageSuggestion,
+      resolveImageIntentForPrompt,
       sendMessageWithWebSearchStatus,
       status, syncCurrentChatUrl
     ]
@@ -1740,11 +1893,19 @@ export function Chat({
                 {iconPromptSuggestions.map((suggestion, index) => (
                   <button
                     className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                    disabled={isResolvingImageSuggestion}
                     key={`${suggestion.label}-${index}`}
-                    onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                    onClick={() =>
+                      void handleIconPromptSuggestionSelect(suggestion)
+                    }
                     type="button"
                   >
-                    {suggestion.label}
+                    <span className="flex items-center gap-2">
+                      {isResolvingImageSuggestion ? (
+                        <LoaderCircle className="size-3.5 animate-spin" />
+                      ) : null}
+                      {suggestion.label}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1765,7 +1926,7 @@ export function Chat({
               onLanguageChange={handleLanguageChangeFromInput}
               selectedLanguageCode={currentLanguageCode}
               selectedVisibilityType={visibilityType}
-              onGenerateImage={() => {}}
+              onGenerateImage={async () => {}}
               jobTitleReference={jobTitleReference}
               onClearJobTitleReference={clearJobContext}
               onClearStudyQuestionReference={() =>
@@ -1869,11 +2030,19 @@ export function Chat({
                       {iconPromptSuggestions.map((suggestion, index) => (
                         <button
                           className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted"
+                          disabled={isResolvingImageSuggestion}
                           key={`${suggestion.label}-${index}`}
-                          onClick={() => handleIconPromptSuggestionSelect(suggestion)}
+                          onClick={() =>
+                            void handleIconPromptSuggestionSelect(suggestion)
+                          }
                           type="button"
                         >
-                          {suggestion.label}
+                          <span className="flex items-center gap-2">
+                            {isResolvingImageSuggestion ? (
+                              <LoaderCircle className="size-3.5 animate-spin" />
+                            ) : null}
+                            {suggestion.label}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -1897,9 +2066,11 @@ export function Chat({
                     onLanguageChange={handleLanguageChangeFromInput}
                     selectedLanguageCode={currentLanguageCode}
                     selectedVisibilityType={visibilityType}
-                    onGenerateImage={() => {
-                      void generateImageFromPrompt(input);
-                    }}
+                    onGenerateImage={(resolution) =>
+                      generateImageFromPrompt(input, resolution)
+                    }
+                    onManualInputChange={handleManualInputChange}
+                    onResolveImageIntent={resolveImageIntentForPrompt}
                     jobTitleReference={jobTitleReference}
                     onClearJobTitleReference={clearJobContext}
                     onClearStudyQuestionReference={() =>
