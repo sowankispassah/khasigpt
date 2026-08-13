@@ -3140,6 +3140,9 @@ export async function POST(request: Request) {
         "The latest user message is a short contextual follow-up. Use only the recent conversation to resolve what it refers to and answer only the requested field or clarification in one concise sentence. If the recent conversation does not identify it, ask one concise clarifying question. Do not introduce KhasiGPT's identity, founder information, biographies, capabilities, or any unrelated facts."
       );
     }
+    systemInstructionParts.push(
+      "Never expose an internal or imagined tool invocation as assistant text. Do not output raw action objects, function-call JSON, XML tool tags, or provider tool names such as dalle.text2im. If a request reaches normal chat without an available tool result, respond naturally without pretending that a tool was called. This does not prevent ordinary JSON when the user explicitly asks for JSON."
+    );
     systemInstructionParts.push(KHASIGPT_IDENTITY_FINAL_REMINDER);
     const systemInstruction =
       systemInstructionParts.length > 0

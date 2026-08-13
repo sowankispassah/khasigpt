@@ -2288,6 +2288,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Placeholder text shown in image generation mode.",
   },
   {
+    key: "image.intent.checking",
+    defaultText: "Checking request...",
+    description:
+      "Accessibility label while chat determines whether a request needs image generation.",
+  },
+  {
     key: "image.disabled",
     defaultText: "Image generation is currently unavailable.",
     description: "Toast message when image generation is disabled.",

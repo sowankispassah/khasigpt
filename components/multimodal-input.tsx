@@ -1111,7 +1111,7 @@ function PureMultimodalInput({
                         "image.intent.checking",
                         "Checking request..."
                       )
-                    : translate("chat.actions.send", "Send message")
+                    : translate("chat.send_message", "Send message")
                 }
                 className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
                 data-testid="send-button"

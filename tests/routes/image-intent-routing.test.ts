@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import {
   fallbackImageIntent,
   type ImageIntentInput,
@@ -83,14 +84,16 @@ test.describe("image intent routing", () => {
   });
 
   test("submission is intent-driven and the API confirms intent before credits", async () => {
-    const [inputSource, chatSource, imageRouteSource] = await Promise.all([
+    const [inputSource, chatSource, chatRouteSource, imageRouteSource] =
+      await Promise.all([
       readFile(path.join(repoRoot, "components/multimodal-input.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/chat.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "app/(chat)/api/chat/route.ts"), "utf8"),
       readFile(
         path.join(repoRoot, "app/(chat)/api/images/route.ts"),
         "utf8"
       ),
-    ]);
+      ]);
 
     expect(inputSource).toContain("submitWithIntent");
     expect(inputSource).not.toContain(
@@ -105,6 +108,16 @@ test.describe("image intent routing", () => {
     expect(imageRouteSource).toContain("classifyImageIntent");
     expect(imageRouteSource.indexOf("signedDecisionIsValid")).toBeLessThan(
       imageRouteSource.indexOf("await deductImageCredits")
+    );
+    expect(chatRouteSource).toContain(
+      "Never expose an internal or imagined tool invocation"
+    );
+    expect(chatRouteSource).toContain("dalle.text2im");
+    expect(STATIC_TRANSLATION_DEFINITIONS).toContainEqual(
+      expect.objectContaining({
+        key: "image.intent.checking",
+        defaultText: "Checking request...",
+      })
     );
   });
 });
