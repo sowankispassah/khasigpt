@@ -59,6 +59,9 @@ test("control turns do not retrieve unrelated custom knowledge", () => {
   expect(shouldSkipRagQuery("Please stop here.")).toBe(true);
   expect(shouldSkipRagQuery("Cancel that")).toBe(true);
   expect(shouldSkipRagQuery("Got it")).toBe(true);
+  expect(shouldSkipRagQuery("Nice")).toBe(true);
+  expect(shouldSkipRagQuery("Looks great!")).toBe(true);
+  expect(shouldSkipRagQuery("Nice, make it brighter")).toBe(false);
   expect(shouldSkipRagQuery("What does 'stop here' mean?")).toBe(false);
   expect(shouldSkipRagQuery("Who founded KhasiGPT?")).toBe(false);
   expect(shouldSkipRagQuery("Which location?")).toBe(true);

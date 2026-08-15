@@ -1,3 +1,5 @@
+import { isConversationalAcknowledgement } from "@/lib/chat/assistant-text-safety";
+
 export const IMAGE_INTENT_VALUES = [
   "normal_chat",
   "image_generate",
@@ -53,6 +55,9 @@ export function shouldClassifyImageIntent(input: ImageIntentInput) {
   if (!message) {
     return false;
   }
+  if (isConversationalAcknowledgement(message)) {
+    return false;
+  }
   if (input.imageHintSelected || input.hasImageAttachment) {
     return true;
   }
@@ -67,7 +72,7 @@ export function shouldClassifyImageIntent(input: ImageIntentInput) {
 
 export function fallbackImageIntent(input: ImageIntentInput): ImageIntent {
   const message = input.message.trim();
-  if (!message) {
+  if (!message || isConversationalAcknowledgement(message)) {
     return "normal_chat";
   }
   if (VISUAL_CREATION_SIGNAL.test(message)) {
@@ -86,6 +91,9 @@ export function normalizeImageIntent(
   intent: ImageIntent,
   input: ImageIntentInput
 ): ImageIntent {
+  if (isConversationalAcknowledgement(input.message)) {
+    return "normal_chat";
+  }
   if (
     intent === "image_edit" &&
     !(input.hasImageAttachment || input.hasPriorGeneratedImage)

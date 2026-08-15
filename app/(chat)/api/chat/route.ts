@@ -27,6 +27,10 @@ import { KHASIGPT_IDENTITY_FINAL_REMINDER } from "@/lib/ai/identity";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
+import {
+  getConversationalAcknowledgementReply,
+  sanitizeAssistantDisplayText,
+} from "@/lib/chat/assistant-text-safety";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -1444,6 +1448,65 @@ export async function POST(request: Request) {
       jobTitleReferenceData.preview.trim().length > 0
         ? jobTitleReferenceData.preview.trim()
         : null;
+
+    const buildDirectTextResponse = async (text: string) => {
+      const userCreatedAt = new Date();
+      const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
+      const assistantMessageId = generateUUID();
+      const assistantParts: ChatMessage["parts"] = [{ type: "text", text }];
+
+      await saveMessages({
+        messages: [
+          {
+            chatId: id,
+            id: message.id,
+            role: "user",
+            parts: message.parts,
+            attachments: [],
+            createdAt: userCreatedAt,
+          },
+          {
+            chatId: id,
+            id: assistantMessageId,
+            role: "assistant",
+            parts: assistantParts,
+            attachments: [],
+            createdAt: assistantCreatedAt,
+          },
+        ],
+      });
+
+      const stream = createUIMessageStream<ChatMessage>({
+        execute: ({ writer }) => {
+          const textId = "text-0";
+          writer.write({
+            type: "start",
+            messageId: assistantMessageId,
+            messageMetadata: { createdAt: assistantCreatedAt.toISOString() },
+          });
+          writer.write({ type: "start-step" });
+          writer.write({ type: "text-start", id: textId });
+          writer.write({ type: "text-delta", id: textId, delta: text });
+          writer.write({ type: "text-end", id: textId });
+          writer.write({ type: "finish-step" });
+          writer.write({ type: "finish" });
+        },
+      });
+
+      return createUIMessageStreamResponse({
+        stream,
+        headers: STREAM_HEADERS,
+      });
+    };
+
+    const acknowledgementReply = message.parts.every(
+      (part) => part.type === "text"
+    )
+      ? getConversationalAcknowledgementReply(getTextFromMessage(message))
+      : null;
+    if (acknowledgementReply) {
+      return buildDirectTextResponse(acknowledgementReply);
+    }
 
     const buildJobsResponse = async ({
       text,
@@ -3460,6 +3523,10 @@ export async function POST(request: Request) {
       if (!text) {
         return;
       }
+      const safeText = sanitizeAssistantDisplayText(
+        text,
+        getConversationalAcknowledgementReply(userMessageText) ?? undefined
+      );
 
       await saveMessages({
         messages: [
@@ -3467,7 +3534,7 @@ export async function POST(request: Request) {
             chatId: id,
             id: generateUUID(),
             role: "assistant",
-            parts: [{ type: "text", text }],
+            parts: [{ type: "text", text: safeText }],
             attachments: [],
             createdAt: new Date(),
           },
@@ -3704,7 +3771,18 @@ export async function POST(request: Request) {
               ? currentMessage.id
               : generateUUID(),
           role: currentMessage.role,
-          parts: currentMessage.parts,
+          parts: currentMessage.parts.map((part) =>
+            currentMessage.role === "assistant" && part.type === "text"
+              ? {
+                  ...part,
+                  text: sanitizeAssistantDisplayText(
+                    part.text,
+                    getConversationalAcknowledgementReply(userMessageText) ??
+                      undefined
+                  ),
+                }
+              : part
+          ),
           createdAt: new Date(),
           attachments: [],
           chatId: id,

@@ -7,6 +7,10 @@ import type {
 import { type ClassValue, clsx } from 'clsx';
 import { formatISO } from 'date-fns';
 import { twMerge } from 'tailwind-merge';
+import {
+  getConversationalAcknowledgementReply,
+  sanitizeAssistantDisplayText,
+} from '@/lib/chat/assistant-text-safety';
 import type { DBMessage, Document } from '@/lib/db/schema';
 import { ChatSDKError, type ErrorCode } from './errors';
 import type { ChatMessage, ChatTools, CustomUIDataTypes } from './types';
@@ -183,6 +187,7 @@ export function sanitizeText(text: string) {
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
   const uiMessages: ChatMessage[] = [];
+  let latestUserText = "";
 
   for (const message of messages) {
     if (!message?.id) {
@@ -207,6 +212,21 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
     const parts = Array.isArray(message.parts)
       ? (message.parts as UIMessagePart<CustomUIDataTypes, ChatTools>[])
       : [];
+    const safeParts =
+      role === "assistant"
+        ? parts.map((part) =>
+            part.type === "text"
+              ? {
+                  ...part,
+                  text: sanitizeAssistantDisplayText(
+                    part.text,
+                    getConversationalAcknowledgementReply(latestUserText) ??
+                      undefined
+                  ),
+                }
+              : part
+          )
+        : parts;
     const createdAt =
       message.createdAt instanceof Date && !Number.isNaN(message.createdAt.getTime())
         ? message.createdAt
@@ -216,8 +236,8 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
       id: message.id,
       role,
       parts:
-        parts.length > 0
-          ? parts
+        safeParts.length > 0
+          ? safeParts
           : [
               {
                 type: "text",
@@ -228,6 +248,13 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
         createdAt: formatISO(createdAt),
       },
     });
+
+    if (role === "user") {
+      latestUserText = parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("");
+    }
   }
 
   return uiMessages;

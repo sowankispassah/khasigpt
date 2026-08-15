@@ -2,6 +2,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import dynamic from "next/dynamic";
 import { memo, useState } from "react";
+import { sanitizeAssistantDisplayText } from "@/lib/chat/assistant-text-safety";
 import type { Vote } from "@/lib/db/schema";
 import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
@@ -130,7 +131,7 @@ const PurePreviewMessage = ({
   );
   const assistantText = message.parts
     .filter((part) => part.type === "text")
-    .map((part) => part.text)
+    .map((part) => sanitizeAssistantDisplayText(part.text))
     .join("")
     .trim();
   const webSearchData = message.parts.reduce<
@@ -356,6 +357,9 @@ const PurePreviewMessage = ({
               const isLastPart = index === message.parts.length - 1;
               const showStreamingSpinner =
                 isAssistantMessage && isLoading && isLastPart;
+              const displayText = isAssistantMessage
+                ? sanitizeAssistantDisplayText(part.text)
+                : part.text;
 
               if (mode === "view") {
                 return (
@@ -386,7 +390,7 @@ const PurePreviewMessage = ({
                             "w-full": isAssistantMessage,
                           })}
                         >
-                          {part.text}
+                          {displayText}
                         </Response>
                         {isAssistantMessage && showStreamingSpinner && (
                           <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">

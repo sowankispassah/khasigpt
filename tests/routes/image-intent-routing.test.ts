@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import {
+  getConversationalAcknowledgementReply,
+  sanitizeAssistantDisplayText,
+} from "@/lib/chat/assistant-text-safety";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
 import {
   fallbackImageIntent,
@@ -50,9 +54,27 @@ test.describe("image intent routing", () => {
         hasPriorGeneratedImage: true,
       });
 
-      expect(shouldClassifyImageIntent(input)).toBe(true);
+      expect(shouldClassifyImageIntent(input)).toBe(false);
       expect(fallbackImageIntent(input)).toBe("normal_chat");
+      expect(normalizeImageIntent("image_generate", input)).toBe(
+        "normal_chat"
+      );
     }
+  });
+
+  test("acknowledgments get a safe direct reply and internal image actions are hidden", () => {
+    expect(getConversationalAcknowledgementReply("Nice")).toBe(
+      "Glad you like it!"
+    );
+    expect(
+      sanitizeAssistantDisplayText(
+        '{"action":"dalle.text2im","action_name":"image_generation"}',
+        getConversationalAcknowledgementReply("Nice") ?? undefined
+      )
+    ).toBe("Glad you like it!");
+    expect(getConversationalAcknowledgementReply("Nice, make it blue")).toBe(
+      null
+    );
   });
 
   test("Flow C routes a contextual modification to image editing", () => {
@@ -112,6 +134,8 @@ test.describe("image intent routing", () => {
     expect(chatRouteSource).toContain(
       "Never expose an internal or imagined tool invocation"
     );
+    expect(chatRouteSource).toContain("buildDirectTextResponse");
+    expect(chatRouteSource).toContain("sanitizeAssistantDisplayText");
     expect(chatRouteSource).toContain("dalle.text2im");
     expect(STATIC_TRANSLATION_DEFINITIONS).toContainEqual(
       expect.objectContaining({
