@@ -44,6 +44,25 @@ test.describe("image intent routing", () => {
     ).toBe(true);
   });
 
+  test("routes terse visual descriptions for semantic confirmation without requiring an image keyword", () => {
+    const input = intentInput(
+      "Jessie Lyngdoh in Khasi traditional dress"
+    );
+
+    expect(shouldClassifyImageIntent(input)).toBe(true);
+    expect(fallbackImageIntent(input)).toBe("normal_chat");
+  });
+
+  test("keeps factual questions with visual terms out of image routing", () => {
+    for (const message of [
+      "Who is Jessie Lyngdoh?",
+      "What is Khasi traditional dress?",
+      "Tell me about Khasi traditional dress",
+    ]) {
+      expect(shouldClassifyImageIntent(intentInput(message))).toBe(false);
+    }
+  });
+
   test("Flows B and F keep acknowledgments in normal chat despite the UI hint", () => {
     for (const message of [
       "Nice.",
@@ -106,8 +125,13 @@ test.describe("image intent routing", () => {
   });
 
   test("submission is intent-driven and the API confirms intent before credits", async () => {
-    const [inputSource, chatSource, chatRouteSource, imageRouteSource] =
-      await Promise.all([
+    const [
+      inputSource,
+      chatSource,
+      chatRouteSource,
+      imageRouteSource,
+      classifierSource,
+    ] = await Promise.all([
       readFile(path.join(repoRoot, "components/multimodal-input.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/chat.tsx"), "utf8"),
       readFile(path.join(repoRoot, "app/(chat)/api/chat/route.ts"), "utf8"),
@@ -115,7 +139,11 @@ test.describe("image intent routing", () => {
         path.join(repoRoot, "app/(chat)/api/images/route.ts"),
         "utf8"
       ),
-      ]);
+      readFile(
+        path.join(repoRoot, "lib/ai/image-intent-classifier.ts"),
+        "utf8"
+      ),
+    ]);
 
     expect(inputSource).toContain("submitWithIntent");
     expect(inputSource).not.toContain(
@@ -123,6 +151,9 @@ test.describe("image intent routing", () => {
     );
     expect(inputSource).toContain("onManualInputChange?.()");
     expect(chatSource).toContain('fetch("/api/images/intent"');
+    expect(classifierSource).toContain(
+      "A terse visual composition may omit words"
+    );
     expect(chatSource).toContain(
       'resolution.intent === "image_edit" && latestAssistantImageUrl'
     );
