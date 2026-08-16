@@ -44,23 +44,25 @@ test.describe("image intent routing", () => {
     ).toBe(true);
   });
 
-  test("routes terse visual descriptions for semantic confirmation without requiring an image keyword", () => {
-    const input = intentInput(
-      "Jessie Lyngdoh in Khasi traditional dress"
-    );
+  test("sends open-ended and multilingual prompts for semantic classification without keyword gating", () => {
+    for (const message of [
+      "Jessie Lyngdoh in Khasi traditional dress",
+      "Tirot Sing flying as Superman",
+      "U Tirot Sing ba her kum u Superman",
+      "Ka samla Khasi kaba phong jaiñsem ha Sohra",
+      "Ananya Rao beneath neon rain",
+    ]) {
+      const input = intentInput(message);
+      expect(shouldClassifyImageIntent(input)).toBe(true);
+      expect(fallbackImageIntent(input)).toBe("normal_chat");
+    }
+  });
+
+  test("sends factual prompts to semantic classification while retaining a safe normal-chat fallback", () => {
+    const input = intentInput("Who is Jessie Lyngdoh?");
 
     expect(shouldClassifyImageIntent(input)).toBe(true);
     expect(fallbackImageIntent(input)).toBe("normal_chat");
-  });
-
-  test("keeps factual questions with visual terms out of image routing", () => {
-    for (const message of [
-      "Who is Jessie Lyngdoh?",
-      "What is Khasi traditional dress?",
-      "Tell me about Khasi traditional dress",
-    ]) {
-      expect(shouldClassifyImageIntent(intentInput(message))).toBe(false);
-    }
   });
 
   test("Flows B and F keep acknowledgments in normal chat despite the UI hint", () => {
@@ -131,6 +133,7 @@ test.describe("image intent routing", () => {
       chatRouteSource,
       imageRouteSource,
       classifierSource,
+      intentRouteSource,
     ] = await Promise.all([
       readFile(path.join(repoRoot, "components/multimodal-input.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/chat.tsx"), "utf8"),
@@ -143,6 +146,10 @@ test.describe("image intent routing", () => {
         path.join(repoRoot, "lib/ai/image-intent-classifier.ts"),
         "utf8"
       ),
+      readFile(
+        path.join(repoRoot, "app/(chat)/api/images/intent/route.ts"),
+        "utf8"
+      ),
     ]);
 
     expect(inputSource).toContain("submitWithIntent");
@@ -152,8 +159,11 @@ test.describe("image intent routing", () => {
     expect(inputSource).toContain("onManualInputChange?.()");
     expect(chatSource).toContain('fetch("/api/images/intent"');
     expect(classifierSource).toContain(
-      "A terse visual composition may omit words"
+      "Classify by meaning and conversational context in any language"
     );
+    expect(classifierSource).toContain("U Tirot Sing ba her kum u Superman");
+    expect(classifierSource).toContain("compactClassifierInput(input)");
+    expect(intentRouteSource).toContain('"Server-Timing"');
     expect(chatSource).toContain(
       'resolution.intent === "image_edit" && latestAssistantImageUrl'
     );

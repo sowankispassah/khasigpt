@@ -30,6 +30,7 @@ const intentRequestSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const startedAt = performance.now();
   const session = await getMobileSession(request);
   if (!session?.user) {
     return new ChatSDKError("unauthorized:auth").toResponse();
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
   const intent = shouldClassifyImageIntent(input)
     ? await classifyImageIntent(input)
     : "normal_chat";
+  const durationMs = Math.round(performance.now() - startedAt);
   const decisionToken =
     intent === "image_generate" || intent === "image_edit"
       ? createImageIntentToken({
@@ -71,6 +73,11 @@ export async function POST(request: Request) {
 
   return Response.json(
     { intent, decisionToken },
-    { headers: { "Cache-Control": "no-store" } }
+    {
+      headers: {
+        "Cache-Control": "no-store",
+        "Server-Timing": `image-intent;dur=${durationMs}`,
+      },
+    }
   );
 }

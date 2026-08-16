@@ -39,26 +39,6 @@ const VISUAL_CREATION_SIGNAL =
 const CONTEXTUAL_EDIT_SIGNAL =
   /\b(make|change|remove|add|replace|put|turn|edit|adjust|brighten|darken|enhance|use the same|another version|more realistic|less realistic)\b/i;
 
-const SEMANTIC_IMAGE_ROUTING_SIGNAL =
-  /\b(generate|create|make|draw|design|illustrate|render|paint|sketch|visuali[sz]e|turn|show|depict)\b/i;
-
-const IMPLICIT_VISUAL_DESCRIPTION_SIGNAL =
-  /\b(wearing|dressed in|posing|standing|sitting|walking|portrait|headshot|close-up|full-body|outfit|attire|dress|costume|uniform|suit|sari|jainsem|dhara|makeup|hairstyle|cinematic|photorealistic|realistic|watercolou?r|anime|sketch style|art style|lighting|background|sunset|snowfall)\b/i;
-
-const INFORMATION_REQUEST_SIGNAL =
-  /^(?:who|what|when|where|why|how|which|is|are|was|were|do|does|did|can|could|would|should|tell me|explain|describe|compare|list|translate|write|find|search|look up|information about|history of|meaning of)\b/i;
-
-function looksLikeImplicitVisualDescription(message: string) {
-  const words = message.trim().split(/\s+/);
-  return (
-    words.length >= 3 &&
-    words.length <= 40 &&
-    !message.includes("?") &&
-    !INFORMATION_REQUEST_SIGNAL.test(message) &&
-    IMPLICIT_VISUAL_DESCRIPTION_SIGNAL.test(message)
-  );
-}
-
 export function parseImageIntent(value: unknown): ImageIntent | null {
   if (typeof value !== "string") {
     return null;
@@ -69,23 +49,7 @@ export function parseImageIntent(value: unknown): ImageIntent | null {
 
 export function shouldClassifyImageIntent(input: ImageIntentInput) {
   const message = input.message.trim();
-  if (!message) {
-    return false;
-  }
-  if (isConversationalAcknowledgement(message)) {
-    return false;
-  }
-  if (input.imageHintSelected || input.hasImageAttachment) {
-    return true;
-  }
-  if (
-    VISUAL_CREATION_SIGNAL.test(message) ||
-    SEMANTIC_IMAGE_ROUTING_SIGNAL.test(message) ||
-    looksLikeImplicitVisualDescription(message)
-  ) {
-    return true;
-  }
-  return input.hasPriorGeneratedImage && CONTEXTUAL_EDIT_SIGNAL.test(message);
+  return Boolean(message) && !isConversationalAcknowledgement(message);
 }
 
 export function fallbackImageIntent(input: ImageIntentInput): ImageIntent {
