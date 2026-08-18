@@ -9,7 +9,7 @@ import {
 } from "@/lib/ai/image-constants";
 import {
   buildGenerationRequest,
-  generateNanoBananaImage,
+  generateImageWithProvider,
   getImageGenerationAccess,
   getMaxReferenceImagesForModel,
 } from "@/lib/ai/image-generation";
@@ -33,6 +33,7 @@ import { generateUUID } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 const ONE_MINUTE = 60 * 1000;
 const IMAGE_RATE_LIMIT = {
@@ -377,13 +378,6 @@ export async function POST(request: Request) {
   if (!access.canGenerate) {
     return new ChatSDKError("payment_required:credits").toResponse();
   }
-  if (access.model.provider !== "google") {
-    return new ChatSDKError(
-      "bad_request:configuration",
-      "The selected image model provider is not supported."
-    ).toResponse();
-  }
-
   const {
     chatId,
     visibility,
@@ -542,14 +536,16 @@ export async function POST(request: Request) {
       sourceImages,
       abortSignal: request.signal,
       maxReferenceImages: getMaxReferenceImagesForModel(
-        access.model.providerModelId
+        access.model.providerModelId,
+        access.model.provider
       ),
     });
 
-    const images = await generateNanoBananaImage({
+    const images = await generateImageWithProvider({
       prompt: generationRequest.prompt,
       images: generationRequest.images,
       abortSignal: request.signal,
+      provider: access.model.provider,
       modelId: access.model.providerModelId,
       preferredLanguage,
     });

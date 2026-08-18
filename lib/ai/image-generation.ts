@@ -7,6 +7,11 @@ import {
   type CharacterReferenceDeps,
 } from "@/lib/ai/character-reference";
 import { getActiveImageModel } from "@/lib/ai/image-model-registry";
+import { generateExternalProviderImage } from "@/lib/ai/image-provider-core";
+import {
+  getMaxReferenceImagesForProviderModel,
+  resolveImageProviderAdapter,
+} from "@/lib/ai/image-provider-routing";
 import type { ImageInput } from "@/lib/ai/image-types";
 import { resolveLanguageModel } from "@/lib/ai/providers";
 import {
@@ -44,17 +49,15 @@ const IMAGE_TRANSLATION_LANGUAGE_CODE =
 const IMAGE_TRANSLATION_MODE =
   process.env.IMAGE_PROMPT_TRANSLATION_MODE ?? "language";
 const DEFAULT_MAX_REFERENCE_IMAGES = 3;
-const GEMINI_3_MAX_REFERENCE_IMAGES = 14;
 
-export function getMaxReferenceImagesForModel(modelId: string) {
-  const normalized = modelId.trim().toLowerCase();
-  if (
-    normalized.includes("gemini-3.1-flash-image") ||
-    normalized.includes("gemini-3-pro-image")
-  ) {
-    return GEMINI_3_MAX_REFERENCE_IMAGES;
-  }
-  return DEFAULT_MAX_REFERENCE_IMAGES;
+export function getMaxReferenceImagesForModel(
+  modelId: string,
+  provider = "google"
+) {
+  return getMaxReferenceImagesForProviderModel({
+    provider,
+    providerModelId: modelId,
+  });
 }
 
 export type ImageGenerationAccess = {
@@ -380,7 +383,6 @@ async function maybeTranslateImagePrompt({
     return { prompt, translated: false, detectedLanguage: null };
   }
 
-  const model = await resolveImagePromptTranslationModel();
   const systemPrompt = [
     "You are translating prompts for image generation.",
     "Detect the language of the user's prompt.",
@@ -399,6 +401,7 @@ async function maybeTranslateImagePrompt({
     .join(" ");
 
   try {
+    const model = await resolveImagePromptTranslationModel();
     const result = await generateText({
       model,
       messages: [
@@ -747,28 +750,19 @@ export async function buildGenerationRequest({
   };
 }
 
-export async function generateNanoBananaImage({
+async function generateNanoBananaImageFromResolvedPrompt({
   prompt,
   images,
   abortSignal,
   modelId,
-  preferredLanguage,
 }: {
   prompt: string;
   images?: ImageInput[];
   abortSignal?: AbortSignal;
   modelId: string;
-  preferredLanguage?: string | null;
 }) {
-  const translation = await maybeTranslateImagePrompt({
-    prompt,
-    preferredLanguage,
-    abortSignal,
-  });
-  const resolvedPrompt = translation.prompt;
-
   const result = await requestNanoBananaImage({
-    prompt: resolvedPrompt,
+    prompt,
     images,
     abortSignal,
     modelId,
@@ -783,7 +777,7 @@ export async function generateNanoBananaImage({
 
     if (shouldRetry) {
       const retryResult = await requestNanoBananaImage({
-        prompt: resolvedPrompt,
+        prompt,
         images,
         abortSignal,
         modelId,
@@ -812,4 +806,86 @@ export async function generateNanoBananaImage({
     base64: file.base64,
     mediaType: file.mediaType,
   }));
+}
+
+export async function generateImageWithProvider({
+  prompt,
+  images,
+  abortSignal,
+  provider,
+  modelId,
+  preferredLanguage,
+}: {
+  prompt: string;
+  images?: ImageInput[];
+  abortSignal?: AbortSignal;
+  provider: string;
+  modelId: string;
+  preferredLanguage?: string | null;
+}) {
+  const translation = await maybeTranslateImagePrompt({
+    prompt,
+    preferredLanguage,
+    abortSignal,
+  });
+  const adapter = resolveImageProviderAdapter({
+    provider,
+    providerModelId: modelId,
+  });
+  if (!adapter) {
+    throw new ChatSDKError(
+      "bad_request:configuration",
+      `Unsupported image model provider: ${provider}`
+    );
+  }
+
+  if (adapter === "google") {
+    return generateNanoBananaImageFromResolvedPrompt({
+      prompt: translation.prompt,
+      images,
+      abortSignal,
+      modelId,
+    });
+  }
+
+  return generateExternalProviderImage({
+    prompt: translation.prompt,
+    images,
+    abortSignal,
+    adapter,
+    modelId,
+    runtime: {
+      env: {
+        AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+        BFL_API_KEY: process.env.BFL_API_KEY,
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+        VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
+        XAI_API_KEY: process.env.XAI_API_KEY,
+      },
+      fetch,
+    },
+  });
+}
+
+export async function generateNanoBananaImage({
+  prompt,
+  images,
+  abortSignal,
+  modelId,
+  preferredLanguage,
+}: {
+  prompt: string;
+  images?: ImageInput[];
+  abortSignal?: AbortSignal;
+  modelId: string;
+  preferredLanguage?: string | null;
+}) {
+  return generateImageWithProvider({
+    prompt,
+    images,
+    abortSignal,
+    provider: "google",
+    modelId,
+    preferredLanguage,
+  });
 }
