@@ -1517,9 +1517,11 @@ export async function getChatByUserIdAndMode({
 export async function getChatById({
   id,
   includeDeleted = false,
+  database = db,
 }: {
   id: string;
   includeDeleted?: boolean;
+  database?: PostgresJsDatabase;
 }) {
   if (!isValidUUID(id)) {
     return null;
@@ -1530,7 +1532,10 @@ export async function getChatById({
       ? eq(chat.id, id)
       : and(eq(chat.id, id), isNull(chat.deletedAt));
 
-    const [selectedChat] = await db.select().from(chat).where(condition);
+    const [selectedChat] = await database
+      .select()
+      .from(chat)
+      .where(condition);
     if (!selectedChat) {
       return null;
     }
@@ -1673,11 +1678,13 @@ export async function getMessagesByChatIdPage({
   limit = 60,
   before,
   beforeMessageId,
+  database = db,
 }: {
   id: string;
   limit?: number;
   before?: Date | null;
   beforeMessageId?: string | null;
+  database?: PostgresJsDatabase;
 }): Promise<{ messages: DBMessage[]; hasMore: boolean }> {
   const safeLimit = Math.max(1, Math.min(limit, 200));
 
@@ -1686,7 +1693,7 @@ export async function getMessagesByChatIdPage({
       eq(message.chatId, id) as SQL<boolean>,
     ];
     if (beforeMessageId) {
-      const [cursorMessage] = await db
+      const [cursorMessage] = await database
         .select({
           createdAt: message.createdAt,
           id: message.id,
@@ -1717,7 +1724,7 @@ export async function getMessagesByChatIdPage({
       conditions.push(lt(message.createdAt, before) as SQL<boolean>);
     }
 
-    const rows = await db
+    const rows = await database
       .select()
       .from(message)
       .where(and(...conditions))

@@ -1896,7 +1896,12 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
     key: "chat.detail.load_failed.retry",
     defaultText: "Retry",
-    description: "Retry link label for the chat detail recovery state.",
+    description: "Retry button label for the chat detail recovery state.",
+  },
+  {
+    key: "chat.detail.load_failed.retrying",
+    defaultText: "Retrying...",
+    description: "Pending retry button label for the chat detail recovery state.",
   },
   {
     key: "chat.detail.load_failed.back",

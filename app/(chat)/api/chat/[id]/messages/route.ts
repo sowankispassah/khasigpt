@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/api/observability";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
+import { withChatReadDatabase } from "@/lib/db/chat-read-database";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
@@ -74,7 +75,13 @@ export async function GET(
       "chat.messages.chat_lookup",
       () =>
         withTimeout(
-          getChatById({ id: chatId, includeDeleted: true }),
+          withChatReadDatabase("messages.lookup", (chatReadDb) =>
+            getChatById({
+              id: chatId,
+              includeDeleted: true,
+              database: chatReadDb,
+            })
+          ),
           CHAT_MESSAGES_READ_TIMEOUT_MS,
           () => {
             console.error("[api/chat/messages] chat lookup timed out.", {
@@ -131,12 +138,15 @@ export async function GET(
       "chat.messages.page_query",
       () =>
         withTimeout(
-          getMessagesByChatIdPage({
-            beforeMessageId: beforeIdParam,
-            id: chatId,
-            limit,
-            before,
-          }),
+          withChatReadDatabase("messages.page", (chatReadDb) =>
+            getMessagesByChatIdPage({
+              beforeMessageId: beforeIdParam,
+              id: chatId,
+              limit,
+              before,
+              database: chatReadDb,
+            })
+          ),
           CHAT_MESSAGES_READ_TIMEOUT_MS,
           () => {
             console.error("[api/chat/messages] message page query timed out.", {

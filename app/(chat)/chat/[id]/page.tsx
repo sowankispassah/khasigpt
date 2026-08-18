@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { ChatLoadFailureActions } from "@/components/chat-load-failure-actions";
 import { ChatPageClient } from "@/components/chat-page-client";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import {
@@ -21,6 +22,7 @@ import {
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
+import { withChatReadDatabase } from "@/lib/db/chat-read-database";
 import {
   getChatById,
   getMessagesByChatIdPage,
@@ -90,7 +92,14 @@ function buildUnavailableImageGenerationAccess(userRole: string | null) {
 }
 
 const getChatByIdCached = unstable_cache(
-  async (chatId: string) => getChatById({ id: chatId, includeDeleted: true }),
+  async (chatId: string) =>
+    withChatReadDatabase("detail.lookup", (chatReadDb) =>
+      getChatById({
+        id: chatId,
+        includeDeleted: true,
+        database: chatReadDb,
+      })
+    ),
   ["chat-page:get-chat-by-id"],
   { revalidate: CHAT_PAGE_CHAT_CACHE_REVALIDATE_SECONDS }
 );
@@ -178,10 +187,13 @@ export default async function Page(props: {
   const deletedBanner = Boolean(chat?.deletedAt) && isAdmin;
   const messagesPromise = chat
     ? withTimeout(
-        getMessagesByChatIdPage({
-          id,
-          limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
-        }),
+        withChatReadDatabase("detail.messages", (chatReadDb) =>
+          getMessagesByChatIdPage({
+            id,
+            limit: CHAT_PAGE_INITIAL_MESSAGE_LIMIT,
+            database: chatReadDb,
+          })
+        ),
         CHAT_PAGE_CRITICAL_QUERY_TIMEOUT_MS,
         () => {
           console.error("[chat] initial messages query timed out.", {
@@ -456,28 +468,7 @@ function ChatLoadFailure() {
             translationKey="chat.detail.load_failed.description"
           />
         </p>
-        <div className="mt-4 flex justify-center gap-2">
-          <Link
-            className="inline-flex cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm transition hover:bg-muted"
-            href=""
-          >
-            <EditableTranslation
-              defaultText="Retry"
-              description="Retry link label for the chat detail recovery state."
-              translationKey="chat.detail.load_failed.retry"
-            />
-          </Link>
-          <Link
-            className="inline-flex cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm transition hover:bg-muted"
-            href="/chat"
-          >
-            <EditableTranslation
-              defaultText="Back to chat"
-              description="Back link label for the chat detail recovery state."
-              translationKey="chat.detail.load_failed.back"
-            />
-          </Link>
-        </div>
+        <ChatLoadFailureActions />
       </div>
     </div>
   );
