@@ -2204,7 +2204,22 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
     throw new Error("Missing image model configuration id");
   }
 
-  await setActiveImageModelConfig(id);
+  const startedAt = Date.now();
+  console.info("[admin/image-models.set-active] started", { imageModelId: id });
+  try {
+    await setActiveImageModelConfig(id);
+  } catch (error) {
+    console.error("[admin/image-models.set-active] failed", {
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+      imageModelId: id,
+    });
+    redirect("/admin/settings?notice=image-model-activate-error");
+  }
+  console.info("[admin/image-models.set-active] completed", {
+    durationMs: Date.now() - startedAt,
+    imageModelId: id,
+  });
 
   await createAuditLogEntrySafely({
     actorId: actor.id,

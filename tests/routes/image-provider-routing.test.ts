@@ -47,7 +47,7 @@ test.describe("hybrid image provider routing", () => {
         provider: "custom",
         providerModelId: "bytedance/seedream-5.0-lite",
       })
-    ).toBe("gateway");
+    ).toBe("byteplus");
     expect(
       resolveImageProviderAdapter({
         provider: "anthropic",
@@ -74,7 +74,7 @@ test.describe("hybrid image provider routing", () => {
         provider: "custom",
         providerModelId: "bytedance/seedream-5.0-lite",
       })
-    ).toBe(10);
+    ).toBe(14);
     expect(
       getMaxReferenceImagesForProviderModel({
         provider: "google",
@@ -216,37 +216,44 @@ test.describe("hybrid image provider routing", () => {
     expect(result[0]?.mediaType).toBe("image/png");
   });
 
-  test("sends Seedream reference files through the current Gateway protocol", async () => {
+  test("sends Seedream reference images directly to BytePlus ModelArk", async () => {
     const captured: {
       body?: Record<string, unknown>;
       headers?: Headers;
+      requestUrl?: string;
     } = {};
-    const fetchMock: typeof fetch = async (_input, init) => {
+    const fetchMock: typeof fetch = async (input, init) => {
+      captured.requestUrl = input.toString();
       captured.headers = new Headers(init?.headers);
       captured.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return jsonResponse({ images: [ONE_PIXEL_PNG_BASE64] });
+      return jsonResponse({
+        data: [{ b64_json: ONE_PIXEL_PNG_BASE64 }],
+      });
     };
 
     const result = await generateExternalProviderImage({
-      adapter: "gateway",
+      adapter: "byteplus",
       images: [{ data: ONE_PIXEL_PNG_BASE64, mediaType: "image/png" }],
       modelId: "bytedance/seedream-5.0-lite",
       prompt: "Preserve the subject and change the clothing",
       runtime: {
-        env: { AI_GATEWAY_API_KEY: "test-gateway-key" },
+        env: { ARK_API_KEY: "test-ark-key" },
         fetch: fetchMock,
       },
     });
 
-    expect(captured.headers?.get("ai-image-model-specification-version")).toBe(
-      "4"
+    expect(captured.requestUrl).toBe(
+      "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations"
     );
-    expect(captured.headers?.get("ai-model-id")).toBe(
-      "bytedance/seedream-5.0-lite"
+    expect(captured.headers?.get("authorization")).toBe(
+      "Bearer test-ark-key"
     );
-    expect(captured.body?.files).toEqual([
-      expect.objectContaining({ mediaType: "image/png", type: "file" }),
-    ]);
+    expect(captured.body?.model).toBe("seedream-5-0-260128");
+    expect(captured.body?.image).toEqual(
+      expect.stringContaining("data:image/png;base64,")
+    );
+    expect(captured.body?.sequential_image_generation).toBe("disabled");
+    expect(captured.body?.response_format).toBe("b64_json");
     expect(result[0]?.mediaType).toBe("image/png");
   });
 

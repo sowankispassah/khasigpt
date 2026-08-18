@@ -2,6 +2,13 @@ import type { TranslationDefinition } from "./dictionary";
 
 export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   {
+    key: "admin.settings.image_model.activate_error",
+    defaultText:
+      "The active image model could not be updated. Please refresh and try again.",
+    description:
+      "Error toast shown when the admin cannot activate an image generation model.",
+  },
+  {
     key: "admin.models.general_prompt.title",
     defaultText: "General system prompt (read-only)",
     description: "Label for the hardcoded KhasiGPT system prompt shown for admin review.",

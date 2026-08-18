@@ -9,6 +9,8 @@ import { ChatSDKError } from "@/lib/errors";
 const XAI_API_BASE_URL = "https://api.x.ai/v1";
 const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 const BFL_API_BASE_URL = "https://api.bfl.ai/v1";
+const BYTEPLUS_ARK_API_BASE_URL =
+  "https://ark.ap-southeast.bytepluses.com/api/v3";
 const GATEWAY_IMAGE_URL = "https://ai-gateway.vercel.sh/v4/ai/image-model";
 const MAX_PROVIDER_IMAGE_BYTES = 25 * 1024 * 1024;
 const BFL_POLL_INTERVAL_MS = 1000;
@@ -22,6 +24,7 @@ export type GeneratedProviderImage = {
 type ProviderEnvironment = Partial<
   Record<
     | "AI_GATEWAY_API_KEY"
+    | "ARK_API_KEY"
     | "BFL_API_KEY"
     | "OPENAI_API_KEY"
     | "VERCEL_OIDC_TOKEN"
@@ -515,6 +518,59 @@ async function generateBflImage({
   );
 }
 
+async function generateBytePlusImage({
+  abortSignal,
+  fetchImpl,
+  images,
+  modelId,
+  prompt,
+  runtime,
+}: ProviderGenerationInput) {
+  const apiKey = requireProviderKey(
+    runtime.env,
+    "ARK_API_KEY",
+    "BytePlus ModelArk"
+  );
+  const resolvedModelId = normalizeImageProviderModelId({
+    adapter: "byteplus",
+    providerModelId: modelId,
+  });
+  const imageDataUrls = (images ?? []).map(dataUrlForImage);
+  const body: Record<string, unknown> = {
+    model: resolvedModelId,
+    output_format: "png",
+    prompt,
+    response_format: "b64_json",
+    sequential_image_generation: "disabled",
+    size: "2K",
+    watermark: false,
+  };
+  if (imageDataUrls.length === 1) {
+    body.image = imageDataUrls[0];
+  } else if (imageDataUrls.length > 1) {
+    body.image = imageDataUrls;
+  }
+
+  const response = await fetchImpl(
+    `${BYTEPLUS_ARK_API_BASE_URL}/images/generations`,
+    {
+      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+      signal: abortSignal,
+    }
+  );
+  const value = await readProviderJson(response, "BytePlus ModelArk");
+  return collectProviderImages({
+    abortSignal,
+    fetchImpl,
+    responseImages: value.data,
+  });
+}
+
 function resolveGatewayCredential(env: ProviderEnvironment) {
   const apiKey = env.AI_GATEWAY_API_KEY?.trim();
   if (apiKey) {
@@ -610,6 +666,8 @@ export async function generateExternalProviderImage({
       return generateOpenAiImage(input);
     case "bfl":
       return generateBflImage(input);
+    case "byteplus":
+      return generateBytePlusImage(input);
     case "gateway":
       return generateGatewayImage(input);
   }

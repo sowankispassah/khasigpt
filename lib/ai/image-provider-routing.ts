@@ -1,5 +1,6 @@
 export type ImageProviderAdapter =
   | "bfl"
+  | "byteplus"
   | "gateway"
   | "google"
   | "openai"
@@ -10,10 +11,17 @@ const GOOGLE_GEMINI_3_MAX_REFERENCE_IMAGES = 14;
 const XAI_MAX_REFERENCE_IMAGES = 3;
 const OPENAI_MAX_REFERENCE_IMAGES = 16;
 const BFL_MAX_REFERENCE_IMAGES = 8;
+const BYTEPLUS_MAX_REFERENCE_IMAGES = 14;
 const GATEWAY_MAX_REFERENCE_IMAGES = 10;
 
 const XAI_MODEL_ALIASES: Record<string, string> = {
   "grok-imagine-image-2.0": "grok-imagine-image-quality",
+};
+
+const BYTEPLUS_MODEL_ALIASES: Record<string, string> = {
+  "seedream-5.0-lite": "seedream-5-0-260128",
+  "seedream-5-0-lite": "seedream-5-0-260128",
+  "seedream-5-0-lite-260128": "seedream-5-0-260128",
 };
 
 export function resolveImageProviderAdapter({
@@ -36,6 +44,14 @@ export function resolveImageProviderAdapter({
     return null;
   }
 
+  if (
+    normalizedModelId.startsWith("bytedance/seedream-") ||
+    normalizedModelId.startsWith("byteplus/seedream-") ||
+    normalizedModelId.startsWith("dola-seedream-") ||
+    normalizedModelId.startsWith("seedream-")
+  ) {
+    return "byteplus";
+  }
   if (
     normalizedModelId.startsWith("grok-") ||
     normalizedModelId.startsWith("xai/")
@@ -71,6 +87,12 @@ export function normalizeImageProviderModelId({
   if (adapter === "xai") {
     return XAI_MODEL_ALIASES[normalized.toLowerCase()] ?? normalized;
   }
+  if (adapter === "byteplus") {
+    if (normalized.toLowerCase().startsWith("bytedance/")) {
+      normalized = normalized.slice("bytedance/".length);
+    }
+    return BYTEPLUS_MODEL_ALIASES[normalized.toLowerCase()] ?? normalized;
+  }
 
   return normalized;
 }
@@ -91,6 +113,9 @@ export function getMaxReferenceImagesForProviderModel({
   }
   if (adapter === "bfl") {
     return BFL_MAX_REFERENCE_IMAGES;
+  }
+  if (adapter === "byteplus") {
+    return BYTEPLUS_MAX_REFERENCE_IMAGES;
   }
   if (adapter === "gateway") {
     return GATEWAY_MAX_REFERENCE_IMAGES;

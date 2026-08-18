@@ -857,6 +857,7 @@ export async function generateImageWithProvider({
     runtime: {
       env: {
         AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+        ARK_API_KEY: process.env.ARK_API_KEY,
         BFL_API_KEY: process.env.BFL_API_KEY,
         OPENAI_API_KEY: process.env.OPENAI_API_KEY,
         VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,

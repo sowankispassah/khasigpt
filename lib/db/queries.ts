@@ -7405,38 +7405,59 @@ export async function setActiveImageModelConfig(id: string) {
   const now = new Date();
 
   try {
-    await db.transaction(async (tx) => {
-      const [target] = await tx
-        .select({ id: imageModelConfig.id })
-        .from(imageModelConfig)
-        .where(
-          and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt))
-        )
-        .limit(1);
+    await withAdminDatabase(
+      "image-models.set-active",
+      async (adminDb) => {
+        await adminDb.transaction(async (tx) => {
+          const [target] = await tx
+            .select({ id: imageModelConfig.id })
+            .from(imageModelConfig)
+            .where(
+              and(
+                eq(imageModelConfig.id, id),
+                isNull(imageModelConfig.deletedAt)
+              )
+            )
+            .limit(1);
 
-      if (!target) {
-        throw new Error("Image model configuration not found");
-      }
+          if (!target) {
+            throw new Error("Image model configuration not found");
+          }
 
-      await tx
-        .update(imageModelConfig)
-        .set({ isActive: false, updatedAt: now })
-        .where(
-          and(
-            eq(imageModelConfig.isActive, true),
-            isNull(imageModelConfig.deletedAt),
-            ne(imageModelConfig.id, id)
-          )
-        );
+          await tx
+            .update(imageModelConfig)
+            .set({ isActive: false, updatedAt: now })
+            .where(
+              and(
+                eq(imageModelConfig.isActive, true),
+                isNull(imageModelConfig.deletedAt),
+                ne(imageModelConfig.id, id)
+              )
+            );
 
-      await tx
-        .update(imageModelConfig)
-        .set({ isActive: true, isEnabled: true, updatedAt: now })
-        .where(
-          and(eq(imageModelConfig.id, id), isNull(imageModelConfig.deletedAt))
-        );
-    });
+          const [activated] = await tx
+            .update(imageModelConfig)
+            .set({ isActive: true, isEnabled: true, updatedAt: now })
+            .where(
+              and(
+                eq(imageModelConfig.id, id),
+                isNull(imageModelConfig.deletedAt)
+              )
+            )
+            .returning({ id: imageModelConfig.id });
+
+          if (!activated) {
+            throw new Error("Image model configuration not found");
+          }
+        });
+      },
+      { retry: true }
+    );
   } catch (_error) {
+    console.error("[image-models.set-active] Activation failed.", {
+      error: _error instanceof Error ? _error.message : String(_error),
+      imageModelId: id,
+    });
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to set active image model configuration"

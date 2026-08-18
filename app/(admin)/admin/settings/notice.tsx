@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
+import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
 
 const NOTICE_MESSAGES: Record<
@@ -71,6 +72,11 @@ const NOTICE_MESSAGES: Record<
     type: "error",
     message:
       "Selected translation model is unavailable or disabled. Choose an enabled model.",
+  },
+  "image-model-activate-error": {
+    type: "error",
+    message:
+      "The active image model could not be updated. Please refresh and try again.",
   },
   "image-model-key-conflict": {
     type: "error",
@@ -281,6 +287,7 @@ const NOTICE_MESSAGES: Record<
 
 export function AdminSettingsNotice({ notice }: { notice?: string }) {
   const router = useRouter();
+  const { translate } = useTranslation();
 
   useEffect(() => {
     if (!notice) {
@@ -293,9 +300,16 @@ export function AdminSettingsNotice({ notice }: { notice?: string }) {
       return;
     }
 
-    toast({ type: entry.type, description: entry.message });
+    const description =
+      notice === "image-model-activate-error"
+        ? translate(
+            "admin.settings.image_model.activate_error",
+            entry.message
+          )
+        : entry.message;
+    toast({ type: entry.type, description });
     router.replace("/admin/settings", { scroll: false });
-  }, [notice, router]);
+  }, [notice, router, translate]);
 
   return null;
 }
