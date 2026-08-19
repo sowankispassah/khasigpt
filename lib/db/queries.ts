@@ -1658,12 +1658,17 @@ export async function updateMessagePartsById({
 }
 
 export async function getMessagesByChatId({ id }: { id: string }) {
+  const roleOrder = sql<number>`CASE
+    WHEN ${message.role} = 'user' THEN 0
+    WHEN ${message.role} = 'assistant' THEN 1
+    ELSE 2
+  END`;
   try {
     return await db
       .select()
       .from(message)
       .where(eq(message.chatId, id))
-      .orderBy(asc(message.createdAt));
+      .orderBy(asc(message.createdAt), asc(roleOrder), asc(message.id));
   } catch (_error) {
     const cause = getErrorCause(_error, "Failed to get messages by chat id");
     throw new ChatSDKError(
@@ -1687,6 +1692,11 @@ export async function getMessagesByChatIdPage({
   database?: PostgresJsDatabase;
 }): Promise<{ messages: DBMessage[]; hasMore: boolean }> {
   const safeLimit = Math.max(1, Math.min(limit, 200));
+  const roleOrder = sql<number>`CASE
+    WHEN ${message.role} = 'user' THEN 0
+    WHEN ${message.role} = 'assistant' THEN 1
+    ELSE 2
+  END`;
 
   try {
     const conditions: SQL<boolean>[] = [
@@ -1697,6 +1707,7 @@ export async function getMessagesByChatIdPage({
         .select({
           createdAt: message.createdAt,
           id: message.id,
+          role: message.role,
         })
         .from(message)
         .where(
@@ -1716,7 +1727,27 @@ export async function getMessagesByChatIdPage({
           lt(message.createdAt, cursorMessage.createdAt),
           and(
             eq(message.createdAt, cursorMessage.createdAt),
-            lt(message.id, cursorMessage.id)
+            or(
+              lt(
+                roleOrder,
+                cursorMessage.role === "user"
+                  ? 0
+                  : cursorMessage.role === "assistant"
+                    ? 1
+                    : 2
+              ),
+              and(
+                eq(
+                  roleOrder,
+                  cursorMessage.role === "user"
+                    ? 0
+                    : cursorMessage.role === "assistant"
+                      ? 1
+                      : 2
+                ),
+                lt(message.id, cursorMessage.id)
+              )
+            )
           )
         ) as SQL<boolean>
       );
@@ -1728,7 +1759,7 @@ export async function getMessagesByChatIdPage({
       .select()
       .from(message)
       .where(and(...conditions))
-      .orderBy(desc(message.createdAt), desc(message.id))
+      .orderBy(desc(message.createdAt), desc(roleOrder), desc(message.id))
       .limit(safeLimit + 1);
 
     const hasMore = rows.length > safeLimit;

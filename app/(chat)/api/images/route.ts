@@ -13,6 +13,12 @@ import {
   getImageGenerationAccess,
   getMaxReferenceImagesForModel,
 } from "@/lib/ai/image-generation";
+import {
+  IMAGE_GENERATION_FAILED_MESSAGE,
+  IMAGE_GENERATION_SAFETY_ERROR_CODE,
+  IMAGE_GENERATION_SAFETY_MESSAGE,
+  isImageGenerationSafetyRejection,
+} from "@/lib/ai/image-generation-errors";
 import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
 import { verifyImageIntentToken } from "@/lib/ai/image-intent-token";
 import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
@@ -216,10 +222,12 @@ function buildFallbackTitle(prompt: string) {
 function buildImageGenerationStatusParts({
   message,
   prompt,
+  reason,
   status,
 }: {
   message?: string;
   prompt: string;
+  reason?: "safety" | "generation" | "cancelled";
   status: ImageGenerationStatus;
 }) {
   const fallbackMessage =
@@ -239,6 +247,7 @@ function buildImageGenerationStatusParts({
         status,
         prompt,
         message: fallbackMessage,
+        ...(reason ? { reason } : {}),
         updatedAt: new Date().toISOString(),
       },
     },
@@ -486,6 +495,7 @@ export async function POST(request: Request) {
   }
 
   const now = new Date();
+  const assistantCreatedAt = new Date(now.getTime() + 1);
   const resolvedUserMessageId = userMessageId ?? generateUUID();
   const assistantMessageId = generateUUID();
   const userParts = [
@@ -525,7 +535,7 @@ export async function POST(request: Request) {
           status: "pending",
         }),
         attachments: [],
-        createdAt: new Date(),
+        createdAt: assistantCreatedAt,
       },
     ],
   });
@@ -600,7 +610,7 @@ export async function POST(request: Request) {
       role: "assistant",
       parts: assistantParts,
       metadata: {
-        createdAt: new Date().toISOString(),
+        createdAt: assistantCreatedAt.toISOString(),
       },
     };
 
@@ -616,16 +626,29 @@ export async function POST(request: Request) {
     const status: ImageGenerationStatus = request.signal.aborted
       ? "cancelled"
       : "failed";
+    const safetyRejected =
+      status === "failed" && isImageGenerationSafetyRejection(error);
+    const failureMessage =
+      status === "cancelled"
+        ? "Image generation was cancelled before it completed."
+        : safetyRejected
+          ? IMAGE_GENERATION_SAFETY_MESSAGE
+          : IMAGE_GENERATION_FAILED_MESSAGE;
+    const failureReason =
+      status === "cancelled"
+        ? ("cancelled" as const)
+        : safetyRejected
+          ? ("safety" as const)
+          : ("generation" as const);
+    const failureParts = buildImageGenerationStatusParts({
+      message: failureMessage,
+      prompt: displayText,
+      reason: failureReason,
+      status,
+    });
     await updateMessagePartsById({
       id: assistantMessageId,
-      parts: buildImageGenerationStatusParts({
-        message:
-          status === "cancelled"
-            ? "Image generation was cancelled before it completed."
-            : "Image generation failed. Please try again.",
-        prompt: displayText,
-        status,
-      }),
+      parts: failureParts,
       attachments: [],
     }).catch((updateError) => {
       console.error("Failed to persist image generation failure status", {
@@ -637,10 +660,7 @@ export async function POST(request: Request) {
     await updateChatStatusById({
       chatId,
       status,
-      statusReason:
-        status === "cancelled"
-          ? "Image generation was cancelled before it completed."
-          : "Image generation failed. Please try again.",
+      statusReason: failureMessage,
     }).catch((statusError) => {
       console.error("Failed to persist image generation chat status", {
         chatId,
@@ -649,11 +669,42 @@ export async function POST(request: Request) {
       });
     });
 
-    if (error instanceof ChatSDKError) {
-      return error.toResponse();
-    }
+    console.error("[api/images] Image generation failed", {
+      assistantMessageId,
+      cause:
+        error instanceof ChatSDKError && typeof error.cause === "string"
+          ? error.cause
+          : error instanceof Error
+            ? error.message
+            : String(error),
+      chatId,
+      safetyRejected,
+      status,
+    });
 
-    console.error("Image generation failed", error);
-    return new ChatSDKError("bad_request:api").toResponse();
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      parts: failureParts,
+      metadata: {
+        createdAt: assistantCreatedAt.toISOString(),
+      },
+    };
+
+    return Response.json(
+      {
+        assistantMessage,
+        code: safetyRejected
+          ? IMAGE_GENERATION_SAFETY_ERROR_CODE
+          : "image_generation_failed",
+        message: failureMessage,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+        status: 400,
+      }
+    );
   }
 }

@@ -39,6 +39,10 @@ import {
 } from "@/components/ui/dialog";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
+import {
+  IMAGE_GENERATION_SAFETY_ERROR_CODE,
+  IMAGE_GENERATION_SAFETY_MESSAGE,
+} from "@/lib/ai/image-generation-errors";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
 import type { LanguageOption } from "@/lib/i18n/languages";
@@ -1478,6 +1482,7 @@ export function Chat({
         const data = (await response.json().catch(() => null)) as
           | {
               assistantMessage?: ChatMessage;
+              code?: string;
               message?: string;
             }
           | null;
@@ -1491,14 +1496,29 @@ export function Chat({
             return;
           }
 
+          const failedAssistantMessage = data?.assistantMessage;
+          if (failedAssistantMessage) {
+            setMessages((prev) =>
+              prev.some((message) => message.id === failedAssistantMessage.id)
+                ? prev
+                : [...prev, failedAssistantMessage]
+            );
+            refreshAndPromoteHistory();
+          }
+
           toast({
             type: "error",
             description:
-              data?.message ??
-              translate(
-                "image.generate.failed",
-                "Image generation failed. Please try again."
-              ),
+              data?.code === IMAGE_GENERATION_SAFETY_ERROR_CODE
+                ? translate(
+                    "image.generate.safety_rejected",
+                    IMAGE_GENERATION_SAFETY_MESSAGE
+                  )
+                : data?.message ??
+                  translate(
+                    "image.generate.failed",
+                    "Image generation failed. Please try again."
+                  ),
           });
           return;
         }

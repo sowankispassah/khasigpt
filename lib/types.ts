@@ -68,6 +68,13 @@ export type CustomUIDataTypes = {
     videos?: WebSearchVideo[];
   };
   webSearchStatus: WebSearchStatusData;
+  imageGeneration: {
+    status: "pending" | "completed" | "failed" | "cancelled";
+    prompt: string;
+    message: string;
+    reason?: "safety" | "generation" | "cancelled";
+    updatedAt: string;
+  };
 };
 
 export type ChatMessage = UIMessage<

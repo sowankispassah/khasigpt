@@ -2503,6 +2503,13 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Fallback error message when generation fails.",
   },
   {
+    key: "image.generate.safety_rejected",
+    defaultText:
+      "Couldn’t complete this image because the request was blocked by a safety check. Try changing the prompt and try again.",
+    description:
+      "Persistent error shown when an image request is rejected by a safety check.",
+  },
+  {
     key: "image.generate.empty",
     defaultText: "No image was returned. Try a different prompt.",
     description: "Message shown when the API returns no images.",

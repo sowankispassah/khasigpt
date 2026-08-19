@@ -2,6 +2,8 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import dynamic from "next/dynamic";
 import { memo, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
+import { IMAGE_GENERATION_SAFETY_MESSAGE } from "@/lib/ai/image-generation-errors";
 import { sanitizeAssistantDisplayText } from "@/lib/chat/assistant-text-safety";
 import type { Vote } from "@/lib/db/schema";
 import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
@@ -90,6 +92,7 @@ const PurePreviewMessage = ({
   onRetryWebSearch?: (userMessageId?: string) => Promise<void> | void;
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
+  const { translate } = useTranslation();
 
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
@@ -126,6 +129,14 @@ const PurePreviewMessage = ({
     );
 
   const isAssistantMessage = message.role === "assistant";
+  const imageGenerationStatus = message.parts.reduce<
+    CustomUIDataTypes["imageGeneration"] | null
+  >((current, part) => {
+    if (part.type !== "data-imageGeneration" || !part.data) {
+      return current;
+    }
+    return part.data;
+  }, null);
   const hasWebSearchStatus = message.parts.some(
     (part) => part.type === "data-webSearchStatus"
   );
@@ -358,7 +369,13 @@ const PurePreviewMessage = ({
               const showStreamingSpinner =
                 isAssistantMessage && isLoading && isLastPart;
               const displayText = isAssistantMessage
-                ? sanitizeAssistantDisplayText(part.text)
+                ? imageGenerationStatus?.reason === "safety" &&
+                  part.text === imageGenerationStatus.message
+                  ? translate(
+                      "image.generate.safety_rejected",
+                      IMAGE_GENERATION_SAFETY_MESSAGE
+                    )
+                  : sanitizeAssistantDisplayText(part.text)
                 : part.text;
 
               if (mode === "view") {
