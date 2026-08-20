@@ -2123,7 +2123,7 @@ export function Chat({
                   />
                   <p className="px-2 text-center text-muted-foreground text-xs">
                     <EditableTranslation
-                      defaultText="KhasiGPT or other AI models can make mistakes. Check important details."
+                      defaultText="KhasiGPT can make mistakes. Check important details."
                       description="Small disclaimer below the chat input."
                       translationKey="chat.disclaimer.text"
                     />{" "}

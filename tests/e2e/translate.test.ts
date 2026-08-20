@@ -21,9 +21,9 @@ const sql = postgres(postgresUrl, {
 });
 
 const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
-const previousSettings = new Map<string, unknown>();
+const previousSettings = new Map<string, postgres.JSONValue>();
 const hadSettings = new Set<string>();
-const overriddenSettings = new Map<string, unknown>([
+const overriddenSettings = new Map<string, postgres.JSONValue>([
   [TRANSLATE_FEATURE_FLAG_KEY, "enabled"],
   [TRANSLATE_PROVIDER_MODE_SETTING_KEY, "ai"],
 ]);
@@ -33,7 +33,9 @@ const speechLanguageCode = `sp-${testId}`;
 
 test.describe.serial("/translate", () => {
   test.beforeAll(async () => {
-    const existingSettingRows = await sql<{ key: string; value: unknown }[]>`
+    const existingSettingRows = await sql<
+      { key: string; value: postgres.JSONValue }[]
+    >`
       select "key", "value"
       from "AppSetting"
       where "key" in ${sql([...overriddenSettings.keys()])}
@@ -47,7 +49,7 @@ test.describe.serial("/translate", () => {
     for (const [key, value] of overriddenSettings) {
       await sql`
         insert into "AppSetting" ("key", "value", "updatedAt")
-        values (${key}, ${JSON.stringify(value)}::jsonb, now())
+        values (${key}, ${sql.json(value)}, now())
         on conflict ("key")
         do update set
           "value" = excluded."value",
@@ -72,7 +74,7 @@ test.describe.serial("/translate", () => {
         await sql`
           update "AppSetting"
           set
-            "value" = ${JSON.stringify(previousSettings.get(key))}::jsonb,
+            "value" = ${sql.json(previousSettings.get(key) ?? null)},
             "updatedAt" = now()
           where "key" = ${key}
         `;

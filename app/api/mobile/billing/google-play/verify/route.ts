@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import {
   completePaymentTransactionWithSubscription,
   createPaymentTransaction,
+  getCouponByCode,
   getPaymentTransactionByOrderId,
   getPricingPlanById,
   getUserBalanceSummary,
   markPaymentTransactionFailed,
   markPaymentTransactionProcessing,
+  recordCouponRedemptionFromTransaction,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
       typeof body?.productId === "string" ? body.productId : null;
     const purchaseToken =
       typeof body?.purchaseToken === "string" ? body.purchaseToken : null;
+    const couponCode = typeof body?.couponCode === "string" ? body.couponCode.trim().toUpperCase() : null;
 
     if (!planId || !productId || !purchaseToken) {
       return new ChatSDKError(
@@ -77,6 +80,11 @@ export async function POST(request: Request) {
         "Pricing plan is not available."
       ).toResponse();
     }
+    const appliedCoupon = couponCode ? await getCouponByCode(couponCode) : null;
+    const now = Date.now();
+    if (couponCode && (!appliedCoupon || !appliedCoupon.isActive || (appliedCoupon.validFrom && appliedCoupon.validFrom.getTime() > now) || (appliedCoupon.validTo && appliedCoupon.validTo.getTime() < now))) {
+      return googlePlayFailure("Creator coupon is invalid or expired.");
+    }
 
     const expectedProductId = getAndroidProductIdForPlan(plan);
     if (expectedProductId !== productId) {
@@ -88,7 +96,11 @@ export async function POST(request: Request) {
     const tokenHash = hashGooglePlayPurchaseToken(purchaseToken);
     const orderId = buildOrderId(tokenHash);
     const existing = await getPaymentTransactionByOrderId({ orderId });
+    if (existing && existing.userId !== session.user.id) {
+      return new ChatSDKError("forbidden:api").toResponse();
+    }
     if (existing?.status === "paid") {
+      await recordCouponRedemptionFromTransaction(existing);
       const balance = await getUserBalanceSummary(session.user.id);
       return NextResponse.json({ alreadyProcessed: true, balance, ok: true });
     }
@@ -122,6 +134,9 @@ export async function POST(request: Request) {
         orderId,
         amount: plan.priceInPaise,
         currency: "INR",
+        couponId: appliedCoupon?.id ?? null,
+        creatorId: appliedCoupon?.creatorId ?? null,
+        discountAmount: 0,
         provider: "google_play",
         providerProductId: productId,
         providerPurchaseTokenHash: tokenHash,
@@ -168,6 +183,8 @@ export async function POST(request: Request) {
         signature: tokenHash,
         userId: session.user.id,
       });
+      const completedTransaction = await getPaymentTransactionByOrderId({ orderId });
+      if (completedTransaction) await recordCouponRedemptionFromTransaction(completedTransaction);
       await consumeGooglePlayProductPurchase({
         packageName,
         productId,

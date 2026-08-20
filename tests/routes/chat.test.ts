@@ -27,9 +27,9 @@ const sql = postgres(postgresUrl, {
 const chatIdsCreatedByAda: string[] = [];
 const createdJobIds: string[] = [];
 const createdRagEntryIds: string[] = [];
-const previousSettings = new Map<string, unknown>();
+const previousSettings = new Map<string, postgres.JSONValue>();
 const hadSettings = new Set<string>();
-const overriddenSettings = new Map<string, unknown>([
+const overriddenSettings = new Map<string, postgres.JSONValue>([
   [CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY, true],
   [JOBS_FEATURE_FLAG_KEY, "enabled"],
   [SITE_PUBLIC_LAUNCHED_SETTING_KEY, true],
@@ -154,7 +154,7 @@ async function createGlobalRagEntryFixture(title: string) {
       now(),
       now(),
       1,
-      ${JSON.stringify({ source: "playwright" })}::jsonb,
+      ${sql.json({ source: "playwright" })},
       ${"ready"}
     )
   `;
@@ -177,7 +177,9 @@ async function getPersistedChat(chatId: string) {
 test.describe
   .serial("/api/chat", () => {
     test.beforeAll(async () => {
-      const existingSettingRows = await sql<{ key: string; value: unknown }[]>`
+      const existingSettingRows = await sql<
+        { key: string; value: postgres.JSONValue }[]
+      >`
         select "key", "value"
         from "AppSetting"
         where "key" in ${sql([...overriddenSettings.keys()])}
@@ -193,7 +195,7 @@ test.describe
           insert into "AppSetting" ("key", "value", "updatedAt")
           values (
             ${key},
-            ${JSON.stringify(value)}::jsonb,
+            ${sql.json(value)},
             now()
           )
           on conflict ("key")
@@ -228,7 +230,7 @@ test.describe
           await sql`
             update "AppSetting"
             set
-              "value" = ${JSON.stringify(previousSettings.get(key))}::jsonb,
+              "value" = ${sql.json(previousSettings.get(key) ?? null)},
               "updatedAt" = now()
             where "key" = ${key}
           `;

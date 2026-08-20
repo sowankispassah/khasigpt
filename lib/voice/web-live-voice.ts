@@ -239,12 +239,9 @@ function base64Pcm16ToAudioBuffer({
 function getVoiceCloseErrorMessage(event: CloseEvent) {
   const reason = event.reason.trim();
   if (/prepayment credits|billing|quota|credits/i.test(reason)) {
-    return "Voice chat is unavailable because Google Live API billing or prepaid credits are depleted. Add credits or update billing in Google AI Studio, then try again.";
+    return "KhasiGPT voice chat is temporarily unavailable. Please try again later.";
   }
-  if (reason) {
-    return `Voice chat connection closed before recording finished. Code: ${event.code}. ${reason.slice(0, 180)}`;
-  }
-  return `Voice chat connection closed before recording finished. Code: ${event.code}`;
+  return "The voice connection closed before recording finished. Please try again.";
 }
 
 async function requestVoiceToken({
@@ -558,7 +555,7 @@ export async function startWebGeminiVoiceTurn({
   setupTimeout = setTimeout(() => {
     fail(
       new Error(
-        "Voice chat could not finish connecting to Gemini Live. Please try again."
+        "KhasiGPT voice chat could not finish connecting. Please try again."
       )
     );
   }, LIVE_SETUP_TIMEOUT_MS);

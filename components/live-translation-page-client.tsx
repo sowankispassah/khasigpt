@@ -457,7 +457,7 @@ export function LiveTranslationPageClient({
               />
               <EditableTranslation
                 className="max-w-2xl text-muted-foreground text-sm"
-                defaultText="Use Gemini Live as a hands-free interpreter between two speakers."
+                defaultText="Use KhasiGPT as a hands-free interpreter between two speakers."
                 description="Short description for the Live Translation page."
                 translationKey="live_translation.subtitle"
               />
@@ -566,7 +566,7 @@ export function LiveTranslationPageClient({
                 />
                 <EditableTranslation
                   className="mt-2 text-muted-foreground text-sm"
-                  defaultText="Connecting to Gemini Live..."
+                  defaultText="Connecting to live translation..."
                   translationKey="live_translation.preparing_description"
                 />
                 <LoaderCircle className="mt-5 size-5 animate-spin text-muted-foreground" />

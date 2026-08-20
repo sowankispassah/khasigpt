@@ -19,9 +19,9 @@ const sql = postgres(postgresUrl, {
   max: 1,
 });
 
-const previousSettings = new Map<string, unknown>();
+const previousSettings = new Map<string, postgres.JSONValue>();
 const hadSettings = new Set<string>();
-const overriddenSettings = new Map<string, unknown>([
+const overriddenSettings = new Map<string, postgres.JSONValue>([
   [TRANSLATE_FEATURE_FLAG_KEY, "enabled"],
   [TRANSLATE_PROVIDER_MODE_SETTING_KEY, "ai"],
 ]);
@@ -34,7 +34,9 @@ let unsupportedSpeechModelId: string | null = null;
 
 test.describe.serial("/api/translate", () => {
   test.beforeAll(async () => {
-    const existingSettingRows = await sql<{ key: string; value: unknown }[]>`
+    const existingSettingRows = await sql<
+      { key: string; value: postgres.JSONValue }[]
+    >`
       select "key", "value"
       from "AppSetting"
       where "key" in ${sql([...overriddenSettings.keys()])}
@@ -48,7 +50,7 @@ test.describe.serial("/api/translate", () => {
     for (const [key, value] of overriddenSettings) {
       await sql`
         insert into "AppSetting" ("key", "value", "updatedAt")
-        values (${key}, ${JSON.stringify(value)}::jsonb, now())
+        values (${key}, ${sql.json(value)}, now())
         on conflict ("key")
         do update set
           "value" = excluded."value",
@@ -124,7 +126,7 @@ test.describe.serial("/api/translate", () => {
         await sql`
           update "AppSetting"
           set
-            "value" = ${JSON.stringify(previousSettings.get(key))}::jsonb,
+            "value" = ${sql.json(previousSettings.get(key) ?? null)},
             "updatedAt" = now()
           where "key" = ${key}
         `;
@@ -210,7 +212,7 @@ test.describe.serial("/api/translate", () => {
     await sql`
       update "AppSetting"
       set
-        "value" = ${JSON.stringify("disabled")}::jsonb,
+        "value" = ${sql.json("disabled")},
         "updatedAt" = now()
       where "key" = ${TRANSLATE_FEATURE_FLAG_KEY}
     `;
@@ -226,7 +228,7 @@ test.describe.serial("/api/translate", () => {
     await sql`
       update "AppSetting"
       set
-        "value" = ${JSON.stringify("enabled")}::jsonb,
+        "value" = ${sql.json("enabled")},
         "updatedAt" = now()
       where "key" = ${TRANSLATE_FEATURE_FLAG_KEY}
     `;
