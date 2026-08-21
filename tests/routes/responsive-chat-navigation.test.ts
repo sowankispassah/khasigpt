@@ -13,15 +13,28 @@ test.describe("responsive chat navigation", () => {
     const source = await readWorkspaceFile("components/chat-header.tsx");
 
     expect(source).toContain("gap-1.5");
-    expect(source).toContain("pr-[4.5rem]");
+    expect(source).toContain("pr-[5rem]");
+    expect(source).not.toContain('className="-mr-1');
     expect(source).toContain("h-8 gap-1.5 px-2 text-sm");
+  });
+
+  test("shows visibility only on saved chat detail routes", async () => {
+    const source = await readWorkspaceFile("components/chat-header.tsx");
+
+    expect(source).toContain(
+      'const isChatDetailPage = pathname.startsWith("/chat/")'
+    );
+    expect(source).toContain(
+      "isChatDetailPage && !isReadonly && showInlineControls"
+    );
   });
 
   test("caps the account menu to the viewport without making it full width", async () => {
     const source = await readWorkspaceFile("components/user-dropdown-menu.tsx");
 
     expect(source).toContain(
-      "w-[min(16rem,calc(100vw-1rem))] min-w-0 sm:min-w-[16rem]"
+      "w-[min(15rem,calc(100vw-1rem))] min-w-0"
     );
+    expect(source).toContain("max-sm:[&_[role=menuitem]]:py-1");
   });
 });

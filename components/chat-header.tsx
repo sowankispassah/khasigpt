@@ -31,6 +31,7 @@ function PureChatHeader({
 
   const { width: windowWidth } = useWindowSize();
   const isChatShellPath = pathname === "/" || pathname.startsWith("/chat");
+  const isChatDetailPage = pathname.startsWith("/chat/");
 
   useEffect(() => {
     setIsOpeningNewChat(false);
@@ -50,10 +51,10 @@ function PureChatHeader({
   }, [isChatShellPath, isOpeningNewChat, router]);
 
   return (
-    <header className="sticky top-0 flex items-center gap-1.5 bg-background px-1.5 py-1.5 pr-[4.5rem] sm:gap-2 sm:px-2 md:pr-[5rem]">
+    <header className="sticky top-0 flex items-center gap-1.5 bg-background px-1.5 py-1.5 pr-[5rem] sm:gap-2 sm:px-2">
       <SidebarToggle />
 
-      {!isReadonly && showInlineControls && (
+      {isChatDetailPage && !isReadonly && showInlineControls && (
         <div className="flex items-center gap-1.5 sm:gap-2">
           <VisibilitySelector
             chatId={chatId}
@@ -62,7 +63,7 @@ function PureChatHeader({
         </div>
       )}
 
-      <div className="-mr-1 order-2 ml-auto flex items-center gap-1.5 sm:-mr-2 md:order-3 md:gap-3">
+      <div className="order-2 ml-auto flex items-center gap-1.5 sm:-mr-2 md:order-3 md:gap-3">
         {(!open || windowWidth < 768) && (
           <Button
             className="h-8 gap-1.5 px-2 text-sm md:h-fit md:px-2"
