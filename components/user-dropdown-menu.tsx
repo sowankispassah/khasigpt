@@ -508,7 +508,7 @@ export function UserDropdownMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align={align}
-          className="min-w-[16rem]"
+          className="w-[min(16rem,calc(100vw-1rem))] min-w-0 sm:min-w-[16rem]"
           data-testid="user-nav-menu"
           side={side}
         >
