@@ -45,10 +45,12 @@ const BASE_VISIBILITY_CONFIGS: VisibilityConfig[] = [
 export function VisibilitySelector({
   chatId,
   className,
+  showLabelOnMobile = false,
   showOnMobile = false,
   selectedVisibilityType,
 }: {
   chatId: string;
+  showLabelOnMobile?: boolean;
   showOnMobile?: boolean;
   selectedVisibilityType: VisibilityType;
 } & React.ComponentProps<typeof Button>) {
@@ -101,13 +103,19 @@ export function VisibilitySelector({
         <Button
           className={cn(
             "h-8 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-            showOnMobile ? "flex px-2" : "hidden md:flex md:h-fit md:px-2"
+            showOnMobile
+              ? "flex shrink-0 whitespace-nowrap px-2"
+              : "hidden md:flex md:h-fit md:px-2"
           )}
           data-testid="visibility-selector"
           variant="outline"
         >
           {selectedVisibility?.icon}
-          <span className={showOnMobile ? "sr-only" : "md:sr-only"}>
+          <span
+            className={
+              showOnMobile && showLabelOnMobile ? "md:sr-only" : "sr-only"
+            }
+          >
             {selectedVisibility?.label}
           </span>
           <ChevronDownIcon />

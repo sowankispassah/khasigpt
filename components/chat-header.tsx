@@ -58,6 +58,8 @@ function PureChatHeader({
         <div className="flex items-center gap-1.5 sm:gap-2">
           <VisibilitySelector
             chatId={chatId}
+            showLabelOnMobile
+            showOnMobile
             selectedVisibilityType={selectedVisibilityType}
           />
         </div>

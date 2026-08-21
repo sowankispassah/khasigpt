@@ -27,6 +27,19 @@ test.describe("responsive chat navigation", () => {
     expect(source).toContain(
       "isChatDetailPage && !isReadonly && showInlineControls"
     );
+    expect(source).toContain("showLabelOnMobile");
+    expect(source).toContain("showOnMobile");
+  });
+
+  test("keeps the visibility label readable in the responsive chat header", async () => {
+    const source = await readWorkspaceFile(
+      "components/visibility-selector.tsx"
+    );
+
+    expect(source).toContain("showLabelOnMobile = false");
+    expect(source).toContain(
+      'showOnMobile && showLabelOnMobile ? "md:sr-only" : "sr-only"'
+    );
   });
 
   test("caps the account menu to the viewport without making it full width", async () => {
