@@ -1,5 +1,6 @@
 "use client";
 
+import { Lock, LockOpen } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
@@ -14,8 +15,6 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircleFillIcon,
   ChevronDownIcon,
-  GlobeIcon,
-  LockIcon,
 } from "./icons";
 
 export type VisibilityType = "private" | "public";
@@ -32,25 +31,23 @@ const BASE_VISIBILITY_CONFIGS: VisibilityConfig[] = [
     id: "private",
     label: "Private",
     description: "Only you can access this chat",
-    icon: <LockIcon />,
+    icon: <Lock size={16} />,
   },
   {
     id: "public",
     label: "Public",
     description: "Anyone with the link can access this chat",
-    icon: <GlobeIcon />,
+    icon: <LockOpen size={16} />,
   },
 ];
 
 export function VisibilitySelector({
   chatId,
   className,
-  showLabelOnMobile = false,
   showOnMobile = false,
   selectedVisibilityType,
 }: {
   chatId: string;
-  showLabelOnMobile?: boolean;
   showOnMobile?: boolean;
   selectedVisibilityType: VisibilityType;
 } & React.ComponentProps<typeof Button>) {
@@ -111,11 +108,7 @@ export function VisibilitySelector({
           variant="outline"
         >
           {selectedVisibility?.icon}
-          <span
-            className={
-              showOnMobile && showLabelOnMobile ? "md:sr-only" : "sr-only"
-            }
-          >
+          <span className="sr-only">
             {selectedVisibility?.label}
           </span>
           <ChevronDownIcon />

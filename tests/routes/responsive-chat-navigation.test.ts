@@ -27,19 +27,18 @@ test.describe("responsive chat navigation", () => {
     expect(source).toContain(
       "isChatDetailPage && !isReadonly && showInlineControls"
     );
-    expect(source).toContain("showLabelOnMobile");
     expect(source).toContain("showOnMobile");
   });
 
-  test("keeps the visibility label readable in the responsive chat header", async () => {
+  test("keeps the responsive visibility trigger icon-only", async () => {
     const source = await readWorkspaceFile(
       "components/visibility-selector.tsx"
     );
 
-    expect(source).toContain("showLabelOnMobile = false");
-    expect(source).toContain(
-      'showOnMobile && showLabelOnMobile ? "md:sr-only" : "sr-only"'
-    );
+    expect(source).toContain('import { Lock, LockOpen } from "lucide-react"');
+    expect(source).toContain('className="sr-only"');
+    expect(source).toContain("icon: <LockOpen size={16} />");
+    expect(source).not.toContain("showLabelOnMobile");
   });
 
   test("caps the account menu to the viewport without making it full width", async () => {

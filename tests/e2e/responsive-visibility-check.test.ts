@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.use({ viewport: { height: 812, width: 375 } });
 
-test("shows the visibility selector without responsive header collisions", async ({
+test("shows the icon-only visibility selector without responsive header collisions", async ({
   page,
 }) => {
   const consoleErrors: string[] = [];
@@ -27,7 +27,10 @@ test("shows the visibility selector without responsive header collisions", async
   const selector = page.getByTestId("visibility-selector");
   const newChat = page.getByRole("button", { name: /new chat/i });
   await expect(selector).toBeVisible({ timeout: 10_000 });
-  await expect(selector).toContainText(/private|public/i, { timeout: 10_000 });
+  await expect(selector).toHaveAccessibleName(/private|public/i, {
+    timeout: 10_000,
+  });
+  await expect(selector.locator("span")).toHaveClass(/sr-only/);
   await expect(newChat).toBeVisible({ timeout: 10_000 });
 
   const selectorBox = await selector.boundingBox();
@@ -35,6 +38,7 @@ test("shows the visibility selector without responsive header collisions", async
   if (!(selectorBox && newChatBox)) {
     throw new Error("Responsive chat header controls must have visible bounds");
   }
+  expect(selectorBox.width).toBeLessThanOrEqual(60);
   expect(selectorBox.x + selectorBox.width).toBeLessThanOrEqual(newChatBox.x);
 
   const viewport = await page.evaluate(() => ({
@@ -48,6 +52,11 @@ test("shows the visibility selector without responsive header collisions", async
     )
   ).toHaveCount(0);
   expect(consoleErrors).toEqual([]);
+
+  await selector.click();
+  await expect(page.getByTestId("visibility-selector-item-private")).toBeVisible();
+  await expect(page.getByTestId("visibility-selector-item-public")).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.screenshot({
     path: "test-results/responsive-visibility-check.png",
