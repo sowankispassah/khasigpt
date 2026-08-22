@@ -19,6 +19,7 @@ import {
 } from "@/lib/db/schema";
 import { RAG_CONTEXT_HEADER } from "./answering";
 import { embedRagQuery } from "./embeddings";
+import { buildRagKeywordQuery } from "./keywords";
 import { detectQueryLanguage } from "./language";
 import { shouldSkipRagQuery } from "./query-policy";
 import { type RagRankCandidate, rankRagCandidates } from "./ranking";
@@ -143,6 +144,17 @@ export async function retrieveRagContext(
       durationMs,
       status: "skipped",
     };
+    if (process.env.NODE_ENV === "production") {
+      console.info("[rag] retrieval", {
+        queryHash,
+        language,
+        scope: input.scope ?? "default",
+        candidateCount: 0,
+        selectedCount: 0,
+        durationMs,
+        status: result.status,
+      });
+    }
     await persistLogWrites(input, () =>
       writeSearchLog(input, {
         queryHash,
@@ -158,11 +170,12 @@ export async function retrieveRagContext(
 
   try {
     const queryEmbedding = await embedRagQuery(query, input.signal);
+    const keywordQuery = buildRagKeywordQuery(query);
     const distance = cosineDistance(ragChunk.embedding, queryEmbedding);
     const semanticScore = sql<number>`1 - (${distance})`;
     const keywordScore = sql<number>`ts_rank_cd(
       to_tsvector('simple', ${ragChunk.searchText}),
-      websearch_to_tsquery('simple', ${query})
+      websearch_to_tsquery('simple', ${keywordQuery})
     )`;
     const personalCondition = input.userId
       ? or(
@@ -213,19 +226,21 @@ export async function retrieveRagContext(
         .where(baseCondition)
         .orderBy(desc(semanticScore))
         .limit(CANDIDATE_LIMIT);
-      const keywordCandidates = await tx
-        .select(fields)
-        .from(ragChunk)
-        .innerJoin(ragEntry, eq(ragChunk.ragEntryId, ragEntry.id))
-        .where(
-          and(
-            baseCondition,
-            sql`to_tsvector('simple', ${ragChunk.searchText})
-              @@ websearch_to_tsquery('simple', ${query})`,
-          ),
-        )
-        .orderBy(desc(keywordScore))
-        .limit(CANDIDATE_LIMIT);
+      const keywordCandidates = keywordQuery
+        ? await tx
+            .select(fields)
+            .from(ragChunk)
+            .innerJoin(ragEntry, eq(ragChunk.ragEntryId, ragEntry.id))
+            .where(
+              and(
+                baseCondition,
+                sql`to_tsvector('simple', ${ragChunk.searchText})
+                  @@ websearch_to_tsquery('simple', ${keywordQuery})`,
+              ),
+            )
+            .orderBy(desc(keywordScore))
+            .limit(CANDIDATE_LIMIT)
+        : [];
       return [semanticCandidates, keywordCandidates] as const;
     });
 
@@ -269,6 +284,7 @@ export async function retrieveRagContext(
         candidateCount: semanticRows.length + keywordRows.length,
         selectedCount: matches.length,
         durationMs,
+        status,
       });
     }
 

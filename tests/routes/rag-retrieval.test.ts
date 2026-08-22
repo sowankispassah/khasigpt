@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { chunkRagContent } from "@/lib/rag/chunking";
+import { buildRagKeywordQuery } from "@/lib/rag/keywords";
 import { detectQueryLanguage } from "@/lib/rag/language";
 import {
   isContextualFollowupQuery,
@@ -47,10 +48,23 @@ test("paraphrases pass while unrelated low-similarity chunks are rejected", () =
   expect(matches[0]?.entryId).toBe("paraphrase");
 });
 
+test("keyword retrieval removes common Khasi function words", () => {
+  expect(buildRagKeywordQuery("Jingrwai number ba katno katu")).toBe(
+    "Jingrwai number",
+  );
+  expect(buildRagKeywordQuery("Kaei ka jingmut jong ka democracy?")).toBe(
+    "jingmut democracy",
+  );
+  expect(buildRagKeywordQuery("who is Soowanki S Passah?")).toBe(
+    "Soowanki Passah",
+  );
+  expect(buildRagKeywordQuery("ba jong ha na bad ban")).toBe("");
+});
+
 test("Khasi and Pnar questions reach retrieval without English trigger words", () => {
   expect(detectQueryLanguage("Kumno phi long mynta?")).toBe("kha");
   expect(detectQueryLanguage("U moo toh heh ha Jowai")).toBe("pna");
-  expect(shouldSkipRagQuery("Kaei ka jingmut jong kane?")).toBe(false);
+  expect(shouldSkipRagQuery("Kaei ka jingmut jong ka democracy?")).toBe(false);
   expect(shouldSkipRagQuery("khublei")).toBe(true);
 });
 
@@ -69,6 +83,12 @@ test("control turns do not retrieve unrelated custom knowledge", () => {
   expect(shouldSkipRagQuery("City?")).toBe(true);
   expect(shouldSkipRagQuery("Where exactly?")).toBe(true);
   expect(shouldSkipRagQuery("Kaei ka jaka?")).toBe(true);
+  expect(shouldSkipRagQuery("Kaei ka jingmut jong kane?")).toBe(true);
+  expect(shouldSkipRagQuery("Jingrwai number ba katno katu")).toBe(true);
+  expect(shouldSkipRagQuery("Ka jingrwai nombar ba katno kata?")).toBe(true);
+  expect(shouldSkipRagQuery("What hymn number was that?")).toBe(true);
+  expect(shouldSkipRagQuery("What is the PIN code of Nongpoh?")).toBe(false);
+  expect(shouldSkipRagQuery("Who founded this app?")).toBe(false);
   expect(isContextualFollowupQuery("Location?")).toBe(true);
   expect(shouldSkipRagQuery("What location was that?")).toBe(true);
   expect(shouldSkipRagQuery("Where is Shillong?")).toBe(false);
