@@ -53,4 +53,18 @@ test.describe("admin icon prompt editor", () => {
       '"Availability and permissions come from the linked feature; this shortcut cannot override them."'
     );
   });
+
+  test("bounds saves on the isolated admin database path", async () => {
+    const actions = await readWorkspaceFile("app/(admin)/actions.ts");
+    const queries = await readWorkspaceFile("lib/db/queries.ts");
+
+    expect(actions).toContain('"[admin/icon-prompts] save:start"');
+    expect(actions).toContain("ADMIN_ACTION_SETTING_TIMEOUT_MS");
+    expect(actions).toContain("adminDatabase: true");
+    expect(actions).toContain("revalidateCache: false");
+    expect(actions).toContain("void createAuditLogEntrySafely({");
+    expect(queries).toContain("if (options?.adminDatabase)");
+    expect(queries).toContain("withAdminDatabase(");
+    expect(queries).toContain("app-settings.upsert.");
+  });
 });

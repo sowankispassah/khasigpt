@@ -5171,6 +5171,7 @@ export async function setAppSetting<T>({
   value: T;
 },
 options?: {
+  adminDatabase?: boolean;
   featureSettingWrite?: FeatureSettingWriteContext;
   revalidateCache?: boolean;
   revalidateGlobalCache?: boolean;
@@ -5211,16 +5212,41 @@ options?: {
   });
 
   try {
-    await db
-      .insert(appSetting)
-      .values({ key: normalizedKey, value: normalizedValue as unknown, updatedAt: now })
-      .onConflictDoUpdate({
-        target: appSetting.key,
-        set: {
+    if (options?.adminDatabase) {
+      await withAdminDatabase(
+        `app-settings.upsert.${normalizedKey}`,
+        (adminDb) =>
+          adminDb
+            .insert(appSetting)
+            .values({
+              key: normalizedKey,
+              value: normalizedValue as unknown,
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: appSetting.key,
+              set: {
+                value: normalizedValue as unknown,
+                updatedAt: now,
+              },
+            })
+      );
+    } else {
+      await db
+        .insert(appSetting)
+        .values({
+          key: normalizedKey,
           value: normalizedValue as unknown,
           updatedAt: now,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: appSetting.key,
+          set: {
+            value: normalizedValue as unknown,
+            updatedAt: now,
+          },
+        });
+    }
   } catch (_error) {
     throw new ChatSDKError(
       "bad_request:database",

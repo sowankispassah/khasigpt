@@ -3342,16 +3342,35 @@ export async function updateIconPromptsAction(formData: FormData) {
     return items.findIndex((entry) => entry.id === item.id) === index;
   });
 
-  await setAppSetting({
-    key: ICON_PROMPTS_SETTING_KEY,
-    value: { items: uniqueItems },
+  const startedAt = Date.now();
+  console.info("[admin/icon-prompts] save:start", {
+    actorId: actor.id,
+    count: uniqueItems.length,
+  });
+  await withTimeout(
+    setAppSetting(
+      {
+        key: ICON_PROMPTS_SETTING_KEY,
+        value: { items: uniqueItems },
+      },
+      {
+        adminDatabase: true,
+        revalidateCache: false,
+      }
+    ),
+    ADMIN_ACTION_SETTING_TIMEOUT_MS
+  );
+  console.info("[admin/icon-prompts] save:end", {
+    actorId: actor.id,
+    count: uniqueItems.length,
+    durationMs: Date.now() - startedAt,
   });
   revalidateAppSettingCache(
     ICON_PROMPTS_SETTING_KEY,
     "ui.icon_prompts.update"
   );
 
-  await createAuditLogEntrySafely({
+  void createAuditLogEntrySafely({
     actorId: actor.id,
     action: "ui.icon_prompts.update",
     target: { feature: "iconPrompts" },
