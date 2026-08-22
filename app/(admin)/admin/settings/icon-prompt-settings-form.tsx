@@ -1,9 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { LanguageOption } from "@/lib/i18n/languages";
@@ -110,17 +119,6 @@ export function IconPromptSettingsForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!selectedItemId) {
-      return;
-    }
-    const frame = requestAnimationFrame(() => {
-      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [selectedItemId]);
 
   const defaultLanguage =
     languages.find((language) => language.isDefault) ?? languages[0] ?? null;
@@ -674,25 +672,34 @@ export function IconPromptSettingsForm({
             </table>
           </div>
 
-          {items
-            .filter((item) => item.id === selectedItemId)
-            .map((item) => {
-              const index = items.findIndex((entry) => entry.id === item.id);
-              return (
-            <div
-              className="scroll-mt-4 rounded-lg border bg-background p-4"
-              key={item.id}
-              ref={editorRef}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="font-semibold text-sm">
-                    Edit icon prompt {index + 1}
-                  </div>
-                  <div className="text-muted-foreground text-xs">
-                    Changes remain pending until you save the icon prompt list.
-                  </div>
-                </div>
+          <Dialog
+            onOpenChange={(open) => {
+              if (!open) {
+                setSelectedItemId(null);
+              }
+            }}
+            open={selectedItemId !== null}
+          >
+            {items
+              .filter((item) => item.id === selectedItemId)
+              .map((item) => {
+                const index = items.findIndex((entry) => entry.id === item.id);
+                return (
+                  <DialogContent
+                    className="max-h-[92vh] max-w-[min(96vw,1200px)] overflow-y-auto p-0"
+                    key={item.id}
+                  >
+                    <div className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <DialogHeader>
+                          <DialogTitle>
+                            Edit icon prompt {index + 1}
+                          </DialogTitle>
+                          <DialogDescription>
+                            Changes remain pending until you save the icon
+                            prompt list.
+                          </DialogDescription>
+                        </DialogHeader>
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input
@@ -718,14 +725,6 @@ export function IconPromptSettingsForm({
                     />
                     Select image mode
                   </label>
-                  <Button
-                    className="cursor-pointer"
-                    onClick={() => setSelectedItemId(null)}
-                    type="button"
-                    variant="ghost"
-                  >
-                    Close editor
-                  </Button>
                 </div>
               </div>
 
@@ -1156,9 +1155,16 @@ export function IconPromptSettingsForm({
                   ) : null}
                 </div>
               ) : null}
-            </div>
-              );
-            })}
+                      <DialogFooter className="sticky bottom-0 -mx-5 -mb-5 mt-6 border-t bg-background p-4">
+                        <DialogClose className="cursor-pointer" type="button">
+                          Done editing
+                        </DialogClose>
+                      </DialogFooter>
+                    </div>
+                  </DialogContent>
+                );
+              })}
+          </Dialog>
         </div>
       )}
 

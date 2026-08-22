@@ -22,7 +22,7 @@ test.describe("admin icon prompt editor", () => {
     expect(source).toContain("moveItem(item.id, 1)");
   });
 
-  test("adding a prompt opens the newly created item in the focused editor", async () => {
+  test("adding and editing open the selected prompt in a modal", async () => {
     const source = await readWorkspaceFile(
       "app/(admin)/admin/settings/icon-prompt-settings-form.tsx"
     );
@@ -31,6 +31,8 @@ test.describe("admin icon prompt editor", () => {
     expect(source).toContain("setItems((prev) => [...prev, item]);");
     expect(source).toContain("openEditor(item.id);");
     expect(source).toContain("item.id === selectedItemId");
-    expect(source).toContain("editorRef.current?.scrollIntoView");
+    expect(source).toContain("open={selectedItemId !== null}");
+    expect(source).toContain("<DialogContent");
+    expect(source).toContain("Done editing");
   });
 });
