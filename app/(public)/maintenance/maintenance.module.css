@@ -1,0 +1,57 @@
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 15% 12%, rgba(145, 169, 214, 0.18), transparent 18%),
+    radial-gradient(circle at 86% 16%, rgba(160, 180, 223, 0.16), transparent 20%),
+    radial-gradient(circle at 14% 86%, rgba(145, 169, 214, 0.12), transparent 16%),
+    #f0f2f7;
+  padding: 20px;
+}
+
+.panel {
+  width: min(780px, 100%);
+  text-align: center;
+}
+
+.artWrap {
+  margin: 0 auto;
+  max-width: 760px;
+}
+
+.art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.title {
+  margin-top: 12px;
+  color: #1c4f8f;
+  font-size: clamp(32px, 5.2vw, 52px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.subtitle {
+  margin: 14px auto 0;
+  max-width: 560px;
+  color: #7a86a6;
+  font-size: clamp(14px, 2.2vw, 18px);
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 14px;
+  }
+
+  .title {
+    margin-top: 2px;
+  }
+}

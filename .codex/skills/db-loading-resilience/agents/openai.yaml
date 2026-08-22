@@ -1,0 +1,4 @@
+interface:
+  display_name: "DB Loading Resilience"
+  short_description: "Keep KhasiGPT DB-backed reads and loading states resilient."
+  default_prompt: "Use db-loading-resilience to audit and implement a DB-backed page, API, or write flow so bad rows, missing fields, slow queries, and failed writes do not break the whole loading experience."

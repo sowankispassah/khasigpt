@@ -1,6 +1,8 @@
 "use client";
 
+import { Lock, LockOpen } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,10 +15,7 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircleFillIcon,
   ChevronDownIcon,
-  GlobeIcon,
-  LockIcon,
 } from "./icons";
-import { useTranslation } from "@/components/language-provider";
 
 export type VisibilityType = "private" | "public";
 
@@ -32,22 +31,24 @@ const BASE_VISIBILITY_CONFIGS: VisibilityConfig[] = [
     id: "private",
     label: "Private",
     description: "Only you can access this chat",
-    icon: <LockIcon />,
+    icon: <Lock size={16} />,
   },
   {
     id: "public",
     label: "Public",
     description: "Anyone with the link can access this chat",
-    icon: <GlobeIcon />,
+    icon: <LockOpen size={16} />,
   },
 ];
 
 export function VisibilitySelector({
   chatId,
   className,
+  showOnMobile = false,
   selectedVisibilityType,
 }: {
   chatId: string;
+  showOnMobile?: boolean;
   selectedVisibilityType: VisibilityType;
 } & React.ComponentProps<typeof Button>) {
   const [open, setOpen] = useState(false);
@@ -97,17 +98,27 @@ export function VisibilitySelector({
         )}
       >
         <Button
-          className="hidden h-8 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 md:flex md:h-fit md:px-2"
+          className={cn(
+            "h-8 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+            showOnMobile
+              ? "flex shrink-0 whitespace-nowrap px-2"
+              : "hidden md:flex md:h-fit md:px-2"
+          )}
           data-testid="visibility-selector"
           variant="outline"
         >
           {selectedVisibility?.icon}
-          <span className="md:sr-only">{selectedVisibility?.label}</span>
+          <span className="sr-only">
+            {selectedVisibility?.label}
+          </span>
           <ChevronDownIcon />
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="min-w-[300px]">
+      <DropdownMenuContent
+        align="start"
+        className="min-w-[240px] max-w-[calc(100vw-2rem)]"
+      >
         {visibilities.map((visibility) => (
           <DropdownMenuItem
             className="group/item flex flex-row items-center justify-between gap-4"

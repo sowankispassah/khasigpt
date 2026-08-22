@@ -7,6 +7,10 @@ import type {
 import { type ClassValue, clsx } from 'clsx';
 import { formatISO } from 'date-fns';
 import { twMerge } from 'tailwind-merge';
+import {
+  getConversationalAcknowledgementReply,
+  sanitizeAssistantDisplayText,
+} from '@/lib/chat/assistant-text-safety';
 import type { DBMessage, Document } from '@/lib/db/schema';
 import { ChatSDKError, type ErrorCode } from './errors';
 import type { ChatMessage, ChatTools, CustomUIDataTypes } from './types';
@@ -122,29 +126,138 @@ export function getTrailingMessageId({
   return trailingMessage.id;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+function decodeHtmlEntities(value: string) {
+  const decodeOnce = (input: string) => {
+    let decoded = input;
+
+    decoded = decoded
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#x27;/gi, "'");
+
+    decoded = decoded.replace(/&#(\d+);/g, (match, code) => {
+      const parsed = Number(code);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 0x10ffff) {
+        return match;
+      }
+      try {
+        return String.fromCodePoint(parsed);
+      } catch {
+        return match;
+      }
+    });
+
+    decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+      const parsed = Number.parseInt(hex, 16);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 0x10ffff) {
+        return match;
+      }
+      try {
+        return String.fromCodePoint(parsed);
+      } catch {
+        return match;
+      }
+    });
+
+    return decoded;
+  };
+
+  let current = value;
+  for (let i = 0; i < 2; i += 1) {
+    const next = decodeOnce(current);
+    if (next === current) {
+      break;
+    }
+    current = next;
+  }
+
+  return current;
 }
 
 export function sanitizeText(text: string) {
   const withoutMarkers = text.replaceAll("<has_function_call>", "");
-  return escapeHtml(withoutMarkers);
+  // React already escapes string children; keep content readable and decode
+  // any legacy HTML entity encoding (e.g. &amp;#39;, &amp;lt;).
+  return decodeHtmlEntities(withoutMarkers);
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
-  return messages.map((message) => ({
-    id: message.id,
-    role: message.role as 'user' | 'assistant' | 'system',
-    parts: message.parts as UIMessagePart<CustomUIDataTypes, ChatTools>[],
-    metadata: {
-      createdAt: formatISO(message.createdAt),
-    },
-  }));
+  const uiMessages: ChatMessage[] = [];
+  let latestUserText = "";
+
+  for (const message of messages) {
+    if (!message?.id) {
+      console.warn("[chat-messages] Skipping message row with missing id.");
+      continue;
+    }
+
+    const role =
+      message.role === "user" ||
+      message.role === "assistant" ||
+      message.role === "system"
+        ? message.role
+        : null;
+    if (!role) {
+      console.warn("[chat-messages] Skipping message row with invalid role.", {
+        messageId: message.id,
+        role: message.role,
+      });
+      continue;
+    }
+
+    const parts = Array.isArray(message.parts)
+      ? (message.parts as UIMessagePart<CustomUIDataTypes, ChatTools>[])
+      : [];
+    const safeParts =
+      role === "assistant"
+        ? parts.map((part) =>
+            part.type === "text"
+              ? {
+                  ...part,
+                  text: sanitizeAssistantDisplayText(
+                    part.text,
+                    getConversationalAcknowledgementReply(latestUserText) ??
+                      undefined
+                  ),
+                }
+              : part
+          )
+        : parts;
+    const createdAt =
+      message.createdAt instanceof Date && !Number.isNaN(message.createdAt.getTime())
+        ? message.createdAt
+        : new Date(0);
+
+    uiMessages.push({
+      id: message.id,
+      role,
+      parts:
+        safeParts.length > 0
+          ? safeParts
+          : [
+              {
+                type: "text",
+                text: "",
+              } as UIMessagePart<CustomUIDataTypes, ChatTools>,
+            ],
+      metadata: {
+        createdAt: formatISO(createdAt),
+      },
+    });
+
+    if (role === "user") {
+      latestUserText = parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("");
+    }
+  }
+
+  return uiMessages;
 }
 
 export function getTextFromMessage(message: ChatMessage): string {

@@ -332,3 +332,94 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer base {
+  .recharts-wrapper:focus,
+  .recharts-wrapper:focus-visible,
+  .recharts-wrapper *:focus,
+  .recharts-wrapper *:focus-visible,
+  .recharts-surface:focus,
+  .recharts-surface:focus-visible,
+  .recharts-surface *:focus,
+  .recharts-surface *:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+#hiddenCopyElement,
+.hiddenCanvasElement {
+  display: none !important;
+  height: 0 !important;
+  left: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: 0 !important;
+  width: 0 !important;
+}
+
+.pdf-preview-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pdf-preview-text-layer :is(span, br) {
+  color: transparent;
+  cursor: text;
+  position: absolute;
+  transform-origin: 0 0;
+  user-select: text;
+  -webkit-user-select: text;
+  white-space: pre;
+}
+
+.pdf-preview-text-layer > :not(.markedContent),
+.pdf-preview-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+}
+
+.pdf-preview-text-layer span.markedContent {
+  height: 0;
+  top: 0;
+}
+
+.pdf-preview-text-layer span[role="img"] {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pdf-preview-text-layer .endOfContent {
+  cursor: default;
+  display: block;
+  inset: 100% 0 0;
+  position: absolute;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 0;
+}
+
+.pdf-preview-text-layer.selecting .endOfContent {
+  top: 0;
+}
+
+.pdf-preview-text-layer ::selection {
+  background: color-mix(in srgb, AccentColor, transparent 75%);
+}
+
+.pdf-preview-text-layer br::selection {
+  background: transparent;
+}
