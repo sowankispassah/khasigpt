@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,6 +109,18 @@ export function IconPromptSettingsForm({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!selectedItemId) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedItemId]);
 
   const defaultLanguage =
     languages.find((language) => language.isDefault) ?? languages[0] ?? null;
@@ -183,6 +195,41 @@ export function IconPromptSettingsForm({
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
     );
+  };
+
+  const openEditor = (id: string) => {
+    setSelectedItemId(id);
+  };
+
+  const addItem = () => {
+    const item = createEmptyItem();
+    setItems((prev) => [...prev, item]);
+    openEditor(item.id);
+  };
+
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+    setSelectedItemId((current) => (current === id ? null : current));
+  };
+
+  const moveItem = (id: string, direction: -1 | 1) => {
+    setItems((prev) => {
+      const currentIndex = prev.findIndex((item) => item.id === id);
+      const nextIndex = currentIndex + direction;
+      if (
+        currentIndex < 0 ||
+        nextIndex < 0 ||
+        nextIndex >= prev.length
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      [next[currentIndex], next[nextIndex]] = [
+        next[nextIndex],
+        next[currentIndex],
+      ];
+      return next;
+    });
   };
 
   const updateSuggestionLine = (
@@ -467,7 +514,7 @@ export function IconPromptSettingsForm({
         </div>
         <Button
           className="cursor-pointer"
-          onClick={() => setItems((prev) => [...prev, createEmptyItem()])}
+          onClick={addItem}
           type="button"
           variant="outline"
         >
@@ -480,15 +527,171 @@ export function IconPromptSettingsForm({
           No icon prompts configured yet. Add one to get started.
         </div>
       ) : (
-        <div className="grid gap-4">
-          {items.map((item, index) => (
+        <div className="space-y-4">
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="w-16 px-3 py-3 font-medium" scope="col">
+                    Order
+                  </th>
+                  <th className="w-16 px-3 py-3 font-medium" scope="col">
+                    Icon
+                  </th>
+                  <th className="px-3 py-3 font-medium" scope="col">
+                    Label and prompt
+                  </th>
+                  <th className="w-36 px-3 py-3 font-medium" scope="col">
+                    Behavior
+                  </th>
+                  <th className="w-52 px-3 py-3 font-medium" scope="col">
+                    Status
+                  </th>
+                  <th className="w-72 px-3 py-3 text-right font-medium" scope="col">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {items.map((item, index) => (
+                  <tr
+                    className={
+                      selectedItemId === item.id ? "bg-muted/30" : undefined
+                    }
+                    key={item.id}
+                  >
+                    <td className="px-3 py-3 align-middle font-medium text-muted-foreground">
+                      {index + 1}
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-muted/30">
+                        {isValidIconUrl(item.iconUrl) ? (
+                          <Image
+                            alt=""
+                            height={24}
+                            src={item.iconUrl}
+                            width={24}
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">
+                            N/A
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="max-w-[360px] px-3 py-3 align-middle">
+                      <div className="font-medium">
+                        {item.label.trim() || "Untitled icon prompt"}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {item.prompt.trim() || "No default prompt"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {item.showSuggestions
+                          ? `${item.suggestions.filter((value) => value.trim()).length} suggestion${
+                              item.suggestions.filter((value) => value.trim())
+                                .length === 1
+                                ? ""
+                                : "s"
+                            }`
+                          : "Suggestions hidden"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-middle text-muted-foreground">
+                      {item.behavior === "append"
+                        ? "Append to input"
+                        : "Replace input"}
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      <div className="flex flex-wrap gap-1.5">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            item.isActive
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {item.isActive ? "Active" : "Inactive"}
+                        </span>
+                        {item.selectImageMode ? (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-800 text-xs dark:bg-blue-950 dark:text-blue-200">
+                            Image mode
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          aria-label={`Move ${item.label || `icon prompt ${index + 1}`} up`}
+                          className="cursor-pointer"
+                          disabled={index === 0}
+                          onClick={() => moveItem(item.id, -1)}
+                          size="sm"
+                          title="Move up"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Up
+                        </Button>
+                        <Button
+                          aria-label={`Move ${item.label || `icon prompt ${index + 1}`} down`}
+                          className="cursor-pointer"
+                          disabled={index === items.length - 1}
+                          onClick={() => moveItem(item.id, 1)}
+                          size="sm"
+                          title="Move down"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Down
+                        </Button>
+                        <Button
+                          className="cursor-pointer"
+                          onClick={() => openEditor(item.id)}
+                          size="sm"
+                          type="button"
+                          variant={
+                            selectedItemId === item.id ? "secondary" : "outline"
+                          }
+                        >
+                          {selectedItemId === item.id ? "Editing" : "Edit"}
+                        </Button>
+                        <Button
+                          className="cursor-pointer text-destructive hover:text-destructive"
+                          onClick={() => removeItem(item.id)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {items
+            .filter((item) => item.id === selectedItemId)
+            .map((item) => {
+              const index = items.findIndex((entry) => entry.id === item.id);
+              return (
             <div
-              className="rounded-lg border bg-background p-4"
+              className="scroll-mt-4 rounded-lg border bg-background p-4"
               key={item.id}
+              ref={editorRef}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-semibold text-sm">
-                  Icon prompt {index + 1}
+                <div>
+                  <div className="font-semibold text-sm">
+                    Edit icon prompt {index + 1}
+                  </div>
+                  <div className="text-muted-foreground text-xs">
+                    Changes remain pending until you save the icon prompt list.
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -517,15 +720,11 @@ export function IconPromptSettingsForm({
                   </label>
                   <Button
                     className="cursor-pointer"
-                    onClick={() =>
-                      setItems((prev) =>
-                        prev.filter((entry) => entry.id !== item.id)
-                      )
-                    }
+                    onClick={() => setSelectedItemId(null)}
                     type="button"
                     variant="ghost"
                   >
-                    Remove
+                    Close editor
                   </Button>
                 </div>
               </div>
@@ -958,7 +1157,8 @@ export function IconPromptSettingsForm({
                 </div>
               ) : null}
             </div>
-          ))}
+              );
+            })}
         </div>
       )}
 
