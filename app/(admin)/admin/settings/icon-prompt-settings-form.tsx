@@ -7,7 +7,6 @@ import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -502,8 +501,10 @@ export function IconPromptSettingsForm({
     }
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const saveItems = async () => {
+    if (isSubmitting) {
+      return false;
+    }
     const missingTargetItem = items.find(
       (item) => item.actionType !== "prompt" && !item.targetId
     );
@@ -516,32 +517,44 @@ export function IconPromptSettingsForm({
         ),
       });
       openEditor(missingTargetItem.id);
-      return;
+      return false;
     }
     setIsSubmitting(true);
-    (async () => {
-      try {
-        const formData = new FormData();
-        formData.set("payload", payload);
-        const result = await onSubmit(formData);
-        if (result?.success) {
-          toast({
-            type: "success",
-            description: `Saved ${result.count} icon prompt${
-              result.count === 1 ? "" : "s"
-            }.`,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to save icon prompts", error);
+    try {
+      const formData = new FormData();
+      formData.set("payload", payload);
+      const result = await onSubmit(formData);
+      if (result?.success) {
         toast({
-          type: "error",
-          description: "Failed to save icon prompts.",
+          type: "success",
+          description: `Saved ${result.count} icon prompt${
+            result.count === 1 ? "" : "s"
+          }.`,
         });
-      } finally {
-        setIsSubmitting(false);
+        return true;
       }
-    })();
+      return false;
+    } catch (error) {
+      console.error("Failed to save icon prompts", error);
+      toast({
+        type: "error",
+        description: "Failed to save icon prompts.",
+      });
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void saveItems();
+  };
+
+  const handleSaveFromEditor = async () => {
+    if (await saveItems()) {
+      setSelectedItemId(null);
+    }
   };
 
   return (
@@ -694,6 +707,18 @@ export function IconPromptSettingsForm({
                             )}
                           </span>
                         ) : null}
+                        {item.actionType !== "prompt" &&
+                        (() => {
+                          const target = getHomeShortcutTarget(item.targetId);
+                          return target && target.access !== "always" ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs dark:bg-amber-950 dark:text-amber-200">
+                              {translate(
+                                "admin.icon_prompts.status.feature_access",
+                                "Feature access applies"
+                              )}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                     </td>
                     <td className="px-3 py-3 align-middle">
@@ -774,8 +799,10 @@ export function IconPromptSettingsForm({
                             Edit icon prompt {index + 1}
                           </DialogTitle>
                           <DialogDescription>
-                            Changes remain pending until you save the icon
-                            prompt list.
+                            {translate(
+                              "admin.icon_prompts.editor.save_description",
+                              "Save changes here to update the home shortcut list."
+                            )}
                           </DialogDescription>
                         </DialogHeader>
                 <div className="flex items-center gap-2">
@@ -1348,9 +1375,22 @@ export function IconPromptSettingsForm({
                 </div>
               ) : null}
                       <DialogFooter className="sticky bottom-0 -mx-5 -mb-5 mt-6 border-t bg-background p-4">
-                        <DialogClose className="cursor-pointer" type="button">
-                          Done editing
-                        </DialogClose>
+                        <Button
+                          className="min-w-28 cursor-pointer"
+                          disabled={isSubmitting}
+                          onClick={() => void handleSaveFromEditor()}
+                          type="button"
+                        >
+                          {isSubmitting
+                            ? translate(
+                                "admin.icon_prompts.saving",
+                                "Saving..."
+                              )
+                            : translate(
+                                "admin.icon_prompts.save_changes",
+                                "Save changes"
+                              )}
+                        </Button>
                       </DialogFooter>
                     </div>
                   </DialogContent>
@@ -1366,7 +1406,12 @@ export function IconPromptSettingsForm({
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Saving..." : "Save icon prompts"}
+          {isSubmitting
+            ? translate("admin.icon_prompts.saving", "Saving...")
+            : translate(
+                "admin.icon_prompts.save_list",
+                "Save icon prompts"
+              )}
         </Button>
       </div>
     </form>

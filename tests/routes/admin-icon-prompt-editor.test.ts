@@ -34,9 +34,23 @@ test.describe("admin icon prompt editor", () => {
     expect(source).toContain("item.id === selectedItemId");
     expect(source).toContain("open={selectedItemId !== null}");
     expect(source).toContain("<DialogContent");
-    expect(source).toContain("Done editing");
+    expect(source).toContain("onClick={() => void handleSaveFromEditor()}");
+    expect(source).toContain('"Save changes"');
+    expect(source).not.toContain("Done editing");
     expect(source).toContain('value="feature"');
     expect(source).toContain('value="tool"');
     expect(source).toContain("getHomeShortcutTargets(item.actionType)");
+  });
+
+  test("explains that active linked shortcuts still follow feature access", async () => {
+    const source = await readWorkspaceFile(
+      "app/(admin)/admin/settings/icon-prompt-settings-form.tsx"
+    );
+
+    expect(source).toContain('target.access !== "always"');
+    expect(source).toContain('"Feature access applies"');
+    expect(source).toContain(
+      '"Availability and permissions come from the linked feature; this shortcut cannot override them."'
+    );
   });
 });
