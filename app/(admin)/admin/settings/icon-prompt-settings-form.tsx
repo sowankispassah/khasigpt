@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useMemo, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
 import { toast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +16,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  getHomeShortcutTarget,
+  getHomeShortcutTargets,
+  type HomeShortcutActionType,
+} from "@/lib/home-shortcut-registry";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import type {
   IconPromptBehavior,
@@ -34,6 +40,7 @@ type IconPromptSettingsFormProps = {
 };
 
 type EditableItem = {
+  actionType: HomeShortcutActionType;
   id: string;
   label: string;
   prompt: string;
@@ -50,12 +57,14 @@ type EditableItem = {
   suggestionsByLanguage: Record<string, string[]>;
   suggestionPromptsByLanguage: Record<string, string[]>;
   suggestionEditableByLanguage: Record<string, boolean[]>;
+  targetId: string | null;
 };
 
 const DEFAULT_BEHAVIOR: IconPromptBehavior = "replace";
 
 function createEmptyItem(defaultLabel = "", defaultPrompt = ""): EditableItem {
   return {
+    actionType: "prompt",
     id: crypto.randomUUID(),
     label: defaultLabel,
     prompt: defaultPrompt,
@@ -72,11 +81,13 @@ function createEmptyItem(defaultLabel = "", defaultPrompt = ""): EditableItem {
     suggestionsByLanguage: {},
     suggestionPromptsByLanguage: {},
     suggestionEditableByLanguage: {},
+    targetId: null,
   };
 }
 
 function normalizeItems(items: IconPromptItem[]): EditableItem[] {
   return items.map((item) => ({
+    actionType: item.actionType ?? "prompt",
     id: item.id,
     label: item.label,
     prompt: item.prompt,
@@ -93,6 +104,7 @@ function normalizeItems(items: IconPromptItem[]): EditableItem[] {
     suggestionsByLanguage: item.suggestionsByLanguage ?? {},
     suggestionPromptsByLanguage: item.suggestionPromptsByLanguage ?? {},
     suggestionEditableByLanguage: item.suggestionEditableByLanguage ?? {},
+    targetId: item.targetId ?? null,
   }));
 }
 
@@ -113,6 +125,7 @@ export function IconPromptSettingsForm({
   languages,
   onSubmit,
 }: IconPromptSettingsFormProps) {
+  const { translate } = useTranslation();
   const [items, setItems] = useState<EditableItem[]>(
     normalizeItems(initialItems)
   );
@@ -123,6 +136,17 @@ export function IconPromptSettingsForm({
   const defaultLanguage =
     languages.find((language) => language.isDefault) ?? languages[0] ?? null;
   const localizedLanguages = languages.filter((language) => !language.isDefault);
+  const actionLabels: Record<HomeShortcutActionType, string> = {
+    feature: translate(
+      "admin.icon_prompts.action.feature",
+      "Open app feature"
+    ),
+    prompt: translate("admin.icon_prompts.action.prompt", "Insert prompt"),
+    tool: translate(
+      "admin.icon_prompts.action.tool",
+      "Activate chat tool"
+    ),
+  };
 
   const payload = useMemo(() => {
     const sanitizeSuggestionPairs = (
@@ -168,6 +192,7 @@ export function IconPromptSettingsForm({
         }
 
         return {
+          actionType: item.actionType,
           id: item.id,
           label: item.label,
           prompt: item.prompt,
@@ -184,6 +209,7 @@ export function IconPromptSettingsForm({
           suggestionsByLanguage: suggestionPayloadByLanguage,
           suggestionPromptsByLanguage: hiddenPayloadByLanguage,
           suggestionEditableByLanguage: editablePayloadByLanguage,
+          targetId: item.targetId,
         };
       }),
     });
@@ -478,6 +504,20 @@ export function IconPromptSettingsForm({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const missingTargetItem = items.find(
+      (item) => item.actionType !== "prompt" && !item.targetId
+    );
+    if (missingTargetItem) {
+      toast({
+        type: "error",
+        description: translate(
+          "admin.icon_prompts.target.required",
+          "Choose a linked target before saving this shortcut."
+        ),
+      });
+      openEditor(missingTargetItem.id);
+      return;
+    }
     setIsSubmitting(true);
     (async () => {
       try {
@@ -527,7 +567,7 @@ export function IconPromptSettingsForm({
       ) : (
         <div className="space-y-4">
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="w-16 px-3 py-3 font-medium" scope="col">
@@ -539,8 +579,11 @@ export function IconPromptSettingsForm({
                   <th className="px-3 py-3 font-medium" scope="col">
                     Label and prompt
                   </th>
-                  <th className="w-36 px-3 py-3 font-medium" scope="col">
-                    Behavior
+                  <th className="w-32 px-3 py-3 font-medium" scope="col">
+                    Action
+                  </th>
+                  <th className="w-44 px-3 py-3 font-medium" scope="col">
+                    Target
                   </th>
                   <th className="w-52 px-3 py-3 font-medium" scope="col">
                     Status
@@ -581,24 +624,50 @@ export function IconPromptSettingsForm({
                       <div className="font-medium">
                         {item.label.trim() || "Untitled icon prompt"}
                       </div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {item.prompt.trim() || "No default prompt"}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {item.showSuggestions
-                          ? `${item.suggestions.filter((value) => value.trim()).length} suggestion${
-                              item.suggestions.filter((value) => value.trim())
-                                .length === 1
-                                ? ""
-                                : "s"
-                            }`
-                          : "Suggestions hidden"}
-                      </div>
+                      {item.actionType === "prompt" ? (
+                        <>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {item.prompt.trim() || "No default prompt"}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {item.showSuggestions
+                              ? `${item.suggestions.filter((value) => value.trim()).length} suggestion${
+                                  item.suggestions.filter((value) => value.trim())
+                                    .length === 1
+                                    ? ""
+                                    : "s"
+                                }`
+                              : "Suggestions hidden"}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          {translate(
+                            "admin.icon_prompts.action.navigation_hint",
+                            "Opens without inserting or sending a chat prompt."
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3 align-middle text-muted-foreground">
-                      {item.behavior === "append"
-                        ? "Append to input"
-                        : "Replace input"}
+                      {actionLabels[item.actionType]}
+                    </td>
+                    <td className="px-3 py-3 align-middle text-muted-foreground">
+                      {item.actionType === "prompt"
+                        ? item.selectImageMode
+                          ? "Image mode"
+                          : item.behavior === "append"
+                            ? "Append input"
+                            : "Replace input"
+                        : (() => {
+                            const target = getHomeShortcutTarget(item.targetId);
+                            return target
+                              ? translate(target.translationKey, target.label)
+                              : translate(
+                                  "admin.icon_prompts.target.unavailable",
+                                  "Unavailable target"
+                                );
+                          })()}
                     </td>
                     <td className="px-3 py-3 align-middle">
                       <div className="flex flex-wrap gap-1.5">
@@ -611,9 +680,18 @@ export function IconPromptSettingsForm({
                         >
                           {item.isActive ? "Active" : "Inactive"}
                         </span>
-                        {item.selectImageMode ? (
+                        {item.actionType === "prompt" && item.selectImageMode ? (
                           <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-800 text-xs dark:bg-blue-950 dark:text-blue-200">
                             Image mode
+                          </span>
+                        ) : null}
+                        {item.actionType !== "prompt" &&
+                        !getHomeShortcutTarget(item.targetId) ? (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800 text-xs dark:bg-red-950 dark:text-red-200">
+                            {translate(
+                              "admin.icon_prompts.target.unavailable",
+                              "Unavailable target"
+                            )}
                           </span>
                         ) : null}
                       </div>
@@ -712,19 +790,21 @@ export function IconPromptSettingsForm({
                     />
                     Active
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      checked={item.selectImageMode}
-                      className="cursor-pointer"
-                      onChange={(event) =>
-                        updateItem(item.id, {
-                          selectImageMode: event.target.checked,
-                        })
-                      }
-                      type="checkbox"
-                    />
-                    Select image mode
-                  </label>
+                  {item.actionType === "prompt" ? (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        checked={item.selectImageMode}
+                        className="cursor-pointer"
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            selectImageMode: event.target.checked,
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      Select image mode
+                    </label>
+                  ) : null}
                 </div>
               </div>
 
@@ -748,21 +828,30 @@ export function IconPromptSettingsForm({
                 <div className="space-y-2">
                   <label
                     className="font-medium text-sm"
-                    htmlFor={`icon-prompt-${item.id}-prompt`}
+                    htmlFor={`icon-prompt-${item.id}-action`}
                   >
-                    Default prompt (optional)
+                    Action
                   </label>
-                  <Textarea
-                    className="min-h-[96px]"
-                    id={`icon-prompt-${item.id}-prompt`}
+                  <select
+                    className="w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-sm"
+                    id={`icon-prompt-${item.id}-action`}
                     onChange={(event) =>
-                      updateItem(item.id, { prompt: event.target.value })
+                      updateItem(item.id, {
+                        actionType: event.target.value as HomeShortcutActionType,
+                        targetId: null,
+                      })
                     }
-                    placeholder="Describe a prompt to insert"
-                    value={item.prompt}
-                  />
+                    value={item.actionType}
+                  >
+                    <option value="prompt">{actionLabels.prompt}</option>
+                    <option value="feature">{actionLabels.feature}</option>
+                    <option value="tool">{actionLabels.tool}</option>
+                  </select>
                   <p className="text-muted-foreground text-xs">
-                    Used when suggestions are disabled or empty.
+                    {translate(
+                      "admin.icon_prompts.action.help",
+                      "Choose whether this shortcut inserts text, navigates, or activates an existing chat tool."
+                    )}
                   </p>
                 </div>
               </div>
@@ -818,33 +907,125 @@ export function IconPromptSettingsForm({
                     </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label
-                    className="font-medium text-sm"
-                    htmlFor={`icon-prompt-${item.id}-behavior`}
-                  >
-                    Insert behavior
-                  </label>
-                  <select
-                    className="w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-sm"
-                    id={`icon-prompt-${item.id}-behavior`}
-                    onChange={(event) =>
-                      updateItem(item.id, {
-                        behavior: event.target.value as IconPromptBehavior,
-                      })
-                    }
-                    value={item.behavior}
-                  >
-                    <option value="replace">Replace input</option>
-                    <option value="append">Append to input</option>
-                  </select>
-                  <p className="text-muted-foreground text-xs">
-                    Choose whether this prompt replaces the current input or
-                    appends to it.
-                  </p>
-                </div>
+                {item.actionType === "prompt" ? (
+                  <div className="space-y-2">
+                    <label
+                      className="font-medium text-sm"
+                      htmlFor={`icon-prompt-${item.id}-behavior`}
+                    >
+                      Insert behavior
+                    </label>
+                    <select
+                      className="w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-sm"
+                      id={`icon-prompt-${item.id}-behavior`}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          behavior: event.target.value as IconPromptBehavior,
+                        })
+                      }
+                      value={item.behavior}
+                    >
+                      <option value="replace">Replace input</option>
+                      <option value="append">Append to input</option>
+                    </select>
+                    <p className="text-muted-foreground text-xs">
+                      Choose whether this prompt replaces the current input or
+                      appends to it.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label
+                      className="font-medium text-sm"
+                      htmlFor={`icon-prompt-${item.id}-target`}
+                    >
+                      {item.actionType === "feature"
+                        ? translate(
+                            "admin.icon_prompts.target.feature_label",
+                            "Linked feature"
+                          )
+                        : translate(
+                            "admin.icon_prompts.target.tool_label",
+                            "Linked chat tool"
+                          )}
+                    </label>
+                    <select
+                      className="w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-sm"
+                      id={`icon-prompt-${item.id}-target`}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          targetId: event.target.value || null,
+                        })
+                      }
+                      value={item.targetId ?? ""}
+                    >
+                      <option value="">
+                        {translate(
+                          "admin.icon_prompts.target.placeholder",
+                          "Select a target..."
+                        )}
+                      </option>
+                      {item.targetId &&
+                      !getHomeShortcutTarget(item.targetId) ? (
+                        <option value={item.targetId}>
+                          Unavailable: {item.targetId}
+                        </option>
+                      ) : null}
+                      {getHomeShortcutTargets(item.actionType).map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {translate(target.translationKey, target.label)}
+                          {target.kind === "tool" ||
+                          (target.webHref && target.androidScreen)
+                            ? translate(
+                                "admin.icon_prompts.platform.both_suffix",
+                                " (Web + Android)"
+                              )
+                            : target.webHref
+                              ? translate(
+                                  "admin.icon_prompts.platform.web_suffix",
+                                  " (Web only)"
+                                )
+                              : translate(
+                                  "admin.icon_prompts.platform.android_suffix",
+                                  " (Android only)"
+                                )}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-muted-foreground text-xs">
+                      {translate(
+                        "admin.icon_prompts.target.help",
+                        "Availability and permissions come from the linked feature; this shortcut cannot override them."
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
 
+              {item.actionType === "prompt" ? (
+                <div className="mt-4 space-y-2">
+                  <label
+                    className="font-medium text-sm"
+                    htmlFor={`icon-prompt-${item.id}-prompt`}
+                  >
+                    Default prompt (optional)
+                  </label>
+                  <Textarea
+                    className="min-h-[96px]"
+                    id={`icon-prompt-${item.id}-prompt`}
+                    onChange={(event) =>
+                      updateItem(item.id, { prompt: event.target.value })
+                    }
+                    placeholder="Describe a prompt to insert"
+                    value={item.prompt}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Used when suggestions are disabled or empty.
+                  </p>
+                </div>
+              ) : null}
+
+              {item.actionType === "prompt" ? (
               <div className="mt-4 space-y-3">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <input
@@ -959,11 +1140,14 @@ export function IconPromptSettingsForm({
                   </div>
                 ) : null}
               </div>
+              ) : null}
 
               {localizedLanguages.length > 0 ? (
                 <div className="mt-5 space-y-4">
                   <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Localized prompts
+                    {item.actionType === "prompt"
+                      ? "Localized prompts"
+                      : "Localized labels"}
                   </div>
                   <div className="grid gap-4">
                     {localizedLanguages.map((language) => (
@@ -974,7 +1158,13 @@ export function IconPromptSettingsForm({
                         <div className="mb-3 text-xs font-semibold text-muted-foreground">
                           {language.name}
                         </div>
-                        <div className="grid gap-3 md:grid-cols-2">
+                        <div
+                          className={`grid gap-3 ${
+                            item.actionType === "prompt"
+                              ? "md:grid-cols-2"
+                              : "md:grid-cols-1"
+                          }`}
+                        >
                           <div className="space-y-2">
                             <label
                               className="text-xs font-medium"
@@ -996,6 +1186,7 @@ export function IconPromptSettingsForm({
                               value={item.labelByLanguage[language.code] ?? ""}
                             />
                           </div>
+                          {item.actionType === "prompt" ? (
                           <div className="space-y-2">
                             <label
                               className="text-xs font-medium"
@@ -1018,8 +1209,9 @@ export function IconPromptSettingsForm({
                               value={item.promptByLanguage[language.code] ?? ""}
                             />
                           </div>
+                          ) : null}
                         </div>
-                        {item.showSuggestions ? (
+                        {item.actionType === "prompt" && item.showSuggestions ? (
                           <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <div className="space-y-2">
                               <p className="text-xs font-medium">
@@ -1149,8 +1341,8 @@ export function IconPromptSettingsForm({
                   </div>
                   {defaultLanguage ? (
                     <p className="text-muted-foreground text-xs">
-                      If a localized prompt is empty, {defaultLanguage.name} is
-                      used as the fallback.
+                      If a localized {item.actionType === "prompt" ? "value" : "label"} is
+                      empty, {defaultLanguage.name} is used as the fallback.
                     </p>
                   ) : null}
                 </div>

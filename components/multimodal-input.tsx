@@ -306,6 +306,7 @@ function PureMultimodalInput({
   autoFocus = true,
   documentUploadsEnabled,
   voiceChatEnabled,
+  voiceStartSignal,
 }: {
   chatId: string;
   input: string;
@@ -344,6 +345,7 @@ function PureMultimodalInput({
   autoFocus?: boolean;
   documentUploadsEnabled: boolean;
   voiceChatEnabled: boolean;
+  voiceStartSignal?: number;
 }) {
   const { models, defaultModelId } = useModelConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -449,6 +451,7 @@ function PureMultimodalInput({
   const [hasVoiceSessionReady, setHasVoiceSessionReady] = useState(false);
   const [isVoiceSaving, setIsVoiceSaving] = useState(false);
   const [voiceInputLevel, setVoiceInputLevel] = useState(0);
+  const handledVoiceStartSignalRef = useRef(voiceStartSignal ?? 0);
   const acceptedFileTypes = useMemo(
     () => getAttachmentAcceptValue(documentUploadsEnabled),
     [documentUploadsEnabled]
@@ -861,6 +864,17 @@ function PureMultimodalInput({
     translate,
     voiceChatEnabled,
   ]);
+
+  useEffect(() => {
+    if (
+      voiceStartSignal === undefined ||
+      voiceStartSignal <= handledVoiceStartSignalRef.current
+    ) {
+      return;
+    }
+    handledVoiceStartSignalRef.current = voiceStartSignal;
+    void startVoiceChat();
+  }, [startVoiceChat, voiceStartSignal]);
 
   const uploadFile = useCallback(
     async (file: File) => {

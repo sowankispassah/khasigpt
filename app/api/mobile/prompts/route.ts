@@ -21,6 +21,7 @@ export async function GET(request: Request) {
   const preferredLanguage = requestedLanguage || cookieStore.get("lang")?.value || null;
   const prompts = await withApiTiming("mobile.prompts", () =>
     loadPromptReadModel({
+      platform: "android",
       preferredLanguage,
       role: authContext.user.role,
     })

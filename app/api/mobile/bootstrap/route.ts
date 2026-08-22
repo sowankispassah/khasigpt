@@ -320,6 +320,7 @@ export async function GET(request: Request) {
       label: "mobile.bootstrap.prompts",
       loader: () =>
         loadPromptReadModel({
+          platform: "android",
           preferredLanguage,
           role: session.user.role,
         }),

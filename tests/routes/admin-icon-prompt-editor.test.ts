@@ -14,9 +14,10 @@ test.describe("admin icon prompt editor", () => {
       "app/(admin)/admin/settings/icon-prompt-settings-form.tsx"
     );
 
-    expect(source).toContain('<table className="w-full min-w-[860px]');
+    expect(source).toContain('<table className="w-full min-w-[980px]');
     expect(source).toContain("Label and prompt");
-    expect(source).toContain("Behavior");
+    expect(source).toContain("Action");
+    expect(source).toContain("Target");
     expect(source).toContain("Status");
     expect(source).toContain("moveItem(item.id, -1)");
     expect(source).toContain("moveItem(item.id, 1)");
@@ -34,5 +35,8 @@ test.describe("admin icon prompt editor", () => {
     expect(source).toContain("open={selectedItemId !== null}");
     expect(source).toContain("<DialogContent");
     expect(source).toContain("Done editing");
+    expect(source).toContain('value="feature"');
+    expect(source).toContain('value="tool"');
+    expect(source).toContain("getHomeShortcutTargets(item.actionType)");
   });
 });

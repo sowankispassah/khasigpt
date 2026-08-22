@@ -45,6 +45,7 @@ import {
 } from "@/lib/ai/image-generation-errors";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
+import { getHomeShortcutTarget } from "@/lib/home-shortcut-registry";
 import type { LanguageOption } from "@/lib/i18n/languages";
 import type {
   IconPromptAction,
@@ -69,6 +70,7 @@ import {
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { setClientCookie } from "@/lib/ui/client-cookies";
+import { startGlobalProgress } from "@/lib/ui/global-progress";
 import {
   cn,
   fetcher,
@@ -1289,6 +1291,7 @@ export function Chat({
   const [iconPromptSuggestions, setIconPromptSuggestions] = useState<
     IconPromptSuggestion[]
   >([]);
+  const [voiceStartSignal, setVoiceStartSignal] = useState(0);
   const [isResolvingImageSuggestion, setIsResolvingImageSuggestion] =
     useState(false);
   const handleManualInputChange = useCallback(() => {
@@ -1296,6 +1299,30 @@ export function Chat({
   }, []);
   const handleIconPromptSelect = useCallback(
     (item: IconPromptAction) => {
+      const actionType = item.actionType ?? "prompt";
+      if (actionType === "feature") {
+        const target = getHomeShortcutTarget(item.targetId);
+        if (!target?.webHref) {
+          return;
+        }
+        setIconPromptSuggestions([]);
+        startGlobalProgress();
+        router.push(target.webHref, { scroll: false });
+        return;
+      }
+
+      if (actionType === "tool") {
+        setIconPromptSuggestions([]);
+        if (item.targetId === "image_generation") {
+          setIsImageMode(true);
+          void refreshImageGenerationAccess();
+        } else if (item.targetId === "voice_chat") {
+          setIsImageMode(false);
+          setVoiceStartSignal((current) => current + 1);
+        }
+        return;
+      }
+
       const trimmedPrompt = item.prompt.trim();
       if (item.showSuggestions && item.suggestions.length > 0) {
         setIconPromptSuggestions(item.suggestions);
@@ -1320,7 +1347,7 @@ export function Chat({
         setIsImageMode(false);
       }
     },
-    [refreshImageGenerationAccess]
+    [refreshImageGenerationAccess, router]
   );
 
   const resolveImageIntentForPrompt = useCallback(
@@ -2122,6 +2149,7 @@ export function Chat({
                       syncCurrentChatUrl();
                       void refreshAndPromoteHistory();
                     }}
+                    voiceStartSignal={voiceStartSignal}
                   />
                   <p className="px-2 text-center text-muted-foreground text-xs">
                     <EditableTranslation

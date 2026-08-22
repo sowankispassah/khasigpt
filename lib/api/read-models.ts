@@ -329,9 +329,11 @@ export async function loadModelConfigReadModel() {
 }
 
 export async function loadPromptReadModel({
+  platform = "web",
   preferredLanguage,
   role,
 }: {
+  platform?: "android" | "web";
   preferredLanguage?: string | null;
   role: UserRole;
 }) {
@@ -343,7 +345,7 @@ export async function loadPromptReadModel({
       suggestedPromptsDegraded = true;
       return [];
     }),
-    loadIconPromptActions(preferredLanguage, role).catch((error) => {
+    loadIconPromptActions(preferredLanguage, role, platform).catch((error) => {
       console.error("[read-models] Failed to load icon prompts.", error);
       iconPromptActionsDegraded = true;
       return getDefaultIconPromptActions(
