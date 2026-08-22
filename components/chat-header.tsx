@@ -54,7 +54,17 @@ function PureChatHeader({
     <header className="sticky top-0 flex items-center gap-1.5 bg-background px-1.5 py-1.5 pr-[5rem] sm:gap-2 sm:px-2">
       <SidebarToggle />
 
-      {isChatDetailPage && !isReadonly && showInlineControls && (
+      {isChatDetailPage ? null : (
+        <span className="min-w-0 truncate font-semibold text-sm">
+          <EditableTranslation
+            defaultText="KhasiGPT"
+            description="Application brand name beside the chat sidebar toggle."
+            translationKey="app.brand"
+          />
+        </span>
+      )}
+
+      {isChatDetailPage && !isReadonly && showInlineControls ? (
         <div className="flex items-center gap-1.5 sm:gap-2">
           <VisibilitySelector
             chatId={chatId}
@@ -62,10 +72,10 @@ function PureChatHeader({
             selectedVisibilityType={selectedVisibilityType}
           />
         </div>
-      )}
+      ) : null}
 
       <div className="order-2 ml-auto flex items-center gap-1.5 sm:-mr-2 md:order-3 md:gap-3">
-        {(!open || windowWidth < 768) && (
+        {isChatDetailPage && (!open || windowWidth < 768) ? (
           <Button
             className="h-8 gap-1.5 px-2 text-sm md:h-fit md:px-2"
             disabled={isOpeningNewChat}
@@ -87,7 +97,7 @@ function PureChatHeader({
               )}
             </span>
           </Button>
-        )}
+        ) : null}
       </div>
     </header>
   );
