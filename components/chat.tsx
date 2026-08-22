@@ -1962,6 +1962,7 @@ export function Chat({
               stop={stop}
               studyQuestionReference={studyQuestionReference}
               onToggleImageMode={() => {}}
+              onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
               onVoiceTurnSaved={() => {
                 syncCurrentChatUrl();
                 void refreshAndPromoteHistory();
@@ -2116,6 +2117,7 @@ export function Chat({
                       setIsImageMode(true);
                       void refreshImageGenerationAccess();
                     }}
+                    onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
                     onVoiceTurnSaved={() => {
                       syncCurrentChatUrl();
                       void refreshAndPromoteHistory();

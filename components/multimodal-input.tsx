@@ -37,6 +37,7 @@ import {
   type WebGeminiVoiceConversationMessage,
   type WebGeminiVoiceTurnController,
   type WebGeminiVoiceTurnStatus,
+  WebVoiceTokenError,
 } from "@/lib/voice/web-live-voice";
 import {
   PromptInput,
@@ -300,6 +301,7 @@ function PureMultimodalInput({
   onManualInputChange,
   onResolveImageIntent,
   onToggleImageMode,
+  onUpgradeRequired,
   onVoiceTurnSaved,
   autoFocus = true,
   documentUploadsEnabled,
@@ -337,6 +339,7 @@ function PureMultimodalInput({
     prompt: string
   ) => Promise<ImageIntentResolution | null>;
   onToggleImageMode: () => void;
+  onUpgradeRequired?: () => void;
   onVoiceTurnSaved?: () => void;
   autoFocus?: boolean;
   documentUploadsEnabled: boolean;
@@ -833,6 +836,16 @@ function PureMultimodalInput({
       if (voiceSessionIdRef.current !== voiceSessionId) {
         return;
       }
+      if (
+        error instanceof WebVoiceTokenError &&
+        error.status === 402 &&
+        error.reason === "insufficient-credits" &&
+        onUpgradeRequired
+      ) {
+        cancelVoiceChat();
+        onUpgradeRequired();
+        return;
+      }
       setVoiceError(
         error instanceof Error
           ? error.message
@@ -842,6 +855,8 @@ function PureMultimodalInput({
   }, [
     imageGenerationSelected,
     isBusy,
+    cancelVoiceChat,
+    onUpgradeRequired,
     resetVoiceState,
     translate,
     voiceChatEnabled,

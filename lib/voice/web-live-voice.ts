@@ -49,6 +49,17 @@ type WebGeminiVoiceStartOptions = WebGeminiVoiceCallbacks & {
   unavailableMessage?: string;
 };
 
+export class WebVoiceTokenError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly reason?: string
+  ) {
+    super(message);
+    this.name = "WebVoiceTokenError";
+  }
+}
+
 type PendingRagToolTiming = {
   requestId: string;
   retrievalMs: number;
@@ -262,12 +273,20 @@ async function requestVoiceToken({
   });
   const data = (await response.json().catch(() => null)) as
     | GeminiVoiceTokenResponse
-    | { message?: string }
+    | { message?: string; reason?: string }
     | null;
   if (!response.ok) {
     const message =
       data && "message" in data ? data.message : unavailableMessage;
-    throw new Error(message ?? unavailableMessage);
+    const reason =
+      data && "reason" in data && typeof data.reason === "string"
+        ? data.reason
+        : undefined;
+    throw new WebVoiceTokenError(
+      message ?? unavailableMessage,
+      response.status,
+      reason
+    );
   }
   if (!data || !("liveSupported" in data)) {
     throw new Error("Live voice token response was invalid.");
