@@ -8,6 +8,10 @@ export function isFreeDailyChatLimitBypassedForTest({
   return nodeEnv !== "production" && playwright === "true";
 }
 
+export function hasUsableChatCredits(tokenBalance: number) {
+  return Number.isFinite(tokenBalance) && tokenBalance > 0;
+}
+
 export function requiresPaidWebSearchCredits({
   activeTokenBalance,
   hasActiveCredits,

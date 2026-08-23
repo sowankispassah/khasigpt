@@ -32,6 +32,7 @@ import {
   sanitizeAssistantDisplayText,
 } from "@/lib/chat/assistant-text-safety";
 import {
+  hasUsableChatCredits,
   isFreeDailyChatLimitBypassedForTest,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
@@ -56,7 +57,6 @@ import {
   getLanguageByCodeRaw,
   getMessageCountByUserId,
   getMessagesByChatIdPage,
-  getPricingPlanById,
   getWebSearchUsageCountSince,
   recordTokenUsage,
   recordWebSearchUsage,
@@ -1258,14 +1258,8 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
-    const activePlan = activeSubscription
-      ? await measurePreModelStep("get_active_plan", () =>
-          getPricingPlanById({ id: activeSubscription.planId })
-        )
-      : null;
     const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
-    const activePlanIsPaid = (activePlan?.priceInPaise ?? 0) > 0;
-    const hasActiveCredits = activePlanIsPaid && activeTokenBalance > 0;
+    const hasActiveCredits = hasUsableChatCredits(activeTokenBalance);
     const perModelAllowance = Math.max(
       0,
       modelConfig.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY
@@ -3055,7 +3049,7 @@ export async function POST(request: Request) {
     }
     const webSearchAllowed = isWebSearchAllowedForUser({
       config: webSearchConfig,
-      isPaidUser: activePlanIsPaid,
+      isPaidUser: hasActiveCredits,
       platform: webSearchPlatform,
       role: userRole,
     });

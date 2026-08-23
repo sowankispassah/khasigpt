@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import {
+  hasUsableChatCredits,
   isFreeDailyChatLimitBypassedForTest,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
@@ -20,6 +21,12 @@ test.describe("shared free daily chat allowance", () => {
         playwright: "true",
       })
     ).toBe(true);
+  });
+
+  test("treats manually granted token balances as usable chat credits", () => {
+    expect(hasUsableChatCredits(1000)).toBe(true);
+    expect(hasUsableChatCredits(0)).toBe(false);
+    expect(hasUsableChatCredits(Number.NaN)).toBe(false);
   });
 
   test("lets a free allowance cover normal or grounded chat before requiring credits", () => {
@@ -68,5 +75,9 @@ test.describe("shared free daily chat allowance", () => {
     expect(allowanceBlock).toContain("usedFreeDailyAllowance = true");
     expect(allowanceBlock).not.toContain('userRole !== "admin"');
     expect(route).toContain("requiresPaidWebSearchCredits({");
+    expect(route).toContain("hasUsableChatCredits(activeTokenBalance)");
+    expect(route).toContain("isPaidUser: hasActiveCredits");
+    expect(route).not.toContain("activePlanIsPaid");
+    expect(route).not.toContain('measurePreModelStep("get_active_plan"');
   });
 });
