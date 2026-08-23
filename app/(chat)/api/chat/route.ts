@@ -31,6 +31,10 @@ import {
   getConversationalAcknowledgementReply,
   sanitizeAssistantDisplayText,
 } from "@/lib/chat/assistant-text-safety";
+import {
+  isFreeDailyChatLimitBypassedForTest,
+  requiresPaidWebSearchCredits,
+} from "@/lib/chat/free-daily-limit";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
 import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
@@ -1275,12 +1279,13 @@ export async function POST(request: Request) {
       DEFAULT_FREE_MESSAGES_PER_DAY,
       freeMessagesForModel
     );
+    const testLimitBypass = isFreeDailyChatLimitBypassedForTest({
+      nodeEnv: process.env.NODE_ENV,
+      playwright: process.env.PLAYWRIGHT,
+    });
+    let usedFreeDailyAllowance = false;
 
-    if (
-      process.env.PLAYWRIGHT !== "true" &&
-      userRole !== "admin" &&
-      !hasActiveCredits
-    ) {
+    if (!testLimitBypass && !hasActiveCredits) {
       const allowance = await measurePreModelStep("consume_free_daily_chat", () =>
         consumeFreeDailyChatAllowance({
           userId: session.user.id,
@@ -1296,9 +1301,10 @@ export async function POST(request: Request) {
           `Free daily chat limit reached (${allowance.used}/${allowance.limit}).`
         ).toResponse();
       }
+      usedFreeDailyAllowance = true;
     }
 
-    if (userRole !== "admin" && !hasActiveCredits && freeDailyMessageLimit <= 0) {
+    if (!testLimitBypass && !hasActiveCredits && freeDailyMessageLimit <= 0) {
       return new ChatSDKError(
         "payment_required:free_messages",
         "Free chat access is disabled. Please recharge to continue."
@@ -3071,10 +3077,13 @@ export async function POST(request: Request) {
       const minimumWebSearchCreditTokens = Math.ceil(
         TOKENS_PER_CREDIT * webSearchConfig.creditMultiplier
       );
-      if (
-        userRole !== "admin" &&
-        (!hasActiveCredits || activeTokenBalance < minimumWebSearchCreditTokens)
-      ) {
+      if (requiresPaidWebSearchCredits({
+        activeTokenBalance,
+        hasActiveCredits,
+        minimumCreditTokens: minimumWebSearchCreditTokens,
+        testLimitBypass,
+        usedFreeDailyAllowance,
+      })) {
         throw new ChatSDKError(
           "payment_required:credits",
           "Web search requires paid credits. Please recharge to continue."

@@ -43,6 +43,7 @@ import {
   IMAGE_GENERATION_SAFETY_ERROR_CODE,
   IMAGE_GENERATION_SAFETY_MESSAGE,
 } from "@/lib/ai/image-generation-errors";
+import { isRechargeRequiredChatError } from "@/lib/chat/recharge-error";
 import { CHAT_HISTORY_PAGE_SIZE } from "@/lib/constants";
 import type { Vote } from "@/lib/db/schema";
 import { getHomeShortcutTarget } from "@/lib/home-shortcut-registry";
@@ -856,7 +857,6 @@ export function Chat({
     onError: (error) => {
       const message =
         error instanceof Error ? error.message : String(error ?? "");
-      const normalized = message.toLowerCase();
       const pendingWebSearch = webSearchPlaceholderRef.current;
       const hadPendingWebSearch = Boolean(pendingWebSearch);
 
@@ -882,10 +882,9 @@ export function Chat({
         );
       }
 
-      const isCreditError =
-        normalized.includes("recharge") || normalized.includes("credit");
+      const isRechargeError = isRechargeRequiredChatError(error);
 
-      if (isCreditError) {
+      if (isRechargeError) {
         setMessages((prev) => {
           if (!prev.length) {
             return prev;
@@ -907,24 +906,12 @@ export function Chat({
         setInput("");
         setAttachments([]);
 
-        if (messages.length <= 1) {
-          router.replace("/chat", { scroll: false });
-          if (typeof window !== "undefined") {
-            window.history.replaceState({}, "", "/chat");
-          }
-        }
-
         setShowRechargeDialog(true);
         return;
       }
 
       if (message.includes("AI Gateway requires a valid credit card")) {
         setShowCreditCardAlert(true);
-        return;
-      }
-
-      if (message.includes("credits") && message.includes("recharge")) {
-        setShowRechargeDialog(true);
         return;
       }
 
