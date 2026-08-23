@@ -5,6 +5,7 @@ import { withChatReadDatabase } from "@/lib/db/chat-read-database";
 import { getChatById, getMessagesByChatIdPage } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { isNewsEnabledForRole } from "@/lib/news/config";
 import { rewriteDocumentUrlsForViewer } from "@/lib/uploads/document-access";
 import { convertToUIMessages } from "@/lib/utils";
 import { withTimeout } from "@/lib/utils/async";
@@ -108,6 +109,13 @@ export async function GET(
     throw error;
   }
   if (!chat) {
+    return new ChatSDKError("not_found:chat").toResponse();
+  }
+
+  if (
+    chat.mode === "news" &&
+    !(await isNewsEnabledForRole(session.user.role))
+  ) {
     return new ChatSDKError("not_found:chat").toResponse();
   }
 

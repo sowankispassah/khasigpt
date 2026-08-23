@@ -4,6 +4,7 @@ import { getChatsByUserId } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
 import { isJobsEnabledForRole } from "@/lib/jobs/config";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { isNewsEnabledForRole } from "@/lib/news/config";
 import { isStudyModeEnabledForRole } from "@/lib/study/config";
 import { withTimeout } from "@/lib/utils/async";
 
@@ -27,19 +28,25 @@ async function isHistoryModeEnabled({
   mode,
   role,
 }: {
-  mode: "default" | "jobs" | "study" | null;
+  mode: "default" | "jobs" | "study" | "news" | null;
   role: HistoryFeatureRole;
 }) {
-  if (mode !== "study" && mode !== "jobs") {
+  if (mode !== "study" && mode !== "jobs" && mode !== "news") {
     return true;
   }
 
   const label =
-    mode === "study" ? "history.study_feature_check" : "history.jobs_feature_check";
+    mode === "study"
+      ? "history.study_feature_check"
+      : mode === "jobs"
+        ? "history.jobs_feature_check"
+        : "history.news_feature_check";
   const loader =
     mode === "study"
       ? () => isStudyModeEnabledForRole(role)
-      : () => isJobsEnabledForRole(role);
+      : mode === "jobs"
+        ? () => isJobsEnabledForRole(role)
+        : () => isNewsEnabledForRole(role);
 
   try {
     return await withTimeout(
@@ -53,7 +60,7 @@ async function isHistoryModeEnabled({
     console.warn(`[api/history] ${label} failed; preserving history access.`, {
       error: error instanceof Error ? error.message : String(error),
     });
-    return true;
+    return mode !== "news";
   }
 }
 
@@ -78,6 +85,8 @@ export async function GET(request: NextRequest) {
         ? "study"
         : normalizedMode === "jobs"
           ? "jobs"
+          : normalizedMode === "news"
+            ? "news"
           : normalizedMode === "default"
             ? "default"
             : null;
@@ -86,7 +95,8 @@ export async function GET(request: NextRequest) {
       normalizedMode &&
       normalizedMode !== "default" &&
       normalizedMode !== "study" &&
-      normalizedMode !== "jobs"
+      normalizedMode !== "jobs" &&
+      normalizedMode !== "news"
     ) {
       return new ChatSDKError(
         "bad_request:api",
@@ -124,7 +134,11 @@ export async function GET(request: NextRequest) {
     ) {
       return new ChatSDKError(
         "not_found:chat",
-        mode === "study" ? "Study mode is disabled." : "Jobs mode is disabled."
+        mode === "study"
+          ? "Study mode is disabled."
+          : mode === "jobs"
+            ? "Jobs mode is disabled."
+            : "News is disabled."
       ).toResponse();
     }
 

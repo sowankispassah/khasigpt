@@ -823,7 +823,7 @@ export const translationValue = pgTable(
 
 export type TranslationValue = InferSelectModel<typeof translationValue>;
 
-export const chatModeEnum = ["default", "study", "jobs"] as const;
+export const chatModeEnum = ["default", "study", "jobs", "news"] as const;
 export type ChatMode = (typeof chatModeEnum)[number];
 export const chatStatusEnum = [
   "pending",

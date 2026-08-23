@@ -6,6 +6,7 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -30,6 +31,7 @@ const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
   [STUDY_MODE_FEATURE_FLAG_KEY]: new Set(["feature.study_mode.toggle"]),
   [TRANSLATE_FEATURE_FLAG_KEY]: new Set(["feature.translate.toggle"]),
   [JOBS_FEATURE_FLAG_KEY]: new Set(["feature.jobs_mode.toggle"]),
+  [NEWS_FEATURE_FLAG_KEY]: new Set(["feature.news.toggle"]),
   [IMAGE_GENERATION_FEATURE_FLAG_KEY]: new Set([
     "feature.image_generation.toggle",
   ]),

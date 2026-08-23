@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { type DataUIPart, DefaultChatTransport } from "ai";
-import { BookOpen, LoaderCircle } from "lucide-react";
+import { BookOpen, LoaderCircle, Newspaper } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -63,6 +63,11 @@ import type {
   JobListItem,
   JobTitleReference,
 } from "@/lib/jobs/types";
+import {
+  buildNewsInitialPrompt,
+  isNewsInitialMessage,
+  shouldSearchNewsFollowUp,
+} from "@/lib/news/shared";
 import {
   getStudyContextForChat,
   setStudyContextForChat,
@@ -217,7 +222,7 @@ export function Chat({
   initialJobContext?: JobCard | null;
   jobsListItems?: JobListItem[];
   initialVisibilityType: VisibilityType;
-  chatMode: "default" | "study" | "jobs";
+  chatMode: "default" | "study" | "jobs" | "news";
   languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;
@@ -245,6 +250,8 @@ export function Chat({
         ? "study"
         : requestedMode === "jobs"
           ? "jobs"
+          : requestedMode === "news"
+            ? "news"
           : "default"
       : chatMode;
   const historyMode =
@@ -252,6 +259,8 @@ export function Chat({
       ? "study"
       : resolvedChatMode === "jobs"
         ? "jobs"
+        : resolvedChatMode === "news"
+          ? "news"
         : "default";
   const historyPaginationKey = useMemo(
     () => getChatHistoryPaginationKeyForMode(historyMode),
@@ -274,6 +283,7 @@ export function Chat({
 
   const isStudyMode = resolvedChatMode === "study";
   const isJobsMode = resolvedChatMode === "jobs";
+  const isNewsMode = resolvedChatMode === "news";
   const greetingSubtitle = isStudyMode
     ? translate("greeting.study.subtitle", "What would you like to study today?")
     : undefined;
@@ -809,6 +819,10 @@ export function Chat({
             ? {
                 chatMode: resolvedChatMode,
               }
+            : isNewsMode
+              ? {
+                  chatMode: resolvedChatMode,
+                }
             : { chatMode: "default" };
         return {
           body: {
@@ -1006,7 +1020,12 @@ export function Chat({
             ? messageWithId.text
             : "";
       const shouldShowWebSearch =
-        resolvedChatMode === "default" && detectWebSearchNeed(messageText).shouldSearch;
+        (resolvedChatMode === "default" &&
+          detectWebSearchNeed(messageText).shouldSearch) ||
+        (resolvedChatMode === "news" &&
+          (isNewsInitialMessage(messageWithId as ChatMessage) ||
+            detectWebSearchNeed(messageText).shouldSearch ||
+            shouldSearchNewsFollowUp(messageText)));
 
       const result = sendMessage(messageWithId, options);
       if (shouldShowWebSearch) {
@@ -1213,6 +1232,7 @@ export function Chat({
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
   const queryAppendStartedRef = useRef(false);
+  const newsInitialChatIdRef = useRef<string | null>(null);
   const getCurrentChatHref = useCallback(
     (chatId: string) => {
       const params = new URLSearchParams();
@@ -1220,6 +1240,8 @@ export function Chat({
         params.set("mode", "study");
       } else if (isJobsMode) {
         params.set("mode", "jobs");
+      } else if (isNewsMode) {
+        params.set("mode", "news");
       }
       if (embeddedMode === "native") {
         params.set("embedded", "native");
@@ -1228,7 +1250,7 @@ export function Chat({
       const queryString = params.toString();
       return queryString ? `/chat/${chatId}?${queryString}` : `/chat/${chatId}`;
     },
-    [embeddedMode, isJobsMode, isStudyMode]
+    [embeddedMode, isJobsMode, isNewsMode, isStudyMode]
   );
 
   const syncCurrentChatUrl = useCallback(() => {
@@ -1265,6 +1287,47 @@ export function Chat({
     query,
     sendMessageWithWebSearchStatus,
     hasAppendedQuery,
+    syncCurrentChatUrl,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isNewsMode ||
+      isReadonly ||
+      initialMessages.length > 0 ||
+      status !== "ready" ||
+      newsInitialChatIdRef.current === id
+    ) {
+      return;
+    }
+
+    const storageKey = `news-initial:${id}`;
+    try {
+      if (window.sessionStorage.getItem(storageKey) === "started") {
+        newsInitialChatIdRef.current = id;
+        return;
+      }
+      window.sessionStorage.setItem(storageKey, "started");
+    } catch {
+      // The in-memory id guard still prevents duplicate requests when storage is unavailable.
+    }
+
+    newsInitialChatIdRef.current = id;
+    syncCurrentChatUrl();
+    void sendMessageWithWebSearchStatus({
+      role: "user",
+      parts: [
+        { type: "text", text: buildNewsInitialPrompt() },
+        { type: "data-newsInitial", data: { hidden: true } },
+      ],
+    });
+  }, [
+    id,
+    initialMessages.length,
+    isNewsMode,
+    isReadonly,
+    sendMessageWithWebSearchStatus,
+    status,
     syncCurrentChatUrl,
   ]);
 
@@ -1822,6 +1885,16 @@ export function Chat({
       />
     </div>
   ) : null;
+  const newsHeader = isNewsMode ? (
+    <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+      <Newspaper className="h-4 w-4" />
+      <EditableTranslation
+        defaultText="Latest News"
+        description="Heading shown above a News mode conversation."
+        translationKey="news.heading.latest"
+      />
+    </div>
+  ) : null;
   const historyUnavailableBanner = initialMessagesDegraded ? (
     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
       <div className="font-medium">
@@ -1857,6 +1930,8 @@ export function Chat({
     ? studyHeader
     : isJobsMode
       ? jobsHeader
+      : isNewsMode
+        ? newsHeader
       : null;
   const modeHeader =
     historyUnavailableBanner || modeHeaderContent ? (
@@ -2036,7 +2111,7 @@ export function Chat({
               enableGenerationAutoFollow={isJobsMode}
               submitScrollSignal={jobsSubmitScrollSignal}
               greetingSubtitle={greetingSubtitle}
-              showGreeting={!isJobsMode}
+              showGreeting={!isJobsMode && !isNewsMode}
               hasMoreHistory={hasMoreHistory}
               header={modeHeader}
               headerFullWidth={isJobsMode}
@@ -2053,10 +2128,14 @@ export function Chat({
               setMessages={setMessages}
               status={status}
               suggestedPrompts={
-                isJobsMode || isStudyMode ? [] : resolvedSuggestedPrompts
+                isJobsMode || isStudyMode || isNewsMode
+                  ? []
+                  : resolvedSuggestedPrompts
               }
               iconPromptActions={
-                isJobsMode || isStudyMode ? [] : resolvedIconPromptActions
+                isJobsMode || isStudyMode || isNewsMode
+                  ? []
+                  : resolvedIconPromptActions
               }
               onIconPromptSelect={handleIconPromptSelect}
               jobActions={jobActions}

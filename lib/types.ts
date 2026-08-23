@@ -60,6 +60,9 @@ export type CustomUIDataTypes = {
   jobCards: {
     jobs: JobCard[];
   };
+  newsInitial: {
+    hidden: true;
+  };
   webSources: {
     provider: string;
     sources: WebSearchSource[];

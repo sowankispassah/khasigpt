@@ -1,4 +1,9 @@
-import { BookOpen, BriefcaseBusiness, MessageSquareText } from "lucide-react";
+import {
+  BookOpen,
+  BriefcaseBusiness,
+  MessageSquareText,
+  Newspaper,
+} from "lucide-react";
 import Link from "next/link";
 import { memo, useCallback, useRef } from "react";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
@@ -77,6 +82,8 @@ const PureChatItem = ({
       ? BriefcaseBusiness
       : chat.mode === "study"
         ? BookOpen
+        : chat.mode === "news"
+          ? Newspaper
         : MessageSquareText;
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId: chat.id,

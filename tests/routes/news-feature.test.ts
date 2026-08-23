@@ -1,0 +1,77 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { expect, test } from "@playwright/test";
+import {
+  buildNewsChatTitle,
+  buildNewsInitialPrompt,
+  isNewsInitialMessage,
+  parseNewsAccessModeSetting,
+  shouldSearchNewsFollowUp,
+} from "@/lib/news/shared";
+import type { ChatMessage } from "@/lib/types";
+
+const repoRoot = process.cwd();
+
+async function readWorkspaceFile(relativePath: string) {
+  return readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+test.describe("News chat mode", () => {
+  test("defaults missing feature access to admin-only", () => {
+    expect(parseNewsAccessModeSetting(undefined)).toBe("admin_only");
+    expect(parseNewsAccessModeSetting("enabled")).toBe("enabled");
+    expect(parseNewsAccessModeSetting("disabled")).toBe("disabled");
+  });
+
+  test("builds a current, Shillong-first grounded opening request", () => {
+    const prompt = buildNewsInitialPrompt(new Date("2026-08-23T06:00:00Z"));
+    expect(prompt).toContain("Shillong first");
+    expect(prompt).toContain("across Meghalaya");
+    expect(prompt).toContain("current web search results");
+    expect(prompt).toContain("Deduplicate");
+  });
+
+  test("marks the automatic user turn as hidden and keeps follow-up search selective", () => {
+    const message = {
+      id: "00000000-0000-4000-8000-000000000001",
+      role: "user",
+      metadata: { createdAt: new Date().toISOString() },
+      parts: [
+        { type: "text", text: "internal news request" },
+        { type: "data-newsInitial", data: { hidden: true } },
+      ],
+    } satisfies ChatMessage;
+
+    expect(isNewsInitialMessage(message)).toBe(true);
+    expect(shouldSearchNewsFollowUp("Any updates since then?")).toBe(true);
+    expect(shouldSearchNewsFollowUp("Tell me more about the second story.")).toBe(
+      true
+    );
+    expect(shouldSearchNewsFollowUp("What does that scheme mean?")).toBe(false);
+    expect(shouldSearchNewsFollowUp("Thanks.")).toBe(false);
+  });
+
+  test("uses localized dated history titles", () => {
+    const now = new Date("2026-08-23T06:00:00Z");
+    expect(buildNewsChatTitle("en", now)).toContain("Today's news");
+    expect(buildNewsChatTitle("kha", now)).toContain("Khubor ba mynta");
+    expect(buildNewsChatTitle("kha", now)).toContain("2026");
+  });
+
+  test("wires web and native clients to the shared chat and search paths", async () => {
+    const [webChat, nativeChat, chatRoute, sidebar, nativeSidebar] =
+      await Promise.all([
+        readWorkspaceFile("components/chat.tsx"),
+        readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
+        readWorkspaceFile("app/(chat)/api/chat/route.ts"),
+        readWorkspaceFile("components/app-sidebar.tsx"),
+        readWorkspaceFile("native/src/components/AppSidebar.tsx"),
+      ]);
+
+    expect(webChat).toContain('type: "data-newsInitial"');
+    expect(nativeChat).toContain('type: "data-newsInitial"');
+    expect(chatRoute).toContain("shouldSearchInNewsMode");
+    expect(sidebar).toContain('translationKey="sidebar.news"');
+    expect(nativeSidebar).toContain('translationKey="sidebar.news"');
+  });
+});

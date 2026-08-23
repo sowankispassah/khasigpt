@@ -638,6 +638,13 @@
       "when": 1779068700021,
       "tag": "0088_web_search_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1787443200000,
+      "tag": "0089_news_chat_mode",
+      "breakpoints": true
     }
   ]
 }

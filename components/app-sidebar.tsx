@@ -6,6 +6,7 @@ import {
   Calculator,
   Languages,
   MicVocal,
+  Newspaper,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -71,6 +72,7 @@ const TRANSLATE_HREF = "/translate";
 const LIVE_TRANSLATION_HREF = "/live-translation";
 const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
+const NEWS_HREF = "/chat?mode=news&new=1";
 const CALCULATOR_HREF = "/calculator";
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
@@ -124,6 +126,7 @@ export function AppSidebar({
   jobsModeEnabled = false,
   translateEnabled = false,
   liveTranslationEnabled = false,
+  newsEnabled = false,
   user,
   studyModeEnabled = false,
 }: {
@@ -131,6 +134,7 @@ export function AppSidebar({
   jobsModeEnabled?: boolean;
   translateEnabled?: boolean;
   liveTranslationEnabled?: boolean;
+  newsEnabled?: boolean;
   user: User | undefined;
   studyModeEnabled?: boolean;
 }) {
@@ -139,6 +143,9 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const navigationFingerprint = `${pathname}?${searchParams.toString()}`;
+  const isNewsRoute =
+    isChatShellPath(pathname) && searchParams.get("mode") === "news";
+  const contextualNewChatHref = isNewsRoute ? NEWS_HREF : NEW_CHAT_HREF;
   const router = useRouter();
   const [pendingNavigation, setPendingNavigation] = useState<
     | "home"
@@ -147,6 +154,7 @@ export function AppSidebar({
     | "live-translation"
     | "study"
     | "jobs"
+    | "news"
     | "calculator"
     | null
   >(null);
@@ -218,6 +226,7 @@ export function AppSidebar({
         | "live-translation"
         | "study"
         | "jobs"
+        | "news"
         | "calculator",
       href: string
     ) => {
@@ -273,6 +282,9 @@ export function AppSidebar({
         prefetchChatRoute(VIEW_JOBS_HREF);
         prefetchJobsModeData();
       }
+      if (newsEnabled) {
+        prefetchChatRoute(NEWS_HREF);
+      }
       if (calculatorEnabled) {
         prefetchRoute(CALCULATOR_HREF);
       }
@@ -290,6 +302,7 @@ export function AppSidebar({
     studyModeEnabled,
     translateEnabled,
     liveTranslationEnabled,
+    newsEnabled,
   ]);
 
   const handleHomeClick = useCallback(
@@ -314,9 +327,14 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      navigateWithFeedback("chat", NEW_CHAT_HREF);
+      navigateWithFeedback(isNewsRoute ? "news" : "chat", contextualNewChatHref);
     },
-    [navigateWithFeedback, shouldHandleClientNavigation]
+    [
+      contextualNewChatHref,
+      isNewsRoute,
+      navigateWithFeedback,
+      shouldHandleClientNavigation,
+    ]
   );
 
   const handleNewStudyClick = useCallback(
@@ -331,6 +349,22 @@ export function AppSidebar({
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
+
+  const handleNewsClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) {
+        return;
+      }
+      event.preventDefault();
+
+      navigateWithFeedback("news", NEWS_HREF);
+    },
+    [navigateWithFeedback, shouldHandleClientNavigation]
+  );
+
+  const handleNewsPrefetch = useCallback(() => {
+    prefetchChatRoute(NEWS_HREF);
+  }, [prefetchChatRoute]);
 
   const handleTranslateClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -474,11 +508,12 @@ export function AppSidebar({
               <SidebarMenuButton asChild className="cursor-pointer text-sm">
                 <Link
                   aria-disabled={pendingNavigation !== null}
-                  href={NEW_CHAT_HREF}
+                  href={contextualNewChatHref}
                   onClick={handleNewChatClick}
                 >
                   <PlusIcon />
-                  {pendingNavigation === "chat" ? (
+                  {pendingNavigation === "chat" ||
+                  pendingNavigation === "news" ? (
                     <SidebarEditableMenuLabel
                       defaultText="Opening..."
                       translationKey="navigation.opening"
@@ -598,6 +633,33 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ) : null}
+            {newsEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={NEWS_HREF}
+                    onClick={handleNewsClick}
+                    onFocus={handleNewsPrefetch}
+                    onMouseEnter={handleNewsPrefetch}
+                    onTouchStart={handleNewsPrefetch}
+                  >
+                    <Newspaper />
+                    {pendingNavigation === "news" ? (
+                      <SidebarEditableMenuLabel
+                        defaultText="Opening..."
+                        translationKey="navigation.opening"
+                      />
+                    ) : (
+                      <SidebarEditableMenuLabel
+                        defaultText="News"
+                        translationKey="sidebar.news"
+                      />
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
             {calculatorEnabled ? (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild className="cursor-pointer text-sm">
@@ -632,6 +694,7 @@ export function AppSidebar({
           label="Chat History"
           labelKey="sidebar.history.title"
           mode="all"
+          showNewsHistory={newsEnabled}
           user={activeUser ?? user}
         />
       </SidebarContent>

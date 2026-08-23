@@ -78,6 +78,7 @@ import {
   LIVE_TRANSLATION_SUPPORTED_LANGUAGES_SETTING_KEY,
   LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   PRICING_PLAN_CACHE_TAG,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   SITE_ADMIN_ENTRY_CODE_HASH_SETTING_KEY,
@@ -222,6 +223,7 @@ const SETTINGS_SNAPSHOT_KEYS = [
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_B_SETTING_KEY,
   LIVE_TRANSLATION_SYSTEM_INSTRUCTION_SETTING_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
@@ -1393,6 +1395,12 @@ export default async function AdminSettingsPage({
       settingKey: JOBS_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
+  const newsAccessState =
+    featureAccessControlStateByField.get("newsAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: NEWS_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
   const imageGenerationAccessState =
     featureAccessControlStateByField.get("imageGenerationAccessMode") ??
     resolveFeatureAccessControlState({
@@ -1434,6 +1442,7 @@ export default async function AdminSettingsPage({
       snapshot: featureAccessState,
     });
   const jobsAccessMode = jobsAccessState.mode;
+  const newsAccessMode = newsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
   const voiceChatAndroidAccessMode =
@@ -1733,6 +1742,15 @@ export default async function AdminSettingsPage({
               readState={jobsAccessState.readState}
               successMessage="Jobs mode availability updated."
               title="Jobs mode"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={newsAccessMode}
+              description="Show or hide the current News chat experience. News also requires Web Search access for the same user."
+              fieldName="newsAccessMode"
+              readState={newsAccessState.readState}
+              successMessage="News availability updated."
+              title="News"
             />
 
             <FeatureAccessModeControl

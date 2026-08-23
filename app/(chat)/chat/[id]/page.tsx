@@ -18,16 +18,21 @@ import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import { withChatReadDatabase } from "@/lib/db/chat-read-database";
 import {
   getChatById,
   getMessagesByChatIdPage,
 } from "@/lib/db/queries";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+} from "@/lib/feature-access";
 import {
   getFallbackTranslationBundle,
   getTranslationBundle,
@@ -36,6 +41,7 @@ import { getActiveLanguages } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getJobPostingById } from "@/lib/jobs/service";
 import type { JobListItem } from "@/lib/jobs/types";
+import { parseNewsAccessModeSetting } from "@/lib/news/config";
 import { getSiteUrl } from "@/lib/seo/site";
 import {
   getFeatureAccessModeSettingValue,
@@ -72,6 +78,8 @@ const CHAT_PAGE_FEATURE_ACCESS_KEYS = [
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
 ] as const;
@@ -269,6 +277,16 @@ export default async function Page(props: {
   );
   const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const jobsModeSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const newsSetting = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
+    NEWS_FEATURE_FLAG_KEY,
+    { unconfirmedFallback: "admin_only" }
+  );
+  const webSearchSetting = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
+    WEB_SEARCH_ENABLED_SETTING_KEY,
+    { unconfirmedFallback: "admin_only" }
+  );
   const voiceChatWebSetting = getFeatureSetting(VOICE_CHAT_WEB_FEATURE_FLAG_KEY);
   const voiceChatLegacySetting = getFeatureSetting(
     VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY
@@ -290,6 +308,12 @@ export default async function Page(props: {
   const studyModeEnabled = isFeatureEnabledForRole(studyModeMode, userRole);
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, userRole);
+  const newsEnabled =
+    isFeatureEnabledForRole(parseNewsAccessModeSetting(newsSetting), userRole) &&
+    isFeatureEnabledForRole(
+      parseFeatureAccessMode(webSearchSetting, "admin_only"),
+      userRole
+    );
   const voiceChatSettings = resolvePlatformVoiceChatSetting({
     legacyValue: voiceChatLegacySetting,
     webValue: voiceChatWebSetting,
@@ -313,12 +337,17 @@ export default async function Page(props: {
       ? "study"
       : requestedMode === "jobs"
         ? "jobs"
+        : requestedMode === "news"
+          ? "news"
         : "default";
   const chatMode = chat?.mode ?? fallbackChatMode;
   if (chatMode === "study" && !studyModeEnabled) {
     return <StudyModeDisabledNotice />;
   }
   if (chatMode === "jobs" && !jobsModeEnabled) {
+    return notFound();
+  }
+  if (chatMode === "news" && !newsEnabled) {
     return notFound();
   }
   if (chat && chatMode === "jobs") {

@@ -93,10 +93,13 @@ function buildPendingChatTitle({
   mode,
 }: {
   firstMessageText: string;
-  mode: "default" | "study" | "jobs";
+  mode: "default" | "study" | "jobs" | "news";
 }) {
   if (mode === "study") {
     return "Study";
+  }
+  if (mode === "news") {
+    return "News";
   }
 
   const normalized = firstMessageText.trim().replace(/\s+/g, " ");
@@ -115,7 +118,7 @@ export async function ensureChatExistsAction({
 }: {
   chatId: string;
   visibility: VisibilityType;
-  mode: "default" | "study" | "jobs";
+  mode: "default" | "study" | "jobs" | "news";
   firstMessageText: string;
 }) {
   const session = await getChatRequestSession();

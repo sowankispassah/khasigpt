@@ -16,7 +16,7 @@ export type ChatPageLoaderPayload = {
   initialJobContext?: JobCard | null;
   jobsListItems?: JobListItem[];
   initialVisibilityType: VisibilityType;
-  chatMode: "default" | "study" | "jobs";
+  chatMode: "default" | "study" | "jobs" | "news";
   languageSettings?: LanguageOption[];
   isReadonly: boolean;
   autoResume: boolean;

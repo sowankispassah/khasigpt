@@ -1899,6 +1899,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Retry button label for the chat detail recovery state.",
   },
   {
+    key: "sidebar.news",
+    defaultText: "News",
+    description: "Sidebar link for the current News chat mode.",
+  },
+  {
+    key: "news.heading.latest",
+    defaultText: "Latest News",
+    description: "Heading shown above a News mode conversation.",
+  },
+  {
+    key: "news.loading.latest",
+    defaultText: "Searching for the latest Shillong and Meghalaya news...",
+    description: "Native News mode loading subtitle before the first search begins.",
+  },
+  {
     key: "chat.detail.load_failed.retrying",
     defaultText: "Retrying...",
     description: "Pending retry button label for the chat detail recovery state.",

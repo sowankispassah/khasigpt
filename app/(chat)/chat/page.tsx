@@ -11,15 +11,21 @@ import {
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+} from "@/lib/feature-access";
 import { getActiveLanguages } from "@/lib/i18n/languages";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import { getJobPostingById, toJobCard } from "@/lib/jobs/service";
 import type { JobListItem } from "@/lib/jobs/types";
+import { parseNewsAccessModeSetting } from "@/lib/news/config";
 import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
@@ -44,6 +50,8 @@ const CHAT_HOME_FEATURE_ACCESS_KEYS = [
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
   VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
 ] as const;
@@ -88,6 +96,7 @@ export default async function Page({
       : null;
   const isStudyMode = requestedMode === "study";
   const isJobsMode = requestedMode === "jobs";
+  const isNewsMode = requestedMode === "news";
 
   const safeQuery = <T,>(label: string, promise: Promise<T>, fallback: T) =>
     withTimeout(promise, CHAT_HOME_OPTIONAL_QUERY_TIMEOUT_MS, () => {
@@ -179,6 +188,25 @@ export default async function Page({
   const jobsModeSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
   const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
+  const newsSetting = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
+    NEWS_FEATURE_FLAG_KEY,
+    { unconfirmedFallback: "admin_only" }
+  );
+  const webSearchSetting = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
+    WEB_SEARCH_ENABLED_SETTING_KEY,
+    { unconfirmedFallback: "admin_only" }
+  );
+  const newsEnabled =
+    isFeatureEnabledForRole(
+      parseNewsAccessModeSetting(newsSetting),
+      session.user.role
+    ) &&
+    isFeatureEnabledForRole(
+      parseFeatureAccessMode(webSearchSetting, "admin_only"),
+      session.user.role
+    );
   const voiceChatSettings = resolvePlatformVoiceChatSetting({
     legacyValue: getFeatureSetting(VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY),
     webValue: getFeatureSetting(VOICE_CHAT_WEB_FEATURE_FLAG_KEY),
@@ -199,7 +227,16 @@ export default async function Page({
   if (isJobsMode && !jobsModeEnabled) {
     notFound();
   }
-  const chatMode = isStudyMode ? "study" : isJobsMode ? "jobs" : "default";
+  if (isNewsMode && !newsEnabled) {
+    notFound();
+  }
+  const chatMode = isStudyMode
+    ? "study"
+    : isJobsMode
+      ? "jobs"
+      : isNewsMode
+        ? "news"
+        : "default";
   const initialJobEntry =
     chatMode === "jobs" && requestedJobId
       ? await getJobPostingById({

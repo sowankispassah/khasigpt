@@ -38,6 +38,7 @@ import {
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   isProductionEnvironment,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TOKENS_PER_CREDIT,
 } from "@/lib/constants";
@@ -89,6 +90,13 @@ import {
 } from "@/lib/jobs/service";
 import type { JobCard } from "@/lib/jobs/types";
 import { getMobileSession } from "@/lib/mobile-auth-session";
+import { parseNewsAccessModeSetting } from "@/lib/news/config";
+import {
+  buildNewsChatTitle,
+  isNewsInitialMessage,
+  NEWS_CHAT_MODE,
+  shouldSearchNewsFollowUp,
+} from "@/lib/news/shared";
 import { RAG_HYBRID_ANSWERING_INSTRUCTION } from "@/lib/rag/answering";
 import {
   isContextualFollowupQuery,
@@ -165,6 +173,7 @@ const CHAT_API_FEATURE_ACCESS_KEYS = [
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
 ] as const;
 
 let globalStreamContext: ResumableStreamContext | null = null;
@@ -1159,7 +1168,7 @@ export async function POST(request: Request) {
       selectedLanguage?: string;
       selectedVisibilityType: VisibilityType;
       hiddenPrompt?: string;
-      chatMode?: "default" | "study" | "jobs";
+      chatMode?: "default" | "study" | "jobs" | "news";
       studyPaperId?: string | null;
       studyQuizActive?: boolean;
       jobPostingId?: string | null;
@@ -1318,6 +1327,11 @@ export async function POST(request: Request) {
       STUDY_MODE_FEATURE_FLAG_KEY
     );
     const jobsModeSetting = getFeatureAccessModeSetting(JOBS_FEATURE_FLAG_KEY);
+    const newsModeSetting = getFeatureAccessModeSettingValue(
+      featureAccessSettings,
+      NEWS_FEATURE_FLAG_KEY,
+      { unconfirmedFallback: "admin_only" }
+    );
     const customKnowledgeEnabled =
       typeof customKnowledgeSetting === "boolean"
         ? customKnowledgeSetting
@@ -1338,12 +1352,16 @@ export async function POST(request: Request) {
     );
     const jobsMode = parseJobsAccessModeSetting(jobsModeSetting);
     const jobsModeEnabled = isFeatureEnabledForRole(jobsMode, session.user.role);
+    const newsModeEnabled = isFeatureEnabledForRole(
+      parseNewsAccessModeSetting(newsModeSetting),
+      session.user.role
+    );
     const requestedChatMode =
-      chatModeInput === STUDY_CHAT_MODE
-        ? STUDY_CHAT_MODE
-        : chatModeInput === JOBS_CHAT_MODE
-          ? JOBS_CHAT_MODE
-          : "default";
+      chatModeInput === STUDY_CHAT_MODE ||
+      chatModeInput === JOBS_CHAT_MODE ||
+      chatModeInput === NEWS_CHAT_MODE
+        ? chatModeInput
+        : "default";
 
     const resolvedChatMode = chat?.mode ?? requestedChatMode;
     let persistedChatLastContext = chat?.lastContext ?? null;
@@ -1358,6 +1376,12 @@ export async function POST(request: Request) {
       return new ChatSDKError(
         "not_found:chat",
         "Jobs mode is disabled"
+      ).toResponse();
+    }
+    if (resolvedChatMode === NEWS_CHAT_MODE && !newsModeEnabled) {
+      return new ChatSDKError(
+        "not_found:chat",
+        "News is disabled"
       ).toResponse();
     }
     const selectedLanguageSystemPrompt =
@@ -1378,6 +1402,8 @@ export async function POST(request: Request) {
       const fallbackTitle =
         resolvedChatMode === STUDY_CHAT_MODE
           ? "Study"
+          : resolvedChatMode === NEWS_CHAT_MODE
+            ? buildNewsChatTitle(selectedLanguage)
           : buildFallbackTitleFromMessage(message);
 
       await measurePreModelStep("save_chat", () =>
@@ -2877,6 +2903,8 @@ export async function POST(request: Request) {
         ? resolvedLanguageConfig.systemPrompt.trim()
         : null;
     const userMessageText = getTextFromMessage(message).trim();
+    const isInitialNewsRequest =
+      resolvedChatMode === NEWS_CHAT_MODE && isNewsInitialMessage(message);
     const previousUserMessageTexts = baseUiMessages
       .filter((entry) => entry.role === "user")
       .map((entry) => getTextFromMessage(entry))
@@ -2886,6 +2914,11 @@ export async function POST(request: Request) {
       previousUserMessages: previousUserMessageTexts,
     });
     const webSearchDecision = detectWebSearchNeed(userMessageText);
+    const shouldSearchInNewsMode =
+      resolvedChatMode === NEWS_CHAT_MODE &&
+      (isInitialNewsRequest ||
+        webSearchDecision.shouldSearch ||
+        shouldSearchNewsFollowUp(userMessageText));
 
     const baseInstruction = systemPrompt({
       requestHints,
@@ -2915,6 +2948,9 @@ export async function POST(request: Request) {
         : "",
       resolvedChatMode === JOBS_CHAT_MODE
         ? "You are in Jobs mode. Use only the retrieved job knowledge and selected job posting context as the source for eligibility, responsibilities, requirements, salary, location, and important dates."
+        : "",
+      resolvedChatMode === NEWS_CHAT_MODE
+        ? "You are in News mode. Treat only the first hidden News request as defaulting to Shillong and Meghalaya. For every visible follow-up, follow the user's requested location or topic without forcing the default geography. Distinguish current reporting from older background and never invent a source."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE
         ? "Format job responses in clean Markdown with clear sections (for example: Overview, Eligibility, Salary, Location, Important dates) and consistent bullet points."
@@ -3019,8 +3055,9 @@ export async function POST(request: Request) {
       role: userRole,
     });
     const shouldAttemptWebSearch =
-      resolvedChatMode === "default" &&
-      webSearchDecision.shouldSearch &&
+      (resolvedChatMode === "default"
+        ? webSearchDecision.shouldSearch
+        : shouldSearchInNewsMode) &&
       !shouldAskForWeatherLocation &&
       (!currentInfoDecision.intent || webSearchDecision.hasExplicitWebIntent) &&
       webSearchAllowed &&
@@ -3171,6 +3208,15 @@ export async function POST(request: Request) {
         chatId: id,
         reason: webSearchFailureReason,
       });
+    }
+    if (
+      resolvedChatMode === NEWS_CHAT_MODE &&
+      shouldSearchInNewsMode &&
+      !webSearchAnswer
+    ) {
+      systemInstructionParts.push(
+        "Current web news could not be retrieved for this turn. Do not provide headlines, dates, or breaking-news claims from memory. Briefly explain that live news is temporarily unavailable and invite the user to retry or ask another question."
+      );
     }
     if (shouldAskForWeatherLocation) {
       systemInstructionParts.push(

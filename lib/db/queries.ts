@@ -246,7 +246,12 @@ function isValidUUID(value: string | null | undefined): value is string {
 }
 
 function isChatMode(value: unknown): value is ChatMode {
-  return value === "default" || value === "study" || value === "jobs";
+  return (
+    value === "default" ||
+    value === "study" ||
+    value === "jobs" ||
+    value === "news"
+  );
 }
 
 function isChatStatus(value: unknown): value is ChatStatus {

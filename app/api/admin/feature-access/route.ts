@@ -8,6 +8,7 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   SUGGESTED_PROMPTS_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -52,6 +53,10 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
   jobsAccessMode: {
     settingKey: JOBS_FEATURE_FLAG_KEY,
     auditAction: "feature.jobs_mode.toggle",
+  },
+  newsAccessMode: {
+    settingKey: NEWS_FEATURE_FLAG_KEY,
+    auditAction: "feature.news.toggle",
   },
   imageGenerationAccessMode: {
     settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,

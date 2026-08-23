@@ -15,6 +15,7 @@ import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { IconPromptAction } from "@/lib/icon-prompts";
 import type { JobCard } from "@/lib/jobs/types";
+import { isNewsInitialMessage } from "@/lib/news/shared";
 import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -118,7 +119,11 @@ function PureMessages({
   showScrollbar = false,
 }: MessagesProps) {
   const renderMessages = useMemo(() => dedupeMessages(messages), [messages]);
-  const lastMessage = renderMessages.at(-1);
+  const displayMessages = useMemo(
+    () => renderMessages.filter((message) => !isNewsInitialMessage(message)),
+    [renderMessages]
+  );
+  const lastMessage = displayMessages.at(-1);
   const isLastUserMessage = lastMessage?.role === "user";
   const votesByMessageId = useMemo(() => {
     if (!votes) {
@@ -152,11 +157,11 @@ function PureMessages({
   const submitBottomLockDeadlineRef = useRef(0);
   const hiddenCount = showAllLoaded
     ? 0
-    : Math.max(0, renderMessages.length - MAX_RENDERED_MESSAGES);
+    : Math.max(0, displayMessages.length - MAX_RENDERED_MESSAGES);
   const baseIndex = showAllLoaded ? 0 : hiddenCount;
   const visibleMessages = showAllLoaded
-    ? renderMessages
-    : renderMessages.slice(hiddenCount);
+    ? displayMessages
+    : displayMessages.slice(hiddenCount);
   const streamingSignature =
     status === "streaming" && lastMessage?.role === "assistant"
       ? (lastMessage.parts
@@ -387,7 +392,7 @@ function PureMessages({
     if (pendingInitialScrollChatIdRef.current !== chatId) {
       return;
     }
-    if (renderMessages.length === 0) {
+    if (displayMessages.length === 0) {
       return;
     }
 
@@ -512,7 +517,7 @@ function PureMessages({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [chatId, renderMessages.length, messagesContainerRef, messagesEndRef]);
+  }, [chatId, displayMessages.length, messagesContainerRef, messagesEndRef]);
 
   useEffect(() => {
     if (status === "streaming" && streamingSignature !== null && isAtBottom) {
@@ -600,7 +605,7 @@ function PureMessages({
     }
   }, [isLoadingHistory, messagesContainerRef, onLoadMoreHistory]);
 
-  if (renderMessages.length === 0) {
+  if (displayMessages.length === 0) {
     return (
       <div
         className={cn(
@@ -702,8 +707,11 @@ function PureMessages({
 
           {visibleMessages.map((message, index) => {
             const originalIndex = baseIndex + index;
+            const sourceIndex = renderMessages.findIndex(
+              (entry) => entry.id === message.id
+            );
             const precedingUserMessageId = [...renderMessages]
-              .slice(0, originalIndex)
+              .slice(0, sourceIndex)
               .reverse()
               .find((entry) => entry.role === "user")?.id;
             return (
@@ -711,14 +719,14 @@ function PureMessages({
                 chatId={chatId}
                 isLoading={
                   status === "streaming" &&
-                  renderMessages.length - 1 === originalIndex
+                  displayMessages.length - 1 === originalIndex
                 }
                 isReadonly={isReadonly}
                 key={message.id}
                 message={message}
                 regenerate={regenerate}
                 requiresScrollPadding={
-                  hasSentMessage && originalIndex === renderMessages.length - 1
+                  hasSentMessage && originalIndex === displayMessages.length - 1
                 }
                 setMessages={setMessages}
                 studyActions={studyActions}

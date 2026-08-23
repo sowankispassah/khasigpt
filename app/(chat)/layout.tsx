@@ -8,11 +8,16 @@ import {
   CALCULATOR_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
 } from "@/lib/constants";
 import { getUserById } from "@/lib/db/queries";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+} from "@/lib/feature-access";
 import {
   getFallbackTranslationBundle,
   getTranslationBundle,
@@ -22,6 +27,7 @@ import {
   LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
   parseLiveTranslationAccessModeSetting,
 } from "@/lib/live-translation/config";
+import { parseNewsAccessModeSetting } from "@/lib/news/config";
 import {
   getFeatureAccessModeSettingValue,
   loadFeatureAccessSettingsByKeys,
@@ -38,6 +44,8 @@ const CHAT_LAYOUT_FEATURE_ACCESS_KEYS = [
   STUDY_MODE_FEATURE_FLAG_KEY,
   CALCULATOR_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
+  WEB_SEARCH_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
 ] as const;
@@ -144,6 +152,20 @@ export default async function Layout({
   const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const calculatorSetting = getFeatureSetting(CALCULATOR_FEATURE_FLAG_KEY);
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const newsSetting = featureAccessSettings
+    ? getFeatureAccessModeSettingValue(
+        featureAccessSettings,
+        NEWS_FEATURE_FLAG_KEY,
+        { unconfirmedFallback: "admin_only" }
+      )
+    : null;
+  const webSearchSetting = featureAccessSettings
+    ? getFeatureAccessModeSettingValue(
+        featureAccessSettings,
+        WEB_SEARCH_ENABLED_SETTING_KEY,
+        { unconfirmedFallback: "admin_only" }
+      )
+    : null;
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
   const liveTranslationSetting = getFeatureSetting(
     LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
@@ -165,6 +187,15 @@ export default async function Layout({
     jobsAccessMode,
     session?.user?.role ?? null
   );
+  const newsEnabled =
+    isFeatureEnabledForRole(
+      parseNewsAccessModeSetting(newsSetting),
+      session?.user?.role ?? null
+    ) &&
+    isFeatureEnabledForRole(
+      parseFeatureAccessMode(webSearchSetting, "admin_only"),
+      session?.user?.role ?? null
+    );
   const translateAccessMode = parseTranslateAccessModeSetting(translateSetting);
   const translateEnabled = isFeatureEnabledForRole(
     translateAccessMode,
@@ -191,6 +222,7 @@ export default async function Layout({
             calculatorEnabled={calculatorEnabled}
             jobsModeEnabled={jobsModeEnabled}
             liveTranslationEnabled={liveTranslationEnabled}
+            newsEnabled={newsEnabled}
             studyModeEnabled={studyModeEnabled}
             translateEnabled={translateEnabled}
             user={session.user}

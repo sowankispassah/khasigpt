@@ -48,7 +48,7 @@ export type ChatHistory = {
   message?: string;
 };
 
-export type ChatHistoryMode = "all" | "default" | "study" | "jobs";
+export type ChatHistoryMode = "all" | "default" | "study" | "jobs" | "news";
 
 const PAGE_SIZE = 20;
 const STUDY_INITIAL_HISTORY_LIMIT = 5;
@@ -81,7 +81,10 @@ function normalizeHistoryItem(
     ...item,
     createdAt: new Date(getChatTime(item.createdAt)),
     mode:
-      item.mode === "study" || item.mode === "jobs" || item.mode === "default"
+      item.mode === "study" ||
+      item.mode === "jobs" ||
+      item.mode === "news" ||
+      item.mode === "default"
         ? item.mode
         : "default",
     title:
@@ -159,7 +162,13 @@ const groupChatsByDate = (chats: ChatHistoryListItem[]): GroupedChats => {
 
 export function getChatHistoryBaseKey(mode: ChatHistoryMode = "all") {
   const modeParam =
-    mode === "study" ? "mode=study&" : mode === "jobs" ? "mode=jobs&" : "";
+    mode === "study"
+      ? "mode=study&"
+      : mode === "jobs"
+        ? "mode=jobs&"
+        : mode === "news"
+          ? "mode=news&"
+          : "";
   return `/api/history?${modeParam}limit=${PAGE_SIZE}`;
 }
 
@@ -182,7 +191,13 @@ export function getChatHistoryPaginationKeyForMode(
     }
 
     const modeParam =
-      mode === "study" ? "mode=study&" : mode === "jobs" ? "mode=jobs&" : "";
+      mode === "study"
+        ? "mode=study&"
+        : mode === "jobs"
+          ? "mode=jobs&"
+          : mode === "news"
+            ? "mode=news&"
+            : "";
     return `/api/history?${modeParam}ending_before=${firstChatFromPage.id}&limit=${PAGE_SIZE}`;
   };
 }
@@ -203,12 +218,14 @@ export function SidebarHistory({
   label,
   labelKey,
   historyKey,
+  showNewsHistory = true,
 }: {
   user: User | undefined;
   mode?: ChatHistoryMode;
   label?: string;
   labelKey?: string;
   historyKey?: string;
+  showNewsHistory?: boolean;
 }) {
   const { setOpenMobile } = useSidebar();
   const params = useParams();
@@ -301,9 +318,11 @@ export function SidebarHistory({
         return b.id.localeCompare(a.id);
       });
 
-      return dedupedChats;
+      return showNewsHistory
+        ? dedupedChats
+        : dedupedChats.filter((chat) => chat.mode !== "news");
     },
-    [paginatedChatHistories]
+    [paginatedChatHistories, showNewsHistory]
   );
   const visibleChatsFromHistory = useMemo(
     () =>

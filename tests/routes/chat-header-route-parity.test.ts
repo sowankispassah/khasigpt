@@ -25,6 +25,6 @@ test("web and native chat headers share home and detail controls", async () => {
     "middleContent={isChatDetailView ? newChatHeaderButton : undefined}",
   );
   expect(nativeChat).toContain(
-    'title={isStudyMode ? "Study Mode" : "KhasiGPT"}',
+    'title={isStudyMode ? "Study Mode" : isNewsMode ? "News" : "KhasiGPT"}',
   );
 });

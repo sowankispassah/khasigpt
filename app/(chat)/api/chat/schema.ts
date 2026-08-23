@@ -38,11 +38,19 @@ const jobTitleReferencePartSchema = z.object({
   }),
 });
 
+const newsInitialPartSchema = z.object({
+  type: z.enum(["data-newsInitial"]),
+  data: z.object({
+    hidden: z.literal(true),
+  }),
+});
+
 const partSchema = z.union([
   textPartSchema,
   filePartSchema,
   studyQuestionReferencePartSchema,
   jobTitleReferencePartSchema,
+  newsInitialPartSchema,
 ]);
 
 export const postRequestBodySchema = z.object({
@@ -53,7 +61,7 @@ export const postRequestBodySchema = z.object({
     parts: z.array(partSchema),
   }),
   hiddenPrompt: z.string().trim().min(1).max(2000).optional(),
-  chatMode: z.enum(["default", "study", "jobs"]).optional(),
+  chatMode: z.enum(["default", "study", "jobs", "news"]).optional(),
   studyPaperId: z.string().uuid().optional().nullable(),
   studyQuizActive: z.boolean().optional(),
   jobPostingId: z.string().uuid().optional().nullable(),

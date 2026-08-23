@@ -16,6 +16,7 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  NEWS_FEATURE_FLAG_KEY,
   RECOMMENDED_PRICING_PLAN_SETTING_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
@@ -51,6 +52,7 @@ import {
   LIVE_TRANSLATION_ACCESS_MODE_FALLBACK,
   parseLiveTranslationAccessModeSetting,
 } from "@/lib/live-translation/config";
+import { parseNewsAccessModeSetting } from "@/lib/news/config";
 import { getAndroidProductIdForPlan } from "@/lib/payments/google-play-products";
 import {
   getFeatureAccessModeSettingValue,
@@ -172,6 +174,9 @@ export async function loadFeatureAccessReadModel({
     DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
   );
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const newsSetting = getFeatureSetting(NEWS_FEATURE_FLAG_KEY, {
+    failOpen: false,
+  });
   const studySetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
   const liveTranslationAndroidSetting = getFeatureSetting(
@@ -210,6 +215,7 @@ export async function loadFeatureAccessReadModel({
     ),
     forum: true,
     jobs: isFeatureEnabledForRole(parseJobsAccessModeSetting(jobsSetting), role),
+    news: isFeatureEnabledForRole(parseNewsAccessModeSetting(newsSetting), role),
     study: isFeatureEnabledForRole(
       parseStudyModeAccessModeSetting(studySetting),
       role
