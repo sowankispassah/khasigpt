@@ -32,10 +32,12 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { buildPendingChatHref } from "@/lib/chat/navigation";
 import {
   doneGlobalProgress,
   startGlobalProgress,
 } from "@/lib/ui/global-progress";
+import { generateUUID } from "@/lib/utils";
 import { cancelIdle, runWhenIdle, shouldPrefetch } from "@/lib/utils/prefetch";
 
 const SidebarHistory = dynamic(
@@ -313,7 +315,10 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      const href = NEW_CHAT_HREF;
+      const href = buildPendingChatHref({
+        href: NEW_CHAT_HREF,
+        pendingChatId: generateUUID(),
+      });
       navigateWithFeedback("home", href);
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
@@ -327,7 +332,13 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      navigateWithFeedback(isNewsRoute ? "news" : "chat", contextualNewChatHref);
+      navigateWithFeedback(
+        isNewsRoute ? "news" : "chat",
+        buildPendingChatHref({
+          href: contextualNewChatHref,
+          pendingChatId: generateUUID(),
+        })
+      );
     },
     [
       contextualNewChatHref,
@@ -345,7 +356,13 @@ export function AppSidebar({
 
       event.preventDefault();
 
-      navigateWithFeedback("study", NEW_STUDY_HREF);
+      navigateWithFeedback(
+        "study",
+        buildPendingChatHref({
+          href: NEW_STUDY_HREF,
+          pendingChatId: generateUUID(),
+        })
+      );
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
@@ -357,7 +374,13 @@ export function AppSidebar({
       }
       event.preventDefault();
 
-      navigateWithFeedback("news", NEWS_HREF);
+      navigateWithFeedback(
+        "news",
+        buildPendingChatHref({
+          href: NEWS_HREF,
+          pendingChatId: generateUUID(),
+        })
+      );
     },
     [navigateWithFeedback, shouldHandleClientNavigation]
   );
@@ -448,7 +471,13 @@ export function AppSidebar({
         return;
       }
 
-      navigateWithFeedback("jobs", VIEW_JOBS_HREF);
+      navigateWithFeedback(
+        "jobs",
+        buildPendingChatHref({
+          href: VIEW_JOBS_HREF,
+          pendingChatId: generateUUID(),
+        })
+      );
     },
     [
       navigateWithFeedback,

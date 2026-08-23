@@ -67,6 +67,7 @@ import {
   buildNewsInitialPrompt,
   isNewsInitialMessage,
   shouldSearchNewsFollowUp,
+  shouldStartNewsInitialRequest,
 } from "@/lib/news/shared";
 import {
   getStudyContextForChat,
@@ -242,18 +243,8 @@ export function Chat({
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
   const newChatNonce = searchParams.get("new");
-  const requestedMode = searchParams.get("mode");
   const embeddedMode = searchParams.get("embedded");
-  const resolvedChatMode =
-    pathname === "/chat"
-      ? requestedMode === "study"
-        ? "study"
-        : requestedMode === "jobs"
-          ? "jobs"
-          : requestedMode === "news"
-            ? "news"
-          : "default"
-      : chatMode;
+  const resolvedChatMode = chatMode;
   const historyMode =
     resolvedChatMode === "study"
       ? "study"
@@ -1291,13 +1282,14 @@ export function Chat({
   ]);
 
   useEffect(() => {
-    if (
-      !isNewsMode ||
-      isReadonly ||
-      initialMessages.length > 0 ||
-      status !== "ready" ||
-      newsInitialChatIdRef.current === id
-    ) {
+    if (!shouldStartNewsInitialRequest({
+      chatId: id,
+      chatMode: resolvedChatMode,
+      initialMessageCount: initialMessages.length,
+      isReadonly,
+      lastStartedChatId: newsInitialChatIdRef.current,
+      status,
+    })) {
       return;
     }
 
@@ -1313,7 +1305,6 @@ export function Chat({
     }
 
     newsInitialChatIdRef.current = id;
-    syncCurrentChatUrl();
     void sendMessageWithWebSearchStatus({
       role: "user",
       parts: [
@@ -1324,25 +1315,11 @@ export function Chat({
   }, [
     id,
     initialMessages.length,
-    isNewsMode,
     isReadonly,
+    resolvedChatMode,
     sendMessageWithWebSearchStatus,
     status,
-    syncCurrentChatUrl,
   ]);
-
-  useEffect(() => {
-    if ((pathname === "/" || pathname === "/chat") && newChatNonce) {
-      const nextPath = pathname === "/chat" ? "/chat" : "/";
-      const nextParams = new URLSearchParams(searchParams.toString());
-      nextParams.delete("new");
-      nextParams.delete("nonce");
-      const nextHref = nextParams.toString()
-        ? `${nextPath}?${nextParams.toString()}`
-        : nextPath;
-      window.history.replaceState({}, "", nextHref);
-    }
-  }, [newChatNonce, pathname, searchParams]);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,

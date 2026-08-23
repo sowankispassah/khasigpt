@@ -62,6 +62,30 @@ export function isNewsInitialMessage(
   );
 }
 
+export function shouldStartNewsInitialRequest({
+  chatId,
+  chatMode,
+  initialMessageCount,
+  isReadonly,
+  lastStartedChatId,
+  status,
+}: {
+  chatId: string;
+  chatMode: "default" | "study" | "jobs" | "news";
+  initialMessageCount: number;
+  isReadonly: boolean;
+  lastStartedChatId: string | null;
+  status: string;
+}) {
+  return (
+    chatMode === NEWS_CHAT_MODE &&
+    !isReadonly &&
+    initialMessageCount === 0 &&
+    status === "ready" &&
+    lastStartedChatId !== chatId
+  );
+}
+
 export function shouldSearchNewsFollowUp(text: string) {
   const normalized = text.trim();
   return (

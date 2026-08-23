@@ -6,7 +6,9 @@ import { useWindowSize } from "usehooks-ts";
 import { SidebarToggle } from "@/components/sidebar-toggle";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { Button } from "@/components/ui/button";
+import { buildPendingChatHref } from "@/lib/chat/navigation";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
+import { generateUUID } from "@/lib/utils";
 
 import { PlusIcon } from "./icons";
 import { useSidebar } from "./ui/sidebar";
@@ -25,7 +27,7 @@ function PureChatHeader({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const _searchParams = useSearchParams();
+  const searchParams = useSearchParams();
   const { open } = useSidebar();
   const [isOpeningNewChat, setIsOpeningNewChat] = useState(false);
 
@@ -43,12 +45,20 @@ function PureChatHeader({
     }
     setIsOpeningNewChat(true);
     startGlobalProgress();
+    const baseHref =
+      searchParams.get("mode") === "news"
+        ? "/chat?mode=news&new=1"
+        : "/chat?new=1";
+    const nextHref = buildPendingChatHref({
+      href: baseHref,
+      pendingChatId: generateUUID(),
+    });
     if (typeof window !== "undefined" && isChatShellPath) {
-      window.history.pushState(null, "", "/chat?new=1");
+      window.history.pushState(null, "", nextHref);
       return;
     }
-    router.push("/chat?new=1", { scroll: false });
-  }, [isChatShellPath, isOpeningNewChat, router]);
+    router.push(nextHref, { scroll: false });
+  }, [isChatShellPath, isOpeningNewChat, router, searchParams]);
 
   return (
     <header className="sticky top-0 flex items-center gap-1.5 bg-background px-1.5 py-1.5 pr-[5rem] sm:gap-2 sm:px-2">

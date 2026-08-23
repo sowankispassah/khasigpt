@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { buildPendingChatHref } from "@/lib/chat/navigation";
 import {
   buildNewsChatTitle,
   buildNewsInitialPrompt,
   isNewsInitialMessage,
   parseNewsAccessModeSetting,
   shouldSearchNewsFollowUp,
+  shouldStartNewsInitialRequest,
 } from "@/lib/news/shared";
 import type { ChatMessage } from "@/lib/types";
 
@@ -51,6 +53,38 @@ test.describe("News chat mode", () => {
     expect(shouldSearchNewsFollowUp("Thanks.")).toBe(false);
   });
 
+  test("starts one server-owned News session and ignores stale normal chat components", () => {
+    const chatId = "00000000-0000-4000-8000-000000000002";
+    const baseState = {
+      chatId,
+      initialMessageCount: 0,
+      isReadonly: false,
+      lastStartedChatId: null,
+      status: "ready",
+    };
+
+    expect(
+      shouldStartNewsInitialRequest({ ...baseState, chatMode: "default" })
+    ).toBe(false);
+    expect(
+      shouldStartNewsInitialRequest({ ...baseState, chatMode: "news" })
+    ).toBe(true);
+    expect(
+      shouldStartNewsInitialRequest({
+        ...baseState,
+        chatMode: "news",
+        lastStartedChatId: chatId,
+      })
+    ).toBe(false);
+
+    expect(
+      buildPendingChatHref({
+        href: "/chat?mode=news&new=1",
+        pendingChatId: chatId,
+      })
+    ).toBe(`/chat?mode=news&new=1&pendingChatId=${chatId}`);
+  });
+
   test("uses localized dated history titles", () => {
     const now = new Date("2026-08-23T06:00:00Z");
     expect(buildNewsChatTitle("en", now)).toContain("Today's news");
@@ -59,9 +93,19 @@ test.describe("News chat mode", () => {
   });
 
   test("wires web and native clients to the shared chat and search paths", async () => {
-    const [webChat, nativeChat, chatRoute, sidebar, nativeSidebar] =
+    const [
+      webChat,
+      chatLoader,
+      chatHeader,
+      nativeChat,
+      chatRoute,
+      sidebar,
+      nativeSidebar,
+    ] =
       await Promise.all([
         readWorkspaceFile("components/chat.tsx"),
+        readWorkspaceFile("components/chat-loader.tsx"),
+        readWorkspaceFile("components/chat-header.tsx"),
         readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
         readWorkspaceFile("app/(chat)/api/chat/route.ts"),
         readWorkspaceFile("components/app-sidebar.tsx"),
@@ -69,8 +113,13 @@ test.describe("News chat mode", () => {
       ]);
 
     expect(webChat).toContain('type: "data-newsInitial"');
+    expect(webChat).toContain("const resolvedChatMode = chatMode");
+    expect(webChat).not.toContain('nextParams.delete("new")');
+    expect(chatLoader).toContain('requestedMode === "news"');
+    expect(chatHeader).toContain("buildPendingChatHref");
     expect(nativeChat).toContain('type: "data-newsInitial"');
     expect(chatRoute).toContain("shouldSearchInNewsMode");
+    expect(sidebar).toContain("buildPendingChatHref");
     expect(sidebar).toContain('translationKey="sidebar.news"');
     expect(nativeSidebar).toContain('translationKey="sidebar.news"');
   });

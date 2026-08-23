@@ -86,6 +86,8 @@ export function ChatLoader(props: ChatLoaderProps) {
       ? "study"
       : requestedMode === "jobs"
         ? "jobs"
+        : requestedMode === "news"
+          ? "news"
         : "default";
 
   useEffect(() => {
