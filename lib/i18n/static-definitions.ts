@@ -4737,16 +4737,6 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Label above claim-level citations returned by grounded Web Search.",
   },
   {
-    key: "chat.web_search.provider.gemini",
-    defaultText: "Google Search",
-    description: "Provider label shown for Gemini grounded web search.",
-  },
-  {
-    key: "chat.web_search.provider.web",
-    defaultText: "Web Search",
-    description: "Provider label shown for grounded web search.",
-  },
-  {
     key: "admin.web_search.provider",
     defaultText: "Primary provider",
     description: "Web Search admin setting label for the primary provider.",

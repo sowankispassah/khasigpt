@@ -15,7 +15,6 @@ export type WebSearchStatus =
 export type WebSearchStatusData = {
   status: WebSearchStatus;
   usedWebSearch: boolean;
-  provider?: WebSearchProvider | null;
 };
 
 export type WebSearchSource = {

@@ -199,10 +199,18 @@ test.describe("web search grounding", () => {
     expect(message).toContain("WebSearchSources");
     expect(sources).toContain('data-testid="web-search-status"');
     expect(sources).toContain('data-testid="web-search-sources"');
+    expect(sources).toContain("getProviderOpaqueSourceDomain");
+    expect(sources).not.toContain("Google Search");
+    expect(sources).not.toContain("getProviderCopy");
+    expect(sources).not.toContain('data-testid="web-search-sources"\n      open');
+    expect(message).not.toContain("provider={webSearchData.provider}");
+    expect(route).not.toContain("provider: webSearchAnswer.provider");
     expect(nativeChat).toContain("WebSearchProgress");
     expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
     expect(nativeChat).toContain("WebSearchVideoResults");
     expect(nativeChat).toContain("getWebSearchVideosFromMessage");
+    expect(nativeChat).toContain("expandedWebSourcesByMessageId");
+    expect(nativeChat).toContain("getProviderOpaqueWebSourceDomain");
     expect(nativeChat).not.toContain("isSearchingWeb");
     expect(nativeTypes).toContain('type: "data-webSearchStatus"');
     expect(adminRoute).toContain('requireAdminApiUser');

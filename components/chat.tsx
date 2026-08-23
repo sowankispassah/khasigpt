@@ -874,7 +874,6 @@ export function Chat({
                   data: {
                     status: "failed" as const,
                     usedWebSearch: true,
-                    provider: null,
                   },
                 },
               ],
@@ -954,7 +953,6 @@ export function Chat({
             data: {
               status: "searching" as const,
               usedWebSearch: true,
-              provider: null,
             },
           },
         ],

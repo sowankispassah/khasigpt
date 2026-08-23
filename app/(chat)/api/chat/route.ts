@@ -157,7 +157,6 @@ import {
 import { webSearchService } from "@/lib/web-search/service";
 import type {
   WebSearchAnswer,
-  WebSearchProvider,
   WebSearchStatusData,
 } from "@/lib/web-search/types";
 import { generateTitleFromUserMessage } from "../../actions";
@@ -3065,7 +3064,6 @@ export async function POST(request: Request) {
     let webSearchAnswer: WebSearchAnswer | null = null;
     let webSearchUsed = false;
     let webSearchAttempted = false;
-    let webSearchAttemptedProvider: WebSearchProvider | null = null;
     let webSearchFailureReason: string | null = null;
 
     if (shouldAttemptWebSearch) {
@@ -3116,7 +3114,6 @@ export async function POST(request: Request) {
           .filter(Boolean)
           .join("\n\n");
         let attemptedProvider = webSearchConfig.provider;
-        webSearchAttemptedProvider = attemptedProvider;
 
         try {
           webSearchAnswer = await webSearchService.answerWithSearch({
@@ -3138,7 +3135,6 @@ export async function POST(request: Request) {
             fallbackProvider !== attemptedProvider
           ) {
             attemptedProvider = fallbackProvider;
-            webSearchAttemptedProvider = attemptedProvider;
             try {
               webSearchAnswer = await webSearchService.answerWithSearch({
                 conversationContext,
@@ -3199,7 +3195,6 @@ export async function POST(request: Request) {
       ? {
           status: webSearchAnswer ? "generating" : "failed",
           usedWebSearch: Boolean(webSearchAnswer),
-          provider: webSearchAnswer?.provider ?? webSearchAttemptedProvider,
         }
       : null;
 
@@ -3773,7 +3768,6 @@ export async function POST(request: Request) {
         webSearchAnswer.citations.length > 0 ||
         webSearchAnswer.videos.length > 0)
       ? {
-          provider: webSearchAnswer.provider,
           sources: webSearchAnswer.sources,
           searchQueries: webSearchAnswer.searchQueries,
           citations: webSearchAnswer.citations,

@@ -53,22 +53,6 @@ function getStatusCopy(status: WebSearchStatusData["status"]) {
   }
 }
 
-function getProviderCopy(provider: string) {
-  if (provider === "gemini_grounding") {
-    return {
-      defaultText: "Google Search",
-      description: "Provider label shown for Gemini grounded web search.",
-      key: "chat.web_search.provider.gemini",
-    };
-  }
-
-  return {
-    defaultText: "Web Search",
-    description: "Provider label shown for grounded web search.",
-    key: "chat.web_search.provider.web",
-  };
-}
-
 export function WebSearchStatus({
   onRetry,
   status,
@@ -147,6 +131,38 @@ export function WebSearchStatus({
   );
 }
 
+function isInternalGroundingHostname(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    normalized === "vertexaisearch.cloud.google.com" ||
+    normalized.endsWith(".vertexaisearch.cloud.google.com")
+  );
+}
+
+export function getProviderOpaqueSourceDomain(source: WebSearchSource) {
+  try {
+    const url = new URL(source.url);
+    const configuredDomain = source.domain?.trim() ?? "";
+    if (configuredDomain && !isInternalGroundingHostname(configuredDomain)) {
+      return configuredDomain;
+    }
+    if (!isInternalGroundingHostname(url.hostname)) {
+      return url.hostname;
+    }
+
+    const titleAsDomain = source.title
+      ?.trim()
+      .replace(/^https?:\/\//i, "")
+      .replace(/^www\./i, "")
+      .replace(/\/$/, "");
+    return titleAsDomain && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(titleAsDomain)
+      ? titleAsDomain
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function normalizeSource(source: WebSearchSource) {
   try {
     const url = new URL(source.url);
@@ -155,7 +171,7 @@ function normalizeSource(source: WebSearchSource) {
     }
     return {
       ...source,
-      domain: source.domain?.trim() || url.hostname,
+      domain: getProviderOpaqueSourceDomain(source),
       title: source.title?.trim() || url.hostname,
       url: url.toString(),
     };
@@ -265,13 +281,11 @@ function WebSearchVideos({ videos }: { videos: WebSearchVideo[] }) {
 
 export function WebSearchSources({
   citations = [],
-  provider,
   searchQueries = [],
   sources,
   videos = [],
 }: {
   citations?: WebSearchCitation[];
-  provider: string;
   searchQueries?: string[];
   sources: WebSearchSource[];
   videos?: WebSearchVideo[];
@@ -313,13 +327,10 @@ export function WebSearchSources({
       );
     }
   }
-  const providerCopy = provider ? getProviderCopy(provider) : null;
-
   return (
     <details
       className="group w-full rounded-xl border border-border/60 bg-muted/20 text-left"
       data-testid="web-search-sources"
-      open
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
         <Globe2 className="size-4 shrink-0 text-primary" />
@@ -331,15 +342,6 @@ export function WebSearchSources({
             values={{ count: safeSources.length }}
           />
         </span>
-        {providerCopy ? (
-          <span className="max-w-[45%] truncate text-muted-foreground text-xs">
-            <EditableTranslation
-              defaultText={providerCopy.defaultText}
-              description={providerCopy.description}
-              translationKey={providerCopy.key}
-            />
-          </span>
-        ) : null}
         <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
 
@@ -365,10 +367,12 @@ export function WebSearchSources({
                       {source.title}
                     </span>
                     <span className="mt-0.5 flex items-center gap-1 text-muted-foreground text-[11px]">
-                      <span className="truncate">{source.domain}</span>
+                      {source.domain ? (
+                        <span className="truncate">{source.domain}</span>
+                      ) : null}
                       {citationCount ? (
                         <span className="shrink-0">
-                          ·{" "}
+                          {source.domain ? <>·{" "}</> : null}
                           <EditableTranslation
                             defaultText={citationCount === 1 ? "{count} citation" : "{count} citations"}
                             description="Citation count shown beside a grounded Web Search source."

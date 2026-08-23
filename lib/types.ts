@@ -64,7 +64,6 @@ export type CustomUIDataTypes = {
     hidden: true;
   };
   webSources: {
-    provider: string;
     sources: WebSearchSource[];
     searchQueries?: string[];
     citations?: WebSearchCitation[];
