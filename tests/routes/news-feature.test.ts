@@ -5,6 +5,7 @@ import { buildPendingChatHref } from "@/lib/chat/navigation";
 import {
   buildNewsChatTitle,
   buildNewsInitialPrompt,
+  formatNewsRequestDate,
   isNewsInitialMessage,
   parseNewsAccessModeSetting,
   shouldSearchNewsFollowUp,
@@ -31,6 +32,8 @@ test.describe("News chat mode", () => {
     expect(prompt).toContain("across Meghalaya");
     expect(prompt).toContain("current web search results");
     expect(prompt).toContain("Deduplicate");
+    expect(prompt).toContain("Begin directly with the news");
+    expect(prompt).toContain("Do not introduce or describe KhasiGPT");
   });
 
   test("marks the automatic user turn as hidden and keeps follow-up search selective", () => {
@@ -83,13 +86,19 @@ test.describe("News chat mode", () => {
         pendingChatId: chatId,
       })
     ).toBe(`/chat?mode=news&new=1&pendingChatId=${chatId}`);
+    expect(
+      buildPendingChatHref({
+        href: "/chat?new=1",
+        pendingChatId: chatId,
+      })
+    ).toBe(`/chat?new=1&pendingChatId=${chatId}`);
   });
 
   test("uses localized dated history titles", () => {
     const now = new Date("2026-08-23T06:00:00Z");
     expect(buildNewsChatTitle("en", now)).toContain("Today's news");
-    expect(buildNewsChatTitle("kha", now)).toContain("Khubor ba mynta");
-    expect(buildNewsChatTitle("kha", now)).toContain("2026");
+    expect(buildNewsChatTitle("kha", now)).toBe("Khubor — 23 Aug 2026");
+    expect(formatNewsRequestDate(now)).toBe("23 Aug 2026");
   });
 
   test("wires web and native clients to the shared chat and search paths", async () => {
@@ -113,13 +122,24 @@ test.describe("News chat mode", () => {
       ]);
 
     expect(webChat).toContain('type: "data-newsInitial"');
+    expect(webChat).toContain("newsRequestDate");
     expect(webChat).toContain("const resolvedChatMode = chatMode");
     expect(webChat).not.toContain('nextParams.delete("new")');
     expect(chatLoader).toContain('requestedMode === "news"');
     expect(chatHeader).toContain("buildPendingChatHref");
+    expect(chatHeader).toContain('href: "/chat?new=1"');
+    expect(chatHeader).not.toContain('"/chat?mode=news&new=1"');
     expect(nativeChat).toContain('type: "data-newsInitial"');
+    expect(nativeChat).toContain("newsRequestDate");
+    expect(nativeChat).toContain(
+      'navigation.navigate("Chat", { newChat: true })'
+    );
+    expect(nativeChat).toContain("onPress={handleNewChatHeaderPress}");
     expect(chatRoute).toContain("shouldSearchInNewsMode");
+    expect(chatRoute).toContain("Begin directly with the requested news");
     expect(sidebar).toContain("buildPendingChatHref");
+    expect(sidebar).toContain("href={NEW_CHAT_HREF}");
+    expect(sidebar).not.toContain("contextualNewChatHref");
     expect(sidebar).toContain('translationKey="sidebar.news"');
     expect(nativeSidebar).toContain('translationKey="sidebar.news"');
   });

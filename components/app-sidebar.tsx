@@ -145,9 +145,6 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const navigationFingerprint = `${pathname}?${searchParams.toString()}`;
-  const isNewsRoute =
-    isChatShellPath(pathname) && searchParams.get("mode") === "news";
-  const contextualNewChatHref = isNewsRoute ? NEWS_HREF : NEW_CHAT_HREF;
   const router = useRouter();
   const [pendingNavigation, setPendingNavigation] = useState<
     | "home"
@@ -333,19 +330,14 @@ export function AppSidebar({
       event.preventDefault();
 
       navigateWithFeedback(
-        isNewsRoute ? "news" : "chat",
+        "chat",
         buildPendingChatHref({
-          href: contextualNewChatHref,
+          href: NEW_CHAT_HREF,
           pendingChatId: generateUUID(),
         })
       );
     },
-    [
-      contextualNewChatHref,
-      isNewsRoute,
-      navigateWithFeedback,
-      shouldHandleClientNavigation,
-    ]
+    [navigateWithFeedback, shouldHandleClientNavigation]
   );
 
   const handleNewStudyClick = useCallback(
@@ -537,12 +529,11 @@ export function AppSidebar({
               <SidebarMenuButton asChild className="cursor-pointer text-sm">
                 <Link
                   aria-disabled={pendingNavigation !== null}
-                  href={contextualNewChatHref}
+                  href={NEW_CHAT_HREF}
                   onClick={handleNewChatClick}
                 >
                   <PlusIcon />
-                  {pendingNavigation === "chat" ||
-                  pendingNavigation === "news" ? (
+                  {pendingNavigation === "chat" ? (
                     <SidebarEditableMenuLabel
                       defaultText="Opening..."
                       translationKey="navigation.opening"

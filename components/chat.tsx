@@ -65,6 +65,7 @@ import type {
 } from "@/lib/jobs/types";
 import {
   buildNewsInitialPrompt,
+  formatNewsRequestDate,
   isNewsInitialMessage,
   shouldSearchNewsFollowUp,
   shouldStartNewsInitialRequest,
@@ -1862,14 +1863,21 @@ export function Chat({
       />
     </div>
   ) : null;
+  const newsRequestDate = useMemo(() => {
+    const requestMessage = messages.find(isNewsInitialMessage);
+    return formatNewsRequestDate(requestMessage?.metadata?.createdAt);
+  }, [messages]);
   const newsHeader = isNewsMode ? (
     <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
       <Newspaper className="h-4 w-4" />
-      <EditableTranslation
-        defaultText="Latest News"
-        description="Heading shown above a News mode conversation."
-        translationKey="news.heading.latest"
-      />
+      <span>
+        <EditableTranslation
+          defaultText="Latest News"
+          description="Heading shown above a News mode conversation."
+          translationKey="news.heading.latest"
+        />
+        {` — ${newsRequestDate}`}
+      </span>
     </div>
   ) : null;
   const historyUnavailableBanner = initialMessagesDegraded ? (

@@ -2950,7 +2950,7 @@ export async function POST(request: Request) {
         ? "You are in Jobs mode. Use only the retrieved job knowledge and selected job posting context as the source for eligibility, responsibilities, requirements, salary, location, and important dates."
         : "",
       resolvedChatMode === NEWS_CHAT_MODE
-        ? "You are in News mode. Treat only the first hidden News request as defaulting to Shillong and Meghalaya. For every visible follow-up, follow the user's requested location or topic without forcing the default geography. Distinguish current reporting from older background and never invent a source."
+        ? "You are in News mode. Treat only the first hidden News request as defaulting to Shillong and Meghalaya. For every visible follow-up, follow the user's requested location or topic without forcing the default geography. Distinguish current reporting from older background and never invent a source. Begin directly with the requested news; do not introduce or describe KhasiGPT, the app, its team, origin, mission, or capabilities unless the user explicitly asks about them."
         : "",
       resolvedChatMode === JOBS_CHAT_MODE
         ? "Format job responses in clean Markdown with clear sections (for example: Overview, Eligibility, Salary, Location, Important dates) and consistent bullet points."

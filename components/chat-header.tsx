@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { memo, useCallback, useEffect, useState } from "react";
 import { useWindowSize } from "usehooks-ts";
 import { SidebarToggle } from "@/components/sidebar-toggle";
@@ -27,7 +27,6 @@ function PureChatHeader({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { open } = useSidebar();
   const [isOpeningNewChat, setIsOpeningNewChat] = useState(false);
 
@@ -45,12 +44,8 @@ function PureChatHeader({
     }
     setIsOpeningNewChat(true);
     startGlobalProgress();
-    const baseHref =
-      searchParams.get("mode") === "news"
-        ? "/chat?mode=news&new=1"
-        : "/chat?new=1";
     const nextHref = buildPendingChatHref({
-      href: baseHref,
+      href: "/chat?new=1",
       pendingChatId: generateUUID(),
     });
     if (typeof window !== "undefined" && isChatShellPath) {
@@ -58,7 +53,7 @@ function PureChatHeader({
       return;
     }
     router.push(nextHref, { scroll: false });
-  }, [isChatShellPath, isOpeningNewChat, router, searchParams]);
+  }, [isChatShellPath, isOpeningNewChat, router]);
 
   return (
     <header className="sticky top-0 flex items-center gap-1.5 bg-background px-1.5 py-1.5 pr-[5rem] sm:gap-2 sm:px-2">

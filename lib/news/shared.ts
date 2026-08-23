@@ -35,8 +35,21 @@ export function buildNewsInitialPrompt(now = new Date()) {
     "Deduplicate reports about the same event and cross-check major stories when multiple reliable sources are available.",
     "If there are no recent Shillong-specific reports, say so briefly and continue with the most important current Meghalaya stories.",
     "Make the response easy to scan with short sections for Shillong and Meghalaya, concise numbered headlines, summaries, and source citations.",
+    "Begin directly with the news. Do not introduce or describe KhasiGPT, the app, its team, origin, mission, or capabilities unless the user explicitly asks about them.",
     "Respond in the user's configured chat language.",
   ].join("\n");
+}
+
+export function formatNewsRequestDate(value?: Date | string | null) {
+  const parsedDate = value instanceof Date ? value : value ? new Date(value) : new Date();
+  const date = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  }).format(date);
 }
 
 export function buildNewsChatTitle(
@@ -45,13 +58,8 @@ export function buildNewsChatTitle(
 ) {
   const normalizedLanguage = languageCode?.trim().toLowerCase() ?? "";
   const isKhasi = normalizedLanguage === "kha" || normalizedLanguage === "khasi";
-  const date = new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Asia/Kolkata",
-  }).format(now);
-  return `${isKhasi ? "Khubor ba mynta" : "Today's news"} — ${date}`;
+  const date = formatNewsRequestDate(now);
+  return `${isKhasi ? "Khubor" : "Today's news"} — ${date}`;
 }
 
 export function isNewsInitialMessage(
