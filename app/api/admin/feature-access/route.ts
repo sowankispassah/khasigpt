@@ -3,6 +3,7 @@ import { invalidateAdminMutation } from "@/lib/admin/cache-invalidation";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
@@ -65,6 +66,10 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
   documentUploadsAccessMode: {
     settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
     auditAction: "feature.document_uploads.toggle",
+  },
+  exploreMeghalayaAccessMode: {
+    settingKey: EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
+    auditAction: "feature.explore_meghalaya.toggle",
   },
   voiceChatAndroidAccessMode: {
     settingKey: VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY,

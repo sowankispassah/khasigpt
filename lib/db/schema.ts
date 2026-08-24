@@ -726,6 +726,76 @@ export const appSetting = pgTable("AppSetting", {
 
 export type AppSetting = InferSelectModel<typeof appSetting>;
 
+export const exploreCategory = pgTable(
+  "ExploreCategory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 120 }).notNull(),
+    slug: varchar("slug", { length: 140 }).notNull().unique(),
+    description: text("description"),
+    iconName: varchar("iconName", { length: 64 }).notNull().default("Compass"),
+    searchType: varchar("searchType", { length: 24 }).notNull().default("hybrid"),
+    searchQuery: text("searchQuery").notNull(),
+    locationMode: varchar("locationMode", { length: 40 })
+      .notNull()
+      .default("current_or_selected"),
+    resultType: varchar("resultType", { length: 24 })
+      .notNull()
+      .default("standard"),
+    suggestedPrompts: jsonb("suggestedPrompts")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    showOnHome: boolean("showOnHome").notNull().default(true),
+    displayOrder: integer("displayOrder").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    enabledOrderIdx: index("ExploreCategory_enabled_order_idx").on(
+      table.isEnabled,
+      table.showOnHome,
+      table.displayOrder
+    ),
+    slugIdx: uniqueIndex("ExploreCategory_slug_idx").on(table.slug),
+  })
+);
+
+export type ExploreCategory = InferSelectModel<typeof exploreCategory>;
+
+export const exploreSubcategory = pgTable(
+  "ExploreSubcategory",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    categoryId: uuid("categoryId")
+      .notNull()
+      .references(() => exploreCategory.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 120 }).notNull(),
+    slug: varchar("slug", { length: 140 }).notNull(),
+    description: text("description"),
+    iconName: varchar("iconName", { length: 64 }).notNull().default("MapPin"),
+    searchQuery: text("searchQuery").notNull(),
+    searchTypeOverride: varchar("searchTypeOverride", { length: 24 }),
+    locationModeOverride: varchar("locationModeOverride", { length: 40 }),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    displayOrder: integer("displayOrder").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    categorySlugIdx: uniqueIndex("ExploreSubcategory_category_slug_idx").on(
+      table.categoryId,
+      table.slug
+    ),
+    categoryEnabledOrderIdx: index(
+      "ExploreSubcategory_category_enabled_order_idx"
+    ).on(table.categoryId, table.isEnabled, table.displayOrder),
+  })
+);
+
+export type ExploreSubcategory = InferSelectModel<typeof exploreSubcategory>;
+
 export const language = pgTable(
   "language",
   {

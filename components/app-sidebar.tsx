@@ -4,6 +4,7 @@ import {
   BookOpen,
   BriefcaseBusiness,
   Calculator,
+  Compass,
   Languages,
   MicVocal,
   Newspaper,
@@ -76,6 +77,7 @@ const NEW_STUDY_HREF = "/chat?mode=study&new=1";
 const VIEW_JOBS_HREF = "/chat?mode=jobs&new=1";
 const NEWS_HREF = "/chat?mode=news&new=1";
 const CALCULATOR_HREF = "/calculator";
+const EXPLORE_HREF = "/explore";
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 
 function isChatShellPath(pathname: string) {
@@ -125,6 +127,7 @@ function SidebarEditableMenuLabel({
 
 export function AppSidebar({
   calculatorEnabled = true,
+  exploreMeghalayaEnabled = false,
   jobsModeEnabled = false,
   translateEnabled = false,
   liveTranslationEnabled = false,
@@ -133,6 +136,7 @@ export function AppSidebar({
   studyModeEnabled = false,
 }: {
   calculatorEnabled?: boolean;
+  exploreMeghalayaEnabled?: boolean;
   jobsModeEnabled?: boolean;
   translateEnabled?: boolean;
   liveTranslationEnabled?: boolean;
@@ -155,6 +159,7 @@ export function AppSidebar({
     | "jobs"
     | "news"
     | "calculator"
+    | "explore"
     | null
   >(null);
 
@@ -226,7 +231,8 @@ export function AppSidebar({
         | "study"
         | "jobs"
         | "news"
-        | "calculator",
+        | "calculator"
+        | "explore",
       href: string
     ) => {
       if (pendingNavigation) {
@@ -237,6 +243,7 @@ export function AppSidebar({
       startGlobalProgress();
       if (
         target !== "calculator" &&
+        target !== "explore" &&
         target !== "translate" &&
         target !== "live-translation"
       ) {
@@ -246,6 +253,7 @@ export function AppSidebar({
 
       if (
         target !== "calculator" &&
+        target !== "explore" &&
         target !== "translate" &&
         target !== "live-translation" &&
         isChatShellPath(pathname)
@@ -287,6 +295,9 @@ export function AppSidebar({
       if (calculatorEnabled) {
         prefetchRoute(CALCULATOR_HREF);
       }
+      if (exploreMeghalayaEnabled) {
+        prefetchRoute(EXPLORE_HREF);
+      }
     }, 300);
 
     return () => {
@@ -294,6 +305,7 @@ export function AppSidebar({
     };
   }, [
     calculatorEnabled,
+    exploreMeghalayaEnabled,
     jobsModeEnabled,
     prefetchChatRoute,
     prefetchJobsModeData,
@@ -442,6 +454,23 @@ export function AppSidebar({
 
   const handleCalculatorPrefetch = useCallback(() => {
     prefetchRoute(CALCULATOR_HREF);
+  }, [prefetchRoute]);
+
+  const handleExploreClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldHandleClientNavigation(event)) return;
+      event.preventDefault();
+      if (pathname === EXPLORE_HREF) {
+        setOpenMobile(false);
+        return;
+      }
+      navigateWithFeedback("explore", EXPLORE_HREF);
+    },
+    [navigateWithFeedback, pathname, setOpenMobile, shouldHandleClientNavigation]
+  );
+
+  const handleExplorePrefetch = useCallback(() => {
+    prefetchRoute(EXPLORE_HREF);
   }, [prefetchRoute]);
 
   const handleViewJobsClick = useCallback(
@@ -702,6 +731,27 @@ export function AppSidebar({
                         defaultText="Calculator"
                         translationKey="sidebar.calculator"
                       />
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
+            {exploreMeghalayaEnabled ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="cursor-pointer text-sm">
+                  <Link
+                    aria-disabled={pendingNavigation !== null}
+                    href={EXPLORE_HREF}
+                    onClick={handleExploreClick}
+                    onFocus={handleExplorePrefetch}
+                    onMouseEnter={handleExplorePrefetch}
+                    onTouchStart={handleExplorePrefetch}
+                  >
+                    <Compass />
+                    {pendingNavigation === "explore" ? (
+                      <SidebarEditableMenuLabel defaultText="Opening..." translationKey="navigation.opening" />
+                    ) : (
+                      <SidebarEditableMenuLabel defaultText="Explore Meghalaya" translationKey="sidebar.explore_meghalaya" />
                     )}
                   </Link>
                 </SidebarMenuButton>

@@ -13,6 +13,7 @@ import {
   CALCULATOR_FEATURE_FLAG_KEY,
   CUSTOM_KNOWLEDGE_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
@@ -174,6 +175,9 @@ export async function loadFeatureAccessReadModel({
     DOCUMENT_UPLOADS_FEATURE_FLAG_KEY
   );
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
+  const exploreSetting = getFeatureSetting(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY, {
+    failOpen: false,
+  });
   const newsSetting = getFeatureSetting(NEWS_FEATURE_FLAG_KEY, {
     failOpen: false,
   });
@@ -214,6 +218,10 @@ export async function loadFeatureAccessReadModel({
       role
     ),
     forum: true,
+    exploreMeghalaya: isFeatureEnabledForRole(
+      parseFeatureAccessMode(exploreSetting, "admin_only"),
+      role
+    ),
     jobs: isFeatureEnabledForRole(parseJobsAccessModeSetting(jobsSetting), role),
     news: isFeatureEnabledForRole(parseNewsAccessModeSetting(newsSetting), role),
     study: isFeatureEnabledForRole(

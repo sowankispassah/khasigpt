@@ -6,6 +6,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
@@ -48,6 +49,7 @@ const CHAT_LAYOUT_FEATURE_ACCESS_KEYS = [
   WEB_SEARCH_ENABLED_SETTING_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
 ] as const;
 
 export default async function Layout({
@@ -167,6 +169,13 @@ export default async function Layout({
       )
     : null;
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
+  const exploreSetting = featureAccessSettings
+    ? getFeatureAccessModeSettingValue(
+        featureAccessSettings,
+        EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
+        { unconfirmedFallback: "admin_only" }
+      )
+    : null;
   const liveTranslationSetting = getFeatureSetting(
     LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
     { failOpen: false }
@@ -207,6 +216,10 @@ export default async function Layout({
     liveTranslationAccessMode,
     session?.user?.role ?? null
   );
+  const exploreMeghalayaEnabled = isFeatureEnabledForRole(
+    parseFeatureAccessMode(exploreSetting, "admin_only"),
+    session?.user?.role ?? null
+  );
 
   return (
     <SiteShell
@@ -220,6 +233,7 @@ export default async function Layout({
         <SidebarProvider defaultOpen={defaultSidebarOpen}>
           <AppSidebar
             calculatorEnabled={calculatorEnabled}
+            exploreMeghalayaEnabled={exploreMeghalayaEnabled}
             jobsModeEnabled={jobsModeEnabled}
             liveTranslationEnabled={liveTranslationEnabled}
             newsEnabled={newsEnabled}

@@ -7,6 +7,7 @@ import {
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
@@ -18,7 +19,10 @@ import {
   VOICE_CHAT_WEB_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
 import type { UserRole } from "@/lib/db/schema";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+} from "@/lib/feature-access";
 import {
   type HomeShortcutPlatform,
   type HomeShortcutTargetDefinition,
@@ -60,6 +64,14 @@ export async function isHomeShortcutTargetAvailable({
       return isFeatureEnabledForRole(
         parseCalculatorAccessModeSetting(
           settings.get(CALCULATOR_FEATURE_FLAG_KEY)
+        ),
+        role
+      );
+    case "explore_meghalaya":
+      return isFeatureEnabledForRole(
+        parseFeatureAccessMode(
+          settings.get(EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY),
+          "admin_only"
         ),
         role
       );

@@ -645,6 +645,13 @@
       "when": 1787443200000,
       "tag": "0089_news_chat_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1787443200001,
+      "tag": "0090_explore_meghalaya",
+      "breakpoints": true
     }
   ]
 }

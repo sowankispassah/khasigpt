@@ -65,6 +65,7 @@ import {
   DEFAULT_SUGGESTED_PROMPTS,
   DEFAULT_TERMS_OF_SERVICE,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   ICON_PROMPTS_SETTING_KEY,
@@ -230,6 +231,7 @@ const SETTINGS_SNAPSHOT_KEYS = [
   ICON_PROMPTS_SETTING_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   FREE_MESSAGE_SETTINGS_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
   WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
@@ -1413,6 +1415,12 @@ export default async function AdminSettingsPage({
       settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
+  const exploreMeghalayaAccessState =
+    featureAccessControlStateByField.get("exploreMeghalayaAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
   const legacyVoiceChatAccessState = resolveFeatureAccessControlState({
     settingKey: VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
     snapshot: featureAccessState,
@@ -1445,6 +1453,7 @@ export default async function AdminSettingsPage({
   const newsAccessMode = newsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
+  const exploreMeghalayaAccessMode = exploreMeghalayaAccessState.mode;
   const voiceChatAndroidAccessMode =
     voiceChatAndroidAccessState.mode ?? legacyVoiceChatAccessState.mode;
   const voiceChatAndroidReadState =
@@ -1769,6 +1778,15 @@ export default async function AdminSettingsPage({
               readState={documentUploadsAccessState.readState}
               successMessage="Document upload availability updated."
               title="Document uploads"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={exploreMeghalayaAccessMode}
+              description="Show or hide the location-aware Explore Meghalaya discovery experience on web and Android."
+              fieldName="exploreMeghalayaAccessMode"
+              readState={exploreMeghalayaAccessState.readState}
+              successMessage="Explore Meghalaya availability updated."
+              title="Explore Meghalaya"
             />
 
             <FeatureAccessModeControl

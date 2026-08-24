@@ -85,6 +85,8 @@ export const VOICE_CHAT_FEATURE_FLAG_KEY = VOICE_CHAT_ANDROID_FEATURE_FLAG_KEY;
 export const TRANSLATE_PROVIDER_MODE_SETTING_KEY = "chat.translate.providerMode";
 export const JOBS_FEATURE_FLAG_KEY = "chat.jobs.enabled";
 export const NEWS_FEATURE_FLAG_KEY = "chat.news.enabled";
+export const EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY =
+  "explore.meghalaya.enabled";
 export const JOBS_SCRAPE_ENABLED_SETTING_KEY = "jobs.scrape.enabled";
 export const JOBS_SCRAPE_INTERVAL_HOURS_SETTING_KEY =
   "jobs.scrape.intervalHours";

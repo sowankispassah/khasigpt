@@ -11,6 +11,7 @@ export type HomeShortcutAccessId =
   | "always"
   | "calculator"
   | "creator_only"
+  | "explore_meghalaya"
   | "image_generation"
   | "jobs"
   | "live_translation"
@@ -37,6 +38,15 @@ export const HOME_SHORTCUT_TARGETS = [
     label: "Calculator",
     translationKey: "home_shortcut.target.calculator",
     webHref: "/calculator",
+  },
+  {
+    access: "explore_meghalaya",
+    androidScreen: "Explore",
+    id: "explore_meghalaya",
+    kind: "feature",
+    label: "Explore Meghalaya",
+    translationKey: "home_shortcut.target.explore_meghalaya",
+    webHref: "/explore",
   },
   {
     access: "always",

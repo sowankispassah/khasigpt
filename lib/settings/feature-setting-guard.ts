@@ -1,6 +1,7 @@
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
@@ -37,6 +38,9 @@ const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
   ]),
   [DOCUMENT_UPLOADS_FEATURE_FLAG_KEY]: new Set([
     "feature.document_uploads.toggle",
+  ]),
+  [EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY]: new Set([
+    "feature.explore_meghalaya.toggle",
   ]),
   [SUGGESTED_PROMPTS_ENABLED_SETTING_KEY]: new Set([
     "feature.suggested_prompts.toggle",

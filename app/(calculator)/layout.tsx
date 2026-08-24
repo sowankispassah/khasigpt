@@ -7,11 +7,15 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { parseCalculatorAccessModeSetting } from "@/lib/calculator/config";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
 } from "@/lib/constants";
-import { isFeatureEnabledForRole } from "@/lib/feature-access";
+import {
+  isFeatureEnabledForRole,
+  parseFeatureAccessMode,
+} from "@/lib/feature-access";
 import {
   getFallbackTranslationBundle,
   getTranslationBundle,
@@ -32,6 +36,7 @@ const CALCULATOR_LAYOUT_FEATURE_ACCESS_KEYS = [
   JOBS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
   TRANSLATE_FEATURE_FLAG_KEY,
+  EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
 ] as const;
 
 export default async function CalculatorLayout({
@@ -81,6 +86,11 @@ export default async function CalculatorLayout({
   const jobsSetting = getFeatureSetting(JOBS_FEATURE_FLAG_KEY);
   const studyModeSetting = getFeatureSetting(STUDY_MODE_FEATURE_FLAG_KEY);
   const translateSetting = getFeatureSetting(TRANSLATE_FEATURE_FLAG_KEY);
+  const exploreSetting = getFeatureAccessModeSettingValue(
+    featureAccessSettings,
+    EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
+    { unconfirmedFallback: "admin_only" }
+  );
 
   const calculatorEnabled = isFeatureEnabledForRole(
     parseCalculatorAccessModeSetting(calculatorSetting),
@@ -103,6 +113,10 @@ export default async function CalculatorLayout({
     parseTranslateAccessModeSetting(translateSetting),
     session.user.role
   );
+  const exploreMeghalayaEnabled = isFeatureEnabledForRole(
+    parseFeatureAccessMode(exploreSetting, "admin_only"),
+    session.user.role
+  );
   const { languages, activeLanguage, dictionary } = translationBundle;
   const sidebarState = cookieStore.get("sidebar_state")?.value;
   const defaultSidebarOpen = sidebarState !== "false";
@@ -118,6 +132,7 @@ export default async function CalculatorLayout({
       <SidebarProvider defaultOpen={defaultSidebarOpen}>
         <AppSidebar
           calculatorEnabled={calculatorEnabled}
+          exploreMeghalayaEnabled={exploreMeghalayaEnabled}
           jobsModeEnabled={jobsModeEnabled}
           studyModeEnabled={studyModeEnabled}
           translateEnabled={translateEnabled}
