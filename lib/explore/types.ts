@@ -52,10 +52,17 @@ export type ExploreCategoryDto = {
 };
 
 export type ExploreLocationInput = {
-  label?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  accuracy?: number | null;
+  id: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  source: "gps" | "manual";
+};
+
+export type ExploreAttribution = {
+  displayName: string;
+  uri: string | null;
 };
 
 export type ExploreResult = {
@@ -75,13 +82,20 @@ export type ExploreResult = {
   imageUrl: string | null;
   sourceTitle: string;
   sourceUrl: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  attributions: ExploreAttribution[];
 };
 
 export type ExploreSearchResponse = {
   answer: string;
   category: Pick<ExploreCategoryDto, "id" | "name" | "resultType"> | null;
   chatId: string;
-  locationLabel: string | null;
+  clientRequestId: string;
+  location: ExploreLocationInput;
+  locationContextKey: string;
+  radiusKm: number;
   results: ExploreResult[];
   searchQueries: string[];
 };

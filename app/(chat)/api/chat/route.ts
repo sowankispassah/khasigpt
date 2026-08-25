@@ -67,6 +67,9 @@ import {
   updateChatTitleById,
 } from "@/lib/db/queries";
 import { ChatSDKError } from "@/lib/errors";
+import { resolveExploreChatFollowUp } from "@/lib/explore/chat-follow-up";
+import { isExploreMeghalayaEnabledForRole } from "@/lib/explore/config";
+import { searchExplorePlaces } from "@/lib/explore/places-service";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
@@ -2902,6 +2905,55 @@ export async function POST(request: Request) {
         ? resolvedLanguageConfig.systemPrompt.trim()
         : null;
     const userMessageText = getTextFromMessage(message).trim();
+    const recentAssistantTexts = baseUiMessages
+      .filter((entry) => entry.role === "assistant")
+      .map((entry) => getTextFromMessage(entry))
+      .filter((text) => text.trim().length > 0);
+    const exploreFollowUp = resolveExploreChatFollowUp({
+      currentText: userMessageText,
+      recentAssistantTexts,
+    });
+    let exploreFollowUpContext: string | null = null;
+    let exploreFollowUpFailed = false;
+    if (exploreFollowUp) {
+      const exploreEnabled = await isExploreMeghalayaEnabledForRole(
+        session.user.role,
+      );
+      if (!exploreEnabled) {
+        exploreFollowUpFailed = true;
+      } else {
+        try {
+        const search = await measurePreModelStep("explore.follow_up", () =>
+          searchExplorePlaces({
+            categoryQuery: exploreFollowUp.categoryQuery,
+            location: exploreFollowUp.location,
+            query: exploreFollowUp.query,
+            radiusKm: exploreFollowUp.radiusKm,
+          }),
+        );
+        exploreFollowUpContext = [
+          `Verified Explore follow-up search centered on ${exploreFollowUp.location.label} (${exploreFollowUp.location.latitude}, ${exploreFollowUp.location.longitude}) within exactly ${exploreFollowUp.radiusKm} km.`,
+          `Search query: ${exploreFollowUp.query}.`,
+          search.results.length > 0
+            ? "Results sorted by straight-line distance from that center:"
+            : "No matching results were found inside that radius.",
+          ...search.results.map(
+            (result) =>
+              `- ${result.name} (${result.distanceKm.toFixed(1)} km)${result.address ? ` — ${result.address}` : ""}: ${result.sourceUrl}`,
+          ),
+        ].join("\n");
+        } catch (error) {
+          exploreFollowUpFailed = true;
+          console.warn("[explore-chat] Follow-up search failed.", {
+            chatId: id,
+            reason:
+              error instanceof Error
+                ? error.message.slice(0, 240)
+                : "provider_failed",
+          });
+        }
+      }
+    }
     const isInitialNewsRequest =
       resolvedChatMode === NEWS_CHAT_MODE && isNewsInitialMessage(message);
     const previousUserMessageTexts = baseUiMessages
@@ -2985,7 +3037,8 @@ export async function POST(request: Request) {
 
     const shouldRetrieveCustomKnowledge =
       (customKnowledgeEnabled || resolvedChatMode !== "default") &&
-      !currentInfoDecision.intent;
+      !currentInfoDecision.intent &&
+      !exploreFollowUp;
     const ragScope =
       resolvedChatMode === STUDY_CHAT_MODE
         ? "study"
@@ -3060,7 +3113,8 @@ export async function POST(request: Request) {
       !shouldAskForWeatherLocation &&
       (!currentInfoDecision.intent || webSearchDecision.hasExplicitWebIntent) &&
       webSearchAllowed &&
-      webSearchConfig.maxCalls > 0;
+      webSearchConfig.maxCalls > 0 &&
+      !exploreFollowUp;
     let webSearchAnswer: WebSearchAnswer | null = null;
     let webSearchUsed = false;
     let webSearchAttempted = false;
@@ -3247,6 +3301,15 @@ export async function POST(request: Request) {
         "The latest user message is a short contextual follow-up. Use only the recent conversation to resolve what it refers to and answer only the requested field or clarification in one concise sentence. If the recent conversation does not identify it, ask one concise clarifying question. Do not introduce KhasiGPT's identity, founder information, biographies, capabilities, or any unrelated facts."
       );
     }
+    if (exploreFollowUpContext) {
+      systemInstructionParts.push(
+        "A fresh coordinate-aware Explore Meghalaya search is attached below. Answer only from those verified results, preserve the exact selected location and radius, and never replace the center with Shillong or another place. Distances are straight-line distances and every listed result has already passed the radius filter. If the result set is empty, say so and suggest increasing the radius or changing the search. Do not mention hidden context or provider implementation details.",
+      );
+    } else if (exploreFollowUp && exploreFollowUpFailed) {
+      systemInstructionParts.push(
+        "The requested Explore Meghalaya follow-up search failed. Do not reuse older results or guess. Briefly say that fresh nearby results could not be loaded and invite the user to retry.",
+      );
+    }
     systemInstructionParts.push(
       "Never expose an internal or imagined tool invocation as assistant text. Do not output raw action objects, function-call JSON, XML tool tags, or provider tool names such as dalle.text2im. If a request reaches normal chat without an available tool result, respond naturally without pretending that a tool was called. This does not prevent ordinary JSON when the user explicitly asks for JSON."
     );
@@ -3323,6 +3386,15 @@ export async function POST(request: Request) {
           ]
             .filter(Boolean)
             .join("\n\n"),
+        },
+      ];
+    }
+    if (exploreFollowUpContext) {
+      modelParts = [
+        ...modelParts,
+        {
+          type: "text" as const,
+          text: exploreFollowUpContext,
         },
       ];
     }
