@@ -11,6 +11,11 @@ import type {
   ExploreLocationInput,
   ExploreResult,
 } from "@/lib/explore/types";
+import {
+  normalizeCommonsFileName,
+  normalizeWikidataId,
+  resolveWikimediaImages,
+} from "@/lib/explore/wikimedia-images";
 
 const GOOGLE_TEXT_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchText";
@@ -338,10 +343,57 @@ function osmAddress(tags: Record<string, string | undefined>) {
 function osmImage(tags: Record<string, string | undefined>) {
   const direct = safeHttpUrl(tags.image);
   if (direct) return direct;
-  const commons = tags.wikimedia_commons?.replace(/^File:/i, "").trim();
+  const commons = normalizeCommonsFileName(tags.wikimedia_commons);
   return commons
     ? `https://commons.wikimedia.org/wiki/Special:Redirect/file/${encodeURIComponent(commons)}`
     : null;
+}
+
+type OpenStreetMapResultCandidate = {
+  commonsFileName: string | null;
+  result: ExploreResult;
+  wikidataId: string | null;
+};
+
+async function addWikimediaImageFallbacks(
+  candidates: OpenStreetMapResultCandidate[],
+) {
+  const missingImages = candidates.filter(
+    (candidate) =>
+      candidate.commonsFileName ||
+      (!candidate.result.imageUrl && candidate.wikidataId),
+  );
+  if (!missingImages.length) return candidates.map(({ result }) => result);
+  try {
+    const images = await resolveWikimediaImages(
+      missingImages.map(({ commonsFileName, wikidataId }) => ({
+        commonsFileName,
+        wikidataId,
+      })),
+    );
+    const imagesByResultId = new Map(
+      missingImages.flatMap((candidate, index) => {
+        const image = images[index];
+        return image ? [[candidate.result.id, image] as const] : [];
+      }),
+    );
+    return candidates.map(({ result }) => {
+      const image = imagesByResultId.get(result.id);
+      return image
+        ? {
+            ...result,
+            attributions: [...result.attributions, ...image.attributions],
+            imageUrl: image.imageUrl,
+          }
+        : result;
+    });
+  } catch (error) {
+    console.warn(
+      "[explore/places] Wikimedia images unavailable; returning places without fallback images.",
+      error,
+    );
+    return candidates.map(({ result }) => result);
+  }
 }
 
 async function searchOverpass(input: ExplorePlacesSearchInput) {
@@ -365,7 +417,7 @@ async function searchOverpass(input: ExplorePlacesSearchInput) {
         throw new Error(`OpenStreetMap search returned HTTP ${response.status}.`);
       }
       const payload = (await response.json()) as OverpassResponse;
-      const results = (payload.elements ?? []).flatMap((element) => {
+      const candidates = (payload.elements ?? []).flatMap((element) => {
         const latitude = element.lat ?? element.center?.lat;
         const longitude = element.lon ?? element.center?.lon;
         const name = element.tags?.name?.trim();
@@ -379,33 +431,61 @@ async function searchOverpass(input: ExplorePlacesSearchInput) {
         const tags = element.tags ?? {};
         const sourceUrl = `https://www.openstreetmap.org/${elementType}/${elementId}`;
         const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
-        return [{
-          id: resultId("osm", `${elementType}:${elementId}`),
-          name,
-          category: osmCategory(tags),
-          description: tags.description?.trim() || tags.cuisine?.trim() || null,
-          address: osmAddress(tags),
-          distance: null,
-          distanceKm: 0,
-          rating: null,
-          reviewCount: null,
-          openStatus: tags.opening_hours?.trim() || null,
-          eventDate: null,
-          phone: tags.phone?.trim() || tags["contact:phone"]?.trim() || null,
-          website: safeHttpUrl(tags.website || tags["contact:website"]),
-          directionsUrl,
-          imageUrl: osmImage(tags),
-          sourceTitle: "OpenStreetMap",
-          sourceUrl,
-          latitude,
-          longitude,
-          attributions: [OSM_ATTRIBUTION],
-        } satisfies ExploreResult];
+        return [
+          {
+            commonsFileName: normalizeCommonsFileName(
+              tags.wikimedia_commons,
+            ),
+            result: {
+              id: resultId("osm", `${elementType}:${elementId}`),
+              name,
+              category: osmCategory(tags),
+              description:
+                tags.description?.trim() || tags.cuisine?.trim() || null,
+              address: osmAddress(tags),
+              distance: null,
+              distanceKm: 0,
+              rating: null,
+              reviewCount: null,
+              openStatus: tags.opening_hours?.trim() || null,
+              eventDate: null,
+              phone:
+                tags.phone?.trim() || tags["contact:phone"]?.trim() || null,
+              website: safeHttpUrl(tags.website || tags["contact:website"]),
+              directionsUrl,
+              imageUrl: osmImage(tags),
+              sourceTitle: "OpenStreetMap",
+              sourceUrl,
+              latitude,
+              longitude,
+              attributions: [OSM_ATTRIBUTION],
+            } satisfies ExploreResult,
+            wikidataId: normalizeWikidataId(tags.wikidata),
+          } satisfies OpenStreetMapResultCandidate,
+        ];
       });
       const unique = Array.from(
-        new Map(results.map((result) => [`${result.name.toLocaleLowerCase()}:${result.latitude.toFixed(5)}:${result.longitude.toFixed(5)}`, result])).values(),
+        new Map(
+          candidates.map((candidate) => [
+            `${candidate.result.name.toLocaleLowerCase()}:${candidate.result.latitude.toFixed(5)}:${candidate.result.longitude.toFixed(5)}`,
+            candidate,
+          ]),
+        ).values(),
       );
-      return filterExploreResultsWithinRadius(unique, input.location, input.radiusKm);
+      const withinRadius = filterExploreResultsWithinRadius(
+        unique.map(({ result }) => result),
+        input.location,
+        input.radiusKm,
+      );
+      const byId = new Map(
+        unique.map((candidate) => [candidate.result.id, candidate]),
+      );
+      return addWikimediaImageFallbacks(
+        withinRadius.map((result) => ({
+          ...(byId.get(result.id) as OpenStreetMapResultCandidate),
+          result,
+        })),
+      );
     } catch (error) {
       providerError = error;
     }
