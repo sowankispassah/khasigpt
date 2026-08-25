@@ -23,7 +23,7 @@ const schema = z.object({
     address: z.string().trim().max(500).nullable().optional(),
     distanceKm: z.number().finite().min(0).max(100),
     sourceUrl: z.string().url(),
-  })).max(12),
+  })).max(24),
 });
 
 export async function POST(request: Request) {

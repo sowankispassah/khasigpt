@@ -5036,4 +5036,6 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "explore.results.around", defaultText: "Around", description: "Explore result heading prefix before the selected location." },
   { key: "explore.results.empty_location", defaultText: "No results found within {distance} km of {location}.", description: "Explore empty result message scoped to location and radius." },
   { key: "explore.results.increase_radius", defaultText: "Increase to {distance} km", description: "Explore empty-state action to increase radius." },
+  { key: "explore.results.showing_count", defaultText: "Showing {shown} of {total} results", description: "Explore result count shown above the result cards." },
+  { key: "explore.results.load_more", defaultText: "Load more ({count} remaining)", description: "Explore action that reveals the next batch of already-loaded nearby result cards." },
 ];

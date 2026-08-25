@@ -20,7 +20,7 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.private.coffee/api/interpreter",
 ] as const;
 const SEARCH_TIMEOUT_MS = 15_000;
-const MAX_RESULTS = 12;
+const MAX_RESULTS = 48;
 const OSM_ATTRIBUTION: ExploreAttribution = {
   displayName: "© OpenStreetMap contributors",
   uri: "https://www.openstreetmap.org/copyright",

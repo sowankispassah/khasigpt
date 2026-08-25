@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EXPLORE_REQUEST_MODES } from "@/lib/explore/types";
 
 export const exploreLocationSchema = z.object({
   id: z.string().trim().min(1).max(160),
@@ -21,6 +22,7 @@ export const exploreSearchInputSchema = z.object({
   locationContextKey: z.string().trim().min(1).max(80).nullable().optional(),
   radiusKm: z.number().int().min(1).max(50),
   location: exploreLocationSchema,
+  searchMode: z.enum(EXPLORE_REQUEST_MODES).default("places_only"),
 });
 
 export const exploreLocationRequestSchema = z.discriminatedUnion("mode", [

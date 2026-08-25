@@ -98,4 +98,12 @@ export type ExploreSearchResponse = {
   radiusKm: number;
   results: ExploreResult[];
   searchQueries: string[];
+  searchMode: ExploreRequestMode;
 };
+
+export const EXPLORE_REQUEST_MODES = ["places_only", "enriched"] as const;
+export type ExploreRequestMode = (typeof EXPLORE_REQUEST_MODES)[number];
+
+export function shouldEnrichExploreSearch(mode: ExploreRequestMode) {
+  return mode === "enriched";
+}

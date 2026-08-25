@@ -13,6 +13,9 @@ import {
   isExploreNearMeQuery,
   parseExploreAccessModeSetting,
 } from "@/lib/explore/shared";
+import {
+  shouldEnrichExploreSearch,
+} from "@/lib/explore/types";
 import { exploreSearchInputSchema } from "@/lib/explore/validation";
 
 const repoRoot = process.cwd();
@@ -89,6 +92,18 @@ test.describe("Explore Meghalaya", () => {
       exploreSearchInputSchema.safeParse({ ...validSearchInput, radiusKm: 51 })
         .success,
     ).toBe(false);
+  });
+
+  test("keeps ordinary place refreshes outside credit-bearing enrichment", () => {
+    const defaultRequest = exploreSearchInputSchema.parse(validSearchInput);
+    const enrichedRequest = exploreSearchInputSchema.parse({
+      ...validSearchInput,
+      searchMode: "enriched",
+    });
+
+    expect(defaultRequest.searchMode).toBe("places_only");
+    expect(shouldEnrichExploreSearch(defaultRequest.searchMode)).toBe(false);
+    expect(shouldEnrichExploreSearch(enrichedRequest.searchMode)).toBe(true);
   });
 
   test("requires resolved coordinates and a location identity before search", () => {
@@ -211,18 +226,28 @@ test.describe("Explore Meghalaya", () => {
     expect(web).toContain("setResponse(null)");
     expect(web).toContain('type="range"');
     expect(web).toContain("max={50}");
+    expect(web).toContain('mode === "search" ? "enriched" : "places_only"');
+    expect(web).toContain("visibleResultCount");
+    expect(web).toContain("explore.results.load_more");
     expect(native).toContain("api.exploreSearch");
     expect(native).toContain("api.resolveExploreLocation");
     expect(native).toContain("getForegroundPermissionsAsync");
     expect(native).toContain("requestForegroundPermissionsAsync");
     expect(native).toContain("clientRequestId");
     expect(native).toContain("maximumValue={50}");
+    expect(native).toContain('mode === "search" ? "enriched" : "places_only"');
+    expect(native).toContain("visibleResultCount");
+    expect(native).toContain("explore.results.load_more");
     expect(locationRoute).toContain("resolveManualExploreLocation");
     expect(locationRoute).toContain("reverseGeocodeExploreLocation");
     expect(placesService).toContain("locationRestriction");
     expect(placesService).toContain("getRadiusBoundingBox");
     expect(placesService).toContain("filterExploreResultsWithinRadius");
+    expect(placesService).toContain("const MAX_RESULTS = 48");
     expect(searchRoute).toContain("searchExplorePlaces");
+    expect(searchRoute).toContain(
+      "if (shouldEnrichExploreSearch(parsed.data.searchMode))",
+    );
     expect(searchRoute).toContain("locationContextKey");
     expect(searchRoute).not.toContain("recentConversation");
     expect(contextRoute).toContain("Current geographically verified result set");

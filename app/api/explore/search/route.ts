@@ -30,6 +30,7 @@ import type {
   ExploreResult,
   ExploreSearchResponse,
 } from "@/lib/explore/types";
+import { shouldEnrichExploreSearch } from "@/lib/explore/types";
 import { exploreSearchInputSchema } from "@/lib/explore/validation";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
@@ -197,100 +198,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const [config, registry, subscription, freeSettings, messageCount] =
-      await Promise.all([
-        loadWebSearchConfig(),
-        getModelRegistry(),
-        getActiveSubscriptionForUser(auth.user.id),
-        loadFreeMessageSettings(),
-        getMessageCountByUserId({
-          id: auth.user.id,
-          since: startOfTodayInIst(),
-        }),
-      ]);
-    const model = registry.defaultConfig ?? registry.configs[0];
-    if (!model) {
-      throw new ChatSDKError("bad_request:api", "No chat models are enabled.");
-    }
-    const tokenBalance = subscription?.tokenBalance ?? 0;
-    const hasCredits = hasUsableChatCredits(tokenBalance);
-    const platform = getWebSearchPlatform(request);
-    if (
-      !isWebSearchAllowedForUser({
-        config,
-        isPaidUser: hasCredits,
-        platform,
-        role: auth.user.role,
-      })
-    ) {
-      return NextResponse.json(
-        { error: "search_unavailable" },
-        { status: 403, headers: noStoreHeaders() },
-      );
-    }
-    const freeLimit = Math.min(
-      DEFAULT_FREE_MESSAGES_PER_DAY,
-      freeSettings.mode === "global"
-        ? Math.max(0, freeSettings.globalLimit)
-        : Math.max(
-            0,
-            model.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY,
-          ),
-    );
-    const testBypass = isFreeDailyChatLimitBypassedForTest({
-      nodeEnv: process.env.NODE_ENV,
-      playwright: process.env.PLAYWRIGHT,
-    });
-    let usedFreeAllowance = false;
-    if (!testBypass && !hasCredits) {
-      const allowance = await consumeFreeDailyChatAllowance({
-        userId: auth.user.id,
-        day: startOfTodayInIst(),
-        limit: freeLimit,
-        existingMessageCount: messageCount,
-      });
-      if (!allowance.allowed) {
-        throw new ChatSDKError(
-          "payment_required:free_messages",
-          "Free daily chat limit reached.",
-        );
-      }
-      usedFreeAllowance = true;
-    }
-    const minimumTokens = Math.ceil(
-      TOKENS_PER_CREDIT * config.creditMultiplier,
-    );
-    if (
-      requiresPaidWebSearchCredits({
-        activeTokenBalance: tokenBalance,
-        hasActiveCredits: hasCredits,
-        minimumCreditTokens: minimumTokens,
-        testLimitBypass: testBypass,
-        usedFreeDailyAllowance: usedFreeAllowance,
-      })
-    ) {
-      throw new ChatSDKError(
-        "payment_required:credits",
-        "Web search requires paid credits. Please recharge to continue.",
-      );
-    }
-    const dailyCount = await getWebSearchUsageCountSince({
-      since: startOfTodayInIst(),
-      userId: auth.user.id,
-    });
-    if (dailyCount === null) {
-      return NextResponse.json(
-        { error: "usage_tracking_unavailable" },
-        { status: 503, headers: noStoreHeaders() },
-      );
-    }
-    if (dailyCount >= config.dailyLimit) {
-      throw new ChatSDKError(
-        "rate_limit:chat",
-        "Web search daily limit reached.",
-      );
-    }
-
     const locationContextKey = createLocationContextKey(parsed.data.location);
     const requestedChat = parsed.data.chatId
       ? await getChatById({ id: parsed.data.chatId })
@@ -324,112 +231,213 @@ export async function POST(request: Request) {
       radiusKm: parsed.data.radiusKm,
     });
     const results = placeSearch.results;
-    const providerQuery = buildSearchQuery({
-      categoryQuery: effectiveCategoryQuery,
-      location: parsed.data.location,
-      query: parsed.data.query,
-      radiusKm: parsed.data.radiusKm,
-      resultType,
-      results,
-      searchType: effectiveSearchType,
-    });
-    const startedAt = performance.now();
-    const queryHash = createHash("sha256").update(providerQuery).digest("hex");
-    const conversationContext = [
-      category
-        ? `Explore Meghalaya category: ${category.name}${subcategory ? `; subcategory: ${subcategory.name}` : ""}.`
-        : "Explore Meghalaya natural-language discovery.",
-      `The selected location context is ${locationContextKey}. Previous result sets from other locations are not relevant.`,
-    ].join("\n\n");
     let answer: WebSearchAnswer | null = null;
-    let attemptedProvider = config.provider;
-    let providerError: unknown = null;
-    try {
-      answer = await webSearchService.answerWithSearch({
-        conversationContext,
-        maxSearches: config.maxCalls,
-        model: model.providerModelId,
-        provider: config.provider,
-        userMessage: providerQuery,
-      });
-    } catch (primaryError) {
-      providerError = primaryError;
+    if (shouldEnrichExploreSearch(parsed.data.searchMode)) {
+      const [config, registry, subscription, freeSettings, messageCount] =
+        await Promise.all([
+          loadWebSearchConfig(),
+          getModelRegistry(),
+          getActiveSubscriptionForUser(auth.user.id),
+          loadFreeMessageSettings(),
+          getMessageCountByUserId({
+            id: auth.user.id,
+            since: startOfTodayInIst(),
+          }),
+        ]);
+      const model = registry.defaultConfig ?? registry.configs[0];
+      if (!model) {
+        throw new ChatSDKError(
+          "bad_request:api",
+          "No chat models are enabled.",
+        );
+      }
+      const tokenBalance = subscription?.tokenBalance ?? 0;
+      const hasCredits = hasUsableChatCredits(tokenBalance);
+      const platform = getWebSearchPlatform(request);
       if (
-        config.fallbackProvider !== "disabled" &&
-        config.fallbackProvider !== config.provider
+        !isWebSearchAllowedForUser({
+          config,
+          isPaidUser: hasCredits,
+          platform,
+          role: auth.user.role,
+        })
       ) {
-        attemptedProvider = config.fallbackProvider;
-        try {
-          answer = await webSearchService.answerWithSearch({
-            conversationContext,
-            maxSearches: config.maxCalls,
-            model: model.providerModelId,
-            provider: config.fallbackProvider,
-            userMessage: providerQuery,
-          });
-          providerError = null;
-        } catch (fallbackError) {
-          providerError = fallbackError;
+        return NextResponse.json(
+          { error: "search_unavailable" },
+          { status: 403, headers: noStoreHeaders() },
+        );
+      }
+      const freeLimit = Math.min(
+        DEFAULT_FREE_MESSAGES_PER_DAY,
+        freeSettings.mode === "global"
+          ? Math.max(0, freeSettings.globalLimit)
+          : Math.max(
+              0,
+              model.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY,
+            ),
+      );
+      const testBypass = isFreeDailyChatLimitBypassedForTest({
+        nodeEnv: process.env.NODE_ENV,
+        playwright: process.env.PLAYWRIGHT,
+      });
+      let usedFreeAllowance = false;
+      if (!testBypass && !hasCredits) {
+        const allowance = await consumeFreeDailyChatAllowance({
+          userId: auth.user.id,
+          day: startOfTodayInIst(),
+          limit: freeLimit,
+          existingMessageCount: messageCount,
+        });
+        if (!allowance.allowed) {
+          throw new ChatSDKError(
+            "payment_required:free_messages",
+            "Free daily chat limit reached.",
+          );
+        }
+        usedFreeAllowance = true;
+      }
+      const minimumTokens = Math.ceil(
+        TOKENS_PER_CREDIT * config.creditMultiplier,
+      );
+      if (
+        requiresPaidWebSearchCredits({
+          activeTokenBalance: tokenBalance,
+          hasActiveCredits: hasCredits,
+          minimumCreditTokens: minimumTokens,
+          testLimitBypass: testBypass,
+          usedFreeDailyAllowance: usedFreeAllowance,
+        })
+      ) {
+        throw new ChatSDKError(
+          "payment_required:credits",
+          "Web search requires paid credits. Please recharge to continue.",
+        );
+      }
+      const dailyCount = await getWebSearchUsageCountSince({
+        since: startOfTodayInIst(),
+        userId: auth.user.id,
+      });
+      if (dailyCount === null) {
+        return NextResponse.json(
+          { error: "usage_tracking_unavailable" },
+          { status: 503, headers: noStoreHeaders() },
+        );
+      }
+      if (dailyCount >= config.dailyLimit) {
+        throw new ChatSDKError(
+          "rate_limit:chat",
+          "Web search daily limit reached.",
+        );
+      }
+
+      const providerQuery = buildSearchQuery({
+        categoryQuery: effectiveCategoryQuery,
+        location: parsed.data.location,
+        query: parsed.data.query,
+        radiusKm: parsed.data.radiusKm,
+        resultType,
+        results,
+        searchType: effectiveSearchType,
+      });
+      const startedAt = performance.now();
+      const queryHash = createHash("sha256")
+        .update(providerQuery)
+        .digest("hex");
+      const conversationContext = [
+        category
+          ? `Explore Meghalaya category: ${category.name}${subcategory ? `; subcategory: ${subcategory.name}` : ""}.`
+          : "Explore Meghalaya natural-language discovery.",
+        `The selected location context is ${locationContextKey}. Previous result sets from other locations are not relevant.`,
+      ].join("\n\n");
+      let attemptedProvider = config.provider;
+      let providerError: unknown = null;
+      try {
+        answer = await webSearchService.answerWithSearch({
+          conversationContext,
+          maxSearches: config.maxCalls,
+          model: model.providerModelId,
+          provider: config.provider,
+          userMessage: providerQuery,
+        });
+      } catch (primaryError) {
+        providerError = primaryError;
+        if (
+          config.fallbackProvider !== "disabled" &&
+          config.fallbackProvider !== config.provider
+        ) {
+          attemptedProvider = config.fallbackProvider;
+          try {
+            answer = await webSearchService.answerWithSearch({
+              conversationContext,
+              maxSearches: config.maxCalls,
+              model: model.providerModelId,
+              provider: config.fallbackProvider,
+              userMessage: providerQuery,
+            });
+            providerError = null;
+          } catch (fallbackError) {
+            providerError = fallbackError;
+          }
         }
       }
-    }
 
-    if (answer) {
-      const chargedInput = Math.ceil(
-        answer.usage.inputTokens * config.creditMultiplier,
-      );
-      const chargedOutput = Math.ceil(
-        answer.usage.outputTokens * config.creditMultiplier,
-      );
-      if (chargedInput + chargedOutput > 0) {
-        await recordTokenUsage({
-          userId: auth.user.id,
+      if (answer) {
+        const chargedInput = Math.ceil(
+          answer.usage.inputTokens * config.creditMultiplier,
+        );
+        const chargedOutput = Math.ceil(
+          answer.usage.outputTokens * config.creditMultiplier,
+        );
+        if (chargedInput + chargedOutput > 0) {
+          await recordTokenUsage({
+            userId: auth.user.id,
+            chatId,
+            modelConfigId: model.id,
+            inputTokens: chargedInput,
+            outputTokens: chargedOutput,
+            deductCredits: hasCredits,
+          });
+        }
+        await recordWebSearchUsage({
           chatId,
-          modelConfigId: model.id,
-          inputTokens: chargedInput,
-          outputTokens: chargedOutput,
-          deductCredits: hasCredits,
+          creditCostTokens: chargedInput + chargedOutput,
+          creditMultiplier: config.creditMultiplier,
+          platform,
+          provider: answer.provider,
+          queryHash,
+          responseTimeMs: Math.round(performance.now() - startedAt),
+          searchCallCount: answer.searchCallCount,
+          sourceCount: answer.sources.length,
+          sources: answer.sources,
+          status: "completed",
+          triggerReason: "explore_meghalaya",
+          userId: auth.user.id,
         });
+      } else {
+        await recordWebSearchUsage({
+          chatId,
+          creditCostTokens: 0,
+          creditMultiplier: config.creditMultiplier,
+          errorReason:
+            providerError instanceof Error
+              ? providerError.message.slice(0, 500)
+              : "provider_failed",
+          platform,
+          provider: attemptedProvider,
+          queryHash,
+          responseTimeMs: Math.round(performance.now() - startedAt),
+          searchCallCount: 0,
+          sourceCount: 0,
+          sources: [],
+          status: "failed",
+          triggerReason: "explore_meghalaya",
+          userId: auth.user.id,
+        });
+        console.warn(
+          "[api/explore/search] Web enrichment failed; returning verified geographic results.",
+          providerError,
+        );
       }
-      await recordWebSearchUsage({
-        chatId,
-        creditCostTokens: chargedInput + chargedOutput,
-        creditMultiplier: config.creditMultiplier,
-        platform,
-        provider: answer.provider,
-        queryHash,
-        responseTimeMs: Math.round(performance.now() - startedAt),
-        searchCallCount: answer.searchCallCount,
-        sourceCount: answer.sources.length,
-        sources: answer.sources,
-        status: "completed",
-        triggerReason: "explore_meghalaya",
-        userId: auth.user.id,
-      });
-    } else {
-      await recordWebSearchUsage({
-        chatId,
-        creditCostTokens: 0,
-        creditMultiplier: config.creditMultiplier,
-        errorReason:
-          providerError instanceof Error
-            ? providerError.message.slice(0, 500)
-            : "provider_failed",
-        platform,
-        provider: attemptedProvider,
-        queryHash,
-        responseTimeMs: Math.round(performance.now() - startedAt),
-        searchCallCount: 0,
-        sourceCount: 0,
-        sources: [],
-        status: "failed",
-        triggerReason: "explore_meghalaya",
-        userId: auth.user.id,
-      });
-      console.warn(
-        "[api/explore/search] Web enrichment failed; returning verified geographic results.",
-        providerError,
-      );
     }
 
     const summary =
@@ -439,51 +447,53 @@ export async function POST(request: Request) {
         radiusKm: parsed.data.radiusKm,
         results,
       });
-    const now = new Date();
-    const assistantParts: ChatMessage["parts"] = [
-      {
-        type: "text",
-        text: [
-          `Current Explore context: ${parsed.data.location.label} (${parsed.data.location.latitude}, ${parsed.data.location.longitude}), within ${parsed.data.radiusKm} km.`,
-          summary,
-          ...results.map(
-            (item) =>
-              `- ${item.name} — ${item.distance}${item.address ? ` — ${item.address}` : ""}: ${item.sourceUrl}`,
-          ),
-        ].join("\n"),
-      },
-    ];
-    if (answer) {
-      assistantParts.push({
-        type: "data-webSources",
-        data: {
-          sources: answer.sources,
-          searchQueries: answer.searchQueries,
-          citations: answer.citations,
-          videos: answer.videos,
+    if (shouldEnrichExploreSearch(parsed.data.searchMode)) {
+      const now = new Date();
+      const assistantParts: ChatMessage["parts"] = [
+        {
+          type: "text",
+          text: [
+            `Current Explore context: ${parsed.data.location.label} (${parsed.data.location.latitude}, ${parsed.data.location.longitude}), within ${parsed.data.radiusKm} km.`,
+            summary,
+            ...results.slice(0, 24).map(
+              (item) =>
+                `- ${item.name} — ${item.distance}${item.address ? ` — ${item.address}` : ""}: ${item.sourceUrl}`,
+            ),
+          ].join("\n"),
         },
+      ];
+      if (answer) {
+        assistantParts.push({
+          type: "data-webSources",
+          data: {
+            sources: answer.sources,
+            searchQueries: answer.searchQueries,
+            citations: answer.citations,
+            videos: answer.videos,
+          },
+        });
+      }
+      await saveMessages({
+        messages: [
+          {
+            chatId,
+            id: generateUUID(),
+            role: "user",
+            parts: [{ type: "text", text: parsed.data.query }],
+            attachments: [],
+            createdAt: now,
+          },
+          {
+            chatId,
+            id: generateUUID(),
+            role: "assistant",
+            parts: assistantParts,
+            attachments: [],
+            createdAt: new Date(now.getTime() + 1),
+          },
+        ],
       });
     }
-    await saveMessages({
-      messages: [
-        {
-          chatId,
-          id: generateUUID(),
-          role: "user",
-          parts: [{ type: "text", text: parsed.data.query }],
-          attachments: [],
-          createdAt: now,
-        },
-        {
-          chatId,
-          id: generateUUID(),
-          role: "assistant",
-          parts: assistantParts,
-          attachments: [],
-          createdAt: new Date(now.getTime() + 1),
-        },
-      ],
-    });
 
     const response: ExploreSearchResponse = {
       answer: summary,
@@ -501,6 +511,7 @@ export async function POST(request: Request) {
       radiusKm: parsed.data.radiusKm,
       results,
       searchQueries: answer?.searchQueries ?? [],
+      searchMode: parsed.data.searchMode,
     };
     return NextResponse.json(response, { headers: noStoreHeaders() });
   } catch (error) {

@@ -44,6 +44,14 @@ const EXPLORE_SESSION_STORAGE_KEY = "explore.locationSession.v2";
 const SAVED_RESULTS_STORAGE_KEY = "explore.savedResults";
 const DISCOVERY_QUERY =
   "Nearby places, businesses, food, services, attractions and activities";
+const RESULTS_PAGE_SIZE = 12;
+
+type SearchRunMode =
+  | "initial"
+  | "location"
+  | "radius"
+  | "category"
+  | "search";
 
 type SearchSelection = {
   categoryId: string | null;
@@ -158,11 +166,13 @@ export function ExplorePageClient({
   const [searchPending, setSearchPending] = useState(false);
   const [radiusDebouncing, setRadiusDebouncing] = useState(false);
   const [loadingMode, setLoadingMode] = useState<
-    "initial" | "location" | "radius" | "search"
+    SearchRunMode
   >("search");
   const [error, setError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [response, setResponse] = useState<ExploreSearchResponse | null>(null);
+  const [visibleResultCount, setVisibleResultCount] =
+    useState(RESULTS_PAGE_SIZE);
   const [lastSearch, setLastSearch] = useState<SearchSelection | null>(null);
   const [detail, setDetail] = useState<ExploreResult | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => {
@@ -184,6 +194,8 @@ export function ExplorePageClient({
   const abortRef = useRef<AbortController | null>(null);
   const currentRequestIdRef = useRef<string | null>(null);
   const requestedSearchKeyRef = useRef<string | null>(null);
+  const chatIdRef = useRef<string | null>(null);
+  const locationContextKeyRef = useRef<string | null>(null);
   const restoredSearchRef = useRef<SearchSelection | null>(null);
   const previousRadiusRef = useRef(radiusKm);
 
@@ -276,7 +288,7 @@ export function ExplorePageClient({
     }: {
       selection: SearchSelection;
       radiusOverride?: number;
-      mode?: "initial" | "location" | "radius" | "search";
+      mode?: SearchRunMode;
     }) => {
       if (!location) return;
       const normalized = selection.query.trim();
@@ -308,6 +320,7 @@ export function ExplorePageClient({
       requestedSearchKeyRef.current = searchKey;
       const previousResponse = response;
       setResponse(null);
+      setVisibleResultCount(RESULTS_PAGE_SIZE);
       setDetail(null);
       setError(null);
       setLastSearch(selection);
@@ -322,11 +335,14 @@ export function ExplorePageClient({
             query: normalized,
             categoryId: selection.categoryId,
             subcategoryId: selection.subcategoryId,
-            chatId: previousResponse?.chatId ?? null,
+            chatId: previousResponse?.chatId ?? chatIdRef.current,
             clientRequestId: requestId,
-            locationContextKey: previousResponse?.locationContextKey ?? null,
+            locationContextKey:
+              previousResponse?.locationContextKey ??
+              locationContextKeyRef.current,
             location,
             radiusKm: requestedRadius,
+            searchMode: mode === "search" ? "enriched" : "places_only",
           }),
           signal: controller.signal,
         });
@@ -353,6 +369,9 @@ export function ExplorePageClient({
         ) {
           return;
         }
+        chatIdRef.current = body.chatId;
+        locationContextKeyRef.current = body.locationContextKey;
+        setVisibleResultCount(RESULTS_PAGE_SIZE);
         setResponse(body);
       } catch (searchError) {
         if (
@@ -441,6 +460,8 @@ export function ExplorePageClient({
     abortRef.current?.abort();
     currentRequestIdRef.current = null;
     requestedSearchKeyRef.current = null;
+    chatIdRef.current = null;
+    locationContextKeyRef.current = null;
     restoredSearchRef.current = null;
     setResponse(null);
     setLastSearch(null);
@@ -582,6 +603,8 @@ export function ExplorePageClient({
     window.sessionStorage.removeItem(EXPLORE_SESSION_STORAGE_KEY);
     currentRequestIdRef.current = null;
     requestedSearchKeyRef.current = null;
+    chatIdRef.current = null;
+    locationContextKeyRef.current = null;
     setLocation(null);
     setResponse(null);
     setLastSearch(null);
@@ -615,7 +638,7 @@ export function ExplorePageClient({
         query: category.name,
         subcategoryId: null,
       },
-      mode: "search",
+      mode: "category",
     });
   };
 
@@ -638,7 +661,10 @@ export function ExplorePageClient({
             address: result.address,
             sourceUrl: result.sourceUrl,
           },
-          results: response.results.map((item) => ({
+          results: [
+            result,
+            ...response.results.filter((item) => item.id !== result.id),
+          ].slice(0, 24).map((item) => ({
             name: item.name,
             address: item.address,
             distanceKm: item.distanceKm,
@@ -1033,7 +1059,7 @@ export function ExplorePageClient({
                       query: subcategory.name,
                       subcategoryId: subcategory.id,
                     },
-                    mode: "search",
+                    mode: "category",
                   });
                 }}
                 type="button"
@@ -1058,7 +1084,7 @@ export function ExplorePageClient({
                         query: prompt,
                         subcategoryId: selectedSubcategoryId,
                       },
-                      mode: "search",
+                    mode: "search",
                     });
                   }}
                   type="button"
@@ -1079,7 +1105,7 @@ export function ExplorePageClient({
             disabled={isLoading || !lastSearch}
             onClick={() =>
               lastSearch &&
-              runSearch({ selection: lastSearch, mode: "search" })
+              runSearch({ selection: lastSearch, mode: loadingMode })
             }
             type="button"
           >
@@ -1159,15 +1185,55 @@ export function ExplorePageClient({
               translate={translate}
             />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {response.results.map((result) => (
-                <ResultCard
-                  key={result.id}
-                  onOpen={() => setDetail(result)}
-                  result={result}
+            <>
+              <p className="text-muted-foreground text-sm">
+                <EditableTranslation
+                  defaultText="Showing {shown} of {total} results"
+                  description="Explore result count shown above the result cards."
+                  translationKey="explore.results.showing_count"
+                  values={{
+                    shown: Math.min(visibleResultCount, response.results.length),
+                    total: response.results.length,
+                  }}
                 />
-              ))}
-            </div>
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {response.results
+                  .slice(0, visibleResultCount)
+                  .map((result) => (
+                    <ResultCard
+                      key={result.id}
+                      onOpen={() => setDetail(result)}
+                      result={result}
+                    />
+                  ))}
+              </div>
+              {visibleResultCount < response.results.length ? (
+                <div className="flex justify-center">
+                  <button
+                    className="min-h-10 cursor-pointer rounded-full border px-5 text-sm hover:bg-muted"
+                    onClick={() =>
+                      setVisibleResultCount((current) =>
+                        Math.min(
+                          current + RESULTS_PAGE_SIZE,
+                          response.results.length,
+                        ),
+                      )
+                    }
+                    type="button"
+                  >
+                    <EditableTranslation
+                      defaultText="Load more ({count} remaining)"
+                      description="Loads the next batch of Explore result cards already returned for the selected radius."
+                      translationKey="explore.results.load_more"
+                      values={{
+                        count: response.results.length - visibleResultCount,
+                      }}
+                    />
+                  </button>
+                </div>
+              ) : null}
+            </>
           )}
         </section>
       ) : null}
