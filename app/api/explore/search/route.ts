@@ -34,6 +34,7 @@ import type {
   ExploreResult,
   ExploreSearchResponse,
 } from "@/lib/explore/types";
+import { exploreSearchInputSchema } from "@/lib/explore/validation";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
@@ -50,23 +51,6 @@ import type { WebSearchAnswer } from "@/lib/web-search/types";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 export const runtime = "nodejs";
-
-const searchInputSchema = z.object({
-  query: z.string().trim().min(1).max(500),
-  categoryId: z.string().uuid().nullable().optional(),
-  subcategoryId: z.string().uuid().nullable().optional(),
-  chatId: z.string().uuid().nullable().optional(),
-  radiusKm: z.union([z.literal(5), z.literal(10), z.literal(25), z.literal(50)]).nullable().optional(),
-  location: z
-    .object({
-      label: z.string().trim().max(120).nullable().optional(),
-      latitude: z.number().min(-90).max(90).nullable().optional(),
-      longitude: z.number().min(-180).max(180).nullable().optional(),
-      accuracy: z.number().min(0).max(100_000).nullable().optional(),
-    })
-    .nullable()
-    .optional(),
-});
 
 const providerResultSchema = z.object({
   name: z.string().trim().min(1).max(240),
@@ -250,7 +234,9 @@ export async function POST(request: Request) {
     if (!(await isExploreMeghalayaEnabledForRole(auth.user.role))) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    const parsed = searchInputSchema.safeParse(await request.json().catch(() => null));
+    const parsed = exploreSearchInputSchema.safeParse(
+      await request.json().catch(() => null)
+    );
     if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
     const clientKey = getClientKeyFromHeaders(request.headers);

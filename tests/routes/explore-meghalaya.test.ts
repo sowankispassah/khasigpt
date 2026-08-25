@@ -6,6 +6,7 @@ import {
   isExploreNearMeQuery,
   parseExploreAccessModeSetting,
 } from "@/lib/explore/shared";
+import { exploreSearchInputSchema } from "@/lib/explore/validation";
 
 const repoRoot = process.cwd();
 const readWorkspaceFile = (relativePath: string) =>
@@ -33,6 +34,39 @@ test.describe("Explore Meghalaya", () => {
     expect(nextConfig).not.toContain("geolocation=()");
   });
 
+  test("accepts coarse browser accuracy when coordinates are valid", () => {
+    const result = exploreSearchInputSchema.safeParse({
+      query: "restaurant",
+      categoryId: null,
+      subcategoryId: null,
+      chatId: null,
+      radiusKm: null,
+      location: {
+        label: "Current location",
+        latitude: 25.57,
+        longitude: 91.88,
+        accuracy: 200_000,
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  test("accepts user-selected whole-kilometre radii from 1 through 50", () => {
+    expect(
+      exploreSearchInputSchema.safeParse({ query: "restaurant", radiusKm: 17 })
+        .success,
+    ).toBe(true);
+    expect(
+      exploreSearchInputSchema.safeParse({ query: "restaurant", radiusKm: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      exploreSearchInputSchema.safeParse({ query: "restaurant", radiusKm: 51 })
+        .success,
+    ).toBe(false);
+  });
+
   test("wires guarded web and native discovery to shared APIs and chat", async () => {
     const [web, native, webSidebar, nativeSidebar, searchRoute, migration] =
       await Promise.all([
@@ -46,8 +80,11 @@ test.describe("Explore Meghalaya", () => {
 
     expect(web).toContain('fetch("/api/explore/search"');
     expect(web).toContain('fetch("/api/explore/context"');
+    expect(web).toContain('type="range"');
+    expect(web).toContain("max={50}");
     expect(native).toContain("api.exploreSearch");
     expect(native).toContain("requestForegroundPermissionsAsync");
+    expect(native).toContain("maximumValue={50}");
     expect(webSidebar).toContain('translationKey="sidebar.explore_meghalaya"');
     expect(nativeSidebar).toContain('translationKey="sidebar.explore_meghalaya"');
     expect(searchRoute).toContain("recordTokenUsage");

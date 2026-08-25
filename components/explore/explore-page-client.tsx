@@ -80,7 +80,7 @@ export function ExplorePageClient({
   const [location, setLocation] = useState<ExploreLocationInput | null>(null);
   const [locationOpen, setLocationOpen] = useState(false);
   const [manualLocation, setManualLocation] = useState("");
-  const [radiusKm, setRadiusKm] = useState<5 | 10 | 25 | 50 | null>(null);
+  const [radiusKm, setRadiusKm] = useState(10);
   const [locationPending, setLocationPending] = useState(false);
   const [searchPending, setSearchPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -326,30 +326,30 @@ export function ExplorePageClient({
               />
             )}
           </button>
-          <select
-            aria-label={translate("explore.location.radius", "Search radius")}
-            className="min-h-10 cursor-pointer rounded-full border bg-background px-3 text-sm"
-            onChange={(event) =>
-              setRadiusKm(
-                event.target.value
-                  ? (Number(event.target.value) as 5 | 10 | 25 | 50)
-                  : null,
-              )
-            }
-            value={radiusKm ?? ""}
-          >
-            <option value="">
-              {translate("explore.location.nearby", "Nearby")}
-            </option>
-            {[5, 10, 25, 50].map((distance) => (
-              <option key={distance} value={distance}>
-                {translate(
-                  "explore.location.within_km",
-                  "Within {distance} km",
-                ).replace("{distance}", String(distance))}
-              </option>
-            ))}
-          </select>
+          <label className="flex min-h-10 w-full cursor-pointer items-center gap-3 rounded-full border bg-background px-3 text-sm sm:w-auto sm:min-w-64">
+            <span className="sr-only">
+              {translate("explore.location.radius", "Search radius")}
+            </span>
+            <input
+              aria-label={translate(
+                "explore.location.radius",
+                "Search radius",
+              )}
+              className="h-2 min-w-0 flex-1 cursor-pointer accent-primary"
+              max={50}
+              min={1}
+              onChange={(event) => setRadiusKm(Number(event.target.value))}
+              step={1}
+              type="range"
+              value={radiusKm}
+            />
+            <span className="min-w-24 text-right tabular-nums">
+              {translate(
+                "explore.location.within_km",
+                "Within {distance} km",
+              ).replace("{distance}", String(radiusKm))}
+            </span>
+          </label>
         </div>
       </section>
 
