@@ -110,7 +110,7 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value:
-      "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), accelerometer=(), autoplay=(self)",
+      "camera=(), microphone=(self), geolocation=(self), payment=(), usb=(), accelerometer=(), autoplay=(self)",
   },
   ...(isDevelopment
     ? []

@@ -26,6 +26,13 @@ test.describe("Explore Meghalaya", () => {
     expect(hasExploreExplicitLocation("Things to do near Jowai")).toBe(true);
   });
 
+  test("allows same-origin browser geolocation prompts", async () => {
+    const nextConfig = await readWorkspaceFile("next.config.ts");
+
+    expect(nextConfig).toContain("geolocation=(self)");
+    expect(nextConfig).not.toContain("geolocation=()");
+  });
+
   test("wires guarded web and native discovery to shared APIs and chat", async () => {
     const [web, native, webSidebar, nativeSidebar, searchRoute, migration] =
       await Promise.all([
