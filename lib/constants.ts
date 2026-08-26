@@ -17,6 +17,8 @@ export const FREE_MESSAGE_SETTINGS_KEY = "chat.freeMessages";
 export const FORUM_FEATURE_FLAG_KEY = "forum.enabled";
 export const CALCULATOR_FEATURE_FLAG_KEY = "calculator.enabled";
 export const IMAGE_GENERATION_FEATURE_FLAG_KEY = "image.generation.enabled";
+export const IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY =
+  "image.webVisualReferences.enabled";
 export const IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY =
   "image.generation.filenamePrefix";
 export const IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY =

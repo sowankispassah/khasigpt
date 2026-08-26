@@ -14,6 +14,7 @@ import {
 } from "@/lib/ai/image-provider-routing";
 import type { ImageInput } from "@/lib/ai/image-types";
 import { resolveLanguageModel } from "@/lib/ai/providers";
+import type { NormalizedVisualReference } from "@/lib/ai/visual-reference-types";
 import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
@@ -693,12 +694,14 @@ async function requestNanoBananaImage({
 export async function buildGenerationRequest({
   prompt,
   sourceImages = [],
+  environmentReferences = [],
   abortSignal,
   characterReferenceDeps,
   maxReferenceImages = DEFAULT_MAX_REFERENCE_IMAGES,
 }: {
   prompt: string;
   sourceImages?: ImageInput[];
+  environmentReferences?: NormalizedVisualReference[];
   abortSignal?: AbortSignal;
   characterReferenceDeps?: CharacterReferenceDeps;
   maxReferenceImages?: number;
@@ -709,6 +712,7 @@ export async function buildGenerationRequest({
   matchedAlias?: string;
   matchedCharacterIds?: string[];
   matchedAliases?: string[];
+  references: NormalizedVisualReference[];
 }> {
   const normalizedMaxReferenceImages = Math.max(
     1,
@@ -732,13 +736,51 @@ export async function buildGenerationRequest({
     0,
     Math.max(0, normalizedMaxReferenceImages - (reference.referenceImages?.length ?? 0))
   );
+  const remainingEnvironmentSlots = Math.max(
+    0,
+    normalizedMaxReferenceImages -
+      (reference.referenceImages?.length ?? 0) -
+      selectedSourceImages.length
+  );
+  const selectedEnvironmentReferences = environmentReferences.slice(
+    0,
+    remainingEnvironmentSlots
+  );
   const combinedImages = [
     ...(reference.referenceImages ?? []),
     ...selectedSourceImages,
+    ...selectedEnvironmentReferences.map((item) => item.image),
+  ];
+  const environmentStartIndex =
+    (reference.referenceImages?.length ?? 0) + selectedSourceImages.length + 1;
+  const environmentPrompt = selectedEnvironmentReferences.length
+    ? [
+        reference.prompt,
+        `Reference image${selectedEnvironmentReferences.length === 1 ? "" : "s"} ${selectedEnvironmentReferences
+          .map((_item, index) => environmentStartIndex + index)
+          .join(", ")} show the real-world environment ${selectedEnvironmentReferences[0]?.entity ?? "requested by the user"}.`,
+        "Use those environment references only to preserve recognizable geography, architecture, terrain, and local visual identity.",
+        "Create a new composition that applies the user's requested transformation. Do not reproduce or trace any reference photograph.",
+      ].join("\n\n")
+    : reference.prompt;
+  const normalizedReferences: NormalizedVisualReference[] = [
+    ...(reference.referenceImages ?? []).map((image) => ({
+      type: "CHARACTER" as const,
+      source: "ADMIN" as const,
+      image,
+      characterId: reference.matchedCharacterId,
+      entity: reference.matchedAlias,
+    })),
+    ...selectedSourceImages.map((image) => ({
+      type: "USER_UPLOAD" as const,
+      source: "USER" as const,
+      image,
+    })),
+    ...selectedEnvironmentReferences,
   ];
 
   return {
-    prompt: reference.prompt,
+    prompt: environmentPrompt,
     images:
       combinedImages.length > 0
         ? combinedImages.slice(0, normalizedMaxReferenceImages)
@@ -747,6 +789,7 @@ export async function buildGenerationRequest({
     matchedAlias: reference.matchedAlias,
     matchedCharacterIds: reference.matchedCharacterIds,
     matchedAliases: reference.matchedAliases,
+    references: normalizedReferences,
   };
 }
 

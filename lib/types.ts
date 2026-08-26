@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ArtifactKind } from "@/components/artifact";
 import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
+import type { EnvironmentReferenceContext } from "./ai/visual-reference-types";
 import type { Suggestion } from "./db/schema";
 import type { AppUsage } from "./usage";
 import type {
@@ -77,6 +78,7 @@ export type CustomUIDataTypes = {
     reason?: "safety" | "generation" | "cancelled";
     updatedAt: string;
   };
+  imageReferenceContext: EnvironmentReferenceContext;
 };
 
 export type ChatMessage = UIMessage<

@@ -6,6 +6,7 @@ import {
   EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
@@ -62,6 +63,10 @@ const FEATURE_ACCESS_FIELD_CONFIG: Record<string, FeatureAccessFieldConfig> = {
   imageGenerationAccessMode: {
     settingKey: IMAGE_GENERATION_FEATURE_FLAG_KEY,
     auditAction: "feature.image_generation.toggle",
+  },
+  imageWebReferencesAccessMode: {
+    settingKey: IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
+    auditAction: "feature.image_web_references.toggle",
   },
   documentUploadsAccessMode: {
     settingKey: DOCUMENT_UPLOADS_FEATURE_FLAG_KEY,

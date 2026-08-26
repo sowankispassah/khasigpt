@@ -72,6 +72,7 @@ import {
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
   IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY,
   IMAGE_PROMPT_TRANSLATION_MODEL_SETTING_KEY,
+  IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_DEFAULT_LANGUAGE_A_SETTING_KEY,
@@ -1421,6 +1422,12 @@ export default async function AdminSettingsPage({
       settingKey: EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
       snapshot: featureAccessState,
     });
+  const imageWebReferencesAccessState =
+    featureAccessControlStateByField.get("imageWebReferencesAccessMode") ??
+    resolveFeatureAccessControlState({
+      settingKey: IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
+      snapshot: featureAccessState,
+    });
   const legacyVoiceChatAccessState = resolveFeatureAccessControlState({
     settingKey: VOICE_CHAT_LEGACY_FEATURE_FLAG_KEY,
     snapshot: featureAccessState,
@@ -1452,6 +1459,7 @@ export default async function AdminSettingsPage({
   const jobsAccessMode = jobsAccessState.mode;
   const newsAccessMode = newsAccessState.mode;
   const imageGenerationAccessMode = imageGenerationAccessState.mode;
+  const imageWebReferencesAccessMode = imageWebReferencesAccessState.mode;
   const documentUploadsAccessMode = documentUploadsAccessState.mode;
   const exploreMeghalayaAccessMode = exploreMeghalayaAccessState.mode;
   const voiceChatAndroidAccessMode =
@@ -1769,6 +1777,15 @@ export default async function AdminSettingsPage({
               readState={imageGenerationAccessState.readState}
               successMessage="Image generation availability updated."
               title="AI image generation"
+            />
+
+            <FeatureAccessModeControl
+              currentMode={imageWebReferencesAccessMode}
+              description="Allow image generation to find temporary web visual references for specific real-world places and landmarks. Person identity continues to use Admin character references only."
+              fieldName="imageWebReferencesAccessMode"
+              readState={imageWebReferencesAccessState.readState}
+              successMessage="Automatic web visual reference availability updated."
+              title="Automatic web visual references"
             />
 
             <FeatureAccessModeControl

@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { put } from "@vercel/blob";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import type { VisibilityType } from "@/components/visibility-selector";
+import { resolveEnvironmentReferences } from "@/lib/ai/environment-reference";
+import { isEnvironmentReferenceEnabledForRole } from "@/lib/ai/environment-reference-config";
 import {
   ALLOWED_IMAGE_MEDIA_TYPES,
   MAX_IMAGE_UPLOAD_BYTES,
@@ -21,11 +24,15 @@ import {
 } from "@/lib/ai/image-generation-errors";
 import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
 import { verifyImageIntentToken } from "@/lib/ai/image-intent-token";
+import type { EnvironmentReferenceContext } from "@/lib/ai/visual-reference-types";
 import { IMAGE_GENERATION_FILENAME_PREFIX_SETTING_KEY } from "@/lib/constants";
 import {
   deductImageCredits,
   getAppSetting,
   getChatById,
+  getMessagesByChatId,
+  getWebSearchUsageCountSince,
+  recordWebSearchUsage,
   saveChatAndMessages,
   updateChatStatusById,
   updateMessagePartsById,
@@ -36,6 +43,11 @@ import { incrementRateLimit } from "@/lib/security/rate-limit";
 import { getClientKeyFromHeaders } from "@/lib/security/request-helpers";
 import type { ChatMessage } from "@/lib/types";
 import { generateUUID } from "@/lib/utils";
+import {
+  getWebSearchPlatform,
+  isWebSearchAllowedForUser,
+  loadWebSearchConfig,
+} from "@/lib/web-search/config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,6 +76,35 @@ const ALLOWED_IMAGE_HOST_SUFFIXES = [
   "blob.vercel-storage.com",
   "public.blob.vercel-storage.com",
 ];
+const environmentReferenceContextSchema = z.object({
+  entity: z.string().trim().min(1).max(180),
+  entityType: z.enum([
+    "PLACE",
+    "LANDMARK",
+    "BUILDING",
+    "VENUE",
+    "NATURAL_LOCATION",
+  ]),
+  searchQuery: z.string().trim().min(1).max(240),
+  retrievedAt: z.string().datetime(),
+  references: z
+    .array(
+      z.object({
+        type: z.enum(["ENVIRONMENT", "LANDMARK"]),
+        source: z.literal("WEB"),
+        entity: z.string().trim().min(1).max(180),
+        imageUrl: z.string().url(),
+        sourceUrl: z.string().url().optional(),
+        sourceDomain: z.string().max(180).optional(),
+        searchQuery: z.string().trim().min(1).max(240),
+        retrievedAt: z.string().datetime(),
+        relevance: z.number().optional(),
+        width: z.number().positive().optional(),
+        height: z.number().positive().optional(),
+      })
+    )
+    .max(3),
+});
 type ImageGenerationStatus = "pending" | "completed" | "failed" | "cancelled";
 
 function hostMatchesSuffix(hostname: string, suffix: string) {
@@ -541,14 +582,129 @@ export async function POST(request: Request) {
   });
 
   try {
+    const webSearchPlatform = getWebSearchPlatform(request);
+    const [
+      webSearchConfig,
+      environmentReferenceFeatureEnabled,
+      previousEnvironmentContext,
+    ] = await Promise.all([
+      loadWebSearchConfig(),
+      isEnvironmentReferenceEnabledForRole(session.user.role),
+      existingChat && payload.intent === "image_edit"
+        ? getMessagesByChatId({ id: chatId })
+            .then(readLatestEnvironmentReferenceContext)
+            .catch((error) => {
+              console.warn(
+                "[visual-reference/context] Previous context unavailable.",
+                {
+                  chatId,
+                  reason: error instanceof Error ? error.message : String(error),
+                }
+              );
+              return null;
+            })
+        : Promise.resolve(null),
+    ]);
+    let visualSearchAllowed =
+      environmentReferenceFeatureEnabled &&
+      isWebSearchAllowedForUser({
+        config: webSearchConfig,
+        isPaidUser: access.hasPaidCredits || access.hasPaidPlan,
+        platform: webSearchPlatform,
+        role: session.user.role,
+      });
+    if (visualSearchAllowed) {
+      const dailySearchCount = await getWebSearchUsageCountSince({
+        since: getStartOfTodayInIST(),
+        userId: session.user.id,
+      });
+      if (
+        dailySearchCount === null ||
+        dailySearchCount >= webSearchConfig.dailyLimit
+      ) {
+        visualSearchAllowed = false;
+        console.warn(
+          "[visual-reference] Search skipped because usage eligibility could not be confirmed.",
+          { chatId }
+        );
+      }
+    }
+    const maxModelReferences = getMaxReferenceImagesForModel(
+      access.model.providerModelId,
+      access.model.provider
+    );
+    const environmentResolutionStartedAt = performance.now();
+    const environmentResolution = await resolveEnvironmentReferences({
+      prompt,
+      allowSearch: visualSearchAllowed,
+      skipNewSearch: sourceImages.length > 0,
+      previousContext: previousEnvironmentContext,
+      maxReferences: Math.max(0, maxModelReferences - sourceImages.length),
+      abortSignal: request.signal,
+    }).catch((error) => {
+      console.warn(
+        "[visual-reference] Falling back to normal image generation.",
+        {
+          chatId,
+          reason: error instanceof Error ? error.message : String(error),
+        }
+      );
+      return null;
+    });
+    const environmentResolutionTimeMs = Math.round(
+      performance.now() - environmentResolutionStartedAt
+    );
+
+    if (
+      environmentResolution?.decision.shouldSearch &&
+      !environmentResolution.reusedContext
+    ) {
+      const query =
+        environmentResolution.context?.searchQuery ??
+        environmentResolution.decision.entity ??
+        "environment-reference";
+      const sources = (environmentResolution.context?.references ?? []).map(
+        (reference) => ({
+          title: reference.entity,
+          url: reference.sourceUrl ?? reference.imageUrl,
+          domain: reference.sourceDomain ?? null,
+        })
+      );
+      void recordWebSearchUsage({
+        chatId,
+        creditCostTokens: 0,
+        creditMultiplier: webSearchConfig.creditMultiplier,
+        errorReason: sources.length ? null : "no_usable_visual_reference",
+        platform: webSearchPlatform,
+        provider: "visual_image_search",
+        queryHash: createHash("sha256").update(query).digest("hex"),
+        responseTimeMs: environmentResolutionTimeMs,
+        searchCallCount: environmentResolution.searchCallCount,
+        sourceCount: sources.length,
+        sources,
+        status: sources.length ? "completed" : "failed",
+        triggerReason: "automatic_image_environment_reference",
+        userId: session.user.id,
+      });
+    }
+    if (environmentResolution?.decision.entity) {
+      console.info("[visual-reference] resolution", {
+        candidateCount: environmentResolution.candidateCount,
+        chatId,
+        entityType: environmentResolution.decision.entityType,
+        referenceCount: environmentResolution.references.length,
+        responseTimeMs: environmentResolutionTimeMs,
+        reusedContext: environmentResolution.reusedContext,
+        searchCallCount: environmentResolution.searchCallCount,
+      });
+    }
+
     const generationRequest = await buildGenerationRequest({
       prompt,
       sourceImages,
+      environmentReferences: environmentResolution?.references ?? [],
       abortSignal: request.signal,
-      maxReferenceImages: getMaxReferenceImagesForModel(
-        access.model.providerModelId,
-        access.model.provider
-      ),
+      maxReferenceImages: maxModelReferences,
     });
 
     const images = await generateImageWithProvider({
@@ -560,7 +716,7 @@ export async function POST(request: Request) {
       preferredLanguage,
     });
 
-    const assistantParts = await Promise.all(
+    const generatedImageParts = await Promise.all(
       images.map(async (image, index) => {
         const extension = image.mediaType.includes("png") ? "png" : "jpg";
         const filename = `${imageFilenamePrefix}-${index + 1}`;
@@ -581,6 +737,32 @@ export async function POST(request: Request) {
         };
       })
     );
+    const usedEnvironmentImageUrls = new Set(
+      generationRequest.references.flatMap((reference) =>
+        reference.source === "WEB" && reference.imageUrl
+          ? [reference.imageUrl]
+          : []
+      )
+    );
+    const persistedEnvironmentContext = environmentResolution?.context
+      ? {
+          ...environmentResolution.context,
+          references: environmentResolution.context.references.filter(
+            (reference) => usedEnvironmentImageUrls.has(reference.imageUrl)
+          ),
+        }
+      : null;
+    const assistantParts = [
+      ...generatedImageParts,
+      ...(persistedEnvironmentContext?.references.length
+        ? [
+            {
+              type: "data-imageReferenceContext" as const,
+              data: persistedEnvironmentContext,
+            },
+          ]
+        : []),
+    ];
 
     await deductImageCredits({
       userId: session.user.id,
@@ -707,4 +889,39 @@ export async function POST(request: Request) {
       }
     );
   }
+}
+
+function getStartOfTodayInIST() {
+  const offsetMinutes = 5.5 * 60;
+  const now = new Date();
+  const istMillis = now.getTime() + offsetMinutes * 60 * 1000;
+  const istStart = new Date(istMillis);
+  istStart.setUTCHours(0, 0, 0, 0);
+  return new Date(istStart.getTime() - offsetMinutes * 60 * 1000);
+}
+
+function readLatestEnvironmentReferenceContext(
+  messages: Awaited<ReturnType<typeof getMessagesByChatId>>
+): EnvironmentReferenceContext | null {
+  for (const message of [...messages].reverse()) {
+    if (!Array.isArray(message.parts)) {
+      continue;
+    }
+    for (const part of [...message.parts].reverse()) {
+      if (
+        !part ||
+        typeof part !== "object" ||
+        !("type" in part) ||
+        part.type !== "data-imageReferenceContext" ||
+        !("data" in part)
+      ) {
+        continue;
+      }
+      const parsed = environmentReferenceContextSchema.safeParse(part.data);
+      if (parsed.success) {
+        return parsed.data;
+      }
+    }
+  }
+  return null;
 }

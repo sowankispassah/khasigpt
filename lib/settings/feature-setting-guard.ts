@@ -4,6 +4,7 @@ import {
   EXPLORE_MEGHALAYA_FEATURE_FLAG_KEY,
   ICON_PROMPTS_ENABLED_SETTING_KEY,
   IMAGE_GENERATION_FEATURE_FLAG_KEY,
+  IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY,
   JOBS_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_ANDROID_FEATURE_FLAG_KEY,
   LIVE_TRANSLATION_WEB_FEATURE_FLAG_KEY,
@@ -35,6 +36,9 @@ const ALLOWED_FEATURE_SETTING_SOURCES: Record<string, Set<string>> = {
   [NEWS_FEATURE_FLAG_KEY]: new Set(["feature.news.toggle"]),
   [IMAGE_GENERATION_FEATURE_FLAG_KEY]: new Set([
     "feature.image_generation.toggle",
+  ]),
+  [IMAGE_WEB_REFERENCES_FEATURE_FLAG_KEY]: new Set([
+    "feature.image_web_references.toggle",
   ]),
   [DOCUMENT_UPLOADS_FEATURE_FLAG_KEY]: new Set([
     "feature.document_uploads.toggle",
