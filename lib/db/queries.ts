@@ -7248,29 +7248,37 @@ export async function listImageModelConfigs({
   limit?: number;
 } = {}): Promise<ImageModelConfig[]> {
   try {
-    const baseBuilder = db.select().from(imageModelConfig);
+    return await withAdminDatabase(
+      "image-models.list",
+      async (adminDb) => {
+        const baseBuilder = adminDb.select().from(imageModelConfig);
 
-    const deletedCondition = onlyDeleted
-      ? (isNotNull(imageModelConfig.deletedAt) as SQL<boolean>)
-      : includeDeleted
-        ? undefined
-        : (isNull(imageModelConfig.deletedAt) as SQL<boolean>);
+        const deletedCondition = onlyDeleted
+          ? (isNotNull(imageModelConfig.deletedAt) as SQL<boolean>)
+          : includeDeleted
+            ? undefined
+            : (isNull(imageModelConfig.deletedAt) as SQL<boolean>);
 
-    const enabledCondition = includeDisabled
-      ? undefined
-      : (eq(imageModelConfig.isEnabled, true) as SQL<boolean>);
+        const enabledCondition = includeDisabled
+          ? undefined
+          : (eq(imageModelConfig.isEnabled, true) as SQL<boolean>);
 
-    const whereCondition =
-      deletedCondition && enabledCondition
-        ? (and(deletedCondition, enabledCondition) as SQL<boolean>)
-        : (deletedCondition ?? enabledCondition);
+        const whereCondition =
+          deletedCondition && enabledCondition
+            ? (and(deletedCondition, enabledCondition) as SQL<boolean>)
+            : (deletedCondition ?? enabledCondition);
 
-    const builder =
-      whereCondition !== undefined
-        ? baseBuilder.where(whereCondition)
-        : baseBuilder;
+        const builder =
+          whereCondition !== undefined
+            ? baseBuilder.where(whereCondition)
+            : baseBuilder;
 
-    return await builder.orderBy(desc(imageModelConfig.createdAt)).limit(limit);
+        return await builder
+          .orderBy(desc(imageModelConfig.createdAt))
+          .limit(limit);
+      },
+      { retry: true }
+    );
   } catch (_error) {
     if (isTableMissingError(_error)) {
       throw new ChatSDKError(
@@ -7282,6 +7290,40 @@ export async function listImageModelConfigs({
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to list image model configurations"
+    );
+  }
+}
+
+export async function getAdminActiveImageModelConfigId(): Promise<
+  string | null
+> {
+  try {
+    return await withAdminDatabase(
+      "image-models.active-id",
+      async (adminDb) => {
+        const [activeModel] = await adminDb
+          .select({ id: imageModelConfig.id })
+          .from(imageModelConfig)
+          .where(
+            and(
+              eq(imageModelConfig.isActive, true),
+              eq(imageModelConfig.isEnabled, true),
+              isNull(imageModelConfig.deletedAt)
+            )
+          )
+          .limit(1);
+
+        return activeModel?.id ?? null;
+      },
+      { retry: true }
+    );
+  } catch (_error) {
+    console.error("[image-models.active-id] Read failed.", {
+      error: _error instanceof Error ? _error.message : String(_error),
+    });
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to load active image model configuration"
     );
   }
 }
@@ -7470,14 +7512,14 @@ export async function hardDeleteImageModelConfig(id: string) {
   }
 }
 
-export async function setActiveImageModelConfig(id: string) {
+export async function setActiveImageModelConfig(id: string): Promise<string> {
   const now = new Date();
 
   try {
-    await withAdminDatabase(
+    return await withAdminDatabase(
       "image-models.set-active",
       async (adminDb) => {
-        await adminDb.transaction(async (tx) => {
+        return await adminDb.transaction(async (tx) => {
           const [target] = await tx
             .select({ id: imageModelConfig.id })
             .from(imageModelConfig)
@@ -7518,6 +7560,8 @@ export async function setActiveImageModelConfig(id: string) {
           if (!activated) {
             throw new Error("Image model configuration not found");
           }
+
+          return activated.id;
         });
       },
       { retry: true }

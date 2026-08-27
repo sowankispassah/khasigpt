@@ -15,7 +15,6 @@ import {
   hardDeleteImageModelConfigAction,
   hardDeleteLiveVoiceModelConfigAction,
   hardDeleteModelConfigAction,
-  setActiveImageModelConfigAction,
   setDefaultLiveVoiceModelConfigAction,
   setDefaultModelConfigAction,
   setImagePromptTranslationModelAction,
@@ -171,6 +170,11 @@ import {
 import { resolveWebSearchConfig } from "@/lib/web-search/config";
 import { FeatureAccessModeControl } from "./feature-access-mode-control";
 import { IconPromptSettingsForm } from "./icon-prompt-settings-form";
+import {
+  ImageModelActivationButton,
+  ImageModelActivationProvider,
+  ImageModelActiveBadge,
+} from "./image-model-activation-control";
 import { ImageModelPricingFields } from "./image-model-pricing-fields";
 import { LanguageContentForm } from "./language-content-form";
 import { LanguagePromptsForm } from "./language-prompts-form";
@@ -567,41 +571,45 @@ async function loadAdminSettingsData() {
           plans: [],
         };
       });
+  const imageModelConfigsStatePromise = settingsQueryState(
+    "image model configs",
+    () => listAdminImageModelConfigsCached(),
+    []
+  );
   const [
-    modelsState,
+    [
+      modelsState,
+      liveVoiceModelConfigsState,
+      plansState,
+      languagesState,
+      translationFeatureLanguagesState,
+    ],
     imageModelConfigsState,
-    liveVoiceModelConfigsState,
-    plansState,
-    languagesState,
-    translationFeatureLanguagesState,
-  ] = await resolveAdminDbReadGroup([
-    () =>
-      settingsQueryState(
-        "model configs",
-        () => listAdminModelConfigsCached(),
-        []
-      ),
-    () =>
-      settingsQueryState(
-        "image model configs",
-        () => listAdminImageModelConfigsCached(),
-        []
-      ),
-    () =>
-      settingsQueryState(
-        "live voice model configs",
-        () => listAdminLiveVoiceModelConfigsCached(),
-        []
-      ),
-    plansStatePromise,
-    () =>
-      settingsQueryState("languages", () => listAdminLanguagesCached(), []),
-    () =>
-      settingsQueryState(
-        "translation feature languages",
-        () => listAdminTranslationFeatureLanguagesCached(),
-        []
-      ),
+  ] = await Promise.all([
+    resolveAdminDbReadGroup([
+      () =>
+        settingsQueryState(
+          "model configs",
+          () => listAdminModelConfigsCached(),
+          []
+        ),
+      () =>
+        settingsQueryState(
+          "live voice model configs",
+          () => listAdminLiveVoiceModelConfigsCached(),
+          []
+        ),
+      plansStatePromise,
+      () =>
+        settingsQueryState("languages", () => listAdminLanguagesCached(), []),
+      () =>
+        settingsQueryState(
+          "translation feature languages",
+          () => listAdminTranslationFeatureLanguagesCached(),
+          []
+        ),
+    ]),
+    imageModelConfigsStatePromise,
   ]);
   const exchangeRate = await exchangeRatePromise;
   const appSettingValuesByKey = appSettingState.values;
@@ -901,17 +909,6 @@ function EnabledBadge({ enabled }: { enabled: boolean }) {
   return (
     <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 text-xs">
       Disabled
-    </span>
-  );
-}
-
-function ActiveBadge({ active }: { active: boolean }) {
-  if (!active) {
-    return null;
-  }
-  return (
-    <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-700 text-xs">
-      Active
     </span>
   );
 }
@@ -4608,6 +4605,11 @@ export default async function AdminSettingsPage({
             </CollapsibleSection>
 
             <CollapsibleSection title="Configured image models">
+              <ImageModelActivationProvider
+                initialActiveId={
+                  activeImageModels.find((model) => model.isActive)?.id ?? null
+                }
+              >
               <div className="space-y-6">
                 {activeImageModels.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
@@ -4634,7 +4636,7 @@ export default async function AdminSettingsPage({
                         <span className="font-medium">{model.displayName}</span>
                         <ProviderBadge value={model.provider} />
                         <EnabledBadge enabled={model.isEnabled} />
-                        <ActiveBadge active={model.isActive} />
+                        <ImageModelActiveBadge modelId={model.id} />
                       </div>
                       <span className="font-mono text-muted-foreground text-xs">
                         {model.providerModelId}
@@ -4794,18 +4796,7 @@ export default async function AdminSettingsPage({
                       </form>
 
                       <div className="flex flex-wrap gap-3 md:col-span-2">
-                        {!model.isActive && (
-                          <form action={setActiveImageModelConfigAction}>
-                            <input name="id" type="hidden" value={model.id} />
-                            <SettingsSubmitButton
-                              pendingLabel="Updating..."
-                              size="sm"
-                              variant="outline"
-                            >
-                              Set as active
-                            </SettingsSubmitButton>
-                          </form>
-                        )}
+                        <ImageModelActivationButton modelId={model.id} />
 
                         <form action={deleteImageModelConfigAction}>
                           <input name="id" type="hidden" value={model.id} />
@@ -4865,6 +4856,7 @@ export default async function AdminSettingsPage({
                   </div>
                 </div>
               )}
+              </ImageModelActivationProvider>
             </CollapsibleSection>
           </div>
         </CollapsibleSection>
