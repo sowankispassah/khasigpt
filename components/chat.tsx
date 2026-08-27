@@ -1458,7 +1458,9 @@ export function Chat({
         if (optimisticSubmission) {
           setMessages((prev) =>
             prev.filter(
-              (message) => message.id !== optimisticSubmission.messageId
+              (message) =>
+                message.id !== optimisticSubmission.messageId &&
+                message.id !== optimisticSubmission.pendingAssistantMessageId
             )
           );
           setInput((current) =>
@@ -1509,7 +1511,14 @@ export function Chat({
       syncCurrentChatUrl();
 
       const userMessageId = optimisticSubmission?.messageId ?? generateUUID();
-      if (!optimisticSubmission) {
+      if (optimisticSubmission) {
+        setMessages((prev) =>
+          prev.filter(
+            (message) =>
+              message.id !== optimisticSubmission.pendingAssistantMessageId
+          )
+        );
+      } else {
         const userParts = [
           ...imageAttachments.map((attachment) => ({
             type: "file" as const,

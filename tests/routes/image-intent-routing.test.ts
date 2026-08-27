@@ -134,6 +134,8 @@ test.describe("image intent routing", () => {
       imageRouteSource,
       classifierSource,
       intentRouteSource,
+      messageSource,
+      typesSource,
     ] = await Promise.all([
       readFile(path.join(repoRoot, "components/multimodal-input.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/chat.tsx"), "utf8"),
@@ -150,6 +152,8 @@ test.describe("image intent routing", () => {
         path.join(repoRoot, "app/(chat)/api/images/intent/route.ts"),
         "utf8"
       ),
+      readFile(path.join(repoRoot, "components/message.tsx"), "utf8"),
+      readFile(path.join(repoRoot, "lib/types.ts"), "utf8"),
     ]);
 
     expect(inputSource).toContain("submitWithIntent");
@@ -168,6 +172,15 @@ test.describe("image intent routing", () => {
     expect(optimisticCommitIndex).toBeLessThan(intentResolutionIndex);
     expect(inputSource).toContain('setInput("")');
     expect(inputSource).toContain("messageId: submission.messageId");
+    expect(inputSource).toContain('type: "data-submitStatus" as const');
+    expect(inputSource).toContain("pendingAssistantMessageId");
+    expect(messageSource).toContain(
+      'data-testid="message-assistant-loading"'
+    );
+    expect(messageSource).toContain(
+      'translate("chat.thinking", "Thinking...")'
+    );
+    expect(typesSource).toContain("submitStatus:");
     expect(inputSource).not.toContain(
       "if (imageGenerationSelected) {\n            onGenerateImage();"
     );
