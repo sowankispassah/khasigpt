@@ -1,28 +1,58 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import equal from "fast-deep-equal";
-import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { memo, useState } from "react";
+import { useTranslation } from "@/components/language-provider";
+import { IMAGE_GENERATION_SAFETY_MESSAGE } from "@/lib/ai/image-generation-errors";
+import { sanitizeAssistantDisplayText } from "@/lib/chat/assistant-text-safety";
 import type { Vote } from "@/lib/db/schema";
-import type { ChatMessage } from "@/lib/types";
-import { cn, sanitizeText } from "@/lib/utils";
-import { useDataStream } from "./data-stream-provider";
-import { DocumentToolResult } from "./document";
-import { DocumentPreview } from "./document-preview";
+import type { JobCard, JobTitleReference } from "@/lib/jobs/types";
+import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
+import type {
+  ChatMessage,
+  CustomUIDataTypes,
+} from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "./elements/tool";
 import { LoaderIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
+
+const JobCards = dynamic(
+  () => import("./jobs/job-cards").then((module) => module.JobCards),
+  {
+    loading: () => null,
+  }
+);
+
+const StudyPaperCards = dynamic(
+  () =>
+    import("./study/study-paper-cards").then(
+      (module) => module.StudyPaperCards
+    ),
+  {
+    loading: () => null,
+  }
+);
+
+const WebSearchSources = dynamic(
+  () =>
+    import("./web-search-sources").then(
+      (module) => module.WebSearchSources
+    ),
+  { loading: () => null }
+);
+
+const WebSearchStatus = dynamic(
+  () =>
+    import("./web-search-sources").then(
+      (module) => module.WebSearchStatus
+    ),
+  { loading: () => null }
+);
 
 const PurePreviewMessage = ({
   chatId,
@@ -33,6 +63,9 @@ const PurePreviewMessage = ({
   regenerate,
   isReadonly,
   requiresScrollPadding,
+  studyActions,
+  jobActions,
+  onRetryWebSearch,
 }: {
   chatId: string;
   message: ChatMessage;
@@ -42,24 +75,93 @@ const PurePreviewMessage = ({
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
   isReadonly: boolean;
   requiresScrollPadding: boolean;
+  studyActions?: {
+    onView: (paper: StudyPaperCard) => void;
+    onAsk: (paper: StudyPaperCard) => void;
+    onQuiz: (paper: StudyPaperCard) => void;
+    onJumpToQuestionPaper?: (paperId: string) => void;
+    activePaperId?: string | null;
+    isQuizActive?: boolean;
+  };
+  jobActions?: {
+    onPrefetch?: (job: JobCard) => void;
+    onView: (job: JobCard) => void;
+    onAsk: (job: JobCard) => void;
+    activeJobId?: string | null;
+  };
+  onRetryWebSearch?: (userMessageId?: string) => Promise<void> | void;
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
+  const { translate } = useTranslation();
 
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
   );
+  const messageAttachments = attachmentsFromMessage
+    .map((attachment, index) => {
+      const resolvedUrl = attachment.url ?? "";
+      if (!resolvedUrl) {
+        return null;
+      }
+      const filename =
+        attachment.filename ??
+        ("name" in attachment && typeof attachment.name === "string"
+          ? attachment.name
+          : undefined) ??
+        "file";
+
+      return {
+        id: `${message.id}-attachment-${index}`,
+        name: filename,
+        contentType: attachment.mediaType ?? "",
+        url: resolvedUrl,
+      };
+    })
+    .filter(
+      (
+        attachment
+      ): attachment is {
+        id: string;
+        name: string;
+        contentType: string;
+        url: string;
+      } => attachment !== null
+    );
 
   const isAssistantMessage = message.role === "assistant";
-
-  useDataStream();
+  const imageGenerationStatus = message.parts.reduce<
+    CustomUIDataTypes["imageGeneration"] | null
+  >((current, part) => {
+    if (part.type !== "data-imageGeneration" || !part.data) {
+      return current;
+    }
+    return part.data;
+  }, null);
+  const hasWebSearchStatus = message.parts.some(
+    (part) => part.type === "data-webSearchStatus"
+  );
+  const assistantText = message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => sanitizeAssistantDisplayText(part.text))
+    .join("")
+    .trim();
+  const webSearchData = message.parts.reduce<
+    CustomUIDataTypes["webSources"] | null
+  >((current, part) => {
+    if (part.type !== "data-webSources" || !part.data) {
+      return current;
+    }
+    return part.data;
+  }, null);
+  const hasWebSearchAnswer = assistantText.length > 0 || webSearchData !== null;
+  const isWebSearchStatusOnly =
+    isAssistantMessage && hasWebSearchStatus && assistantText.length === 0;
 
   return (
-    <motion.div
-      animate={{ opacity: 1 }}
+    <div
       className="group/message w-full"
       data-role={message.role}
       data-testid={`message-${message.role}`}
-      initial={{ opacity: 0 }}
     >
       <div
         className={cn("flex w-full items-start gap-2 md:gap-3", {
@@ -69,33 +171,44 @@ const PurePreviewMessage = ({
       >
         <div
           className={cn("flex flex-col", {
-            "gap-2 md:gap-4": message.parts?.some(
-              (p) => p.type === "text" && p.text?.trim()
-            ),
+            "gap-2 md:gap-4":
+              message.parts?.some(
+                (p) => p.type === "text" && p.text?.trim()
+              ) || hasWebSearchStatus,
             "min-h-96": isAssistantMessage && requiresScrollPadding,
             "w-full":
               (isAssistantMessage &&
                 message.parts?.some(
-                  (p) => p.type === "text" && p.text?.trim()
+                  (p) =>
+                    (p.type === "text" && p.text?.trim()) ||
+                    p.type === "data-webSearchStatus"
                 )) ||
               mode === "edit",
             "max-w-[calc(100%-2.5rem)] sm:max-w-[min(fit-content,80%)]":
               message.role === "user" && mode !== "edit",
           })}
         >
-          {attachmentsFromMessage.length > 0 && (
+          {messageAttachments.length > 0 && (
             <div
-              className="flex flex-row justify-end gap-2"
+              className={cn(
+                "flex gap-2",
+                isAssistantMessage
+                  ? "flex-wrap items-start justify-start"
+                  : "flex-row justify-end"
+              )}
               data-testid={"message-attachments"}
             >
-              {attachmentsFromMessage.map((attachment) => (
+              {messageAttachments.map((attachment) => (
                 <PreviewAttachment
                   attachment={{
-                    name: attachment.filename ?? "file",
-                    contentType: attachment.mediaType,
+                    name: attachment.name,
+                    contentType: attachment.contentType,
                     url: attachment.url,
                   }}
-                  key={attachment.url}
+                  key={attachment.id}
+                  previewSize={isAssistantMessage ? 240 : undefined}
+                  showDownload={isAssistantMessage}
+                  showName={!isAssistantMessage}
                 />
               ))}
             </div>
@@ -115,10 +228,155 @@ const PurePreviewMessage = ({
               );
             }
 
+            if (type === "data-studyCards") {
+              const data = (part as { data?: { papers?: StudyPaperCard[] } })
+                .data;
+              const papers = data?.papers ?? [];
+              if (!studyActions || papers.length === 0) {
+                return null;
+              }
+              return (
+                <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4" key={key}>
+                  <StudyPaperCards
+                    activePaperId={studyActions.activePaperId}
+                    isQuizActive={studyActions.isQuizActive}
+                    onAsk={studyActions.onAsk}
+                    onQuiz={studyActions.onQuiz}
+                    onView={studyActions.onView}
+                    papers={papers}
+                  />
+                </div>
+              );
+            }
+
+            if (type === "data-jobCards") {
+              const data = (part as { data?: { jobs?: JobCard[] } }).data;
+              const jobs = data?.jobs ?? [];
+              if (!jobActions || jobs.length === 0) {
+                return null;
+              }
+              return (
+                <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4" key={key}>
+                  <JobCards
+                    activeJobId={jobActions.activeJobId}
+                    jobs={jobs}
+                    onAsk={jobActions.onAsk}
+                    onPrefetch={jobActions.onPrefetch}
+                    onView={jobActions.onView}
+                  />
+                </div>
+              );
+            }
+
+            if (type === "data-studyQuestionReference") {
+              const data = (part as { data?: StudyQuestionReference }).data;
+              if (!data?.title || !data?.preview) {
+                return null;
+              }
+              const referenceBody = (
+                <>
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Question reference
+                  </div>
+                  <div className="truncate font-medium text-foreground text-sm">
+                    {data.title}
+                  </div>
+                  <div className="truncate text-muted-foreground text-xs">
+                    {data.preview}
+                  </div>
+                </>
+              );
+              return (
+                <div
+                  className={cn(
+                    "max-w-full rounded-lg border px-3 py-2 text-left",
+                    message.role === "user"
+                      ? "border-border/60 bg-muted/60"
+                      : "border-border/50 bg-muted/40"
+                  )}
+                  key={key}
+                >
+                  {studyActions?.onJumpToQuestionPaper ? (
+                    <button
+                      className="w-full cursor-pointer text-left"
+                      onClick={() => studyActions.onJumpToQuestionPaper?.(data.paperId)}
+                      type="button"
+                    >
+                      {referenceBody}
+                    </button>
+                  ) : (
+                    referenceBody
+                  )}
+                </div>
+              );
+            }
+
+            if (type === "data-webSources") {
+              return null;
+            }
+
+            if (type === "data-webSearchStatus") {
+              if (
+                !isAssistantMessage ||
+                !part.data ||
+                (hasWebSearchAnswer && part.data.status !== "failed") ||
+                part.data.status === "completed"
+              ) {
+                return null;
+              }
+              return (
+                <WebSearchStatus
+                  key={key}
+                  onRetry={
+                    part.data.status === "failed" ? onRetryWebSearch : undefined
+                  }
+                  status={part.data}
+                />
+              );
+            }
+
+            if (type === "data-jobTitleReference") {
+              const data = (part as { data?: JobTitleReference }).data;
+              if (!data?.title || !data?.preview) {
+                return null;
+              }
+
+              return (
+                <div
+                  className={cn(
+                    "max-w-full rounded-lg border px-3 py-2 text-left",
+                    message.role === "user"
+                      ? "border-border/60 bg-muted/60"
+                      : "border-border/50 bg-muted/40"
+                  )}
+                  key={key}
+                >
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Replying about
+                  </div>
+                  <div className="truncate font-medium text-foreground text-sm">
+                    {data.title}
+                  </div>
+                  <div className="truncate text-muted-foreground text-xs">
+                    {data.preview}
+                  </div>
+                </div>
+              );
+            }
+
             if (type === "text") {
               const isLastPart = index === message.parts.length - 1;
               const showStreamingSpinner =
                 isAssistantMessage && isLoading && isLastPart;
+              const displayText = isAssistantMessage
+                ? imageGenerationStatus?.reason === "safety" &&
+                  part.text === imageGenerationStatus.message
+                  ? translate(
+                      "image.generate.safety_rejected",
+                      IMAGE_GENERATION_SAFETY_MESSAGE
+                    )
+                  : sanitizeAssistantDisplayText(part.text)
+                : part.text;
 
               if (mode === "view") {
                 return (
@@ -130,17 +388,12 @@ const PurePreviewMessage = ({
                   >
                     <MessageContent
                       className={cn({
-                        "w-fit break-words rounded-2xl px-3 py-2 text-right text-white":
+                        "w-fit break-words rounded-2xl border border-border/50 bg-muted/70 px-3 py-2 text-right text-foreground":
                           message.role === "user",
-                        "flex-1 bg-transparent py-0 text-left pl-3 pr-2 md:pl-4 md:pr-3":
+                        "flex-1 bg-transparent py-0 pr-2 pl-3 text-left md:pr-3 md:pl-4":
                           isAssistantMessage,
                       })}
                       data-testid="message-content"
-                      style={
-                        message.role === "user"
-                          ? { backgroundColor: "#006cff" }
-                          : undefined
-                      }
                     >
                       <div
                         className={cn({
@@ -154,10 +407,10 @@ const PurePreviewMessage = ({
                             "w-full": isAssistantMessage,
                           })}
                         >
-                          {sanitizeText(part.text)}
+                          {displayText}
                         </Response>
                         {isAssistantMessage && showStreamingSpinner && (
-                          <span className="inline-flex size-4 items-center justify-center animate-spin text-muted-foreground">
+                          <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
                             <LoaderIcon size={14} />
                           </span>
                         )}
@@ -188,133 +441,18 @@ const PurePreviewMessage = ({
               }
             }
 
-            if (type === "tool-createDocument") {
-              const { toolCallId } = part;
-              const output = (part as { output?: unknown }).output;
-
-              if (output && typeof output === "object" && "error" in output) {
-                return (
-                  <div
-                    className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-500 dark:bg-red-950/50"
-                    key={toolCallId}
-                  >
-                    Error creating document: {String((output as { error: unknown }).error)}
-                  </div>
-                );
-              }
-
+            if (
+              type === "tool-createDocument" ||
+              type === "tool-updateDocument" ||
+              type === "tool-requestSuggestions"
+            ) {
               return (
-                <DocumentPreview
-                  isReadonly={isReadonly}
-                  key={toolCallId}
-                  result={output}
-                />
-              );
-            }
-
-            if (type === "tool-updateDocument") {
-              const { toolCallId } = part;
-              const output = (part as { output?: unknown }).output;
-              const documentArgs =
-                output && typeof output === "object"
-                  ? (output as Record<string, unknown>)
-                  : undefined;
-
-              if (output && typeof output === "object" && "error" in output) {
-                return (
-                  <div
-                    className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-500 dark:bg-red-950/50"
-                    key={toolCallId}
-                  >
-                    Error updating document: {String((output as { error: unknown }).error)}
-                  </div>
-                );
-              }
-
-              return (
-                <div className="relative" key={toolCallId}>
-                  <DocumentPreview
-                    args={{ ...(documentArgs ?? {}), isUpdate: true }}
-                    isReadonly={isReadonly}
-                    result={output}
-                  />
+                <div
+                  className="rounded-lg border bg-muted/40 px-3 py-2 text-muted-foreground text-sm"
+                  key={`tool-${message.id}-${index}`}
+                >
+                  Document tools are disabled in this deployment.
                 </div>
-              );
-            }
-
-            if (type === "tool-requestSuggestions") {
-              const { toolCallId, state } = part;
-
-              return (
-                <Tool defaultOpen={true} key={toolCallId}>
-                  <ToolHeader state={state} type="tool-requestSuggestions" />
-                  <ToolContent>
-                    {state === "input-available" && (
-                      <ToolInput input={part.input} />
-                    )}
-                    {state === "output-available" && (
-                      <ToolOutput
-                        errorText={undefined}
-                        output={(() => {
-                          const output = (part as { output?: unknown }).output;
-                          const rawDocumentResult =
-                            output && typeof output === "object"
-                              ? (output as Record<string, unknown>)
-                              : undefined;
-
-                          if (output && typeof output === "object" && "error" in output) {
-                            return (
-                              <div className="rounded border p-2 text-red-500">
-                                Error: {String((output as { error: unknown }).error)}
-                              </div>
-                            );
-                          }
-
-                          const documentResult = (() => {
-                            if (!rawDocumentResult) {
-                              return undefined;
-                            }
-
-                            const { id, title, kind } = rawDocumentResult;
-
-                            if (
-                              typeof id === "string" &&
-                              typeof title === "string" &&
-                              (kind === "text" ||
-                                kind === "code" ||
-                                kind === "image" ||
-                                kind === "sheet")
-                            ) {
-                              return {
-                                id,
-                                title,
-                                kind,
-                              } as const;
-                            }
-
-                            return undefined;
-                          })();
-
-                          if (!documentResult) {
-                            return (
-                              <div className="rounded border p-2 text-amber-600">
-                                Unable to display document suggestions.
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <DocumentToolResult
-                              isReadonly={isReadonly}
-                              result={documentResult}
-                              type="request-suggestions"
-                            />
-                          );
-                        })()}
-                      />
-                    )}
-                  </ToolContent>
-                </Tool>
               );
             }
 
@@ -323,16 +461,17 @@ const PurePreviewMessage = ({
 
           {isAssistantMessage &&
             isLoading &&
+            !hasWebSearchStatus &&
             !message.parts?.some(
               (part) => part.type === "text" && part.text?.trim()
             ) && (
               <div className="flex w-full items-end gap-2">
                 <MessageContent
-                  className="flex-1 bg-transparent py-0 text-left pl-3 pr-2 md:pl-4 md:pr-3"
+                  className="flex-1 bg-transparent py-0 pr-2 pl-3 text-left md:pr-3 md:pl-4"
                   data-testid="message-content"
                 >
                   <div className="flex w-full items-end justify-start">
-                    <span className="inline-flex size-4 items-center justify-center animate-spin text-muted-foreground">
+                    <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
                       <LoaderIcon size={14} />
                     </span>
                   </div>
@@ -340,7 +479,18 @@ const PurePreviewMessage = ({
               </div>
             )}
 
-          {!isReadonly && (
+          {isAssistantMessage && webSearchData && assistantText.length > 0 ? (
+            <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4">
+              <WebSearchSources
+                citations={webSearchData.citations}
+                searchQueries={webSearchData.searchQueries}
+                sources={webSearchData.sources}
+                videos={webSearchData.videos}
+              />
+            </div>
+          ) : null}
+
+          {!isReadonly && !isWebSearchStatusOnly && (
             <MessageActions
               chatId={chatId}
               isLoading={isLoading}
@@ -352,52 +502,26 @@ const PurePreviewMessage = ({
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-export const PreviewMessage = memo(
-  PurePreviewMessage,
-  (prevProps, nextProps) => {
-    if (prevProps.isLoading !== nextProps.isLoading) {
-      return false;
-    }
-    if (prevProps.message.id !== nextProps.message.id) {
-      return false;
-    }
-    if (prevProps.requiresScrollPadding !== nextProps.requiresScrollPadding) {
-      return false;
-    }
-    if (!equal(prevProps.message.parts, nextProps.message.parts)) {
-      return false;
-    }
-    if (!equal(prevProps.vote, nextProps.vote)) {
-      return false;
-    }
-
-    return false;
-  }
-);
+export const PreviewMessage = memo(PurePreviewMessage);
 
 export const ThinkingMessage = () => {
   return (
-    <motion.div
-      animate={{ opacity: 1 }}
+    <div
       className="group/message w-full py-1"
       data-role="assistant"
       data-testid="message-assistant-loading"
-      initial={{ opacity: 0 }}
     >
       <div className="flex items-center justify-start">
         <span className="flex items-center gap-2 text-muted-foreground text-sm">
-          <span className="flex size-4 items-center justify-center animate-spin text-muted-foreground">
+          <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
             <LoaderIcon size={16} />
           </span>
         </span>
       </div>
-    </motion.div>
+    </div>
   );
 };
-
-
-
