@@ -5,7 +5,7 @@ import { type DataUIPart, DefaultChatTransport } from "ai";
 import { BookOpen, LoaderCircle, Newspaper } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -15,7 +15,6 @@ import {
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -111,6 +110,7 @@ const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 const PROMPTS_API_ROUTE = "/api/prompts";
+const IMAGE_INTENT_REQUEST_TIMEOUT_MS = 10_000;
 
 type PromptActionsPayload = {
   iconPromptActions?: IconPromptAction[];
@@ -244,10 +244,8 @@ export function Chat({
   customKnowledgeEnabled: boolean;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
-  const newChatNonce = searchParams.get("new");
   const embeddedMode = searchParams.get("embedded");
   const resolvedChatMode = chatMode;
   const historyMode =
@@ -308,6 +306,8 @@ export function Chat({
     boolean | null
   >(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isResolvingSubmissionIntent, setIsResolvingSubmissionIntent] =
+    useState(false);
   const [showActionProgress, setShowActionProgress] = useState(false);
   const [actionProgress, setActionProgress] = useState(0);
   const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -335,9 +335,6 @@ export function Chat({
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
   const webSearchPlaceholderRef = useRef<PendingWebSearch | null>(null);
-  const chatPersistenceConfirmedRef = useRef(
-    (pathname !== "/" && pathname !== "/chat") || initialMessages.length > 0
-  );
   const shouldLoadJobsListFromApi = isJobsMode && jobsListItems.length === 0;
   const {
     data: jobsModeListItemsData,
@@ -541,12 +538,6 @@ export function Chat({
   useEffect(() => {
     currentLanguageCodeRef.current = currentLanguageCode;
   }, [currentLanguageCode]);
-
-  useEffect(() => {
-    if (pathname !== "/" && pathname !== "/chat" && !newChatNonce) {
-      chatPersistenceConfirmedRef.current = true;
-    }
-  }, [newChatNonce, pathname]);
 
   useEffect(() => {
     studyContextIdRef.current = studyContext?.id ?? null;
@@ -1411,11 +1402,17 @@ export function Chat({
         return null;
       }
 
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        IMAGE_INTENT_REQUEST_TIMEOUT_MS
+      );
       try {
         const response = await fetch("/api/images/intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(intentInput),
+          signal: controller.signal,
         });
         const data = (await response.json().catch(() => null)) as
           | { decisionToken?: string | null; intent?: string; message?: string }
@@ -1437,6 +1434,8 @@ export function Chat({
           error: error instanceof Error ? error.message : String(error),
         });
         return null;
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     },
     [
@@ -1458,9 +1457,7 @@ export function Chat({
         if (optimisticSubmission) {
           setMessages((prev) =>
             prev.filter(
-              (message) =>
-                message.id !== optimisticSubmission.messageId &&
-                message.id !== optimisticSubmission.pendingAssistantMessageId
+              (message) => message.id !== optimisticSubmission.messageId
             )
           );
           setInput((current) =>
@@ -1511,14 +1508,7 @@ export function Chat({
       syncCurrentChatUrl();
 
       const userMessageId = optimisticSubmission?.messageId ?? generateUUID();
-      if (optimisticSubmission) {
-        setMessages((prev) =>
-          prev.filter(
-            (message) =>
-              message.id !== optimisticSubmission.pendingAssistantMessageId
-          )
-        );
-      } else {
+      if (!optimisticSubmission) {
         const userParts = [
           ...imageAttachments.map((attachment) => ({
             type: "file" as const,
@@ -1723,26 +1713,8 @@ export function Chat({
     ]
   );
 
-  const ensureChatExistsBeforeNavigation = useCallback(
-    async (firstMessageText: string) => {
-      if (chatPersistenceConfirmedRef.current) {
-        return;
-      }
-
-      await ensureChatExistsAction({
-        chatId: id,
-        visibility: visibilityType,
-        mode: resolvedChatMode,
-        firstMessageText,
-      });
-      chatPersistenceConfirmedRef.current = true;
-    },
-    [id, resolvedChatMode, visibilityType]
-  );
-
   const handleBeforeSubmit = useCallback(
-    async (firstMessageText: string) => {
-      await ensureChatExistsBeforeNavigation(firstMessageText);
+    (_firstMessageText: string) => {
       syncCurrentChatUrl();
       if (!isJobsMode) {
         return;
@@ -1750,7 +1722,7 @@ export function Chat({
       setJobsSubmitScrollSignal((current) => current + 1);
       void mutate("messages:should-scroll", "auto", { revalidate: false });
     },
-    [ensureChatExistsBeforeNavigation, isJobsMode, mutate, syncCurrentChatUrl]
+    [isJobsMode, mutate, syncCurrentChatUrl]
   );
 
   useEffect(() => {
@@ -1994,6 +1966,7 @@ export function Chat({
             headerFullWidth={false}
             isArtifactVisible={isArtifactVisible}
             isGeneratingImage={isGeneratingImage}
+            isResolvingIntent={isResolvingSubmissionIntent}
             isLoadingHistory={isLoadingHistory}
             isReadonly={false}
             messages={messages}
@@ -2054,6 +2027,7 @@ export function Chat({
               selectedLanguageCode={currentLanguageCode}
               selectedVisibilityType={visibilityType}
               onGenerateImage={async () => {}}
+              onIntentResolutionChange={setIsResolvingSubmissionIntent}
               jobTitleReference={jobTitleReference}
               onClearJobTitleReference={clearJobContext}
               onClearStudyQuestionReference={() =>
@@ -2122,6 +2096,7 @@ export function Chat({
               headerFullWidth={isJobsMode}
               isArtifactVisible={isArtifactVisible}
               isGeneratingImage={isGeneratingImage}
+              isResolvingIntent={isResolvingSubmissionIntent}
               isLoadingHistory={isLoadingHistory}
               isReadonly={isReadonly}
               messages={messages}
@@ -2207,6 +2182,7 @@ export function Chat({
                       )
                     }
                     onManualInputChange={handleManualInputChange}
+                    onIntentResolutionChange={setIsResolvingSubmissionIntent}
                     onResolveImageIntent={resolveImageIntentForPrompt}
                     jobTitleReference={jobTitleReference}
                     onClearJobTitleReference={clearJobContext}

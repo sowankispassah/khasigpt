@@ -79,7 +79,6 @@ export type OptimisticChatSubmission = {
   attachments: Attachment[];
   messageId: string;
   parts: ChatMessage["parts"];
-  pendingAssistantMessageId: string;
   prompt: string;
 };
 
@@ -306,6 +305,7 @@ function PureMultimodalInput({
   onJumpToQuestionPaper,
   onBeforeSubmit,
   onGenerateImage,
+  onIntentResolutionChange,
   onManualInputChange,
   onResolveImageIntent,
   onToggleImageMode,
@@ -346,6 +346,7 @@ function PureMultimodalInput({
     resolution: ImageIntentResolution,
     submission: OptimisticChatSubmission
   ) => Promise<void>;
+  onIntentResolutionChange?: (isResolving: boolean) => void;
   onManualInputChange?: () => void;
   onResolveImageIntent?: (
     prompt: string
@@ -513,7 +514,6 @@ function PureMultimodalInput({
 
     const submittedAttachments = [...attachments];
     const messageId = generateUUID();
-    const pendingAssistantMessageId = `pending-submit-${generateUUID()}`;
     const parts: ChatMessage["parts"] = [
       ...submittedAttachments.map((attachment) => ({
         type: "file" as const,
@@ -546,7 +546,6 @@ function PureMultimodalInput({
       attachments: submittedAttachments,
       messageId,
       parts,
-      pendingAssistantMessageId,
       prompt,
     };
 
@@ -556,17 +555,6 @@ function PureMultimodalInput({
         id: messageId,
         role: "user",
         parts,
-        metadata: { createdAt: new Date().toISOString() },
-      },
-      {
-        id: pendingAssistantMessageId,
-        role: "assistant",
-        parts: [
-          {
-            type: "data-submitStatus" as const,
-            data: { status: "routing" as const },
-          },
-        ],
         metadata: { createdAt: new Date().toISOString() },
       },
     ]);
@@ -602,9 +590,7 @@ function PureMultimodalInput({
     (submission: OptimisticChatSubmission) => {
       setMessages((currentMessages) =>
         currentMessages.filter(
-          (message) =>
-            message.id !== submission.messageId &&
-            message.id !== submission.pendingAssistantMessageId
+          (message) => message.id !== submission.messageId
         )
       );
       setInput((current) => (current.trim() ? current : submission.prompt));
@@ -657,6 +643,7 @@ function PureMultimodalInput({
 
     isResolvingIntentRef.current = true;
     setIsResolvingIntent(true);
+    onIntentResolutionChange?.(true);
     try {
       const resolution = await onResolveImageIntent?.(submission.prompt);
       if (resolution) {
@@ -675,10 +662,12 @@ function PureMultimodalInput({
     } finally {
       isResolvingIntentRef.current = false;
       setIsResolvingIntent(false);
+      onIntentResolutionChange?.(false);
     }
   }, [
     commitSubmission,
     onGenerateImage,
+    onIntentResolutionChange,
     onResolveImageIntent,
     rollbackSubmission,
     submitCommittedMessage,

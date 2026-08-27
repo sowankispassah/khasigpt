@@ -140,12 +140,6 @@ const PurePreviewMessage = ({
   const hasWebSearchStatus = message.parts.some(
     (part) => part.type === "data-webSearchStatus"
   );
-  const isSubmitStatusOnly =
-    isAssistantMessage &&
-    message.parts.some(
-      (part) =>
-        part.type === "data-submitStatus" && part.data?.status === "routing"
-    );
   const assistantText = message.parts
     .filter((part) => part.type === "text")
     .map((part) => sanitizeAssistantDisplayText(part.text))
@@ -181,10 +175,7 @@ const PurePreviewMessage = ({
               message.parts?.some(
                 (p) => p.type === "text" && p.text?.trim()
               ) || hasWebSearchStatus,
-            "min-h-96":
-              isAssistantMessage &&
-              requiresScrollPadding &&
-              !isSubmitStatusOnly,
+            "min-h-96": isAssistantMessage && requiresScrollPadding,
             "w-full":
               (isAssistantMessage &&
                 message.parts?.some(
@@ -255,24 +246,6 @@ const PurePreviewMessage = ({
                     papers={papers}
                   />
                 </div>
-              );
-            }
-
-            if (type === "data-submitStatus") {
-              if (!isAssistantMessage || part.data?.status !== "routing") {
-                return null;
-              }
-              return (
-                <output
-                  aria-label={translate("chat.thinking", "Thinking...")}
-                  className="flex w-full items-end justify-start pl-3 md:pl-4"
-                  data-testid="message-assistant-loading"
-                  key={key}
-                >
-                  <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
-                    <LoaderIcon size={14} />
-                  </span>
-                </output>
               );
             }
 
@@ -517,7 +490,7 @@ const PurePreviewMessage = ({
             </div>
           ) : null}
 
-          {!isReadonly && !isWebSearchStatusOnly && !isSubmitStatusOnly && (
+          {!isReadonly && !isWebSearchStatusOnly && (
             <MessageActions
               chatId={chatId}
               isLoading={isLoading}

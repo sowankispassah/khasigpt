@@ -42,6 +42,7 @@ type MessagesProps = {
   onIconPromptSelect?: (item: IconPromptAction) => void;
   selectedVisibilityType: VisibilityType;
   isGeneratingImage?: boolean;
+  isResolvingIntent?: boolean;
   hasMoreHistory?: boolean;
   isLoadingHistory?: boolean;
   onLoadMoreHistory?: () => Promise<void>;
@@ -103,6 +104,7 @@ function PureMessages({
   onIconPromptSelect,
   selectedVisibilityType,
   isGeneratingImage = false,
+  isResolvingIntent = false,
   hasMoreHistory = false,
   isLoadingHistory = false,
   onLoadMoreHistory,
@@ -762,11 +764,16 @@ function PureMessages({
             </div>
           )}
 
-          {status !== "ready" &&
-            status !== "streaming" &&
-            status !== "error" &&
+          {(isResolvingIntent ||
+            (status !== "ready" &&
+              status !== "streaming" &&
+              status !== "error")) &&
             isLastUserMessage && (
-              <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+              <output
+                aria-label={translate("chat.thinking", "Thinking...")}
+                className="flex w-full items-start justify-start gap-2 md:gap-3"
+                data-testid="message-assistant-loading"
+              >
                 <div className="min-w-[1.5rem]" />
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -775,7 +782,7 @@ function PureMessages({
                     </span>
                   </div>
                 </div>
-              </div>
+              </output>
             )}
 
           <div

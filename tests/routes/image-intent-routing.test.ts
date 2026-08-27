@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   getConversationalAcknowledgementReply,
+  isConversationalGreeting,
   sanitizeAssistantDisplayText,
 } from "@/lib/chat/assistant-text-safety";
 import { STATIC_TRANSLATION_DEFINITIONS } from "@/lib/i18n/static-definitions";
@@ -83,6 +84,25 @@ test.describe("image intent routing", () => {
     }
   });
 
+  test("keeps routine greetings on the immediate normal-chat path", () => {
+    for (const message of [
+      "hi",
+      "Hello!",
+      "Good morning",
+      "How are you?",
+      "Kumno phi long?",
+    ]) {
+      const input = intentInput(message, { imageHintSelected: true });
+
+      expect(isConversationalGreeting(message)).toBe(true);
+      expect(shouldClassifyImageIntent(input)).toBe(false);
+      expect(fallbackImageIntent(input)).toBe("normal_chat");
+      expect(normalizeImageIntent("image_generate", input)).toBe(
+        "normal_chat"
+      );
+    }
+  });
+
   test("acknowledgments get a safe direct reply and internal image actions are hidden", () => {
     expect(getConversationalAcknowledgementReply("Nice")).toBe(
       "Glad you like it!"
@@ -134,8 +154,7 @@ test.describe("image intent routing", () => {
       imageRouteSource,
       classifierSource,
       intentRouteSource,
-      messageSource,
-      typesSource,
+      messagesSource,
     ] = await Promise.all([
       readFile(path.join(repoRoot, "components/multimodal-input.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/chat.tsx"), "utf8"),
@@ -152,8 +171,7 @@ test.describe("image intent routing", () => {
         path.join(repoRoot, "app/(chat)/api/images/intent/route.ts"),
         "utf8"
       ),
-      readFile(path.join(repoRoot, "components/message.tsx"), "utf8"),
-      readFile(path.join(repoRoot, "lib/types.ts"), "utf8"),
+      readFile(path.join(repoRoot, "components/messages.tsx"), "utf8"),
     ]);
 
     expect(inputSource).toContain("submitWithIntent");
@@ -172,15 +190,21 @@ test.describe("image intent routing", () => {
     expect(optimisticCommitIndex).toBeLessThan(intentResolutionIndex);
     expect(inputSource).toContain('setInput("")');
     expect(inputSource).toContain("messageId: submission.messageId");
-    expect(inputSource).toContain('type: "data-submitStatus" as const');
-    expect(inputSource).toContain("pendingAssistantMessageId");
-    expect(messageSource).toContain(
+    expect(chatSource).not.toContain("ensureChatExistsBeforeNavigation");
+    expect(chatSource).not.toContain("ensureChatExistsAction");
+    expect(inputSource).toContain("onIntentResolutionChange?.(true)");
+    expect(inputSource).toContain("onIntentResolutionChange?.(false)");
+    expect(inputSource).not.toContain("pendingAssistantMessageId");
+    expect(messagesSource).toContain("isResolvingIntent ||");
+    expect(messagesSource).toContain(
       'data-testid="message-assistant-loading"'
     );
-    expect(messageSource).toContain(
+    expect(messagesSource).toContain(
       'translate("chat.thinking", "Thinking...")'
     );
-    expect(typesSource).toContain("submitStatus:");
+    expect(chatSource).toContain(
+      "onIntentResolutionChange={setIsResolvingSubmissionIntent}"
+    );
     expect(inputSource).not.toContain(
       "if (imageGenerationSelected) {\n            onGenerateImage();"
     );

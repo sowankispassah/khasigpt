@@ -70,9 +70,6 @@ export type CustomUIDataTypes = {
     videos?: WebSearchVideo[];
   };
   webSearchStatus: WebSearchStatusData;
-  submitStatus: {
-    status: "routing";
-  };
   imageGeneration: {
     status: "pending" | "completed" | "failed" | "cancelled";
     prompt: string;
