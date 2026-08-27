@@ -92,7 +92,10 @@ import {
   type PendingWebSearch,
 } from "@/lib/web-search/status";
 import { Messages } from "./messages";
-import { MultimodalInput } from "./multimodal-input";
+import {
+  MultimodalInput,
+  type OptimisticChatSubmission,
+} from "./multimodal-input";
 import {
   type ChatHistory,
   getChatHistoryPaginationKeyForMode,
@@ -983,11 +986,17 @@ export function Chat({
         return sendMessage(message, options);
       }
       const generatedMessageId = generateUUID();
+      const replacementMessageId =
+        "messageId" in message && typeof message.messageId === "string"
+          ? message.messageId
+          : null;
       const messageWithId = {
         ...message,
         id:
           "id" in message && typeof message.id === "string" && message.id
             ? message.id
+            : replacementMessageId
+              ? replacementMessageId
             : generatedMessageId,
       } as Exclude<Parameters<typeof sendMessage>[0], undefined>;
       const messageText =
@@ -1442,9 +1451,25 @@ export function Chat({
     async (
       prompt: string,
       resolution: ImageIntentResolution,
-      displayPrompt?: string
+      displayPrompt?: string,
+      optimisticSubmission?: OptimisticChatSubmission
     ) => {
       if (!(await confirmImageGenerationAccess())) {
+        if (optimisticSubmission) {
+          setMessages((prev) =>
+            prev.filter(
+              (message) => message.id !== optimisticSubmission.messageId
+            )
+          );
+          setInput((current) =>
+            current.trim() ? current : optimisticSubmission.prompt
+          );
+          setAttachments((current) =>
+            current.length > 0
+              ? current
+              : optimisticSubmission.attachments
+          );
+        }
         return;
       }
 
@@ -1462,7 +1487,9 @@ export function Chat({
 
       const displayText =
         (displayPrompt ?? "").trim() || trimmedPrompt;
-      const imageAttachments = attachments.filter((attachment) =>
+      const submissionAttachments =
+        optimisticSubmission?.attachments ?? attachments;
+      const imageAttachments = submissionAttachments.filter((attachment) =>
         attachment.contentType?.startsWith("image/")
       );
       const latestAssistantImageUrl = getLatestAssistantImageUrl(
@@ -1481,36 +1508,38 @@ export function Chat({
 
       syncCurrentChatUrl();
 
-      const userMessageId = generateUUID();
-      const userParts = [
-        ...imageAttachments.map((attachment) => ({
-          type: "file" as const,
-          url: attachment.url,
-          filename: attachment.name,
-          mediaType: attachment.contentType,
-        })),
-        ...priorImageUrls
-          .filter(
-            (url) =>
-              !imageAttachments.some((attachment) => attachment.url === url)
-          )
-          .map((url) => ({
+      const userMessageId = optimisticSubmission?.messageId ?? generateUUID();
+      if (!optimisticSubmission) {
+        const userParts = [
+          ...imageAttachments.map((attachment) => ({
             type: "file" as const,
-            url,
-            filename: "previous-generated-image",
-            mediaType: "image/png",
+            url: attachment.url,
+            filename: attachment.name,
+            mediaType: attachment.contentType,
           })),
-        { type: "text" as const, text: displayText },
-      ];
+          ...priorImageUrls
+            .filter(
+              (url) =>
+                !imageAttachments.some((attachment) => attachment.url === url)
+            )
+            .map((url) => ({
+              type: "file" as const,
+              url,
+              filename: "previous-generated-image",
+              mediaType: "image/png",
+            })),
+          { type: "text" as const, text: displayText },
+        ];
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: userMessageId,
-          role: "user",
-          parts: userParts,
-        },
-      ]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: userMessageId,
+            role: "user",
+            parts: userParts,
+          },
+        ]);
+      }
 
       setInput("");
       setAttachments([]);
@@ -1702,21 +1731,18 @@ export function Chat({
     [id, resolvedChatMode, visibilityType]
   );
 
-  const handleBeforeSubmit = useCallback(async () => {
-    await ensureChatExistsBeforeNavigation(input);
-    syncCurrentChatUrl();
-    if (!isJobsMode) {
-      return;
-    }
-    setJobsSubmitScrollSignal((current) => current + 1);
-    void mutate("messages:should-scroll", "auto", { revalidate: false });
-  }, [
-    ensureChatExistsBeforeNavigation,
-    isJobsMode,
-    input,
-    mutate,
-    syncCurrentChatUrl,
-  ]);
+  const handleBeforeSubmit = useCallback(
+    async (firstMessageText: string) => {
+      await ensureChatExistsBeforeNavigation(firstMessageText);
+      syncCurrentChatUrl();
+      if (!isJobsMode) {
+        return;
+      }
+      setJobsSubmitScrollSignal((current) => current + 1);
+      void mutate("messages:should-scroll", "auto", { revalidate: false });
+    },
+    [ensureChatExistsBeforeNavigation, isJobsMode, mutate, syncCurrentChatUrl]
+  );
 
   useEffect(() => {
     setIconPromptSuggestions([]);
@@ -2163,8 +2189,13 @@ export function Chat({
                     onLanguageChange={handleLanguageChangeFromInput}
                     selectedLanguageCode={currentLanguageCode}
                     selectedVisibilityType={visibilityType}
-                    onGenerateImage={(resolution) =>
-                      generateImageFromPrompt(input, resolution)
+                    onGenerateImage={(resolution, submission) =>
+                      generateImageFromPrompt(
+                        submission.prompt,
+                        resolution,
+                        undefined,
+                        submission
+                      )
                     }
                     onManualInputChange={handleManualInputChange}
                     onResolveImageIntent={resolveImageIntentForPrompt}

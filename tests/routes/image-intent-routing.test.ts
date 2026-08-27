@@ -153,6 +153,21 @@ test.describe("image intent routing", () => {
     ]);
 
     expect(inputSource).toContain("submitWithIntent");
+    const submitWithIntentStart = inputSource.indexOf(
+      "const submitWithIntent = useCallback"
+    );
+    const optimisticCommitIndex = inputSource.indexOf(
+      "const submission = commitSubmission()",
+      submitWithIntentStart
+    );
+    const intentResolutionIndex = inputSource.indexOf(
+      "await onResolveImageIntent?.(submission.prompt)",
+      submitWithIntentStart
+    );
+    expect(optimisticCommitIndex).toBeGreaterThan(submitWithIntentStart);
+    expect(optimisticCommitIndex).toBeLessThan(intentResolutionIndex);
+    expect(inputSource).toContain('setInput("")');
+    expect(inputSource).toContain("messageId: submission.messageId");
     expect(inputSource).not.toContain(
       "if (imageGenerationSelected) {\n            onGenerateImage();"
     );
