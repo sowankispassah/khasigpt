@@ -4812,9 +4812,14 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Web Search admin setting for the credit charge multiplier.",
   },
   {
-    key: "admin.web_search.daily_limit",
-    defaultText: "Daily search limit",
-    description: "Web Search admin setting for the per-user daily call limit.",
+    key: "admin.web_search.section_title",
+    defaultText: "Web Search settings",
+    description: "Title for the Web Search settings section in Admin Settings.",
+  },
+  {
+    key: "admin.web_search.section_description",
+    defaultText: "Configure grounding, platform availability, and credit pricing.",
+    description: "Description for the Web Search settings section in Admin Settings.",
   },
   {
     key: "admin.web_search.read_state",

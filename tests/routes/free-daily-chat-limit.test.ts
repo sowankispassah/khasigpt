@@ -78,7 +78,14 @@ test.describe("shared free daily chat allowance", () => {
   });
 
   test("enforces the same server-side allowance for every role and chat mode", async () => {
-    const [route, exploreRoute, adminForm, webSearchConfig] = await Promise.all([
+    const [
+      route,
+      exploreRoute,
+      adminForm,
+      adminPage,
+      staticDefinitions,
+      webSearchConfig,
+    ] = await Promise.all([
       readFile(
         path.join(process.cwd(), "app/(chat)/api/chat/route.ts"),
         "utf8"
@@ -92,6 +99,14 @@ test.describe("shared free daily chat allowance", () => {
           process.cwd(),
           "app/(admin)/admin/settings/web-search-settings-form.tsx"
         ),
+        "utf8"
+      ),
+      readFile(
+        path.join(process.cwd(), "app/(admin)/admin/settings/page.tsx"),
+        "utf8"
+      ),
+      readFile(
+        path.join(process.cwd(), "lib/i18n/static-definitions.ts"),
         "utf8"
       ),
       readFile(
@@ -123,6 +138,9 @@ test.describe("shared free daily chat allowance", () => {
     expect(exploreRoute).not.toContain("config.dailyLimit");
 
     expect(adminForm).not.toContain("dailyLimit");
+    expect(adminPage).not.toContain("daily search limits");
+    expect(adminPage).toContain('translationKey="admin.web_search.section_description"');
+    expect(staticDefinitions).toContain('key: "admin.web_search.section_description"');
     expect(webSearchConfig).not.toContain("WEB_SEARCH_DAILY_LIMIT_SETTING_KEY");
   });
 });

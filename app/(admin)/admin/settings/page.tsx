@@ -942,8 +942,8 @@ function CollapsibleSection({
   children,
   defaultOpen = false,
 }: {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
 }) {
@@ -1834,8 +1834,20 @@ export default async function AdminSettingsPage({
         </CollapsibleSection>
 
         <CollapsibleSection
-          description="Configure Gemini grounding, platform availability, credit pricing, and daily search limits."
-          title="Web Search settings"
+          description={
+            <EditableTranslation
+              defaultText="Configure grounding, platform availability, and credit pricing."
+              description="Description for the Web Search settings section in Admin Settings."
+              translationKey="admin.web_search.section_description"
+            />
+          }
+          title={
+            <EditableTranslation
+              defaultText="Web Search settings"
+              description="Title for the Web Search settings section in Admin Settings."
+              translationKey="admin.web_search.section_title"
+            />
+          }
         >
           <WebSearchSettingsForm config={webSearchConfig} />
         </CollapsibleSection>
