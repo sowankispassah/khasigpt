@@ -8,6 +8,7 @@ import {
   resolveCurrentInfoDecision,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
+import { extractShoppingProducts } from "@/lib/web-search/products";
 import { clearTransientWebSearchMessages } from "@/lib/web-search/status";
 import { getYouTubeVideoId } from "@/lib/web-search/youtube";
 
@@ -186,6 +187,26 @@ test.describe("web search grounding", () => {
     ]);
   });
 
+  test("extracts only safe, usable shopping cards and removes private metadata", () => {
+    const result = extractShoppingProducts(`Here are two current options.
+<khasigpt_products>{"products":[
+  {"title":"Classic T-shirt","url":"https://shop.example.com/products/classic","merchant":"Example Shop","price":"₹499","imageUrl":"https://cdn.example.com/classic.jpg","rating":4.6,"reviewCount":"1.6k"},
+  {"title":"Unsafe link","url":"http://127.0.0.1/product","merchant":"Local","price":"₹1"},
+  {"title":"Missing price","url":"https://shop.example.com/products/other","merchant":"Example Shop","price":"unknown"}
+]}</khasigpt_products>`);
+
+    expect(result.answer).toBe("Here are two current options.");
+    expect(result.products).toEqual([
+      expect.objectContaining({
+        merchant: "Example Shop",
+        price: "₹499",
+        rating: 4.6,
+        title: "Classic T-shirt",
+        url: "https://shop.example.com/products/classic",
+      }),
+    ]);
+  });
+
   test("keeps grounding provider, admin controls, source streaming, and safe fallback wired", async () => {
     const [
       service,
@@ -217,6 +238,8 @@ test.describe("web search grounding", () => {
     expect(route).toContain("webSearchService.answerWithSearch");
     expect(route).toContain("resolveWebSearchQuery");
     expect(route).toContain("includeVideos: webSearchDecision.hasVideoIntent");
+    expect(route).toContain("includeProducts: webSearchDecision.hasShoppingIntent");
+    expect(service).toContain("<khasigpt_products>");
     expect(service).toContain("Prioritize relevant YouTube video results");
     expect(route).toContain('type: "data-webSources"');
     expect(route).toContain('type: "data-webSearchStatus"');
@@ -230,6 +253,7 @@ test.describe("web search grounding", () => {
     expect(message).toContain("WebSearchSources");
     expect(sources).toContain('data-testid="web-search-status"');
     expect(sources).toContain('data-testid="web-search-sources"');
+    expect(sources).toContain('data-testid="web-search-products"');
     expect(sources).toContain("getProviderOpaqueSourceDomain");
     expect(sources).not.toContain("Google Search");
     expect(sources).not.toContain("getProviderCopy");
@@ -239,6 +263,7 @@ test.describe("web search grounding", () => {
     expect(nativeChat).toContain("WebSearchProgress");
     expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
     expect(nativeChat).toContain("WebSearchVideoResults");
+    expect(nativeChat).toContain("WebSearchProductResults");
     expect(nativeChat).toContain("getWebSearchVideosFromMessage");
     expect(nativeChat).toContain("expandedWebSourcesByMessageId");
     expect(nativeChat).toContain("getProviderOpaqueWebSourceDomain");

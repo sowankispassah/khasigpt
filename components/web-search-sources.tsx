@@ -8,6 +8,8 @@ import {
   LoaderCircle,
   Play,
   Search,
+  ShoppingBag,
+  Star,
 } from "lucide-react";
 import { useState } from "react";
 import { AnimatedStatus } from "@/components/animated-status";
@@ -16,6 +18,7 @@ import { EditableTranslation } from "@/components/translation-edit-provider";
 import { cn } from "@/lib/utils";
 import type {
   WebSearchCitation,
+  WebSearchProduct,
   WebSearchSource,
   WebSearchStatusData,
   WebSearchVideo,
@@ -194,6 +197,133 @@ function normalizeVideo(video: WebSearchVideo) {
   };
 }
 
+function normalizeProduct(product: WebSearchProduct) {
+  try {
+    const url = new URL(product.url);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !product.title?.trim() ||
+      !product.merchant?.trim() ||
+      !product.price?.trim() ||
+      !/\d/.test(product.price)
+    ) {
+      return null;
+    }
+    let imageUrl: string | null = null;
+    if (product.imageUrl) {
+      const candidate = new URL(product.imageUrl);
+      imageUrl = candidate.protocol === "https:" ? candidate.toString() : null;
+    }
+    return {
+      ...product,
+      imageUrl,
+      merchant: product.merchant.trim(),
+      price: product.price.trim(),
+      title: product.title.trim(),
+      url: url.toString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ProductThumbnail({ imageUrl, title }: { imageUrl?: string | null; title: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!imageUrl || failed) {
+    return (
+      <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted/60 text-muted-foreground">
+        <ShoppingBag className="size-8" />
+      </div>
+    );
+  }
+  return (
+    // biome-ignore lint/performance/noImgElement: Product thumbnails come from arbitrary validated HTTPS merchant URLs that cannot be enumerated for next/image.
+    <img
+      alt={title}
+      className="aspect-[4/3] w-full bg-muted/40 object-contain"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      referrerPolicy="no-referrer"
+      src={imageUrl}
+    />
+  );
+}
+
+function WebSearchProducts({ products }: { products: WebSearchProduct[] }) {
+  const safeProducts = products
+    .map(normalizeProduct)
+    .filter((product): product is NonNullable<ReturnType<typeof normalizeProduct>> =>
+      Boolean(product)
+    )
+    .filter(
+      (product, index, all) =>
+        all.findIndex((candidate) => candidate.url === product.url) === index
+    )
+    .slice(0, 6);
+
+  if (safeProducts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-2.5" data-testid="web-search-products">
+      <div className="font-medium text-foreground text-sm">
+        <EditableTranslation
+          defaultText="Products found"
+          description="Heading above current shopping results returned by grounded Web Search."
+          translationKey="chat.web_search.products_found"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {safeProducts.map((product) => (
+          <a
+            className="group min-w-0 overflow-hidden rounded-xl border border-border/60 bg-background/80 transition hover:border-primary/40 hover:shadow-sm"
+            href={product.url}
+            key={product.url}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            <ProductThumbnail imageUrl={product.imageUrl} title={product.title} />
+            <div className="space-y-1.5 p-3">
+              <div className="line-clamp-2 font-medium text-foreground text-sm">
+                {product.title}
+              </div>
+              <div className="truncate text-muted-foreground text-xs">
+                {product.merchant}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-foreground text-sm">
+                  {product.price}
+                </span>
+                {typeof product.rating === "number" ? (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                    <Star className="size-3 fill-amber-400 text-amber-500" />
+                    {product.rating.toFixed(1)}
+                    {product.reviewCount ? ` (${product.reviewCount})` : ""}
+                  </span>
+                ) : null}
+              </div>
+              {product.availability ? (
+                <div className="truncate text-muted-foreground text-xs">
+                  {product.availability}
+                </div>
+              ) : null}
+              <span className="inline-flex items-center gap-1 font-medium text-primary text-xs">
+                <EditableTranslation
+                  defaultText="View product"
+                  description="Link label on a grounded shopping result card."
+                  translationKey="chat.web_search.view_product"
+                />
+                <ExternalLink className="size-3" />
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function WebSearchVideos({ videos }: { videos: WebSearchVideo[] }) {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const safeVideos = videos
@@ -283,11 +413,13 @@ function WebSearchVideos({ videos }: { videos: WebSearchVideo[] }) {
 
 export function WebSearchSources({
   citations = [],
+  products = [],
   searchQueries = [],
   sources,
   videos = [],
 }: {
   citations?: WebSearchCitation[];
+  products?: WebSearchProduct[];
   searchQueries?: string[];
   sources: WebSearchSource[];
   videos?: WebSearchVideo[];
@@ -310,12 +442,18 @@ export function WebSearchSources({
       (video): video is NonNullable<ReturnType<typeof normalizeVideo>> =>
         Boolean(video)
     );
+  const safeProducts = products
+    .map(normalizeProduct)
+    .filter((product): product is NonNullable<ReturnType<typeof normalizeProduct>> =>
+      Boolean(product)
+    );
 
   if (
     safeSources.length === 0 &&
     safeQueries.length === 0 &&
     safeCitations.length === 0 &&
-    safeVideos.length === 0
+    safeVideos.length === 0 &&
+    safeProducts.length === 0
   ) {
     return null;
   }
@@ -329,8 +467,16 @@ export function WebSearchSources({
       );
     }
   }
+  const hasSourceDetails =
+    safeSources.length > 0 ||
+    safeQueries.length > 0 ||
+    safeCitations.length > 0 ||
+    safeVideos.length > 0;
+
   return (
-    <details
+    <div className="w-full space-y-3">
+      <WebSearchProducts products={safeProducts} />
+      {hasSourceDetails ? <details
       className="group w-full rounded-xl border border-border/60 bg-muted/20 text-left"
       data-testid="web-search-sources"
     >
@@ -462,6 +608,7 @@ export function WebSearchSources({
           </div>
         ) : null}
       </div>
-    </details>
+      </details> : null}
+    </div>
   );
 }

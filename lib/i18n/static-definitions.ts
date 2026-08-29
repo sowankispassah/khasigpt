@@ -4722,6 +4722,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Heading above video results returned by grounded Web Search.",
   },
   {
+    key: "chat.web_search.products_found",
+    defaultText: "Products found",
+    description: "Heading above current shopping results returned by grounded Web Search.",
+  },
+  {
+    key: "chat.web_search.view_product",
+    defaultText: "View product",
+    description: "Link label on a grounded shopping result card.",
+  },
+  {
     key: "chat.web_search.sources_count",
     defaultText: "Sources ({count})",
     description: "Expandable heading above links returned by grounded Web Search.",

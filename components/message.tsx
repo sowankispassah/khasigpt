@@ -465,6 +465,7 @@ const PurePreviewMessage = ({
             <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4">
               <WebSearchSources
                 citations={webSearchData.citations}
+                products={webSearchData.products}
                 searchQueries={webSearchData.searchQueries}
                 sources={webSearchData.sources}
                 videos={webSearchData.videos}

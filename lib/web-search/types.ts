@@ -32,6 +32,17 @@ export type WebSearchVideo = {
   domain: string;
 };
 
+export type WebSearchProduct = {
+  title: string;
+  url: string;
+  merchant: string;
+  price: string;
+  imageUrl?: string | null;
+  rating?: number | null;
+  reviewCount?: string | null;
+  availability?: string | null;
+};
+
 export type WebSearchCitation = {
   text: string;
   sourceIndexes: number[];
@@ -51,6 +62,7 @@ export type WebSearchAnswer = {
   grounded: boolean;
   sources: WebSearchSource[];
   videos: WebSearchVideo[];
+  products: WebSearchProduct[];
   searchQueries: string[];
   citations: WebSearchCitation[];
   searchCallCount: number;
