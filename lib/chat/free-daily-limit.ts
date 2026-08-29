@@ -12,6 +12,22 @@ export function hasUsableChatCredits(tokenBalance: number) {
   return Number.isFinite(tokenBalance) && tokenBalance > 0;
 }
 
+export function isRoleDailyChatLimitReached({
+  hasActiveCredits,
+  maxMessagesPerDay,
+  messageCount,
+}: {
+  hasActiveCredits: boolean;
+  maxMessagesPerDay: number | null;
+  messageCount: number;
+}) {
+  return (
+    !hasActiveCredits &&
+    maxMessagesPerDay !== null &&
+    messageCount >= maxMessagesPerDay
+  );
+}
+
 export function requiresPaidWebSearchCredits({
   activeTokenBalance,
   hasActiveCredits,

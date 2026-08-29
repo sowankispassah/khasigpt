@@ -39,7 +39,6 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
   const [paidUsersEnabled, setPaidUsersEnabled] = useState(config.paidUsersEnabled);
   const [maxCalls, setMaxCalls] = useState(String(config.maxCalls));
   const [creditMultiplier, setCreditMultiplier] = useState(String(config.creditMultiplier));
-  const [dailyLimit, setDailyLimit] = useState(String(config.dailyLimit));
   const [isSaving, setIsSaving] = useState(false);
 
   const save = async () => {
@@ -59,7 +58,6 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
           paidUsersEnabled,
           maxCalls: Number(maxCalls),
           creditMultiplier: Number(creditMultiplier),
-          dailyLimit: Number(dailyLimit),
         }),
       });
       const body = (await response.json().catch(() => null)) as {
@@ -148,7 +146,7 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">{label("admin.web_search.max_calls", "Max search calls")}</span>
           <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={10} min={1} onChange={(event) => setMaxCalls(event.target.value)} type="number" value={maxCalls} />
@@ -156,10 +154,6 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">{label("admin.web_search.multiplier", "Credit multiplier")}</span>
           <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={10} min={1} onChange={(event) => setCreditMultiplier(event.target.value)} step={0.1} type="number" value={creditMultiplier} />
-        </label>
-        <label className="flex flex-col gap-2 text-sm">
-          <span className="font-medium">{label("admin.web_search.daily_limit", "Daily search limit")}</span>
-          <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={1000} min={0} onChange={(event) => setDailyLimit(event.target.value)} type="number" value={dailyLimit} />
         </label>
       </div>
 

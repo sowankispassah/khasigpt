@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import {
   hasUsableChatCredits,
   isFreeDailyChatLimitBypassedForTest,
+  isRoleDailyChatLimitReached,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
 
@@ -27,6 +28,23 @@ test.describe("shared free daily chat allowance", () => {
     expect(hasUsableChatCredits(1000)).toBe(true);
     expect(hasUsableChatCredits(0)).toBe(false);
     expect(hasUsableChatCredits(Number.NaN)).toBe(false);
+  });
+
+  test("does not apply a daily message cap while credits remain", () => {
+    expect(
+      isRoleDailyChatLimitReached({
+        hasActiveCredits: true,
+        maxMessagesPerDay: 100,
+        messageCount: 100,
+      })
+    ).toBe(false);
+    expect(
+      isRoleDailyChatLimitReached({
+        hasActiveCredits: false,
+        maxMessagesPerDay: 100,
+        messageCount: 100,
+      })
+    ).toBe(true);
   });
 
   test("lets a free allowance cover normal or grounded chat before requiring credits", () => {
@@ -60,10 +78,27 @@ test.describe("shared free daily chat allowance", () => {
   });
 
   test("enforces the same server-side allowance for every role and chat mode", async () => {
-    const route = await readFile(
-      path.join(process.cwd(), "app/(chat)/api/chat/route.ts"),
-      "utf8"
-    );
+    const [route, exploreRoute, adminForm, webSearchConfig] = await Promise.all([
+      readFile(
+        path.join(process.cwd(), "app/(chat)/api/chat/route.ts"),
+        "utf8"
+      ),
+      readFile(
+        path.join(process.cwd(), "app/api/explore/search/route.ts"),
+        "utf8"
+      ),
+      readFile(
+        path.join(
+          process.cwd(),
+          "app/(admin)/admin/settings/web-search-settings-form.tsx"
+        ),
+        "utf8"
+      ),
+      readFile(
+        path.join(process.cwd(), "lib/web-search/config.ts"),
+        "utf8"
+      ),
+    ]);
     const allowanceStart = route.indexOf("const testLimitBypass");
     const featureAccessStart = route.indexOf(
       "const featureAccessUnavailable",
@@ -76,8 +111,18 @@ test.describe("shared free daily chat allowance", () => {
     expect(allowanceBlock).not.toContain('userRole !== "admin"');
     expect(route).toContain("requiresPaidWebSearchCredits({");
     expect(route).toContain("hasUsableChatCredits(activeTokenBalance)");
+    expect(route).toContain("isRoleDailyChatLimitReached({");
     expect(route).toContain("isPaidUser: hasActiveCredits");
     expect(route).not.toContain("activePlanIsPaid");
     expect(route).not.toContain('measurePreModelStep("get_active_plan"');
+    expect(route).not.toContain("getWebSearchUsageCountSince");
+    expect(route).not.toContain("webSearchConfig.dailyLimit");
+
+    expect(exploreRoute).toContain("consumeFreeDailyChatAllowance");
+    expect(exploreRoute).not.toContain("getWebSearchUsageCountSince");
+    expect(exploreRoute).not.toContain("config.dailyLimit");
+
+    expect(adminForm).not.toContain("dailyLimit");
+    expect(webSearchConfig).not.toContain("WEB_SEARCH_DAILY_LIMIT_SETTING_KEY");
   });
 });

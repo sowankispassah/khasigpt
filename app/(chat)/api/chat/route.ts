@@ -34,6 +34,7 @@ import {
 import {
   hasUsableChatCredits,
   isFreeDailyChatLimitBypassedForTest,
+  isRoleDailyChatLimitReached,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
 import { mergeChatUiContext, readChatUiContext } from "@/lib/chat/ui-context";
@@ -57,7 +58,6 @@ import {
   getLanguageByCodeRaw,
   getMessageCountByUserId,
   getMessagesByChatIdPage,
-  getWebSearchUsageCountSince,
   recordTokenUsage,
   recordWebSearchUsage,
   saveChat,
@@ -1238,7 +1238,15 @@ export async function POST(request: Request) {
       resolvedLanguageConfigPromise,
     ]);
 
-    if (maxMessagesPerDay !== null && messageCount >= maxMessagesPerDay) {
+    const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
+    const hasActiveCredits = hasUsableChatCredits(activeTokenBalance);
+    if (
+      isRoleDailyChatLimitReached({
+        hasActiveCredits,
+        maxMessagesPerDay,
+        messageCount,
+      })
+    ) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
     const enabledConfigs = registry.configs.filter(
@@ -1261,8 +1269,6 @@ export async function POST(request: Request) {
       ).toResponse();
     }
 
-    const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
-    const hasActiveCredits = hasUsableChatCredits(activeTokenBalance);
     const perModelAllowance = Math.max(
       0,
       modelConfig.freeMessagesPerDay ?? DEFAULT_FREE_MESSAGES_PER_DAY
@@ -3138,22 +3144,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const dailySearchCount = await measurePreModelStep(
-        "web_search.daily_limit",
-        () =>
-          getWebSearchUsageCountSince({
-            since: getStartOfTodayInIST(),
-            userId: session.user.id,
-          })
-      );
-      if (dailySearchCount === null) {
-        webSearchFailureReason = "usage_tracking_unavailable";
-      } else if (dailySearchCount >= webSearchConfig.dailyLimit) {
-        throw new ChatSDKError(
-          "rate_limit:chat",
-          "Web search daily limit reached. Please try again tomorrow."
-        );
-      } else {
+      {
         const webSearchStartedAt = performance.now();
         const webSearchQuery = resolveWebSearchQuery({
           currentText: getTextFromMessage(message),

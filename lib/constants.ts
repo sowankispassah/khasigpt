@@ -46,7 +46,6 @@ export const WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY =
 export const WEB_SEARCH_MAX_CALLS_SETTING_KEY = "web_search_max_calls";
 export const WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY =
   "web_search_credit_multiplier";
-export const WEB_SEARCH_DAILY_LIMIT_SETTING_KEY = "web_search_daily_limit";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
 export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";

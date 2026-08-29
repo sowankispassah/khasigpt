@@ -3,7 +3,6 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import {
   WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
-  WEB_SEARCH_DAILY_LIMIT_SETTING_KEY,
   WEB_SEARCH_ENABLED_NATIVE_SETTING_KEY,
   WEB_SEARCH_ENABLED_SETTING_KEY,
   WEB_SEARCH_ENABLED_WEB_SETTING_KEY,
@@ -34,7 +33,6 @@ export const WEB_SEARCH_SETTING_KEYS = [
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_MAX_CALLS_SETTING_KEY,
   WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
-  WEB_SEARCH_DAILY_LIMIT_SETTING_KEY,
 ] as const;
 
 const DEFAULT_PROVIDER: WebSearchProvider = "gemini_grounding";
@@ -67,19 +65,6 @@ function parsePositiveNumber(value: unknown, fallback: number, max: number) {
         ? Number(value.trim())
         : Number.NaN;
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return Math.min(parsed, max);
-}
-
-function parseNonNegativeNumber(value: unknown, fallback: number, max: number) {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number(value.trim())
-        : Number.NaN;
-  if (!Number.isFinite(parsed) || parsed < 0) {
     return fallback;
   }
   return Math.min(parsed, max);
@@ -133,9 +118,6 @@ export function resolveWebSearchConfig(
       values.get(WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY),
       3,
       10
-    ),
-    dailyLimit: Math.round(
-      parseNonNegativeNumber(values.get(WEB_SEARCH_DAILY_LIMIT_SETTING_KEY), 10, 1000)
     ),
     readState,
   };

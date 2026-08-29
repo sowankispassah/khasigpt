@@ -15,7 +15,6 @@ import {
   getActiveSubscriptionForUser,
   getChatById,
   getMessageCountByUserId,
-  getWebSearchUsageCountSince,
   recordTokenUsage,
   recordWebSearchUsage,
   saveChat,
@@ -313,23 +312,6 @@ export async function POST(request: Request) {
           "Web search requires paid credits. Please recharge to continue.",
         );
       }
-      const dailyCount = await getWebSearchUsageCountSince({
-        since: startOfTodayInIst(),
-        userId: auth.user.id,
-      });
-      if (dailyCount === null) {
-        return NextResponse.json(
-          { error: "usage_tracking_unavailable" },
-          { status: 503, headers: noStoreHeaders() },
-        );
-      }
-      if (dailyCount >= config.dailyLimit) {
-        throw new ChatSDKError(
-          "rate_limit:chat",
-          "Web search daily limit reached.",
-        );
-      }
-
       const providerQuery = buildSearchQuery({
         categoryQuery: effectiveCategoryQuery,
         location: parsed.data.location,

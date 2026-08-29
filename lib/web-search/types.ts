@@ -79,6 +79,5 @@ export type WebSearchConfig = {
   paidUsersEnabled: boolean;
   maxCalls: number;
   creditMultiplier: number;
-  dailyLimit: number;
   readState: "confirmed" | "fallback";
 };

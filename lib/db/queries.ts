@@ -10672,35 +10672,6 @@ export async function recordTokenUsage({
   }
 }
 
-export async function getWebSearchUsageCountSince({
-  since,
-  userId,
-}: {
-  since: Date;
-  userId: string;
-}): Promise<number | null> {
-  if (!isValidUUID(userId)) {
-    return 0;
-  }
-
-  try {
-    const [result] = await db
-      .select({ count: count() })
-      .from(webSearchUsage)
-      .where(and(eq(webSearchUsage.userId, userId), gte(webSearchUsage.createdAt, since)));
-    return Number(result?.count ?? 0);
-  } catch (error) {
-    if (isTableMissingError(error)) {
-      console.error(
-        "[web-search] Usage table is missing; refusing to run web search until migrations are applied."
-      );
-      return null;
-    }
-    console.error("[web-search] Failed to count daily usage.", error);
-    return null;
-  }
-}
-
 export async function recordWebSearchUsage({
   chatId,
   creditCostTokens,

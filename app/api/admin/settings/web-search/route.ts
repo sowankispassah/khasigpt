@@ -69,8 +69,7 @@ export async function POST(request: NextRequest) {
 
   const maxCalls = parseNumber(body.maxCalls, { integer: true, max: 10, min: 1 });
   const creditMultiplier = parseNumber(body.creditMultiplier, { integer: false, max: 10, min: 1 });
-  const dailyLimit = parseNumber(body.dailyLimit, { integer: true, max: 1000, min: 0 });
-  if (maxCalls === null || creditMultiplier === null || dailyLimit === null) {
+  if (maxCalls === null || creditMultiplier === null) {
     return NextResponse.json({ error: "invalid_value", message: "Search limits and multiplier are outside the allowed range." }, { status: 400 });
   }
 
@@ -83,7 +82,6 @@ export async function POST(request: NextRequest) {
     web_search_paid_users_enabled: parsedBooleans.paidUsersEnabled,
     web_search_max_calls: maxCalls,
     web_search_credit_multiplier: creditMultiplier,
-    web_search_daily_limit: dailyLimit,
   };
 
   try {
