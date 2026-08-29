@@ -6,6 +6,7 @@ import {
   shouldSkipRagQuery,
 } from "@/lib/rag/query-policy";
 import {
+  getFuzzyLexicalScore,
   type RagRankCandidate,
   rankRagCandidates,
 } from "@/lib/rag/ranking";
@@ -32,7 +33,11 @@ function candidate(
 test("exact keyword and semantic matches rank above semantic-only candidates", () => {
   const exact = candidate("exact", 0.72, 0.9);
   const paraphrase = candidate("paraphrase", 0.76);
-  const matches = rankRagCandidates([paraphrase, exact], [exact]);
+  const matches = rankRagCandidates(
+    [paraphrase, exact],
+    [exact],
+    "exact knowledge",
+  );
   expect(matches.map((match) => match.entryId)).toEqual([
     "exact",
     "paraphrase",
@@ -40,11 +45,62 @@ test("exact keyword and semantic matches rank above semantic-only candidates", (
 });
 test("paraphrases pass while unrelated low-similarity chunks are rejected", () => {
   const matches = rankRagCandidates(
-    [candidate("paraphrase", 0.69), candidate("unrelated", 0.31)],
+    [candidate("paraphrase", 0.71), candidate("unrelated", 0.31)],
     [],
+    "A semantically equivalent description with different wording",
   );
   expect(matches).toHaveLength(1);
   expect(matches[0]?.entryId).toBe("paraphrase");
+});
+
+test("typo-tolerant lexical evidence keeps intended names while rejecting random text", () => {
+  const kynpham: RagRankCandidate = {
+    ...candidate("kynpham", 0.610955768087281),
+    title: "Who is Kynpham Syiem Lamurong?",
+    content:
+      "Kynpham Syiem Lamurong is a Jowai-born content creator and musician.",
+  };
+
+  expect(getFuzzyLexicalScore("Kunpham Lamurong", kynpham)).toBeGreaterThan(
+    0.7,
+  );
+  expect(rankRagCandidates([kynpham], [], "Kunpham Lamurong")).toHaveLength(1);
+  expect(rankRagCandidates([kynpham], [], "Who is Kunpham Lamurong?")).toHaveLength(
+    1,
+  );
+  expect(
+    rankRagCandidates(
+      [kynpham],
+      [],
+      "Tell me about Kunfam Lamurong's songs",
+    ),
+  ).toHaveLength(1);
+  expect(getFuzzyLexicalScore("klhsdls", kynpham)).toBeLessThan(0.7);
+  expect(rankRagCandidates([kynpham], [], "klhsdls")).toEqual([]);
+  expect(rankRagCandidates([kynpham], [], "Who is klhsdls?")).toEqual([]);
+  expect(rankRagCandidates([kynpham], [], "kjdofjd")).toEqual([]);
+  expect(
+    rankRagCandidates([kynpham], [], "content creator klhsdls"),
+  ).toEqual([]);
+  expect(
+    rankRagCandidates([{ ...kynpham, semanticScore: 0.79 }], [], "klhsdls"),
+  ).toEqual([]);
+});
+
+test("strong semantic evidence still supports multilingual and paraphrased queries", () => {
+  const crossLingual = {
+    ...candidate("cross-lingual", 0.72),
+    title: "Ka jingtip shaphang ka rep ka riang",
+    content: "Local agriculture knowledge in Khasi and English.",
+  };
+
+  expect(
+    rankRagCandidates(
+      [crossLingual],
+      [],
+      "Explain the region's farming practices",
+    ),
+  ).toHaveLength(1);
 });
 
 test("Khasi and Pnar questions reach retrieval without English trigger words", () => {

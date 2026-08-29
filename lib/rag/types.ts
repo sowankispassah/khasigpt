@@ -94,6 +94,7 @@ export type RagRetrievalMatch = {
   language: string;
   semanticScore: number;
   keywordScore: number;
+  lexicalScore: number;
   score: number;
 };
 

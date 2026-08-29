@@ -240,6 +240,7 @@ export async function retrieveRagContext(
         semanticScore: Number(row.semanticScore),
         keywordScore: Number(row.keywordScore),
       })) satisfies RagRankCandidate[],
+      query,
     );
     const durationMs = Math.round(performance.now() - startedAt);
     const status = matches.length ? "hit" : "miss";
@@ -256,6 +257,7 @@ export async function retrieveRagContext(
           chunkIndex: match.chunkIndex,
           semanticScore: match.semanticScore,
           keywordScore: match.keywordScore,
+          lexicalScore: match.lexicalScore,
           score: match.score,
           preview: match.content.slice(0, 160),
         })),
@@ -302,6 +304,7 @@ export async function retrieveRagContext(
                   metadata: {
                     semanticScore: match.semanticScore,
                     keywordScore: match.keywordScore,
+                    lexicalScore: match.lexicalScore,
                     chunkIndex: match.chunkIndex,
                   },
                 })),
