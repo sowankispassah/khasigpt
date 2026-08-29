@@ -4,6 +4,7 @@ import { getTextFromMessage } from "@/lib/utils";
 export type PendingWebSearch = {
   placeholderId: string;
   userMessageId: string;
+  context?: "web" | "news";
 };
 
 function hasWebSearchResponseContent(message: ChatMessage) {

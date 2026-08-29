@@ -15,6 +15,7 @@ export type WebSearchStatus =
 export type WebSearchStatusData = {
   status: WebSearchStatus;
   usedWebSearch: boolean;
+  context?: "web" | "news";
 };
 
 export type WebSearchSource = {

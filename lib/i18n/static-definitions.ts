@@ -1910,7 +1910,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "news.loading.latest",
-    defaultText: "Searching for the latest Shillong and Meghalaya news...",
+    defaultText: "Checking the latest sources...",
     description: "Native News mode loading subtitle before the first search begins.",
   },
   {
@@ -4677,6 +4677,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Status shown while a current-information answer is grounded with web search.",
   },
   {
+    key: "chat.web_search.checking_sources",
+    defaultText: "Checking additional sources",
+    description: "Animated status shown while KhasiGPT checks additional current sources.",
+  },
+  {
+    key: "news.status.checking_latest_sources",
+    defaultText: "Checking the latest sources",
+    description: "Animated status shown while KhasiGPT checks current sources for News.",
+  },
+  {
     key: "chat.web_search.reading",
     defaultText: "Reading relevant sources...",
     description: "Status shown while Web Search reads grounded sources.",
@@ -4688,8 +4698,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "chat.web_search.failed",
-    defaultText: "I couldn’t complete the web search. Please try again.",
-    description: "Error shown when grounded Web Search cannot be completed.",
+    defaultText: "I couldn’t check additional sources. Please try again.",
+    description: "Error shown when KhasiGPT cannot check additional current sources.",
   },
   {
     key: "chat.web_search.retry",
@@ -4837,6 +4847,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "chat.link.label", defaultText: "Open link", description: "Native rich message link accessibility label." },
   { key: "chat.link.hint", defaultText: "Opens in your browser", description: "Native rich message link accessibility hint." },
   { key: "chat.thinking", defaultText: "Thinking...", description: "Native pending assistant response label." },
+  { key: "chat.status.thinking", defaultText: "Thinking", description: "Animated status shown while KhasiGPT prepares a chat response." },
+  { key: "chat.scroll_to_bottom", defaultText: "Scroll to bottom", description: "Accessibility label for the chat scroll-to-latest button." },
   { key: "chat.reasoning.label", defaultText: "Reasoning", description: "Native reasoning disclosure label." },
   { key: "chat.file.label", defaultText: "File", description: "Native chat file attachment fallback label." },
   { key: "chat.file.open", defaultText: "Open file", description: "Native chat file open accessibility label." },

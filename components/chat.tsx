@@ -844,6 +844,7 @@ export function Chat({
             (message) => message.id !== pendingWebSearch.placeholderId
           );
         });
+        webSearchPlaceholderRef.current = null;
       }
       syncCurrentChatUrl();
       refreshAndPromoteHistory();
@@ -868,6 +869,7 @@ export function Chat({
                   data: {
                     status: "failed" as const,
                     usedWebSearch: true,
+                    context: pendingWebSearch.context,
                   },
                 },
               ],
@@ -921,9 +923,19 @@ export function Chat({
   imageIntentMessagesRef.current = messages;
 
   const addWebSearchPlaceholder = useCallback(
-    (userMessageId: string, removePlaceholderId?: string) => {
+    (
+      userMessageId: string,
+      removePlaceholderId?: string,
+      contextOverride?: "web" | "news"
+    ) => {
       const placeholderId = `web-search-${generateUUID()}`;
-      webSearchPlaceholderRef.current = { placeholderId, userMessageId };
+      const context =
+        contextOverride ?? (resolvedChatMode === "news" ? "news" : "web");
+      webSearchPlaceholderRef.current = {
+        context,
+        placeholderId,
+        userMessageId,
+      };
       const placeholder = {
         id: placeholderId,
         role: "assistant" as const,
@@ -934,6 +946,7 @@ export function Chat({
             data: {
               status: "searching" as const,
               usedWebSearch: true,
+              context,
             },
           },
         ],
@@ -965,7 +978,7 @@ export function Chat({
         });
       }, 0);
     },
-    [setMessages]
+    [resolvedChatMode, setMessages]
   );
 
   const sendMessageWithWebSearchStatus = useCallback(
@@ -1031,7 +1044,8 @@ export function Chat({
       retryUserMessageId,
       pendingWebSearch?.userMessageId === retryUserMessageId
         ? pendingWebSearch.placeholderId
-        : undefined
+        : undefined,
+      pendingWebSearch?.context
     );
     await retryPromise;
   }, [addWebSearchPlaceholder, regenerate]);
@@ -1050,7 +1064,22 @@ export function Chat({
       return;
     }
     setMessages(() => clearedMessages);
+    webSearchPlaceholderRef.current = null;
   }, [messages, setMessages]);
+
+  const stopChat = useCallback(() => {
+    stop();
+    const pendingWebSearch = webSearchPlaceholderRef.current;
+    if (!pendingWebSearch) {
+      return;
+    }
+    setMessages((current) =>
+      current.filter(
+        (message) => message.id !== pendingWebSearch.placeholderId
+      )
+    );
+    webSearchPlaceholderRef.current = null;
+  }, [setMessages, stop]);
 
   useEffect(() => {
     if (!isStudyMode) {
@@ -2040,7 +2069,7 @@ export function Chat({
               setInput={setInput}
               setMessages={setMessages}
               status={status}
-              stop={stop}
+              stop={stopChat}
               studyQuestionReference={studyQuestionReference}
               onToggleImageMode={() => {}}
               onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
@@ -2196,7 +2225,7 @@ export function Chat({
                     setInput={setInput}
                     setMessages={setMessages}
                     status={status}
-                    stop={stop}
+                    stop={stopChat}
                     studyQuestionReference={studyQuestionReference}
                     onToggleImageMode={() => {
                       if (isStudyMode) {

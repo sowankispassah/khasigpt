@@ -19,6 +19,7 @@ import { isNewsInitialMessage } from "@/lib/news/shared";
 import type { StudyPaperCard } from "@/lib/study/types";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ChatThinkingStatus } from "./chat-thinking-status";
 import { Greeting } from "./greeting";
 import { IconPromptActions } from "./icon-prompt-actions";
 import { LoaderIcon } from "./icons";
@@ -769,20 +770,13 @@ function PureMessages({
               status !== "streaming" &&
               status !== "error")) &&
             isLastUserMessage && (
-              <output
-                aria-label={translate("chat.thinking", "Thinking...")}
+              <div
                 className="flex w-full items-start justify-start gap-2 md:gap-3"
                 data-testid="message-assistant-loading"
               >
                 <div className="min-w-[1.5rem]" />
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
-                      <LoaderIcon size={14} />
-                    </span>
-                  </div>
-                </div>
-              </output>
+                <ChatThinkingStatus />
+              </div>
             )}
 
           <div
@@ -794,8 +788,8 @@ function PureMessages({
 
       {!isAtBottom && (
         <button
-          aria-label="Scroll to bottom"
-          className="-translate-x-1/2 absolute bottom-40 left-1/2 z-10 rounded-full border bg-background p-2 shadow-lg transition-colors hover:bg-muted"
+          aria-label={translate("chat.scroll_to_bottom", "Scroll to bottom")}
+          className="absolute right-4 bottom-4 z-10 cursor-pointer rounded-full border border-border/70 bg-background/90 p-2 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
           onClick={() => scrollToBottom("smooth")}
           type="button"
         >

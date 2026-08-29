@@ -155,6 +155,7 @@ test.describe("image intent routing", () => {
       classifierSource,
       intentRouteSource,
       messagesSource,
+      thinkingStatusSource,
     ] = await Promise.all([
       readFile(path.join(repoRoot, "components/multimodal-input.tsx"), "utf8"),
       readFile(path.join(repoRoot, "components/chat.tsx"), "utf8"),
@@ -172,6 +173,10 @@ test.describe("image intent routing", () => {
         "utf8"
       ),
       readFile(path.join(repoRoot, "components/messages.tsx"), "utf8"),
+      readFile(
+        path.join(repoRoot, "components/chat-thinking-status.tsx"),
+        "utf8"
+      ),
     ]);
 
     expect(inputSource).toContain("submitWithIntent");
@@ -199,9 +204,11 @@ test.describe("image intent routing", () => {
     expect(messagesSource).toContain(
       'data-testid="message-assistant-loading"'
     );
-    expect(messagesSource).toContain(
-      'translate("chat.thinking", "Thinking...")'
+    expect(messagesSource).toContain("<ChatThinkingStatus />");
+    expect(thinkingStatusSource).toContain(
+      'translationKey = "chat.status.thinking"'
     );
+    expect(thinkingStatusSource).toContain('defaultText = "Thinking"');
     expect(chatSource).toContain(
       "onIntentResolutionChange={setIsResolvingSubmissionIntent}"
     );

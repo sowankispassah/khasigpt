@@ -10,6 +10,8 @@ import {
   Search,
 } from "lucide-react";
 import { useState } from "react";
+import { AnimatedStatus } from "@/components/animated-status";
+import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { cn } from "@/lib/utils";
 import type {
@@ -24,33 +26,19 @@ import {
   getYouTubeVideoId,
 } from "@/lib/web-search/youtube";
 
-function getStatusCopy(status: WebSearchStatusData["status"]) {
-  switch (status) {
-    case "reading":
-      return {
-        defaultText: "Reading relevant sources...",
-        description: "Status shown while Web Search reads grounded sources.",
-        key: "chat.web_search.reading",
-      };
-    case "generating":
-      return {
-        defaultText: "Preparing an answer...",
-        description: "Status shown while the assistant prepares a grounded answer.",
-        key: "chat.web_search.generating",
-      };
-    case "failed":
-      return {
-        defaultText: "I couldn’t complete the web search. Please try again.",
-        description: "Error shown when grounded Web Search cannot be completed.",
-        key: "chat.web_search.failed",
-      };
-    default:
-      return {
-        defaultText: "Searching the web...",
-        description: "Status shown while a current-information answer is grounded with Web Search.",
-        key: "chat.web_search.searching",
-      };
+function getActiveStatusCopy(context: WebSearchStatusData["context"]) {
+  if (context === "news") {
+    return {
+      defaultText: "Checking the latest sources",
+      description: "Status shown while KhasiGPT checks current sources for News.",
+      key: "news.status.checking_latest_sources",
+    };
   }
+  return {
+    defaultText: "Checking additional sources",
+    description: "Status shown while KhasiGPT checks additional current sources.",
+    key: "chat.web_search.checking_sources",
+  };
 }
 
 export function WebSearchStatus({
@@ -60,9 +48,10 @@ export function WebSearchStatus({
   onRetry?: () => Promise<void> | void;
   status: WebSearchStatusData;
 }) {
+  const { translate } = useTranslation();
   const [isRetrying, setIsRetrying] = useState(false);
-  const copy = getStatusCopy(status.status);
   const isFailed = status.status === "failed";
+  const activeCopy = getActiveStatusCopy(status.context);
 
   const handleRetry = async () => {
     if (!onRetry || isRetrying) {
@@ -76,6 +65,23 @@ export function WebSearchStatus({
     }
   };
 
+  if (!isFailed) {
+    return (
+      <AnimatedStatus
+        ariaLabel={translate(activeCopy.key, activeCopy.defaultText)}
+        className="mb-3 pl-3 md:pl-4"
+        label={
+          <EditableTranslation
+            defaultText={activeCopy.defaultText}
+            description={activeCopy.description}
+            translationKey={activeCopy.key}
+          />
+        }
+        testId="web-search-status"
+      />
+    );
+  }
+
   return (
     <div
       aria-live="polite"
@@ -88,20 +94,16 @@ export function WebSearchStatus({
       data-testid="web-search-status"
       role={isFailed ? "alert" : "status"}
     >
-      {isFailed ? (
-        <AlertCircle className="mt-0.5 size-4 shrink-0" />
-      ) : (
-        <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
-      )}
+      <AlertCircle className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-medium">
           <EditableTranslation
-            defaultText={copy.defaultText}
-            description={copy.description}
-            translationKey={copy.key}
+            defaultText="I couldn’t check additional sources. Please try again."
+            description="Error shown when KhasiGPT cannot check additional current sources."
+            translationKey="chat.web_search.failed"
           />
         </div>
-        {isFailed && onRetry ? (
+        {onRetry ? (
           <button
             className="mt-2 cursor-pointer rounded-md border border-current/30 px-2.5 py-1 text-xs font-medium transition hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isRetrying}

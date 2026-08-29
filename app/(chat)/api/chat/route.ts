@@ -3252,6 +3252,8 @@ export async function POST(request: Request) {
       ? {
           status: webSearchAnswer ? "generating" : "failed",
           usedWebSearch: Boolean(webSearchAnswer),
+          context:
+            resolvedChatMode === NEWS_CHAT_MODE ? "news" : "web",
         }
       : null;
 
