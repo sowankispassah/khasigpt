@@ -170,6 +170,29 @@ const VIDEO_SEARCH_PATTERNS: Array<[string, RegExp]> = [
   ],
 ];
 
+const SHOPPING_REQUEST_PATTERNS: RegExp[] = [
+  /\b(?:find|show)\s+me\b/i,
+  /\b(?:help\s+me\s+)?(?:find|locate)\b/i,
+  /\b(?:recommend|suggest)(?:\s+me)?\b/i,
+  /\bwhere\s+(?:can|could|should)\s+i\s+(?:buy|order|purchase|get)\b/i,
+  /\bi\s+(?:want|need|would\s+like)\s+to\s+(?:buy|order|purchase|shop\s+for)\b/i,
+  /\b(?:looking|shopping)\s+(?:for|to\s+buy)\b/i,
+];
+
+const SHOPPING_LIVE_SIGNAL_PATTERNS: RegExp[] = [
+  /\b(?:under|below|within|up\s+to|less\s+than|not\s+more\s+than|maximum\s+of)\b.{0,24}(?:(?:₹|rs\.?|inr|usd|\$|eur|€|gbp|£)\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:rupees?|dollars?|euros?|pounds?))\b/i,
+  /\b(?:budget(?:\s+(?:of|is))?|price\s+(?:range|limit)?|cheaper\s+than)\b.{0,24}(?:(?:₹|rs\.?|inr|usd|\$|eur|€|gbp|£)\s*)?\d[\d,]*(?:\.\d+)?/i,
+  /\b(?:buy|order|purchase|shop\s+for|prices?|costs?|deals?|discounts?|coupons?|on\s+sale|in\s+stock|availability|available\s+online|delivery|shipping|near\s+me|nearby)\b/i,
+  /\b(?:amazon|flipkart|myntra|ajio|meesho|ebay|etsy|walmart)\b/i,
+];
+
+function hasShoppingDiscoveryIntent(text: string) {
+  return (
+    SHOPPING_REQUEST_PATTERNS.some((pattern) => pattern.test(text)) &&
+    SHOPPING_LIVE_SIGNAL_PATTERNS.some((pattern) => pattern.test(text))
+  );
+}
+
 const BARE_WEB_SEARCH_REQUEST_PATTERN =
   /^(?:please\s+)?(?:(?:browse|search)(?:\s+(?:the\s+)?(?:web|net|internet)|\s+online)|(?:look|check)\s+(?:it|this|that)\s+up(?:\s+online)?|google\s+(?:it|this|that))[\s.!?]*$/i;
 
@@ -191,6 +214,7 @@ export type WebSearchDecision = {
   hasCustomKnowledgeIntent: boolean;
   hasExplicitWebIntent: boolean;
   hasVideoIntent: boolean;
+  hasShoppingIntent: boolean;
   currentInfoIntent: CurrentInfoIntent | null;
   currentInfoLocationQuery: string | null;
 };
@@ -205,6 +229,7 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
       hasCustomKnowledgeIntent: false,
       hasExplicitWebIntent: false,
       hasVideoIntent: false,
+      hasShoppingIntent: false,
       currentInfoIntent: null,
       currentInfoLocationQuery: null,
     };
@@ -219,12 +244,15 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
   const videoReasons = VIDEO_SEARCH_PATTERNS.flatMap(([reason, pattern]) =>
     pattern.test(normalized) ? [reason] : []
   );
+  const hasShoppingIntent = hasShoppingDiscoveryIntent(normalized);
+  const shoppingReasons = hasShoppingIntent ? ["shopping_discovery"] : [];
   const currentInfo = detectCurrentInfoNeed(normalized);
   const reasons = Array.from(
     new Set([
       ...currentReasons,
       ...explicitReasons,
       ...videoReasons,
+      ...shoppingReasons,
       ...currentInfo.reasons,
     ])
   );
@@ -233,10 +261,12 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
   );
   const hasExplicitWebIntent = explicitReasons.length > 0;
   const hasVideoIntent = videoReasons.length > 0;
-  const hasCurrentIntent = currentReasons.length > 0 || hasExplicitWebIntent;
+  const hasCurrentIntent =
+    currentReasons.length > 0 || hasExplicitWebIntent || hasShoppingIntent;
   const shouldUseWebSearch =
     hasExplicitWebIntent ||
     hasVideoIntent ||
+    hasShoppingIntent ||
     (hasCurrentIntent && currentInfo.intent === null) ||
     (currentInfo.reasons.length > 0 && currentInfo.intent === null);
 
@@ -247,6 +277,7 @@ export function detectWebSearchNeed(text: string): WebSearchDecision {
     hasCustomKnowledgeIntent,
     hasExplicitWebIntent,
     hasVideoIntent,
+    hasShoppingIntent,
     currentInfoIntent: currentInfo.intent,
     currentInfoLocationQuery: currentInfo.locationQuery,
   };

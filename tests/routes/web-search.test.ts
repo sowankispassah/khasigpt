@@ -110,6 +110,37 @@ test.describe("web search grounding", () => {
     });
   });
 
+  test("detects live shopping requests without treating every find or recommendation as search", () => {
+    for (const prompt of [
+      "find me tshirt under 500 rupees",
+      "Show me running shoes below ₹2,000",
+      "Recommend a laptop deal under $500",
+      "Where can I buy Lakadong turmeric?",
+      "Help me find a cafe near me",
+      "I want to order a Khasi book online",
+    ]) {
+      expect(detectWebSearchNeed(prompt)).toMatchObject({
+        hasShoppingIntent: true,
+        shouldSearch: true,
+      });
+    }
+
+    for (const prompt of [
+      "find me the derivative of x squared",
+      "find me a story under 500 words",
+      "recommend a Khasi poem",
+      "suggest a name for my dog",
+      "I bought a shirt for 500 rupees",
+      "explain how online learning works",
+      "find me a name for my online store",
+    ]) {
+      expect(detectWebSearchNeed(prompt)).toMatchObject({
+        hasShoppingIntent: false,
+        shouldSearch: false,
+      });
+    }
+  });
+
   test("removes temporary status messages after the answer arrives", () => {
     const messages = [
       {
