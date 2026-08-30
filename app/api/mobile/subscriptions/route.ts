@@ -237,20 +237,26 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
-  const isPlanPeriodExpired =
+  const isExpiredBalance =
     balance.expiresAt instanceof Date &&
     balance.expiresAt.getTime() <= now.getTime();
-  const effectiveTokensRemaining = balance.tokensRemaining;
-  const effectiveTokensTotal = balance.tokensTotal;
-  const effectiveCreditsRemaining = balance.creditsRemaining;
-  const effectiveCreditsTotal = balance.creditsTotal;
-  const effectiveAllocatedCredits = balance.allocatedCredits;
-  const effectiveRechargedCredits = balance.rechargedCredits;
+  const effectiveTokensRemaining = isExpiredBalance ? 0 : balance.tokensRemaining;
+  const effectiveTokensTotal = isExpiredBalance ? 0 : balance.tokensTotal;
+  const effectiveCreditsRemaining = isExpiredBalance
+    ? 0
+    : balance.creditsRemaining;
+  const effectiveCreditsTotal = isExpiredBalance ? 0 : balance.creditsTotal;
+  const effectiveAllocatedCredits = isExpiredBalance
+    ? 0
+    : balance.allocatedCredits;
+  const effectiveRechargedCredits = isExpiredBalance
+    ? 0
+    : balance.rechargedCredits;
   const billedTokensUsed = Math.max(
     0,
     effectiveTokensTotal - effectiveTokensRemaining
   );
-  const plan = isPlanPeriodExpired ? null : balance.plan;
+  const plan = isExpiredBalance ? null : balance.plan;
   const isManualPlan = plan?.id === MANUAL_TOP_UP_PLAN_ID;
   const hasPaidPlan = Boolean(plan && !isManualPlan);
   const freeCreditsRemaining = isManualPlan
@@ -259,7 +265,7 @@ export async function GET(request: Request) {
       ? effectiveCreditsRemaining
       : 0;
   const expiresAt =
-    !isPlanPeriodExpired && balance.expiresAt
+    !isExpiredBalance && balance.expiresAt
       ? new Date(balance.expiresAt)
       : null;
   const daysRemaining =

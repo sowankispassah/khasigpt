@@ -171,17 +171,19 @@ test.describe("shared free daily chat allowance", () => {
     );
 
     expect(creditReadBlock).toContain("gt(userSubscription.tokenBalance, 0)");
-    expect(creditReadBlock).not.toContain('eq(userSubscription.status, "active")');
-    expect(creditReadBlock).not.toContain("gt(userSubscription.expiresAt");
-    expect(creditWriteBlock).toContain("gt(userSubscription.tokenBalance, 0)");
-    expect(creditWriteBlock).not.toContain('eq(userSubscription.status, "active")');
-    expect(creditWriteBlock).not.toContain("gt(userSubscription.expiresAt");
-    expect(databaseQueries).toContain("mergeUsableCreditSubscriptions");
+    expect(creditReadBlock).toContain('eq(userSubscription.status, "active")');
+    expect(creditReadBlock).toContain("gt(userSubscription.expiresAt");
+    expect(creditWriteBlock).toContain('eq(userSubscription.status, "active")');
+    expect(creditWriteBlock).toContain("gt(userSubscription.expiresAt");
+    expect(creditWriteBlock).toContain("lte(userSubscription.expiresAt");
+    expect(databaseQueries).not.toContain("mergeUsableCreditSubscriptions");
     expect(databaseQueries).toContain(
       "Capping the final charge at the remaining wallet balance"
     );
     expect(databaseQueries).not.toContain("let exhausted = false");
-    const adminWalletStart = databaseQueries.indexOf("paged_credit_wallets AS");
+    const adminWalletStart = databaseQueries.indexOf(
+      "paged_active_subscriptions AS"
+    );
     const recentSubscriptionsStart = databaseQueries.indexOf(
       "recent_active_subscriptions AS",
       adminWalletStart
@@ -190,10 +192,10 @@ test.describe("shared free daily chat allowance", () => {
       adminWalletStart,
       recentSubscriptionsStart
     );
-    expect(adminWalletBlock).toContain('SUM("tokenBalance")');
-    expect(adminWalletBlock).toContain('GROUP BY "userId"');
-    expect(adminWalletBlock).not.toContain('"status" = \'active\'');
-    expect(adminWalletBlock).not.toContain('"expiresAt" >');
+    expect(adminWalletBlock).not.toContain('SUM("tokenBalance")');
+    expect(adminWalletBlock).toContain('"status" = \'active\'');
+    expect(adminWalletBlock).toContain('"expiresAt" >');
+    expect(adminWalletBlock).toContain('"tokenBalance" > 0');
 
     const adminBalanceStart = databaseQueries.indexOf(
       "export async function getUserBalanceSummaries"
@@ -206,16 +208,12 @@ test.describe("shared free daily chat allowance", () => {
       adminBalanceStart,
       adminBalanceEnd
     );
-    expect(adminBalanceBlock).toContain("mergeUsableCreditSubscriptions");
-    expect(adminBalanceBlock).not.toContain('eq(userSubscription.status, "active")');
-    expect(adminBalanceBlock).not.toContain("gt(userSubscription.expiresAt");
-    expect(subscriptionsPage).toContain(
-      "const effectiveCreditsRemaining = balance.creditsRemaining"
-    );
-    expect(subscriptionsPage).not.toContain("isExpiredBalance ? 0");
-    expect(mobileSubscriptionsRoute).toContain(
-      "const effectiveCreditsRemaining = balance.creditsRemaining"
-    );
-    expect(mobileSubscriptionsRoute).not.toContain("isExpiredBalance ? 0");
+    expect(adminBalanceBlock).not.toContain("mergeUsableCreditSubscriptions");
+    expect(adminBalanceBlock).toContain('eq(userSubscription.status, "active")');
+    expect(adminBalanceBlock).toContain("gt(userSubscription.expiresAt");
+    expect(subscriptionsPage).toContain("const isExpiredBalance =");
+    expect(subscriptionsPage).toContain("isExpiredBalance ? 0");
+    expect(mobileSubscriptionsRoute).toContain("const isExpiredBalance =");
+    expect(mobileSubscriptionsRoute).toContain("isExpiredBalance ? 0");
   });
 });

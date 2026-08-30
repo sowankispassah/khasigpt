@@ -4639,20 +4639,22 @@ export async function getAdminUsersPageSnapshot({
         LIMIT ${safeLimit}
         OFFSET ${safeOffset}
       ),
-      paged_credit_wallets AS (
-        SELECT
+      paged_active_subscriptions AS (
+        SELECT DISTINCT ON ("userId")
           "userId",
-          SUM("tokenAllowance") AS "tokenAllowance",
-          SUM("tokenBalance") AS "tokenBalance",
-          SUM("manualTokenBalance") AS "manualTokenBalance",
-          SUM("paidTokenBalance") AS "paidTokenBalance",
-          MAX("expiresAt") AS "expiresAt",
-          MIN("startedAt") AS "startedAt"
+          "tokenAllowance",
+          "tokenBalance",
+          "manualTokenBalance",
+          "paidTokenBalance",
+          "expiresAt",
+          "startedAt"
         FROM "UserSubscription"
         WHERE
           "userId" IN (SELECT "id" FROM paged_users)
+          AND "status" = 'active'
+          AND "expiresAt" > ${nowTimestamp}::timestamp
           AND "tokenBalance" > 0
-        GROUP BY "userId"
+        ORDER BY "userId", "expiresAt" DESC
       ),
       recent_active_subscriptions AS (
         SELECT
@@ -4692,20 +4694,20 @@ export async function getAdminUsersPageSnapshot({
             jsonb_agg(
               jsonb_build_object(
                 'userId', paged_users."id",
-                'tokenAllowance', paged_credit_wallets."tokenAllowance",
-                'tokenBalance', paged_credit_wallets."tokenBalance",
-                'allocatedTokens', paged_credit_wallets."manualTokenBalance",
-                'paidTokens', paged_credit_wallets."paidTokenBalance",
-                'expiresAt', paged_credit_wallets."expiresAt",
-                'startedAt', paged_credit_wallets."startedAt"
+                'tokenAllowance', paged_active_subscriptions."tokenAllowance",
+                'tokenBalance', paged_active_subscriptions."tokenBalance",
+                'allocatedTokens', paged_active_subscriptions."manualTokenBalance",
+                'paidTokens', paged_active_subscriptions."paidTokenBalance",
+                'expiresAt', paged_active_subscriptions."expiresAt",
+                'startedAt', paged_active_subscriptions."startedAt"
               )
               ORDER BY paged_users."createdAt" DESC
             ),
             '[]'::jsonb
           )
           FROM paged_users
-          LEFT JOIN paged_credit_wallets
-            ON paged_credit_wallets."userId" = paged_users."id"
+          LEFT JOIN paged_active_subscriptions
+            ON paged_active_subscriptions."userId" = paged_users."id"
         ) AS "balances",
         (
           SELECT COALESCE(
@@ -10251,22 +10253,25 @@ export async function getUserBalanceSummaries(
     return summaries;
   }
 
+  const now = new Date();
+
   try {
-    const { creditSubscriptions, latestSubscriptions, plans } =
+    const { activeSubscriptions, latestSubscriptions, plans } =
       await withAdminDatabase("users.balances", async (adminDb) => {
-        const [creditRows, latestRows] = await Promise.all([
+        const [activeRows, latestRows] = await Promise.all([
           adminDb
-            .select()
+            .selectDistinctOn([userSubscription.userId])
             .from(userSubscription)
             .where(
               and(
                 inArray(userSubscription.userId, validUserIds),
+                eq(userSubscription.status, "active"),
+                gt(userSubscription.expiresAt, now),
                 gt(userSubscription.tokenBalance, 0)
               )
             )
             .orderBy(
               userSubscription.userId,
-              desc(userSubscription.updatedAt),
               desc(userSubscription.expiresAt),
               desc(userSubscription.id)
             ),
@@ -10283,7 +10288,7 @@ export async function getUserBalanceSummaries(
 
         const planIds = Array.from(
           new Set(
-            [...creditRows, ...latestRows]
+            latestRows
               .map((subscription) => subscription.planId)
               .filter((planId): planId is string => typeof planId === "string")
           )
@@ -10302,23 +10307,14 @@ export async function getUserBalanceSummaries(
             : [];
 
         return {
-          creditSubscriptions: creditRows,
+          activeSubscriptions: activeRows,
           latestSubscriptions: latestRows,
           plans: planRows,
         };
       });
 
-    const creditRowsByUserId = new Map<string, UserSubscription[]>();
-    for (const subscription of creditSubscriptions) {
-      const current = creditRowsByUserId.get(subscription.userId) ?? [];
-      current.push(subscription);
-      creditRowsByUserId.set(subscription.userId, current);
-    }
-    const creditByUserId = new Map(
-      Array.from(creditRowsByUserId.entries()).map(([userId, subscriptions]) => [
-        userId,
-        mergeUsableCreditSubscriptions(subscriptions),
-      ])
+    const activeByUserId = new Map(
+      activeSubscriptions.map((subscription) => [subscription.userId, subscription])
     );
     const latestByUserId = new Map(
       latestSubscriptions.map((subscription) => [subscription.userId, subscription])
@@ -10326,7 +10322,7 @@ export async function getUserBalanceSummaries(
     const planById = new Map(plans.map((plan) => [plan.id, plan]));
 
     for (const userId of validUserIds) {
-      const activeSubscription = creditByUserId.get(userId) ?? null;
+      const activeSubscription = activeByUserId.get(userId) ?? null;
       const latestSubscription =
         activeSubscription ?? latestByUserId.get(userId) ?? null;
 
@@ -11101,122 +11097,74 @@ async function ensureManualPlan(executor: any, now: Date) {
 async function getActiveSubscriptionReadOnly(
   executor: any,
   userId: string,
-  _now: Date
+  now: Date
 ): Promise<UserSubscription | null> {
-  const subscriptions = await executor
+  const [subscription] = await executor
     .select()
     .from(userSubscription)
     .where(
       and(
         eq(userSubscription.userId, userId),
+        eq(userSubscription.status, "active"),
+        gt(userSubscription.expiresAt, now),
         gt(userSubscription.tokenBalance, 0)
       )
     )
-    // Credits are a wallet balance, not a complimentary plan entitlement.
-    // Paid or manually granted credits remain usable after the plan period
-    // that originally created the row has ended.
-    .orderBy(desc(userSubscription.updatedAt), desc(userSubscription.expiresAt))
-    .limit(100);
+    .orderBy(desc(userSubscription.expiresAt))
+    .limit(1);
 
-  return mergeUsableCreditSubscriptions(subscriptions);
+  return subscription ?? null;
 }
 
 async function getActiveSubscriptionInternal(
   executor: any,
   userId: string,
-  _now: Date
+  now: Date
 ): Promise<UserSubscription | null> {
-  const subscriptions: UserSubscription[] = await executor
+  // Ensure any expired subscriptions are marked before we attempt to read.
+  await executor
+    .update(userSubscription)
+    .set({ status: "expired", updatedAt: now })
+    .where(
+      and(
+        eq(userSubscription.userId, userId),
+        eq(userSubscription.status, "active"),
+        lte(userSubscription.expiresAt, now)
+      )
+    );
+
+  const [subscription] = await executor
     .select()
     .from(userSubscription)
     .where(
       and(
         eq(userSubscription.userId, userId),
-        gt(userSubscription.tokenBalance, 0)
+        eq(userSubscription.status, "active"),
+        gt(userSubscription.expiresAt, now)
       )
     )
-    .orderBy(desc(userSubscription.updatedAt), desc(userSubscription.expiresAt))
-    .limit(100);
-
-  const subscription = mergeUsableCreditSubscriptions(subscriptions);
+    .orderBy(desc(userSubscription.expiresAt))
+    .limit(1);
 
   if (!subscription) {
     return null;
   }
 
-  if (subscriptions.length > 1) {
-    const secondaryIds = subscriptions.slice(1).map((entry) => entry.id);
-
+  if (subscription.tokenBalance <= 0) {
     await executor
       .update(userSubscription)
       .set({
+        status: "exhausted",
         tokenBalance: 0,
         manualTokenBalance: 0,
         paidTokenBalance: 0,
-        status: "exhausted",
-        updatedAt: _now,
+        updatedAt: now,
       })
-      .where(inArray(userSubscription.id, secondaryIds));
-
-    const [consolidated] = await executor
-      .update(userSubscription)
-      .set({
-        tokenAllowance: subscription.tokenAllowance,
-        tokenBalance: subscription.tokenBalance,
-        manualTokenBalance: subscription.manualTokenBalance,
-        paidTokenBalance: subscription.paidTokenBalance,
-        tokensUsed: subscription.tokensUsed,
-        updatedAt: _now,
-      })
-      .where(eq(userSubscription.id, subscription.id))
-      .returning();
-
-    return consolidated ?? subscription;
-  }
-
-  return subscription;
-}
-
-function mergeUsableCreditSubscriptions(
-  subscriptions: UserSubscription[]
-): UserSubscription | null {
-  const primary = subscriptions[0];
-  if (!primary) {
+      .where(eq(userSubscription.id, subscription.id));
     return null;
   }
 
-  const totals = subscriptions.reduce(
-    (result, subscription) => {
-      const tokenBalance = Math.max(0, subscription.tokenBalance ?? 0);
-      const manual = Math.min(
-        tokenBalance,
-        Math.max(0, subscription.manualTokenBalance ?? 0)
-      );
-      const paid = Math.min(
-        tokenBalance - manual,
-        Math.max(0, subscription.paidTokenBalance ?? 0)
-      );
-
-      result.tokenAllowance += Math.max(0, subscription.tokenAllowance ?? 0);
-      result.tokenBalance += tokenBalance;
-      result.manualTokenBalance += manual + (tokenBalance - manual - paid);
-      result.paidTokenBalance += paid;
-      result.tokensUsed += Math.max(0, subscription.tokensUsed ?? 0);
-      return result;
-    },
-    {
-      tokenAllowance: 0,
-      tokenBalance: 0,
-      manualTokenBalance: 0,
-      paidTokenBalance: 0,
-      tokensUsed: 0,
-    }
-  );
-
-  return {
-    ...primary,
-    ...totals,
-  };
+  return subscription;
 }
 
 function calculateTokenDeduction({
