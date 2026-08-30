@@ -85,6 +85,9 @@ test.describe("shared free daily chat allowance", () => {
       adminPage,
       staticDefinitions,
       webSearchConfig,
+      databaseQueries,
+      subscriptionsPage,
+      mobileSubscriptionsRoute,
     ] = await Promise.all([
       readFile(
         path.join(process.cwd(), "app/(chat)/api/chat/route.ts"),
@@ -111,6 +114,15 @@ test.describe("shared free daily chat allowance", () => {
       ),
       readFile(
         path.join(process.cwd(), "lib/web-search/config.ts"),
+        "utf8"
+      ),
+      readFile(path.join(process.cwd(), "lib/db/queries.ts"), "utf8"),
+      readFile(
+        path.join(process.cwd(), "app/(chat)/subscriptions/page.tsx"),
+        "utf8"
+      ),
+      readFile(
+        path.join(process.cwd(), "app/api/mobile/subscriptions/route.ts"),
         "utf8"
       ),
     ]);
@@ -142,5 +154,45 @@ test.describe("shared free daily chat allowance", () => {
     expect(adminPage).toContain('translationKey="admin.web_search.section_description"');
     expect(staticDefinitions).toContain('key: "admin.web_search.section_description"');
     expect(webSearchConfig).not.toContain("WEB_SEARCH_DAILY_LIMIT_SETTING_KEY");
+
+    const creditReadStart = databaseQueries.indexOf(
+      "async function getActiveSubscriptionReadOnly"
+    );
+    const creditWriteStart = databaseQueries.indexOf(
+      "async function getActiveSubscriptionInternal",
+      creditReadStart
+    );
+    const creditReadBlock = databaseQueries.slice(
+      creditReadStart,
+      creditWriteStart
+    );
+    const creditWriteEnd = databaseQueries.indexOf(
+      "function calculateTokenDeduction",
+      creditWriteStart
+    );
+    const creditWriteBlock = databaseQueries.slice(
+      creditWriteStart,
+      creditWriteEnd
+    );
+
+    expect(creditReadBlock).toContain("gt(userSubscription.tokenBalance, 0)");
+    expect(creditReadBlock).not.toContain('eq(userSubscription.status, "active")');
+    expect(creditReadBlock).not.toContain("gt(userSubscription.expiresAt");
+    expect(creditWriteBlock).toContain("gt(userSubscription.tokenBalance, 0)");
+    expect(creditWriteBlock).not.toContain('eq(userSubscription.status, "active")');
+    expect(creditWriteBlock).not.toContain("gt(userSubscription.expiresAt");
+    expect(databaseQueries).toContain("mergeUsableCreditSubscriptions");
+    expect(databaseQueries).toContain(
+      "Capping the final charge at the remaining wallet balance"
+    );
+    expect(databaseQueries).not.toContain("let exhausted = false");
+    expect(subscriptionsPage).toContain(
+      "const effectiveCreditsRemaining = balance.creditsRemaining"
+    );
+    expect(subscriptionsPage).not.toContain("isExpiredBalance ? 0");
+    expect(mobileSubscriptionsRoute).toContain(
+      "const effectiveCreditsRemaining = balance.creditsRemaining"
+    );
+    expect(mobileSubscriptionsRoute).not.toContain("isExpiredBalance ? 0");
   });
 });

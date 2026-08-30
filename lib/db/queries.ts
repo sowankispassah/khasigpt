@@ -10084,6 +10084,7 @@ export async function grantUserCredits({
                 tokenAllowance: active.tokenAllowance + tokens,
                 manualTokenBalance: updatedManual,
                 paidTokenBalance: currentPaid,
+                status: "active",
                 expiresAt:
                   active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
                 updatedAt: now,
@@ -10457,7 +10458,6 @@ export async function recordTokenUsage({
   }
 
   const now = new Date();
-  let exhausted = false;
   let baselineCostSnapshot: ProviderCostSnapshot | null = null;
   let modelCostSnapshot: ProviderCostSnapshot | null = null;
   let usdToInr = 0;
@@ -10563,25 +10563,11 @@ export async function recordTokenUsage({
         });
 
         if (tokensToDeduct > 0 && subscription.tokenBalance < tokensToDeduct) {
-          const consumedTokens = Math.max(0, subscription.tokenBalance);
-
-          await tx
-            .update(userSubscription)
-            .set({
-              tokenBalance: 0,
-              manualTokenBalance: 0,
-              paidTokenBalance: 0,
-              tokensUsed: Math.min(
-                subscription.tokenAllowance,
-                subscription.tokensUsed + consumedTokens
-              ),
-              status: "exhausted",
-              updatedAt: now,
-            })
-            .where(eq(userSubscription.id, subscription.id));
-
-          exhausted = true;
-          return null;
+          console.info("[token-usage] Capping the final charge at the remaining wallet balance.", {
+            availableTokens: subscription.tokenBalance,
+            calculatedTokens: tokensToDeduct,
+          });
+          tokensToDeduct = Math.max(0, subscription.tokenBalance);
         }
 
         const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
@@ -10637,7 +10623,7 @@ export async function recordTokenUsage({
                 ? remainingPaidBalance
                 : Math.max(0, subscription.paidTokenBalance ?? 0),
             tokensUsed: subscription.tokensUsed + tokensToDeduct,
-            status: remaining > 0 ? "active" : "exhausted",
+            status: remaining > 0 ? subscription.status : "exhausted",
             updatedAt: now,
           })
           .where(eq(userSubscription.id, subscription.id));
@@ -10645,13 +10631,6 @@ export async function recordTokenUsage({
 
       return insertedUsage ?? null;
     });
-
-    if (exhausted) {
-      throw new ChatSDKError(
-        "payment_required:credits",
-        "Insufficient credits remaining"
-      );
-    }
 
     if (!usageRecord) {
       throw new ChatSDKError(
@@ -10772,23 +10751,6 @@ export async function deductImageCredits({
         : paidBalance;
 
       if (availableBalance < resolvedTokens) {
-        if (allowManualCredits) {
-          await tx
-            .update(userSubscription)
-            .set({
-              tokenBalance: 0,
-              manualTokenBalance: 0,
-              paidTokenBalance: 0,
-              tokensUsed: Math.min(
-                subscription.tokenAllowance,
-                subscription.tokensUsed + subscription.tokenBalance
-              ),
-              status: "exhausted",
-              updatedAt: now,
-            })
-            .where(eq(userSubscription.id, subscription.id));
-        }
-
         throw new ChatSDKError(
           "payment_required:credits",
           allowManualCredits
@@ -10842,7 +10804,7 @@ export async function deductImageCredits({
           manualTokenBalance: remainingManualBalance,
           paidTokenBalance: remainingPaidBalance,
           tokensUsed: subscription.tokensUsed + resolvedTokens,
-          status: remaining > 0 ? "active" : "exhausted",
+          status: remaining > 0 ? subscription.status : "exhausted",
           updatedAt: now,
         })
         .where(eq(userSubscription.id, subscription.id));
@@ -11135,74 +11097,122 @@ async function ensureManualPlan(executor: any, now: Date) {
 async function getActiveSubscriptionReadOnly(
   executor: any,
   userId: string,
-  now: Date
+  _now: Date
 ): Promise<UserSubscription | null> {
-  const [subscription] = await executor
+  const subscriptions = await executor
     .select()
     .from(userSubscription)
     .where(
       and(
         eq(userSubscription.userId, userId),
-        eq(userSubscription.status, "active"),
-        gt(userSubscription.expiresAt, now),
         gt(userSubscription.tokenBalance, 0)
       )
     )
-    .orderBy(desc(userSubscription.expiresAt))
-    .limit(1);
+    // Credits are a wallet balance, not a complimentary plan entitlement.
+    // Paid or manually granted credits remain usable after the plan period
+    // that originally created the row has ended.
+    .orderBy(desc(userSubscription.updatedAt), desc(userSubscription.expiresAt))
+    .limit(100);
 
-  return subscription ?? null;
+  return mergeUsableCreditSubscriptions(subscriptions);
 }
 
 async function getActiveSubscriptionInternal(
   executor: any,
   userId: string,
-  now: Date
+  _now: Date
 ): Promise<UserSubscription | null> {
-  // Ensure any expired subscriptions are marked before we attempt to read.
-  await executor
-    .update(userSubscription)
-    .set({ status: "expired", updatedAt: now })
-    .where(
-      and(
-        eq(userSubscription.userId, userId),
-        eq(userSubscription.status, "active"),
-        lte(userSubscription.expiresAt, now)
-      )
-    );
-
-  const [subscription] = await executor
+  const subscriptions: UserSubscription[] = await executor
     .select()
     .from(userSubscription)
     .where(
       and(
         eq(userSubscription.userId, userId),
-        eq(userSubscription.status, "active"),
-        gt(userSubscription.expiresAt, now)
+        gt(userSubscription.tokenBalance, 0)
       )
     )
-    .orderBy(desc(userSubscription.expiresAt))
-    .limit(1);
+    .orderBy(desc(userSubscription.updatedAt), desc(userSubscription.expiresAt))
+    .limit(100);
+
+  const subscription = mergeUsableCreditSubscriptions(subscriptions);
 
   if (!subscription) {
     return null;
   }
 
-  if (subscription.tokenBalance <= 0) {
+  if (subscriptions.length > 1) {
+    const secondaryIds = subscriptions.slice(1).map((entry) => entry.id);
+
     await executor
       .update(userSubscription)
       .set({
-        status: "exhausted",
         tokenBalance: 0,
         manualTokenBalance: 0,
         paidTokenBalance: 0,
-        updatedAt: now,
+        status: "exhausted",
+        updatedAt: _now,
       })
-      .where(eq(userSubscription.id, subscription.id));
-    return null;
+      .where(inArray(userSubscription.id, secondaryIds));
+
+    const [consolidated] = await executor
+      .update(userSubscription)
+      .set({
+        tokenAllowance: subscription.tokenAllowance,
+        tokenBalance: subscription.tokenBalance,
+        manualTokenBalance: subscription.manualTokenBalance,
+        paidTokenBalance: subscription.paidTokenBalance,
+        tokensUsed: subscription.tokensUsed,
+        updatedAt: _now,
+      })
+      .where(eq(userSubscription.id, subscription.id))
+      .returning();
+
+    return consolidated ?? subscription;
   }
 
   return subscription;
+}
+
+function mergeUsableCreditSubscriptions(
+  subscriptions: UserSubscription[]
+): UserSubscription | null {
+  const primary = subscriptions[0];
+  if (!primary) {
+    return null;
+  }
+
+  const totals = subscriptions.reduce(
+    (result, subscription) => {
+      const tokenBalance = Math.max(0, subscription.tokenBalance ?? 0);
+      const manual = Math.min(
+        tokenBalance,
+        Math.max(0, subscription.manualTokenBalance ?? 0)
+      );
+      const paid = Math.min(
+        tokenBalance - manual,
+        Math.max(0, subscription.paidTokenBalance ?? 0)
+      );
+
+      result.tokenAllowance += Math.max(0, subscription.tokenAllowance ?? 0);
+      result.tokenBalance += tokenBalance;
+      result.manualTokenBalance += manual + (tokenBalance - manual - paid);
+      result.paidTokenBalance += paid;
+      result.tokensUsed += Math.max(0, subscription.tokensUsed ?? 0);
+      return result;
+    },
+    {
+      tokenAllowance: 0,
+      tokenBalance: 0,
+      manualTokenBalance: 0,
+      paidTokenBalance: 0,
+      tokensUsed: 0,
+    }
+  );
+
+  return {
+    ...primary,
+    ...totals,
+  };
 }
 
 function calculateTokenDeduction({

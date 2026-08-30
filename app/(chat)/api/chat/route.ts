@@ -1248,6 +1248,14 @@ export async function POST(request: Request) {
 
     const activeTokenBalance = activeSubscription?.tokenBalance ?? 0;
     const hasActiveCredits = hasUsableChatCredits(activeTokenBalance);
+    console.info("[chat.credit-decision]", {
+      balanceConfirmed: true,
+      hasUsableCredits: hasActiveCredits,
+      sourceStatus: activeSubscription?.status ?? "none",
+      sourcePeriodEnded: activeSubscription
+        ? activeSubscription.expiresAt <= new Date()
+        : false,
+    });
     if (
       isRoleDailyChatLimitReached({
         hasActiveCredits,
