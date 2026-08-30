@@ -181,6 +181,34 @@ test.describe("shared free daily chat allowance", () => {
       "Capping the final charge at the remaining wallet balance"
     );
     expect(databaseQueries).not.toContain("let exhausted = false");
+    const adminWalletStart = databaseQueries.indexOf("paged_credit_wallets AS");
+    const recentSubscriptionsStart = databaseQueries.indexOf(
+      "recent_active_subscriptions AS",
+      adminWalletStart
+    );
+    const adminWalletBlock = databaseQueries.slice(
+      adminWalletStart,
+      recentSubscriptionsStart
+    );
+    expect(adminWalletBlock).toContain('SUM("tokenBalance")');
+    expect(adminWalletBlock).toContain('GROUP BY "userId"');
+    expect(adminWalletBlock).not.toContain('"status" = \'active\'');
+    expect(adminWalletBlock).not.toContain('"expiresAt" >');
+
+    const adminBalanceStart = databaseQueries.indexOf(
+      "export async function getUserBalanceSummaries"
+    );
+    const adminBalanceEnd = databaseQueries.indexOf(
+      "export async function listActiveSubscriptionSummaries",
+      adminBalanceStart
+    );
+    const adminBalanceBlock = databaseQueries.slice(
+      adminBalanceStart,
+      adminBalanceEnd
+    );
+    expect(adminBalanceBlock).toContain("mergeUsableCreditSubscriptions");
+    expect(adminBalanceBlock).not.toContain('eq(userSubscription.status, "active")');
+    expect(adminBalanceBlock).not.toContain("gt(userSubscription.expiresAt");
     expect(subscriptionsPage).toContain(
       "const effectiveCreditsRemaining = balance.creditsRemaining"
     );

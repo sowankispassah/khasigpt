@@ -4639,22 +4639,20 @@ export async function getAdminUsersPageSnapshot({
         LIMIT ${safeLimit}
         OFFSET ${safeOffset}
       ),
-      paged_active_subscriptions AS (
-        SELECT DISTINCT ON ("userId")
+      paged_credit_wallets AS (
+        SELECT
           "userId",
-          "tokenAllowance",
-          "tokenBalance",
-          "manualTokenBalance",
-          "paidTokenBalance",
-          "expiresAt",
-          "startedAt"
+          SUM("tokenAllowance") AS "tokenAllowance",
+          SUM("tokenBalance") AS "tokenBalance",
+          SUM("manualTokenBalance") AS "manualTokenBalance",
+          SUM("paidTokenBalance") AS "paidTokenBalance",
+          MAX("expiresAt") AS "expiresAt",
+          MIN("startedAt") AS "startedAt"
         FROM "UserSubscription"
         WHERE
           "userId" IN (SELECT "id" FROM paged_users)
-          AND "status" = 'active'
-          AND "expiresAt" > ${nowTimestamp}::timestamp
           AND "tokenBalance" > 0
-        ORDER BY "userId", "expiresAt" DESC
+        GROUP BY "userId"
       ),
       recent_active_subscriptions AS (
         SELECT
@@ -4694,20 +4692,20 @@ export async function getAdminUsersPageSnapshot({
             jsonb_agg(
               jsonb_build_object(
                 'userId', paged_users."id",
-                'tokenAllowance', paged_active_subscriptions."tokenAllowance",
-                'tokenBalance', paged_active_subscriptions."tokenBalance",
-                'allocatedTokens', paged_active_subscriptions."manualTokenBalance",
-                'paidTokens', paged_active_subscriptions."paidTokenBalance",
-                'expiresAt', paged_active_subscriptions."expiresAt",
-                'startedAt', paged_active_subscriptions."startedAt"
+                'tokenAllowance', paged_credit_wallets."tokenAllowance",
+                'tokenBalance', paged_credit_wallets."tokenBalance",
+                'allocatedTokens', paged_credit_wallets."manualTokenBalance",
+                'paidTokens', paged_credit_wallets."paidTokenBalance",
+                'expiresAt', paged_credit_wallets."expiresAt",
+                'startedAt', paged_credit_wallets."startedAt"
               )
               ORDER BY paged_users."createdAt" DESC
             ),
             '[]'::jsonb
           )
           FROM paged_users
-          LEFT JOIN paged_active_subscriptions
-            ON paged_active_subscriptions."userId" = paged_users."id"
+          LEFT JOIN paged_credit_wallets
+            ON paged_credit_wallets."userId" = paged_users."id"
         ) AS "balances",
         (
           SELECT COALESCE(
@@ -10253,25 +10251,22 @@ export async function getUserBalanceSummaries(
     return summaries;
   }
 
-  const now = new Date();
-
   try {
-    const { activeSubscriptions, latestSubscriptions, plans } =
+    const { creditSubscriptions, latestSubscriptions, plans } =
       await withAdminDatabase("users.balances", async (adminDb) => {
-        const [activeRows, latestRows] = await Promise.all([
+        const [creditRows, latestRows] = await Promise.all([
           adminDb
-            .selectDistinctOn([userSubscription.userId])
+            .select()
             .from(userSubscription)
             .where(
               and(
                 inArray(userSubscription.userId, validUserIds),
-                eq(userSubscription.status, "active"),
-                gt(userSubscription.expiresAt, now),
                 gt(userSubscription.tokenBalance, 0)
               )
             )
             .orderBy(
               userSubscription.userId,
+              desc(userSubscription.updatedAt),
               desc(userSubscription.expiresAt),
               desc(userSubscription.id)
             ),
@@ -10288,7 +10283,7 @@ export async function getUserBalanceSummaries(
 
         const planIds = Array.from(
           new Set(
-            latestRows
+            [...creditRows, ...latestRows]
               .map((subscription) => subscription.planId)
               .filter((planId): planId is string => typeof planId === "string")
           )
@@ -10307,14 +10302,23 @@ export async function getUserBalanceSummaries(
             : [];
 
         return {
-          activeSubscriptions: activeRows,
+          creditSubscriptions: creditRows,
           latestSubscriptions: latestRows,
           plans: planRows,
         };
       });
 
-    const activeByUserId = new Map(
-      activeSubscriptions.map((subscription) => [subscription.userId, subscription])
+    const creditRowsByUserId = new Map<string, UserSubscription[]>();
+    for (const subscription of creditSubscriptions) {
+      const current = creditRowsByUserId.get(subscription.userId) ?? [];
+      current.push(subscription);
+      creditRowsByUserId.set(subscription.userId, current);
+    }
+    const creditByUserId = new Map(
+      Array.from(creditRowsByUserId.entries()).map(([userId, subscriptions]) => [
+        userId,
+        mergeUsableCreditSubscriptions(subscriptions),
+      ])
     );
     const latestByUserId = new Map(
       latestSubscriptions.map((subscription) => [subscription.userId, subscription])
@@ -10322,7 +10326,7 @@ export async function getUserBalanceSummaries(
     const planById = new Map(plans.map((plan) => [plan.id, plan]));
 
     for (const userId of validUserIds) {
-      const activeSubscription = activeByUserId.get(userId) ?? null;
+      const activeSubscription = creditByUserId.get(userId) ?? null;
       const latestSubscription =
         activeSubscription ?? latestByUserId.get(userId) ?? null;
 
