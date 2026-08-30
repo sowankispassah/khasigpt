@@ -9,6 +9,7 @@ import {
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
 import {
+  buildGroundedShoppingFallbacks,
   buildVerifiedShoppingProduct,
   extractProductPageMetadata,
   extractShoppingProducts,
@@ -394,6 +395,44 @@ test.describe("web search grounding", () => {
     ).toBeNull();
   });
 
+  test("builds honest retailer browse cards when grounded shopping has no products", () => {
+    expect(
+      buildGroundedShoppingFallbacks({
+        sources: [
+          {
+            domain: "myntra.com",
+            title: "Myntra",
+            url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/myntra",
+          },
+          {
+            domain: "youtube.com",
+            title: "YouTube",
+            url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/youtube",
+          },
+          {
+            domain: "ajio.com",
+            title: "T-Shirts under 500 on AJIO",
+            url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/ajio",
+          },
+        ],
+        userMessage: "find me tshirt under 500 rupees",
+      })
+    ).toEqual([
+      expect.objectContaining({
+        kind: "collection",
+        merchant: "Myntra",
+        price: "Under ₹500",
+        title: "Browse T-shirts on Myntra",
+      }),
+      expect.objectContaining({
+        kind: "collection",
+        merchant: "AJIO",
+        price: "Under ₹500",
+        title: "Browse T-shirts on AJIO",
+      }),
+    ]);
+  });
+
   test("keeps grounding provider, admin controls, source streaming, and safe fallback wired", async () => {
     const [
       service,
@@ -434,6 +473,7 @@ test.describe("web search grounding", () => {
     expect(route).toContain("includeProducts: webSearchDecision.hasShoppingIntent");
     expect(service).toContain("<khasigpt_products>");
     expect(service).toContain("enrichShoppingProducts");
+    expect(service).toContain("buildGroundedShoppingFallbacks");
     expect(service).toContain("Prioritize relevant YouTube video results");
     expect(route).toContain('type: "data-webSources"');
     expect(route).toContain('type: "data-webSearchStatus"');
@@ -460,6 +500,7 @@ test.describe("web search grounding", () => {
     expect(nativeChat).toContain("WebSearchVideoResults");
     expect(nativeChat).toContain("WebSearchProductResults");
     expect(nativeChat).toContain("data.verified === true");
+    expect(nativeChat).toContain('data?.kind === "collection"');
     expect(nativeChat).toContain("getWebSearchVideosFromMessage");
     expect(nativeChat).toContain("expandedWebSourcesByMessageId");
     expect(nativeChat).toContain("getProviderOpaqueWebSourceDomain");

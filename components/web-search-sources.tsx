@@ -200,12 +200,14 @@ function normalizeVideo(video: WebSearchVideo) {
 function normalizeProduct(product: WebSearchProduct) {
   try {
     const url = new URL(product.url);
+    const kind: NonNullable<WebSearchProduct["kind"]> =
+      product.kind === "collection" ? "collection" : "product";
     if (
       (url.protocol !== "http:" && url.protocol !== "https:") ||
       !product.title?.trim() ||
       !product.merchant?.trim() ||
       !product.price?.trim() ||
-      !/\d/.test(product.price)
+      (kind === "product" && !/\d/.test(product.price))
     ) {
       return null;
     }
@@ -225,6 +227,7 @@ function normalizeProduct(product: WebSearchProduct) {
     return {
       ...product,
       imageUrl,
+      kind,
       merchant: product.merchant.trim(),
       price: product.price.trim(),
       title: product.title.trim(),
@@ -318,9 +321,17 @@ function WebSearchProducts({ products }: { products: WebSearchProduct[] }) {
               ) : null}
               <span className="inline-flex items-center gap-1 font-medium text-primary text-xs">
                 <EditableTranslation
-                  defaultText="View product"
-                  description="Link label on a grounded shopping result card."
-                  translationKey="chat.web_search.view_product"
+                  defaultText={product.kind === "collection" ? "Browse products" : "View product"}
+                  description={
+                    product.kind === "collection"
+                      ? "Link label on a grounded retailer browsing card."
+                      : "Link label on a grounded shopping result card."
+                  }
+                  translationKey={
+                    product.kind === "collection"
+                      ? "chat.web_search.browse_products"
+                      : "chat.web_search.view_product"
+                  }
                 />
                 <ExternalLink className="size-3" />
               </span>

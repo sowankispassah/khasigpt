@@ -4727,6 +4727,11 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Heading above current shopping results returned by grounded Web Search.",
   },
   {
+    key: "chat.web_search.browse_products",
+    defaultText: "Browse products",
+    description: "Link label on a grounded retailer browsing card.",
+  },
+  {
     key: "chat.web_search.view_product",
     defaultText: "View product",
     description: "Link label on a grounded shopping result card.",

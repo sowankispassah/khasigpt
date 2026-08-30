@@ -2,7 +2,10 @@ import "server-only";
 
 import { GoogleGenAI } from "@google/genai";
 import { enrichShoppingProducts } from "./product-enrichment";
-import { extractShoppingProducts } from "./products";
+import {
+  buildGroundedShoppingFallbacks,
+  extractShoppingProducts,
+} from "./products";
 import type {
   WebSearchAnswer,
   WebSearchCitation,
@@ -261,12 +264,16 @@ async function answerWithGeminiGrounding({
     })
     .filter((citation): citation is WebSearchCitation => citation !== null)
     .slice(0, 24);
-  const products = includeProducts
+  const enrichedProducts = includeProducts
     ? await enrichShoppingProducts({
         products: shoppingResult.products,
         userMessage,
       })
     : [];
+  const products =
+    includeProducts && enrichedProducts.length === 0
+      ? buildGroundedShoppingFallbacks({ sources, userMessage })
+      : enrichedProducts;
   if (includeProducts) {
     for (const product of products) {
       if (

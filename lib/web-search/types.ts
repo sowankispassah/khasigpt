@@ -33,6 +33,7 @@ export type WebSearchVideo = {
 };
 
 export type WebSearchProduct = {
+  kind?: "product" | "collection";
   title: string;
   url: string;
   merchant: string;

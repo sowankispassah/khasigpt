@@ -1,9 +1,24 @@
 import { load } from "cheerio";
-import type { WebSearchProduct } from "./types";
+import type { WebSearchProduct, WebSearchSource } from "./types";
 
 const PRODUCT_BLOCK_PATTERN =
   /<khasigpt_products>\s*([\s\S]*?)\s*<\/khasigpt_products>/gi;
 const MAX_PRODUCTS = 6;
+const NON_RETAIL_SOURCE_PATTERN =
+  /(?:youtube|youtu\.be|instagram|facebook|wikipedia|reddit|pinterest|quora|linkedin|x\.com|twitter)/i;
+const RETAILER_NAMES: Array<[RegExp, string]> = [
+  [/\bajio\b/i, "AJIO"],
+  [/\bamazon\b/i, "Amazon"],
+  [/\bbewakoof\b/i, "Bewakoof"],
+  [/\bflipkart\b/i, "Flipkart"],
+  [/\bh\s*&\s*m\b|\bhm\.com\b/i, "H&M"],
+  [/\bmax\s*fashion\b|\bmaxfashion\b/i, "Max Fashion"],
+  [/\bmeesho\b/i, "Meesho"],
+  [/\bmyntra\b/i, "Myntra"],
+  [/\bnobero\b/i, "Nobero"],
+  [/\bsnapdeal\b/i, "Snapdeal"],
+  [/\btata\s*cliq\b|\btatacliq\b/i, "Tata CLiQ"],
+];
 const PRODUCT_IDENTITY_STOPWORDS = new Set([
   "and",
   "buy",
@@ -166,6 +181,101 @@ export function extractShoppingProducts(answer: string) {
         .join("\n"),
     products: uniqueProducts,
   };
+}
+
+function getShoppingRequestLabel(userMessage: string) {
+  const withoutRequestPrefix = userMessage
+    .replace(
+      /^\s*(?:please\s+)?(?:find|show|search|look)\s+(?:for\s+)?(?:me\s+)?/i,
+      ""
+    )
+    .replace(/^\s*(?:buy|browse)\s+(?:me\s+)?/i, "")
+    .trim();
+  const withoutBudget = withoutRequestPrefix
+    .replace(
+      /\s+\b(?:under|below|less\s+than|up\s+to|max(?:imum)?|within|not\s+more\s+than)\b[\s\S]*$/i,
+      ""
+    )
+    .trim();
+  const label = (withoutBudget || withoutRequestPrefix || "products")
+    .replace(/\bt\s*-?\s*shirts?\b|\btshirts?\b/gi, "T-shirts")
+    .replace(/\s+/g, " ")
+    .trim();
+  return label.slice(0, 80);
+}
+
+function getShoppingBudgetLabel(userMessage: string) {
+  const amount = extractMaximumBudget(userMessage);
+  if (amount === null) {
+    return "Current listings";
+  }
+  const formatted = new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  }).format(amount);
+  return /(?:₹|\brs\.?\b|\brupees?\b|\binr\b)/i.test(userMessage)
+    ? `Under ₹${formatted}`
+    : `Under ${formatted}`;
+}
+
+function getRetailerName(source: WebSearchSource) {
+  const identity = `${source.domain ?? ""} ${source.title}`.trim();
+  if (!identity || NON_RETAIL_SOURCE_PATTERN.test(identity)) {
+    return null;
+  }
+  for (const [pattern, name] of RETAILER_NAMES) {
+    if (pattern.test(identity)) {
+      return name;
+    }
+  }
+
+  const hostnameMatch = identity.match(
+    /(?:^|\s)(?:https?:\/\/)?(?:www\.)?([a-z0-9][a-z0-9-]{1,62})\.(?:com|in|co\.in|store|shop)(?:\b|\/)/i
+  );
+  if (hostnameMatch?.[1]) {
+    return hostnameMatch[1]
+      .split("-")
+      .filter(Boolean)
+      .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+      .join(" ");
+  }
+
+  return null;
+}
+
+/**
+ * Produces honest browse cards when grounding found retailer pages but the model
+ * did not return any trustworthy individual product records. These cards never
+ * claim an exact item, price, rating, image, or availability.
+ */
+export function buildGroundedShoppingFallbacks({
+  sources,
+  userMessage,
+}: {
+  sources: WebSearchSource[];
+  userMessage: string;
+}) {
+  const requestLabel = getShoppingRequestLabel(userMessage);
+  const price = getShoppingBudgetLabel(userMessage);
+  const products = sources.flatMap((source): WebSearchProduct[] => {
+    const merchant = getRetailerName(source);
+    if (!merchant) {
+      return [];
+    }
+    return [{
+      imageProxyToken: null,
+      imageUrl: null,
+      kind: "collection",
+      merchant,
+      price,
+      title: `Browse ${requestLabel} on ${merchant}`,
+      url: source.url,
+      verified: false,
+    }];
+  });
+
+  return Array.from(
+    new Map(products.map((product) => [product.merchant.toLowerCase(), product])).values()
+  ).slice(0, MAX_PRODUCTS);
 }
 
 function collectJsonLdObjects(value: unknown, output: Record<string, unknown>[]) {
