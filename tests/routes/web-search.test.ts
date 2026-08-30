@@ -8,7 +8,11 @@ import {
   resolveCurrentInfoDecision,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
-import { extractShoppingProducts } from "@/lib/web-search/products";
+import {
+  buildVerifiedShoppingProduct,
+  extractProductPageMetadata,
+  extractShoppingProducts,
+} from "@/lib/web-search/products";
 import { mergeSemanticWebSearchDecision } from "@/lib/web-search/semantic-routing";
 import { clearTransientWebSearchMessages } from "@/lib/web-search/status";
 import { getYouTubeVideoId } from "@/lib/web-search/youtube";
@@ -319,6 +323,77 @@ test.describe("web search grounding", () => {
     ]);
   });
 
+  test("builds shopping cards only from matching product-page metadata", () => {
+    const metadata = extractProductPageMetadata({
+      finalUrl: "https://shop.example.com/products/classic-shirt",
+      html: `<!doctype html><html><head>
+        <meta property="og:site_name" content="Example Shop">
+        <meta property="og:image" content="https://cdn.example.com/classic-shirt.jpg">
+        <script type="application/ld+json">{
+          "@context":"https://schema.org",
+          "@type":"Product",
+          "name":"Classic Cotton Regular Fit T-Shirt",
+          "image":["https://cdn.example.com/classic-shirt.jpg"],
+          "aggregateRating":{"@type":"AggregateRating","ratingValue":"4.6","reviewCount":1600},
+          "offers":{"@type":"Offer","price":"499","priceCurrency":"INR","availability":"https://schema.org/InStock"}
+        }</script>
+      </head></html>`,
+    });
+
+    expect(metadata).toMatchObject({
+      currency: "INR",
+      imageUrl: "https://cdn.example.com/classic-shirt.jpg",
+      merchant: "Example Shop",
+      priceAmount: 499,
+      rating: 4.6,
+      reviewCount: "1600",
+      title: "Classic Cotton Regular Fit T-Shirt",
+    });
+    if (!metadata) {
+      throw new Error("Expected verified product metadata.");
+    }
+    expect(
+      buildVerifiedShoppingProduct({
+        candidate: {
+          merchant: "Untrusted model merchant",
+          price: "₹450",
+          title: "Classic Cotton Regular Fit T-Shirt",
+          url: "https://shop.example.com/products/classic-shirt",
+        },
+        metadata,
+        userMessage: "find me a t-shirt under 500 rupees",
+      })
+    ).toMatchObject({
+      merchant: "Example Shop",
+      price: "₹499",
+      verified: true,
+    });
+    expect(
+      buildVerifiedShoppingProduct({
+        candidate: {
+          merchant: "Example Shop",
+          price: "₹499",
+          title: "Gold Plated Necklace with Pendant",
+          url: "https://shop.example.com/products/classic-shirt",
+        },
+        metadata,
+        userMessage: "find me a necklace under 500 rupees",
+      })
+    ).toBeNull();
+    expect(
+      buildVerifiedShoppingProduct({
+        candidate: {
+          merchant: "Example Shop",
+          price: "₹499",
+          title: "Classic Cotton Regular Fit T-Shirt",
+          url: "https://shop.example.com/products/classic-shirt",
+        },
+        metadata: { ...metadata, priceAmount: 599 },
+        userMessage: "find me a t-shirt under 500 rupees",
+      })
+    ).toBeNull();
+  });
+
   test("keeps grounding provider, admin controls, source streaming, and safe fallback wired", async () => {
     const [
       service,
@@ -331,6 +406,7 @@ test.describe("web search grounding", () => {
       nativeChat,
       nativeTypes,
       semanticRouter,
+      productImageRoute,
     ] = await Promise.all([
       readWorkspaceFile("lib/web-search/service.ts"),
       readWorkspaceFile("app/(chat)/api/chat/route.ts"),
@@ -342,6 +418,7 @@ test.describe("web search grounding", () => {
       readWorkspaceFile("native/src/screens/ChatScreen.tsx"),
       readWorkspaceFile("native/src/api/types.ts"),
       readWorkspaceFile("lib/ai/tool-intent-classifier.ts"),
+      readWorkspaceFile("app/api/web-search/product-image/route.ts"),
     ]);
 
     expect(service).toContain('tools: [{ googleSearch: {} }]');
@@ -356,6 +433,7 @@ test.describe("web search grounding", () => {
     expect(route).toContain("includeVideos: webSearchDecision.hasVideoIntent");
     expect(route).toContain("includeProducts: webSearchDecision.hasShoppingIntent");
     expect(service).toContain("<khasigpt_products>");
+    expect(service).toContain("enrichShoppingProducts");
     expect(service).toContain("Prioritize relevant YouTube video results");
     expect(route).toContain('type: "data-webSources"');
     expect(route).toContain('type: "data-webSearchStatus"');
@@ -370,6 +448,7 @@ test.describe("web search grounding", () => {
     expect(sources).toContain('data-testid="web-search-status"');
     expect(sources).toContain('data-testid="web-search-sources"');
     expect(sources).toContain('data-testid="web-search-products"');
+    expect(sources).toContain("product.verified === true");
     expect(sources).toContain("getProviderOpaqueSourceDomain");
     expect(sources).not.toContain("Google Search");
     expect(sources).not.toContain("getProviderCopy");
@@ -380,6 +459,7 @@ test.describe("web search grounding", () => {
     expect(nativeChat).toContain("getWebSearchCitationsFromMessage");
     expect(nativeChat).toContain("WebSearchVideoResults");
     expect(nativeChat).toContain("WebSearchProductResults");
+    expect(nativeChat).toContain("data.verified === true");
     expect(nativeChat).toContain("getWebSearchVideosFromMessage");
     expect(nativeChat).toContain("expandedWebSourcesByMessageId");
     expect(nativeChat).toContain("getProviderOpaqueWebSourceDomain");
@@ -391,6 +471,8 @@ test.describe("web search grounding", () => {
     );
     expect(semanticRouter).toContain("Tang kiba rong ïong");
     expect(semanticRouter).not.toContain("message.includes(\"pynwad\")");
+    expect(productImageRoute).toContain("verifyProductImageToken");
+    expect(productImageRoute).toContain("fetchPublicResource");
     expect(adminRoute).toContain('requireAdminApiUser');
     expect(adminRoute).toContain('settings.web_search.update');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS "WebSearchUsage"');

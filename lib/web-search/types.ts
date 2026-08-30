@@ -41,6 +41,8 @@ export type WebSearchProduct = {
   rating?: number | null;
   reviewCount?: string | null;
   availability?: string | null;
+  imageProxyToken?: string | null;
+  verified?: boolean;
 };
 
 export type WebSearchCitation = {

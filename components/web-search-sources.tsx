@@ -210,9 +210,17 @@ function normalizeProduct(product: WebSearchProduct) {
       return null;
     }
     let imageUrl: string | null = null;
-    if (product.imageUrl) {
+    if (
+      product.verified === true &&
+      product.imageUrl &&
+      product.imageProxyToken &&
+      product.imageProxyToken.length <= 4096 &&
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(product.imageProxyToken)
+    ) {
       const candidate = new URL(product.imageUrl);
-      imageUrl = candidate.protocol === "https:" ? candidate.toString() : null;
+      imageUrl = candidate.protocol === "https:"
+        ? `/api/web-search/product-image?token=${encodeURIComponent(product.imageProxyToken)}`
+        : null;
     }
     return {
       ...product,

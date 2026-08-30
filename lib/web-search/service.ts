@@ -1,6 +1,7 @@
 import "server-only";
 
 import { GoogleGenAI } from "@google/genai";
+import { enrichShoppingProducts } from "./product-enrichment";
 import { extractShoppingProducts } from "./products";
 import type {
   WebSearchAnswer,
@@ -260,6 +261,29 @@ async function answerWithGeminiGrounding({
     })
     .filter((citation): citation is WebSearchCitation => citation !== null)
     .slice(0, 24);
+  const products = includeProducts
+    ? await enrichShoppingProducts({
+        products: shoppingResult.products,
+        userMessage,
+      })
+    : [];
+  if (includeProducts) {
+    for (const product of products) {
+      if (
+        product.verified !== true ||
+        sources.length >= MAX_SOURCES ||
+        sourceMap.has(product.url)
+      ) {
+        continue;
+      }
+      sources.push({
+        domain: new URL(product.url).hostname.replace(/^www\./i, ""),
+        title: product.title,
+        url: product.url,
+      });
+      sourceMap.set(product.url, sources.length);
+    }
+  }
   const videos = includeVideos
     ? Array.from(
         new Map(
@@ -282,7 +306,7 @@ async function answerWithGeminiGrounding({
     grounded: searchQueries.length > 0 || sourceMap.size > 0,
     sources,
     videos,
-    products: shoppingResult.products,
+    products,
     searchQueries,
     citations,
     searchCallCount: searchQueries.length,
