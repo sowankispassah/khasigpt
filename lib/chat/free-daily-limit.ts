@@ -29,15 +29,11 @@ export function isRoleDailyChatLimitReached({
 }
 
 export function requiresPaidWebSearchCredits({
-  activeTokenBalance,
   hasActiveCredits,
-  minimumCreditTokens,
   testLimitBypass,
   usedFreeDailyAllowance,
 }: {
-  activeTokenBalance: number;
   hasActiveCredits: boolean;
-  minimumCreditTokens: number;
   testLimitBypass: boolean;
   usedFreeDailyAllowance: boolean;
 }) {
@@ -45,5 +41,5 @@ export function requiresPaidWebSearchCredits({
     return false;
   }
 
-  return !hasActiveCredits || activeTokenBalance < minimumCreditTokens;
+  return !hasActiveCredits;
 }

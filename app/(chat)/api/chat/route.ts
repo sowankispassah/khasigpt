@@ -48,7 +48,6 @@ import {
   JOBS_FEATURE_FLAG_KEY,
   NEWS_FEATURE_FLAG_KEY,
   STUDY_MODE_FEATURE_FLAG_KEY,
-  TOKENS_PER_CREDIT,
 } from "@/lib/constants";
 import { getLiveCurrentInfo, type LiveCurrentInfo } from "@/lib/current-info/service";
 import {
@@ -3231,13 +3230,8 @@ export async function POST(request: Request) {
 
     if (shouldAttemptWebSearch) {
       webSearchAttempted = true;
-      const minimumWebSearchCreditTokens = Math.ceil(
-        TOKENS_PER_CREDIT * webSearchConfig.creditMultiplier
-      );
       if (requiresPaidWebSearchCredits({
-        activeTokenBalance,
         hasActiveCredits,
-        minimumCreditTokens: minimumWebSearchCreditTokens,
         testLimitBypass,
         usedFreeDailyAllowance,
       })) {

@@ -26,6 +26,7 @@ test.describe("shared free daily chat allowance", () => {
 
   test("treats manually granted token balances as usable chat credits", () => {
     expect(hasUsableChatCredits(1000)).toBe(true);
+    expect(hasUsableChatCredits(1)).toBe(true);
     expect(hasUsableChatCredits(0)).toBe(false);
     expect(hasUsableChatCredits(Number.NaN)).toBe(false);
   });
@@ -50,27 +51,21 @@ test.describe("shared free daily chat allowance", () => {
   test("lets a free allowance cover normal or grounded chat before requiring credits", () => {
     expect(
       requiresPaidWebSearchCredits({
-        activeTokenBalance: 0,
         hasActiveCredits: false,
-        minimumCreditTokens: 300,
         testLimitBypass: false,
         usedFreeDailyAllowance: true,
       })
     ).toBe(false);
     expect(
       requiresPaidWebSearchCredits({
-        activeTokenBalance: 0,
         hasActiveCredits: false,
-        minimumCreditTokens: 300,
         testLimitBypass: false,
         usedFreeDailyAllowance: false,
       })
     ).toBe(true);
     expect(
       requiresPaidWebSearchCredits({
-        activeTokenBalance: 300,
         hasActiveCredits: true,
-        minimumCreditTokens: 300,
         testLimitBypass: false,
         usedFreeDailyAllowance: false,
       })

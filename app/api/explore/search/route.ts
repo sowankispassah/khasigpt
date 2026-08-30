@@ -9,7 +9,7 @@ import {
   isFreeDailyChatLimitBypassedForTest,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
-import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "@/lib/constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY } from "@/lib/constants";
 import {
   consumeFreeDailyChatAllowance,
   getActiveSubscriptionForUser,
@@ -295,14 +295,9 @@ export async function POST(request: Request) {
         }
         usedFreeAllowance = true;
       }
-      const minimumTokens = Math.ceil(
-        TOKENS_PER_CREDIT * config.creditMultiplier,
-      );
       if (
         requiresPaidWebSearchCredits({
-          activeTokenBalance: tokenBalance,
           hasActiveCredits: hasCredits,
-          minimumCreditTokens: minimumTokens,
           testLimitBypass: testBypass,
           usedFreeDailyAllowance: usedFreeAllowance,
         })
