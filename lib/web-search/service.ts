@@ -144,8 +144,10 @@ async function answerWithGeminiGrounding({
   const ai = new GoogleGenAI({ apiKey });
   const prompt = [
     "Answer the user's question using current public web information.",
-    "Google Search is enabled for this request. Use it before answering, especially when the user asks to browse, search online, look something up, or find a person or place, instead of relying only on model memory.",
+    "Google Search is enabled for this request because the user explicitly requested web results or asked for time-sensitive public information. Use it before answering instead of relying only on model memory.",
     "Answer the user's actual information request directly; do not describe your search capabilities or say that you cannot browse when Google Search is enabled.",
+    "Keep the answer strictly scoped to what the user asked. For questions about a person, do not broaden the search or answer into unrelated usernames, online profiles, platform activity, gaming history, education, employment, or other personal details unless the user explicitly requested those exact details.",
+    "Do not include speculative identity matches or combine information from different people who have similar names. Omit uncertain or unrelated results.",
     includeVideos
       ? "The user is asking for videos. Prioritize relevant YouTube video results, preserve direct YouTube URLs, and include each result as a Markdown link with its title and direct watch URL. Do not replace the results with generic search instructions. If no suitable videos are found, say so clearly instead of inventing links."
       : "",

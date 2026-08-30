@@ -82,7 +82,23 @@ test.describe("web search grounding", () => {
     expect(detectWebSearchNeed("What is the latest KhasiGPT release?").shouldSearch).toBe(true);
     expect(detectWebSearchNeed("Explain photosynthesis in simple terms.").shouldSearch).toBe(false);
     expect(detectWebSearchNeed("Who is Jeimon Sumer?")).toMatchObject({
+      hasCurrentIntent: false,
+      shouldSearch: false,
+    });
+    expect(detectWebSearchNeed("Who is Kynpham Syiem Lamurong?")).toMatchObject({
+      hasCurrentIntent: false,
+      shouldSearch: false,
+    });
+    expect(detectWebSearchNeed("Who is Soowanki S Passah?")).toMatchObject({
+      hasCurrentIntent: false,
+      shouldSearch: false,
+    });
+    expect(detectWebSearchNeed("Who is the current president of India?")).toMatchObject({
       hasCurrentIntent: true,
+      shouldSearch: true,
+    });
+    expect(detectWebSearchNeed("Search the web for who is Jeimon Sumer")).toMatchObject({
+      hasExplicitWebIntent: true,
       shouldSearch: true,
     });
     expect(detectWebSearchNeed("Browse the net")).toMatchObject({
@@ -187,6 +203,12 @@ test.describe("web search grounding", () => {
     expect(route).toContain("resolveWebSearchQuery");
     expect(route).toContain("includeVideos: webSearchDecision.hasVideoIntent");
     expect(service).toContain("Prioritize relevant YouTube video results");
+    expect(service).toContain("do not broaden the search or answer into unrelated usernames");
+    expect(service).toContain("Do not include speculative identity matches");
+    expect(route).toContain("const webGroundingSelected = Boolean");
+    expect(route).toContain("customRagUsed = Boolean(ragResult.context);");
+    expect(route).toContain("webGroundingSelected && webSearchAnswer");
+    expect(route).toContain("Never broaden a person query into unrelated usernames");
     expect(route).toContain('type: "data-webSources"');
     expect(route).toContain('type: "data-webSearchStatus"');
     expect(route).toContain("webSearchFinalStatusPart");
