@@ -29,6 +29,7 @@ import { SelectItem } from "@/components/ui/select";
 import type { ImageIntentResolution } from "@/lib/image-intent";
 import type { JobTitleReference } from "@/lib/jobs/types";
 import type { StudyQuestionReference } from "@/lib/study/types";
+import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
 import { cn, generateUUID } from "@/lib/utils";
@@ -350,7 +351,7 @@ function PureMultimodalInput({
   onManualInputChange?: () => void;
   onResolveImageIntent?: (
     prompt: string
-  ) => Promise<ImageIntentResolution | null>;
+  ) => Promise<ToolIntentResolution | null>;
   onToggleImageMode: () => void;
   onUpgradeRequired?: () => void;
   onVoiceTurnSaved?: () => void;
@@ -602,7 +603,10 @@ function PureMultimodalInput({
   );
 
   const submitCommittedMessage = useCallback(
-    async (submission: OptimisticChatSubmission) => {
+    async (
+      submission: OptimisticChatSubmission,
+      resolution?: ToolIntentResolution | null
+    ) => {
       try {
         await onBeforeSubmit?.(submission.prompt);
       } catch (_error) {
@@ -616,11 +620,23 @@ function PureMultimodalInput({
         return;
       }
 
-      sendMessage({
-        messageId: submission.messageId,
-        role: "user",
-        parts: submission.parts,
-      });
+      sendMessage(
+        {
+          messageId: submission.messageId,
+          role: "user",
+          parts: submission.parts,
+        },
+        resolution &&
+          resolution.intent !== "image_generate" &&
+          resolution.intent !== "image_edit"
+          ? {
+              body: {
+                toolIntent: resolution.intent,
+                toolIntentToken: resolution.decisionToken,
+              },
+            }
+          : undefined
+      );
     },
     [onBeforeSubmit, rollbackSubmission, sendMessage, translate]
   );
@@ -646,11 +662,14 @@ function PureMultimodalInput({
     onIntentResolutionChange?.(true);
     try {
       const resolution = await onResolveImageIntent?.(submission.prompt);
-      if (resolution) {
+      if (
+        resolution?.intent === "image_generate" ||
+        resolution?.intent === "image_edit"
+      ) {
         await onGenerateImage(resolution, submission);
         return;
       }
-      await submitCommittedMessage(submission);
+      await submitCommittedMessage(submission, resolution);
     } catch (_error) {
       rollbackSubmission(submission);
       toast.error(

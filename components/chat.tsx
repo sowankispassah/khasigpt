@@ -75,6 +75,7 @@ import {
   setStudyContextForChat,
 } from "@/lib/study/context-store";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
+import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { setClientCookie } from "@/lib/ui/client-cookies";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
@@ -1010,6 +1011,8 @@ export function Chat({
             ? messageWithId.text
             : "";
       const shouldShowWebSearch =
+        (options?.body as { toolIntent?: unknown } | undefined)?.toolIntent ===
+          "web_search" ||
         (resolvedChatMode === "default" &&
           detectWebSearchNeed(messageText).shouldSearch) ||
         (resolvedChatMode === "news" &&
@@ -1409,8 +1412,8 @@ export function Chat({
     async (
       prompt: string,
       imageHintSelected = isImageMode
-    ): Promise<ImageIntentResolution | null> => {
-      if (!(imageGeneration.enabled && !isStudyMode)) {
+    ): Promise<ToolIntentResolution | null> => {
+      if (isStudyMode) {
         return null;
       }
 
@@ -1422,7 +1425,7 @@ export function Chat({
         getLatestAssistantImageUrl(currentMessages);
       const intentInput = {
         message: prompt.trim(),
-        imageHintSelected,
+        imageHintSelected: imageGeneration.enabled && imageHintSelected,
         hasImageAttachment: imageAttachments.length > 0,
         hasPriorGeneratedImage: Boolean(latestAssistantImageUrl),
         recentMessages: getRecentImageIntentContext(currentMessages),
@@ -1444,7 +1447,17 @@ export function Chat({
           signal: controller.signal,
         });
         const data = (await response.json().catch(() => null)) as
-          | { decisionToken?: string | null; intent?: string; message?: string }
+          | {
+              decisionToken?: string | null;
+              intent?: string;
+              message?: string;
+              webSearch?: {
+                confidence?: unknown;
+                kind?: unknown;
+                query?: unknown;
+                reason?: unknown;
+              } | null;
+            }
           | null;
         if (!response.ok) {
           throw new Error(data?.message || "Image intent request failed");
@@ -1453,6 +1466,43 @@ export function Chat({
         const intent = parseImageIntent(data?.intent);
         if (
           (intent === "image_generate" || intent === "image_edit") &&
+          data?.decisionToken &&
+          imageGeneration.enabled
+        ) {
+          return { intent, decisionToken: data.decisionToken };
+        }
+        if (
+          intent === "web_search" &&
+          data?.decisionToken &&
+          data.webSearch &&
+          (data.webSearch.confidence === "high" ||
+            data.webSearch.confidence === "medium") &&
+          (data.webSearch.kind === "general" ||
+            data.webSearch.kind === "shopping" ||
+            data.webSearch.kind === "news" ||
+            data.webSearch.kind === "video") &&
+          typeof data.webSearch.query === "string" &&
+          (data.webSearch.reason === "explicit_search" ||
+            data.webSearch.reason === "current_information" ||
+            data.webSearch.reason === "shopping_discovery" ||
+            data.webSearch.reason === "current_availability" ||
+            data.webSearch.reason === "news_update" ||
+            data.webSearch.reason === "video_discovery" ||
+            data.webSearch.reason === "contextual_followup")
+        ) {
+          return {
+            intent,
+            decisionToken: data.decisionToken,
+            webSearch: {
+              confidence: data.webSearch.confidence,
+              kind: data.webSearch.kind,
+              query: data.webSearch.query,
+              reason: data.webSearch.reason,
+            },
+          };
+        }
+        if (
+          (intent === "normal_chat" || intent === "other_tool") &&
           data?.decisionToken
         ) {
           return { intent, decisionToken: data.decisionToken };
@@ -1698,7 +1748,10 @@ export function Chat({
       setIsResolvingImageSuggestion(true);
       try {
         const imageIntent = await resolveImageIntentForPrompt(hiddenText);
-        if (imageIntent) {
+        if (
+          imageIntent?.intent === "image_generate" ||
+          imageIntent?.intent === "image_edit"
+        ) {
           await generateImageFromPrompt(hiddenText, imageIntent, visibleText);
           return;
         }
@@ -1720,8 +1773,20 @@ export function Chat({
             role: "user",
             parts: messageParts,
           },
-          hiddenText !== displayedPrompt
-            ? { body: { hiddenPrompt: hiddenText } }
+          hiddenText !== displayedPrompt || imageIntent
+            ? {
+                body: {
+                  ...(hiddenText !== displayedPrompt
+                    ? { hiddenPrompt: hiddenText }
+                    : {}),
+                  ...(imageIntent
+                    ? {
+                        toolIntent: imageIntent.intent,
+                        toolIntentToken: imageIntent.decisionToken,
+                      }
+                    : {}),
+                },
+              }
             : undefined
         );
 

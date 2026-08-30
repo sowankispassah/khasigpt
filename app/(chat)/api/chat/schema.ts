@@ -76,6 +76,10 @@ export const postRequestBodySchema = z.object({
     ),
   selectedLanguage: z.string().trim().min(1).max(16).optional(),
   selectedVisibilityType: z.enum(["public", "private"]),
+  toolIntent: z
+    .enum(["normal_chat", "web_search", "other_tool"])
+    .optional(),
+  toolIntentToken: z.string().min(1).max(4000).optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

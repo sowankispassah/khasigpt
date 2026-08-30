@@ -165,7 +165,7 @@ test.describe("image intent routing", () => {
         "utf8"
       ),
       readFile(
-        path.join(repoRoot, "lib/ai/image-intent-classifier.ts"),
+        path.join(repoRoot, "lib/ai/tool-intent-classifier.ts"),
         "utf8"
       ),
       readFile(

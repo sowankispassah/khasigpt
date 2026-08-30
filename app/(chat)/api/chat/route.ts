@@ -27,6 +27,8 @@ import { KHASIGPT_IDENTITY_FINAL_REMINDER } from "@/lib/ai/identity";
 import { getModelRegistry } from "@/lib/ai/model-registry";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { resolveLanguageModel } from "@/lib/ai/providers";
+import { classifyToolIntent } from "@/lib/ai/tool-intent-classifier";
+import { verifyToolIntentToken } from "@/lib/ai/web-search-intent-token";
 import {
   getConversationalAcknowledgementReply,
   sanitizeAssistantDisplayText,
@@ -73,6 +75,7 @@ import { searchExplorePlaces } from "@/lib/explore/places-service";
 import { isFeatureEnabledForRole } from "@/lib/feature-access";
 import { loadFreeMessageSettings } from "@/lib/free-messages";
 import { getDefaultLanguage } from "@/lib/i18n/languages";
+import { shouldClassifyImageIntent } from "@/lib/image-intent";
 import { parseJobsAccessModeSetting } from "@/lib/jobs/config";
 import {
   buildJobsPdfExtractedSummaryLines,
@@ -161,6 +164,7 @@ import {
   resolveCurrentInfoDecision,
   resolveWebSearchQuery,
 } from "@/lib/web-search/detection";
+import { mergeSemanticWebSearchDecision } from "@/lib/web-search/semantic-routing";
 import { webSearchService } from "@/lib/web-search/service";
 import type {
   WebSearchAnswer,
@@ -1168,6 +1172,8 @@ export async function POST(request: Request) {
       studyQuizActive,
       jobPostingId,
       originJobPostingId,
+      toolIntent,
+      toolIntentToken,
     }: {
       id: string;
       message: ChatMessage;
@@ -1179,6 +1185,8 @@ export async function POST(request: Request) {
       studyQuizActive?: boolean;
       jobPostingId?: string | null;
       originJobPostingId?: string | null;
+      toolIntent?: "normal_chat" | "web_search" | "other_tool";
+      toolIntentToken?: string;
     } = requestBody;
 
     const session = await measurePreModelStep("auth", () =>
@@ -2911,6 +2919,7 @@ export async function POST(request: Request) {
         ? resolvedLanguageConfig.systemPrompt.trim()
         : null;
     const userMessageText = getTextFromMessage(message).trim();
+    const routingMessageText = hiddenPrompt?.trim() || userMessageText;
     const recentAssistantTexts = baseUiMessages
       .filter((entry) => entry.role === "assistant")
       .map((entry) => getTextFromMessage(entry))
@@ -2967,15 +2976,101 @@ export async function POST(request: Request) {
       .map((entry) => getTextFromMessage(entry))
       .filter((text) => text.trim().length > 0);
     const currentInfoDecision = resolveCurrentInfoDecision({
-      currentText: userMessageText,
+      currentText: routingMessageText,
       previousUserMessages: previousUserMessageTexts,
     });
-    const webSearchDecision = detectWebSearchNeed(userMessageText);
+    const deterministicWebSearchDecision = detectWebSearchNeed(
+      routingMessageText
+    );
+    const verifiedToolDecision =
+      toolIntent && toolIntentToken
+        ? verifyToolIntentToken({
+            prompt: routingMessageText,
+            token: toolIntentToken,
+            userId: session.user.id,
+          })
+        : null;
+    const shouldRunSemanticToolRouter =
+      !verifiedToolDecision &&
+      (resolvedChatMode === "default" || resolvedChatMode === NEWS_CHAT_MODE) &&
+      !currentInfoDecision.intent &&
+      !isInitialNewsRequest &&
+      shouldClassifyImageIntent({
+        message: routingMessageText,
+        imageHintSelected: false,
+        hasImageAttachment: false,
+        hasPriorGeneratedImage: false,
+        recentMessages: [],
+      });
+    const semanticToolDecision = shouldRunSemanticToolRouter
+      ? await measurePreModelStep("tool_intent.classify", () =>
+          classifyToolIntent({
+            message: routingMessageText,
+            imageHintSelected: false,
+            hasImageAttachment: message.parts.some(
+              (part) =>
+                part.type === "file" && part.mediaType.startsWith("image/")
+            ),
+            hasPriorGeneratedImage: baseUiMessages.some(
+              (entry) =>
+                entry.role === "assistant" &&
+                entry.parts.some(
+                  (part) =>
+                    part.type === "file" &&
+                    part.mediaType.startsWith("image/")
+                )
+            ),
+            recentMessages: baseUiMessages
+              .filter(
+                (entry) => entry.role === "user" || entry.role === "assistant"
+              )
+              .slice(-6)
+              .map((entry) => ({
+                role: entry.role as "user" | "assistant",
+                text: getTextFromMessage(entry).slice(0, 500),
+                hasImage: entry.parts.some(
+                  (part) =>
+                    part.type === "file" &&
+                    part.mediaType.startsWith("image/")
+                ),
+              })),
+          })
+        )
+      : null;
+    const effectiveToolDecision =
+      verifiedToolDecision ?? semanticToolDecision ?? null;
+    const semanticWebSearchDecision = effectiveToolDecision?.webSearch ?? null;
+    const webSearchDecision = mergeSemanticWebSearchDecision({
+      deterministicDecision: deterministicWebSearchDecision,
+      semanticDecision: effectiveToolDecision,
+    });
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[tool-intent] decision", {
+        confidence: semanticWebSearchDecision?.confidence ?? null,
+        intent:
+          effectiveToolDecision?.intent ??
+          (webSearchDecision.shouldSearch ? "web_search" : "normal_chat"),
+        kind: semanticWebSearchDecision?.kind ?? null,
+        promptHash: createHash("sha256")
+          .update(routingMessageText)
+          .digest("hex"),
+        queryHash: semanticWebSearchDecision
+          ? createHash("sha256")
+              .update(semanticWebSearchDecision.query)
+              .digest("hex")
+          : null,
+        source: verifiedToolDecision
+          ? "signed_client_decision"
+          : semanticToolDecision
+            ? "server_semantic_router"
+            : "deterministic_fallback",
+      });
+    }
     const shouldSearchInNewsMode =
       resolvedChatMode === NEWS_CHAT_MODE &&
       (isInitialNewsRequest ||
         webSearchDecision.shouldSearch ||
-        shouldSearchNewsFollowUp(userMessageText));
+        shouldSearchNewsFollowUp(routingMessageText));
 
     const baseInstruction = systemPrompt({
       requestHints,
@@ -3146,10 +3241,12 @@ export async function POST(request: Request) {
 
       {
         const webSearchStartedAt = performance.now();
-        const webSearchQuery = resolveWebSearchQuery({
-          currentText: getTextFromMessage(message),
-          previousUserMessages: previousUserMessageTexts,
-        });
+        const webSearchQuery =
+          semanticWebSearchDecision?.query ??
+          resolveWebSearchQuery({
+            currentText: routingMessageText,
+            previousUserMessages: previousUserMessageTexts,
+          });
         const queryHash = createHash("sha256")
           .update(webSearchQuery)
           .digest("hex");
@@ -3952,16 +4049,7 @@ export async function POST(request: Request) {
           resolveUsageReady?.();
         }
       },
-      onError: (error) => {
-        const text = error instanceof Error ? error.message : String(error);
-        const match = text.match(/retry in ([0-9]+(?:\\.[0-9]+)?)s/i);
-        if (match?.[1]) {
-          const seconds = Math.max(1, Math.ceil(Number(match[1])));
-          return `Gemini rate limit reached. Please retry in ~${seconds}s.`;
-        }
-        if (text.toLowerCase().includes("quota")) {
-          return "Gemini quota exceeded. Please wait and try again.";
-        }
+      onError: () => {
         return "Oops, an error occurred!";
       },
     });
