@@ -57,6 +57,7 @@ import { getAdminQueryTimeoutMs } from "@/lib/admin/safe-query";
 import { KHASIGPT_GENERAL_SYSTEM_PROMPT } from "@/lib/ai/identity";
 import { IMAGE_MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/image-model-registry";
 import { MODEL_REGISTRY_CACHE_TAG } from "@/lib/ai/model-registry";
+import { selectBaseCreditPlan } from "@/lib/billing/cost-plus";
 import {
   CALCULATOR_FEATURE_FLAG_KEY,
   DEFAULT_ABOUT_US,
@@ -1201,9 +1202,12 @@ export default async function AdminSettingsPage({
     activePlans.some((plan) => plan.id === recommendedPlanSetting)
       ? recommendedPlanSetting
       : null;
-  const recommendedPlan = recommendedPlanId
+  const configuredRecommendedPlan = recommendedPlanId
     ? activePlans.find((plan) => plan.id === recommendedPlanId) ?? null
     : null;
+  const recommendedPlan =
+    selectBaseCreditPlan(activePlans.filter((plan) => plan.isActive)) ??
+    configuredRecommendedPlan;
   const recommendedPlanName = recommendedPlan?.name ?? null;
   const recommendedPlanPriceInPaise = recommendedPlan?.priceInPaise ?? 0;
   const recommendedPlanTokenAllowance = recommendedPlan?.tokenAllowance ?? 0;
@@ -2985,6 +2989,33 @@ export default async function AdminSettingsPage({
             </div>
 
             <div className="flex flex-col gap-2">
+              <label className="font-medium text-sm" htmlFor="markupMultiplier">
+                <EditableTranslation
+                  defaultText="Customer markup"
+                  description="Label for the per-chat-model provider-cost markup field."
+                  translationKey="admin.models.markup_multiplier"
+                />
+              </label>
+              <input
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+                defaultValue={4}
+                id="markupMultiplier"
+                max={20}
+                min={1}
+                name="markupMultiplier"
+                step={0.01}
+                type="number"
+              />
+              <p className="text-muted-foreground text-xs">
+                <EditableTranslation
+                  defaultText="Applied separately after calculating the model's actual input and output provider cost."
+                  description="Helper text for the per-chat-model markup field."
+                  translationKey="admin.models.markup_multiplier.description"
+                />
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
               <label
                 className="font-medium text-sm"
                 htmlFor="freeMessagesPerDay"
@@ -3212,6 +3243,36 @@ export default async function AdminSettingsPage({
                             id={`model-display-name-${model.id}`}
                             name="displayName"
                           />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <label
+                            className="font-medium text-sm"
+                            htmlFor={`model-markup-${model.id}`}
+                          >
+                            <EditableTranslation
+                              defaultText="Customer markup"
+                              description="Label for the per-chat-model provider-cost markup field."
+                              translationKey="admin.models.markup_multiplier"
+                            />
+                          </label>
+                          <input
+                            className="rounded-md border bg-background px-3 py-2 text-sm"
+                            defaultValue={model.markupMultiplier ?? 4}
+                            id={`model-markup-${model.id}`}
+                            max={20}
+                            min={1}
+                            name="markupMultiplier"
+                            step={0.01}
+                            type="number"
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            <EditableTranslation
+                              defaultText="Applied to this model's calculated provider cost only."
+                              description="Helper text for an existing chat model markup field."
+                              translationKey="admin.models.markup_multiplier.existing_description"
+                            />
+                          </p>
                         </div>
 
                         <div className="flex flex-col gap-2">
@@ -4543,10 +4604,13 @@ export default async function AdminSettingsPage({
 
             <div className="md:col-span-2">
               <ImageModelPricingFields
+                initialMarkupMultiplier={2}
+                initialProviderCostPerOutputUsd={0}
                 initialTokensPerImage={TOKENS_PER_CREDIT}
                 inputIdPrefix="image-model-create"
                 recommendedPlanPriceInPaise={recommendedPlanPriceInPaise}
                 recommendedPlanTokenAllowance={recommendedPlanTokenAllowance}
+                usdToInr={usdToInr}
               />
             </div>
 
@@ -4726,7 +4790,11 @@ export default async function AdminSettingsPage({
 
                         <div className="md:col-span-2">
                           <ImageModelPricingFields
+                            initialMarkupMultiplier={model.markupMultiplier ?? 2}
                             initialPriceInPaise={model.priceInPaise ?? 0}
+                            initialProviderCostPerOutputUsd={
+                              model.providerCostPerOutputUsd ?? 0
+                            }
                             initialTokensPerImage={tokensPerImage}
                             inputIdPrefix={`image-model-${model.id}`}
                             recommendedPlanPriceInPaise={
@@ -4735,6 +4803,7 @@ export default async function AdminSettingsPage({
                             recommendedPlanTokenAllowance={
                               recommendedPlanTokenAllowance
                             }
+                            usdToInr={usdToInr}
                           />
                         </div>
 

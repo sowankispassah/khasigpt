@@ -22,6 +22,7 @@ import {
 import {
   getActiveSubscriptionForUser,
   getAppSetting,
+  getCostPlusCreditQuote,
   getModelConfigById,
   getUserById,
 } from "@/lib/db/queries";
@@ -118,10 +119,17 @@ async function loadImageGenerationSetting() {
   return rawValue;
 }
 
-function buildModelSummary(activeModel: Awaited<ReturnType<typeof getActiveImageModel>>) {
+function buildModelSummary(
+  activeModel: Awaited<ReturnType<typeof getActiveImageModel>>,
+  quotedTokensPerImage?: number | null
+) {
   const tokensPerImage = Math.max(
     1,
-    Math.round(activeModel?.tokensPerImage ?? TOKENS_PER_CREDIT)
+    Math.round(
+      quotedTokensPerImage ??
+        activeModel?.tokensPerImage ??
+        TOKENS_PER_CREDIT
+    )
   );
 
   return {
@@ -151,7 +159,28 @@ export async function getImageGenerationAvailability({
   const isAdmin = userRole === "admin";
   const featureEnabled = isFeatureEnabledForRole(featureMode, userRole);
   const modelEnabled = Boolean(activeModel?.isEnabled);
-  const { modelSummary, tokensPerImage } = buildModelSummary(activeModel);
+  let quotedTokensPerImage: number | null = null;
+  if (
+    activeModel &&
+    Number(activeModel.providerCostPerOutputUsd ?? 0) > 0
+  ) {
+    try {
+      const quote = await getCostPlusCreditQuote({
+        providerCostUsd: Number(activeModel.providerCostPerOutputUsd),
+        markupMultiplier: Number(activeModel.markupMultiplier ?? 2),
+      });
+      quotedTokensPerImage = quote?.creditUnits ?? null;
+    } catch (error) {
+      console.warn(
+        "[image-generation] Cost-plus quote unavailable; using legacy image credits.",
+        error
+      );
+    }
+  }
+  const { modelSummary, tokensPerImage } = buildModelSummary(
+    activeModel,
+    quotedTokensPerImage
+  );
   const enabled = featureEnabled && modelEnabled;
 
   return {
@@ -212,7 +241,28 @@ export async function getImageGenerationAccess({
   const featureEnabled = isFeatureEnabledForRole(featureMode, resolvedRole);
   const modelEnabled = Boolean(activeModel?.isEnabled);
   const enabled = featureEnabled && modelEnabled;
-  const { modelSummary, tokensPerImage } = buildModelSummary(activeModel);
+  let quotedTokensPerImage: number | null = null;
+  if (
+    activeModel &&
+    Number(activeModel.providerCostPerOutputUsd ?? 0) > 0
+  ) {
+    try {
+      const quote = await getCostPlusCreditQuote({
+        providerCostUsd: Number(activeModel.providerCostPerOutputUsd),
+        markupMultiplier: Number(activeModel.markupMultiplier ?? 2),
+      });
+      quotedTokensPerImage = quote?.creditUnits ?? null;
+    } catch (error) {
+      console.warn(
+        "[image-generation] Submit-time quote unavailable; using legacy image credits.",
+        error
+      );
+    }
+  }
+  const { modelSummary, tokensPerImage } = buildModelSummary(
+    activeModel,
+    quotedTokensPerImage
+  );
   if (!enabled || !userId || !modelSummary) {
     return {
       enabled,

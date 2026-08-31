@@ -65,7 +65,7 @@ export function resolveLiveVoiceTurnUsage({
     : estimatedOutputTokens || fallbackOutputTokens;
 
   return {
-    inputTokens: Math.max(1, Math.round(baseInputTokens * safeMultiplier)),
-    outputTokens: Math.max(1, Math.round(baseOutputTokens * safeMultiplier)),
+    inputTokens: Math.max(1, Math.round(baseInputTokens)),
+    outputTokens: Math.max(1, Math.round(baseOutputTokens)),
   };
 }

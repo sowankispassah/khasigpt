@@ -68,8 +68,15 @@ export async function POST(request: NextRequest) {
   }
 
   const maxCalls = parseNumber(body.maxCalls, { integer: true, max: 10, min: 1 });
-  const creditMultiplier = parseNumber(body.creditMultiplier, { integer: false, max: 10, min: 1 });
-  if (maxCalls === null || creditMultiplier === null) {
+  const markupMultiplier = parseNumber(body.markupMultiplier, { integer: false, max: 20, min: 1 });
+  const geminiCostPerCallUsd = parseNumber(body.geminiCostPerCallUsd, { integer: false, max: 100, min: 0.000001 });
+  const openaiCostPerCallUsd = parseNumber(body.openaiCostPerCallUsd, { integer: false, max: 100, min: 0.000001 });
+  if (
+    maxCalls === null ||
+    markupMultiplier === null ||
+    geminiCostPerCallUsd === null ||
+    openaiCostPerCallUsd === null
+  ) {
     return NextResponse.json({ error: "invalid_value", message: "Search limits and multiplier are outside the allowed range." }, { status: 400 });
   }
 
@@ -81,7 +88,9 @@ export async function POST(request: NextRequest) {
     web_search_free_users_enabled: parsedBooleans.freeUsersEnabled,
     web_search_paid_users_enabled: parsedBooleans.paidUsersEnabled,
     web_search_max_calls: maxCalls,
-    web_search_credit_multiplier: creditMultiplier,
+    web_search_credit_multiplier: markupMultiplier,
+    web_search_gemini_cost_per_call_usd: geminiCostPerCallUsd,
+    web_search_openai_cost_per_call_usd: openaiCostPerCallUsd,
   };
 
   try {

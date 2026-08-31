@@ -4813,13 +4813,78 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "admin.web_search.multiplier",
-    defaultText: "Credit multiplier",
-    description: "Web Search admin setting for the credit charge multiplier.",
+    defaultText: "Customer markup",
+    description: "Web Search admin setting for the provider-cost markup.",
+  },
+  {
+    key: "admin.web_search.gemini_cost_per_call",
+    defaultText: "Grounded search provider cost (USD / call)",
+    description: "Provider cost for each billable grounded web-search call.",
+  },
+  {
+    key: "admin.web_search.openai_cost_per_call",
+    defaultText: "Fallback search provider cost (USD / call)",
+    description: "Provider cost for each billable fallback web-search call.",
   },
   {
     key: "admin.web_search.section_title",
     defaultText: "Web Search settings",
     description: "Title for the Web Search settings section in Admin Settings.",
+  },
+  {
+    key: "admin.models.markup_multiplier",
+    defaultText: "Customer markup",
+    description: "Label for the per-chat-model provider-cost markup field.",
+  },
+  {
+    key: "admin.live_voice.markup_multiplier",
+    defaultText: "Customer markup",
+    description: "Label for the live voice provider-cost markup field.",
+  },
+  {
+    key: "admin.live_voice.input_provider_cost",
+    defaultText: "Provider input cost (USD / 1M tokens)",
+    description: "Live voice provider input-token cost field.",
+  },
+  {
+    key: "admin.live_voice.output_provider_cost",
+    defaultText: "Provider output cost (USD / 1M tokens)",
+    description: "Live voice provider output-token cost field.",
+  },
+  {
+    key: "admin.live_voice.cost_plus_preview",
+    defaultText: "Cost-plus preview",
+    description: "Heading for the live voice cost-plus preview.",
+  },
+  {
+    key: "admin.models.markup_multiplier.description",
+    defaultText: "Applied separately after calculating the model's actual input and output provider cost.",
+    description: "Helper text for the per-chat-model markup field.",
+  },
+  {
+    key: "admin.models.markup_multiplier.existing_description",
+    defaultText: "Applied to this model's calculated provider cost only.",
+    description: "Helper text for an existing chat model markup field.",
+  },
+  {
+    key: "admin.image_models.provider_cost_per_output",
+    defaultText: "Provider cost (USD / completed image)",
+    description: "Image model provider cost field for each completed output.",
+  },
+  {
+    key: "admin.image_models.markup",
+    defaultText: "Customer markup",
+    description: "Image model provider-cost markup field.",
+  },
+  {
+    key: "admin.image_models.cost_plus_preview",
+    defaultText: "Customer charge: ₹{price} · {credits} credits per completed image",
+    description: "Image cost-plus pricing preview in Admin Settings.",
+  },
+  {
+    key: "admin.image_models.legacy_pricing_warning",
+    defaultText: "Enter a provider cost to enable cost-plus billing. Until then, the legacy {credits}-credit charge remains active.",
+    description: "Warning shown when an image model still uses legacy fixed-credit pricing.",
   },
   {
     key: "admin.web_search.section_description",

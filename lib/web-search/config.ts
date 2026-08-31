@@ -8,7 +8,9 @@ import {
   WEB_SEARCH_ENABLED_WEB_SETTING_KEY,
   WEB_SEARCH_FALLBACK_PROVIDER_SETTING_KEY,
   WEB_SEARCH_FREE_USERS_ENABLED_SETTING_KEY,
+  WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_MAX_CALLS_SETTING_KEY,
+  WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_PROVIDER_SETTING_KEY,
 } from "@/lib/constants";
@@ -33,6 +35,8 @@ export const WEB_SEARCH_SETTING_KEYS = [
   WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY,
   WEB_SEARCH_MAX_CALLS_SETTING_KEY,
   WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY,
+  WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY,
+  WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY,
 ] as const;
 
 const DEFAULT_PROVIDER: WebSearchProvider = "gemini_grounding";
@@ -114,11 +118,23 @@ export function resolveWebSearchConfig(
     maxCalls: Math.round(
       parsePositiveNumber(values.get(WEB_SEARCH_MAX_CALLS_SETTING_KEY), 2, 10)
     ),
-    creditMultiplier: parsePositiveNumber(
+    markupMultiplier: parsePositiveNumber(
       values.get(WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY),
       3,
-      10
+      20
     ),
+    providerCostPerCallUsd: {
+      gemini_grounding: parsePositiveNumber(
+        values.get(WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY),
+        0.014,
+        100
+      ),
+      openai_web_search: parsePositiveNumber(
+        values.get(WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY),
+        0.01,
+        100
+      ),
+    },
     readState,
   };
 }

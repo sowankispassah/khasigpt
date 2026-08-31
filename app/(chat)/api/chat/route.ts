@@ -3305,15 +3305,11 @@ export async function POST(request: Request) {
 
         webSearchUsed = Boolean(webSearchAnswer);
         const responseTimeMs = Math.round(performance.now() - webSearchStartedAt);
-        const creditCostTokens = webSearchAnswer
-          ? Math.ceil(
-              webSearchAnswer.usage.totalTokens * webSearchConfig.creditMultiplier
-            )
-          : 0;
+        const creditCostTokens = 0;
         void recordWebSearchUsage({
           chatId: id,
           creditCostTokens,
-          creditMultiplier: webSearchConfig.creditMultiplier,
+          creditMultiplier: webSearchConfig.markupMultiplier,
           errorReason: webSearchFailureReason,
           platform: webSearchPlatform,
           provider: webSearchAnswer?.provider ?? attemptedProvider,
@@ -3328,7 +3324,7 @@ export async function POST(request: Request) {
         });
         console.info("[web-search] completed", {
           chatId: id,
-          creditMultiplier: webSearchConfig.creditMultiplier,
+          markupMultiplier: webSearchConfig.markupMultiplier,
           platform: webSearchPlatform,
           provider: webSearchAnswer?.provider ?? attemptedProvider,
           responseTimeMs,
@@ -3620,43 +3616,41 @@ export async function POST(request: Request) {
             ? usage.outputTokens
             : getUsageNumber(usageFallback.completionTokens);
 
-        const webSearchInputTokens = webSearchAnswer?.usage.inputTokens ?? 0;
-        const webSearchOutputTokens = webSearchAnswer?.usage.outputTokens ?? 0;
-        const chargedInputTokens = webSearchAnswer
-          ? Math.ceil(
-              (inputTokens + webSearchInputTokens) *
-                webSearchConfig.creditMultiplier
-            )
-          : inputTokens;
-        const chargedOutputTokens = webSearchAnswer
-          ? Math.ceil(
-              (outputTokens + webSearchOutputTokens) *
-                webSearchConfig.creditMultiplier
-            )
-          : outputTokens;
-
-        if (
-          inputTokens > 0 ||
-          outputTokens > 0 ||
-          webSearchInputTokens > 0 ||
-          webSearchOutputTokens > 0
-        ) {
+        if (inputTokens > 0 || outputTokens > 0) {
+          const searchProvider = webSearchAnswer?.provider;
+          const searchCostPerCallUsd =
+            searchProvider && searchProvider !== "disabled"
+              ? webSearchConfig.providerCostPerCallUsd[searchProvider]
+              : 0;
           await recordTokenUsage({
             userId: session.user.id,
             chatId: id,
             modelConfigId: modelConfig.id,
-            inputTokens: chargedInputTokens,
-            outputTokens: chargedOutputTokens,
+            inputTokens,
+            outputTokens,
             deductCredits: hasActiveCredits,
+            additionalCharges:
+              webSearchAnswer && searchProvider && searchProvider !== "disabled"
+                ? [
+                    {
+                      category: "web_search",
+                      providerKey: searchProvider,
+                      providerCostPerUnitUsd: searchCostPerCallUsd,
+                      unitCount: webSearchAnswer.searchCallCount,
+                      markupMultiplier: webSearchConfig.markupMultiplier,
+                      metadata: { sourceCount: webSearchAnswer.sources.length },
+                    },
+                  ]
+                : [],
+            requestKey: `chat:${id}:message:${message.id}:usage`,
           });
           if (webSearchAnswer) {
             console.info("[web-search] credit_charge", {
               chatId: id,
-              creditMultiplier: webSearchConfig.creditMultiplier,
-              chargedInputTokens,
-              chargedOutputTokens,
-              searchInputTokens: webSearchInputTokens,
-              searchOutputTokens: webSearchOutputTokens,
+              markupMultiplier: webSearchConfig.markupMultiplier,
+              inputTokens,
+              outputTokens,
+              searchCallCount: webSearchAnswer.searchCallCount,
             });
           }
           usageRecorded = true;

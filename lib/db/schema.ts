@@ -190,6 +190,7 @@ export const modelConfig = pgTable("ModelConfig", {
   outputProviderCostPerMillion: doublePrecision("outputProviderCostPerMillion")
     .notNull()
     .default(0),
+  markupMultiplier: doublePrecision("markupMultiplier").notNull().default(4),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   deletedAt: timestamp("deletedAt"),
@@ -209,6 +210,10 @@ export const imageModelConfig = pgTable(
     config: jsonb("config"),
     priceInPaise: integer("priceInPaise").notNull().default(0),
     tokensPerImage: integer("tokensPerImage").notNull().default(100),
+    providerCostPerOutputUsd: doublePrecision("providerCostPerOutputUsd")
+      .notNull()
+      .default(0),
+    markupMultiplier: doublePrecision("markupMultiplier").notNull().default(2),
     isEnabled: boolean("isEnabled").notNull().default(true),
     isActive: boolean("isActive").notNull().default(false),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -247,6 +252,7 @@ export const liveVoiceModelConfig = pgTable(
     outputProviderCostPerMillion: doublePrecision("outputProviderCostPerMillion")
       .notNull()
       .default(0),
+    markupMultiplier: doublePrecision("markupMultiplier").notNull().default(3),
     config: jsonb("config"),
     isEnabled: boolean("isEnabled").notNull().default(true),
     enabledOnWeb: boolean("enabledOnWeb").notNull().default(true),
@@ -1600,6 +1606,66 @@ export const tokenUsage = pgTable(
 );
 
 export type TokenUsage = InferSelectModel<typeof tokenUsage>;
+
+export const creditCharge = pgTable(
+  "CreditCharge",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    chatId: uuid("chatId").references(() => chat.id, { onDelete: "set null" }),
+    subscriptionId: uuid("subscriptionId").references(
+      () => userSubscription.id,
+      { onDelete: "set null" }
+    ),
+    tokenUsageId: uuid("tokenUsageId").references(() => tokenUsage.id, {
+      onDelete: "set null",
+    }),
+    modelConfigId: uuid("modelConfigId").references(() => modelConfig.id, {
+      onDelete: "set null",
+    }),
+    imageModelConfigId: uuid("imageModelConfigId").references(
+      () => imageModelConfig.id,
+      { onDelete: "set null" }
+    ),
+    liveVoiceModelConfigId: uuid("liveVoiceModelConfigId").references(
+      () => liveVoiceModelConfig.id,
+      { onDelete: "set null" }
+    ),
+    category: varchar("category", { length: 32 }).notNull(),
+    providerKey: varchar("providerKey", { length: 64 }),
+    requestKey: varchar("requestKey", { length: 191 }),
+    inputTokens: integer("inputTokens").notNull().default(0),
+    outputTokens: integer("outputTokens").notNull().default(0),
+    unitCount: integer("unitCount").notNull().default(0),
+    providerCostUsd: doublePrecision("providerCostUsd").notNull().default(0),
+    usdToInr: doublePrecision("usdToInr").notNull().default(0),
+    markupMultiplier: doublePrecision("markupMultiplier").notNull().default(1),
+    customerChargeInr: doublePrecision("customerChargeInr")
+      .notNull()
+      .default(0),
+    creditUnits: integer("creditUnits").notNull().default(0),
+    manualCreditUnits: integer("manualCreditUnits").notNull().default(0),
+    paidCreditUnits: integer("paidCreditUnits").notNull().default(0),
+    pricingMetadata: jsonb("pricingMetadata"),
+    status: varchar("status", { length: 24 }).notNull().default("settled"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userCreatedAtIdx: index("CreditCharge_user_createdAt_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    chatIdx: index("CreditCharge_chat_idx").on(table.chatId),
+    tokenUsageIdx: index("CreditCharge_tokenUsage_idx").on(table.tokenUsageId),
+    requestKeyIdx: uniqueIndex("CreditCharge_requestKey_idx")
+      .on(table.requestKey)
+      .where(sql`${table.requestKey} IS NOT NULL`),
+  })
+);
+
+export type CreditCharge = InferSelectModel<typeof creditCharge>;
 
 export const webSearchUsage = pgTable(
   "WebSearchUsage",

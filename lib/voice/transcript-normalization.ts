@@ -37,6 +37,7 @@ const HARD_CODED_DEFAULT_CHAT_MODEL: ModelConfig = {
   isEnabled: true,
   isMarginBaseline: true,
   key: "gemini-3.1-flash-lite-preview",
+  markupMultiplier: 4,
   outputProviderCostPerMillion: 1.5,
   provider: "google",
   providerModelId: "gemini-3.1-flash-lite-preview",

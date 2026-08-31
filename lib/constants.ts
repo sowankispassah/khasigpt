@@ -46,6 +46,10 @@ export const WEB_SEARCH_PAID_USERS_ENABLED_SETTING_KEY =
 export const WEB_SEARCH_MAX_CALLS_SETTING_KEY = "web_search_max_calls";
 export const WEB_SEARCH_CREDIT_MULTIPLIER_SETTING_KEY =
   "web_search_credit_multiplier";
+export const WEB_SEARCH_GEMINI_COST_PER_CALL_USD_SETTING_KEY =
+  "web_search_gemini_cost_per_call_usd";
+export const WEB_SEARCH_OPENAI_COST_PER_CALL_USD_SETTING_KEY =
+  "web_search_openai_cost_per_call_usd";
 export const DOCUMENT_UPLOADS_FEATURE_FLAG_KEY = "chat.documentUploads.enabled";
 export const SITE_PUBLIC_LAUNCHED_SETTING_KEY = "site.publicLaunched";
 export const SITE_UNDER_MAINTENANCE_SETTING_KEY = "site.underMaintenance";

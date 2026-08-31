@@ -81,6 +81,10 @@ export type WebSearchConfig = {
   freeUsersEnabled: boolean;
   paidUsersEnabled: boolean;
   maxCalls: number;
-  creditMultiplier: number;
+  markupMultiplier: number;
+  providerCostPerCallUsd: Record<
+    Exclude<WebSearchProvider, "disabled">,
+    number
+  >;
   readState: "confirmed" | "fallback";
 };
