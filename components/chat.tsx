@@ -5,7 +5,7 @@ import { type DataUIPart, DefaultChatTransport } from "ai";
 import { BookOpen, LoaderCircle, Newspaper } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -15,7 +15,6 @@ import {
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import { ensureChatExistsAction } from "@/app/(chat)/actions";
 import { ChatHeader } from "@/components/chat-header";
 import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
@@ -76,6 +75,7 @@ import {
   setStudyContextForChat,
 } from "@/lib/study/context-store";
 import type { StudyPaperCard, StudyQuestionReference } from "@/lib/study/types";
+import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { setClientCookie } from "@/lib/ui/client-cookies";
 import { startGlobalProgress } from "@/lib/ui/global-progress";
@@ -92,7 +92,10 @@ import {
   type PendingWebSearch,
 } from "@/lib/web-search/status";
 import { Messages } from "./messages";
-import { MultimodalInput } from "./multimodal-input";
+import {
+  MultimodalInput,
+  type OptimisticChatSubmission,
+} from "./multimodal-input";
 import {
   type ChatHistory,
   getChatHistoryPaginationKeyForMode,
@@ -108,6 +111,7 @@ const LANGUAGE_STORAGE_KEY = "chat-language-preference";
 const CHAT_LANGUAGE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const JOBS_LIST_API_ROUTE = "/api/jobs/list";
 const PROMPTS_API_ROUTE = "/api/prompts";
+const IMAGE_INTENT_REQUEST_TIMEOUT_MS = 10_000;
 
 type PromptActionsPayload = {
   iconPromptActions?: IconPromptAction[];
@@ -241,10 +245,8 @@ export function Chat({
   customKnowledgeEnabled: boolean;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
-  const newChatNonce = searchParams.get("new");
   const embeddedMode = searchParams.get("embedded");
   const resolvedChatMode = chatMode;
   const historyMode =
@@ -305,6 +307,8 @@ export function Chat({
     boolean | null
   >(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isResolvingSubmissionIntent, setIsResolvingSubmissionIntent] =
+    useState(false);
   const [showActionProgress, setShowActionProgress] = useState(false);
   const [actionProgress, setActionProgress] = useState(0);
   const progressTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -332,9 +336,6 @@ export function Chat({
     useState<StudyPaperCard | null>(null);
   const [jobViewerPosting, setJobViewerPosting] = useState<JobCard | null>(null);
   const webSearchPlaceholderRef = useRef<PendingWebSearch | null>(null);
-  const chatPersistenceConfirmedRef = useRef(
-    (pathname !== "/" && pathname !== "/chat") || initialMessages.length > 0
-  );
   const shouldLoadJobsListFromApi = isJobsMode && jobsListItems.length === 0;
   const {
     data: jobsModeListItemsData,
@@ -538,12 +539,6 @@ export function Chat({
   useEffect(() => {
     currentLanguageCodeRef.current = currentLanguageCode;
   }, [currentLanguageCode]);
-
-  useEffect(() => {
-    if (pathname !== "/" && pathname !== "/chat" && !newChatNonce) {
-      chatPersistenceConfirmedRef.current = true;
-    }
-  }, [newChatNonce, pathname]);
 
   useEffect(() => {
     studyContextIdRef.current = studyContext?.id ?? null;
@@ -850,6 +845,7 @@ export function Chat({
             (message) => message.id !== pendingWebSearch.placeholderId
           );
         });
+        webSearchPlaceholderRef.current = null;
       }
       syncCurrentChatUrl();
       refreshAndPromoteHistory();
@@ -874,6 +870,7 @@ export function Chat({
                   data: {
                     status: "failed" as const,
                     usedWebSearch: true,
+                    context: pendingWebSearch.context,
                   },
                 },
               ],
@@ -927,9 +924,19 @@ export function Chat({
   imageIntentMessagesRef.current = messages;
 
   const addWebSearchPlaceholder = useCallback(
-    (userMessageId: string, removePlaceholderId?: string) => {
+    (
+      userMessageId: string,
+      removePlaceholderId?: string,
+      contextOverride?: "web" | "news"
+    ) => {
       const placeholderId = `web-search-${generateUUID()}`;
-      webSearchPlaceholderRef.current = { placeholderId, userMessageId };
+      const context =
+        contextOverride ?? (resolvedChatMode === "news" ? "news" : "web");
+      webSearchPlaceholderRef.current = {
+        context,
+        placeholderId,
+        userMessageId,
+      };
       const placeholder = {
         id: placeholderId,
         role: "assistant" as const,
@@ -940,6 +947,7 @@ export function Chat({
             data: {
               status: "searching" as const,
               usedWebSearch: true,
+              context,
             },
           },
         ],
@@ -971,7 +979,7 @@ export function Chat({
         });
       }, 0);
     },
-    [setMessages]
+    [resolvedChatMode, setMessages]
   );
 
   const sendMessageWithWebSearchStatus = useCallback(
@@ -983,11 +991,17 @@ export function Chat({
         return sendMessage(message, options);
       }
       const generatedMessageId = generateUUID();
+      const replacementMessageId =
+        "messageId" in message && typeof message.messageId === "string"
+          ? message.messageId
+          : null;
       const messageWithId = {
         ...message,
         id:
           "id" in message && typeof message.id === "string" && message.id
             ? message.id
+            : replacementMessageId
+              ? replacementMessageId
             : generatedMessageId,
       } as Exclude<Parameters<typeof sendMessage>[0], undefined>;
       const messageText =
@@ -997,6 +1011,8 @@ export function Chat({
             ? messageWithId.text
             : "";
       const shouldShowWebSearch =
+        (options?.body as { toolIntent?: unknown } | undefined)?.toolIntent ===
+          "web_search" ||
         (resolvedChatMode === "default" &&
           detectWebSearchNeed(messageText).shouldSearch) ||
         (resolvedChatMode === "news" &&
@@ -1031,7 +1047,8 @@ export function Chat({
       retryUserMessageId,
       pendingWebSearch?.userMessageId === retryUserMessageId
         ? pendingWebSearch.placeholderId
-        : undefined
+        : undefined,
+      pendingWebSearch?.context
     );
     await retryPromise;
   }, [addWebSearchPlaceholder, regenerate]);
@@ -1050,7 +1067,22 @@ export function Chat({
       return;
     }
     setMessages(() => clearedMessages);
+    webSearchPlaceholderRef.current = null;
   }, [messages, setMessages]);
+
+  const stopChat = useCallback(() => {
+    stop();
+    const pendingWebSearch = webSearchPlaceholderRef.current;
+    if (!pendingWebSearch) {
+      return;
+    }
+    setMessages((current) =>
+      current.filter(
+        (message) => message.id !== pendingWebSearch.placeholderId
+      )
+    );
+    webSearchPlaceholderRef.current = null;
+  }, [setMessages, stop]);
 
   useEffect(() => {
     if (!isStudyMode) {
@@ -1380,8 +1412,8 @@ export function Chat({
     async (
       prompt: string,
       imageHintSelected = isImageMode
-    ): Promise<ImageIntentResolution | null> => {
-      if (!(imageGeneration.enabled && !isStudyMode)) {
+    ): Promise<ToolIntentResolution | null> => {
+      if (isStudyMode) {
         return null;
       }
 
@@ -1393,7 +1425,7 @@ export function Chat({
         getLatestAssistantImageUrl(currentMessages);
       const intentInput = {
         message: prompt.trim(),
-        imageHintSelected,
+        imageHintSelected: imageGeneration.enabled && imageHintSelected,
         hasImageAttachment: imageAttachments.length > 0,
         hasPriorGeneratedImage: Boolean(latestAssistantImageUrl),
         recentMessages: getRecentImageIntentContext(currentMessages),
@@ -1402,14 +1434,30 @@ export function Chat({
         return null;
       }
 
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        IMAGE_INTENT_REQUEST_TIMEOUT_MS
+      );
       try {
         const response = await fetch("/api/images/intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(intentInput),
+          signal: controller.signal,
         });
         const data = (await response.json().catch(() => null)) as
-          | { decisionToken?: string | null; intent?: string; message?: string }
+          | {
+              decisionToken?: string | null;
+              intent?: string;
+              message?: string;
+              webSearch?: {
+                confidence?: unknown;
+                kind?: unknown;
+                query?: unknown;
+                reason?: unknown;
+              } | null;
+            }
           | null;
         if (!response.ok) {
           throw new Error(data?.message || "Image intent request failed");
@@ -1418,6 +1466,43 @@ export function Chat({
         const intent = parseImageIntent(data?.intent);
         if (
           (intent === "image_generate" || intent === "image_edit") &&
+          data?.decisionToken &&
+          imageGeneration.enabled
+        ) {
+          return { intent, decisionToken: data.decisionToken };
+        }
+        if (
+          intent === "web_search" &&
+          data?.decisionToken &&
+          data.webSearch &&
+          (data.webSearch.confidence === "high" ||
+            data.webSearch.confidence === "medium") &&
+          (data.webSearch.kind === "general" ||
+            data.webSearch.kind === "shopping" ||
+            data.webSearch.kind === "news" ||
+            data.webSearch.kind === "video") &&
+          typeof data.webSearch.query === "string" &&
+          (data.webSearch.reason === "explicit_search" ||
+            data.webSearch.reason === "current_information" ||
+            data.webSearch.reason === "shopping_discovery" ||
+            data.webSearch.reason === "current_availability" ||
+            data.webSearch.reason === "news_update" ||
+            data.webSearch.reason === "video_discovery" ||
+            data.webSearch.reason === "contextual_followup")
+        ) {
+          return {
+            intent,
+            decisionToken: data.decisionToken,
+            webSearch: {
+              confidence: data.webSearch.confidence,
+              kind: data.webSearch.kind,
+              query: data.webSearch.query,
+              reason: data.webSearch.reason,
+            },
+          };
+        }
+        if (
+          (intent === "normal_chat" || intent === "other_tool") &&
           data?.decisionToken
         ) {
           return { intent, decisionToken: data.decisionToken };
@@ -1428,6 +1513,8 @@ export function Chat({
           error: error instanceof Error ? error.message : String(error),
         });
         return null;
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     },
     [
@@ -1442,9 +1529,25 @@ export function Chat({
     async (
       prompt: string,
       resolution: ImageIntentResolution,
-      displayPrompt?: string
+      displayPrompt?: string,
+      optimisticSubmission?: OptimisticChatSubmission
     ) => {
       if (!(await confirmImageGenerationAccess())) {
+        if (optimisticSubmission) {
+          setMessages((prev) =>
+            prev.filter(
+              (message) => message.id !== optimisticSubmission.messageId
+            )
+          );
+          setInput((current) =>
+            current.trim() ? current : optimisticSubmission.prompt
+          );
+          setAttachments((current) =>
+            current.length > 0
+              ? current
+              : optimisticSubmission.attachments
+          );
+        }
         return;
       }
 
@@ -1462,7 +1565,9 @@ export function Chat({
 
       const displayText =
         (displayPrompt ?? "").trim() || trimmedPrompt;
-      const imageAttachments = attachments.filter((attachment) =>
+      const submissionAttachments =
+        optimisticSubmission?.attachments ?? attachments;
+      const imageAttachments = submissionAttachments.filter((attachment) =>
         attachment.contentType?.startsWith("image/")
       );
       const latestAssistantImageUrl = getLatestAssistantImageUrl(
@@ -1481,36 +1586,38 @@ export function Chat({
 
       syncCurrentChatUrl();
 
-      const userMessageId = generateUUID();
-      const userParts = [
-        ...imageAttachments.map((attachment) => ({
-          type: "file" as const,
-          url: attachment.url,
-          filename: attachment.name,
-          mediaType: attachment.contentType,
-        })),
-        ...priorImageUrls
-          .filter(
-            (url) =>
-              !imageAttachments.some((attachment) => attachment.url === url)
-          )
-          .map((url) => ({
+      const userMessageId = optimisticSubmission?.messageId ?? generateUUID();
+      if (!optimisticSubmission) {
+        const userParts = [
+          ...imageAttachments.map((attachment) => ({
             type: "file" as const,
-            url,
-            filename: "previous-generated-image",
-            mediaType: "image/png",
+            url: attachment.url,
+            filename: attachment.name,
+            mediaType: attachment.contentType,
           })),
-        { type: "text" as const, text: displayText },
-      ];
+          ...priorImageUrls
+            .filter(
+              (url) =>
+                !imageAttachments.some((attachment) => attachment.url === url)
+            )
+            .map((url) => ({
+              type: "file" as const,
+              url,
+              filename: "previous-generated-image",
+              mediaType: "image/png",
+            })),
+          { type: "text" as const, text: displayText },
+        ];
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: userMessageId,
-          role: "user",
-          parts: userParts,
-        },
-      ]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: userMessageId,
+            role: "user",
+            parts: userParts,
+          },
+        ]);
+      }
 
       setInput("");
       setAttachments([]);
@@ -1641,7 +1748,10 @@ export function Chat({
       setIsResolvingImageSuggestion(true);
       try {
         const imageIntent = await resolveImageIntentForPrompt(hiddenText);
-        if (imageIntent) {
+        if (
+          imageIntent?.intent === "image_generate" ||
+          imageIntent?.intent === "image_edit"
+        ) {
           await generateImageFromPrompt(hiddenText, imageIntent, visibleText);
           return;
         }
@@ -1663,8 +1773,20 @@ export function Chat({
             role: "user",
             parts: messageParts,
           },
-          hiddenText !== displayedPrompt
-            ? { body: { hiddenPrompt: hiddenText } }
+          hiddenText !== displayedPrompt || imageIntent
+            ? {
+                body: {
+                  ...(hiddenText !== displayedPrompt
+                    ? { hiddenPrompt: hiddenText }
+                    : {}),
+                  ...(imageIntent
+                    ? {
+                        toolIntent: imageIntent.intent,
+                        toolIntentToken: imageIntent.decisionToken,
+                      }
+                    : {}),
+                },
+              }
             : undefined
         );
 
@@ -1685,38 +1807,17 @@ export function Chat({
     ]
   );
 
-  const ensureChatExistsBeforeNavigation = useCallback(
-    async (firstMessageText: string) => {
-      if (chatPersistenceConfirmedRef.current) {
+  const handleBeforeSubmit = useCallback(
+    (_firstMessageText: string) => {
+      syncCurrentChatUrl();
+      if (!isJobsMode) {
         return;
       }
-
-      await ensureChatExistsAction({
-        chatId: id,
-        visibility: visibilityType,
-        mode: resolvedChatMode,
-        firstMessageText,
-      });
-      chatPersistenceConfirmedRef.current = true;
+      setJobsSubmitScrollSignal((current) => current + 1);
+      void mutate("messages:should-scroll", "auto", { revalidate: false });
     },
-    [id, resolvedChatMode, visibilityType]
+    [isJobsMode, mutate, syncCurrentChatUrl]
   );
-
-  const handleBeforeSubmit = useCallback(async () => {
-    await ensureChatExistsBeforeNavigation(input);
-    syncCurrentChatUrl();
-    if (!isJobsMode) {
-      return;
-    }
-    setJobsSubmitScrollSignal((current) => current + 1);
-    void mutate("messages:should-scroll", "auto", { revalidate: false });
-  }, [
-    ensureChatExistsBeforeNavigation,
-    isJobsMode,
-    input,
-    mutate,
-    syncCurrentChatUrl,
-  ]);
 
   useEffect(() => {
     setIconPromptSuggestions([]);
@@ -1959,6 +2060,7 @@ export function Chat({
             headerFullWidth={false}
             isArtifactVisible={isArtifactVisible}
             isGeneratingImage={isGeneratingImage}
+            isResolvingIntent={isResolvingSubmissionIntent}
             isLoadingHistory={isLoadingHistory}
             isReadonly={false}
             messages={messages}
@@ -2019,6 +2121,7 @@ export function Chat({
               selectedLanguageCode={currentLanguageCode}
               selectedVisibilityType={visibilityType}
               onGenerateImage={async () => {}}
+              onIntentResolutionChange={setIsResolvingSubmissionIntent}
               jobTitleReference={jobTitleReference}
               onClearJobTitleReference={clearJobContext}
               onClearStudyQuestionReference={() =>
@@ -2031,7 +2134,7 @@ export function Chat({
               setInput={setInput}
               setMessages={setMessages}
               status={status}
-              stop={stop}
+              stop={stopChat}
               studyQuestionReference={studyQuestionReference}
               onToggleImageMode={() => {}}
               onUpgradeRequired={() => setShowImageUpgradeDialog(true)}
@@ -2087,6 +2190,7 @@ export function Chat({
               headerFullWidth={isJobsMode}
               isArtifactVisible={isArtifactVisible}
               isGeneratingImage={isGeneratingImage}
+              isResolvingIntent={isResolvingSubmissionIntent}
               isLoadingHistory={isLoadingHistory}
               isReadonly={isReadonly}
               messages={messages}
@@ -2163,10 +2267,16 @@ export function Chat({
                     onLanguageChange={handleLanguageChangeFromInput}
                     selectedLanguageCode={currentLanguageCode}
                     selectedVisibilityType={visibilityType}
-                    onGenerateImage={(resolution) =>
-                      generateImageFromPrompt(input, resolution)
+                    onGenerateImage={(resolution, submission) =>
+                      generateImageFromPrompt(
+                        submission.prompt,
+                        resolution,
+                        undefined,
+                        submission
+                      )
                     }
                     onManualInputChange={handleManualInputChange}
+                    onIntentResolutionChange={setIsResolvingSubmissionIntent}
                     onResolveImageIntent={resolveImageIntentForPrompt}
                     jobTitleReference={jobTitleReference}
                     onClearJobTitleReference={clearJobContext}
@@ -2180,7 +2290,7 @@ export function Chat({
                     setInput={setInput}
                     setMessages={setMessages}
                     status={status}
-                    stop={stop}
+                    stop={stopChat}
                     studyQuestionReference={studyQuestionReference}
                     onToggleImageMode={() => {
                       if (isStudyMode) {

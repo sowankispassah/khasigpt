@@ -1933,7 +1933,7 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "news.loading.latest",
-    defaultText: "Searching for the latest Shillong and Meghalaya news...",
+    defaultText: "Checking the latest sources...",
     description: "Native News mode loading subtitle before the first search begins.",
   },
   {
@@ -4700,6 +4700,16 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     description: "Status shown while a current-information answer is grounded with web search.",
   },
   {
+    key: "chat.web_search.checking_sources",
+    defaultText: "Checking additional sources",
+    description: "Animated status shown while KhasiGPT checks additional current sources.",
+  },
+  {
+    key: "news.status.checking_latest_sources",
+    defaultText: "Checking the latest sources",
+    description: "Animated status shown while KhasiGPT checks current sources for News.",
+  },
+  {
     key: "chat.web_search.reading",
     defaultText: "Reading relevant sources...",
     description: "Status shown while Web Search reads grounded sources.",
@@ -4711,8 +4721,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "chat.web_search.failed",
-    defaultText: "I couldn’t complete the web search. Please try again.",
-    description: "Error shown when grounded Web Search cannot be completed.",
+    defaultText: "I couldn’t check additional sources. Please try again.",
+    description: "Error shown when KhasiGPT cannot check additional current sources.",
   },
   {
     key: "chat.web_search.retry",
@@ -4733,6 +4743,21 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
     key: "chat.web_search.videos",
     defaultText: "Videos",
     description: "Heading above video results returned by grounded Web Search.",
+  },
+  {
+    key: "chat.web_search.products_found",
+    defaultText: "Products found",
+    description: "Heading above current shopping results returned by grounded Web Search.",
+  },
+  {
+    key: "chat.web_search.browse_products",
+    defaultText: "Browse products",
+    description: "Link label on a grounded retailer browsing card.",
+  },
+  {
+    key: "chat.web_search.view_product",
+    defaultText: "View product",
+    description: "Link label on a grounded shopping result card.",
   },
   {
     key: "chat.web_search.sources_count",
@@ -4811,13 +4836,83 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   },
   {
     key: "admin.web_search.multiplier",
-    defaultText: "Credit multiplier",
-    description: "Web Search admin setting for the credit charge multiplier.",
+    defaultText: "Customer markup",
+    description: "Web Search admin setting for the provider-cost markup.",
   },
   {
-    key: "admin.web_search.daily_limit",
-    defaultText: "Daily search limit",
-    description: "Web Search admin setting for the per-user daily call limit.",
+    key: "admin.web_search.gemini_cost_per_call",
+    defaultText: "Grounded search provider cost (USD / call)",
+    description: "Provider cost for each billable grounded web-search call.",
+  },
+  {
+    key: "admin.web_search.openai_cost_per_call",
+    defaultText: "Fallback search provider cost (USD / call)",
+    description: "Provider cost for each billable fallback web-search call.",
+  },
+  {
+    key: "admin.web_search.section_title",
+    defaultText: "Web Search settings",
+    description: "Title for the Web Search settings section in Admin Settings.",
+  },
+  {
+    key: "admin.models.markup_multiplier",
+    defaultText: "Customer markup",
+    description: "Label for the per-chat-model provider-cost markup field.",
+  },
+  {
+    key: "admin.live_voice.markup_multiplier",
+    defaultText: "Customer markup",
+    description: "Label for the live voice provider-cost markup field.",
+  },
+  {
+    key: "admin.live_voice.input_provider_cost",
+    defaultText: "Provider input cost (USD / 1M tokens)",
+    description: "Live voice provider input-token cost field.",
+  },
+  {
+    key: "admin.live_voice.output_provider_cost",
+    defaultText: "Provider output cost (USD / 1M tokens)",
+    description: "Live voice provider output-token cost field.",
+  },
+  {
+    key: "admin.live_voice.cost_plus_preview",
+    defaultText: "Cost-plus preview",
+    description: "Heading for the live voice cost-plus preview.",
+  },
+  {
+    key: "admin.models.markup_multiplier.description",
+    defaultText: "Applied separately after calculating the model's actual input and output provider cost.",
+    description: "Helper text for the per-chat-model markup field.",
+  },
+  {
+    key: "admin.models.markup_multiplier.existing_description",
+    defaultText: "Applied to this model's calculated provider cost only.",
+    description: "Helper text for an existing chat model markup field.",
+  },
+  {
+    key: "admin.image_models.provider_cost_per_output",
+    defaultText: "Provider cost (USD / completed image)",
+    description: "Image model provider cost field for each completed output.",
+  },
+  {
+    key: "admin.image_models.markup",
+    defaultText: "Customer markup",
+    description: "Image model provider-cost markup field.",
+  },
+  {
+    key: "admin.image_models.cost_plus_preview",
+    defaultText: "Customer charge: ₹{price} · {credits} credits per completed image",
+    description: "Image cost-plus pricing preview in Admin Settings.",
+  },
+  {
+    key: "admin.image_models.legacy_pricing_warning",
+    defaultText: "Enter a provider cost to enable cost-plus billing. Until then, the legacy {credits}-credit charge remains active.",
+    description: "Warning shown when an image model still uses legacy fixed-credit pricing.",
+  },
+  {
+    key: "admin.web_search.section_description",
+    defaultText: "Configure grounding, platform availability, and credit pricing.",
+    description: "Description for the Web Search settings section in Admin Settings.",
   },
   {
     key: "admin.web_search.read_state",
@@ -4860,6 +4955,8 @@ export const STATIC_TRANSLATION_DEFINITIONS: TranslationDefinition[] = [
   { key: "chat.link.label", defaultText: "Open link", description: "Native rich message link accessibility label." },
   { key: "chat.link.hint", defaultText: "Opens in your browser", description: "Native rich message link accessibility hint." },
   { key: "chat.thinking", defaultText: "Thinking...", description: "Native pending assistant response label." },
+  { key: "chat.status.thinking", defaultText: "Thinking", description: "Animated status shown while KhasiGPT prepares a chat response." },
+  { key: "chat.scroll_to_bottom", defaultText: "Scroll to bottom", description: "Accessibility label for the chat scroll-to-latest button." },
   { key: "chat.reasoning.label", defaultText: "Reasoning", description: "Native reasoning disclosure label." },
   { key: "chat.file.label", defaultText: "File", description: "Native chat file attachment fallback label." },
   { key: "chat.file.open", defaultText: "Open file", description: "Native chat file open accessibility label." },

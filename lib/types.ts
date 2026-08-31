@@ -8,6 +8,7 @@ import type { Suggestion } from "./db/schema";
 import type { AppUsage } from "./usage";
 import type {
   WebSearchCitation,
+  WebSearchProduct,
   WebSearchSource,
   WebSearchStatusData,
   WebSearchVideo,
@@ -69,6 +70,7 @@ export type CustomUIDataTypes = {
     searchQueries?: string[];
     citations?: WebSearchCitation[];
     videos?: WebSearchVideo[];
+    products?: WebSearchProduct[];
   };
   webSearchStatus: WebSearchStatusData;
   imageGeneration: {

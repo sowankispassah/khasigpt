@@ -13,9 +13,9 @@ import type {
   CustomUIDataTypes,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ChatThinkingStatus } from "./chat-thinking-status";
 import { MessageContent } from "./elements/message";
 import { Response } from "./elements/response";
-import { LoaderIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
@@ -365,9 +365,6 @@ const PurePreviewMessage = ({
             }
 
             if (type === "text") {
-              const isLastPart = index === message.parts.length - 1;
-              const showStreamingSpinner =
-                isAssistantMessage && isLoading && isLastPart;
               const displayText = isAssistantMessage
                 ? imageGenerationStatus?.reason === "safety" &&
                   part.text === imageGenerationStatus.message
@@ -395,13 +392,7 @@ const PurePreviewMessage = ({
                       })}
                       data-testid="message-content"
                     >
-                      <div
-                        className={cn({
-                          "flex w-full items-end gap-2":
-                            isAssistantMessage && showStreamingSpinner,
-                          "w-full": isAssistantMessage,
-                        })}
-                      >
+                      <div className={cn({ "w-full": isAssistantMessage })}>
                         <Response
                           className={cn({
                             "w-full": isAssistantMessage,
@@ -409,11 +400,6 @@ const PurePreviewMessage = ({
                         >
                           {displayText}
                         </Response>
-                        {isAssistantMessage && showStreamingSpinner && (
-                          <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
-                            <LoaderIcon size={14} />
-                          </span>
-                        )}
                       </div>
                     </MessageContent>
                   </div>
@@ -470,11 +456,7 @@ const PurePreviewMessage = ({
                   className="flex-1 bg-transparent py-0 pr-2 pl-3 text-left md:pr-3 md:pl-4"
                   data-testid="message-content"
                 >
-                  <div className="flex w-full items-end justify-start">
-                    <span className="inline-flex size-4 animate-spin items-center justify-center text-muted-foreground">
-                      <LoaderIcon size={14} />
-                    </span>
-                  </div>
+                  <ChatThinkingStatus testId="message-assistant-loading" />
                 </MessageContent>
               </div>
             )}
@@ -483,6 +465,7 @@ const PurePreviewMessage = ({
             <div className="w-full pl-2 pr-3 md:pl-4 md:pr-4">
               <WebSearchSources
                 citations={webSearchData.citations}
+                products={webSearchData.products}
                 searchQueries={webSearchData.searchQueries}
                 sources={webSearchData.sources}
                 videos={webSearchData.videos}
@@ -516,11 +499,7 @@ export const ThinkingMessage = () => {
       data-testid="message-assistant-loading"
     >
       <div className="flex items-center justify-start">
-        <span className="flex items-center gap-2 text-muted-foreground text-sm">
-          <span className="flex size-4 animate-spin items-center justify-center text-muted-foreground">
-            <LoaderIcon size={16} />
-          </span>
-        </span>
+        <ChatThinkingStatus />
       </div>
     </div>
   );

@@ -1510,6 +1510,7 @@ export async function createModelConfigAction(formData: FormData) {
   const outputProviderCostPerMillion = parseNumber(
     formData.get("outputProviderCostPerMillion")
   );
+  const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
   const freeMessagesRaw = formData.get("freeMessagesPerDay");
   const resolvedFreeMessages =
     freeMessagesRaw === null
@@ -1548,6 +1549,7 @@ export async function createModelConfigAction(formData: FormData) {
       isMarginBaseline,
       inputProviderCostPerMillion,
       outputProviderCostPerMillion,
+      markupMultiplier,
       freeMessagesPerDay,
     });
   } catch (error) {
@@ -1589,6 +1591,7 @@ export async function updateModelConfigAction(formData: FormData) {
     isEnabled?: boolean;
     inputProviderCostPerMillion?: number;
     outputProviderCostPerMillion?: number;
+    markupMultiplier?: number;
     freeMessagesPerDay?: number;
   } = {};
 
@@ -1653,6 +1656,10 @@ export async function updateModelConfigAction(formData: FormData) {
     patch.outputProviderCostPerMillion = parseNumber(
       formData.get("outputProviderCostPerMillion")
     );
+  }
+
+  if (formData.has("markupMultiplier")) {
+    patch.markupMultiplier = parseNumber(formData.get("markupMultiplier"));
   }
 
   if (formData.has("freeMessagesPerDay")) {
@@ -2033,6 +2040,10 @@ export async function createImageModelConfigAction(formData: FormData) {
   const isEnabled = parseBoolean(formData.get("isEnabled"));
   const isActive = parseBoolean(formData.get("isActive"));
   const pricing = await resolveImageModelPricing(formData);
+  const providerCostPerOutputUsd = parseNumber(
+    formData.get("providerCostPerOutputUsd")
+  );
+  const markupMultiplier = parseNumber(formData.get("markupMultiplier"));
 
   const existingConfig = await getImageModelConfigByKey({
     key,
@@ -2058,6 +2069,8 @@ export async function createImageModelConfigAction(formData: FormData) {
       config,
       priceInPaise: pricing.priceInPaise,
       tokensPerImage: pricing.tokensPerImage,
+      providerCostPerOutputUsd,
+      markupMultiplier,
       isEnabled,
       isActive,
     });
@@ -2095,6 +2108,8 @@ export async function updateImageModelConfigAction(formData: FormData) {
     config?: Record<string, unknown> | null;
     priceInPaise?: number;
     tokensPerImage?: number;
+    providerCostPerOutputUsd?: number;
+    markupMultiplier?: number;
     isEnabled?: boolean;
   } = {};
 
@@ -2125,6 +2140,16 @@ export async function updateImageModelConfigAction(formData: FormData) {
     const pricing = await resolveImageModelPricing(formData);
     patch.tokensPerImage = pricing.tokensPerImage;
     patch.priceInPaise = pricing.priceInPaise;
+  }
+
+  if (formData.has("providerCostPerOutputUsd")) {
+    patch.providerCostPerOutputUsd = parseNumber(
+      formData.get("providerCostPerOutputUsd")
+    );
+  }
+
+  if (formData.has("markupMultiplier")) {
+    patch.markupMultiplier = parseNumber(formData.get("markupMultiplier"));
   }
 
   const isEnabledValue = parseBooleanFromEntries(formData, "isEnabled");
@@ -2216,6 +2241,7 @@ export async function setActiveImageModelConfigAction(formData: FormData) {
     });
     redirect("/admin/settings?notice=image-model-activate-error");
   }
+
   console.info("[admin/image-models.set-active] completed", {
     durationMs: Date.now() - startedAt,
     imageModelId: id,

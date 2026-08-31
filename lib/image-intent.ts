@@ -1,4 +1,7 @@
-import { isConversationalAcknowledgement } from "@/lib/chat/assistant-text-safety";
+import {
+  isConversationalAcknowledgement,
+  isConversationalGreeting,
+} from "@/lib/chat/assistant-text-safety";
 
 export const IMAGE_INTENT_VALUES = [
   "normal_chat",
@@ -49,12 +52,20 @@ export function parseImageIntent(value: unknown): ImageIntent | null {
 
 export function shouldClassifyImageIntent(input: ImageIntentInput) {
   const message = input.message.trim();
-  return Boolean(message) && !isConversationalAcknowledgement(message);
+  return (
+    Boolean(message) &&
+    !isConversationalAcknowledgement(message) &&
+    !isConversationalGreeting(message)
+  );
 }
 
 export function fallbackImageIntent(input: ImageIntentInput): ImageIntent {
   const message = input.message.trim();
-  if (!message || isConversationalAcknowledgement(message)) {
+  if (
+    !message ||
+    isConversationalAcknowledgement(message) ||
+    isConversationalGreeting(message)
+  ) {
     return "normal_chat";
   }
   if (VISUAL_CREATION_SIGNAL.test(message)) {
@@ -73,7 +84,10 @@ export function normalizeImageIntent(
   intent: ImageIntent,
   input: ImageIntentInput
 ): ImageIntent {
-  if (isConversationalAcknowledgement(input.message)) {
+  if (
+    isConversationalAcknowledgement(input.message) ||
+    isConversationalGreeting(input.message)
+  ) {
     return "normal_chat";
   }
   if (

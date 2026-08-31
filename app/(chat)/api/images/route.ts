@@ -769,6 +769,9 @@ export async function POST(request: Request) {
       chatId,
       tokensToDeduct: access.tokensPerImage,
       allowManualCredits: true,
+      imageModelConfigId: access.model.id,
+      outputCount: images.length,
+      requestKey: `image:${assistantMessageId}`,
     });
 
     await updateMessagePartsById({

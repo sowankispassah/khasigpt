@@ -15,6 +15,7 @@ export type WebSearchStatus =
 export type WebSearchStatusData = {
   status: WebSearchStatus;
   usedWebSearch: boolean;
+  context?: "web" | "news";
 };
 
 export type WebSearchSource = {
@@ -29,6 +30,20 @@ export type WebSearchVideo = {
   videoId: string;
   thumbnailUrl: string;
   domain: string;
+};
+
+export type WebSearchProduct = {
+  kind?: "product" | "collection";
+  title: string;
+  url: string;
+  merchant: string;
+  price: string;
+  imageUrl?: string | null;
+  rating?: number | null;
+  reviewCount?: string | null;
+  availability?: string | null;
+  imageProxyToken?: string | null;
+  verified?: boolean;
 };
 
 export type WebSearchCitation = {
@@ -50,6 +65,7 @@ export type WebSearchAnswer = {
   grounded: boolean;
   sources: WebSearchSource[];
   videos: WebSearchVideo[];
+  products: WebSearchProduct[];
   searchQueries: string[];
   citations: WebSearchCitation[];
   searchCallCount: number;
@@ -65,7 +81,10 @@ export type WebSearchConfig = {
   freeUsersEnabled: boolean;
   paidUsersEnabled: boolean;
   maxCalls: number;
-  creditMultiplier: number;
-  dailyLimit: number;
+  markupMultiplier: number;
+  providerCostPerCallUsd: Record<
+    Exclude<WebSearchProvider, "disabled">,
+    number
+  >;
   readState: "confirmed" | "fallback";
 };

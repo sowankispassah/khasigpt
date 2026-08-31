@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { classifyImageIntent } from "@/lib/ai/image-intent-classifier";
 import { createImageIntentToken } from "@/lib/ai/image-intent-token";
+import { classifyToolIntent } from "@/lib/ai/tool-intent-classifier";
+import { createToolIntentToken } from "@/lib/ai/web-search-intent-token";
 import { ChatSDKError } from "@/lib/errors";
 import {
   type ImageIntentInput,
@@ -58,9 +59,10 @@ export async function POST(request: Request) {
   }
 
   const input: ImageIntentInput = parsed.data;
-  const intent = shouldClassifyImageIntent(input)
-    ? await classifyImageIntent(input)
-    : "normal_chat";
+  const decision = shouldClassifyImageIntent(input)
+    ? await classifyToolIntent(input)
+    : { intent: "normal_chat" as const, webSearch: null };
+  const intent = decision.intent;
   const durationMs = Math.round(performance.now() - startedAt);
   const decisionToken =
     intent === "image_generate" || intent === "image_edit"
@@ -69,14 +71,18 @@ export async function POST(request: Request) {
           prompt: input.message,
           userId: session.user.id,
         })
-      : null;
+      : createToolIntentToken({
+          decision,
+          prompt: input.message,
+          userId: session.user.id,
+        });
 
   return Response.json(
-    { intent, decisionToken },
+    { intent, decisionToken, webSearch: decision.webSearch },
     {
       headers: {
         "Cache-Control": "no-store",
-        "Server-Timing": `image-intent;dur=${durationMs}`,
+        "Server-Timing": `tool-intent;dur=${durationMs}`,
       },
     }
   );

@@ -38,8 +38,13 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
   const [freeUsersEnabled, setFreeUsersEnabled] = useState(config.freeUsersEnabled);
   const [paidUsersEnabled, setPaidUsersEnabled] = useState(config.paidUsersEnabled);
   const [maxCalls, setMaxCalls] = useState(String(config.maxCalls));
-  const [creditMultiplier, setCreditMultiplier] = useState(String(config.creditMultiplier));
-  const [dailyLimit, setDailyLimit] = useState(String(config.dailyLimit));
+  const [markupMultiplier, setMarkupMultiplier] = useState(String(config.markupMultiplier));
+  const [geminiCostPerCallUsd, setGeminiCostPerCallUsd] = useState(
+    String(config.providerCostPerCallUsd.gemini_grounding)
+  );
+  const [openaiCostPerCallUsd, setOpenaiCostPerCallUsd] = useState(
+    String(config.providerCostPerCallUsd.openai_web_search)
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const save = async () => {
@@ -58,8 +63,9 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
           freeUsersEnabled,
           paidUsersEnabled,
           maxCalls: Number(maxCalls),
-          creditMultiplier: Number(creditMultiplier),
-          dailyLimit: Number(dailyLimit),
+          markupMultiplier: Number(markupMultiplier),
+          geminiCostPerCallUsd: Number(geminiCostPerCallUsd),
+          openaiCostPerCallUsd: Number(openaiCostPerCallUsd),
         }),
       });
       const body = (await response.json().catch(() => null)) as {
@@ -148,18 +154,53 @@ export function WebSearchSettingsForm({ config }: { config: WebSearchConfig }) {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-medium">{label("admin.web_search.max_calls", "Max search calls")}</span>
           <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={10} min={1} onChange={(event) => setMaxCalls(event.target.value)} type="number" value={maxCalls} />
         </label>
         <label className="flex flex-col gap-2 text-sm">
-          <span className="font-medium">{label("admin.web_search.multiplier", "Credit multiplier")}</span>
-          <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={10} min={1} onChange={(event) => setCreditMultiplier(event.target.value)} step={0.1} type="number" value={creditMultiplier} />
+          <span className="font-medium">{label("admin.web_search.multiplier", "Customer markup")}</span>
+          <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={20} min={1} onChange={(event) => setMarkupMultiplier(event.target.value)} step={0.01} type="number" value={markupMultiplier} />
+        </label>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="flex flex-col gap-2 text-sm">
+          <span className="font-medium">
+            {label(
+              "admin.web_search.gemini_cost_per_call",
+              "Grounded search provider cost (USD / call)"
+            )}
+          </span>
+          <input
+            className="cursor-pointer rounded-md border bg-background px-3 py-2"
+            disabled={isSaving}
+            max={100}
+            min={0.000001}
+            onChange={(event) => setGeminiCostPerCallUsd(event.target.value)}
+            step={0.000001}
+            type="number"
+            value={geminiCostPerCallUsd}
+          />
         </label>
         <label className="flex flex-col gap-2 text-sm">
-          <span className="font-medium">{label("admin.web_search.daily_limit", "Daily search limit")}</span>
-          <input className="cursor-pointer rounded-md border bg-background px-3 py-2" disabled={isSaving} max={1000} min={0} onChange={(event) => setDailyLimit(event.target.value)} type="number" value={dailyLimit} />
+          <span className="font-medium">
+            {label(
+              "admin.web_search.openai_cost_per_call",
+              "Fallback search provider cost (USD / call)"
+            )}
+          </span>
+          <input
+            className="cursor-pointer rounded-md border bg-background px-3 py-2"
+            disabled={isSaving}
+            max={100}
+            min={0.000001}
+            onChange={(event) => setOpenaiCostPerCallUsd(event.target.value)}
+            step={0.000001}
+            type="number"
+            value={openaiCostPerCallUsd}
+          />
         </label>
       </div>
 

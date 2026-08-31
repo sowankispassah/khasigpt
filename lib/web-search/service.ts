@@ -1,9 +1,15 @@
 import "server-only";
 
 import { GoogleGenAI } from "@google/genai";
+import { enrichShoppingProducts } from "./product-enrichment";
+import {
+  buildGroundedShoppingFallbacks,
+  extractShoppingProducts,
+} from "./products";
 import type {
   WebSearchAnswer,
   WebSearchCitation,
+  WebSearchProduct,
   WebSearchProvider,
   WebSearchSource,
   WebSearchVideo,
@@ -126,12 +132,14 @@ function resolveGeminiModel(model: string) {
 async function answerWithGeminiGrounding({
   conversationContext,
   includeVideos,
+  includeProducts,
   maxSearches,
   model,
   userMessage,
 }: {
   conversationContext?: string;
   includeVideos: boolean;
+  includeProducts: boolean;
   maxSearches: number;
   model: string;
   userMessage: string;
@@ -148,6 +156,15 @@ async function answerWithGeminiGrounding({
     "Answer the user's actual information request directly; do not describe your search capabilities or say that you cannot browse when Google Search is enabled.",
     includeVideos
       ? "The user is asking for videos. Prioritize relevant YouTube video results, preserve direct YouTube URLs, and include each result as a Markdown link with its title and direct watch URL. Do not replace the results with generic search instructions. If no suitable videos are found, say so clearly instead of inventing links."
+      : "",
+    includeProducts
+      ? [
+          "This is a shopping discovery request. Search for currently listed products that satisfy the user's requested item, budget, location, and other constraints.",
+          "Give a concise natural-language answer, then append exactly one <khasigpt_products> JSON block containing a products array with up to 6 current options.",
+          "Each product must have title, direct product-page url, merchant, and the exact displayed price. Optional fields are imageUrl, rating, reviewCount, and availability.",
+          "Only include a product when the current search evidence shows both its direct page and price. Never infer or invent a product, price, rating, availability, URL, or image URL. Omit optional values when they are not shown. Use an empty products array when no trustworthy options are found.",
+          "The JSON block is machine-readable metadata. Do not discuss it in the natural-language answer and do not wrap the <khasigpt_products> block in Markdown fences.",
+        ].join(" ")
       : "",
     `Use no more than ${Math.max(1, maxSearches)} distinct web searches when possible.`,
     "Cite factual claims from the grounded web sources in your answer when supported.",
@@ -166,10 +183,17 @@ async function answerWithGeminiGrounding({
       tools: [{ googleSearch: {} }],
     },
   });
-  const answer = response.text?.trim() ?? "";
-  if (!answer) {
+  const rawAnswer = response.text?.trim() ?? "";
+  if (!rawAnswer) {
     throw new Error("Gemini web search returned an empty answer.");
   }
+  const shoppingResult = includeProducts
+    ? extractShoppingProducts(rawAnswer)
+    : { answer: rawAnswer, products: [] as WebSearchProduct[] };
+  const answer = shoppingResult.answer;
+  const productMetadataStartIndex = includeProducts
+    ? rawAnswer.search(/<khasigpt_products>/i)
+    : -1;
 
   const metadata = getGroundingMetadata(response);
   const sourceMap = new Map<string, number>();
@@ -206,6 +230,16 @@ async function answerWithGeminiGrounding({
   const citations: WebSearchCitation[] = (metadata?.groundingSupports ?? [])
     .map((support) => {
       const text = support.segment?.text?.trim();
+      if (
+        (productMetadataStartIndex >= 0 &&
+          typeof support.segment?.startIndex === "number" &&
+          support.segment.startIndex >= productMetadataStartIndex) ||
+        /<\/?khasigpt_products>|"(?:title|merchant|price|imageUrl)"\s*:/i.test(
+          text ?? ""
+        )
+      ) {
+        return null;
+      }
       const sourceIndexes = Array.from(
         new Set(
           (support.groundingChunkIndices ?? [])
@@ -230,6 +264,33 @@ async function answerWithGeminiGrounding({
     })
     .filter((citation): citation is WebSearchCitation => citation !== null)
     .slice(0, 24);
+  const enrichedProducts = includeProducts
+    ? await enrichShoppingProducts({
+        products: shoppingResult.products,
+        userMessage,
+      })
+    : [];
+  const products =
+    includeProducts && enrichedProducts.length === 0
+      ? buildGroundedShoppingFallbacks({ sources, userMessage })
+      : enrichedProducts;
+  if (includeProducts) {
+    for (const product of products) {
+      if (
+        product.verified !== true ||
+        sources.length >= MAX_SOURCES ||
+        sourceMap.has(product.url)
+      ) {
+        continue;
+      }
+      sources.push({
+        domain: new URL(product.url).hostname.replace(/^www\./i, ""),
+        title: product.title,
+        url: product.url,
+      });
+      sourceMap.set(product.url, sources.length);
+    }
+  }
   const videos = includeVideos
     ? Array.from(
         new Map(
@@ -252,6 +313,7 @@ async function answerWithGeminiGrounding({
     grounded: searchQueries.length > 0 || sourceMap.size > 0,
     sources,
     videos,
+    products,
     searchQueries,
     citations,
     searchCallCount: searchQueries.length,
@@ -268,6 +330,7 @@ export type WebSearchAnswerInput = {
   userMessage: string;
   conversationContext?: string;
   includeVideos?: boolean;
+  includeProducts?: boolean;
   model: string;
   maxSearches: number;
 };
@@ -276,6 +339,7 @@ export const webSearchService = {
   async answerWithSearch({
     conversationContext,
     includeVideos = false,
+    includeProducts = false,
     maxSearches,
     model,
     provider,
@@ -286,6 +350,7 @@ export const webSearchService = {
         return answerWithGeminiGrounding({
           conversationContext,
           includeVideos,
+          includeProducts,
           maxSearches,
           model,
           userMessage,

@@ -12,16 +12,28 @@ export function hasUsableChatCredits(tokenBalance: number) {
   return Number.isFinite(tokenBalance) && tokenBalance > 0;
 }
 
-export function requiresPaidWebSearchCredits({
-  activeTokenBalance,
+export function isRoleDailyChatLimitReached({
   hasActiveCredits,
-  minimumCreditTokens,
+  maxMessagesPerDay,
+  messageCount,
+}: {
+  hasActiveCredits: boolean;
+  maxMessagesPerDay: number | null;
+  messageCount: number;
+}) {
+  return (
+    !hasActiveCredits &&
+    maxMessagesPerDay !== null &&
+    messageCount >= maxMessagesPerDay
+  );
+}
+
+export function requiresPaidWebSearchCredits({
+  hasActiveCredits,
   testLimitBypass,
   usedFreeDailyAllowance,
 }: {
-  activeTokenBalance: number;
   hasActiveCredits: boolean;
-  minimumCreditTokens: number;
   testLimitBypass: boolean;
   usedFreeDailyAllowance: boolean;
 }) {
@@ -29,5 +41,5 @@ export function requiresPaidWebSearchCredits({
     return false;
   }
 
-  return !hasActiveCredits || activeTokenBalance < minimumCreditTokens;
+  return !hasActiveCredits;
 }

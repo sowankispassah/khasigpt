@@ -32,6 +32,18 @@ import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { normalizeCharacterText } from "@/lib/ai/character-normalize";
+import {
+  calculateTokenProviderCostUsd,
+  calculateUnitProviderCostUsd,
+  calculateWalletUnitsPerInr,
+  DEFAULT_CHAT_MARKUP_MULTIPLIER,
+  DEFAULT_IMAGE_MARKUP_MULTIPLIER,
+  DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER,
+  normalizeMarkupMultiplier,
+  priceCostPlusLineItems,
+  selectBaseCreditPlan,
+  type UnpricedCostPlusLineItem,
+} from "@/lib/billing/cost-plus";
 import { withAdminDatabase } from "@/lib/db/admin-database";
 import { normalizeAppSettingValueForWrite } from "@/lib/db/app-setting-validation";
 import {
@@ -75,6 +87,7 @@ import {
   coupon,
   couponRedemption,
   couponRewardPayout,
+  creditCharge,
   type DBMessage,
   document,
   type EmailVerificationToken,
@@ -6589,6 +6602,7 @@ export async function createModelConfig({
   freeMessagesPerDay = DEFAULT_FREE_MESSAGES_PER_DAY,
   inputProviderCostPerMillion = 0,
   outputProviderCostPerMillion = 0,
+  markupMultiplier = DEFAULT_CHAT_MARKUP_MULTIPLIER,
 }: {
   key: string;
   provider: ModelConfig["provider"];
@@ -6606,6 +6620,7 @@ export async function createModelConfig({
   freeMessagesPerDay?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
+  markupMultiplier?: number;
 }): Promise<ModelConfig> {
   const now = new Date();
 
@@ -6630,6 +6645,10 @@ export async function createModelConfig({
           freeMessagesPerDay,
           inputProviderCostPerMillion,
           outputProviderCostPerMillion,
+          markupMultiplier: normalizeMarkupMultiplier(
+            markupMultiplier,
+            DEFAULT_CHAT_MARKUP_MULTIPLIER
+          ),
           createdAt: now,
           updatedAt: now,
           deletedAt: null,
@@ -6828,6 +6847,7 @@ export async function updateModelConfig({
   isEnabled?: boolean;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
+  markupMultiplier?: number;
   freeMessagesPerDay?: number;
   isMarginBaseline?: boolean;
 }): Promise<ModelConfig | null> {
@@ -6871,6 +6891,12 @@ export async function updateModelConfig({
     if (patch.outputProviderCostPerMillion !== undefined) {
       updateData.outputProviderCostPerMillion =
         patch.outputProviderCostPerMillion;
+    }
+    if (patch.markupMultiplier !== undefined) {
+      updateData.markupMultiplier = normalizeMarkupMultiplier(
+        patch.markupMultiplier,
+        DEFAULT_CHAT_MARKUP_MULTIPLIER
+      );
     }
     if (patch.freeMessagesPerDay !== undefined) {
       updateData.freeMessagesPerDay = patch.freeMessagesPerDay;
@@ -7097,6 +7123,8 @@ export async function createImageModelConfig({
   config = null,
   priceInPaise = 0,
   tokensPerImage = TOKENS_PER_CREDIT,
+  providerCostPerOutputUsd = 0,
+  markupMultiplier = DEFAULT_IMAGE_MARKUP_MULTIPLIER,
   isEnabled = true,
   isActive = false,
 }: {
@@ -7108,6 +7136,8 @@ export async function createImageModelConfig({
   config?: Record<string, unknown> | null;
   priceInPaise?: number;
   tokensPerImage?: number;
+  providerCostPerOutputUsd?: number;
+  markupMultiplier?: number;
   isEnabled?: boolean;
   isActive?: boolean;
 }): Promise<ImageModelConfig> {
@@ -7128,6 +7158,11 @@ export async function createImageModelConfig({
           config,
           priceInPaise: resolvedPriceInPaise,
           tokensPerImage: resolvedTokensPerImage,
+          providerCostPerOutputUsd: Math.max(0, providerCostPerOutputUsd),
+          markupMultiplier: normalizeMarkupMultiplier(
+            markupMultiplier,
+            DEFAULT_IMAGE_MARKUP_MULTIPLIER
+          ),
           isEnabled,
           isActive: false,
           createdAt: now,
@@ -7366,6 +7401,8 @@ export async function updateImageModelConfig({
   config?: Record<string, unknown> | null;
   priceInPaise?: number;
   tokensPerImage?: number;
+  providerCostPerOutputUsd?: number;
+  markupMultiplier?: number;
   isEnabled?: boolean;
 }): Promise<ImageModelConfig | null> {
   try {
@@ -7393,6 +7430,18 @@ export async function updateImageModelConfig({
       updateData.tokensPerImage = Math.max(
         1,
         Math.round(patch.tokensPerImage)
+      );
+    }
+    if (patch.providerCostPerOutputUsd !== undefined) {
+      updateData.providerCostPerOutputUsd = Math.max(
+        0,
+        patch.providerCostPerOutputUsd
+      );
+    }
+    if (patch.markupMultiplier !== undefined) {
+      updateData.markupMultiplier = normalizeMarkupMultiplier(
+        patch.markupMultiplier,
+        DEFAULT_IMAGE_MARKUP_MULTIPLIER
       );
     }
     if (patch.isEnabled !== undefined) {
@@ -7588,6 +7637,7 @@ export async function createLiveVoiceModelConfig({
   voiceName = "Zephyr",
   mediaResolution = "MEDIA_RESOLUTION_MEDIUM",
   creditMultiplier = 3,
+  markupMultiplier,
   inputProviderCostPerMillion = 0,
   outputProviderCostPerMillion = 0,
   config = null,
@@ -7605,6 +7655,7 @@ export async function createLiveVoiceModelConfig({
   voiceName?: string;
   mediaResolution?: string;
   creditMultiplier?: number;
+  markupMultiplier?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
   config?: Record<string, unknown> | null;
@@ -7618,6 +7669,10 @@ export async function createLiveVoiceModelConfig({
     Number.isFinite(creditMultiplier) && creditMultiplier > 0
       ? creditMultiplier
       : 1;
+  const resolvedMarkup = normalizeMarkupMultiplier(
+    markupMultiplier ?? creditMultiplier,
+    DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER
+  );
 
   try {
     return await db.transaction(async (tx) => {
@@ -7633,6 +7688,7 @@ export async function createLiveVoiceModelConfig({
           voiceName,
           mediaResolution,
           creditMultiplier: resolvedMultiplier,
+          markupMultiplier: resolvedMarkup,
           inputProviderCostPerMillion,
           outputProviderCostPerMillion,
           config,
@@ -7886,6 +7942,7 @@ export async function updateLiveVoiceModelConfig({
   voiceName?: string;
   mediaResolution?: string;
   creditMultiplier?: number;
+  markupMultiplier?: number;
   inputProviderCostPerMillion?: number;
   outputProviderCostPerMillion?: number;
   config?: Record<string, unknown> | null;
@@ -7922,6 +7979,15 @@ export async function updateLiveVoiceModelConfig({
         Number.isFinite(patch.creditMultiplier) && patch.creditMultiplier > 0
           ? patch.creditMultiplier
           : 1;
+    }
+    if (
+      patch.markupMultiplier !== undefined ||
+      patch.creditMultiplier !== undefined
+    ) {
+      updateData.markupMultiplier = normalizeMarkupMultiplier(
+        patch.markupMultiplier ?? patch.creditMultiplier,
+        DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER
+      );
     }
     if (patch.inputProviderCostPerMillion !== undefined) {
       updateData.inputProviderCostPerMillion =
@@ -10128,6 +10194,7 @@ export async function grantUserCredits({
                 tokenAllowance: active.tokenAllowance + tokens,
                 manualTokenBalance: updatedManual,
                 paidTokenBalance: currentPaid,
+                status: "active",
                 expiresAt:
                   active.expiresAt > expiresAt ? active.expiresAt : expiresAt,
                 updatedAt: now,
@@ -10474,6 +10541,90 @@ export async function listActiveSubscriptionSummaries({
   }
 }
 
+export type AdditionalUsageCharge = {
+  category: "web_search";
+  providerKey: string;
+  providerCostPerUnitUsd: number;
+  unitCount: number;
+  markupMultiplier: number;
+  metadata?: Record<string, unknown> | null;
+};
+
+type TokenCostPlusSnapshot = {
+  category: "chat" | "live_voice";
+  providerKey: string;
+  inputCostPerMillionUsd: number;
+  outputCostPerMillionUsd: number;
+  markupMultiplier: number;
+};
+
+async function getTokenCostPlusSnapshot({
+  liveVoiceModelConfigId,
+  modelConfigId,
+}: {
+  liveVoiceModelConfigId: string | null;
+  modelConfigId: string | null;
+}): Promise<TokenCostPlusSnapshot | null> {
+  if (modelConfigId) {
+    const [row] = await db
+      .select({
+        providerKey: modelConfig.provider,
+        inputCostPerMillionUsd: modelConfig.inputProviderCostPerMillion,
+        outputCostPerMillionUsd: modelConfig.outputProviderCostPerMillion,
+        markupMultiplier: modelConfig.markupMultiplier,
+      })
+      .from(modelConfig)
+      .where(and(eq(modelConfig.id, modelConfigId), isNull(modelConfig.deletedAt)))
+      .limit(1);
+    return row
+      ? {
+          category: "chat",
+          providerKey: row.providerKey,
+          inputCostPerMillionUsd: Number(row.inputCostPerMillionUsd ?? 0),
+          outputCostPerMillionUsd: Number(row.outputCostPerMillionUsd ?? 0),
+          markupMultiplier: normalizeMarkupMultiplier(
+            row.markupMultiplier,
+            DEFAULT_CHAT_MARKUP_MULTIPLIER
+          ),
+        }
+      : null;
+  }
+
+  if (liveVoiceModelConfigId) {
+    const [row] = await db
+      .select({
+        providerKey: liveVoiceModelConfig.provider,
+        inputCostPerMillionUsd:
+          liveVoiceModelConfig.inputProviderCostPerMillion,
+        outputCostPerMillionUsd:
+          liveVoiceModelConfig.outputProviderCostPerMillion,
+        markupMultiplier: liveVoiceModelConfig.markupMultiplier,
+      })
+      .from(liveVoiceModelConfig)
+      .where(
+        and(
+          eq(liveVoiceModelConfig.id, liveVoiceModelConfigId),
+          isNull(liveVoiceModelConfig.deletedAt)
+        )
+      )
+      .limit(1);
+    return row
+      ? {
+          category: "live_voice",
+          providerKey: row.providerKey,
+          inputCostPerMillionUsd: Number(row.inputCostPerMillionUsd ?? 0),
+          outputCostPerMillionUsd: Number(row.outputCostPerMillionUsd ?? 0),
+          markupMultiplier: normalizeMarkupMultiplier(
+            row.markupMultiplier,
+            DEFAULT_LIVE_VOICE_MARKUP_MULTIPLIER
+          ),
+        }
+      : null;
+  }
+
+  return null;
+}
+
 export async function recordTokenUsage({
   userId,
   chatId,
@@ -10482,6 +10633,9 @@ export async function recordTokenUsage({
   inputTokens,
   outputTokens,
   deductCredits = true,
+  additionalCharges = [],
+  requestKey = null,
+  billTokenUsage = true,
 }: {
   userId: string;
   chatId: string;
@@ -10490,10 +10644,21 @@ export async function recordTokenUsage({
   inputTokens: number;
   outputTokens: number;
   deductCredits?: boolean;
+  additionalCharges?: AdditionalUsageCharge[];
+  requestKey?: string | null;
+  billTokenUsage?: boolean;
 }): Promise<TokenUsage> {
   const totalTokens = Math.max(0, Math.round(inputTokens + outputTokens));
 
-  if (totalTokens <= 0) {
+  const hasBillableAdditionalCharge = additionalCharges.some(
+    (charge) =>
+      Number.isFinite(charge.providerCostPerUnitUsd) &&
+      charge.providerCostPerUnitUsd > 0 &&
+      Number.isFinite(charge.unitCount) &&
+      charge.unitCount > 0
+  );
+
+  if (totalTokens <= 0 && !hasBillableAdditionalCharge) {
     throw new ChatSDKError(
       "bad_request:usage",
       "Token usage must be greater than zero"
@@ -10501,9 +10666,9 @@ export async function recordTokenUsage({
   }
 
   const now = new Date();
-  let exhausted = false;
   let baselineCostSnapshot: ProviderCostSnapshot | null = null;
   let modelCostSnapshot: ProviderCostSnapshot | null = null;
+  let tokenCostPlusSnapshot: TokenCostPlusSnapshot | null = null;
   let usdToInr = 0;
 
   if (deductCredits) {
@@ -10534,6 +10699,13 @@ export async function recordTokenUsage({
       );
     }
 
+    tokenCostPlusSnapshot = billTokenUsage
+      ? await getTokenCostPlusSnapshot({
+          liveVoiceModelConfigId,
+          modelConfigId,
+        })
+      : null;
+
     baselineCostSnapshot = await getBaselineProviderCostSnapshot(
       usdToInr,
       modelCostSnapshot
@@ -10548,8 +10720,32 @@ export async function recordTokenUsage({
       let paidTokensDeducted = 0;
       let remainingManualBalance = 0;
       let remainingPaidBalance = 0;
+      let pricedLineItems: ReturnType<
+        typeof priceCostPlusLineItems
+      >["lineItems"] = [];
+      let pricingReferencePlanId: string | null = null;
+      let walletUnitsPerInr = 0;
+      let legacyTokensToDeduct = 0;
 
       if (deductCredits) {
+        if (requestKey) {
+          const [existingCharge] = await tx
+            .select({ tokenUsageId: creditCharge.tokenUsageId })
+            .from(creditCharge)
+            .where(eq(creditCharge.requestKey, requestKey))
+            .limit(1);
+          if (existingCharge?.tokenUsageId) {
+            const [existingUsage] = await tx
+              .select()
+              .from(tokenUsage)
+              .where(eq(tokenUsage.id, existingCharge.tokenUsageId))
+              .limit(1);
+            if (existingUsage) {
+              return existingUsage;
+            }
+          }
+        }
+
         subscription = await getActiveSubscriptionInternal(tx, userId, now);
 
         if (!subscription) {
@@ -10568,6 +10764,34 @@ export async function recordTokenUsage({
           .from(pricingPlan)
           .where(eq(pricingPlan.id, subscription.planId))
           .limit(1);
+
+        const referencePlans = await tx
+          .select({
+            id: pricingPlan.id,
+            priceInPaise: pricingPlan.priceInPaise,
+            tokenAllowance: pricingPlan.tokenAllowance,
+          })
+          .from(pricingPlan)
+          .where(
+            and(
+              eq(pricingPlan.isActive, true),
+              isNull(pricingPlan.deletedAt),
+              gt(pricingPlan.priceInPaise, 0),
+              gt(pricingPlan.tokenAllowance, 0)
+            )
+          );
+        const referencePlan = selectBaseCreditPlan(referencePlans);
+        const resolvedReferencePlan =
+          referencePlan ??
+          (plan && plan.priceInPaise > 0 && plan.tokenAllowance > 0
+            ? plan
+            : null);
+        if (resolvedReferencePlan) {
+          pricingReferencePlanId = resolvedReferencePlan.id;
+          walletUnitsPerInr = calculateWalletUnitsPerInr(
+            resolvedReferencePlan
+          );
+        }
 
         const allowance =
           plan?.tokenAllowance && plan.tokenAllowance > 0
@@ -10600,32 +10824,74 @@ export async function recordTokenUsage({
           modelCostPerTokenPaise,
         });
 
-        tokensToDeduct = calculateTokenDeduction({
-          inputTokens,
-          outputTokens,
-          costMultiplier,
+        const costPlusLineItems: UnpricedCostPlusLineItem[] = [];
+        if (tokenCostPlusSnapshot) {
+          const providerCostUsd = calculateTokenProviderCostUsd({
+            inputCostPerMillionUsd:
+              tokenCostPlusSnapshot.inputCostPerMillionUsd,
+            inputTokens,
+            outputCostPerMillionUsd:
+              tokenCostPlusSnapshot.outputCostPerMillionUsd,
+            outputTokens,
+          });
+          if (providerCostUsd > 0) {
+            costPlusLineItems.push({
+              category: tokenCostPlusSnapshot.category,
+              providerCostUsd,
+              markupMultiplier: tokenCostPlusSnapshot.markupMultiplier,
+              providerKey: tokenCostPlusSnapshot.providerKey,
+              inputTokens,
+              outputTokens,
+              modelConfigId,
+              liveVoiceModelConfigId,
+            });
+          }
+        }
+        for (const additionalCharge of additionalCharges) {
+          const providerCostUsd = calculateUnitProviderCostUsd({
+            providerCostPerUnitUsd: additionalCharge.providerCostPerUnitUsd,
+            unitCount: additionalCharge.unitCount,
+          });
+          if (providerCostUsd > 0) {
+            costPlusLineItems.push({
+              category: additionalCharge.category,
+              providerCostUsd,
+              markupMultiplier: additionalCharge.markupMultiplier,
+              providerKey: additionalCharge.providerKey,
+              unitCount: additionalCharge.unitCount,
+              metadata: additionalCharge.metadata,
+            });
+          }
+        }
+
+        const priced = priceCostPlusLineItems({
+          lineItems: costPlusLineItems,
+          usdToInr,
+          walletUnitsPerInr,
         });
+        pricedLineItems = priced.lineItems;
+        if (
+          billTokenUsage &&
+          (!tokenCostPlusSnapshot ||
+            !pricedLineItems.some(
+              (item) =>
+                item.category === "chat" || item.category === "live_voice"
+            ))
+        ) {
+          legacyTokensToDeduct = calculateTokenDeduction({
+            inputTokens,
+            outputTokens,
+            costMultiplier,
+          });
+        }
+        tokensToDeduct = priced.totalCreditUnits + legacyTokensToDeduct;
 
         if (tokensToDeduct > 0 && subscription.tokenBalance < tokensToDeduct) {
-          const consumedTokens = Math.max(0, subscription.tokenBalance);
-
-          await tx
-            .update(userSubscription)
-            .set({
-              tokenBalance: 0,
-              manualTokenBalance: 0,
-              paidTokenBalance: 0,
-              tokensUsed: Math.min(
-                subscription.tokenAllowance,
-                subscription.tokensUsed + consumedTokens
-              ),
-              status: "exhausted",
-              updatedAt: now,
-            })
-            .where(eq(userSubscription.id, subscription.id));
-
-          exhausted = true;
-          return null;
+          console.info("[token-usage] Capping the final charge at the remaining wallet balance.", {
+            availableTokens: subscription.tokenBalance,
+            calculatedTokens: tokensToDeduct,
+          });
+          tokensToDeduct = Math.max(0, subscription.tokenBalance);
         }
 
         const manualBalance = Math.max(0, subscription.manualTokenBalance ?? 0);
@@ -10662,6 +10928,82 @@ export async function recordTokenUsage({
         })
         .returning();
 
+      if (insertedUsage && subscription && tokensToDeduct > 0) {
+        const ledgerLineItems = [
+          ...pricedLineItems,
+          ...(legacyTokensToDeduct > 0
+            ? [
+                {
+                  category: "legacy" as const,
+                  providerCostUsd: 0,
+                  markupMultiplier: 1,
+                  customerChargeInr: 0,
+                  rawCreditUnits: legacyTokensToDeduct,
+                  creditUnits: legacyTokensToDeduct,
+                  inputTokens,
+                  outputTokens,
+                  providerKey: "legacy",
+                },
+              ]
+            : []),
+        ];
+        let manualUnitsRemaining = manualTokensDeducted;
+        let paidUnitsRemaining = paidTokensDeducted;
+        let chargeUnitsRemaining = tokensToDeduct;
+        const ledgerRows = ledgerLineItems.map((lineItem, index) => {
+          const creditUnits = Math.min(
+            lineItem.creditUnits,
+            chargeUnitsRemaining
+          );
+          chargeUnitsRemaining -= creditUnits;
+          const manualCreditUnits = Math.min(
+            creditUnits,
+            manualUnitsRemaining
+          );
+          manualUnitsRemaining -= manualCreditUnits;
+          const paidCreditUnits = Math.min(
+            creditUnits - manualCreditUnits,
+            paidUnitsRemaining
+          );
+          paidUnitsRemaining -= paidCreditUnits;
+          return {
+            userId,
+            chatId,
+            subscriptionId: subscription?.id ?? null,
+            tokenUsageId: insertedUsage.id,
+            modelConfigId:
+              "modelConfigId" in lineItem
+                ? (lineItem.modelConfigId ?? null)
+                : null,
+            liveVoiceModelConfigId:
+              "liveVoiceModelConfigId" in lineItem
+                ? (lineItem.liveVoiceModelConfigId ?? null)
+                : null,
+            category: lineItem.category,
+            providerKey: lineItem.providerKey ?? null,
+            requestKey: index === 0 ? requestKey : null,
+            inputTokens: lineItem.inputTokens ?? 0,
+            outputTokens: lineItem.outputTokens ?? 0,
+            unitCount: "unitCount" in lineItem ? (lineItem.unitCount ?? 0) : 0,
+            providerCostUsd: lineItem.providerCostUsd,
+            usdToInr,
+            markupMultiplier: lineItem.markupMultiplier,
+            customerChargeInr: lineItem.customerChargeInr,
+            creditUnits,
+            manualCreditUnits,
+            paidCreditUnits,
+            pricingMetadata: {
+              ...(("metadata" in lineItem ? lineItem.metadata : null) ?? {}),
+              pricingReferencePlanId,
+              walletUnitsPerInr,
+            },
+            status: "settled",
+            createdAt: now,
+          };
+        });
+        await tx.insert(creditCharge).values(ledgerRows);
+      }
+
       if (subscription) {
         const remaining =
           tokensToDeduct > 0
@@ -10681,7 +11023,7 @@ export async function recordTokenUsage({
                 ? remainingPaidBalance
                 : Math.max(0, subscription.paidTokenBalance ?? 0),
             tokensUsed: subscription.tokensUsed + tokensToDeduct,
-            status: remaining > 0 ? "active" : "exhausted",
+            status: remaining > 0 ? subscription.status : "exhausted",
             updatedAt: now,
           })
           .where(eq(userSubscription.id, subscription.id));
@@ -10689,13 +11031,6 @@ export async function recordTokenUsage({
 
       return insertedUsage ?? null;
     });
-
-    if (exhausted) {
-      throw new ChatSDKError(
-        "payment_required:credits",
-        "Insufficient credits remaining"
-      );
-    }
 
     if (!usageRecord) {
       throw new ChatSDKError(
@@ -10713,35 +11048,6 @@ export async function recordTokenUsage({
       "bad_request:database",
       "Failed to record token usage"
     );
-  }
-}
-
-export async function getWebSearchUsageCountSince({
-  since,
-  userId,
-}: {
-  since: Date;
-  userId: string;
-}): Promise<number | null> {
-  if (!isValidUUID(userId)) {
-    return 0;
-  }
-
-  try {
-    const [result] = await db
-      .select({ count: count() })
-      .from(webSearchUsage)
-      .where(and(eq(webSearchUsage.userId, userId), gte(webSearchUsage.createdAt, since)));
-    return Number(result?.count ?? 0);
-  } catch (error) {
-    if (isTableMissingError(error)) {
-      console.error(
-        "[web-search] Usage table is missing; refusing to run web search until migrations are applied."
-      );
-      return null;
-    }
-    console.error("[web-search] Failed to count daily usage.", error);
-    return null;
   }
 }
 
@@ -10805,18 +11111,138 @@ export async function recordWebSearchUsage({
   }
 }
 
+export async function getCostPlusCreditQuote({
+  markupMultiplier,
+  providerCostUsd,
+}: {
+  markupMultiplier: number;
+  providerCostUsd: number;
+}): Promise<{
+  creditUnits: number;
+  customerChargeInr: number;
+  markupMultiplier: number;
+  pricingReferencePlanId: string;
+  providerCostUsd: number;
+  usdToInr: number;
+  walletUnitsPerInr: number;
+} | null> {
+  if (!Number.isFinite(providerCostUsd) || providerCostUsd <= 0) {
+    return null;
+  }
+
+  let usdToInr = 0;
+  try {
+    const rate = await getUsdToInrRate();
+    usdToInr = Number(rate?.rate ?? 0);
+  } catch (error) {
+    console.warn("[cost-plus] Exchange-rate read failed; using fallback.", error);
+  }
+  if (!Number.isFinite(usdToInr) || usdToInr <= 0) {
+    usdToInr = getFallbackUsdToInrRate();
+  }
+
+  const plans = await db
+    .select({
+      id: pricingPlan.id,
+      priceInPaise: pricingPlan.priceInPaise,
+      tokenAllowance: pricingPlan.tokenAllowance,
+    })
+    .from(pricingPlan)
+    .where(
+      and(
+        eq(pricingPlan.isActive, true),
+        isNull(pricingPlan.deletedAt),
+        gt(pricingPlan.priceInPaise, 0),
+        gt(pricingPlan.tokenAllowance, 0)
+      )
+    );
+  const referencePlan = selectBaseCreditPlan(plans);
+  if (!referencePlan) {
+    return null;
+  }
+
+  const walletUnitsPerInr = calculateWalletUnitsPerInr(referencePlan);
+  const priced = priceCostPlusLineItems({
+    lineItems: [
+      {
+        category: "image",
+        markupMultiplier,
+        providerCostUsd,
+      },
+    ],
+    usdToInr,
+    walletUnitsPerInr,
+  });
+  const [lineItem] = priced.lineItems;
+  if (!lineItem || priced.totalCreditUnits <= 0) {
+    return null;
+  }
+
+  return {
+    creditUnits: priced.totalCreditUnits,
+    customerChargeInr: lineItem.customerChargeInr,
+    markupMultiplier: lineItem.markupMultiplier,
+    pricingReferencePlanId: referencePlan.id,
+    providerCostUsd: lineItem.providerCostUsd,
+    usdToInr,
+    walletUnitsPerInr,
+  };
+}
+
 export async function deductImageCredits({
   userId,
   chatId,
   tokensToDeduct,
   allowManualCredits = true,
+  imageModelConfigId = null,
+  outputCount = 1,
+  requestKey = null,
 }: {
   userId: string;
   chatId: string;
   tokensToDeduct: number;
   allowManualCredits?: boolean;
+  imageModelConfigId?: string | null;
+  outputCount?: number;
+  requestKey?: string | null;
 }): Promise<void> {
-  const resolvedTokens = Math.max(1, Math.round(tokensToDeduct));
+  const normalizedOutputCount = Math.max(1, Math.round(outputCount));
+  const [imagePricing] = imageModelConfigId
+    ? await db
+        .select({
+          providerKey: imageModelConfig.provider,
+          providerCostPerOutputUsd:
+            imageModelConfig.providerCostPerOutputUsd,
+          markupMultiplier: imageModelConfig.markupMultiplier,
+        })
+        .from(imageModelConfig)
+        .where(
+          and(
+            eq(imageModelConfig.id, imageModelConfigId),
+            isNull(imageModelConfig.deletedAt)
+          )
+        )
+        .limit(1)
+    : [];
+  const providerCostUsd = imagePricing
+    ? calculateUnitProviderCostUsd({
+        providerCostPerUnitUsd: Number(
+          imagePricing.providerCostPerOutputUsd ?? 0
+        ),
+        unitCount: normalizedOutputCount,
+      })
+    : 0;
+  const costPlusQuote = imagePricing
+    ? await getCostPlusCreditQuote({
+        providerCostUsd,
+        markupMultiplier: normalizeMarkupMultiplier(
+          imagePricing.markupMultiplier,
+          DEFAULT_IMAGE_MARKUP_MULTIPLIER
+        ),
+      })
+    : null;
+  const resolvedTokens =
+    costPlusQuote?.creditUnits ?? Math.max(1, Math.round(tokensToDeduct));
 
   if (resolvedTokens <= 0) {
     throw new ChatSDKError(
@@ -10829,6 +11255,16 @@ export async function deductImageCredits({
 
   try {
     await db.transaction(async (tx) => {
+      if (requestKey) {
+        const [existing] = await tx
+          .select({ id: creditCharge.id })
+          .from(creditCharge)
+          .where(eq(creditCharge.requestKey, requestKey))
+          .limit(1);
+        if (existing) {
+          return;
+        }
+      }
       const subscription = await getActiveSubscriptionInternal(tx, userId, now);
 
       if (!subscription) {
@@ -10845,23 +11281,6 @@ export async function deductImageCredits({
         : paidBalance;
 
       if (availableBalance < resolvedTokens) {
-        if (allowManualCredits) {
-          await tx
-            .update(userSubscription)
-            .set({
-              tokenBalance: 0,
-              manualTokenBalance: 0,
-              paidTokenBalance: 0,
-              tokensUsed: Math.min(
-                subscription.tokenAllowance,
-                subscription.tokensUsed + subscription.tokenBalance
-              ),
-              status: "exhausted",
-              updatedAt: now,
-            })
-            .where(eq(userSubscription.id, subscription.id));
-        }
-
         throw new ChatSDKError(
           "payment_required:credits",
           allowManualCredits
@@ -10892,7 +11311,7 @@ export async function deductImageCredits({
           chatId,
           modelConfigId: null,
           subscriptionId: subscription.id,
-          inputTokens: resolvedTokens,
+          inputTokens: 0,
           outputTokens: 0,
           totalTokens: resolvedTokens,
           manualTokens: manualTokensDeducted,
@@ -10908,6 +11327,34 @@ export async function deductImageCredits({
         );
       }
 
+      await tx.insert(creditCharge).values({
+        userId,
+        chatId,
+        subscriptionId: subscription.id,
+        tokenUsageId: usageRecord.id,
+        imageModelConfigId,
+        category: costPlusQuote ? "image" : "legacy",
+        providerKey: imagePricing?.providerKey ?? "legacy",
+        requestKey,
+        unitCount: normalizedOutputCount,
+        providerCostUsd: costPlusQuote?.providerCostUsd ?? 0,
+        usdToInr: costPlusQuote?.usdToInr ?? 0,
+        markupMultiplier: costPlusQuote?.markupMultiplier ?? 1,
+        customerChargeInr: costPlusQuote?.customerChargeInr ?? 0,
+        creditUnits: resolvedTokens,
+        manualCreditUnits: manualTokensDeducted,
+        paidCreditUnits: paidTokensDeducted,
+        pricingMetadata: costPlusQuote
+          ? {
+              pricingReferencePlanId:
+                costPlusQuote.pricingReferencePlanId,
+              walletUnitsPerInr: costPlusQuote.walletUnitsPerInr,
+            }
+          : { legacyTokensPerImage: tokensToDeduct },
+        status: "settled",
+        createdAt: now,
+      });
+
       await tx
         .update(userSubscription)
         .set({
@@ -10915,7 +11362,7 @@ export async function deductImageCredits({
           manualTokenBalance: remainingManualBalance,
           paidTokenBalance: remainingPaidBalance,
           tokensUsed: subscription.tokensUsed + resolvedTokens,
-          status: remaining > 0 ? "active" : "exhausted",
+          status: remaining > 0 ? subscription.status : "exhausted",
           updatedAt: now,
         })
         .where(eq(userSubscription.id, subscription.id));

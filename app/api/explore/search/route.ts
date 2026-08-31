@@ -9,13 +9,12 @@ import {
   isFreeDailyChatLimitBypassedForTest,
   requiresPaidWebSearchCredits,
 } from "@/lib/chat/free-daily-limit";
-import { DEFAULT_FREE_MESSAGES_PER_DAY, TOKENS_PER_CREDIT } from "@/lib/constants";
+import { DEFAULT_FREE_MESSAGES_PER_DAY } from "@/lib/constants";
 import {
   consumeFreeDailyChatAllowance,
   getActiveSubscriptionForUser,
   getChatById,
   getMessageCountByUserId,
-  getWebSearchUsageCountSince,
   recordTokenUsage,
   recordWebSearchUsage,
   saveChat,
@@ -296,14 +295,9 @@ export async function POST(request: Request) {
         }
         usedFreeAllowance = true;
       }
-      const minimumTokens = Math.ceil(
-        TOKENS_PER_CREDIT * config.creditMultiplier,
-      );
       if (
         requiresPaidWebSearchCredits({
-          activeTokenBalance: tokenBalance,
           hasActiveCredits: hasCredits,
-          minimumCreditTokens: minimumTokens,
           testLimitBypass: testBypass,
           usedFreeDailyAllowance: usedFreeAllowance,
         })
@@ -313,23 +307,6 @@ export async function POST(request: Request) {
           "Web search requires paid credits. Please recharge to continue.",
         );
       }
-      const dailyCount = await getWebSearchUsageCountSince({
-        since: startOfTodayInIst(),
-        userId: auth.user.id,
-      });
-      if (dailyCount === null) {
-        return NextResponse.json(
-          { error: "usage_tracking_unavailable" },
-          { status: 503, headers: noStoreHeaders() },
-        );
-      }
-      if (dailyCount >= config.dailyLimit) {
-        throw new ChatSDKError(
-          "rate_limit:chat",
-          "Web search daily limit reached.",
-        );
-      }
-
       const providerQuery = buildSearchQuery({
         categoryQuery: effectiveCategoryQuery,
         location: parsed.data.location,
@@ -382,26 +359,40 @@ export async function POST(request: Request) {
       }
 
       if (answer) {
-        const chargedInput = Math.ceil(
-          answer.usage.inputTokens * config.creditMultiplier,
-        );
-        const chargedOutput = Math.ceil(
-          answer.usage.outputTokens * config.creditMultiplier,
-        );
-        if (chargedInput + chargedOutput > 0) {
+        const searchProvider = answer.provider;
+        const providerCostPerUnitUsd =
+          searchProvider !== "disabled"
+            ? config.providerCostPerCallUsd[searchProvider]
+            : 0;
+        if (answer.usage.inputTokens + answer.usage.outputTokens > 0) {
           await recordTokenUsage({
             userId: auth.user.id,
             chatId,
             modelConfigId: model.id,
-            inputTokens: chargedInput,
-            outputTokens: chargedOutput,
+            inputTokens: answer.usage.inputTokens,
+            outputTokens: answer.usage.outputTokens,
             deductCredits: hasCredits,
+            billTokenUsage: false,
+            additionalCharges:
+              searchProvider !== "disabled"
+                ? [
+                    {
+                      category: "web_search",
+                      providerKey: searchProvider,
+                      providerCostPerUnitUsd,
+                      unitCount: answer.searchCallCount,
+                      markupMultiplier: config.markupMultiplier,
+                      metadata: { sourceCount: answer.sources.length },
+                    },
+                  ]
+                : [],
+            requestKey: `explore:${chatId}:${queryHash}`,
           });
         }
         await recordWebSearchUsage({
           chatId,
-          creditCostTokens: chargedInput + chargedOutput,
-          creditMultiplier: config.creditMultiplier,
+          creditCostTokens: 0,
+          creditMultiplier: config.markupMultiplier,
           platform,
           provider: answer.provider,
           queryHash,
@@ -417,7 +408,7 @@ export async function POST(request: Request) {
         await recordWebSearchUsage({
           chatId,
           creditCostTokens: 0,
-          creditMultiplier: config.creditMultiplier,
+          creditMultiplier: config.markupMultiplier,
           errorReason:
             providerError instanceof Error
               ? providerError.message.slice(0, 500)

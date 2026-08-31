@@ -29,9 +29,10 @@ import { SelectItem } from "@/components/ui/select";
 import type { ImageIntentResolution } from "@/lib/image-intent";
 import type { JobTitleReference } from "@/lib/jobs/types";
 import type { StudyQuestionReference } from "@/lib/study/types";
+import type { ToolIntentResolution } from "@/lib/tool-intent";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { getAttachmentAcceptValue } from "@/lib/uploads/document-uploads";
-import { cn } from "@/lib/utils";
+import { cn, generateUUID } from "@/lib/utils";
 import {
   startWebGeminiVoiceTurn,
   type WebGeminiVoiceConversationMessage,
@@ -73,6 +74,13 @@ type VoiceConversationPair = {
   inputTokens?: number;
   outputTokens?: number;
   userText: string;
+};
+
+export type OptimisticChatSubmission = {
+  attachments: Attachment[];
+  messageId: string;
+  parts: ChatMessage["parts"];
+  prompt: string;
 };
 
 const VOICE_TURN_SAVE_TIMEOUT_MS = 20_000;
@@ -298,6 +306,7 @@ function PureMultimodalInput({
   onJumpToQuestionPaper,
   onBeforeSubmit,
   onGenerateImage,
+  onIntentResolutionChange,
   onManualInputChange,
   onResolveImageIntent,
   onToggleImageMode,
@@ -333,12 +342,16 @@ function PureMultimodalInput({
   studyQuestionReference?: StudyQuestionReference | null;
   onClearStudyQuestionReference?: () => void;
   onJumpToQuestionPaper?: (paperId: string) => void;
-  onBeforeSubmit?: () => void | Promise<void>;
-  onGenerateImage: (resolution: ImageIntentResolution) => Promise<void>;
+  onBeforeSubmit?: (prompt: string) => void | Promise<void>;
+  onGenerateImage: (
+    resolution: ImageIntentResolution,
+    submission: OptimisticChatSubmission
+  ) => Promise<void>;
+  onIntentResolutionChange?: (isResolving: boolean) => void;
   onManualInputChange?: () => void;
   onResolveImageIntent?: (
     prompt: string
-  ) => Promise<ImageIntentResolution | null>;
+  ) => Promise<ToolIntentResolution | null>;
   onToggleImageMode: () => void;
   onUpgradeRequired?: () => void;
   onVoiceTurnSaved?: () => void;
@@ -441,6 +454,7 @@ function PureMultimodalInput({
   const voiceSessionIdRef = useRef(0);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
   const [isResolvingIntent, setIsResolvingIntent] = useState(false);
+  const isResolvingIntentRef = useRef(false);
   const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] =
     useState<WebGeminiVoiceTurnStatus>("connecting");
@@ -493,21 +507,16 @@ function PureMultimodalInput({
     }
   }, [voiceError, voiceStatus]);
 
-  const submitForm = useCallback(async () => {
-    try {
-      await onBeforeSubmit?.();
-    } catch (_error) {
-      toast.error(
-        translate(
-          "chat.submit.failed",
-          "Unable to start the chat right now. Please try again."
-        )
-      );
-      return;
+  const commitSubmission = useCallback(() => {
+    const prompt = input.trim();
+    if (!prompt) {
+      return null;
     }
 
+    const submittedAttachments = [...attachments];
+    const messageId = generateUUID();
     const parts: ChatMessage["parts"] = [
-      ...attachments.map((attachment) => ({
+      ...submittedAttachments.map((attachment) => ({
         type: "file" as const,
         url: attachment.url,
         name: attachment.name,
@@ -530,16 +539,26 @@ function PureMultimodalInput({
           ]
         : []),
       {
-        type: "text",
+        type: "text" as const,
         text: input,
       },
     ];
-
-    sendMessage({
-      role: "user",
+    const submission: OptimisticChatSubmission = {
+      attachments: submittedAttachments,
+      messageId,
       parts,
-    });
+      prompt,
+    };
 
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      {
+        id: messageId,
+        role: "user",
+        parts,
+        metadata: { createdAt: new Date().toISOString() },
+      },
+    ]);
     setAttachments([]);
     if (!lockJobTitleReference) {
       onClearJobTitleReference?.();
@@ -551,21 +570,76 @@ function PureMultimodalInput({
     if (width && width > 768) {
       textareaRef.current?.focus();
     }
+
+    return submission;
   }, [
-    input, 
-    setInput, 
-    attachments, 
-    sendMessage, 
-    setAttachments, 
-    width, 
-    onBeforeSubmit, 
-    onClearJobTitleReference, 
-    onClearStudyQuestionReference, 
-    jobTitleReference, 
-    lockJobTitleReference, 
-    studyQuestionReference, 
-    resetHeight, translate
+    attachments,
+    input,
+    jobTitleReference,
+    lockJobTitleReference,
+    onClearJobTitleReference,
+    onClearStudyQuestionReference,
+    resetHeight,
+    setAttachments,
+    setInput,
+    setMessages,
+    studyQuestionReference,
+    width,
   ]);
+
+  const rollbackSubmission = useCallback(
+    (submission: OptimisticChatSubmission) => {
+      setMessages((currentMessages) =>
+        currentMessages.filter(
+          (message) => message.id !== submission.messageId
+        )
+      );
+      setInput((current) => (current.trim() ? current : submission.prompt));
+      setAttachments((current) =>
+        current.length > 0 ? current : submission.attachments
+      );
+    },
+    [setAttachments, setInput, setMessages]
+  );
+
+  const submitCommittedMessage = useCallback(
+    async (
+      submission: OptimisticChatSubmission,
+      resolution?: ToolIntentResolution | null
+    ) => {
+      try {
+        await onBeforeSubmit?.(submission.prompt);
+      } catch (_error) {
+        rollbackSubmission(submission);
+        toast.error(
+          translate(
+            "chat.submit.failed",
+            "Unable to start the chat right now. Please try again."
+          )
+        );
+        return;
+      }
+
+      sendMessage(
+        {
+          messageId: submission.messageId,
+          role: "user",
+          parts: submission.parts,
+        },
+        resolution &&
+          resolution.intent !== "image_generate" &&
+          resolution.intent !== "image_edit"
+          ? {
+              body: {
+                toolIntent: resolution.intent,
+                toolIntentToken: resolution.decisionToken,
+              },
+            }
+          : undefined
+      );
+    },
+    [onBeforeSubmit, rollbackSubmission, sendMessage, translate]
+  );
 
   const isResponsePending =
     status === "submitted" || status === "streaming";
@@ -574,27 +648,49 @@ function PureMultimodalInput({
     isGeneratingImage ||
     isResolvingIntent;
   const submitWithIntent = useCallback(async () => {
-    if (isResolvingIntent) {
+    if (isResolvingIntentRef.current) {
       return;
     }
 
+    const submission = commitSubmission();
+    if (!submission) {
+      return;
+    }
+
+    isResolvingIntentRef.current = true;
     setIsResolvingIntent(true);
+    onIntentResolutionChange?.(true);
     try {
-      const resolution = await onResolveImageIntent?.(input);
-      if (resolution) {
-        await onGenerateImage(resolution);
+      const resolution = await onResolveImageIntent?.(submission.prompt);
+      if (
+        resolution?.intent === "image_generate" ||
+        resolution?.intent === "image_edit"
+      ) {
+        await onGenerateImage(resolution, submission);
         return;
       }
-      await submitForm();
+      await submitCommittedMessage(submission, resolution);
+    } catch (_error) {
+      rollbackSubmission(submission);
+      toast.error(
+        translate(
+          "chat.submit.failed",
+          "Unable to start the chat right now. Please try again."
+        )
+      );
     } finally {
+      isResolvingIntentRef.current = false;
       setIsResolvingIntent(false);
+      onIntentResolutionChange?.(false);
     }
   }, [
-    input,
-    isResolvingIntent,
+    commitSubmission,
     onGenerateImage,
+    onIntentResolutionChange,
     onResolveImageIntent,
-    submitForm,
+    rollbackSubmission,
+    submitCommittedMessage,
+    translate,
   ]);
   const canStopVoice =
     isVoiceDialogOpen &&

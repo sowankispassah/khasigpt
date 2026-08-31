@@ -8,12 +8,17 @@ import {
   LoaderCircle,
   Play,
   Search,
+  ShoppingBag,
+  Star,
 } from "lucide-react";
 import { useState } from "react";
+import { AnimatedStatus } from "@/components/animated-status";
+import { useTranslation } from "@/components/language-provider";
 import { EditableTranslation } from "@/components/translation-edit-provider";
 import { cn } from "@/lib/utils";
 import type {
   WebSearchCitation,
+  WebSearchProduct,
   WebSearchSource,
   WebSearchStatusData,
   WebSearchVideo,
@@ -24,33 +29,19 @@ import {
   getYouTubeVideoId,
 } from "@/lib/web-search/youtube";
 
-function getStatusCopy(status: WebSearchStatusData["status"]) {
-  switch (status) {
-    case "reading":
-      return {
-        defaultText: "Reading relevant sources...",
-        description: "Status shown while Web Search reads grounded sources.",
-        key: "chat.web_search.reading",
-      };
-    case "generating":
-      return {
-        defaultText: "Preparing an answer...",
-        description: "Status shown while the assistant prepares a grounded answer.",
-        key: "chat.web_search.generating",
-      };
-    case "failed":
-      return {
-        defaultText: "I couldn’t complete the web search. Please try again.",
-        description: "Error shown when grounded Web Search cannot be completed.",
-        key: "chat.web_search.failed",
-      };
-    default:
-      return {
-        defaultText: "Searching the web...",
-        description: "Status shown while a current-information answer is grounded with Web Search.",
-        key: "chat.web_search.searching",
-      };
+function getActiveStatusCopy(context: WebSearchStatusData["context"]) {
+  if (context === "news") {
+    return {
+      defaultText: "Checking the latest sources",
+      description: "Status shown while KhasiGPT checks current sources for News.",
+      key: "news.status.checking_latest_sources",
+    };
   }
+  return {
+    defaultText: "Checking additional sources",
+    description: "Status shown while KhasiGPT checks additional current sources.",
+    key: "chat.web_search.checking_sources",
+  };
 }
 
 export function WebSearchStatus({
@@ -60,9 +51,10 @@ export function WebSearchStatus({
   onRetry?: () => Promise<void> | void;
   status: WebSearchStatusData;
 }) {
+  const { translate } = useTranslation();
   const [isRetrying, setIsRetrying] = useState(false);
-  const copy = getStatusCopy(status.status);
   const isFailed = status.status === "failed";
+  const activeCopy = getActiveStatusCopy(status.context);
 
   const handleRetry = async () => {
     if (!onRetry || isRetrying) {
@@ -76,6 +68,23 @@ export function WebSearchStatus({
     }
   };
 
+  if (!isFailed) {
+    return (
+      <AnimatedStatus
+        ariaLabel={translate(activeCopy.key, activeCopy.defaultText)}
+        className="mb-3 pl-3 md:pl-4"
+        label={
+          <EditableTranslation
+            defaultText={activeCopy.defaultText}
+            description={activeCopy.description}
+            translationKey={activeCopy.key}
+          />
+        }
+        testId="web-search-status"
+      />
+    );
+  }
+
   return (
     <div
       aria-live="polite"
@@ -88,20 +97,16 @@ export function WebSearchStatus({
       data-testid="web-search-status"
       role={isFailed ? "alert" : "status"}
     >
-      {isFailed ? (
-        <AlertCircle className="mt-0.5 size-4 shrink-0" />
-      ) : (
-        <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
-      )}
+      <AlertCircle className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-medium">
           <EditableTranslation
-            defaultText={copy.defaultText}
-            description={copy.description}
-            translationKey={copy.key}
+            defaultText="I couldn’t check additional sources. Please try again."
+            description="Error shown when KhasiGPT cannot check additional current sources."
+            translationKey="chat.web_search.failed"
           />
         </div>
-        {isFailed && onRetry ? (
+        {onRetry ? (
           <button
             className="mt-2 cursor-pointer rounded-md border border-current/30 px-2.5 py-1 text-xs font-medium transition hover:bg-background/70 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isRetrying}
@@ -190,6 +195,152 @@ function normalizeVideo(video: WebSearchVideo) {
     thumbnailUrl: getYouTubeThumbnailUrl(videoId),
     videoId,
   };
+}
+
+function normalizeProduct(product: WebSearchProduct) {
+  try {
+    const url = new URL(product.url);
+    const kind: NonNullable<WebSearchProduct["kind"]> =
+      product.kind === "collection" ? "collection" : "product";
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !product.title?.trim() ||
+      !product.merchant?.trim() ||
+      !product.price?.trim() ||
+      (kind === "product" && !/\d/.test(product.price))
+    ) {
+      return null;
+    }
+    let imageUrl: string | null = null;
+    if (
+      product.verified === true &&
+      product.imageUrl &&
+      product.imageProxyToken &&
+      product.imageProxyToken.length <= 4096 &&
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(product.imageProxyToken)
+    ) {
+      const candidate = new URL(product.imageUrl);
+      imageUrl = candidate.protocol === "https:"
+        ? `/api/web-search/product-image?token=${encodeURIComponent(product.imageProxyToken)}`
+        : null;
+    }
+    return {
+      ...product,
+      imageUrl,
+      kind,
+      merchant: product.merchant.trim(),
+      price: product.price.trim(),
+      title: product.title.trim(),
+      url: url.toString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ProductThumbnail({ imageUrl, title }: { imageUrl?: string | null; title: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!imageUrl || failed) {
+    return (
+      <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted/60 text-muted-foreground">
+        <ShoppingBag className="size-8" />
+      </div>
+    );
+  }
+  return (
+    // biome-ignore lint/performance/noImgElement: Product thumbnails come from arbitrary validated HTTPS merchant URLs that cannot be enumerated for next/image.
+    <img
+      alt={title}
+      className="aspect-[4/3] w-full bg-muted/40 object-contain"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      referrerPolicy="no-referrer"
+      src={imageUrl}
+    />
+  );
+}
+
+function WebSearchProducts({ products }: { products: WebSearchProduct[] }) {
+  const safeProducts = products
+    .map(normalizeProduct)
+    .filter((product): product is NonNullable<ReturnType<typeof normalizeProduct>> =>
+      Boolean(product)
+    )
+    .filter(
+      (product, index, all) =>
+        all.findIndex((candidate) => candidate.url === product.url) === index
+    )
+    .slice(0, 6);
+
+  if (safeProducts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-2.5" data-testid="web-search-products">
+      <div className="font-medium text-foreground text-sm">
+        <EditableTranslation
+          defaultText="Products found"
+          description="Heading above current shopping results returned by grounded Web Search."
+          translationKey="chat.web_search.products_found"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {safeProducts.map((product) => (
+          <a
+            className="group min-w-0 overflow-hidden rounded-xl border border-border/60 bg-background/80 transition hover:border-primary/40 hover:shadow-sm"
+            href={product.url}
+            key={product.url}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            <ProductThumbnail imageUrl={product.imageUrl} title={product.title} />
+            <div className="space-y-1.5 p-3">
+              <div className="line-clamp-2 font-medium text-foreground text-sm">
+                {product.title}
+              </div>
+              <div className="truncate text-muted-foreground text-xs">
+                {product.merchant}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-foreground text-sm">
+                  {product.price}
+                </span>
+                {typeof product.rating === "number" ? (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                    <Star className="size-3 fill-amber-400 text-amber-500" />
+                    {product.rating.toFixed(1)}
+                    {product.reviewCount ? ` (${product.reviewCount})` : ""}
+                  </span>
+                ) : null}
+              </div>
+              {product.availability ? (
+                <div className="truncate text-muted-foreground text-xs">
+                  {product.availability}
+                </div>
+              ) : null}
+              <span className="inline-flex items-center gap-1 font-medium text-primary text-xs">
+                <EditableTranslation
+                  defaultText={product.kind === "collection" ? "Browse products" : "View product"}
+                  description={
+                    product.kind === "collection"
+                      ? "Link label on a grounded retailer browsing card."
+                      : "Link label on a grounded shopping result card."
+                  }
+                  translationKey={
+                    product.kind === "collection"
+                      ? "chat.web_search.browse_products"
+                      : "chat.web_search.view_product"
+                  }
+                />
+                <ExternalLink className="size-3" />
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function WebSearchVideos({ videos }: { videos: WebSearchVideo[] }) {
@@ -281,11 +432,13 @@ function WebSearchVideos({ videos }: { videos: WebSearchVideo[] }) {
 
 export function WebSearchSources({
   citations = [],
+  products = [],
   searchQueries = [],
   sources,
   videos = [],
 }: {
   citations?: WebSearchCitation[];
+  products?: WebSearchProduct[];
   searchQueries?: string[];
   sources: WebSearchSource[];
   videos?: WebSearchVideo[];
@@ -308,12 +461,18 @@ export function WebSearchSources({
       (video): video is NonNullable<ReturnType<typeof normalizeVideo>> =>
         Boolean(video)
     );
+  const safeProducts = products
+    .map(normalizeProduct)
+    .filter((product): product is NonNullable<ReturnType<typeof normalizeProduct>> =>
+      Boolean(product)
+    );
 
   if (
     safeSources.length === 0 &&
     safeQueries.length === 0 &&
     safeCitations.length === 0 &&
-    safeVideos.length === 0
+    safeVideos.length === 0 &&
+    safeProducts.length === 0
   ) {
     return null;
   }
@@ -327,8 +486,16 @@ export function WebSearchSources({
       );
     }
   }
+  const hasSourceDetails =
+    safeSources.length > 0 ||
+    safeQueries.length > 0 ||
+    safeCitations.length > 0 ||
+    safeVideos.length > 0;
+
   return (
-    <details
+    <div className="w-full space-y-3">
+      <WebSearchProducts products={safeProducts} />
+      {hasSourceDetails ? <details
       className="group w-full rounded-xl border border-border/60 bg-muted/20 text-left"
       data-testid="web-search-sources"
     >
@@ -460,6 +627,7 @@ export function WebSearchSources({
           </div>
         ) : null}
       </div>
-    </details>
+      </details> : null}
+    </div>
   );
 }

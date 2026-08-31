@@ -4,6 +4,9 @@ const ACKNOWLEDGEMENT_ONLY =
 const THANKS_ONLY =
   /^(?:thanks|thanks a lot|thanks so much|thanks that s exactly what i wanted|thank you|thank you so much|thank you that s exactly what i wanted|khublei|khublei shibun)$/i;
 
+const GREETING_ONLY =
+  /^(?:hi|hello|hey|hey there|hello there|good morning|good afternoon|good evening|good night|how are you|how are you doing|what s up|whats up|sup|kumno|phi long kumno|kumno phi long)$/i;
+
 const INTERNAL_IMAGE_TOOL_SIGNAL =
   /dalle\.text2im|["']action_name["']\s*:\s*["']image_generation["']|<tool(?:_call)?[^>]*>[^<]*(?:dalle|image_generation)/i;
 
@@ -22,6 +25,11 @@ function normalizeShortTurn(text: string) {
 export function isConversationalAcknowledgement(text: string) {
   const normalized = normalizeShortTurn(text);
   return normalized.length > 0 && ACKNOWLEDGEMENT_ONLY.test(normalized);
+}
+
+export function isConversationalGreeting(text: string) {
+  const normalized = normalizeShortTurn(text);
+  return normalized.length > 0 && GREETING_ONLY.test(normalized);
 }
 
 export function getConversationalAcknowledgementReply(text: string) {
